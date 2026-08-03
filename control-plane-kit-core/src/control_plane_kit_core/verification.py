@@ -8,6 +8,7 @@ from re import fullmatch
 from typing import Mapping, TypeAlias
 from urllib.parse import urlsplit
 
+from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.types import Protocol
 
 
@@ -51,10 +52,59 @@ class VerificationOutcome(StrEnum):
 
 
 @dataclass(frozen=True)
+class PostgresPasswordAuthentication:
+    """Secret-free authentication contract for semantic Postgres verification."""
+
+    database: str
+    username: str
+    password_reference: SecretReference
+
+    def __post_init__(self) -> None:
+        _validate_identity(self.database, "Postgres database")
+        _validate_identity(self.username, "Postgres username")
+        if not isinstance(self.password_reference, SecretReference):
+            raise TypeError("Postgres password authentication requires SecretReference")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "password",
+            "database": self.database,
+            "username": self.username,
+            "password_reference_id": self.password_reference.reference_id,
+        }
+
+    @classmethod
+    def from_descriptor(cls, value: object) -> "PostgresPasswordAuthentication":
+        descriptor = _mapping(value, "Postgres authentication")
+        _require_keys(
+            descriptor,
+            {"kind", "database", "username", "password_reference_id"},
+            "Postgres authentication",
+        )
+        if _text(descriptor, "kind") != "password":
+            raise VerificationContractError("unknown Postgres authentication variant")
+        try:
+            return cls(
+                database=_text(descriptor, "database"),
+                username=_text(descriptor, "username"),
+                password_reference=SecretReference(
+                    _text(descriptor, "password_reference_id")
+                ),
+            )
+        except (TypeError, ValueError) as error:
+            if isinstance(error, VerificationContractError):
+                raise
+            raise VerificationContractError(
+                "Postgres authentication descriptor is malformed"
+            ) from error
+
+
+@dataclass(frozen=True)
 class VerificationPolicy:
     """Finite execution and evidence bounds shared by semantic checks."""
 
     timeout_seconds: float = 5.0
+    interval_seconds: float = 1.0
     maximum_attempts: int = 1
     maximum_evidence_bytes: int = 16_384
 
@@ -67,6 +117,15 @@ class VerificationPolicy:
         ):
             raise VerificationContractError(
                 "verification timeout must be greater than zero and at most 60 seconds"
+            )
+        if (
+            not isinstance(self.interval_seconds, (int, float))
+            or isinstance(self.interval_seconds, bool)
+            or self.interval_seconds <= 0
+            or self.interval_seconds > 60
+        ):
+            raise VerificationContractError(
+                "verification interval must be greater than zero and at most 60 seconds"
             )
         if type(self.maximum_attempts) is not int or not 1 <= self.maximum_attempts <= 10:
             raise VerificationContractError(
@@ -83,6 +142,7 @@ class VerificationPolicy:
     def descriptor(self) -> dict[str, object]:
         return {
             "timeout_seconds": float(self.timeout_seconds),
+            "interval_seconds": float(self.interval_seconds),
             "maximum_attempts": self.maximum_attempts,
             "maximum_evidence_bytes": self.maximum_evidence_bytes,
         }
@@ -90,14 +150,24 @@ class VerificationPolicy:
     @classmethod
     def from_descriptor(cls, value: object) -> "VerificationPolicy":
         descriptor = _mapping(value, "verification policy")
-        _require_keys(
-            descriptor,
-            {"timeout_seconds", "maximum_attempts", "maximum_evidence_bytes"},
-            "verification policy",
-        )
+        legacy_fields = {
+            "timeout_seconds",
+            "maximum_attempts",
+            "maximum_evidence_bytes",
+        }
+        canonical_fields = legacy_fields | {"interval_seconds"}
+        if set(descriptor) not in (legacy_fields, canonical_fields):
+            raise VerificationContractError(
+                "verification policy descriptor has unknown or missing fields"
+            )
         try:
             return cls(
                 timeout_seconds=_number(descriptor, "timeout_seconds"),
+                interval_seconds=(
+                    _number(descriptor, "interval_seconds")
+                    if "interval_seconds" in descriptor
+                    else 1.0
+                ),
                 maximum_attempts=_integer(descriptor, "maximum_attempts"),
                 maximum_evidence_bytes=_integer(
                     descriptor, "maximum_evidence_bytes"
@@ -175,6 +245,7 @@ class PostgresQueryCheck:
     check_id: str
     provider_socket: str
     operation: PostgresVerificationOperation = PostgresVerificationOperation.SELECT_ONE
+    authentication: PostgresPasswordAuthentication | None = None
     policy: VerificationPolicy = field(default_factory=VerificationPolicy)
 
     def __post_init__(self) -> None:
@@ -183,11 +254,23 @@ class PostgresQueryCheck:
             raise TypeError(
                 "Postgres verification operation must be PostgresVerificationOperation"
             )
+        if self.authentication is not None and not isinstance(
+            self.authentication,
+            PostgresPasswordAuthentication,
+        ):
+            raise TypeError(
+                "Postgres verification authentication must be typed or absent"
+            )
 
     def descriptor(self) -> dict[str, object]:
         return {
             **_base_descriptor("postgres-query", self),
             "operation": self.operation.value,
+            "authentication": (
+                None
+                if self.authentication is None
+                else self.authentication.descriptor()
+            ),
         }
 
 
@@ -497,10 +580,18 @@ def verification_check_from_descriptor(value: object) -> VerificationCheck:
                     record_type=DnsRecordType(_text(descriptor, "record_type")),
                 )
             case "postgres-query":
-                _require_keys(descriptor, {"kind", "check_id", "provider_socket", "policy", "operation"}, "Postgres verification check")
+                _require_keys(descriptor, {"kind", "check_id", "provider_socket", "policy", "operation", "authentication"}, "Postgres verification check")
+                authentication = descriptor["authentication"]
                 return PostgresQueryCheck(
                     **common,
                     operation=PostgresVerificationOperation(_text(descriptor, "operation")),
+                    authentication=(
+                        None
+                        if authentication is None
+                        else PostgresPasswordAuthentication.from_descriptor(
+                            authentication
+                        )
+                    ),
                 )
             case "redis":
                 _require_keys(descriptor, {"kind", "check_id", "provider_socket", "policy", "operation"}, "Redis verification check")

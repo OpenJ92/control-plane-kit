@@ -1,0 +1,30 @@
+{
+  "core": {
+    "commit_evidence_issue": 1322,
+    "tests": 484
+  },
+  "distribution": "control-plane-kit-core+control-plane-kit-operations+control-plane-kit-interpreters+control-plane-kit-secrets",
+  "future_issue_laws": 5,
+  "interpreter": {
+    "commit": "e9f19d558026d92af79df81fb9184d29da00110b",
+    "tests": 147
+  },
+  "issue": 1324,
+  "operations": {
+    "commit_evidence_issue": 1321,
+    "tests": 377
+  },
+  "reviewed_laws": 22,
+  "roadmap_baseline": "05015155a48f598b2ad877a4b42cb462b647c745",
+  "schema": "cpk.semantic-test-reconciliation-evidence",
+  "secrets": {
+    "build": "passing",
+    "commit": "313fd26cb15a362ef5196547a3f6b27122877609",
+    "compileall": "passing",
+    "import_check": "passing",
+    "live_provider_process": "passing",
+    "tests": 51
+  },
+  "status": "passing",
+  "strengthened_current_laws": 17
+}

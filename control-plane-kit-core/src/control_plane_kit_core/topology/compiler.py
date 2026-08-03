@@ -22,7 +22,11 @@ from control_plane_kit_core.types import BlockFamily
 def compile_topology(topology: DeploymentTopology) -> DeploymentGraph:
     """Compile a deployment topology into a pure graph."""
 
-    graph = DeploymentGraph(topology.name)
+    graph = DeploymentGraph(
+        topology.name,
+        public_ingresses=topology.public_ingresses,
+        delegation_authorities=topology.delegation_authorities,
+    )
     graph, connections = _compile_runtime(topology.root, graph)
     for connection in connections:
         graph = _apply_connection(graph, connection)
@@ -61,6 +65,7 @@ def _compile_runtime(
             children=tuple(child_nodes),
             metadata=_runtime_metadata(runtime),
             lifecycle=runtime.lifecycle,
+            authority_ref=runtime.authority_ref,
         )
     )
     return next_graph, tuple(connections)
@@ -153,7 +158,12 @@ def _apply_connection(graph: DeploymentGraph, connection: SocketConnection) -> D
         SocketDerivedEnvironmentBinding(name, value, edge_id)
         for name, value in sorted(assignments.items())
     )
-    return graph.update_node(consumer.with_socket_environment(bindings)).add_edge(edge)
+    return graph.update_node(
+        consumer.with_connection_material(
+            bindings,
+            requirement_socket.secret_deliveries,
+        )
+    ).add_edge(edge)
 
 
 def _edge_id(connection: SocketConnection) -> str:

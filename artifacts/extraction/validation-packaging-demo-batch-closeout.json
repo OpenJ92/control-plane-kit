@@ -1,0 +1,115 @@
+{
+  "decisions": [
+    "Core release-candidate evidence is package/import and pure public-contract proof, not cpk-server packaging.",
+    "Executable CLI behavior is a client/entrypoint handoff, not extracted-core behavior.",
+    "The read-interface FastAPI/Postgres demo process is a cpk-server/system handoff; core keeps HTTP/MCP route contracts.",
+    "Live Docker publication execution remains interpreter/runtime work for #743; core keeps typed protocol/publication values.",
+    "Complete-suite evidence is recorded only after every #742 law has an individual successor or reviewed supersession."
+  ],
+  "families": [
+    {
+      "classification": "executable entrypoint/server handoff",
+      "family": "test_cli",
+      "references": [
+        "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token",
+        "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination",
+        "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail",
+        "tests.test_cli.CliTests.test_missing_base_url_is_usage_error",
+        "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters",
+        "tests.test_cli.CliTests.test_token_sets_bearer_header",
+        "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 7,
+      "status": "reviewed_entrypoint_or_server_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token",
+        "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination",
+        "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail",
+        "tests.test_cli.CliTests.test_missing_base_url_is_usage_error",
+        "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters",
+        "tests.test_cli.CliTests.test_token_sets_bearer_header",
+        "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json"
+      ]
+    },
+    {
+      "classification": "core contract demos plus runtime handoff",
+      "family": "demo",
+      "references": [
+        "demo.configuration-artifact",
+        "demo.docker-publication",
+        "demo.read-interface",
+        "demo.secret-delivery",
+        "demo.transport",
+        "demo.verification-observation"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 6,
+      "status": "split_core_successor_and_interpreter_handoff",
+      "successor_references": [
+        "demo.configuration-artifact",
+        "demo.read-interface",
+        "demo.secret-delivery",
+        "demo.transport",
+        "demo.verification-observation"
+      ],
+      "superseded_references": [
+        "demo.docker-publication"
+      ]
+    },
+    {
+      "classification": "executable entrypoint/server handoff",
+      "family": "test_read_interface_demo_server",
+      "references": [
+        "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token",
+        "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 2,
+      "status": "reviewed_entrypoint_or_server_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token",
+        "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes"
+      ]
+    },
+    {
+      "classification": "release-candidate validation",
+      "family": "validation",
+      "references": [
+        "validation.complete-suite",
+        "validation.package-installation"
+      ],
+      "remaining_live_inventory_count": 0,
+      "source_count": 2,
+      "status": "mapped_to_passing_successor_evidence",
+      "successor_references": [
+        "validation.complete-suite",
+        "validation.package-installation"
+      ],
+      "superseded_references": []
+    }
+  ],
+  "issue": "#742",
+  "live_inventory": "artifacts/extraction/required-core-family-inventory.json",
+  "parent": "#643",
+  "schema": "cpk.validation-packaging-demo-batch-closeout",
+  "source_batch": "validation_packaging_demo",
+  "successors": [
+    "extract-e-742.core-release-contracts.unittest",
+    "extract-e-742.complete-suite.validation"
+  ],
+  "summary": {
+    "mapped_successor_entries": 7,
+    "mapped_validation_families": 1,
+    "reviewed_handoff_families": 2,
+    "reviewed_supersession_entries": 10,
+    "source_entries": 17,
+    "source_families": 4,
+    "split_families": 1,
+    "unexpected_remaining_entries": 0,
+    "unexpected_remaining_families": 0
+  },
+  "supersession_review": "artifacts/extraction/supersession-reviews/extract-e-742-validation-packaging-demo-handoff.json"
+}

@@ -1,0 +1,207 @@
+{
+  "schema": "control-plane-kit.extraction.runtime-authority-dry-run",
+  "issue": 961,
+  "parent_issue": 960,
+  "status": "dry-run-complete",
+  "topology": [
+    961,
+    962,
+    963,
+    964,
+    965,
+    966,
+    967,
+    968,
+    969
+  ],
+  "current_bootstrap_path": [
+    {
+      "step": "outer smoke harness starts parent cpk-server",
+      "facts": [
+        "mounts /var/run/docker.sock",
+        "sets CPK_RUNTIME_INTERPRETERS=docker",
+        "optionally mounts Docker config for image pull authority",
+        "sets local-development product secret resolver",
+        "sets four Postgres store URLs"
+      ],
+      "anchors": [
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:108",
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:120",
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:121",
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity_smoke.sh:122"
+      ]
+    },
+    {
+      "step": "cpk-server parses bootstrap environment",
+      "facts": [
+        "CPK_RUNTIME_INTERPRETERS is a closed process-bootstrap string",
+        "current values are none and docker",
+        "image pull and product secret resolvers currently require docker"
+      ],
+      "anchors": [
+        "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:79",
+        "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:108",
+        "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:120",
+        "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:128"
+      ]
+    },
+    {
+      "step": "cpk-server composes operations and runtime adapter",
+      "facts": [
+        "cpk-server is currently the composition root for DockerRuntimeInterpreter",
+        "none maps to UnsupportedExecutionAdapter",
+        "docker lazy-imports control_plane_kit_interpreters.docker and constructs RuntimeInterpreterDispatcher"
+      ],
+      "anchors": [
+        "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:272",
+        "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:343",
+        "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:353",
+        "control-plane-kit-servers/products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py:366"
+      ]
+    },
+    {
+      "step": "operations dispatches runtime effects by RuntimeKind",
+      "facts": [
+        "operations owns RuntimeInterpreterDispatcher",
+        "dispatcher receives injected interpreters",
+        "dispatcher builds RuntimeEffectRequest from pinned ActivityRealizationContext",
+        "missing interpreter fails closed"
+      ],
+      "anchors": [
+        "control-plane-kit/control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:269",
+        "control-plane-kit/control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:295",
+        "control-plane-kit/control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:307",
+        "control-plane-kit/control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py:309"
+      ]
+    },
+    {
+      "step": "DockerRuntimeInterpreter performs effects through Docker SDK",
+      "facts": [
+        "interpreter accepts only RuntimeEffectRequest",
+        "request runtime kind must be docker",
+        "product secrets and image pull auth resolve before node Docker mutation",
+        "DockerSdkClient currently uses docker.from_env"
+      ],
+      "anchors": [
+        "control-plane-kit-interpreters/src/control_plane_kit_interpreters/docker/runtime.py:80",
+        "control-plane-kit-interpreters/src/control_plane_kit_interpreters/docker/runtime.py:85",
+        "control-plane-kit-interpreters/src/control_plane_kit_interpreters/docker/runtime.py:200",
+        "control-plane-kit-interpreters/src/control_plane_kit_interpreters/docker/sdk.py:148"
+      ]
+    }
+  ],
+  "current_recursive_path": [
+    {
+      "step": "parent imports cpk-server and postgres product descriptors",
+      "anchors": [
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:48",
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:66"
+      ]
+    },
+    {
+      "step": "parent optionally registers workspace OCI pull authority",
+      "anchors": [
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:68",
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:72"
+      ]
+    },
+    {
+      "step": "parent executes normal plan approval run lifecycle",
+      "anchors": [
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:109",
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:125",
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:250"
+      ]
+    },
+    {
+      "step": "parent observes direct child only",
+      "anchors": [
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:272",
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:387"
+      ]
+    },
+    {
+      "step": "child is intentionally opaque and runtime-disabled",
+      "facts": [
+        "child readiness must report runtime_interpreters=none",
+        "controller test rejects child internal workspace/activity inspection"
+      ],
+      "anchors": [
+        "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py:392",
+        "control-plane-kit-servers/products/cpk_server/tests/test_image_bootstrap.py:514",
+        "control-plane-kit-servers/products/cpk_server/tests/test_image_bootstrap.py:519"
+      ]
+    }
+  ],
+  "fact_classification": {
+    "interpreter_software_availability": [
+      "cpk-server image/package contains control-plane-kit-interpreters[docker]",
+      "server.py can lazy-import DockerRuntimeInterpreter when docker is requested"
+    ],
+    "process_bootstrap_permission": [
+      "CPK_RUNTIME_INTERPRETERS=none|docker",
+      "CPK_IMAGE_PULL_CREDENTIAL_RESOLVER=none|docker-config",
+      "CPK_PRODUCT_SECRET_RESOLVER=none|local-development"
+    ],
+    "workspace_image_pull_authority": [
+      "RegisteredImagePullAuthority",
+      "ImagePullAuthority",
+      "credential references selected into RuntimeProductMaterial.pull_authority"
+    ],
+    "workspace_runtime_authority": [
+      "missing",
+      "no RuntimeAuthorityReference on RuntimeContext/DockerRuntime",
+      "no RegisteredRuntimeAuthority store/command/read model",
+      "no runtime authority material in RuntimeEffectRequest"
+    ],
+    "smoke_harness_magic": [
+      "/var/run/docker.sock host bind into parent",
+      "Docker socket group add",
+      "Docker config file mount",
+      "local-development secret resolver JSON",
+      "controller container socket bind for network stitching"
+    ]
+  },
+  "gap": {
+    "parent_can_use_docker_interpreter_because": [
+      "outer harness supplies Docker socket authority",
+      "outer harness sets CPK_RUNTIME_INTERPRETERS=docker",
+      "cpk-server image has interpreter package installed",
+      "cpk-server composes RuntimeInterpreterDispatcher with DockerRuntimeInterpreter"
+    ],
+    "child_cannot_use_docker_interpreter_because": [
+      "cpk-server descriptor default public environment sets CPK_RUNTIME_INTERPRETERS=none",
+      "child receives no graph-visible runtime authority",
+      "child receives no local socket or remote Docker authority",
+      "operations has no RegisteredRuntimeAuthority to select",
+      "RuntimeEffectRequest has no runtime authority reference/material"
+    ]
+  },
+  "target_path": [
+    "core adds pure runtime authority references, not durable registration truth",
+    "operations admits RegisteredRuntimeAuthority per workspace",
+    "operations dispatcher composition moves to bootstrap boundary and can use allowed installed interpreter families",
+    "runtime graph references authority ids",
+    "operations translates pinned activity context plus registered runtime authority into RuntimeEffectRequest authority reference/material",
+    "interpreters resolve runtime authority material at IO boundary",
+    "cpk-server exposes authority registration over HTTP/MCP",
+    "server-products publishes interpreter-availability variants without target credentials"
+  ],
+  "topology_verdict": {
+    "confirmed": true,
+    "recommended_amendments": [
+      {
+        "issue": 962,
+        "note": "Explicitly decide whether RuntimeEffectRequest gets authority_ref at request level or runtime/node material level."
+      },
+      {
+        "issue": 963,
+        "note": "Reuse RegisteredImagePullAuthority data-engineering pattern, but keep Docker daemon authority distinct from OCI pull authority."
+      },
+      {
+        "issue": 964,
+        "note": "Move dispatcher composition toward operations bootstrap, but keep concrete SDK imports out of service/store/coordinator modules."
+      }
+    ]
+  }
+}

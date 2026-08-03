@@ -1,0 +1,149 @@
+{
+  "schema": "control-plane-kit.extraction.seeded-stress-scenario-matrix",
+  "issue": 942,
+  "parent": 941,
+  "status": "dry-run-complete",
+  "coordinates": {
+    "catalogue_products_json_sha256": "0fa521b5800f909160ed959cd25700b38cc39e8345dd699400946d3338ed1e96",
+    "products": {
+      "cpk-server": {
+        "descriptor_sha256": "0ebaa90f824f5a10e7ae7a1c91d83d5aaa8e5c8fc83035b062a23266c3327970",
+        "image_digest": "sha256:a92139b66b5fb0e631bb4fe1a401e3c9968ac99227cf0c9dd5b85e52f506b0f4"
+      },
+      "hello-server": {
+        "descriptor_sha256": "7c878cddfa597002f4536c1ac7aea0728df3bbe0e594f6dbc56b646968dab0cc",
+        "image_digest": "sha256:0b5d62c2706bdfc5b53b67c7e0a72e36b8af7d13f8b2abf26eaa6e6eb7dda5f0"
+      },
+      "http-active-router": {
+        "descriptor_sha256": "c965218c439ea650421220d9977f641330564b86f6397bef05e4a87edbd43c6b",
+        "image_digest": "sha256:9edd29c8b62f6413c7acb4009bfa655c065a31a0eac8728ec9d4350122e0a60d"
+      },
+      "http-multiplexer": {
+        "descriptor_sha256": "0b74269a7b8c9b775d431a04382eaa268339330c55d4995a6a52ee6de79abc9d",
+        "image_digest": "sha256:2b6466d87c7642691c4ce2ee52022450d7b7cf1055f1f25a1449adbb5c8131ec"
+      },
+      "postgres-server": {
+        "descriptor_sha256": "96307788eb5a6603f3617e1d4b5fd02420997175b969e72304f8e5609acc5f40",
+        "image_digest": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+      }
+    }
+  },
+  "governing_shape": [
+    "public cpk-server workflow",
+    "operations services",
+    "RuntimeInterpreterDispatcher",
+    "DockerRuntimeInterpreter",
+    "seeded OCI products",
+    "observations",
+    "current graph advancement"
+  ],
+  "source_evidence": {
+    "hosted_public_workflow": "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py",
+    "recursive_public_workflow": "control-plane-kit-servers/scripts/cpk_server_recursive_activity.py",
+    "operations_seeded_harness": "control-plane-kit/examples/activity_seeded_live.py",
+    "seeded_descriptors": "control-plane-kit-servers/products/*/product.cpk.json",
+    "docker_interpreter": "control-plane-kit-interpreters/src/control_plane_kit_interpreters/docker/runtime.py"
+  },
+  "scenario_families": [
+    {
+      "id": "hosted-workflow-spine",
+      "owner_issue": 943,
+      "public_boundary": "hosted-cpk-server-http-mcp",
+      "purpose": "Refactor the hosted controller into reusable public workflow helpers for multi-scenario graph runs.",
+      "expected_evidence": [
+        "workspace creation",
+        "product descriptor imports by document",
+        "approval queue and detail traversal",
+        "claim returns run_id used by start execute and advance",
+        "current graph readback"
+      ],
+      "known_gaps": []
+    },
+    {
+      "id": "router-blue-green-transition",
+      "owner_issue": 944,
+      "public_boundary": "hosted-cpk-server-http-mcp plus HTTP request to router",
+      "purpose": "Deploy hello-blue behind active router, then transition router active edge to hello-green.",
+      "expected_evidence": [
+        "ACTIVE_TARGET_URL is derived from the graph edge",
+        "blue response observed through router before transition",
+        "green response observed through router after transition",
+        "current graph advances only after accepted execution"
+      ],
+      "known_gaps": [
+        "Hosted helper must instantiate hello-server with per-instance HELLO_MESSAGE values; core already allows changing values for existing public environment keys."
+      ]
+    },
+    {
+      "id": "multiplexer-primary-observer",
+      "owner_issue": 945,
+      "prerequisite_issue": "new observer visibility child",
+      "public_boundary": "hosted-cpk-server-http-mcp plus HTTP request to multiplexer",
+      "purpose": "Prove primary response wins and observer receives copied request.",
+      "expected_evidence": [
+        "MULTIPLEXER_PRIMARY_URL is derived from the primary graph edge",
+        "MULTIPLEXER_OBSERVER_A_URL is derived from the observer graph edge",
+        "primary response is returned to caller",
+        "observer delivery is visible through package-owned evidence"
+      ],
+      "known_gaps": [
+        "The current hello-server product returns a response but does not expose request receipt counts or last request evidence; multiplexer product unit tests prove observer delivery with an in-process recording server, but hosted seeded stress needs product-owned live evidence."
+      ]
+    },
+    {
+      "id": "postgres-data-service",
+      "owner_issue": 945,
+      "public_boundary": "hosted-cpk-server-http-mcp plus interpreter health evidence",
+      "purpose": "Prove retained Postgres data-service descriptor behavior through real Docker realization.",
+      "expected_evidence": [
+        "ProductFamily.DATA_SERVICE",
+        "POSTGRES_PASSWORD delivered from secret reference at IO boundary",
+        "retained postgres-data mount recorded distinctly from ephemeral compute",
+        "select-one readiness succeeds",
+        "retained data is not removed by ordinary ephemeral cleanup"
+      ],
+      "known_gaps": []
+    },
+    {
+      "id": "negative-and-cleanup-cases",
+      "owner_issue": 946,
+      "public_boundary": "public cpk-server route errors plus Docker residue audit",
+      "purpose": "Prove fail-closed graph/product/security cases and scoped cleanup.",
+      "expected_evidence": [
+        "unregistered product rejected",
+        "incompatible socket rejected",
+        "missing private pull authority fails before Docker mutation",
+        "failed readiness blocks advancement with visible evidence",
+        "missing or rejected approval prevents admission",
+        "stale current graph prevents admission or advancement",
+        "unauthorized mutation returns bounded 401 or 403",
+        "foreign resources are not touched"
+      ],
+      "known_gaps": []
+    }
+  ],
+  "topology_decision": {
+    "existing_topology_valid": true,
+    "added_child_required": true,
+    "reason": "Multiplexer observer delivery cannot be honestly proven through live seeded products until a package-owned observer-visible endpoint or equivalent bounded evidence exists.",
+    "recommended_order": [
+      942,
+      943,
+      944,
+      "new observer visibility child",
+      945,
+      946,
+      947
+    ]
+  },
+  "non_goals": [
+    "cloud runtimes",
+    "remote Docker",
+    "control portals",
+    "Cloudflare ingress",
+    "automatic scaling",
+    "frontend work",
+    "child cpk-server graph or activity inspection",
+    "product-specific branches in core or operations"
+  ]
+}

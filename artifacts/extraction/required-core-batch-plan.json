@@ -1,0 +1,1417 @@
+{
+  "batches": {
+    "architecture_test_harness": {
+      "count": 58,
+      "description": "architecture-analysis, package-boundary, dependency, topology, root import, and test-integrity laws",
+      "families": [
+        {
+          "count": 15,
+          "family": "test_architecture_analysis",
+          "references": [
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_bare_and_named_exception_handlers_have_total_ordering",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_boolean_arguments_assertions_and_empty_test_bodies_are_explicit",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_call_keyword_shapes_are_recorded_without_values",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_comments_strings_and_docstrings_do_not_become_code_facts",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_computed_all_is_explicitly_unsupported",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_dotted_import_binding_matches_python_semantics",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_file_analysis_derives_module_and_rejects_files_outside_root",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_import_aliases_calls_decorators_and_locations_are_resolved",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_literal_all_exports_resolve_imported_and_local_provenance",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_malformed_source_fails_without_echoing_source",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_nested_class_names_and_decorators_are_explicit",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_pass_only_functions_and_exception_handlers_are_explicit",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_policy_evaluation_is_deterministic_and_location_backed",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_prose_does_not_become_export_provenance",
+            "tests.test_architecture_analysis.ArchitectureAnalysisTests.test_relative_import_and_nested_method_names_are_preserved"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_architecture_dependencies",
+          "references": [
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_effect_materialization_and_interpreters_cannot_import_stores",
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_environment_metadata_escape_hatch_is_rejected",
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_jinja_environment_is_owned_by_declared_template_interpreters",
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned",
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_product_interpreter_edge_is_exactly_coredns_to_configuration_rendering",
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_raw_static_environment_mapping_is_rejected_at_docker_authoring",
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_relative_same_package_import_is_allowed",
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership",
+            "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import"
+          ]
+        },
+        {
+          "count": 8,
+          "family": "test_architecture_ownership",
+          "references": [
+            "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_contract_boundary_may_read_process_environment",
+            "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_environment_aliases_are_rejected_outside_declared_boundaries",
+            "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_observation_projection_cannot_mutate_graph_truth",
+            "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_packaged_servers_do_not_bypass_contract_mutation_boundary",
+            "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_raw_current_graph_mutation_is_reserved_to_guarded_workflow",
+            "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_repository_obeys_commit_environment_and_graph_mutation_ownership",
+            "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_store_commit_is_rejected_but_unit_of_work_commit_is_allowed",
+            "tests.test_architecture_ownership.ArchitectureOwnershipTests.test_workflow_may_request_commit_but_pure_package_may_not"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_architecture_test_integrity",
+          "references": [
+            "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason",
+            "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed",
+            "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures",
+            "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail",
+            "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips",
+            "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_root_api",
+          "references": [
+            "tests.test_root_api.RootApiTests.test_interpreter_entrance_does_not_eagerly_import_optional_dependencies",
+            "tests.test_root_api.RootApiTests.test_optional_import_fixture_is_rejected",
+            "tests.test_root_api.RootApiTests.test_pure_package_roots_do_not_import_optional_dependencies",
+            "tests.test_root_api.RootApiTests.test_root_all_names_are_bound",
+            "tests.test_root_api.RootApiTests.test_root_api_does_not_import_optional_dependencies_directly",
+            "tests.test_root_api.RootApiTests.test_root_api_imports_only_pure_package_surfaces"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_architecture_scenarios",
+          "references": [
+            "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner",
+            "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock",
+            "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass",
+            "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_runner_uses_deploy_program_not_manual_command_chain",
+            "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_architecture_read_routes",
+          "references": [
+            "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_mutation_and_generic_route_decorators_fail_closed",
+            "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_read_modules_declare_only_read_methods",
+            "tests.test_architecture_read_routes.ArchitectureReadRouteTests.test_static_declarations_match_realized_fastapi_workspace_routes"
+          ]
+        },
+        {
+          "count": 2,
+          "family": "test_architecture_deploy",
+          "references": [
+            "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_deployment_application_obeys_composition_boundary",
+            "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_policy_resolves_aliases_and_rejects_boundary_bypasses"
+          ]
+        },
+        {
+          "count": 2,
+          "family": "test_architecture_protocol",
+          "references": [
+            "tests.test_architecture_protocol.ProtocolArchitectureTests.test_repository_does_not_erase_protocol_products_in_projections",
+            "tests.test_architecture_protocol.ProtocolArchitectureTests.test_scalar_protocol_projection_is_rejected_but_display_is_owned"
+          ]
+        },
+        {
+          "count": 2,
+          "family": "test_optional_dependencies",
+          "references": [
+            "tests.test_optional_dependencies.OptionalDependencyTests.test_available_dependencies_are_accepted",
+            "tests.test_optional_dependencies.OptionalDependencyTests.test_missing_dependency_names_surface_and_install_extra"
+          ]
+        }
+      ],
+      "family_count": 10,
+      "issue": "#741"
+    },
+    "interpreter_runtime": {
+      "count": 146,
+      "description": "Docker, probe, effect interpretation, control HTTP transport, host publication, resource lifecycle, and runtime substrate laws",
+      "families": [
+        {
+          "count": 17,
+          "family": "test_docker_effects",
+          "references": [
+            "tests.test_docker_effects.DockerEffectTests.test_cli_distinguishes_absence_from_failed_inspection",
+            "tests.test_docker_effects.DockerEffectTests.test_cli_inspection_preserves_private_and_host_port_distinction",
+            "tests.test_docker_effects.DockerEffectTests.test_cli_inspection_rejects_unknown_transport_suffix",
+            "tests.test_docker_effects.DockerEffectTests.test_cli_keeps_environment_values_out_of_process_arguments",
+            "tests.test_docker_effects.DockerEffectTests.test_cli_publishes_only_explicit_typed_port_bindings",
+            "tests.test_docker_effects.DockerEffectTests.test_cli_renders_udp_from_the_protocol_transport",
+            "tests.test_docker_effects.DockerEffectTests.test_compute_removal_is_explicit_and_separate_from_stop",
+            "tests.test_docker_effects.DockerEffectTests.test_host_publication_is_distinct_from_private_node_material",
+            "tests.test_docker_effects.DockerEffectTests.test_node_start_attempts_one_container_and_reports_process_not_health",
+            "tests.test_docker_effects.DockerEffectTests.test_node_stop_does_not_remove_container_or_runtime",
+            "tests.test_docker_effects.DockerEffectTests.test_reconcile_failure_after_removal_is_uncertain",
+            "tests.test_docker_effects.DockerEffectTests.test_reconcile_ownership_conflict_fails_before_mutation",
+            "tests.test_docker_effects.DockerEffectTests.test_reconcile_replaces_base_owned_node_and_exact_replay_converges",
+            "tests.test_docker_effects.DockerEffectTests.test_reconcile_resolves_desired_secrets_before_removal",
+            "tests.test_docker_effects.DockerEffectTests.test_runtime_start_ensures_only_the_pinned_network",
+            "tests.test_docker_effects.DockerEffectTests.test_runtime_stop_is_a_non_deleting_logical_barrier",
+            "tests.test_docker_effects.DockerEffectTests.test_timeout_is_uncertain_and_does_not_publish_command_output"
+          ]
+        },
+        {
+          "count": 16,
+          "family": "test_probe_execution",
+          "references": [
+            "tests.test_probe_execution.ProbeAdapterTests.test_docker_process_probe_inspects_graph_owned_container",
+            "tests.test_probe_execution.ProbeAdapterTests.test_http_probe_is_bounded_redirect_free_and_status_driven",
+            "tests.test_probe_execution.ProbeAdapterTests.test_probe_address_policy_fails_closed_and_pins_public_dns",
+            "tests.test_probe_execution.ProbeAdapterTests.test_secret_endpoint_value_is_resolved_only_at_authorization",
+            "tests.test_probe_execution.ProbeAdapterTests.test_tcp_probe_distinguishes_reachable_refused_and_timeout",
+            "tests.test_probe_execution.ProbeAdapterTests.test_transport_adapters_reject_the_other_transport_explicitly",
+            "tests.test_probe_execution.ProbeAdapterTests.test_transport_router_dispatches_from_the_typed_transport_only",
+            "tests.test_probe_execution.ProbeAdapterTests.test_udp_probe_requires_a_bounded_response_exchange",
+            "tests.test_probe_execution.ProbeAdapterTests.test_unsupported_transport_adapter_becomes_effect_unsupported",
+            "tests.test_probe_execution.ProbeEffectInterpreterTests.test_missing_endpoint_fails_before_any_probe_attempt",
+            "tests.test_probe_execution.ProbeEffectInterpreterTests.test_postgres_deadline_exhaustion_is_transport_not_http_evidence",
+            "tests.test_probe_execution.ProbeEffectInterpreterTests.test_reachable_postgres_is_ready_without_an_http_health_contract",
+            "tests.test_probe_execution.ProbeEffectInterpreterTests.test_refused_transport_retries_then_records_truthful_readiness",
+            "tests.test_probe_execution.ProbeEffectInterpreterTests.test_started_but_unhealthy_is_terminal_and_not_ready",
+            "tests.test_probe_execution.ProbeEffectInterpreterTests.test_total_deadline_is_recomputed_between_probe_layers",
+            "tests.test_probe_execution.ProbeEffectInterpreterTests.test_unreachable_postgres_is_not_ready_and_does_not_run_http"
+          ]
+        },
+        {
+          "count": 12,
+          "family": "test_effect_material",
+          "references": [
+            "tests.test_effect_material.EffectMaterialTests.test_descriptor_redacts_even_nonsecret_environment_values",
+            "tests.test_effect_material.EffectMaterialTests.test_every_executable_scenario_operation_materializes_from_pinned_transition",
+            "tests.test_effect_material.EffectMaterialTests.test_graph_identity_mismatch_fails_before_materialization",
+            "tests.test_effect_material.EffectMaterialTests.test_implementation_secret_reference_survives_only_as_opaque_material",
+            "tests.test_effect_material.EffectMaterialTests.test_materialization_is_deterministic",
+            "tests.test_effect_material.EffectMaterialTests.test_materialization_preserves_and_enforces_effect_purpose",
+            "tests.test_effect_material.EffectMaterialTests.test_plaintext_secret_shaped_environment_is_rejected_without_value_disclosure",
+            "tests.test_effect_material.EffectMaterialTests.test_reconcile_material_pins_forward_and_compensation_graph_pairs",
+            "tests.test_effect_material.EffectMaterialTests.test_removal_material_comes_from_pinned_base_not_mutable_desired_graph",
+            "tests.test_effect_material.EffectMaterialTests.test_secret_reference_material_is_opaque",
+            "tests.test_effect_material.EffectMaterialTests.test_verification_contract_resolves_only_from_pinned_node_material",
+            "tests.test_effect_material.EffectMaterialTests.test_verification_material_rejects_missing_pinned_endpoint"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_docker_configuration",
+          "references": [
+            "tests.test_docker_configuration.DockerConfigurationTests.test_changed_content_changes_container_and_volume_ownership",
+            "tests.test_docker_configuration.DockerConfigurationTests.test_cleanup_preflights_every_artifact_before_container_removal",
+            "tests.test_docker_configuration.DockerConfigurationTests.test_cli_never_places_content_in_argv_and_uses_read_only_helper",
+            "tests.test_docker_configuration.DockerConfigurationTests.test_concurrent_identical_starts_converge_on_exact_artifact",
+            "tests.test_docker_configuration.DockerConfigurationTests.test_container_conflict_preflights_before_artifact_mutation",
+            "tests.test_docker_configuration.DockerConfigurationTests.test_owned_incomplete_volume_is_completed_by_exact_replay",
+            "tests.test_docker_configuration.DockerConfigurationTests.test_owned_volume_with_wrong_digest_fails_without_starting",
+            "tests.test_docker_configuration.DockerConfigurationTests.test_partial_materialization_is_uncertain_and_cleanup_is_artifact_only",
+            "tests.test_docker_configuration.DockerConfigurationTests.test_start_materializes_before_container_and_replay_converges"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_docker_secrets",
+          "references": [
+            "tests.test_docker_secrets.DockerSecretTests.test_cli_materialization_passes_value_only_through_stdin",
+            "tests.test_docker_secrets.DockerSecretTests.test_known_container_start_failure_removes_owned_secret_volume",
+            "tests.test_docker_secrets.DockerSecretTests.test_missing_or_denied_reference_fails_before_volume_mutation",
+            "tests.test_docker_secrets.DockerSecretTests.test_reference_rotation_changes_container_and_volume_ownership",
+            "tests.test_docker_secrets.DockerSecretTests.test_same_immutable_reference_does_not_rewrite_provider_side_change",
+            "tests.test_docker_secrets.DockerSecretTests.test_start_materializes_before_container_and_replay_does_not_rewrite",
+            "tests.test_docker_secrets.DockerSecretTests.test_teardown_ownership_conflict_preserves_container_and_volume",
+            "tests.test_docker_secrets.DockerSecretTests.test_teardown_preflights_secret_volume_before_container_removal",
+            "tests.test_docker_secrets.DockerSecretTests.test_uncertain_materialization_preserves_owned_volume_for_recovery"
+          ]
+        },
+        {
+          "count": 8,
+          "family": "test_effect_values",
+          "references": [
+            "tests.test_effect_values.EffectValueTests.test_activity_factory_preserves_identity_policy_and_secret_references",
+            "tests.test_effect_values.EffectValueTests.test_control_actions_are_provider_neutral_and_typed",
+            "tests.test_effect_values.EffectValueTests.test_every_safe_activity_operation_has_one_closed_capability",
+            "tests.test_effect_values.EffectValueTests.test_request_rejects_duplicate_secret_references",
+            "tests.test_effect_values.EffectValueTests.test_request_rejects_open_effect_purpose",
+            "tests.test_effect_values.EffectValueTests.test_review_work_cannot_cross_the_effect_boundary",
+            "tests.test_effect_values.EffectValueTests.test_secret_and_endpoint_values_are_opaque_references",
+            "tests.test_effect_values.EffectValueTests.test_timeout_policy_is_bounded"
+          ]
+        },
+        {
+          "count": 7,
+          "family": "test_effect_dispatch",
+          "references": [
+            "tests.test_effect_dispatch.EffectDispatchTests.test_attempted_failure_is_distinct_from_unsupported",
+            "tests.test_effect_dispatch.EffectDispatchTests.test_fake_interpreter_attempts_every_safe_activity_operation",
+            "tests.test_effect_dispatch.EffectDispatchTests.test_fake_interpreter_executes_every_initially_ready_scenario_effect",
+            "tests.test_effect_dispatch.EffectDispatchTests.test_interpreter_capabilities_must_be_a_typed_frozenset",
+            "tests.test_effect_dispatch.EffectDispatchTests.test_interpreter_must_return_the_request_identity",
+            "tests.test_effect_dispatch.EffectDispatchTests.test_prepared_effect_freezes_support_decision_before_attempt",
+            "tests.test_effect_dispatch.EffectDispatchTests.test_unsupported_capability_is_rejected_before_attempt"
+          ]
+        },
+        {
+          "count": 7,
+          "family": "test_resource_lifecycle",
+          "references": [
+            "tests.test_resource_lifecycle.ResourceLifecycleTests.test_data_destruction_requires_explicit_critical_destructive_activity",
+            "tests.test_resource_lifecycle.ResourceLifecycleTests.test_external_resources_are_topology_only_and_never_gain_lifecycle_work",
+            "tests.test_resource_lifecycle.ResourceLifecycleTests.test_graph_codec_preserves_lifecycle_without_string_inference",
+            "tests.test_resource_lifecycle.ResourceLifecycleTests.test_lifecycle_is_a_closed_product_with_independent_data_resources",
+            "tests.test_resource_lifecycle.ResourceLifecycleTests.test_lifecycle_policy_changes_are_review_blockers_not_reconciliation",
+            "tests.test_resource_lifecycle.ResourceLifecycleTests.test_retained_compute_stops_without_resource_removal",
+            "tests.test_resource_lifecycle.ResourceLifecycleTests.test_topology_removal_deletes_ephemeral_compute_but_never_data"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_block_control_state",
+          "references": [
+            "tests.test_block_control_state.BlockControlStateTests.test_capability_payload_uses_descriptors",
+            "tests.test_block_control_state.BlockControlStateTests.test_control_state_is_backed_by_runtime_contract",
+            "tests.test_block_control_state.BlockControlStateTests.test_observer_mutation_updates_observer_state",
+            "tests.test_block_control_state.BlockControlStateTests.test_replacing_targets_clears_stale_active_target",
+            "tests.test_block_control_state.BlockControlStateTests.test_status_and_log_providers_are_used_when_present",
+            "tests.test_block_control_state.BlockControlStateTests.test_target_switch_rejects_unknown_targets"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_control_routes",
+          "references": [
+            "tests.test_control_routes.ControlRouteTests.test_all_required_route_sets_are_present",
+            "tests.test_control_routes.ControlRouteTests.test_common_status_routes_match_protocol_contract",
+            "tests.test_control_routes.ControlRouteTests.test_control_path_uses_configurable_prefix",
+            "tests.test_control_routes.ControlRouteTests.test_route_set_named_accepts_string_or_enum",
+            "tests.test_control_routes.ControlRouteTests.test_route_sets_have_json_friendly_descriptors",
+            "tests.test_control_routes.ControlRouteTests.test_unknown_route_set_fails_loudly"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_docker_ownership",
+          "references": [
+            "tests.test_docker_ownership.DockerOwnershipTests.test_absent_resource_is_created_with_stable_ownership_labels",
+            "tests.test_docker_ownership.DockerOwnershipTests.test_changed_material_conflicts_instead_of_retargeting_same_name",
+            "tests.test_docker_ownership.DockerOwnershipTests.test_compatible_stopped_container_is_started_without_recreation",
+            "tests.test_docker_ownership.DockerOwnershipTests.test_concurrent_equivalent_creation_converges_on_owned_resource",
+            "tests.test_docker_ownership.DockerOwnershipTests.test_identical_replay_reuses_running_container",
+            "tests.test_docker_ownership.DockerOwnershipTests.test_unowned_name_collision_is_never_mutated"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_docker_retention",
+          "references": [
+            "tests.test_docker_retention.DockerRetentionTests.test_explicit_data_destruction_removes_only_the_named_owned_volume",
+            "tests.test_docker_retention.DockerRetentionTests.test_postgres_start_creates_owned_volume_and_mounts_it",
+            "tests.test_docker_retention.DockerRetentionTests.test_retained_and_external_compute_cannot_cross_removal_boundary",
+            "tests.test_docker_retention.DockerRetentionTests.test_start_and_explicit_destruction_replay_converge",
+            "tests.test_docker_retention.DockerRetentionTests.test_stop_and_compute_removal_preserve_named_data",
+            "tests.test_docker_retention.DockerRetentionTests.test_unowned_volume_collision_fails_before_container_start"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_docker_runtime",
+          "references": [
+            "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_preserves_containers_when_cleanup_policy_preserves",
+            "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_stops_without_removing_owned_resources",
+            "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_up_executes_planned_activities_and_returns_runtime_state",
+            "tests.test_docker_runtime.DockerRuntimePlanningTests.test_cross_runtime_edges_are_preserved_but_not_realized",
+            "tests.test_docker_runtime.DockerRuntimePlanningTests.test_non_docker_runtime_is_rejected_before_planning",
+            "tests.test_docker_runtime.DockerRuntimePlanningTests.test_plan_start_creates_network_and_container_activities"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_host_publication",
+          "references": [
+            "tests.test_host_publication.HostPublicationTests.test_adding_publication_is_explicit_disruptive_plan_work",
+            "tests.test_host_publication.HostPublicationTests.test_explicit_publication_survives_graph_and_pinned_materialization",
+            "tests.test_host_publication.HostPublicationTests.test_loopback_factories_are_closed_ip_values",
+            "tests.test_host_publication.HostPublicationTests.test_private_only_is_the_authoring_default",
+            "tests.test_host_publication.HostPublicationTests.test_same_fixed_host_port_is_valid_once_per_transport",
+            "tests.test_host_publication.HostPublicationTests.test_unknown_socket_and_fixed_port_collision_fail_at_authoring"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_control_http_client",
+          "references": [
+            "tests.test_control_http_client.ControlHttpClientTests.test_missing_remote_capability_is_unsupported_without_mutation",
+            "tests.test_control_http_client.ControlHttpClientTests.test_mutation_without_a_trustworthy_result_is_explicitly_uncertain",
+            "tests.test_control_http_client.ControlHttpClientTests.test_redirect_malformed_and_oversized_responses_fail_without_body_echo",
+            "tests.test_control_http_client.ControlHttpClientTests.test_socket_operation_matrix_discovers_capability_before_mutation",
+            "tests.test_control_http_client.ControlHttpClientTests.test_status_and_logs_are_bounded_typed_operator_reads"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_control_http_security",
+          "references": [
+            "tests.test_control_http_security.ControlHttpSecurityTests.test_arbitrary_secret_endpoint_and_missing_token_fail_closed",
+            "tests.test_control_http_security.ControlHttpSecurityTests.test_docker_private_endpoint_requires_observed_network_and_credential",
+            "tests.test_control_http_security.ControlHttpSecurityTests.test_host_local_and_public_authority_are_separate_explicit_policies",
+            "tests.test_control_http_security.ControlHttpSecurityTests.test_redirect_like_route_and_invalid_resolver_result_fail_closed",
+            "tests.test_control_http_security.ControlHttpSecurityTests.test_unsafe_authorities_fail_without_echoing_address_or_secret"
+          ]
+        },
+        {
+          "count": 4,
+          "family": "test_control_http_live",
+          "references": [
+            "tests.test_control_http_live.ControlHttpLiveTests.test_live_adversarial_peers_remain_bounded_and_redirect_free",
+            "tests.test_control_http_live.ControlHttpLiveTests.test_live_authentication_fails_closed_without_leaking_token",
+            "tests.test_control_http_live.ControlHttpLiveTests.test_live_mutation_replay_converges_and_changed_intent_conflicts",
+            "tests.test_control_http_live.ControlHttpLiveTests.test_package_blocks_use_authenticated_live_protocol"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_runtimes",
+          "references": [
+            "tests.test_runtimes.RuntimeStateTests.test_dry_run_plan_stop_is_idempotent_shape",
+            "tests.test_runtimes.RuntimeStateTests.test_dry_run_runtime_returns_interpreted_node_state",
+            "tests.test_runtimes.RuntimeStateTests.test_runtime_state_descriptor_is_json_friendly"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_verification_adapters",
+          "references": [
+            "tests.test_verification_adapters.VerificationAdapterTests.test_http_address_outside_policy_is_rejected_without_attempt",
+            "tests.test_verification_adapters.VerificationAdapterTests.test_http_check_is_redirect_free_bounded_and_status_driven",
+            "tests.test_verification_adapters.VerificationAdapterTests.test_redis_ping_retries_bounded_exchange_and_retains_no_payload"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_verification_dispatch",
+          "references": [
+            "tests.test_verification_dispatch.VerificationDispatchTests.test_missing_capability_is_explicitly_unsupported",
+            "tests.test_verification_dispatch.VerificationDispatchTests.test_registry_rejects_capability_and_result_identity_lies",
+            "tests.test_verification_dispatch.VerificationDispatchTests.test_static_interpreter_is_pure_deterministic_and_identity_checked"
+          ]
+        },
+        {
+          "count": 2,
+          "family": "test_capability_interpreter_registry",
+          "references": [
+            "tests.test_capability_interpreter_registry.CapabilityInterpreterRegistryTests.test_dispatches_by_explicit_capability_assignment",
+            "tests.test_capability_interpreter_registry.CapabilityInterpreterRegistryTests.test_rejects_assignment_to_interpreter_without_capability"
+          ]
+        }
+      ],
+      "family_count": 21,
+      "issue": "#743"
+    },
+    "operations_contract": {
+      "count": 275,
+      "description": "application-service contracts, command vocabularies, read contracts, stores, unit of work, lifecycle, admission, approvals, execution state, and projections",
+      "families": [
+        {
+          "count": 28,
+          "family": "test_execution_coordinator",
+          "references": [
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_attempted_failure_is_journaled_and_fails_run",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_adapter_loss_becomes_uncertain_after_restart",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_crash_before_dispatch_reconstructs_without_replay",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_executes_pinned_inverse_and_settles_run",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_failure_is_partial_and_preserves_forward_failure",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_result_transaction_crash_rolls_back_evidence",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_completed_replay_does_not_repeat_effect",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_concurrent_observer_reports_in_flight_without_duplicate_effect",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_crash_after_effect_records_uncertainty_without_replay",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_crash_after_intent_never_blindly_attempts_effect",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_cross_workspace_graph_substitution_fails_before_intent",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_earlier_compensation_survives_later_failure",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_effect_limit_returns_typed_progress_without_settling_run",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_effect_observations_commit_with_the_step_result",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_result_commit_resumes_run_settlement_without_replay",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_later_workspace_pointer_does_not_retarget_pinned_graph_material",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_live_capability_rejection_closes_intent_without_mutation",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_materialization_failure_records_no_intent_and_attempts_no_effect",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_non_compensatable_completed_work_remains_operator_visible",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_parallel_compensation_uses_reverse_durable_completion_order",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_representative_scenario_executes_in_canonical_plan_order",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_result_transaction_crash_rolls_back_result_and_observation",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_result_commit_resumes_run_settlement_without_replay",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_uses_two_short_transactions_and_settles_run",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_uncertain_adapter_result_preserves_open_run_for_operator_review",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_uncertain_compensation_pauses_without_blind_replay",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_unsupported_capability_is_distinct_and_never_attempted",
+            "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_worker_identity_and_scope_fail_before_effect"
+          ]
+        },
+        {
+          "count": 21,
+          "family": "test_instance_read_service",
+          "references": [
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_does_not_cross_workspace_boundary",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_is_bounded_and_redacted",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_rejects_invalid_limits",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_requires_configured_activity_store",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_activity_timeline_requires_workspace_truth",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_distinguishes_runtime_control_from_environment_binding",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_lists_declared_capabilities_routes_and_sockets",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_redacts_address_metadata_but_keeps_labels",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_rejects_unknown_pointer",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_unassigned_pointer_is_explicit",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_control_surface_warns_on_unknown_route_sets",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_graph_descriptor_redacts_addresses_and_environment_values",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_missing_workspace_fails_at_service_boundary",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_nested_payload_redaction_reaches_lists_and_mappings",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_observed_state_does_not_cross_workspace_boundary",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_observed_state_reports_latest_and_stale_markers",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_observed_state_requires_configured_observed_state_store",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_operator_graph_uses_shared_projection",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_unassigned_graph_pointers_are_explicit",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_unknown_graph_pointer_fails_loudly",
+            "tests.test_instance_read_service.InstanceReadServiceTests.test_workspace_read_model_includes_current_and_desired_graphs"
+          ]
+        },
+        {
+          "count": 21,
+          "family": "test_run_lifecycle",
+          "references": [
+            "tests.test_run_lifecycle.RunLifecycleTests.test_acceptance_and_remain_paused_preserve_distinct_projection_meaning",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_cancel_clears_request_claim_and_still_replays_exact_command",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_claim_opens_one_run_and_event_atomically_without_effect_dependency",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_claim_scope_idempotency_conflict_and_competing_workers_fail_closed",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_committed_recovery_command_drives_canonical_operator_projection",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_compensation_failure_records_partial_failure",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_compensation_uses_events_and_settles_without_erasing_failure",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_concurrent_claims_have_exactly_one_worker_winner",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_abandonment_is_terminal_and_event_producing",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_renewal_preserves_prior_ownership_evidence",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_takeover_changes_owner_with_immutable_evidence",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_failure_compensation_and_retry_preserve_truthful_lineage",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_late_operation_evidence_failure_rolls_back_claim_run_and_event",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_authority_and_late_action_failure_fail_closed",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_journal_version_rejects_a_stale_competing_choice",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rechecks_current_approval_without_journal_writes",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rejects_foreign_worker_without_journal_writes",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_start_pause_resume_complete_are_atomic_and_visible_to_reads",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_transition_algebra_exhaustively_accepts_only_declared_domains",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_uncertainty_resolution_records_choice_and_consequence_atomically",
+            "tests.test_run_lifecycle.RunLifecycleTests.test_worker_ownership_and_transition_rollback_fail_closed"
+          ]
+        },
+        {
+          "count": 16,
+          "family": "test_execution_values",
+          "references": [
+            "tests.test_execution_values.ExecutionValueTests.test_admitted_run_projection_rejects_impossible_timing",
+            "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_claim_retry_and_every_failure_category",
+            "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_closed_request_status",
+            "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_event_kind",
+            "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_observation_status_and_freshness",
+            "tests.test_execution_values.ExecutionValueTests.test_codec_round_trips_every_run_status",
+            "tests.test_execution_values.ExecutionValueTests.test_descriptor_rejects_unknown_version_variant_and_extra_fields",
+            "tests.test_execution_values.ExecutionValueTests.test_event_scope_is_valid_by_construction",
+            "tests.test_execution_values.ExecutionValueTests.test_every_event_kind_has_one_canonical_scope",
+            "tests.test_execution_values.ExecutionValueTests.test_evidence_is_copied_bounded_and_rejects_secret_shaped_fields",
+            "tests.test_execution_values.ExecutionValueTests.test_open_string_lifecycle_values_are_rejected",
+            "tests.test_execution_values.ExecutionValueTests.test_recovery_event_descriptor_is_strict_and_attributable",
+            "tests.test_execution_values.ExecutionValueTests.test_recovery_evidence_cannot_ride_on_an_unrelated_event",
+            "tests.test_execution_values.ExecutionValueTests.test_retry_identity_rejects_impossible_lineage",
+            "tests.test_execution_values.ExecutionValueTests.test_stale_finished_at_descriptor_fails_closed",
+            "tests.test_execution_values.ExecutionValueTests.test_unknown_recovery_members_are_not_malformed_shapes"
+          ]
+        },
+        {
+          "count": 11,
+          "family": "test_current_graph_advancement",
+          "references": [
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_authority_worker_and_stale_pointer_fail_closed",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_complete_durable_success_advances_pointer_and_replays_evidence",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_concurrent_advancement_has_one_winner",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_duplicate_terminal_success_evidence_fails_closed",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_foreign_step_success_evidence_fails_closed",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_late_evidence_failure_rolls_back_pointer_and_event",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_missing_step_success_evidence_fails_closed",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_operator_confirmed_uncertain_failure_cannot_advance",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_operator_confirmed_uncertain_success_can_advance",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_projection_and_observation_without_complete_steps_cannot_advance",
+            "tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_unsupported_step_cannot_advance_current_graph"
+          ]
+        },
+        {
+          "count": 11,
+          "family": "test_execution_admission",
+          "references": [
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_approved_current_plan_is_atomically_admitted_without_effect_dependency",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_concurrent_identical_admission_converges",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_database_endpoint_switch_requires_reference_only_readiness",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_destructive_plan_cannot_use_forged_non_destructive_approval",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_empty_plan_is_valid_planning_truth_but_not_executable_work",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_foreign_workspace_stale_graph_and_review_blocker_fail_closed",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_identical_replay_returns_original_and_changed_intent_conflicts",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_late_action_failure_rolls_back_execution_request",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_missing_scope_rejected_and_rejected_approval_rejected",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_readiness_evidence_cannot_claim_an_unrelated_activity",
+            "tests.test_execution_admission.ExecutionAdmissionTests.test_readiness_evidence_rejects_values_urls_and_unbounded_text"
+          ]
+        },
+        {
+          "count": 10,
+          "family": "test_approval_command_service",
+          "references": [
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_authority_fails_closed_and_destructive_plan_requires_stronger_scope",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_competing_decisions_publish_exactly_one_fact",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_identical_decisions_converge_on_one_decision",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_identical_requests_converge_on_one_request",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_concurrent_request_and_close_serialize_without_partial_approval",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_conflicting_reuse_and_second_decision_are_rejected",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_late_action_failures_roll_back_request_and_decision",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_and_decision_are_distinct_durable_facts",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_and_decision_replay_without_duplicate_history",
+            "tests.test_approval_command_service.ApprovalCommandServiceTests.test_request_is_pending_fact_with_plan_risk_evidence"
+          ]
+        },
+        {
+          "count": 10,
+          "family": "test_instance_read_fastapi",
+          "references": [
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_activity_and_observed_state_routes_are_read_only",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_configured_token_protects_instance_reads",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_delegate_with_explicit_bounds",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_focused_routes_share_auth_and_workspace_safe_errors",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_instance_read_app_exposes_no_workflow_mutation_routes",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_projection_routes_delegate_to_read_service",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_read_model_errors_map_to_http_statuses",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_stale_recovery_graph_truth_maps_to_conflict",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_unconfigured_activity_store_returns_service_unavailable",
+            "tests.test_instance_read_fastapi.InstanceReadFastAPITests.test_workspace_and_graph_routes_return_redacted_descriptors"
+          ]
+        },
+        {
+          "count": 10,
+          "family": "test_operation_command_service",
+          "references": [
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_action_replay_is_deterministic_and_conflict_is_explicit",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_closed_and_cancelled_sessions_reject_new_actions",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_concurrent_identical_starts_converge_on_one_session",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_concurrent_terminal_transitions_cannot_both_publish",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_late_action_failure_rolls_back_new_session",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_late_action_failure_rolls_back_terminal_projection",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_missing_session_and_reserved_lifecycle_actions_fail_closed",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_same_intent_replays_and_conflicting_intent_fails",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_start_commits_session_and_initial_action_atomically",
+            "tests.test_operation_command_service.OperationCommandServiceTests.test_start_requires_workspace_truth_and_replay_returns_original_state"
+          ]
+        },
+        {
+          "count": 10,
+          "family": "test_stores",
+          "references": [
+            "tests.test_stores.StoreContractTests.test_activity_history_preserves_action_order",
+            "tests.test_stores.StoreContractTests.test_activity_history_supports_workspace_timeline_queries",
+            "tests.test_stores.StoreContractTests.test_graph_topology_store_keeps_latest_workspace_version",
+            "tests.test_stores.StoreContractTests.test_instance_registry_lists_by_owner_and_updates_lifecycle",
+            "tests.test_stores.StoreContractTests.test_observed_state_is_separate_from_graph_truth",
+            "tests.test_stores.StoreContractTests.test_observed_state_lists_latest_per_workspace_subject",
+            "tests.test_stores.StoreContractTests.test_observed_state_uses_observation_id_to_break_equal_time_ties",
+            "tests.test_stores.StoreContractTests.test_postgres_schema_is_the_durable_target_and_excludes_secret_values",
+            "tests.test_stores.StoreContractTests.test_secret_reference_store_never_accepts_secret_values",
+            "tests.test_stores.StoreContractTests.test_workspace_tracks_current_and_desired_graph_pointers"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_activity_planning_command_service",
+          "references": [
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_concurrent_close_and_plan_publish_in_a_serial_session_order",
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_concurrent_identical_requests_converge_on_one_plan",
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_identical_request_replays_original_plan_and_evidence",
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_late_action_failure_rolls_back_plan_insert",
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_malformed_durable_graph_rejects_without_writes",
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_plan_and_action_commit_as_one_operator_command",
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_replay_survives_later_pointer_and_session_state_changes",
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_same_key_with_different_intent_fails_explicitly",
+            "tests.test_activity_planning_command_service.ActivityPlanningCommandServiceTests.test_stale_workspace_pointers_reject_without_writes"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_operator_recovery_projection",
+          "references": [
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_accepted_uncompensated_and_recovery_history_remain_visible",
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_compensation_failure_never_replaces_original_failure",
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_compensation_progress_is_derived_from_the_canonical_journal",
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_empty_and_active_runs_preserve_distinct_run_and_saga_status",
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_expired_claim_replaces_effect_recovery_with_claim_recovery",
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_failed_run_preserves_failure_and_offers_closed_recovery",
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_foreign_identity_and_malformed_observation_fail_closed",
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_non_compensatable_failure_projects_bounded_activity_ids",
+            "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_paused_uncertainty_exposes_only_evidence_guarded_choices"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_unit_of_work",
+          "references": [
+            "tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_commit_publishes_all_participating_store_writes_together",
+            "tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_exception_after_commit_request_rolls_back_real_postgres_writes",
+            "tests.test_unit_of_work.PostgresUnitOfWorkIntegrationTests.test_late_store_failure_rolls_back_every_earlier_write",
+            "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_exception_after_commit_request_still_rolls_back",
+            "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_exceptional_exit_rolls_back_and_preserves_exception",
+            "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_explicit_commit_commits_once_and_closes",
+            "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_physical_commit_failure_rolls_back_closes_and_propagates",
+            "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_stores_and_lifecycle_methods_require_active_unfinished_unit",
+            "tests.test_unit_of_work.PostgresUnitOfWorkTests.test_uncommitted_exit_rolls_back_and_closes"
+          ]
+        },
+        {
+          "count": 8,
+          "family": "test_desired_graph_command_service",
+          "references": [
+            "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_concurrent_distinct_requests_publish_one_and_reject_one_stale",
+            "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_concurrent_identical_requests_converge_on_one_graph",
+            "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_graph_pointer_and_action_commit_as_one_command",
+            "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_identical_request_replays_original_evidence",
+            "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_late_action_failure_rolls_back_graph_and_pointer",
+            "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_replay_remains_available_after_session_closes",
+            "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_session_must_be_open_and_owned_by_workspace",
+            "tests.test_desired_graph_command_service.DesiredGraphCommandServiceTests.test_stale_expected_pointer_rejects_without_partial_writes"
+          ]
+        },
+        {
+          "count": 8,
+          "family": "test_mcp_read",
+          "references": [
+            "tests.test_mcp_read.McpReadAdapterTests.test_activity_timeline_tool_uses_bounded_limit",
+            "tests.test_mcp_read.McpReadAdapterTests.test_argument_and_service_errors_are_readable",
+            "tests.test_mcp_read.McpReadAdapterTests.test_focused_tool_arguments_enforce_declared_bounds",
+            "tests.test_mcp_read.McpReadAdapterTests.test_focused_tools_delegate_identifiers_and_bounds",
+            "tests.test_mcp_read.McpReadAdapterTests.test_graph_and_control_surface_tools_delegate_to_read_service",
+            "tests.test_mcp_read.McpReadAdapterTests.test_list_tools_is_read_only_and_deterministic",
+            "tests.test_mcp_read.McpReadAdapterTests.test_unknown_or_mutation_like_tools_fail_closed",
+            "tests.test_mcp_read.McpReadAdapterTests.test_workspace_tool_returns_mcp_shaped_json_content"
+          ]
+        },
+        {
+          "count": 8,
+          "family": "test_operation_commands",
+          "references": [
+            "tests.test_operation_commands.OperationCommandVocabularyTests.test_command_descriptors_do_not_publish_operator_values",
+            "tests.test_operation_commands.OperationCommandVocabularyTests.test_command_evidence_accepts_secret_references_but_rejects_secret_values",
+            "tests.test_operation_commands.OperationCommandVocabularyTests.test_durable_records_reject_untyped_lifecycle_and_action_values",
+            "tests.test_operation_commands.OperationCommandVocabularyTests.test_record_action_requires_closed_action_kind",
+            "tests.test_operation_commands.OperationCommandVocabularyTests.test_required_identifiers_and_idempotency_keys_fail_closed",
+            "tests.test_operation_commands.OperationCommandVocabularyTests.test_result_descriptor_preserves_typed_evidence",
+            "tests.test_operation_commands.OperationCommandVocabularyTests.test_start_command_is_a_validated_deterministic_product",
+            "tests.test_operation_commands.OperationCommandVocabularyTests.test_transition_commands_have_distinct_tags"
+          ]
+        },
+        {
+          "count": 8,
+          "family": "test_recovery_decisions",
+          "references": [
+            "tests.test_recovery_decisions.RecoveryDecisionTests.test_changed_intent_requires_a_fresh_plan",
+            "tests.test_recovery_decisions.RecoveryDecisionTests.test_claim_recovery_variants_round_trip_as_closed_descriptors",
+            "tests.test_recovery_decisions.RecoveryDecisionTests.test_decision_record_requires_attribution_and_reason",
+            "tests.test_recovery_decisions.RecoveryDecisionTests.test_each_closed_decision_has_an_explicit_authority",
+            "tests.test_recovery_decisions.RecoveryDecisionTests.test_expired_ownership_requires_one_closed_claim_recovery",
+            "tests.test_recovery_decisions.RecoveryDecisionTests.test_failed_attempt_choices_are_closed_and_evidence_guarded",
+            "tests.test_recovery_decisions.RecoveryDecisionTests.test_open_strings_do_not_enter_recovery_scopes_or_context",
+            "tests.test_recovery_decisions.RecoveryDecisionTests.test_uncertainty_must_be_resolved_before_other_recovery"
+          ]
+        },
+        {
+          "count": 7,
+          "family": "test_focused_read_hardening",
+          "references": [
+            "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_all_adapters_preserve_canonical_focused_payloads",
+            "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_failure_evidence_is_canonical_and_bounded",
+            "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_paging_is_deterministic_and_nested_sensitive_values_are_redacted",
+            "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_plan_detail_remains_pinned_when_workspace_desired_pointer_changes",
+            "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_recovery_projection_is_reconstructed_from_complete_journal",
+            "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_secret_shaped_failure_details_are_rejected_before_persistence",
+            "tests.test_focused_read_hardening.FocusedReadHardeningTests.test_workspace_boundaries_fail_closed_without_disclosing_foreign_records"
+          ]
+        },
+        {
+          "count": 7,
+          "family": "test_focused_workflow_reads",
+          "references": [
+            "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_focused_bounds_reject_unbounded_or_invalid_pages",
+            "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_focused_reads_fail_closed_across_workspace_boundaries",
+            "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_open_sessions_are_workspace_scoped_redacted_and_paged",
+            "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_pending_approval_queue_excludes_decisions_and_is_bounded",
+            "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_plan_detail_reuses_canonical_plan_risk_and_recovery",
+            "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_plan_recovery_uses_the_injected_graph_codec",
+            "tests.test_focused_workflow_reads.FocusedWorkflowReadTests.test_session_detail_is_bounded_and_redacted"
+          ]
+        },
+        {
+          "count": 7,
+          "family": "test_verification_command_service",
+          "references": [
+            "tests.test_verification_command_service.VerificationCommandServiceTests.test_adapter_loss_leaves_immutable_intent_without_terminal_lie",
+            "tests.test_verification_command_service.VerificationCommandServiceTests.test_api_mcp_and_cli_expose_one_shared_redacted_projection",
+            "tests.test_verification_command_service.VerificationCommandServiceTests.test_authorization_and_graph_ownership_fail_before_effect",
+            "tests.test_verification_command_service.VerificationCommandServiceTests.test_executes_outside_transaction_and_persists_canonical_observation",
+            "tests.test_verification_command_service.VerificationCommandServiceTests.test_graph_change_marks_verification_stale_without_rewriting_it",
+            "tests.test_verification_command_service.VerificationCommandServiceTests.test_schema_reinstallation_preserves_verification_row_and_constraints",
+            "tests.test_verification_command_service.VerificationCommandServiceTests.test_unsupported_capability_is_durable_and_distinct_from_failure"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_execution_concurrency",
+          "references": [
+            "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_competing_workers_have_one_claim_winner",
+            "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_event_ordinals_serialize_across_connections",
+            "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_expired_claim_remains_durable_and_cannot_be_reclaimed",
+            "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_identical_worker_claims_converge_and_rollback_releases_lock",
+            "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_run_settlement_is_write_once"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_observation_projection",
+          "references": [
+            "tests.test_observation_projection.ObservationProjectionTests.test_correlated_record_requires_complete_typed_probe_identity",
+            "tests.test_observation_projection.ObservationProjectionTests.test_exact_clock_boundary_is_fresh_then_expires",
+            "tests.test_observation_projection.ObservationProjectionTests.test_future_timestamp_fails_closed",
+            "tests.test_observation_projection.ObservationProjectionTests.test_graph_change_and_legacy_rows_are_explicitly_stale",
+            "tests.test_observation_projection.ObservationProjectionTests.test_malformed_timestamp_fails_closed_without_mutating_record"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_operation_postgres_primitives",
+          "references": [
+            "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_concurrent_action_writers_receive_distinct_ordinals",
+            "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_idempotency_keys_are_unique_within_their_scope",
+            "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_schema_install_forward_migrates_legacy_operation_tables",
+            "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_scoped_session_and_action_idempotency_lookup_round_trips",
+            "tests.test_operation_postgres_primitives.OperationPostgresPrimitiveTests.test_terminal_transition_preserves_identity_and_rejects_stale_writes"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_operator_graph_projection",
+          "references": [
+            "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_exposes_typed_environment_sources_without_values",
+            "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_includes_runtimes_nodes_sockets_and_edges",
+            "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_is_deterministic",
+            "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_marks_connected_and_dangling_requirement_sockets",
+            "tests.test_operator_graph_projection.OperatorGraphProjectionTests.test_projection_redacts_secret_like_metadata"
+          ]
+        },
+        {
+          "count": 4,
+          "family": "test_backend_boundaries",
+          "references": [
+            "tests.test_backend_boundaries.BackendBoundaryTests.test_destructive_classification_is_data_before_execution",
+            "tests.test_backend_boundaries.BackendBoundaryTests.test_policy_decisions_do_not_create_workflow_records",
+            "tests.test_backend_boundaries.BackendBoundaryTests.test_workflow_records_intent_without_writing_graph_truth",
+            "tests.test_backend_boundaries.BackendBoundaryTests.test_workspace_and_graph_truth_are_owned_by_stores"
+          ]
+        },
+        {
+          "count": 4,
+          "family": "test_deployment_application_values",
+          "references": [
+            "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_acceptance_corpus_exercises_all_four_deploy_transition_forms",
+            "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_one_interpreter_classifies_all_transition_forms",
+            "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_transition_constructors_make_invalid_forms_unrepresentable",
+            "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_two_distinct_empty_graphs_are_an_update_not_a_no_op"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_deployment_plan_approve_stages",
+          "references": [
+            "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_approve_preserves_canonical_authorization_failure",
+            "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_no_op_preserves_plan_evidence_without_requesting_approval",
+            "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_plan_suspends_then_approve_records_explicit_authorized_decision"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_desired_graph_commands",
+          "references": [
+            "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_invalid_or_untyped_edit_data_fails_closed",
+            "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_result_ties_graph_and_action_evidence_to_one_workspace",
+            "tests.test_desired_graph_commands.DesiredGraphCommandTests.test_set_desired_graph_is_typed_and_operator_descriptor_is_bounded"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_execution_schema_migration",
+          "references": [
+            "tests.test_execution_schema_migration.ExecutionSchemaTests.test_current_schema_rejects_unknown_retired_and_malformed_events",
+            "tests.test_execution_schema_migration.ExecutionSchemaTests.test_incompatible_schema_install_rolls_back_partial_ddl",
+            "tests.test_execution_schema_migration.ExecutionSchemaTests.test_repeated_install_preserves_rows_and_constraint_identity"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_execution_store",
+          "references": [
+            "tests.test_execution_store.ExecutionStoreTests.test_canonical_request_run_and_event_round_trip",
+            "tests.test_execution_store.ExecutionStoreTests.test_recovery_and_forward_compensation_failures_round_trip_together",
+            "tests.test_execution_store.ExecutionStoreTests.test_uncommitted_unit_of_work_rolls_back_execution_and_history_together"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_recovery_concurrency",
+          "references": [
+            "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_expired_renew_takeover_and_abandon_have_one_postgres_winner",
+            "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_incompatible_recovery_decisions_have_one_postgres_winner",
+            "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_late_action_failure_rolls_back_expired_claim_recovery"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_workflows",
+          "references": [
+            "tests.test_workflows.WorkflowServiceTests.test_action_service_preserves_session_action_order",
+            "tests.test_workflows.WorkflowServiceTests.test_session_service_starts_and_closes_sessions",
+            "tests.test_workflows.WorkflowServiceTests.test_workflow_services_do_not_mutate_graph_truth"
+          ]
+        },
+        {
+          "count": 1,
+          "family": "test_deployment_admit_claim_stages",
+          "references": [
+            "tests.test_deployment_admit_claim_stages.DeploymentAdmitClaimStageTests.test_approved_plan_reaches_execution_through_callable_stages"
+          ]
+        }
+      ],
+      "family_count": 33,
+      "issue": "#740"
+    },
+    "planning_saga": {
+      "count": 74,
+      "description": "activity planning, plan codec/compiler, planning scenarios, scheduling, saga, compensation, and recovery-planning algebra",
+      "families": [
+        {
+          "count": 12,
+          "family": "test_activity_plan_codec",
+          "references": [
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_dependency_and_activity_permutations_have_one_descriptor",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_durable_record_rejects_arbitrary_payload_mapping",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_every_closed_operation_and_target_variant_round_trips",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_every_review_subject_variant_round_trips",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_invalid_dag_and_target_shapes_are_descriptor_errors",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_json_rendering_is_deterministic",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_review_diagnostic_carries_subject_not_changed_secret_value",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_risk_and_destructive_markers_survive_the_descriptor_boundary",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_round_trip_preserves_closed_plan_semantics",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_unknown_review_reason_and_non_json_values_fail_closed",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_unknown_schema_and_operation_fail_closed",
+            "tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_wrong_shapes_and_unrepresentable_extra_fields_fail"
+          ]
+        },
+        {
+          "count": 12,
+          "family": "test_execution_scenario_expectations",
+          "references": [
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_acceptance_case_catalog_is_closed_unique_and_deterministic",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_catalog_is_pure_and_deterministic",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_database_cutover_requires_external_readiness_and_creates_no_run",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_event_partial_order_must_reference_declared_events",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_event_scope_reuses_canonical_activity_event_law",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_every_planning_scenario_has_one_execution_expectation",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_execution_expectations_only_reference_planning_operations",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_health_operations_have_provider_neutral_observation_expectations",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_no_change_is_planning_evidence_without_approval_or_execution",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_no_run_cannot_claim_runtime_evidence_or_graph_advancement",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_safe_scenarios_expect_canonical_success_evidence",
+            "tests.test_execution_scenario_expectations.ExecutionScenarioExpectationTests.test_unsupported_transition_remains_review_blocked"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_saga_state",
+          "references": [
+            "tests.test_saga_state.SagaStateTests.test_compensation_admission_preserves_in_flight_forward_evidence",
+            "tests.test_saga_state.SagaStateTests.test_compensation_admission_without_completed_inverse_fails_closed",
+            "tests.test_saga_state.SagaStateTests.test_event_variants_are_data_and_replay_rejects_impossible_history",
+            "tests.test_saga_state.SagaStateTests.test_explicit_compensation_admission_is_pure_replayable_state",
+            "tests.test_saga_state.SagaStateTests.test_failure_and_compensation_failure_remain_explicit",
+            "tests.test_saga_state.SagaStateTests.test_invalid_transitions_and_compensation_order_fail_closed",
+            "tests.test_saga_state.SagaStateTests.test_parallel_completion_evidence_determines_reverse_compensation",
+            "tests.test_saga_state.SagaStateTests.test_partial_parallel_failure_compensates_only_completed_siblings",
+            "tests.test_saga_state.SagaStateTests.test_successful_sequence_reconstructs_from_the_same_events"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_scheduling",
+          "references": [
+            "tests.test_scheduling.SchedulingTests.test_blocking_propagates_transitively",
+            "tests.test_scheduling.SchedulingTests.test_cancellation_blocks_pending_but_preserves_running_evidence",
+            "tests.test_scheduling.SchedulingTests.test_compensation_waits_for_in_flight_forward_and_compensation",
+            "tests.test_scheduling.SchedulingTests.test_diamond_exposes_ready_fan_out_without_layer_barriers",
+            "tests.test_scheduling.SchedulingTests.test_explicit_compensation_admission_drives_reverse_schedule",
+            "tests.test_scheduling.SchedulingTests.test_failed_branch_blocks_join_and_unstarted_forward_work",
+            "tests.test_scheduling.SchedulingTests.test_incoherent_completion_and_failure_evidence_fail_closed",
+            "tests.test_scheduling.SchedulingTests.test_missing_foreign_and_duplicate_evidence_fail_closed",
+            "tests.test_scheduling.SchedulingTests.test_same_plan_and_evidence_reconstruct_the_same_schedule"
+          ]
+        },
+        {
+          "count": 8,
+          "family": "test_saga_journal",
+          "references": [
+            "tests.test_saga_journal.SagaJournalTests.test_foreign_and_impossible_histories_fail_closed",
+            "tests.test_saga_journal.SagaJournalTests.test_mixed_runs_and_nonmonotonic_ordinals_fail_closed",
+            "tests.test_saga_journal.SagaJournalTests.test_run_compensation_admission_reconstructs_pure_saga_intent",
+            "tests.test_saga_journal.SagaJournalTests.test_success_reconstructs_from_canonical_activity_events",
+            "tests.test_saga_journal.SagaJournalTests.test_uncertain_attempt_remains_running_but_is_not_in_flight",
+            "tests.test_saga_journal.SagaJournalTests.test_uncertainty_resolution_replays_into_terminal_step_evidence",
+            "tests.test_saga_journal.SagaJournalTests.test_uncertainty_resolution_requires_prior_uncertain_evidence",
+            "tests.test_saga_journal.SagaJournalTests.test_unsupported_is_distinct_durable_failure_evidence"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_compensation_planning",
+          "references": [
+            "tests.test_compensation_planning.CompensationPlanningTests.test_candidates_follow_reverse_durable_completion_order",
+            "tests.test_compensation_planning.CompensationPlanningTests.test_observation_and_destruction_are_not_given_fake_inverses",
+            "tests.test_compensation_planning.CompensationPlanningTests.test_operation_matrix_has_one_explicit_compensation_meaning",
+            "tests.test_compensation_planning.CompensationPlanningTests.test_plan_codec_persists_exact_compensation_and_source",
+            "tests.test_compensation_planning.CompensationPlanningTests.test_saga_availability_comes_from_persisted_plan_meaning",
+            "tests.test_compensation_planning.CompensationPlanningTests.test_version_one_requires_compensation_without_legacy_upgrade"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_activity_plan_compiler",
+          "references": [
+            "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_empty_and_graph_metadata_only_diffs_need_no_runtime_activity",
+            "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_environment_reconcile_precedes_removed_endpoint_stop",
+            "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_runtime_move_orders_start_reconcile_and_stop",
+            "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_teardown_dependencies_remove_connections_before_nodes_and_runtime",
+            "tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_unsupported_and_unrecognized_forms_become_review_blockers"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_planning_scenarios",
+          "references": [
+            "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_catalog_ids_are_unique_and_every_graph_is_valid",
+            "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_every_scenario_compiles_to_its_typed_semantic_contract",
+            "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_required_scenario_dependencies_survive_compilation",
+            "tests.test_planning_scenarios.PlanningScenarioAlgebraTests.test_scenario_compilation_is_pure_and_deterministic",
+            "tests.test_planning_scenarios.PlanningScenarioWorkflowTests.test_every_scenario_runs_through_the_postgres_planning_workflow"
+          ]
+        },
+        {
+          "count": 4,
+          "family": "test_recovery_planning",
+          "references": [
+            "tests.test_recovery_planning.RecoveryPlanningTests.test_invalid_inputs_fail_before_planning",
+            "tests.test_recovery_planning.RecoveryPlanningTests.test_reconstruction_uses_empty_baseline_without_claiming_absence",
+            "tests.test_recovery_planning.RecoveryPlanningTests.test_reverse_transition_is_a_fresh_canonical_plan_with_limitations",
+            "tests.test_recovery_planning.RecoveryPlanningTests.test_router_recovery_uses_same_compiler_and_is_deterministic"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_saga_program",
+          "references": [
+            "tests.test_saga_program.SagaProgramTests.test_chain_and_then_build_immutable_callback_free_syntax",
+            "tests.test_saga_program.SagaProgramTests.test_invalid_parallel_and_duplicate_identity_fail_structurally",
+            "tests.test_saga_program.SagaProgramTests.test_parallel_preserves_declared_fan_out_and_shared_continuation"
+          ]
+        },
+        {
+          "count": 1,
+          "family": "test_scheduling_scenarios",
+          "references": [
+            "tests.test_scheduling_scenarios.SchedulingScenarioTests.test_every_planning_scenario_has_a_deterministic_initial_schedule"
+          ]
+        }
+      ],
+      "family_count": 11,
+      "issue": "#739"
+    },
+    "pure_core_language": {
+      "count": 179,
+      "description": "effect-free topology, graph, descriptor, configuration, protocol, product, secret, verification-contract, capability, and policy languages",
+      "families": [
+        {
+          "count": 41,
+          "family": "test_contracts",
+          "references": [
+            "tests.test_contracts.ConcreteControlVariableTests.test_protocol_variables_reject_invalid_shape",
+            "tests.test_contracts.ConcreteControlVariableTests.test_protocol_variables_validate_shape",
+            "tests.test_contracts.ConcreteControlVariableTests.test_runtime_map_variable_requires_mapping",
+            "tests.test_contracts.ConcreteControlVariableTests.test_secret_descriptor_never_exposes_raw_value",
+            "tests.test_contracts.ConcreteControlVariableTests.test_secret_descriptor_reports_missing_without_value",
+            "tests.test_contracts.ContractDescriptorRedactionTests.test_contract_descriptor_redacts_secret_and_non_secret_values",
+            "tests.test_contracts.ContractDescriptorRedactionTests.test_unsafe_descriptor_is_explicit_and_still_redacts_secrets",
+            "tests.test_contracts.ControlVariableProtocolTests.test_descriptor_value_is_opt_in",
+            "tests.test_contracts.ControlVariableProtocolTests.test_optional_value_allows_none",
+            "tests.test_contracts.ControlVariableProtocolTests.test_required_value_validation_fails_structurally",
+            "tests.test_contracts.ControlVariableProtocolTests.test_variable_descriptor_is_json_friendly",
+            "tests.test_contracts.DerivedResourceTests.test_candidate_builder_cannot_publish_nested_contract_mutation",
+            "tests.test_contracts.DerivedResourceTests.test_competing_prepared_mutations_have_one_publication_winner",
+            "tests.test_contracts.DerivedResourceTests.test_completed_identity_rejects_changed_intent_without_retaining_values",
+            "tests.test_contracts.DerivedResourceTests.test_concurrent_identical_mutations_build_dispose_and_publish_once",
+            "tests.test_contracts.DerivedResourceTests.test_descriptor_reports_derived_resource_status_without_resource_value",
+            "tests.test_contracts.DerivedResourceTests.test_drain_required_patch_marks_derived_resource_stale",
+            "tests.test_contracts.DerivedResourceTests.test_explicit_rebuild_refreshes_stale_resource",
+            "tests.test_contracts.DerivedResourceTests.test_late_preparation_failure_preserves_old_projection_and_cleans_candidate",
+            "tests.test_contracts.DerivedResourceTests.test_live_patch_rebuilds_and_disposes_derived_resource",
+            "tests.test_contracts.DerivedResourceTests.test_multi_resource_mutation_prepares_against_candidate_then_publishes_once",
+            "tests.test_contracts.DerivedResourceTests.test_preparation_cleanup_failure_is_bounded_and_does_not_publish",
+            "tests.test_contracts.DerivedResourceTests.test_retained_or_unowned_superseded_resources_are_never_disposed",
+            "tests.test_contracts.DerivedResourceTests.test_superseded_cleanup_failure_keeps_new_projection_and_replays_evidence",
+            "tests.test_contracts.EnvironmentContractTests.test_access_is_always_lookup",
+            "tests.test_contracts.EnvironmentContractTests.test_apply_patch_updates_holder_not_process_environment",
+            "tests.test_contracts.EnvironmentContractTests.test_from_mapping_loads_declared_values_by_env_metadata",
+            "tests.test_contracts.EnvironmentContractTests.test_from_mapping_loads_declared_values_by_variable_name",
+            "tests.test_contracts.EnvironmentContractTests.test_immutable_value_rejects_patch",
+            "tests.test_contracts.EnvironmentContractTests.test_missing_required_value_fails_structurally",
+            "tests.test_contracts.EnvironmentContractTests.test_mutation_and_candidate_descriptors_never_publish_values",
+            "tests.test_contracts.EnvironmentContractTests.test_mutation_prepares_immutable_candidate_without_publication",
+            "tests.test_contracts.EnvironmentContractTests.test_mutation_rejects_stale_version_before_preparation",
+            "tests.test_contracts.EnvironmentContractTests.test_noop_candidate_does_not_advance_version",
+            "tests.test_contracts.EnvironmentContractTests.test_preparation_validates_all_assignments_before_any_publication",
+            "tests.test_contracts.EnvironmentContractTests.test_prepared_mutation_identity_replays_or_rejects_conflicting_intent",
+            "tests.test_contracts.EnvironmentContractTests.test_published_mutation_identity_replays_without_reexecution",
+            "tests.test_contracts.RuntimeContractTests.test_runtime_contract_descriptor_redacts_values",
+            "tests.test_contracts.RuntimeContractTests.test_runtime_contract_does_not_read_process_environment",
+            "tests.test_contracts.RuntimeContractTests.test_runtime_contract_loads_explicit_runtime_state",
+            "tests.test_contracts.RuntimeContractTests.test_runtime_contract_patch_updates_holder"
+          ]
+        },
+        {
+          "count": 15,
+          "family": "test_graph_diff",
+          "references": [
+            "tests.test_graph_diff.GraphDiffTests.test_added_and_removed_runtime_node_and_edge_forms_are_explicit",
+            "tests.test_graph_diff.GraphDiffTests.test_block_spec_endpoint_and_metadata_changes_are_separate_fields",
+            "tests.test_graph_diff.GraphDiffTests.test_change_algebra_and_interpreter_have_separate_module_boundaries",
+            "tests.test_graph_diff.GraphDiffTests.test_custom_block_spec_variant_survives_before_and_after",
+            "tests.test_graph_diff.GraphDiffTests.test_descriptors_redact_secret_references_environment_and_metadata",
+            "tests.test_graph_diff.GraphDiffTests.test_identical_validated_graphs_have_deterministic_empty_diff",
+            "tests.test_graph_diff.GraphDiffTests.test_incompatible_spec_languages_are_explicitly_ambiguous",
+            "tests.test_graph_diff.GraphDiffTests.test_invalid_graphs_and_raw_graphs_are_refused",
+            "tests.test_graph_diff.GraphDiffTests.test_protocol_product_change_is_an_explicit_socket_and_endpoint_change",
+            "tests.test_graph_diff.GraphDiffTests.test_public_and_socket_environment_changes_have_distinct_fields",
+            "tests.test_graph_diff.GraphDiffTests.test_reusing_node_identity_for_another_block_family_is_ambiguous",
+            "tests.test_graph_diff.GraphDiffTests.test_router_swap_is_a_typed_socket_connection_change",
+            "tests.test_graph_diff.GraphDiffTests.test_runtime_and_implementation_kind_transitions_are_unsupported_data",
+            "tests.test_graph_diff.GraphDiffTests.test_socket_contract_and_endpoint_addition_are_separate_changes",
+            "tests.test_graph_diff.GraphDiffTests.test_verification_contract_change_is_explicit_block_specification_data"
+          ]
+        },
+        {
+          "count": 15,
+          "family": "test_postgres_scenario_runner",
+          "references": [
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_complete_acceptance_corpus_uses_canonical_pipeline",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_cross_workspace_graph_truth",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_missing_plan_truth",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_program_reconstructs_plan_across_operator_requests",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_executable_scenario_uses_canonical_pipeline_and_projection",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_no_change_records_plan_but_no_approval_run_or_effect",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_failure_uses_real_coordinator_and_does_not_advance",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_uncertainty_remains_visible_without_advancement",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_readiness_gated_scenario_records_approval_but_no_effect",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_repeated_runs_have_distinct_workspaces_and_fake_state",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_review_blocked_scenario_never_requests_approval_or_effect",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_scenario_order_does_not_change_semantic_results",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_semantic_diagnostic_reports_event_order_not_generated_values",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_preserves_stale_graph_admission_guard",
+            "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_refuses_run_before_durable_approval"
+          ]
+        },
+        {
+          "count": 13,
+          "family": "test_probe_intents",
+          "references": [
+            "tests.test_probe_intents.ProbeIntentTests.test_application_health_is_derived_only_from_matching_http_material",
+            "tests.test_probe_intents.ProbeIntentTests.test_endpoint_contexts_preserve_private_host_and_public_meaning",
+            "tests.test_probe_intents.ProbeIntentTests.test_endpoint_scheme_cannot_lie_about_semantic_protocol",
+            "tests.test_probe_intents.ProbeIntentTests.test_every_failure_outcome_remains_distinct_from_readiness",
+            "tests.test_probe_intents.ProbeIntentTests.test_every_protocol_has_explicit_safe_endpoint_schemes",
+            "tests.test_probe_intents.ProbeIntentTests.test_literal_targets_reject_credentials_query_fragments_and_protocol_lies",
+            "tests.test_probe_intents.ProbeIntentTests.test_missing_health_and_mismatched_protocol_are_typed_construction_failures",
+            "tests.test_probe_intents.ProbeIntentTests.test_probe_intent_descriptors_are_deterministic_and_redacted",
+            "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_accept_only_layer_coherent_outcomes",
+            "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_reject_cross_layer_claims",
+            "tests.test_probe_intents.ProbeIntentTests.test_probe_policy_is_finite_and_deterministic",
+            "tests.test_probe_intents.ProbeIntentTests.test_process_transport_health_and_readiness_are_distinct_objects",
+            "tests.test_probe_intents.ProbeIntentTests.test_secret_endpoint_descriptors_retain_only_the_reference"
+          ]
+        },
+        {
+          "count": 12,
+          "family": "test_graph_validation",
+          "references": [
+            "tests.test_graph_validation.GraphValidationTests.test_consumer_environment_must_retain_edge_assignments",
+            "tests.test_graph_validation.GraphValidationTests.test_duplicate_socket_names_are_rejected",
+            "tests.test_graph_validation.GraphValidationTests.test_edge_assignments_must_match_requirement_and_provider",
+            "tests.test_graph_validation.GraphValidationTests.test_edge_binding_must_match_consumer_requirement",
+            "tests.test_graph_validation.GraphValidationTests.test_findings_are_deterministic_and_renderable",
+            "tests.test_graph_validation.GraphValidationTests.test_multiple_connections_to_one_requirement_are_rejected",
+            "tests.test_graph_validation.GraphValidationTests.test_registered_block_spec_codec_is_retained_as_validation_evidence",
+            "tests.test_graph_validation.GraphValidationTests.test_runtime_and_endpoint_invariants_fail_closed",
+            "tests.test_graph_validation.GraphValidationTests.test_undeclared_endpoint_is_a_structured_failure_not_a_codec_exception",
+            "tests.test_graph_validation.GraphValidationTests.test_unregistered_block_spec_variant_fails_closed",
+            "tests.test_graph_validation.GraphValidationTests.test_valid_graph_returns_original_typed_value_without_effects",
+            "tests.test_graph_validation.GraphValidationTests.test_verification_targets_require_declared_compatible_provider_sockets"
+          ]
+        },
+        {
+          "count": 11,
+          "family": "test_graph_codec",
+          "references": [
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_direct_node_and_edge_cannot_restore_inline_environment_secrets",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_edge_binding_round_trips_as_a_closed_value",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_environment_binding_variants_round_trip_and_unknown_kind_fails_closed",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_environment_passwords_fail_before_raw_descriptor_reconstruction",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_malformed_top_level_shape_fails_with_typed_error",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_missing_edge_socket_fails_loudly",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_missing_runtime_ownership_fails_loudly",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_protocol_product_round_trips_and_unknown_factors_fail_closed",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_registered_spec_variant_round_trips_without_string_inference",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_secret_reference_address_round_trips_without_secret_resolution",
+            "tests.test_graph_codec.GraphDescriptorCodecTests.test_tuple_input_is_semantically_equivalent_to_json_list"
+          ]
+        },
+        {
+          "count": 11,
+          "family": "test_verification_contract",
+          "references": [
+            "tests.test_verification_contract.VerificationContractTests.test_block_contract_survives_the_authoritative_graph_codec",
+            "tests.test_verification_contract.VerificationContractTests.test_block_spec_rejects_an_untyped_contract",
+            "tests.test_verification_contract.VerificationContractTests.test_complete_closed_language_round_trips_exactly",
+            "tests.test_verification_contract.VerificationContractTests.test_contract_requires_unique_closed_checks",
+            "tests.test_verification_contract.VerificationContractTests.test_each_check_variant_has_an_explicit_protocol_set",
+            "tests.test_verification_contract.VerificationContractTests.test_http_target_is_a_socket_and_relative_path_not_an_arbitrary_url",
+            "tests.test_verification_contract.VerificationContractTests.test_identity_accepts_bounded_canonical_durable_graph_ids",
+            "tests.test_verification_contract.VerificationContractTests.test_policy_and_evidence_are_bounded",
+            "tests.test_verification_contract.VerificationContractTests.test_postgres_language_has_no_arbitrary_query_field",
+            "tests.test_verification_contract.VerificationContractTests.test_result_values_are_closed_bounded_and_deterministic",
+            "tests.test_verification_contract.VerificationContractTests.test_unknown_variants_fields_and_closed_values_fail_closed"
+          ]
+        },
+        {
+          "count": 9,
+          "family": "test_secrets",
+          "references": [
+            "tests.test_secrets.SecretContractTests.test_bootstrap_configuration_cannot_exceed_authority",
+            "tests.test_secrets.SecretContractTests.test_closed_delivery_variants_round_trip",
+            "tests.test_secrets.SecretContractTests.test_denied_and_missing_errors_are_closed_and_redacted",
+            "tests.test_secrets.SecretContractTests.test_local_resolver_distinguishes_resolved_missing_and_denied",
+            "tests.test_secrets.SecretContractTests.test_malformed_references_fail_at_construction",
+            "tests.test_secrets.SecretContractTests.test_reference_has_provider_and_path_identity",
+            "tests.test_secrets.SecretContractTests.test_secret_file_targets_are_closed_to_protected_namespace",
+            "tests.test_secrets.SecretContractTests.test_unknown_or_extra_delivery_fields_fail_closed",
+            "tests.test_secrets.SecretContractTests.test_values_are_released_only_by_explicit_runtime_interpretation"
+          ]
+        },
+        {
+          "count": 8,
+          "family": "test_block_control_fastapi",
+          "references": [
+            "tests.test_block_control_fastapi.BlockControlFastAPITests.test_configured_token_protects_control_routes",
+            "tests.test_block_control_fastapi.BlockControlFastAPITests.test_control_routes_can_be_called_without_token_when_unconfigured",
+            "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_auth_does_not_protect_ordinary_data_routes",
+            "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mode_requires_auth_configuration",
+            "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutation_body_is_bounded_before_application",
+            "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutations_require_identity_replay_and_conflict",
+            "tests.test_block_control_fastapi.BlockControlFastAPITests.test_observers_route_mutates_state",
+            "tests.test_block_control_fastapi.BlockControlFastAPITests.test_unknown_active_target_returns_bad_request"
+          ]
+        },
+        {
+          "count": 7,
+          "family": "test_configuration_artifacts",
+          "references": [
+            "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_change_is_explicit_diff_and_reconcile_work",
+            "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_artifact_is_bounded_deterministic_and_digest_verified",
+            "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_duplicate_artifact_identity_or_target_fails_at_authoring",
+            "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_exact_artifact_reaches_pinned_start_material",
+            "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_graph_codec_preserves_exact_artifact_and_rejects_tampering",
+            "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_template_revision_reaches_graph_diff_and_pinned_material",
+            "tests.test_configuration_artifacts.ConfigurationArtifactTests.test_unsafe_paths_secrets_and_malformed_json_fail_closed"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "test_policies",
+          "references": [
+            "tests.test_policies.PolicyTests.test_approval_policy_derives_scope_and_risk_from_plan_data",
+            "tests.test_policies.PolicyTests.test_approval_policy_requires_stronger_scope_for_destructive_plans",
+            "tests.test_policies.PolicyTests.test_destructive_activity_policy_classifies_consequential_actions",
+            "tests.test_policies.PolicyTests.test_hub_access_policy_returns_decisions_not_effects",
+            "tests.test_policies.PolicyTests.test_instance_access_policy_separates_read_and_edit_scopes",
+            "tests.test_policies.PolicyTests.test_lifecycle_retention_represents_destructive_delete"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_capabilities",
+          "references": [
+            "tests.test_capabilities.CapabilityTests.test_capabilities_reference_expected_route_sets",
+            "tests.test_capabilities.CapabilityTests.test_capability_descriptor_is_json_friendly",
+            "tests.test_capabilities.CapabilityTests.test_capability_named_accepts_string_or_enum",
+            "tests.test_capabilities.CapabilityTests.test_lifecycle_does_not_claim_a_route_yet",
+            "tests.test_capabilities.CapabilityTests.test_unknown_capability_fails_loudly"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_configuration_rendering",
+          "references": [
+            "tests.test_configuration_rendering.ConfigurationRenderingTests.test_context_is_closed_bounded_and_secret_free_before_render",
+            "tests.test_configuration_rendering.ConfigurationRenderingTests.test_rendered_output_is_bounded_and_format_validated",
+            "tests.test_configuration_rendering.ConfigurationRenderingTests.test_template_definition_changes_artifact_identity_even_when_output_does_not",
+            "tests.test_configuration_rendering.ConfigurationRenderingTests.test_typed_parameters_render_one_deterministic_json_artifact",
+            "tests.test_configuration_rendering.ConfigurationRenderingTests.test_undefined_and_malformed_templates_fail_without_source_or_values"
+          ]
+        },
+        {
+          "count": 5,
+          "family": "test_environment_bindings",
+          "references": [
+            "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_binding_is_closed_bounded_and_deterministic",
+            "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_docker_implementation_rejects_open_mappings_and_duplicate_names",
+            "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_inline_passwords_and_public_secret_references_fail_without_disclosure",
+            "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_materialized_node_rejects_environment_metadata_before_graph_compilation",
+            "tests.test_environment_bindings.PublicStaticEnvironmentBindingTests.test_public_and_secret_environment_names_remain_disjoint"
+          ]
+        },
+        {
+          "count": 4,
+          "family": "test_graph_construction",
+          "references": [
+            "tests.test_graph_construction.GraphConstructionTests.test_nested_runtimes_cannot_reuse_node_or_runtime_identity",
+            "tests.test_graph_construction.GraphConstructionTests.test_recipe_compilation_rejects_duplicate_block_identity",
+            "tests.test_graph_construction.GraphConstructionTests.test_recipe_compilation_rejects_duplicate_edge_identity",
+            "tests.test_graph_construction.GraphConstructionTests.test_update_node_remains_explicit_and_requires_existing_identity"
+          ]
+        },
+        {
+          "count": 4,
+          "family": "test_secret_delivery_topology",
+          "references": [
+            "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_delivery_change_is_explicit_diff_and_reconcile",
+            "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_exact_deliveries_reach_pinned_start_material",
+            "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_graph_codec_preserves_closed_deliveries_without_values",
+            "tests.test_secret_delivery_topology.SecretDeliveryTopologyTests.test_literal_and_secret_environment_names_cannot_overlap"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_algebra",
+          "references": [
+            "tests.test_algebra.AlgebraTests.test_requirement_socket_requires_env_binding",
+            "tests.test_algebra.AlgebraTests.test_runtime_control_socket_forbids_startup_environment_binding",
+            "tests.test_algebra.AlgebraTests.test_socket_names_are_accessible"
+          ]
+        },
+        {
+          "count": 3,
+          "family": "test_connection_protocol",
+          "references": [
+            "tests.test_connection_protocol.ConnectionProtocolTests.test_compatibility_requires_both_transport_and_application_semantics",
+            "tests.test_connection_protocol.ConnectionProtocolTests.test_dns_and_raw_protocols_represent_both_transports",
+            "tests.test_connection_protocol.ConnectionProtocolTests.test_every_protocol_has_one_closed_endpoint_scheme_set"
+          ]
+        },
+        {
+          "count": 1,
+          "family": "test_capability_compile",
+          "references": [
+            "tests.test_capability_compile.CapabilityCompileTests.test_proxy_block_advertises_capabilities_in_compiled_metadata"
+          ]
+        },
+        {
+          "count": 1,
+          "family": "test_compile",
+          "references": [
+            "tests.test_compile.CompileTests.test_split_service_wires_http_and_postgres"
+          ]
+        }
+      ],
+      "family_count": 20,
+      "issue": "#738"
+    },
+    "validation_packaging_demo": {
+      "count": 17,
+      "description": "release-candidate validation, packaging, demos, CLI, and observable acceptance contracts",
+      "families": [
+        {
+          "count": 7,
+          "family": "test_cli",
+          "references": [
+            "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token",
+            "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination",
+            "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail",
+            "tests.test_cli.CliTests.test_missing_base_url_is_usage_error",
+            "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters",
+            "tests.test_cli.CliTests.test_token_sets_bearer_header",
+            "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json"
+          ]
+        },
+        {
+          "count": 6,
+          "family": "demo",
+          "references": [
+            "demo.configuration-artifact",
+            "demo.docker-publication",
+            "demo.read-interface",
+            "demo.secret-delivery",
+            "demo.transport",
+            "demo.verification-observation"
+          ]
+        },
+        {
+          "count": 2,
+          "family": "test_read_interface_demo_server",
+          "references": [
+            "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token",
+            "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes"
+          ]
+        },
+        {
+          "count": 2,
+          "family": "validation",
+          "references": [
+            "validation.complete-suite",
+            "validation.package-installation"
+          ]
+        }
+      ],
+      "family_count": 4,
+      "issue": "#742"
+    }
+  },
+  "closeout_issue": "#731",
+  "parent": "#643",
+  "partition_issue": "#737",
+  "root": "#599",
+  "schema": "cpk.required-core-batch-plan",
+  "source": "artifacts/extraction/required-core-family-inventory.json",
+  "source_counts": {
+    "entries": 749,
+    "families": 99
+  },
+  "totals": {
+    "entries": 749,
+    "families": 99,
+    "issues": [
+      "#738",
+      "#739",
+      "#740",
+      "#741",
+      "#742",
+      "#743"
+    ]
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "schema": "cpk.required-core-batch-audit",
+  "issue": "#745",
+  "parent": "#738",
+  "source": "artifacts/extraction/required-core-batch-plan.json",
+  "source_batch": "pure_core_language",
+  "families": {
+    "test_algebra": {
+      "count": 3,
+      "decision": "retain",
+      "target_issue": "#746",
+      "rationale": "Socket authoring laws are pure topology language."
+    },
+    "test_block_control_fastapi": {
+      "count": 8,
+      "decision": "move",
+      "target_issue": "#743",
+      "rationale": "The laws exercise FastAPI control-route process behavior and authenticated runtime mutation, not the pure core graph language."
+    },
+    "test_capabilities": {
+      "count": 5,
+      "decision": "retain",
+      "target_issue": "#748",
+      "rationale": "Capabilities are closed graph-visible contract values."
+    },
+    "test_capability_compile": {
+      "count": 1,
+      "decision": "retain",
+      "target_issue": "#748",
+      "rationale": "Capability compilation is descriptor evidence on a pure block declaration."
+    },
+    "test_compile": {
+      "count": 1,
+      "decision": "retain",
+      "target_issue": "#746",
+      "rationale": "Topology compilation from declarative structure to graph structure is pure."
+    },
+    "test_configuration_artifacts": {
+      "count": 7,
+      "decision": "retain",
+      "target_issue": "#748",
+      "rationale": "Configuration artifacts are bounded immutable graph values."
+    },
+    "test_configuration_rendering": {
+      "count": 5,
+      "decision": "retain",
+      "target_issue": "#748",
+      "rationale": "Strict rendering produces deterministic secret-free configuration artifacts."
+    },
+    "test_connection_protocol": {
+      "count": 3,
+      "decision": "retain",
+      "target_issue": "#746",
+      "rationale": "Connection protocol is a closed compatibility language."
+    },
+    "test_contracts": {
+      "count": 41,
+      "decision": "split",
+      "target_issues": [
+        "#748",
+        "#740"
+      ],
+      "rationale": "Value-descriptor, redaction, environment, runtime, and secret contract laws belong with pure contracts; derived-resource publication and cleanup workflow laws belong with operations contracts."
+    },
+    "test_environment_bindings": {
+      "count": 5,
+      "decision": "retain",
+      "target_issue": "#748",
+      "rationale": "Environment bindings are closed graph values and descriptor-boundary redaction laws."
+    },
+    "test_graph_codec": {
+      "count": 11,
+      "decision": "retain",
+      "target_issue": "#747",
+      "rationale": "Graph descriptor encoding and decoding are pure boundary interpreters."
+    },
+    "test_graph_construction": {
+      "count": 4,
+      "decision": "retain",
+      "target_issue": "#746",
+      "rationale": "Graph identity construction laws are pure topology laws."
+    },
+    "test_graph_diff": {
+      "count": 15,
+      "decision": "retain",
+      "target_issue": "#747",
+      "rationale": "Graph diff is pure comparison algebra over validated graph values."
+    },
+    "test_graph_validation": {
+      "count": 12,
+      "decision": "retain",
+      "target_issue": "#747",
+      "rationale": "Validation produces structured findings from graph values without effects."
+    },
+    "test_policies": {
+      "count": 6,
+      "decision": "retain",
+      "target_issue": "#749",
+      "rationale": "Policies are pure decisions and risk classifications, not effects."
+    },
+    "test_postgres_scenario_runner": {
+      "count": 15,
+      "decision": "move",
+      "target_issue": "#740",
+      "rationale": "The laws exercise DeploymentProgram, durable plans, approval/admission/run behavior, and Postgres-backed scenario execution."
+    },
+    "test_probe_intents": {
+      "count": 13,
+      "decision": "retain",
+      "target_issue": "#749",
+      "rationale": "Probe intents and observations are closed effect-free request/result values; actual probe execution remains outside #738."
+    },
+    "test_secret_delivery_topology": {
+      "count": 4,
+      "decision": "retain",
+      "target_issue": "#748",
+      "rationale": "Secret deliveries are graph-topology declarations that preserve references without values."
+    },
+    "test_secrets": {
+      "count": 9,
+      "decision": "retain",
+      "target_issue": "#748",
+      "rationale": "Secret references, delivery descriptors, and redacted errors are pure contract values."
+    },
+    "test_verification_contract": {
+      "count": 11,
+      "decision": "retain",
+      "target_issue": "#748",
+      "rationale": "Verification contracts describe checks; executing those checks belongs to interpreters."
+    }
+  },
+  "summary": {
+    "families": 20,
+    "entries": 179,
+    "retained_families": 17,
+    "moved_families": 2,
+    "split_families": 1,
+    "retained_entries": 115,
+    "moved_entries": 23,
+    "split_entries": 41
+  }
+}

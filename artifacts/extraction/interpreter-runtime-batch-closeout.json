@@ -1,0 +1,636 @@
+{
+  "families": [
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_docker_effects",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_docker_effects.DockerEffectTests.test_cli_distinguishes_absence_from_failed_inspection",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_inspection_preserves_private_and_host_port_distinction",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_inspection_rejects_unknown_transport_suffix",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_keeps_environment_values_out_of_process_arguments",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_publishes_only_explicit_typed_port_bindings",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_renders_udp_from_the_protocol_transport",
+        "tests.test_docker_effects.DockerEffectTests.test_compute_removal_is_explicit_and_separate_from_stop",
+        "tests.test_docker_effects.DockerEffectTests.test_host_publication_is_distinct_from_private_node_material",
+        "tests.test_docker_effects.DockerEffectTests.test_node_start_attempts_one_container_and_reports_process_not_health",
+        "tests.test_docker_effects.DockerEffectTests.test_node_stop_does_not_remove_container_or_runtime",
+        "tests.test_docker_effects.DockerEffectTests.test_reconcile_failure_after_removal_is_uncertain",
+        "tests.test_docker_effects.DockerEffectTests.test_reconcile_ownership_conflict_fails_before_mutation",
+        "tests.test_docker_effects.DockerEffectTests.test_reconcile_replaces_base_owned_node_and_exact_replay_converges",
+        "tests.test_docker_effects.DockerEffectTests.test_reconcile_resolves_desired_secrets_before_removal",
+        "tests.test_docker_effects.DockerEffectTests.test_runtime_start_ensures_only_the_pinned_network",
+        "tests.test_docker_effects.DockerEffectTests.test_runtime_stop_is_a_non_deleting_logical_barrier",
+        "tests.test_docker_effects.DockerEffectTests.test_timeout_is_uncertain_and_does_not_publish_command_output"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 17,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_docker_effects.DockerEffectTests.test_cli_distinguishes_absence_from_failed_inspection",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_inspection_preserves_private_and_host_port_distinction",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_inspection_rejects_unknown_transport_suffix",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_keeps_environment_values_out_of_process_arguments",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_publishes_only_explicit_typed_port_bindings",
+        "tests.test_docker_effects.DockerEffectTests.test_cli_renders_udp_from_the_protocol_transport",
+        "tests.test_docker_effects.DockerEffectTests.test_compute_removal_is_explicit_and_separate_from_stop",
+        "tests.test_docker_effects.DockerEffectTests.test_host_publication_is_distinct_from_private_node_material",
+        "tests.test_docker_effects.DockerEffectTests.test_node_start_attempts_one_container_and_reports_process_not_health",
+        "tests.test_docker_effects.DockerEffectTests.test_node_stop_does_not_remove_container_or_runtime",
+        "tests.test_docker_effects.DockerEffectTests.test_reconcile_failure_after_removal_is_uncertain",
+        "tests.test_docker_effects.DockerEffectTests.test_reconcile_ownership_conflict_fails_before_mutation",
+        "tests.test_docker_effects.DockerEffectTests.test_reconcile_replaces_base_owned_node_and_exact_replay_converges",
+        "tests.test_docker_effects.DockerEffectTests.test_reconcile_resolves_desired_secrets_before_removal",
+        "tests.test_docker_effects.DockerEffectTests.test_runtime_start_ensures_only_the_pinned_network",
+        "tests.test_docker_effects.DockerEffectTests.test_runtime_stop_is_a_non_deleting_logical_barrier",
+        "tests.test_docker_effects.DockerEffectTests.test_timeout_is_uncertain_and_does_not_publish_command_output"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_probe_execution",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_probe_execution.ProbeAdapterTests.test_docker_process_probe_inspects_graph_owned_container",
+        "tests.test_probe_execution.ProbeAdapterTests.test_http_probe_is_bounded_redirect_free_and_status_driven",
+        "tests.test_probe_execution.ProbeAdapterTests.test_probe_address_policy_fails_closed_and_pins_public_dns",
+        "tests.test_probe_execution.ProbeAdapterTests.test_secret_endpoint_value_is_resolved_only_at_authorization",
+        "tests.test_probe_execution.ProbeAdapterTests.test_tcp_probe_distinguishes_reachable_refused_and_timeout",
+        "tests.test_probe_execution.ProbeAdapterTests.test_transport_adapters_reject_the_other_transport_explicitly",
+        "tests.test_probe_execution.ProbeAdapterTests.test_transport_router_dispatches_from_the_typed_transport_only",
+        "tests.test_probe_execution.ProbeAdapterTests.test_udp_probe_requires_a_bounded_response_exchange",
+        "tests.test_probe_execution.ProbeAdapterTests.test_unsupported_transport_adapter_becomes_effect_unsupported",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_missing_endpoint_fails_before_any_probe_attempt",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_postgres_deadline_exhaustion_is_transport_not_http_evidence",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_reachable_postgres_is_ready_without_an_http_health_contract",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_refused_transport_retries_then_records_truthful_readiness",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_started_but_unhealthy_is_terminal_and_not_ready",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_total_deadline_is_recomputed_between_probe_layers",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_unreachable_postgres_is_not_ready_and_does_not_run_http"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 16,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_probe_execution.ProbeAdapterTests.test_docker_process_probe_inspects_graph_owned_container",
+        "tests.test_probe_execution.ProbeAdapterTests.test_http_probe_is_bounded_redirect_free_and_status_driven",
+        "tests.test_probe_execution.ProbeAdapterTests.test_probe_address_policy_fails_closed_and_pins_public_dns",
+        "tests.test_probe_execution.ProbeAdapterTests.test_secret_endpoint_value_is_resolved_only_at_authorization",
+        "tests.test_probe_execution.ProbeAdapterTests.test_tcp_probe_distinguishes_reachable_refused_and_timeout",
+        "tests.test_probe_execution.ProbeAdapterTests.test_transport_adapters_reject_the_other_transport_explicitly",
+        "tests.test_probe_execution.ProbeAdapterTests.test_transport_router_dispatches_from_the_typed_transport_only",
+        "tests.test_probe_execution.ProbeAdapterTests.test_udp_probe_requires_a_bounded_response_exchange",
+        "tests.test_probe_execution.ProbeAdapterTests.test_unsupported_transport_adapter_becomes_effect_unsupported",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_missing_endpoint_fails_before_any_probe_attempt",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_postgres_deadline_exhaustion_is_transport_not_http_evidence",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_reachable_postgres_is_ready_without_an_http_health_contract",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_refused_transport_retries_then_records_truthful_readiness",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_started_but_unhealthy_is_terminal_and_not_ready",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_total_deadline_is_recomputed_between_probe_layers",
+        "tests.test_probe_execution.ProbeEffectInterpreterTests.test_unreachable_postgres_is_not_ready_and_does_not_run_http"
+      ]
+    },
+    {
+      "classification": "operations / cpk-server acceptance behavior",
+      "family": "test_postgres_scenario_runner",
+      "rationale": "Frozen Postgres scenario runner executes durable workflow services, stores, coordinator effects, projections, and advancement. Extracted core owns the pure contracts and scenario language, not the mutable acceptance runner.",
+      "references": [
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_complete_acceptance_corpus_uses_canonical_pipeline",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_cross_workspace_graph_truth",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_missing_plan_truth",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_program_reconstructs_plan_across_operator_requests",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_executable_scenario_uses_canonical_pipeline_and_projection",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_no_change_records_plan_but_no_approval_run_or_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_failure_uses_real_coordinator_and_does_not_advance",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_uncertainty_remains_visible_without_advancement",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_readiness_gated_scenario_records_approval_but_no_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_repeated_runs_have_distinct_workspaces_and_fake_state",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_review_blocked_scenario_never_requests_approval_or_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_scenario_order_does_not_change_semantic_results",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_semantic_diagnostic_reports_event_order_not_generated_values",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_preserves_stale_graph_admission_guard",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_refuses_run_before_durable_approval"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 operations/cpk-server acceptance handoff; core contracts remain covered by EXTRACT.E successor proofs for planning, execution, reads, and process handoff.",
+      "source_count": 15,
+      "status": "reviewed_operations_acceptance_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_complete_acceptance_corpus_uses_canonical_pipeline",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_cross_workspace_graph_truth",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_missing_plan_truth",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_program_reconstructs_plan_across_operator_requests",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_executable_scenario_uses_canonical_pipeline_and_projection",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_no_change_records_plan_but_no_approval_run_or_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_failure_uses_real_coordinator_and_does_not_advance",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_uncertainty_remains_visible_without_advancement",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_readiness_gated_scenario_records_approval_but_no_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_repeated_runs_have_distinct_workspaces_and_fake_state",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_review_blocked_scenario_never_requests_approval_or_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_scenario_order_does_not_change_semantic_results",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_semantic_diagnostic_reports_event_order_not_generated_values",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_preserves_stale_graph_admission_guard",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_refuses_run_before_durable_approval"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_effect_material",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_effect_material.EffectMaterialTests.test_descriptor_redacts_even_nonsecret_environment_values",
+        "tests.test_effect_material.EffectMaterialTests.test_every_executable_scenario_operation_materializes_from_pinned_transition",
+        "tests.test_effect_material.EffectMaterialTests.test_graph_identity_mismatch_fails_before_materialization",
+        "tests.test_effect_material.EffectMaterialTests.test_implementation_secret_reference_survives_only_as_opaque_material",
+        "tests.test_effect_material.EffectMaterialTests.test_materialization_is_deterministic",
+        "tests.test_effect_material.EffectMaterialTests.test_materialization_preserves_and_enforces_effect_purpose",
+        "tests.test_effect_material.EffectMaterialTests.test_plaintext_secret_shaped_environment_is_rejected_without_value_disclosure",
+        "tests.test_effect_material.EffectMaterialTests.test_reconcile_material_pins_forward_and_compensation_graph_pairs",
+        "tests.test_effect_material.EffectMaterialTests.test_removal_material_comes_from_pinned_base_not_mutable_desired_graph",
+        "tests.test_effect_material.EffectMaterialTests.test_secret_reference_material_is_opaque",
+        "tests.test_effect_material.EffectMaterialTests.test_verification_contract_resolves_only_from_pinned_node_material",
+        "tests.test_effect_material.EffectMaterialTests.test_verification_material_rejects_missing_pinned_endpoint"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 12,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_effect_material.EffectMaterialTests.test_descriptor_redacts_even_nonsecret_environment_values",
+        "tests.test_effect_material.EffectMaterialTests.test_every_executable_scenario_operation_materializes_from_pinned_transition",
+        "tests.test_effect_material.EffectMaterialTests.test_graph_identity_mismatch_fails_before_materialization",
+        "tests.test_effect_material.EffectMaterialTests.test_implementation_secret_reference_survives_only_as_opaque_material",
+        "tests.test_effect_material.EffectMaterialTests.test_materialization_is_deterministic",
+        "tests.test_effect_material.EffectMaterialTests.test_materialization_preserves_and_enforces_effect_purpose",
+        "tests.test_effect_material.EffectMaterialTests.test_plaintext_secret_shaped_environment_is_rejected_without_value_disclosure",
+        "tests.test_effect_material.EffectMaterialTests.test_reconcile_material_pins_forward_and_compensation_graph_pairs",
+        "tests.test_effect_material.EffectMaterialTests.test_removal_material_comes_from_pinned_base_not_mutable_desired_graph",
+        "tests.test_effect_material.EffectMaterialTests.test_secret_reference_material_is_opaque",
+        "tests.test_effect_material.EffectMaterialTests.test_verification_contract_resolves_only_from_pinned_node_material",
+        "tests.test_effect_material.EffectMaterialTests.test_verification_material_rejects_missing_pinned_endpoint"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_docker_configuration",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_docker_configuration.DockerConfigurationTests.test_changed_content_changes_container_and_volume_ownership",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_cleanup_preflights_every_artifact_before_container_removal",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_cli_never_places_content_in_argv_and_uses_read_only_helper",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_concurrent_identical_starts_converge_on_exact_artifact",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_container_conflict_preflights_before_artifact_mutation",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_owned_incomplete_volume_is_completed_by_exact_replay",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_owned_volume_with_wrong_digest_fails_without_starting",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_partial_materialization_is_uncertain_and_cleanup_is_artifact_only",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_start_materializes_before_container_and_replay_converges"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 9,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_docker_configuration.DockerConfigurationTests.test_changed_content_changes_container_and_volume_ownership",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_cleanup_preflights_every_artifact_before_container_removal",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_cli_never_places_content_in_argv_and_uses_read_only_helper",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_concurrent_identical_starts_converge_on_exact_artifact",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_container_conflict_preflights_before_artifact_mutation",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_owned_incomplete_volume_is_completed_by_exact_replay",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_owned_volume_with_wrong_digest_fails_without_starting",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_partial_materialization_is_uncertain_and_cleanup_is_artifact_only",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_start_materializes_before_container_and_replay_converges"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_docker_secrets",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_docker_secrets.DockerSecretTests.test_cli_materialization_passes_value_only_through_stdin",
+        "tests.test_docker_secrets.DockerSecretTests.test_known_container_start_failure_removes_owned_secret_volume",
+        "tests.test_docker_secrets.DockerSecretTests.test_missing_or_denied_reference_fails_before_volume_mutation",
+        "tests.test_docker_secrets.DockerSecretTests.test_reference_rotation_changes_container_and_volume_ownership",
+        "tests.test_docker_secrets.DockerSecretTests.test_same_immutable_reference_does_not_rewrite_provider_side_change",
+        "tests.test_docker_secrets.DockerSecretTests.test_start_materializes_before_container_and_replay_does_not_rewrite",
+        "tests.test_docker_secrets.DockerSecretTests.test_teardown_ownership_conflict_preserves_container_and_volume",
+        "tests.test_docker_secrets.DockerSecretTests.test_teardown_preflights_secret_volume_before_container_removal",
+        "tests.test_docker_secrets.DockerSecretTests.test_uncertain_materialization_preserves_owned_volume_for_recovery"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 9,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_docker_secrets.DockerSecretTests.test_cli_materialization_passes_value_only_through_stdin",
+        "tests.test_docker_secrets.DockerSecretTests.test_known_container_start_failure_removes_owned_secret_volume",
+        "tests.test_docker_secrets.DockerSecretTests.test_missing_or_denied_reference_fails_before_volume_mutation",
+        "tests.test_docker_secrets.DockerSecretTests.test_reference_rotation_changes_container_and_volume_ownership",
+        "tests.test_docker_secrets.DockerSecretTests.test_same_immutable_reference_does_not_rewrite_provider_side_change",
+        "tests.test_docker_secrets.DockerSecretTests.test_start_materializes_before_container_and_replay_does_not_rewrite",
+        "tests.test_docker_secrets.DockerSecretTests.test_teardown_ownership_conflict_preserves_container_and_volume",
+        "tests.test_docker_secrets.DockerSecretTests.test_teardown_preflights_secret_volume_before_container_removal",
+        "tests.test_docker_secrets.DockerSecretTests.test_uncertain_materialization_preserves_owned_volume_for_recovery"
+      ]
+    },
+    {
+      "classification": "cpk-server control-route process behavior",
+      "family": "test_block_control_fastapi",
+      "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+      "references": [
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_configured_token_protects_control_routes",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_control_routes_can_be_called_without_token_when_unconfigured",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_auth_does_not_protect_ordinary_data_routes",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mode_requires_auth_configuration",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutation_body_is_bounded_before_application",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutations_require_identity_replay_and_conflict",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_observers_route_mutates_state",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_unknown_active_target_returns_bad_request"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+      "source_count": 8,
+      "status": "reviewed_cpk_server_control_process_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_configured_token_protects_control_routes",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_control_routes_can_be_called_without_token_when_unconfigured",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_auth_does_not_protect_ordinary_data_routes",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mode_requires_auth_configuration",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutation_body_is_bounded_before_application",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutations_require_identity_replay_and_conflict",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_observers_route_mutates_state",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_unknown_active_target_returns_bad_request"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_effect_values",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_effect_values.EffectValueTests.test_activity_factory_preserves_identity_policy_and_secret_references",
+        "tests.test_effect_values.EffectValueTests.test_control_actions_are_provider_neutral_and_typed",
+        "tests.test_effect_values.EffectValueTests.test_every_safe_activity_operation_has_one_closed_capability",
+        "tests.test_effect_values.EffectValueTests.test_request_rejects_duplicate_secret_references",
+        "tests.test_effect_values.EffectValueTests.test_request_rejects_open_effect_purpose",
+        "tests.test_effect_values.EffectValueTests.test_review_work_cannot_cross_the_effect_boundary",
+        "tests.test_effect_values.EffectValueTests.test_secret_and_endpoint_values_are_opaque_references",
+        "tests.test_effect_values.EffectValueTests.test_timeout_policy_is_bounded"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 8,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_effect_values.EffectValueTests.test_activity_factory_preserves_identity_policy_and_secret_references",
+        "tests.test_effect_values.EffectValueTests.test_control_actions_are_provider_neutral_and_typed",
+        "tests.test_effect_values.EffectValueTests.test_every_safe_activity_operation_has_one_closed_capability",
+        "tests.test_effect_values.EffectValueTests.test_request_rejects_duplicate_secret_references",
+        "tests.test_effect_values.EffectValueTests.test_request_rejects_open_effect_purpose",
+        "tests.test_effect_values.EffectValueTests.test_review_work_cannot_cross_the_effect_boundary",
+        "tests.test_effect_values.EffectValueTests.test_secret_and_endpoint_values_are_opaque_references",
+        "tests.test_effect_values.EffectValueTests.test_timeout_policy_is_bounded"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_effect_dispatch",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_effect_dispatch.EffectDispatchTests.test_attempted_failure_is_distinct_from_unsupported",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_fake_interpreter_attempts_every_safe_activity_operation",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_fake_interpreter_executes_every_initially_ready_scenario_effect",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_interpreter_capabilities_must_be_a_typed_frozenset",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_interpreter_must_return_the_request_identity",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_prepared_effect_freezes_support_decision_before_attempt",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_unsupported_capability_is_rejected_before_attempt"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 7,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_effect_dispatch.EffectDispatchTests.test_attempted_failure_is_distinct_from_unsupported",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_fake_interpreter_attempts_every_safe_activity_operation",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_fake_interpreter_executes_every_initially_ready_scenario_effect",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_interpreter_capabilities_must_be_a_typed_frozenset",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_interpreter_must_return_the_request_identity",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_prepared_effect_freezes_support_decision_before_attempt",
+        "tests.test_effect_dispatch.EffectDispatchTests.test_unsupported_capability_is_rejected_before_attempt"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_resource_lifecycle",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_data_destruction_requires_explicit_critical_destructive_activity",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_external_resources_are_topology_only_and_never_gain_lifecycle_work",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_graph_codec_preserves_lifecycle_without_string_inference",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_lifecycle_is_a_closed_product_with_independent_data_resources",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_lifecycle_policy_changes_are_review_blockers_not_reconciliation",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_retained_compute_stops_without_resource_removal",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_topology_removal_deletes_ephemeral_compute_but_never_data"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 7,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_data_destruction_requires_explicit_critical_destructive_activity",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_external_resources_are_topology_only_and_never_gain_lifecycle_work",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_graph_codec_preserves_lifecycle_without_string_inference",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_lifecycle_is_a_closed_product_with_independent_data_resources",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_lifecycle_policy_changes_are_review_blockers_not_reconciliation",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_retained_compute_stops_without_resource_removal",
+        "tests.test_resource_lifecycle.ResourceLifecycleTests.test_topology_removal_deletes_ephemeral_compute_but_never_data"
+      ]
+    },
+    {
+      "classification": "cpk-server control-route process behavior",
+      "family": "test_block_control_state",
+      "rationale": "Frozen control routes execute FastAPI/process mutation and authentication behavior. Extracted core owns closed control-route descriptor values; the executable process belongs to cpk-server or an interpreter-owned process package.",
+      "references": [
+        "tests.test_block_control_state.BlockControlStateTests.test_capability_payload_uses_descriptors",
+        "tests.test_block_control_state.BlockControlStateTests.test_control_state_is_backed_by_runtime_contract",
+        "tests.test_block_control_state.BlockControlStateTests.test_observer_mutation_updates_observer_state",
+        "tests.test_block_control_state.BlockControlStateTests.test_replacing_targets_clears_stale_active_target",
+        "tests.test_block_control_state.BlockControlStateTests.test_status_and_log_providers_are_used_when_present",
+        "tests.test_block_control_state.BlockControlStateTests.test_target_switch_rejects_unknown_targets"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 cpk-server control-process handoff; core descriptor values remain covered by extract-e-762-control-routes.unittest and process handoff contracts.",
+      "source_count": 6,
+      "status": "reviewed_cpk_server_control_process_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_block_control_state.BlockControlStateTests.test_capability_payload_uses_descriptors",
+        "tests.test_block_control_state.BlockControlStateTests.test_control_state_is_backed_by_runtime_contract",
+        "tests.test_block_control_state.BlockControlStateTests.test_observer_mutation_updates_observer_state",
+        "tests.test_block_control_state.BlockControlStateTests.test_replacing_targets_clears_stale_active_target",
+        "tests.test_block_control_state.BlockControlStateTests.test_status_and_log_providers_are_used_when_present",
+        "tests.test_block_control_state.BlockControlStateTests.test_target_switch_rejects_unknown_targets"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_docker_ownership",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_docker_ownership.DockerOwnershipTests.test_absent_resource_is_created_with_stable_ownership_labels",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_changed_material_conflicts_instead_of_retargeting_same_name",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_compatible_stopped_container_is_started_without_recreation",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_concurrent_equivalent_creation_converges_on_owned_resource",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_identical_replay_reuses_running_container",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_unowned_name_collision_is_never_mutated"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 6,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_docker_ownership.DockerOwnershipTests.test_absent_resource_is_created_with_stable_ownership_labels",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_changed_material_conflicts_instead_of_retargeting_same_name",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_compatible_stopped_container_is_started_without_recreation",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_concurrent_equivalent_creation_converges_on_owned_resource",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_identical_replay_reuses_running_container",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_unowned_name_collision_is_never_mutated"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_docker_retention",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_docker_retention.DockerRetentionTests.test_explicit_data_destruction_removes_only_the_named_owned_volume",
+        "tests.test_docker_retention.DockerRetentionTests.test_postgres_start_creates_owned_volume_and_mounts_it",
+        "tests.test_docker_retention.DockerRetentionTests.test_retained_and_external_compute_cannot_cross_removal_boundary",
+        "tests.test_docker_retention.DockerRetentionTests.test_start_and_explicit_destruction_replay_converge",
+        "tests.test_docker_retention.DockerRetentionTests.test_stop_and_compute_removal_preserve_named_data",
+        "tests.test_docker_retention.DockerRetentionTests.test_unowned_volume_collision_fails_before_container_start"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 6,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_docker_retention.DockerRetentionTests.test_explicit_data_destruction_removes_only_the_named_owned_volume",
+        "tests.test_docker_retention.DockerRetentionTests.test_postgres_start_creates_owned_volume_and_mounts_it",
+        "tests.test_docker_retention.DockerRetentionTests.test_retained_and_external_compute_cannot_cross_removal_boundary",
+        "tests.test_docker_retention.DockerRetentionTests.test_start_and_explicit_destruction_replay_converge",
+        "tests.test_docker_retention.DockerRetentionTests.test_stop_and_compute_removal_preserve_named_data",
+        "tests.test_docker_retention.DockerRetentionTests.test_unowned_volume_collision_fails_before_container_start"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_docker_runtime",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_preserves_containers_when_cleanup_policy_preserves",
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_stops_without_removing_owned_resources",
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_up_executes_planned_activities_and_returns_runtime_state",
+        "tests.test_docker_runtime.DockerRuntimePlanningTests.test_cross_runtime_edges_are_preserved_but_not_realized",
+        "tests.test_docker_runtime.DockerRuntimePlanningTests.test_non_docker_runtime_is_rejected_before_planning",
+        "tests.test_docker_runtime.DockerRuntimePlanningTests.test_plan_start_creates_network_and_container_activities"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 6,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_preserves_containers_when_cleanup_policy_preserves",
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_stops_without_removing_owned_resources",
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_up_executes_planned_activities_and_returns_runtime_state",
+        "tests.test_docker_runtime.DockerRuntimePlanningTests.test_cross_runtime_edges_are_preserved_but_not_realized",
+        "tests.test_docker_runtime.DockerRuntimePlanningTests.test_non_docker_runtime_is_rejected_before_planning",
+        "tests.test_docker_runtime.DockerRuntimePlanningTests.test_plan_start_creates_network_and_container_activities"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_host_publication",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_host_publication.HostPublicationTests.test_adding_publication_is_explicit_disruptive_plan_work",
+        "tests.test_host_publication.HostPublicationTests.test_explicit_publication_survives_graph_and_pinned_materialization",
+        "tests.test_host_publication.HostPublicationTests.test_loopback_factories_are_closed_ip_values",
+        "tests.test_host_publication.HostPublicationTests.test_private_only_is_the_authoring_default",
+        "tests.test_host_publication.HostPublicationTests.test_same_fixed_host_port_is_valid_once_per_transport",
+        "tests.test_host_publication.HostPublicationTests.test_unknown_socket_and_fixed_port_collision_fail_at_authoring"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 6,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_host_publication.HostPublicationTests.test_adding_publication_is_explicit_disruptive_plan_work",
+        "tests.test_host_publication.HostPublicationTests.test_explicit_publication_survives_graph_and_pinned_materialization",
+        "tests.test_host_publication.HostPublicationTests.test_loopback_factories_are_closed_ip_values",
+        "tests.test_host_publication.HostPublicationTests.test_private_only_is_the_authoring_default",
+        "tests.test_host_publication.HostPublicationTests.test_same_fixed_host_port_is_valid_once_per_transport",
+        "tests.test_host_publication.HostPublicationTests.test_unknown_socket_and_fixed_port_collision_fail_at_authoring"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_control_http_client",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_control_http_client.ControlHttpClientTests.test_missing_remote_capability_is_unsupported_without_mutation",
+        "tests.test_control_http_client.ControlHttpClientTests.test_mutation_without_a_trustworthy_result_is_explicitly_uncertain",
+        "tests.test_control_http_client.ControlHttpClientTests.test_redirect_malformed_and_oversized_responses_fail_without_body_echo",
+        "tests.test_control_http_client.ControlHttpClientTests.test_socket_operation_matrix_discovers_capability_before_mutation",
+        "tests.test_control_http_client.ControlHttpClientTests.test_status_and_logs_are_bounded_typed_operator_reads"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 5,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_control_http_client.ControlHttpClientTests.test_missing_remote_capability_is_unsupported_without_mutation",
+        "tests.test_control_http_client.ControlHttpClientTests.test_mutation_without_a_trustworthy_result_is_explicitly_uncertain",
+        "tests.test_control_http_client.ControlHttpClientTests.test_redirect_malformed_and_oversized_responses_fail_without_body_echo",
+        "tests.test_control_http_client.ControlHttpClientTests.test_socket_operation_matrix_discovers_capability_before_mutation",
+        "tests.test_control_http_client.ControlHttpClientTests.test_status_and_logs_are_bounded_typed_operator_reads"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_control_http_security",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_arbitrary_secret_endpoint_and_missing_token_fail_closed",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_docker_private_endpoint_requires_observed_network_and_credential",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_host_local_and_public_authority_are_separate_explicit_policies",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_redirect_like_route_and_invalid_resolver_result_fail_closed",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_unsafe_authorities_fail_without_echoing_address_or_secret"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 5,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_arbitrary_secret_endpoint_and_missing_token_fail_closed",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_docker_private_endpoint_requires_observed_network_and_credential",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_host_local_and_public_authority_are_separate_explicit_policies",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_redirect_like_route_and_invalid_resolver_result_fail_closed",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_unsafe_authorities_fail_without_echoing_address_or_secret"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_control_http_live",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_adversarial_peers_remain_bounded_and_redirect_free",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_authentication_fails_closed_without_leaking_token",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_mutation_replay_converges_and_changed_intent_conflicts",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_package_blocks_use_authenticated_live_protocol"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 4,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_adversarial_peers_remain_bounded_and_redirect_free",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_authentication_fails_closed_without_leaking_token",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_mutation_replay_converges_and_changed_intent_conflicts",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_package_blocks_use_authenticated_live_protocol"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_runtimes",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_runtimes.RuntimeStateTests.test_dry_run_plan_stop_is_idempotent_shape",
+        "tests.test_runtimes.RuntimeStateTests.test_dry_run_runtime_returns_interpreted_node_state",
+        "tests.test_runtimes.RuntimeStateTests.test_runtime_state_descriptor_is_json_friendly"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 3,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_runtimes.RuntimeStateTests.test_dry_run_plan_stop_is_idempotent_shape",
+        "tests.test_runtimes.RuntimeStateTests.test_dry_run_runtime_returns_interpreted_node_state",
+        "tests.test_runtimes.RuntimeStateTests.test_runtime_state_descriptor_is_json_friendly"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_verification_adapters",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_verification_adapters.VerificationAdapterTests.test_http_address_outside_policy_is_rejected_without_attempt",
+        "tests.test_verification_adapters.VerificationAdapterTests.test_http_check_is_redirect_free_bounded_and_status_driven",
+        "tests.test_verification_adapters.VerificationAdapterTests.test_redis_ping_retries_bounded_exchange_and_retains_no_payload"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 3,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_verification_adapters.VerificationAdapterTests.test_http_address_outside_policy_is_rejected_without_attempt",
+        "tests.test_verification_adapters.VerificationAdapterTests.test_http_check_is_redirect_free_bounded_and_status_driven",
+        "tests.test_verification_adapters.VerificationAdapterTests.test_redis_ping_retries_bounded_exchange_and_retains_no_payload"
+      ]
+    },
+    {
+      "classification": "interpreter/runtime behavior",
+      "family": "test_capability_interpreter_registry",
+      "rationale": "Frozen law exercises Docker, HTTP, probe, runtime materialization, runtime state, ownership, retention, dispatch, or substrate behavior. Extracted core must keep only the closed language/contract boundary and cannot execute the interpreter.",
+      "references": [
+        "tests.test_capability_interpreter_registry.CapabilityInterpreterRegistryTests.test_dispatches_by_explicit_capability_assignment",
+        "tests.test_capability_interpreter_registry.CapabilityInterpreterRegistryTests.test_rejects_assignment_to_interpreter_without_capability"
+      ],
+      "remaining_live_inventory_count": 0,
+      "replacement": "#743 interpreter/runtime handoff; core retains closed protocol, lifecycle, verification, control-route, effect-boundary, and product-runtime contract values without owning effects.",
+      "source_count": 2,
+      "status": "reviewed_interpreter_runtime_handoff",
+      "successor_references": [],
+      "superseded_references": [
+        "tests.test_capability_interpreter_registry.CapabilityInterpreterRegistryTests.test_dispatches_by_explicit_capability_assignment",
+        "tests.test_capability_interpreter_registry.CapabilityInterpreterRegistryTests.test_rejects_assignment_to_interpreter_without_capability"
+      ]
+    }
+  ],
+  "issue": "#743",
+  "parent": "#643",
+  "schema": "cpk.interpreter-runtime-batch-closeout",
+  "source_batch": "interpreter_runtime",
+  "summary": {
+    "mapped_successor_entries": 0,
+    "reviewed_cpk_server_control_process_entries": 14,
+    "reviewed_cpk_server_control_process_families": 2,
+    "reviewed_interpreter_runtime_entries": 131,
+    "reviewed_interpreter_runtime_families": 18,
+    "reviewed_operations_acceptance_entries": 15,
+    "reviewed_operations_acceptance_families": 1,
+    "reviewed_supersession_entries": 160,
+    "source_entries": 160,
+    "source_families": 21,
+    "unexpected_remaining_entries": 0,
+    "unexpected_remaining_families": 0
+  }
+}

@@ -1,26 +1,24 @@
-name: Tests
+name: Current package tests
 
 on:
   push:
     branches:
-      - develop
       - main
+      - develop
+      - "roadmap/**"
   pull_request:
-    branches:
-      - develop
-      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.ref }}
+  group: current-package-tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Docker and Postgres test suite
+  core:
+    name: control-plane-kit-core
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -28,10 +26,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Run Docker-first tests
-        run: ./test.sh
+      - name: Run authoritative package gate
+        run: ./control-plane-kit-core/test.sh
 
-      - name: Compile Python sources
-        run: >-
-          docker run --rm control-plane-kit-test:local
-          python -m compileall -q control_plane_kit tests examples
+  operations:
+    name: control-plane-kit-operations
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run authoritative package gate
+        run: ./control-plane-kit-operations/test.sh

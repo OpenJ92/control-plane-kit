@@ -7,8 +7,12 @@ from enum import StrEnum
 from typing import Mapping
 from urllib.parse import urlsplit
 
-from control_plane_kit_core.algebra import BlockSockets, BlockSpec
+from control_plane_kit_core.algebra import BlockSockets, BlockSpec, RequirementSocket
 from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.delegation_authority import (
+    DelegationAuthorityBinding,
+    DelegationVerifierProjection,
+)
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -23,6 +27,8 @@ from control_plane_kit_core.secrets import (
     secret_delivery_sort_key,
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit_core.public_ingress import NamedPublicIngress
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.types import (
     BlockFamily,
     EndpointScope,
@@ -108,6 +114,7 @@ class Node:
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
+    delegation_verifier_projection: DelegationVerifierProjection | None = None
 
     def __post_init__(self) -> None:
         if "environment" in self.metadata:
@@ -152,6 +159,13 @@ class Node:
             raise TypeError("node secret deliveries must be a tuple")
         if len(set(self.secret_deliveries)) != len(self.secret_deliveries):
             raise ValueError("node secret deliveries must be unique")
+        if self.delegation_verifier_projection is not None and not isinstance(
+            self.delegation_verifier_projection,
+            DelegationVerifierProjection,
+        ):
+            raise TypeError(
+                "node delegation verifier projection must be typed public material"
+            )
         secret_environment_names: list[str] = []
         for delivery in self.secret_deliveries:
             match delivery:
@@ -178,11 +192,16 @@ class Node:
             available = ", ".join(sorted(self.endpoints)) or "<none>"
             raise KeyError(f"node {self.node_id!r} has no endpoint {name!r}; available: {available}") from exc
 
-    def with_socket_environment(
+    def with_connection_material(
         self,
-        values: tuple[SocketDerivedEnvironmentBinding, ...],
+        environment: tuple[SocketDerivedEnvironmentBinding, ...],
+        secret_deliveries: tuple[SecretDelivery, ...],
     ) -> Node:
-        return replace(self, socket_environment=self.socket_environment + values)
+        return replace(
+            self,
+            socket_environment=self.socket_environment + environment,
+            secret_deliveries=self.secret_deliveries + secret_deliveries,
+        )
 
     def non_secret_environment(self) -> dict[str, str]:
         """Interpret public and socket-derived bindings as process literals."""
@@ -193,7 +212,7 @@ class Node:
         }
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor: dict[str, object] = {
             "node_id": self.node_id,
             "block_family": self.block_family.value,
             "block_spec": {
@@ -216,12 +235,7 @@ class Node:
                 )
             ],
             "requirements": {
-                socket.name: {
-                    "protocol": socket.protocol.descriptor(),
-                    "binding": socket.binding.value,
-                    "env_bindings": list(socket.env_bindings),
-                    "required": socket.required,
-                }
+                socket.name: _requirement_socket_descriptor(socket)
                 for socket in self.sockets.requirements
             },
             "providers": {
@@ -241,6 +255,27 @@ class Node:
                 )
             ],
         }
+        if self.delegation_verifier_projection is not None:
+            descriptor["delegation_verifier_projection"] = (
+                self.delegation_verifier_projection.descriptor()
+            )
+        return descriptor
+
+
+def _requirement_socket_descriptor(
+    socket: RequirementSocket,
+) -> dict[str, object]:
+    descriptor: dict[str, object] = {
+        "protocol": socket.protocol.descriptor(),
+        "binding": socket.binding.value,
+        "env_bindings": list(socket.env_bindings),
+        "required": socket.required,
+    }
+    if socket.secret_deliveries:
+        descriptor["secret_deliveries"] = [
+            value.descriptor() for value in socket.secret_deliveries
+        ]
+    return descriptor
 
 
 @dataclass(frozen=True)
@@ -285,11 +320,15 @@ class RuntimeRecord:
     children: tuple[str, ...] = ()
     metadata: Mapping[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
+    authority_ref: RuntimeAuthorityReference | None = None
 
     def descriptor(self) -> dict[str, object]:
         return {
             "kind": self.kind.value,
             "children": list(self.children),
+            "authority_ref": None
+            if self.authority_ref is None
+            else self.authority_ref.descriptor(),
             "metadata": dict(self.metadata),
             "lifecycle": self.lifecycle.descriptor(),
         }
@@ -303,6 +342,8 @@ class GraphIdentityKind(StrEnum):
     NODE = "node"
     EDGE = "edge"
     RUNTIME = "runtime"
+    PUBLIC_INGRESS = "public-ingress"
+    DELEGATION_AUTHORITY = "delegation-authority"
 
 
 class GraphConstructionError(ValueError):
@@ -330,6 +371,48 @@ class DeploymentGraph:
     nodes: Mapping[str, Node] = field(default_factory=dict)
     edges: Mapping[str, Edge] = field(default_factory=dict)
     runtimes: Mapping[str, RuntimeRecord] = field(default_factory=dict)
+    public_ingresses: tuple[NamedPublicIngress, ...] = ()
+    delegation_authorities: tuple[DelegationAuthorityBinding, ...] = ()
+
+    def __post_init__(self) -> None:
+        identities = tuple(ingress.ingress_id for ingress in self.public_ingresses)
+        if len(set(identities)) != len(identities):
+            duplicate = next(
+                identity for identity in identities if identities.count(identity) > 1
+            )
+            raise GraphConstructionError(
+                GraphConstructionCode.DUPLICATE_IDENTITY,
+                GraphIdentityKind.PUBLIC_INGRESS,
+                duplicate,
+            )
+        if not isinstance(self.delegation_authorities, tuple) or not all(
+            isinstance(value, DelegationAuthorityBinding)
+            for value in self.delegation_authorities
+        ):
+            raise TypeError("delegation authorities must be typed bindings")
+        bindings = tuple(
+            sorted(
+                self.delegation_authorities,
+                key=lambda value: (
+                    value.delegate_node_id,
+                    value.purpose.value,
+                    value.issuer,
+                ),
+            )
+        )
+        binding_identities = tuple(value.identity for value in bindings)
+        if len(set(binding_identities)) != len(binding_identities):
+            duplicate_binding = next(
+                identity
+                for identity in binding_identities
+                if binding_identities.count(identity) > 1
+            )
+            raise GraphConstructionError(
+                GraphConstructionCode.DUPLICATE_IDENTITY,
+                GraphIdentityKind.DELEGATION_AUTHORITY,
+                f"{duplicate_binding[0]}:{duplicate_binding[1].value}",
+            )
+        object.__setattr__(self, "delegation_authorities", bindings)
 
     def node(self, node_id: str) -> Node:
         try:
@@ -364,6 +447,25 @@ class DeploymentGraph:
                 runtime.runtime_id,
             )
         return replace(self, runtimes={**self.runtimes, runtime.runtime_id: runtime})
+
+    def add_public_ingress(self, ingress: NamedPublicIngress) -> DeploymentGraph:
+        if ingress.ingress_id in {
+            value.ingress_id for value in self.public_ingresses
+        }:
+            raise GraphConstructionError(
+                GraphConstructionCode.DUPLICATE_IDENTITY,
+                GraphIdentityKind.PUBLIC_INGRESS,
+                ingress.ingress_id,
+            )
+        return replace(
+            self,
+            public_ingresses=tuple(
+                sorted(
+                    (*self.public_ingresses, ingress),
+                    key=lambda value: value.ingress_id,
+                )
+            ),
+        )
 
     def update_node(self, node: Node) -> DeploymentGraph:
         if node.node_id not in self.nodes:

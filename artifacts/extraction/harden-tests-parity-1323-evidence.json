@@ -1,0 +1,36 @@
+{
+  "catalogue_checksum": "8221cc76d3f5de19242aa59a86cd3b16e768f4c7fb4767d52ba0fb204a2118b9",
+  "distribution": "control-plane-kit-core+control-plane-kit-operations+control-plane-kit-servers",
+  "future_issue_laws": 247,
+  "issue": 1323,
+  "published_images": {
+    "http-active-router": "ghcr.io/openj92/control-plane-kit-servers/http-active-router@sha256:a58938fdc5c37bfda1b2b0dbd95fc0bf3ba7391f5ce3b8fdfb3956dccf0a01c8",
+    "http-multiplexer": "ghcr.io/openj92/control-plane-kit-servers/http-multiplexer@sha256:7fd15d9477db02c122e834d62074268a3b947b49b31fa3cad10d6a7737ca4fcb"
+  },
+  "published_smokes": {
+    "http-active-router": "passing-digest-only",
+    "http-multiplexer": "passing-digest-only"
+  },
+  "reviewed_laws": 268,
+  "reviewed_supersessions": 4,
+  "roadmap_baseline": "ebda338d86136c73ba39e7debd8d5310e839f1ad",
+  "schema": "cpk.semantic-test-reconciliation-evidence",
+  "server_products": {
+    "compileall": "passing",
+    "docker_residue_audit": "passing",
+    "focused_tests": 22,
+    "full_tests": 166,
+    "import_check": "passing",
+    "pr": "https://github.com/OpenJ92/control-plane-kit-servers/pull/71",
+    "repository_merge_commit": "d2fe4cbde6766616981d67e87e3e81462a3f58e7",
+    "source_image_commit": "568c2b6d8d8836b02d13f768bded843459339819"
+  },
+  "status": "passing",
+  "strengthened_current_laws": 17,
+  "workflow_publication": {
+    "active_router_run": 30779435585,
+    "multiplexer_run": 30779440288,
+    "outcome": "failed-before-push-permission-denied",
+    "tracking_issue": "https://github.com/OpenJ92/control-plane-kit-servers/issues/70"
+  }
+}

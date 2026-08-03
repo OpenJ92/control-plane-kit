@@ -1,0 +1,39 @@
+{
+  "candidate_reviews": [
+    {
+      "decision": "superseded",
+      "family": "test_workflows",
+      "law": "behavior.action-service-preserves-session-action-order",
+      "reason": "The frozen law asserts executable Postgres workflow service behavior: action ordinal assignment, durable session ordering, and service-backed persistence. Extracted core owns the command and persistence boundary contracts, not the workflow service implementation. The executable behavior remains required operations / cpk-server handoff evidence."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_workflows",
+      "law": "behavior.session-service-starts-and-closes-sessions",
+      "reason": "The frozen law asserts executable Postgres workflow service behavior: session lifecycle writes, UnitOfWork participation, and durable idempotency. Extracted core owns the command and persistence boundary contracts, not the workflow service implementation. The executable behavior remains required operations / cpk-server handoff evidence."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_workflows",
+      "law": "behavior.workflow-services-do-not-mutate-graph-truth",
+      "reason": "The frozen law asserts executable workflow service separation from graph truth stores. Extracted core owns the contract boundary naming graph-truth separation, not the mutable workflow services or stores. The executable behavior remains required operations / cpk-server handoff evidence."
+    }
+  ],
+  "review": "issue-792",
+  "reviewed_supersessions": [
+    {
+      "law": "behavior.action-service-preserves-session-action-order",
+      "reference": "tests.test_workflows.WorkflowServiceTests.test_action_service_preserves_session_action_order"
+    },
+    {
+      "law": "behavior.session-service-starts-and-closes-sessions",
+      "reference": "tests.test_workflows.WorkflowServiceTests.test_session_service_starts_and_closes_sessions"
+    },
+    {
+      "law": "behavior.workflow-services-do-not-mutate-graph-truth",
+      "reference": "tests.test_workflows.WorkflowServiceTests.test_workflow_services_do_not_mutate_graph_truth"
+    }
+  ],
+  "schema": "cpk.supersession-review",
+  "summary": "The operations contract batch closeout supersedes only the claim that frozen workflow-service execution belongs in extracted core. Core retains the pure command and persistence boundary contracts from #787 and #791; session execution, ordering, graph-truth separation enforcement, Postgres stores, UnitOfWork, and idempotency remain operations / cpk-server responsibilities."
+}

@@ -1,0 +1,51 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/source:ro -w /tmp -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim sh -c 'cp -a /source /tmp/pkg && cd /tmp/pkg && python -m pip install --root-user-action=ignore . >/tmp/pip.log && python -m unittest tests.test_probe_intents tests.test_milestone_closeout'",
+  "evidence": "The extracted core probe-intent unittest module proves the #761 pure probe language without importing the frozen package. Successor tests preserve distinct process, transport, application-health, and readiness objects; closed endpoint contexts; protocol-specific endpoint schemes; safe literal endpoint material; secret-reference-only descriptors; finite probe policy; deterministic redacted intent descriptors; and layer-coherent observations while deliberately excluding HTTP clients, Docker inspection, socket attempts, DNS resolution, Postgres connections, health adapters, stores, and process execution.",
+  "frozen_laws": [
+    "behavior.application-health-is-derived-only-from-matching-http-material",
+    "behavior.endpoint-contexts-preserve-private-host-and-public-meaning",
+    "behavior.endpoint-scheme-cannot-lie-about-semantic-protocol",
+    "behavior.every-failure-outcome-remains-distinct-from-readiness",
+    "behavior.every-protocol-has-explicit-safe-endpoint-schemes",
+    "behavior.literal-targets-reject-credentials-query-fragments-and-protocol-lies",
+    "behavior.missing-health-and-mismatched-protocol-are-typed-construction-failures",
+    "behavior.probe-intent-descriptors-are-deterministic-and-redacted",
+    "behavior.probe-observations-accept-only-layer-coherent-outcomes",
+    "behavior.probe-observations-reject-cross-layer-claims",
+    "behavior.probe-policy-is-finite-and-deterministic",
+    "behavior.process-transport-health-and-readiness-are-distinct-objects",
+    "behavior.secret-endpoint-descriptors-retain-only-the-reference"
+  ],
+  "reference_tests": [
+    "tests.test_probe_intents.ProbeIntentTests.test_application_health_is_derived_only_from_matching_http_material",
+    "tests.test_probe_intents.ProbeIntentTests.test_endpoint_contexts_preserve_private_host_and_public_meaning",
+    "tests.test_probe_intents.ProbeIntentTests.test_endpoint_scheme_cannot_lie_about_semantic_protocol",
+    "tests.test_probe_intents.ProbeIntentTests.test_every_failure_outcome_remains_distinct_from_readiness",
+    "tests.test_probe_intents.ProbeIntentTests.test_every_protocol_has_explicit_safe_endpoint_schemes",
+    "tests.test_probe_intents.ProbeIntentTests.test_literal_targets_reject_credentials_query_fragments_and_protocol_lies",
+    "tests.test_probe_intents.ProbeIntentTests.test_missing_health_and_mismatched_protocol_are_typed_construction_failures",
+    "tests.test_probe_intents.ProbeIntentTests.test_probe_intent_descriptors_are_deterministic_and_redacted",
+    "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_accept_only_layer_coherent_outcomes",
+    "tests.test_probe_intents.ProbeIntentTests.test_probe_observations_reject_cross_layer_claims",
+    "tests.test_probe_intents.ProbeIntentTests.test_probe_policy_is_finite_and_deterministic",
+    "tests.test_probe_intents.ProbeIntentTests.test_process_transport_health_and_readiness_are_distinct_objects",
+    "tests.test_probe_intents.ProbeIntentTests.test_secret_endpoint_descriptors_retain_only_the_reference"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_application_health_is_derived_only_from_matching_http_material",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_endpoint_contexts_preserve_private_host_and_public_meaning",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_endpoint_scheme_cannot_lie_about_semantic_protocol",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_every_failure_outcome_remains_distinct_from_readiness",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_every_protocol_has_explicit_safe_endpoint_schemes",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_literal_targets_reject_credentials_query_fragments_and_protocol_lies",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_missing_health_and_mismatched_protocol_are_typed_construction_failures",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_probe_intent_descriptors_are_deterministic_and_redacted",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_probe_observations_accept_only_layer_coherent_outcomes",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_probe_observations_reject_cross_layer_claims",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_probe_policy_is_finite_and_deterministic",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_process_transport_health_and_readiness_are_distinct_objects",
+    "control-plane-kit-core.tests.test_probe_intents.ProbeIntentTests.test_secret_endpoint_descriptors_retain_only_the_reference"
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "schema": "cpk.extract-e.core-release-candidate-evidence",
+  "package": {
+    "name": "control-plane-kit-core",
+    "version": "0.1.0",
+    "dependencies": [
+      "Jinja2>=3.1",
+      "PyYAML>=6.0"
+    ],
+    "has_optional_dependency_extras": false,
+    "has_process_entrypoints": false
+  },
+  "validation": {
+    "core_test_command": "./control-plane-kit-core/test.sh",
+    "core_tests": 374,
+    "compileall": "passed",
+    "import_outside_source_tree": "passed",
+    "top_level_test_command": "./test.sh",
+    "top_level_tests": 1212,
+    "parity_command": "./validate-parity.sh foundation"
+  },
+  "required_core_closeout": {
+    "required_core": 780,
+    "completed_required_core": 780,
+    "incomplete_required_core": 0,
+    "required_non_core": 100,
+    "deferred": 227
+  },
+  "foundation_parity": {
+    "valid": true,
+    "migration_complete": false,
+    "entries": 1107,
+    "required": 880,
+    "deferred": 227,
+    "incomplete_required": 100,
+    "findings": 0
+  },
+  "evidence_artifacts": [
+    "artifacts/extraction/parity-manifest.json",
+    "artifacts/extraction/parity-validation-report.json",
+    "artifacts/extraction/required-core-closeout-report.json",
+    "artifacts/extraction/required-core-family-inventory.json",
+    "artifacts/extraction/successor-evidence.json",
+    "artifacts/extraction/successor-proofs/extract-e-742-core-release-contracts.json",
+    "artifacts/extraction/successor-proofs/extract-e-755-environment-secrets.json",
+    "artifacts/extraction/successor-proofs/extract-e-763-policy-decisions.json",
+    "artifacts/extraction/successor-proofs/extract-e-791-persistence-boundary-contract.json"
+  ],
+  "forbidden_core_artifacts": [
+    "cpk-server Dockerfile",
+    "cpk-server OCI image",
+    "cpk-server product descriptor",
+    "hosted FastAPI process",
+    "hosted MCP server",
+    "Postgres store implementation",
+    "Docker interpreter",
+    "cloud runtime interpreter"
+  ],
+  "handoff_issues": {
+    "cpk_server_process": "#804",
+    "operations_runtime_acceptance": "#805",
+    "interpreter_runtime_extraction": "#806"
+  }
+}

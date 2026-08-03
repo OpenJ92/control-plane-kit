@@ -14,6 +14,7 @@ from control_plane_kit_core.topology.changes import (
     EdgeValue,
     EndpointValue,
     ConfigurationArtifactsValue,
+    DelegationVerifierProjectionValue,
     SecretDeliveriesValue,
     EnvironmentBindingsValue,
     FieldSubject,
@@ -21,6 +22,7 @@ from control_plane_kit_core.topology.changes import (
     MetadataValue,
     ModifiedChange,
     NodeValue,
+    PublicIngressValue,
     RemovedChange,
     RuntimeValue,
     SocketContractValue,
@@ -36,6 +38,7 @@ from control_plane_kit_core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,
+    PublicIngressSubject,
     RuntimeSubject,
     ValidatedGraph,
 )
@@ -73,6 +76,8 @@ def diff_graphs(current: ValidatedGraph, desired: ValidatedGraph) -> GraphDiff:
     _diff_runtimes(current_graph, desired_graph, changes)
     _diff_nodes(current_graph, desired_graph, codec, changes)
     _diff_edges(current_graph, desired_graph, changes)
+    _diff_public_ingresses(current_graph, desired_graph, changes)
+    _diff_delegation_authorities(current_graph, desired_graph, changes)
     return GraphDiff(
         current_graph.name,
         desired_graph.name,
@@ -122,6 +127,14 @@ def _diff_runtimes(
                     StringTupleValue(after.children),
                 )
             )
+        if before.authority_ref != after.authority_ref:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(subject, StructuralField.RUNTIME_AUTHORITY),
+                    MetadataValue(_runtime_authority_value(before)),
+                    MetadataValue(_runtime_authority_value(after)),
+                )
+            )
         if before.metadata != after.metadata:
             changes.append(
                 ModifiedChange(
@@ -138,6 +151,14 @@ def _diff_runtimes(
                     MetadataValue(after.lifecycle.descriptor()),
                 )
             )
+
+
+def _runtime_authority_value(runtime: RuntimeRecord) -> dict[str, object]:
+    return {
+        "authority_ref": None
+        if runtime.authority_ref is None
+        else runtime.authority_ref.descriptor()
+    }
 
 
 def _diff_nodes(
@@ -247,6 +268,21 @@ def _diff_nodes(
                     SecretDeliveriesValue(after.secret_deliveries),
                 )
             )
+        if before.delegation_verifier_projection != after.delegation_verifier_projection:
+            changes.append(
+                ModifiedChange(
+                    FieldSubject(
+                        subject,
+                        StructuralField.DELEGATION_VERIFIER_PROJECTION,
+                    ),
+                    DelegationVerifierProjectionValue(
+                        before.delegation_verifier_projection
+                    ),
+                    DelegationVerifierProjectionValue(
+                        after.delegation_verifier_projection
+                    ),
+                )
+            )
         if before.lifecycle != after.lifecycle:
             changes.append(
                 ModifiedChange(
@@ -314,6 +350,73 @@ def _diff_edges(
                     EdgeValue(desired.edges[edge_id]),
                 )
             )
+
+
+def _diff_public_ingresses(
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+    changes: list[StructuralChange],
+) -> None:
+    current_by_id = {ingress.ingress_id: ingress for ingress in current.public_ingresses}
+    desired_by_id = {ingress.ingress_id: ingress for ingress in desired.public_ingresses}
+    current_ids = set(current_by_id)
+    desired_ids = set(desired_by_id)
+    for ingress_id in sorted(desired_ids - current_ids):
+        changes.append(
+            AddedChange(
+                PublicIngressSubject(ingress_id),
+                PublicIngressValue(desired_by_id[ingress_id]),
+            )
+        )
+    for ingress_id in sorted(current_ids - desired_ids):
+        changes.append(
+            RemovedChange(
+                PublicIngressSubject(ingress_id),
+                PublicIngressValue(current_by_id[ingress_id]),
+            )
+        )
+    for ingress_id in sorted(current_ids & desired_ids):
+        if current_by_id[ingress_id] != desired_by_id[ingress_id]:
+            changes.append(
+                ModifiedChange(
+                    PublicIngressSubject(ingress_id),
+                    PublicIngressValue(current_by_id[ingress_id]),
+                    PublicIngressValue(desired_by_id[ingress_id]),
+                )
+            )
+
+
+def _diff_delegation_authorities(
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+    changes: list[StructuralChange],
+) -> None:
+    if current.delegation_authorities == desired.delegation_authorities:
+        return
+    changes.append(
+        ModifiedChange(
+            FieldSubject(
+                GraphSubject(),
+                StructuralField.DELEGATION_AUTHORITIES,
+            ),
+            MetadataValue(
+                {
+                    "bindings": [
+                        value.descriptor()
+                        for value in current.delegation_authorities
+                    ]
+                }
+            ),
+            MetadataValue(
+                {
+                    "bindings": [
+                        value.descriptor()
+                        for value in desired.delegation_authorities
+                    ]
+                }
+            ),
+        )
+    )
 
 
 def _node_value(node: Node, codec: GraphDescriptorCodec) -> NodeValue:

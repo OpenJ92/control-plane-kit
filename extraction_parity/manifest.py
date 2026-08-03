@@ -23,6 +23,13 @@ ENTRY_FIELDS = {
     "successors",
     "supersession",
 }
+SUPERSESSION_FIELDS = {
+    "rationale",
+    "review",
+    "obsolete_assumption",
+    "replacement",
+    "negative_case_disposition",
+}
 
 
 def _bounded_text(value: object, field: str) -> str:
@@ -76,12 +83,12 @@ def decode_manifest(document: dict[str, object]) -> dict[str, object]:
             _bounded_text(successor["evidence"], "successor.evidence")
         supersession = entry["supersession"]
         if supersession is not None:
-            if not isinstance(supersession, dict) or set(supersession) != {"rationale", "review"}:
-                raise ManifestError("supersession requires rationale and review")
+            if not isinstance(supersession, dict) or set(supersession) != SUPERSESSION_FIELDS:
+                raise ManifestError("supersession requires complete reviewed structural record")
             if successors:
                 raise ManifestError("superseded entries cannot also have successors")
-            _bounded_text(supersession["rationale"], "supersession.rationale")
-            _bounded_text(supersession["review"], "supersession.review")
+            for field in sorted(SUPERSESSION_FIELDS):
+                _bounded_text(supersession[field], f"supersession.{field}")
     return document
 
 

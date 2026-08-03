@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from typing import Protocol as TypingProtocol
 
 from control_plane_kit_core.algebra import (
@@ -12,6 +13,11 @@ from control_plane_kit_core.algebra import (
     RequirementSocket,
 )
 from control_plane_kit_core.capabilities import CapabilityName
+from control_plane_kit_core.delegation_authority import (
+    DelegationAuthorityBinding,
+    DelegationAuthorityError,
+    DelegationVerifierProjection,
+)
 from control_plane_kit_core.configuration import (
     ConfigurationArtifact,
     ConfigurationArtifactError,
@@ -31,6 +37,12 @@ from control_plane_kit_core.lifecycle import (
     ResourceLifecycle,
     ResourceOwnership,
     ResourcePersistence,
+)
+from control_plane_kit_core.public_ingress import NamedPublicIngressCodec
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityReference,
+    RuntimeAuthorityReferenceCodec,
+    RuntimeEffectContractError,
 )
 from control_plane_kit_core.topology.graph import (
     DeploymentGraph,
@@ -142,7 +154,7 @@ class GraphDescriptorCodec:
     def encode(self, graph: DeploymentGraph) -> dict[str, object]:
         if not isinstance(graph, DeploymentGraph):
             raise MalformedGraphDescriptor("encode requires DeploymentGraph")
-        descriptor = {
+        descriptor: dict[str, object] = {
             "name": graph.name,
             "runtimes": {
                 key: value.descriptor() for key, value in sorted(graph.runtimes.items())
@@ -151,7 +163,18 @@ class GraphDescriptorCodec:
                 key: self._encode_node(value) for key, value in sorted(graph.nodes.items())
             },
             "edges": {key: value.descriptor() for key, value in sorted(graph.edges.items())},
+            "public_ingresses": [
+                NamedPublicIngressCodec().encode(value)
+                for value in sorted(
+                    graph.public_ingresses,
+                    key=lambda ingress: ingress.ingress_id,
+                )
+            ],
         }
+        if graph.delegation_authorities:
+            descriptor["delegation_authorities"] = [
+                value.descriptor() for value in graph.delegation_authorities
+            ]
         self._validate(graph)
         return descriptor
 
@@ -186,6 +209,25 @@ class GraphDescriptorCodec:
             graph = graph.add_node(self._decode_node(str(node_id), _mapping(value, "node")))
         for edge_id, value in sorted(_mapping(top.get("edges", {}), "edges").items()):
             graph = graph.add_edge(self._decode_edge(str(edge_id), _mapping(value, "edge")))
+        for value in _list(top.get("public_ingresses", [])):
+            graph = graph.add_public_ingress(
+                NamedPublicIngressCodec().decode(
+                    _mapping(value, "public ingress")
+                )
+            )
+        for value in _list(top.get("delegation_authorities", [])):
+            try:
+                graph = replace(
+                    graph,
+                    delegation_authorities=(
+                        *graph.delegation_authorities,
+                        DelegationAuthorityBinding.from_descriptor(
+                            _mapping(value, "delegation authority")
+                        ),
+                    ),
+                )
+            except DelegationAuthorityError as error:
+                raise MalformedGraphDescriptor(str(error)) from error
         self._validate(graph)
         encoded = self.encode(graph)
         if encoded != _json_value(descriptor):
@@ -206,6 +248,7 @@ class GraphDescriptorCodec:
             runtime_id=runtime_id,
             kind=kind,
             children=tuple(str(child) for child in _list(descriptor.get("children", []))),
+            authority_ref=_runtime_authority_ref(descriptor.get("authority_ref")),
             metadata=_string_mapping(descriptor.get("metadata", {}), "runtime.metadata"),
             lifecycle=_lifecycle(descriptor.get("lifecycle"), "runtime.lifecycle"),
         )
@@ -236,6 +279,17 @@ class GraphDescriptorCodec:
                 ),
                 required=_boolean(_mapping(value, "requirement"), "required", default=True),
                 binding=_socket_binding(value),
+                secret_deliveries=tuple(
+                    secret_delivery_from_descriptor(
+                        _mapping(item, "requirement secret delivery")
+                    )
+                    for item in _list(
+                        _mapping(value, "requirement").get(
+                            "secret_deliveries",
+                            [],
+                        )
+                    )
+                ),
             )
             for name, value in sorted(
                 _mapping(descriptor.get("requirements", {}), "requirements").items()
@@ -285,6 +339,9 @@ class GraphDescriptorCodec:
             ),
             secret_deliveries=_secret_deliveries(
                 descriptor.get("secret_deliveries", [])
+            ),
+            delegation_verifier_projection=_delegation_verifier_projection(
+                descriptor.get("delegation_verifier_projection")
             ),
         )
 
@@ -348,6 +405,42 @@ class GraphDescriptorCodec:
                 raise InvalidGraphReference(str(error)) from error
             if provider.protocol != edge.protocol or requirement.protocol != edge.protocol:
                 raise InvalidGraphReference(f"edge {edge_id!r} has incompatible protocol")
+        for ingress in graph.public_ingresses:
+            try:
+                target = graph.node(ingress.target.node_id)
+                target.provider_socket(ingress.target.provider_socket)
+                connector = graph.node(ingress.connector_node_id)
+            except KeyError as error:
+                raise InvalidGraphReference(str(error)) from error
+            if connector.runtime_id != target.runtime_id:
+                raise InvalidGraphReference(
+                    f"public ingress {ingress.ingress_id!r} connector must share target runtime"
+                )
+        for binding in graph.delegation_authorities:
+            try:
+                node = graph.node(binding.delegate_node_id)
+            except KeyError as error:
+                raise InvalidGraphReference(str(error)) from error
+            projection = node.delegation_verifier_projection
+            if projection is not None and (
+                projection.binding_identity != binding.identity
+                or projection.issuer != binding.issuer
+            ):
+                raise InvalidGraphReference(
+                    "delegation verifier projection does not match authored binding"
+                )
+        binding_identities = {
+            binding.identity for binding in graph.delegation_authorities
+        }
+        for node in graph.nodes.values():
+            projection = node.delegation_verifier_projection
+            if (
+                projection is not None
+                and projection.binding_identity not in binding_identities
+            ):
+                raise InvalidGraphReference(
+                    "delegation verifier projection requires an authored binding"
+                )
 
 
 DEFAULT_GRAPH_CODEC = GraphDescriptorCodec()
@@ -453,6 +546,30 @@ def _lifecycle(value: object, path: str) -> ResourceLifecycle:
     except ValueError as error:
         raise UnknownGraphVariant(f"unknown resource lifecycle variant: {error}") from error
     return ResourceLifecycle(ownership, compute, data)
+
+
+def _runtime_authority_ref(value: object) -> RuntimeAuthorityReference | None:
+    if value is None:
+        return None
+    try:
+        return RuntimeAuthorityReferenceCodec().decode(
+            _mapping(value, "runtime.authority_ref")
+        )
+    except RuntimeEffectContractError as error:
+        raise MalformedGraphDescriptor(str(error)) from error
+
+
+def _delegation_verifier_projection(
+    value: object,
+) -> DelegationVerifierProjection | None:
+    if value is None:
+        return None
+    try:
+        return DelegationVerifierProjection.from_descriptor(
+            _mapping(value, "delegation verifier projection")
+        )
+    except DelegationAuthorityError as error:
+        raise MalformedGraphDescriptor(str(error)) from error
 
 
 def _endpoint_address(value: object) -> LiteralAddress | SecretReferenceAddress:

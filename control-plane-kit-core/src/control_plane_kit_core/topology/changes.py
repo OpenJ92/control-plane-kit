@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+import hashlib
 from typing import Mapping, TypeAlias
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec
 from control_plane_kit_core.configuration import ConfigurationArtifact
+from control_plane_kit_core.delegation_authority import DelegationVerifierProjection
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
 )
+from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.secrets import SecretDelivery, secret_delivery_sort_key
 from control_plane_kit_core.topology.graph import (
     Edge,
@@ -25,6 +28,7 @@ from control_plane_kit_core.topology.validation import (
     EdgeSubject,
     GraphSubject,
     NodeSubject,
+    PublicIngressSubject,
     RuntimeSubject,
 )
 
@@ -43,6 +47,7 @@ class StructuralField(StrEnum):
     GRAPH_NAME = "graph-name"
     RUNTIME_KIND = "runtime-kind"
     RUNTIME_CONTAINMENT = "runtime-containment"
+    RUNTIME_AUTHORITY = "runtime-authority"
     RUNTIME_METADATA = "runtime-metadata"
     BLOCK_FAMILY = "block-family"
     BLOCK_SPECIFICATION = "block-specification"
@@ -55,10 +60,12 @@ class StructuralField(StrEnum):
     NODE_METADATA = "node-metadata"
     CONFIGURATION_ARTIFACTS = "configuration-artifacts"
     SECRET_DELIVERIES = "secret-deliveries"
+    DELEGATION_AUTHORITIES = "delegation-authorities"
+    DELEGATION_VERIFIER_PROJECTION = "delegation-verifier-projection"
     RESOURCE_LIFECYCLE = "resource-lifecycle"
 
 
-DiffOwner: TypeAlias = GraphSubject | RuntimeSubject | NodeSubject
+DiffOwner: TypeAlias = GraphSubject | RuntimeSubject | NodeSubject | PublicIngressSubject
 
 
 @dataclass(frozen=True)
@@ -78,7 +85,12 @@ class FieldSubject:
 
 
 DiffSubject: TypeAlias = (
-    GraphSubject | RuntimeSubject | NodeSubject | EdgeSubject | FieldSubject
+    GraphSubject
+    | RuntimeSubject
+    | NodeSubject
+    | EdgeSubject
+    | PublicIngressSubject
+    | FieldSubject
 )
 
 
@@ -141,11 +153,35 @@ class ConfigurationArtifactsValue:
 class SecretDeliveriesValue:
     values: tuple[SecretDelivery, ...]
 
-    def descriptor(self) -> list[dict[str, str]]:
-        return [
-            value.descriptor()
-            for value in sorted(self.values, key=secret_delivery_sort_key)
-        ]
+    def descriptor(self) -> list[dict[str, object]]:
+        descriptors: list[dict[str, object]] = []
+        for value in sorted(self.values, key=secret_delivery_sort_key):
+            descriptor = dict(value.descriptor())
+            reference_id = descriptor.get("reference_id")
+            if isinstance(reference_id, str):
+                descriptor["reference_fingerprint"] = hashlib.sha256(
+                    reference_id.encode("utf-8")
+                ).hexdigest()
+            descriptor["reference_id"] = _REDACTED
+            descriptors.append(descriptor)
+        return descriptors
+
+
+@dataclass(frozen=True)
+class DelegationVerifierProjectionValue:
+    value: DelegationVerifierProjection | None
+
+    def descriptor(self) -> dict[str, object] | None:
+        if self.value is None:
+            return None
+        return {
+            "delegate_node_id": self.value.delegate_node_id,
+            "purpose": self.value.purpose.value,
+            "issuer": self.value.issuer,
+            "audience": self.value.audience,
+            "projection_id": self.value.projection_id,
+            "public_keys": [key.descriptor() for key in self.value.public_keys],
+        }
 
 
 @dataclass(frozen=True)
@@ -182,6 +218,16 @@ class SocketContractValue:
                     "binding": socket.binding.value,
                     "env_bindings": list(socket.env_bindings),
                     "required": socket.required,
+                    **(
+                        {
+                            "secret_deliveries": [
+                                value.descriptor()
+                                for value in socket.secret_deliveries
+                            ]
+                        }
+                        if socket.secret_deliveries
+                        else {}
+                    ),
                 }
                 for socket in sorted(
                     self.sockets.requirements,
@@ -245,6 +291,9 @@ class NodeValue:
             "secret_deliveries": SecretDeliveriesValue(
                 self.node.secret_deliveries
             ).descriptor(),
+            "delegation_verifier_projection": DelegationVerifierProjectionValue(
+                self.node.delegation_verifier_projection
+            ).descriptor(),
         }
 
 
@@ -271,6 +320,14 @@ class EdgeValue:
         }
 
 
+@dataclass(frozen=True)
+class PublicIngressValue:
+    ingress: NamedPublicIngress
+
+    def descriptor(self) -> dict[str, object]:
+        return self.ingress.descriptor()
+
+
 DiffValue: TypeAlias = (
     TextValue
     | StringTupleValue
@@ -284,6 +341,7 @@ DiffValue: TypeAlias = (
     | RuntimeValue
     | NodeValue
     | EdgeValue
+    | PublicIngressValue
 )
 
 

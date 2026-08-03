@@ -29,6 +29,7 @@ class ApplicationProtocol(StrEnum):
     AMQP = "amqp"
     KAFKA = "kafka"
     S3 = "s3"
+    MCP_STREAMABLE_HTTP = "mcp-streamable-http"
 
 
 _ALLOWED_TRANSPORTS: dict[ApplicationProtocol, frozenset[Transport]] = {
@@ -44,6 +45,7 @@ _ALLOWED_TRANSPORTS: dict[ApplicationProtocol, frozenset[Transport]] = {
     ApplicationProtocol.AMQP: frozenset((Transport.TCP,)),
     ApplicationProtocol.KAFKA: frozenset((Transport.TCP,)),
     ApplicationProtocol.S3: frozenset((Transport.TCP,)),
+    ApplicationProtocol.MCP_STREAMABLE_HTTP: frozenset((Transport.TCP,)),
 }
 
 
@@ -68,6 +70,7 @@ class Protocol:
     AMQP: ClassVar["Protocol"]
     KAFKA: ClassVar["Protocol"]
     S3: ClassVar["Protocol"]
+    MCP_STREAMABLE_HTTP: ClassVar["Protocol"]
 
     def __post_init__(self) -> None:
         if not isinstance(self.transport, Transport):
@@ -170,6 +173,10 @@ Protocol.NATS = Protocol(Transport.TCP, ApplicationProtocol.NATS)
 Protocol.AMQP = Protocol(Transport.TCP, ApplicationProtocol.AMQP)
 Protocol.KAFKA = Protocol(Transport.TCP, ApplicationProtocol.KAFKA)
 Protocol.S3 = Protocol(Transport.TCP, ApplicationProtocol.S3)
+Protocol.MCP_STREAMABLE_HTTP = Protocol(
+    Transport.TCP,
+    ApplicationProtocol.MCP_STREAMABLE_HTTP,
+)
 
 
 _PROTOCOL_BY_VALUE = {
@@ -189,6 +196,7 @@ _PROTOCOL_BY_VALUE = {
         Protocol.AMQP,
         Protocol.KAFKA,
         Protocol.S3,
+        Protocol.MCP_STREAMABLE_HTTP,
     )
 }
 
@@ -207,6 +215,7 @@ _ENDPOINT_SCHEMES: dict[Protocol, frozenset[str]] = {
     Protocol.AMQP: frozenset(("amqp", "amqps")),
     Protocol.KAFKA: frozenset(("kafka",)),
     Protocol.S3: frozenset(("s3", "http", "https")),
+    Protocol.MCP_STREAMABLE_HTTP: frozenset(("http", "https")),
 }
 
 

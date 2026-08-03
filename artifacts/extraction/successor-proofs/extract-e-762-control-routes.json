@@ -1,0 +1,30 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/source:ro -w /tmp -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim sh -c 'cp -a /source /tmp/pkg && cd /tmp/pkg && python -m pip install --root-user-action=ignore . >/tmp/pip.log && python -m unittest tests.test_control_routes'",
+  "evidence": "The extracted core control-route unittest module proves the pure route descriptor language without importing FastAPI, ASGI, server state, runtime mutation handlers, or effect interpreters. Successor tests preserve closed route-set names, methods, scopes, paths, descriptor shape, configurable prefix construction, and fail-closed route lookup.",
+  "frozen_laws": [
+    "behavior.all-required-route-sets-are-present",
+    "behavior.common-status-routes-match-protocol-contract",
+    "behavior.control-path-uses-configurable-prefix",
+    "behavior.route-set-named-accepts-string-or-enum",
+    "behavior.route-sets-have-json-friendly-descriptors",
+    "behavior.unknown-route-set-fails-loudly"
+  ],
+  "reference_tests": [
+    "tests.test_control_routes.ControlRouteTests.test_all_required_route_sets_are_present",
+    "tests.test_control_routes.ControlRouteTests.test_common_status_routes_match_protocol_contract",
+    "tests.test_control_routes.ControlRouteTests.test_control_path_uses_configurable_prefix",
+    "tests.test_control_routes.ControlRouteTests.test_route_set_named_accepts_string_or_enum",
+    "tests.test_control_routes.ControlRouteTests.test_route_sets_have_json_friendly_descriptors",
+    "tests.test_control_routes.ControlRouteTests.test_unknown_route_set_fails_loudly"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_all_required_route_sets_are_present",
+    "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_common_status_routes_match_protocol_contract",
+    "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_control_path_uses_configurable_prefix",
+    "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_route_set_named_accepts_string_or_enum",
+    "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_route_sets_have_json_friendly_descriptors",
+    "control-plane-kit-core.tests.test_control_routes.ControlRouteTests.test_unknown_route_set_fails_loudly"
+  ]
+}

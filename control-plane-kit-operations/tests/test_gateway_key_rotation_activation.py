@@ -1,0 +1,433 @@
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+import os
+from threading import Barrier
+import unittest
+
+import psycopg
+
+from gateway_rotation_overlap_fixture import (
+    CrashAfterCommitUnitOfWork,
+    CrashControl,
+    GatewayRotationOverlapFixture,
+    PUBLIC_KEY_A,
+    PUBLIC_KEY_B,
+    PUBLIC_KEY_OTHER,
+    SimulatedProcessLoss,
+)
+from control_plane_kit_core.delegation_authority import (
+    DelegationVerifierProjection,
+    materialize_delegation_verifiers,
+)
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.secrets import (
+    SecretProviderEndpointReference,
+    SecretProviderId,
+    SecretReference,
+    SecretUseIntent,
+)
+from control_plane_kit_operations.delegation_signing_keys import (
+    DelegationSigningKeyRegistrationService,
+    RegisteredDelegationSigningKeyStatus,
+    RevokeDelegationSigningKeyCommand,
+)
+from control_plane_kit_operations.gateway_key_rotation_activation import (
+    GatewayKeyRotationActivationAuthorizationDenied,
+    GatewayKeyRotationActivationConflict,
+    GatewayKeyRotationActivationOutcome,
+    GatewayKeyRotationActivationProgram,
+    ProgressGatewayKeyRotationActivation,
+)
+from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotation,
+    GatewayKeyRotationDeploymentCheckpoint,
+    GatewayKeyRotationDeploymentPhase,
+    GatewayKeyRotationDeploymentStatus,
+    GatewayKeyRotationService,
+    GatewayKeyRotationStatus,
+)
+from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.records import (
+    RealizedGraphProjectionKind,
+    RealizedGraphProjectionRecord,
+)
+from control_plane_kit_operations.secret_providers import (
+    RegisterSecretProviderCommand,
+    RegisterSecretReferenceCommand,
+    RevokeSecretReferenceCommand,
+    SecretProviderKind,
+    SecretProviderRegistrationService,
+)
+
+
+class GatewayKeyRotationActivationTests(
+    GatewayRotationOverlapFixture,
+    unittest.TestCase,
+):
+    def setUp(self) -> None:
+        database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
+        if not database_url:
+            raise RuntimeError("run through control-plane-kit-operations/test.sh")
+        self.database_url = database_url
+        self.connection = psycopg.connect(database_url, autocommit=True)
+        install_schema(self.connection)
+        self.epoch = 1_000
+        self.reset_truth()
+
+    def tearDown(self) -> None:
+        self.connection.close()
+
+    def reset_truth(self) -> None:
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.seed_graph_and_keys()
+        self._admit_key_references()
+        self.seed_rotation_approval()
+        self._accept_overlap()
+
+    def unit_of_work(self) -> PostgresUnitOfWork:
+        return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
+
+    def crashing_unit_of_work(self, control: CrashControl):
+        return CrashAfterCommitUnitOfWork(self.unit_of_work(), control)
+
+    def program(self, *, unit_of_work_factory=None):
+        return GatewayKeyRotationActivationProgram(
+            unit_of_work_factory or self.unit_of_work,
+            clock=lambda: "2026-08-02T04:00:00Z",
+            trusted_epoch_clock=lambda: self.epoch,
+        )
+
+    def command(
+        self,
+        *,
+        expected_version: int | None = None,
+        scopes: tuple[PolicyScope, ...] | None = None,
+    ) -> ProgressGatewayKeyRotationActivation:
+        return ProgressGatewayKeyRotationActivation(
+            rotation_id=self.rotation_id,
+            expected_overlap_version=(
+                self.overlap_version if expected_version is None else expected_version
+            ),
+            actor_id="operator-a",
+            actor_scopes=scopes
+            or (
+                PolicyScope.DELEGATION_KEY_ROTATE,
+                PolicyScope.DELEGATION_KEY_ACTIVATE,
+            ),
+        )
+
+    def test_activates_b_and_enforces_typed_drain_barrier(self) -> None:
+        result = self.program().progress(self.command())
+
+        self.assertIs(result.outcome, GatewayKeyRotationActivationOutcome.WAITING)
+        self.assertIs(
+            result.rotation.status,
+            GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
+        )
+        self.assertEqual(result.observed_at_epoch, 1_000)
+        self.assertEqual(result.drain_deadline_epoch, 1_065)
+        self.assertEqual(
+            self._key_statuses(),
+            {
+                "key-a": RegisteredDelegationSigningKeyStatus.VERIFY_ONLY,
+                "key-b": RegisteredDelegationSigningKeyStatus.ACTIVE,
+            },
+        )
+        self.assertEqual(
+            self._transition_targets(),
+            [
+                GatewayKeyRotationStatus.NEW_KEY_ACTIVE,
+                GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
+            ],
+        )
+        write_counts = self._write_counts()
+
+        self.epoch = 1_064
+        waiting = self.program().progress(self.command())
+        self.assertIs(waiting.outcome, GatewayKeyRotationActivationOutcome.WAITING)
+        self.assertEqual(self._write_counts(), write_counts)
+
+        self.epoch = 1_065
+        ready = self.program().progress(self.command())
+        self.assertIs(
+            ready.outcome,
+            GatewayKeyRotationActivationOutcome.READY_FOR_RETIREMENT,
+        )
+        self.assertEqual(ready.drain_deadline_epoch, 1_065)
+        self.assertEqual(self._write_counts(), write_counts)
+
+    def test_restart_after_activation_and_each_fold_converges(self) -> None:
+        # Snapshot read, activation, NEW_KEY_ACTIVE fold, DRAINING fold.
+        for crash_after_commit in (2, 3, 4):
+            with self.subTest(crash_after_commit=crash_after_commit):
+                self.reset_truth()
+                control = CrashControl(crash_after_commit)
+                with self.assertRaises(SimulatedProcessLoss):
+                    self.program(
+                        unit_of_work_factory=lambda: self.crashing_unit_of_work(
+                            control
+                        )
+                    ).progress(self.command())
+
+                recovered = self.program().progress(self.command())
+                self.assertIs(
+                    recovered.outcome,
+                    GatewayKeyRotationActivationOutcome.WAITING,
+                )
+                self.assertEqual(recovered.drain_deadline_epoch, 1_065)
+                self.assertEqual(
+                    self._key_statuses(),
+                    {
+                        "key-a": RegisteredDelegationSigningKeyStatus.VERIFY_ONLY,
+                        "key-b": RegisteredDelegationSigningKeyStatus.ACTIVE,
+                    },
+                )
+                self.assertEqual(len(self._transition_targets()), 2)
+
+    def test_permissions_and_stale_lineage_fail_closed(self) -> None:
+        with self.assertRaises(GatewayKeyRotationActivationAuthorizationDenied):
+            self.program().progress(
+                self.command(scopes=(PolicyScope.PLAN_EXECUTE,))
+            )
+        self.assertEqual(self._write_counts(), (0, 2))
+
+        with self.assertRaises(GatewayKeyRotationActivationConflict):
+            self.program().progress(
+                self.command(expected_version=self.overlap_version + 1)
+            )
+        self.assertEqual(self._write_counts(), (0, 2))
+
+    def test_revoked_reference_fails_before_activation(self) -> None:
+        SecretProviderRegistrationService(self.unit_of_work).revoke_reference(
+            RevokeSecretReferenceCommand(
+                workspace_id="workspace-a",
+                registration_id=self.reference_b_registration_id,
+                revoked_by="operator-a",
+                revoked_at="2026-08-02T03:59:00Z",
+                actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+            )
+        )
+        with self.assertRaises(GatewayKeyRotationActivationConflict):
+            self.program().progress(self.command())
+        self.assertEqual(
+            self._key_statuses(),
+            {
+                "key-a": RegisteredDelegationSigningKeyStatus.ACTIVE,
+                "key-b": RegisteredDelegationSigningKeyStatus.VERIFY_ONLY,
+            },
+        )
+
+    def test_stale_key_status_fails_before_rotation_fold(self) -> None:
+        DelegationSigningKeyRegistrationService(self.unit_of_work).revoke(
+            RevokeDelegationSigningKeyCommand(
+                workspace_id="workspace-a",
+                purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+                issuer="cpk-server",
+                key_id="key-b",
+                revoked_by="operator-a",
+                revoked_at="2026-08-02T03:59:00Z",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_REVOKE,),
+            )
+        )
+        with self.assertRaises(GatewayKeyRotationActivationConflict):
+            self.program().progress(self.command())
+        self.assertEqual(self._write_counts(), (0, 2))
+
+    def test_concurrent_progress_converges_without_extra_transitions(self) -> None:
+        barrier = Barrier(2)
+
+        def progress():
+            barrier.wait()
+            return self.program().progress(self.command())
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = tuple(pool.map(lambda _: progress(), range(2)))
+
+        self.assertEqual(results[0].rotation, results[1].rotation)
+        self.assertEqual(
+            {result.outcome for result in results},
+            {GatewayKeyRotationActivationOutcome.WAITING},
+        )
+        self.assertEqual(self._write_counts(), (2, 2))
+
+    def _accept_overlap(self) -> None:
+        rotations = GatewayKeyRotationService(
+            self.unit_of_work,
+            clock=lambda: self.epoch,
+        )
+        prepared_checkpoint = GatewayKeyRotationDeploymentCheckpoint(
+            phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
+            status=GatewayKeyRotationDeploymentStatus.PREPARED,
+            session_id="overlap-session",
+            plan_id="overlap-plan",
+            approval_request_id=self.approval_request_id,
+            approval_decision_id=self.approval_decision_id,
+            execution_request_id="overlap-request",
+            run_id="overlap-run",
+            base_authored_graph_id="graph-a",
+            base_realized_projection_id="projection-a",
+            desired_authored_graph_id="graph-a",
+            desired_realized_projection_id="projection-ab",
+            desired_revision=2,
+            prepared_at="2026-08-02T03:00:00Z",
+        )
+        generated = rotations.get(self.rotation_id)
+        deploying = rotations.advance(
+            AdvanceGatewayKeyRotation(
+                rotation_id=self.rotation_id,
+                transition_id="overlap-prepared",
+                expected_status=GatewayKeyRotationStatus.KEY_GENERATED,
+                expected_version=generated.version,
+                target_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                advanced_by="operator-a",
+                advanced_at="2026-08-02T03:00:00Z",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                deployment=prepared_checkpoint,
+            )
+        )
+        accepted_checkpoint = replace(
+            prepared_checkpoint,
+            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+            accepted_current_graph_id="graph-a",
+            accepted_current_projection_id="projection-ab",
+            accepted_at="2026-08-02T03:30:00Z",
+        )
+        accepted = rotations.advance(
+            AdvanceGatewayKeyRotation(
+                rotation_id=self.rotation_id,
+                transition_id="overlap-accepted",
+                expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                expected_version=deploying.version,
+                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
+                advanced_by="operator-a",
+                advanced_at="2026-08-02T03:30:00Z",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                deployment=accepted_checkpoint,
+            )
+        )
+        realized_ab = materialize_delegation_verifiers(
+            self.authored_graph(),
+            (
+                DelegationVerifierProjection(
+                    "gateway-a",
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    "cpk-server",
+                    "gateway:workspace-a:gateway-a",
+                    "projection-keys-ab",
+                    (
+                        self.public_key("key-a", PUBLIC_KEY_A),
+                        self.public_key("key-b", PUBLIC_KEY_B),
+                    ),
+                ),
+                self.projection(
+                    "gateway-other",
+                    "projection-other",
+                    self.public_key("key-other", PUBLIC_KEY_OTHER),
+                ),
+            ),
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.realized_graphs.save(
+                RealizedGraphProjectionRecord.from_graph(
+                    projection_id="projection-ab",
+                    workspace_id="workspace-a",
+                    source_authored_graph_id="graph-a",
+                    projection_kind=(
+                        RealizedGraphProjectionKind.DELEGATION_VERIFIER
+                    ),
+                    projection_key="rotation-overlap-ab",
+                    graph=realized_ab,
+                    created_by="operator-a",
+                    created_at="2026-08-02T03:30:00Z",
+                )
+            )
+            unit_of_work.stores.workspaces.set_current_graph(
+                "workspace-a", "graph-a", "projection-ab"
+            )
+            unit_of_work.stores.workspaces.set_desired_graph(
+                "workspace-a", "graph-a", "projection-ab"
+            )
+            unit_of_work.commit()
+        self.overlap_version = accepted.version
+
+    def _admit_key_references(self) -> None:
+        service = SecretProviderRegistrationService(self.unit_of_work)
+        provider = service.register_provider(
+            RegisterSecretProviderCommand(
+                workspace_id="workspace-a",
+                provider_id=SecretProviderId("workspace-secrets"),
+                provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
+                display_name="Workspace secrets",
+                endpoint_reference=SecretProviderEndpointReference("secrets-endpoint"),
+                credential_reference=SecretReference(
+                    "secret://workspace-secrets/provider-token"
+                ),
+                allowed_reference_prefixes=(
+                    SecretReference("secret://workspace-secrets/keys"),
+                ),
+                allowed_intents=(SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,),
+                admitted_by="operator-a",
+                admitted_at="2026-08-02T02:00:00Z",
+                actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+            )
+        )
+        for key_id in ("key-a", "key-b"):
+            reference = service.register_reference(
+                RegisterSecretReferenceCommand(
+                    workspace_id="workspace-a",
+                    reference=SecretReference(
+                        f"secret://workspace-secrets/keys/{key_id}"
+                    ),
+                    provider_registration_id=provider.registration_id,
+                    allowed_intents=(SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,),
+                    admitted_by="operator-a",
+                    admitted_at="2026-08-02T02:01:00Z",
+                    actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+                )
+            )
+            if key_id == "key-b":
+                self.reference_b_registration_id = reference.registration_id
+
+    def _key_statuses(self):
+        with self.unit_of_work() as unit_of_work:
+            keys = unit_of_work.stores.delegation_signing_keys.list_for_verification(
+                "workspace-a",
+                DelegationKeyPurpose.GATEWAY_PROBE,
+                "cpk-server",
+            )
+            unit_of_work.commit()
+        return {item.key_id: item.status for item in keys}
+
+    def _transition_targets(self):
+        return [
+            transition.to_status
+            for transition in GatewayKeyRotationService(
+                self.unit_of_work,
+                clock=lambda: self.epoch,
+            ).transitions(self.rotation_id)
+            if transition.to_status
+            in {
+                GatewayKeyRotationStatus.NEW_KEY_ACTIVE,
+                GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
+            }
+        ]
+
+    def _write_counts(self) -> tuple[int, int]:
+        transitions = self.connection.execute(
+            "SELECT count(*) FROM cpk_gateway_key_rotation_transitions "
+            "WHERE rotation_id=%s AND to_status IN "
+            "('new-key-active', 'draining-old-grants')",
+            (self.rotation_id,),
+        ).fetchone()[0]
+        keys = self.connection.execute(
+            "SELECT count(*) FROM cpk_delegation_signing_keys "
+            "WHERE workspace_id='workspace-a'",
+        ).fetchone()[0]
+        return transitions, keys
+
+
+if __name__ == "__main__":
+    unittest.main()

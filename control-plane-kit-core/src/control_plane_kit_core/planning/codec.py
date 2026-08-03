@@ -10,6 +10,7 @@ from control_plane_kit_core.planning.activity_plan import (
     ActivityId,
     ActivityImpact,
     ActivityPlan,
+    AllocatePublicIngress,
     AddSocketConnection,
     ChangeTarget,
     Compensate,
@@ -22,9 +23,11 @@ from control_plane_kit_core.planning.activity_plan import (
     NonCompensatable,
     NonCompensatableReason,
     PlannedActivity,
+    PublicIngressActivityTarget,
     ReconcileNode,
     ReconcileRuntime,
     RemoveNodeResource,
+    RemovePublicIngress,
     RemoveRuntimeResource,
     RemoveSocketConnection,
     ReviewChange,
@@ -40,7 +43,13 @@ from control_plane_kit_core.planning.activity_plan import (
     WaitForHealthy,
 )
 from control_plane_kit_core.topology.changes import DiffSubject, FieldSubject, StructuralField
-from control_plane_kit_core.topology.validation import EdgeSubject, GraphSubject, NodeSubject, RuntimeSubject
+from control_plane_kit_core.topology.validation import (
+    EdgeSubject,
+    GraphSubject,
+    NodeSubject,
+    PublicIngressSubject,
+    RuntimeSubject,
+)
 
 
 ACTIVITY_PLAN_SCHEMA = "control-plane-kit.activity-plan"
@@ -223,6 +232,10 @@ class ActivityPlanDescriptorCodec:
                 return _targeted("switch-socket-connection", target)
             case RemoveSocketConnection(target=target):
                 return _targeted("remove-socket-connection", target)
+            case AllocatePublicIngress(target=target):
+                return _targeted("allocate-public-ingress", target)
+            case RemovePublicIngress(target=target):
+                return _targeted("remove-public-ingress", target)
             case ReconcileNode(target=target):
                 return _targeted("reconcile-node", target)
             case ReconcileRuntime(target=target):
@@ -262,6 +275,10 @@ class ActivityPlanDescriptorCodec:
                 return SwitchSocketConnection(_socket_target(target))
             case "remove-socket-connection":
                 return RemoveSocketConnection(_socket_target(target))
+            case "allocate-public-ingress":
+                return AllocatePublicIngress(_public_ingress_target(target))
+            case "remove-public-ingress":
+                return RemovePublicIngress(_public_ingress_target(target))
             case "reconcile-node":
                 return ReconcileNode(_node_target(target))
             case "reconcile-runtime":
@@ -306,6 +323,8 @@ def _targeted(kind: str, target: object) -> dict[str, object]:
                 "node_id": node_id,
                 "resource_id": resource_id,
             }
+        case PublicIngressActivityTarget(ingress_id=ingress_id):
+            value = {"kind": "public-ingress", "ingress_id": ingress_id}
         case _:
             raise MalformedActivityPlanDescriptor("unknown typed activity target")
     return {"kind": kind, "target": value}
@@ -334,6 +353,11 @@ def _data_resource_target(value: Mapping[str, object]) -> DataResourceTarget:
     )
 
 
+def _public_ingress_target(value: Mapping[str, object]) -> PublicIngressActivityTarget:
+    _require_kind(value, "public-ingress")
+    return PublicIngressActivityTarget(_text(value, "ingress_id"))
+
+
 def _require_kind(value: Mapping[str, object], expected: str) -> None:
     actual = _text(value, "kind")
     if actual != expected:
@@ -352,14 +376,21 @@ def _decode_subject(value: Mapping[str, object]) -> DiffSubject:
         return NodeSubject(_text(value, "node_id"))
     if kind == "edge":
         return EdgeSubject(_text(value, "edge_id"))
+    if kind == "public-ingress":
+        return PublicIngressSubject(_text(value, "ingress_id"))
     if "field" in value:
         try:
             field = StructuralField(_text(value, "field"))
         except ValueError as error:
             raise UnknownActivityPlanVariant(str(error)) from error
         owner = _decode_subject(_mapping(value.get("owner"), "field owner"))
-        if not isinstance(owner, (GraphSubject, RuntimeSubject, NodeSubject)):
-            raise MalformedActivityPlanDescriptor("field owner must be graph, runtime, or node")
+        if not isinstance(
+            owner,
+            (GraphSubject, RuntimeSubject, NodeSubject, PublicIngressSubject),
+        ):
+            raise MalformedActivityPlanDescriptor(
+                "field owner must be graph, runtime, node, or public ingress"
+            )
         key = value.get("key")
         if key is not None and not isinstance(key, str):
             raise MalformedActivityPlanDescriptor("field key must be text")
@@ -405,6 +436,18 @@ def _json_value(value: object) -> object:
         return json.loads(json.dumps(value, sort_keys=True))
     except (TypeError, ValueError) as error:
         raise MalformedActivityPlanDescriptor("descriptor must contain JSON values") from error
+
+
+def activity_operation_descriptor(operation: object) -> dict[str, object]:
+    """Encode one closed activity operation without wrapping it in a plan."""
+
+    return ActivityPlanDescriptorCodec()._encode_operation(operation)
+
+
+def activity_operation_from_descriptor(descriptor: Mapping[str, object]) -> object:
+    """Decode one closed activity operation descriptor."""
+
+    return ActivityPlanDescriptorCodec()._decode_operation(descriptor)
 
 
 DEFAULT_ACTIVITY_PLAN_CODEC = ActivityPlanDescriptorCodec()

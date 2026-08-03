@@ -1,0 +1,68 @@
+{
+  "schema": "cpk.extract-e.closeout-report",
+  "milestone": "EXTRACT.E",
+  "status": "complete_pending_operator_stop",
+  "operator_stop_required": true,
+  "parent_issue": "#599",
+  "closeout_issue": "#648",
+  "root_issue": "#594",
+  "next_allowed_issue_after_operator_approval": "#600",
+  "core_release_candidate_evidence": "artifacts/extraction/core-release-candidate-evidence.json",
+  "required_core": {
+    "required_core": 780,
+    "completed_required_core": 780,
+    "incomplete_required_core": 0,
+    "required_non_core": 100,
+    "deferred": 227
+  },
+  "foundation_parity": {
+    "valid": true,
+    "migration_complete": false,
+    "entries": 1107,
+    "required": 880,
+    "deferred": 227,
+    "incomplete_required": 100,
+    "findings": 0
+  },
+  "core_package": {
+    "name": "control-plane-kit-core",
+    "version": "0.1.0",
+    "dependencies": [
+      "Jinja2>=3.1",
+      "PyYAML>=6.0"
+    ],
+    "tests": 374,
+    "compileall": "passed",
+    "import_outside_source_tree": "passed"
+  },
+  "top_level_validation": {
+    "command": "./test.sh",
+    "tests": 1213,
+    "result": "passed"
+  },
+  "future_handoffs": {
+    "#804": "EXTRACT.F cpk-server control-process handoff ingestion",
+    "#805": "EXTRACT.G operations/runtime acceptance handoff ingestion",
+    "#806": "future interpreter/runtime extraction anchor"
+  },
+  "not_in_core": [
+    "cpk-server process",
+    "cpk-server Dockerfile",
+    "cpk-server OCI image",
+    "cpk-server product descriptor",
+    "hosted FastAPI process",
+    "hosted MCP server",
+    "Postgres store implementation",
+    "Docker interpreter",
+    "cloud runtime interpreter"
+  ],
+  "review_results": {
+    "architecture": "core public language and handoff contracts are package-boundary guarded",
+    "security": "secret values are excluded from durable core graph data",
+    "data_engineering": "Postgres stores and UnitOfWork implementations remain non-core",
+    "supply_chain": "core dependencies are limited to Jinja2 and PyYAML",
+    "docker_ownership": "runtime cleanup and ownership proofs remain interpreter/runtime handoffs",
+    "test_integrity": "successor evidence and reviewed supersession preserve required laws without skips or assertion weakening"
+  },
+  "stop_statement": "EXTRACT.E is complete for extracted core release-candidate parity. Operator approval is required before #600 begins."
+}

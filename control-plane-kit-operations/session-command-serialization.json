@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "contract_id": "cpk.operations.session-command-serialization.v1",
+  "scope": "durable commands that append cpk_operation_actions for an operation session",
+  "global_lock_order": [
+    {
+      "ordinal": 1,
+      "role": "command-identity",
+      "mechanism": "named transaction-scoped advisory lock",
+      "law": "serialize one session and idempotency-key identity before reading replay evidence"
+    },
+    {
+      "ordinal": 2,
+      "role": "session-lifecycle",
+      "mechanism": "cpk_operation_sessions row FOR UPDATE",
+      "law": "re-read authoritative lifecycle after command identity serialization"
+    },
+    {
+      "ordinal": 3,
+      "role": "workspace-graph",
+      "mechanism": "cpk_workspaces row FOR UPDATE when graph truth participates",
+      "law": "lock workspace truth only after the owning session"
+    },
+    {
+      "ordinal": 4,
+      "role": "dependent-truth",
+      "mechanism": "narrow command-specific rows FOR UPDATE",
+      "law": "lock plans, approvals, execution requests, runs, or rotations only after session and workspace roles"
+    },
+    {
+      "ordinal": 5,
+      "role": "action-ordinal",
+      "mechanism": "allocate the next ordinal while the session row remains locked",
+      "law": "append exactly one unique monotonic action before the application-owned commit"
+    }
+  ],
+  "outcome_laws": {
+    "identical_replay": "same session, idempotency key, and canonical intent returns the exact committed result",
+    "changed_intent": "same session and idempotency key with changed intent fails with an explicit idempotency conflict",
+    "competing_commands": "distinct command identities racing on one pointer produce one winner and one truthful stale or state rejection",
+    "terminal_fence": "a nonterminal command that has no committed replay must observe OPEN while holding the session lock",
+    "terminal_replay": "an exact committed replay remains available after pointer changes or terminal session transition",
+    "transaction": "domain truth and operation action commit or roll back together in one application-owned transaction"
+  },
+  "command_roles": [
+    {
+      "command": "start-operation-session",
+      "service": "OperationCommandService._start",
+      "writer": "workflows.py:OperationCommandService._start",
+      "source": "workflows.py",
+      "roles": ["command-identity", "action-ordinal"],
+      "session_rule": "creates the session row; its workspace-scoped start identity lock is the pre-row exception"
+    },
+    {
+      "command": "close-operation-session",
+      "service": "OperationCommandService._terminal",
+      "writer": "workflows.py:OperationCommandService._terminal",
+      "source": "workflows.py",
+      "roles": ["command-identity", "session-lifecycle", "action-ordinal"],
+      "session_rule": "terminal write-once transition"
+    },
+    {
+      "command": "cancel-operation-session",
+      "service": "OperationCommandService._terminal",
+      "writer": "workflows.py:OperationCommandService._terminal",
+      "source": "workflows.py",
+      "roles": ["command-identity", "session-lifecycle", "action-ordinal"],
+      "session_rule": "terminal write-once transition"
+    },
+    {
+      "command": "record-operation-action",
+      "service": "OperationCommandService._record",
+      "writer": "workflows.py:OperationCommandService._record",
+      "source": "workflows.py",
+      "roles": ["command-identity", "session-lifecycle", "action-ordinal"],
+      "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "set-desired-graph",
+      "service": "DesiredGraphCommandService.execute",
+      "writer": "planning.py:DesiredGraphCommandService.execute",
+      "source": "planning.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "action-ordinal"],
+      "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "publish-desired-realized-projection",
+      "service": "DesiredRealizedProjectionCommandService.execute",
+      "writer": "desired_realized_projections.py:publish_desired_realized_projection_in_unit_of_work",
+      "source": "desired_realized_projections.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "action-ordinal"],
+      "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "request-activity-plan",
+      "service": "ActivityPlanningCommandService.execute",
+      "writer": "planning.py:ActivityPlanningCommandService.execute",
+      "source": "planning.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "action-ordinal"],
+      "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "request-approval",
+      "service": "ApprovalCommandService._request",
+      "writer": "approvals.py:ApprovalCommandService._request",
+      "source": "approvals.py",
+      "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "request-gateway-key-rotation-approval",
+      "service": "ApprovalCommandService._request_rotation",
+      "writer": "approvals.py:ApprovalCommandService._request_rotation",
+      "source": "approvals.py",
+      "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "decide-approval",
+      "service": "ApprovalCommandService._decide",
+      "writer": "approvals.py:ApprovalCommandService._decide",
+      "source": "approvals.py",
+      "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "admit-execution",
+      "service": "ExecutionAdmissionCommandService.execute",
+      "writer": "admission.py:ExecutionAdmissionCommandService.execute",
+      "source": "admission.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "claim-run",
+      "service": "RunLifecycleCommandService._claim",
+      "writer": "lifecycle.py:RunLifecycleCommandService._claim",
+      "source": "lifecycle.py",
+      "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock; immutable request linkage may locate the session before locking"
+    },
+    {
+      "command": "transition-run",
+      "service": "RunLifecycleCommandService._transition",
+      "writer": "lifecycle.py:RunLifecycleCommandService._transition",
+      "source": "lifecycle.py",
+      "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock; immutable run and request linkage may locate the session before locking"
+    },
+    {
+      "command": "advance-current-graph",
+      "service": "CurrentGraphAdvancementCommandService.execute",
+      "writer": "advancement.py:CurrentGraphAdvancementCommandService.execute",
+      "source": "advancement.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock; immutable run and request linkage may locate the session before locking"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "archived_mutable_only_laws": 66,
+  "current_mutable_only_laws": 52,
+  "distribution": "control-plane-kit-parity",
+  "issue": 1345,
+  "roadmap_baseline": "ee43c8946502ab9f5ea33e9a7b36bbf82d80adac",
+  "schema": "cpk.semantic-test-reconciliation-evidence",
+  "standalone_parity_tests": 76,
+  "status": "passing",
+  "total_mutable_only_laws": 118
+}

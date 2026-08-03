@@ -70,10 +70,12 @@ tests or application code are written. After that design exists, write the
 focused target tests and prove that they fail because behavior is missing, not
 because collection, imports, fixtures, or Docker setup are broken.
 
-The frozen parity foundation supplies the reference-green baseline. Do not run
-the complete frozen `./test.sh` suite before every issue dry run unless that
-baseline is missing, stale, or disputed. Run the broader target package, parity,
-and live suites after implementation and at PR or milestone gates.
+The frozen parity foundation supplies the reference-green baseline. The mutable
+frozen package and root gate have been retired. Do not run
+`./reference-test.sh` before every issue dry run unless that baseline is
+missing, stale, or disputed. Run broader target package, current-backend,
+parity, and issue-owned live suites after implementation and at PR or milestone
+gates.
 
 ## Before Starting A Roadmap Node
 

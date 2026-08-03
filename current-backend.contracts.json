@@ -1,0 +1,225 @@
+{
+  "schema": "cpk.current-backend-contracts.v1",
+  "distributions": [
+    {
+      "name": "core",
+      "repository": "control-plane-kit",
+      "project_path": "control-plane-kit-core/pyproject.toml",
+      "source_globs": [
+        "control-plane-kit-core/src/**/*.py"
+      ],
+      "module_prefixes": [
+        "control_plane_kit_core"
+      ],
+      "allowed_internal_dependencies": [],
+      "forbidden_imports": [
+        "control_plane_kit_operations",
+        "control_plane_kit_interpreters",
+        "control_plane_kit_secrets",
+        "control_plane_kit_servers",
+        "docker",
+        "fastapi",
+        "httpx",
+        "psycopg",
+        "requests",
+        "uvicorn"
+      ]
+    },
+    {
+      "name": "operations",
+      "repository": "control-plane-kit",
+      "project_path": "control-plane-kit-operations/pyproject.toml",
+      "source_globs": [
+        "control-plane-kit-operations/src/**/*.py"
+      ],
+      "module_prefixes": [
+        "control_plane_kit_operations"
+      ],
+      "allowed_internal_dependencies": [
+        "core"
+      ],
+      "forbidden_imports": [
+        "control_plane_kit_interpreters",
+        "control_plane_kit_secrets",
+        "control_plane_kit_servers",
+        "docker",
+        "fastapi",
+        "httpx",
+        "requests",
+        "uvicorn"
+      ]
+    },
+    {
+      "name": "interpreters",
+      "repository": "control-plane-kit-interpreters",
+      "project_path": "pyproject.toml",
+      "source_globs": [
+        "src/**/*.py"
+      ],
+      "module_prefixes": [
+        "control_plane_kit_interpreters"
+      ],
+      "allowed_internal_dependencies": [
+        "core"
+      ],
+      "forbidden_imports": [
+        "control_plane_kit_operations",
+        "control_plane_kit_secrets",
+        "control_plane_kit_servers"
+      ]
+    },
+    {
+      "name": "secrets",
+      "repository": "control-plane-kit-secrets",
+      "project_path": "pyproject.toml",
+      "source_globs": [
+        "src/**/*.py"
+      ],
+      "module_prefixes": [
+        "control_plane_kit_secrets"
+      ],
+      "allowed_internal_dependencies": [],
+      "forbidden_imports": [
+        "control_plane_kit_core",
+        "control_plane_kit_operations",
+        "control_plane_kit_interpreters",
+        "control_plane_kit_servers"
+      ]
+    },
+    {
+      "name": "server-products",
+      "repository": "control-plane-kit-servers",
+      "project_path": "pyproject.toml",
+      "source_globs": [
+        "src/**/*.py",
+        "products/*/src/**/*.py"
+      ],
+      "module_prefixes": [
+        "control_plane_kit_servers",
+        "control_plane_kit_servers_"
+      ],
+      "allowed_internal_dependencies": [
+        "core",
+        "operations",
+        "interpreters"
+      ],
+      "forbidden_imports": []
+    }
+  ],
+  "pin_surfaces": [
+    {
+      "repository": "control-plane-kit-interpreters",
+      "path": "pyproject.toml",
+      "coordinate_repositories": [
+        "control-plane-kit",
+        "control-plane-kit-secrets"
+      ]
+    },
+    {
+      "repository": "control-plane-kit-servers",
+      "path": "pyproject.toml",
+      "coordinate_repositories": [
+        "control-plane-kit",
+        "control-plane-kit-interpreters"
+      ]
+    },
+    {
+      "repository": "control-plane-kit-servers",
+      "path": "products/cpk_local_gateway/Dockerfile",
+      "coordinate_repositories": [
+        "control-plane-kit"
+      ]
+    },
+    {
+      "repository": "control-plane-kit-servers",
+      "path": "products/cpk_server/Dockerfile",
+      "coordinate_repositories": [
+        "control-plane-kit",
+        "control-plane-kit-interpreters"
+      ]
+    },
+    {
+      "repository": "control-plane-kit-servers",
+      "path": "products/secrets_server/Dockerfile",
+      "coordinate_repositories": [
+        "control-plane-kit-secrets"
+      ]
+    }
+  ],
+  "protocols": [
+    {
+      "name": "runtime-effect",
+      "protocol_repository": "control-plane-kit",
+      "protocol_path": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py",
+      "protocol_class": "RuntimeEffectInterpreter",
+      "methods": ["execute"],
+      "implementation_repository": "control-plane-kit-interpreters",
+      "implementation_path": "src/control_plane_kit_interpreters/docker/runtime.py",
+      "implementation_class": "DockerRuntimeInterpreter"
+    },
+    {
+      "name": "runtime-authority",
+      "protocol_repository": "control-plane-kit",
+      "protocol_path": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py",
+      "protocol_class": "RuntimeAuthorityAwareInterpreter",
+      "methods": ["execute_with_authority"],
+      "implementation_repository": "control-plane-kit-interpreters",
+      "implementation_path": "src/control_plane_kit_interpreters/docker/runtime.py",
+      "implementation_class": "DockerRuntimeInterpreter"
+    },
+    {
+      "name": "named-public-ingress",
+      "protocol_repository": "control-plane-kit",
+      "protocol_path": "control-plane-kit-operations/src/control_plane_kit_operations/ingress_realization.py",
+      "protocol_class": "IngressProviderInterpreter",
+      "methods": ["create", "teardown"],
+      "implementation_repository": "control-plane-kit-interpreters",
+      "implementation_path": "src/control_plane_kit_interpreters/cloudflare/client.py",
+      "implementation_class": "CloudflareNamedIngressInterpreter"
+    },
+    {
+      "name": "gateway-probe-dispatch",
+      "protocol_repository": "control-plane-kit",
+      "protocol_path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_probes.py",
+      "protocol_class": "GatewayProbeDispatcher",
+      "methods": ["dispatch"],
+      "implementation_repository": "control-plane-kit-servers",
+      "implementation_path": "products/cpk_server/src/control_plane_kit_servers_cpk_server/server.py",
+      "implementation_class": "_SignedGatewayProbeDispatcher"
+    },
+    {
+      "name": "secret-resolution",
+      "protocol_repository": "control-plane-kit",
+      "protocol_path": "control-plane-kit-core/src/control_plane_kit_core/secrets.py",
+      "protocol_class": "AuthorizedSecretResolver",
+      "methods": ["resolve"],
+      "implementation_repository": "control-plane-kit-interpreters",
+      "implementation_path": "src/control_plane_kit_interpreters/secret_provider/resolver.py",
+      "implementation_class": "ControlPlaneKitSecretsResolver"
+    },
+    {
+      "name": "secret-custody",
+      "protocol_repository": "control-plane-kit",
+      "protocol_path": "control-plane-kit-core/src/control_plane_kit_core/secrets.py",
+      "protocol_class": "SecretCustodian",
+      "methods": ["store", "revoke"],
+      "implementation_repository": "control-plane-kit-interpreters",
+      "implementation_path": "src/control_plane_kit_interpreters/secret_provider/custody.py",
+      "implementation_class": "ControlPlaneKitSecretsCustodian"
+    }
+  ],
+  "acceptance": [
+    {
+      "name": "cpk-server-http-mcp-source-live",
+      "repository": "control-plane-kit-servers",
+      "command_path": "scripts/cpk_server_image_smoke.sh",
+      "classification": "source-built",
+      "authoritative_caller": "cpk-server",
+      "provider_mutating": false,
+      "published_digest": false,
+      "diagnostic_only": false,
+      "uses_application_mocks": false,
+      "residue_command_path": "scripts/docker_residue_audit.sh"
+    }
+  ]
+}

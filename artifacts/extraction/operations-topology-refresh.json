@@ -1,0 +1,382 @@
+{
+  "schema": "cpk.operations-topology-refresh",
+  "issue": "#835",
+  "parent": "#821",
+  "root": "#594",
+  "completed_prerequisites": [
+    "#831"
+  ],
+  "canonical_order": [
+    "#831",
+    "#835",
+    "#836",
+    "#837",
+    "#838",
+    "#832",
+    "#839",
+    "#840",
+    "#841",
+    "#842",
+    "#843",
+    "#844",
+    "#845",
+    "#846",
+    "#847",
+    "#848",
+    "#849",
+    "#850"
+  ],
+  "topology_correction": {
+    "original_order": [
+      "#831",
+      "#832",
+      "#835",
+      "#836",
+      "#837",
+      "#838"
+    ],
+    "reason": "RegisteredProduct is durable operations truth. It requires the operations distribution, Postgres schema foundation, and UnitOfWork/store bundle before implementation; otherwise durable admission would be smuggled into core.",
+    "recorded_on": [
+      "#821",
+      "#832"
+    ]
+  },
+  "issues": {
+    "#831": {
+      "title": "Define pure ProductReference language",
+      "owner": "control-plane-kit-core",
+      "status": "complete",
+      "outputs": [
+        "ProductDescriptorDigest",
+        "ProductReference",
+        "ProductReferenceCodec",
+        "ProductCatalog.reference_for"
+      ],
+      "requires": []
+    },
+    "#835": {
+      "title": "Refresh operations topology and frozen-law inventory",
+      "owner": "coordination",
+      "status": "current",
+      "outputs": [
+        "operations topology artifact",
+        "frozen-law inventory",
+        "handoffs to package/schema/UoW/registration issues"
+      ],
+      "requires": [
+        "#831"
+      ]
+    },
+    "#836": {
+      "title": "Create control-plane-kit-operations package foundation",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "sibling distribution",
+        "import package",
+        "Docker-first unittest harness",
+        "core-to-operations package boundary checks"
+      ],
+      "requires": [
+        "#835"
+      ]
+    },
+    "#837": {
+      "title": "Build Postgres schema foundation and migration policy",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "schema installer",
+        "idempotent non-destructive DDL policy",
+        "real Postgres test harness"
+      ],
+      "requires": [
+        "#836"
+      ]
+    },
+    "#838": {
+      "title": "Implement Postgres UnitOfWork and store bundle",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "PostgresUnitOfWork",
+        "shared connection store bundle",
+        "stores-never-commit tests"
+      ],
+      "requires": [
+        "#836",
+        "#837"
+      ]
+    },
+    "#832": {
+      "title": "Admit product descriptors as RegisteredProduct records",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "RegisteredProduct",
+        "RegisteredProductStore",
+        "ImportProductDescriptor command",
+        "DescriptorSourceEvidence",
+        "workspace-scoped product selection projection"
+      ],
+      "requires": [
+        "#831",
+        "#836",
+        "#837",
+        "#838"
+      ]
+    },
+    "#839": {
+      "title": "Implement workspace and graph stores",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "workspace truth",
+        "graph versions",
+        "current and desired graph pointers"
+      ],
+      "requires": [
+        "#838",
+        "#832"
+      ]
+    },
+    "#840": {
+      "title": "Integrate RegisteredProduct with graph authoring and planning",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "same-workspace product resolution",
+        "graph authoring guard",
+        "planning guard"
+      ],
+      "requires": [
+        "#832",
+        "#839"
+      ]
+    },
+    "#841": {
+      "title": "Port activity history and operation sessions",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "operation sessions",
+        "action records",
+        "idempotency records",
+        "ordinal concurrency"
+      ],
+      "requires": [
+        "#838",
+        "#839"
+      ]
+    },
+    "#842": {
+      "title": "Implement planning command service",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "plan stage",
+        "desired graph publication",
+        "approval request handoff"
+      ],
+      "requires": [
+        "#840",
+        "#841"
+      ]
+    },
+    "#843": {
+      "title": "Implement approval service",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "approval request truth",
+        "approval decision truth",
+        "stale approval rejection"
+      ],
+      "requires": [
+        "#842"
+      ]
+    },
+    "#844": {
+      "title": "Implement execution admission and run lifecycle",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "admit stage",
+        "claim stage",
+        "leases",
+        "worker ownership"
+      ],
+      "requires": [
+        "#843"
+      ]
+    },
+    "#845": {
+      "title": "Integrate execution coordinator without new effect language",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "execute stage",
+        "durable coordinator integration",
+        "explicit #806 runtime-boundary decision"
+      ],
+      "requires": [
+        "#844"
+      ]
+    },
+    "#846": {
+      "title": "Implement observations and read projections",
+      "owner": "control-plane-kit-operations",
+      "status": "planned",
+      "outputs": [
+        "observation store",
+        "operator read projections",
+        "redaction"
+      ],
+      "requires": [
+        "#845"
+      ]
+    },
+    "#847": {
+      "title": "Wire cpk-server HTTP and MCP to operations services",
+      "owner": "control-plane-kit-servers/cpk-server",
+      "status": "planned",
+      "outputs": [
+        "HTTP adapter over operations",
+        "MCP adapter over operations",
+        "shared command vocabulary"
+      ],
+      "requires": [
+        "#846"
+      ]
+    },
+    "#848": {
+      "title": "Republish cpk-server OCI after backend changes",
+      "owner": "control-plane-kit-servers/cpk-server",
+      "status": "planned",
+      "outputs": [
+        "published immutable digest",
+        "updated descriptor",
+        "updated catalogue checksum"
+      ],
+      "requires": [
+        "#847"
+      ]
+    },
+    "#849": {
+      "title": "Run Docker/Postgres operations acceptance",
+      "owner": "acceptance",
+      "status": "planned",
+      "outputs": [
+        "import seed catalogue",
+        "author graph",
+        "plan/approve/admit/execute evidence",
+        "explicit #806 real-effect decision"
+      ],
+      "requires": [
+        "#848"
+      ]
+    },
+    "#850": {
+      "title": "Close operations and hand off",
+      "owner": "coordination",
+      "status": "planned",
+      "outputs": [
+        "operations closeout",
+        "#819 handoff",
+        "#676 handoff",
+        "#806 handoff"
+      ],
+      "requires": [
+        "#849"
+      ]
+    }
+  },
+  "deployment_program_north_star": "Deploy composes plan -> approve -> admit -> claim -> execute -> advance. Initial deployment is Deploy(EmptyGraph, desired); update is Deploy(current, desired); teardown is Deploy(current, EmptyGraph); no-op is Deploy(graph, graph).",
+  "frozen_law_inventory": {
+    "postgres_schema_and_stores": {
+      "references": [
+        "control_plane_kit/stores/postgres.py",
+        "control_plane_kit/stores/records.py",
+        "tests/test_operation_postgres_primitives.py",
+        "tests/test_execution_store.py",
+        "tests/test_execution_schema_migration.py"
+      ],
+      "laws": [
+        "Postgres plus psycopg plus explicit SQL",
+        "schema installation is idempotent and non-destructive",
+        "constraints enforce closed status/event/type vocabularies",
+        "admitted descriptor bytes are immutable",
+        "historical events are append-only unless an ADR says otherwise"
+      ]
+    },
+    "unit_of_work": {
+      "references": [
+        "control_plane_kit/stores/unit_of_work.py",
+        "control_plane_kit/stores/protocols.py",
+        "tests/test_unit_of_work.py"
+      ],
+      "laws": [
+        "one operator command equals one explicit Postgres transaction",
+        "application services own commit and rollback",
+        "all stores share one UnitOfWork connection",
+        "stores never commit independently",
+        "rollback erases all writes from a failed command"
+      ]
+    },
+    "command_services": {
+      "references": [
+        "control_plane_kit/workflows/command_service.py",
+        "control_plane_kit/workflows/planning.py",
+        "control_plane_kit/workflows/execution_admission.py",
+        "control_plane_kit/workflows/run_lifecycle.py",
+        "tests/test_operation_command_service.py",
+        "tests/test_activity_planning_command_service.py",
+        "tests/test_approval_command_service.py",
+        "tests/test_execution_admission.py",
+        "tests/test_run_lifecycle.py"
+      ],
+      "laws": [
+        "idempotent replay returns original state",
+        "changed intent conflicts explicitly",
+        "late write failure rolls back the whole command",
+        "concurrent writers have one-winner behavior",
+        "Deploy stages share one command vocabulary"
+      ]
+    },
+    "read_services_and_adapters": {
+      "references": [
+        "control_plane_kit/read_services",
+        "control_plane_kit/adapters",
+        "tests/test_instance_read_service.py",
+        "tests/test_instance_read_fastapi.py",
+        "tests/test_mcp_read.py"
+      ],
+      "laws": [
+        "HTTP and MCP adapt the same services and projections",
+        "read projections are redacted and bounded",
+        "adapters do not own durable truth",
+        "mutation-like read tools fail closed"
+      ]
+    },
+    "acceptance_and_runtime_boundary": {
+      "references": [
+        "control_plane_kit/workflows/execution_coordinator.py",
+        "tests/test_postgres_scenario_runner.py",
+        "tests/test_service_infrastructure_program.py",
+        "tests/test_probe_execution.py"
+      ],
+      "laws": [
+        "operations may coordinate effects but must not invent a new effect language",
+        "no transaction or lock spans Docker, HTTP, filesystem, health, cloud, or another external effect",
+        "real runtime execution must be explicitly decided against #806",
+        "cpk-server backend changes require OCI republish before acceptance"
+      ]
+    }
+  },
+  "handoffs": {
+    "#836": "Create the sibling operations distribution before durable registration.",
+    "#837": "Use frozen explicit SQL and idempotent install policy as precedent.",
+    "#838": "Port the frozen UnitOfWork/store-bundle shape before any durable store issue.",
+    "#832": "Persist RegisteredProduct only after operations package, schema, and UnitOfWork exist."
+  }
+}

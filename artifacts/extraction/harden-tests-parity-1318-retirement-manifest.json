@@ -1,0 +1,5149 @@
+{
+  "baseline": {
+    "commit": "5bc3e7debb2aa7f65eeaf3d4c29f030da55d99a8",
+    "tree": "c315601144fe5ac1c41a439c90594c8c305ea22d"
+  },
+  "counts": {
+    "baseline-files": 850,
+    "delete-files": 417,
+    "delete-legacy-demo-helper": 2,
+    "delete-legacy-examples": 28,
+    "delete-legacy-live-shell": 16,
+    "delete-legacy-package": 177,
+    "delete-legacy-packaging": 5,
+    "delete-legacy-tests": 189,
+    "retain-ci": 2,
+    "retain-current-backend": 13,
+    "retain-current-distribution": 225,
+    "retain-current-test-support": 2,
+    "retain-documentation": 72,
+    "retain-extraction-evidence": 84,
+    "retain-files": 433,
+    "retain-immutable-reference-runner": 1,
+    "retain-parity-tooling": 32,
+    "retain-repository": 2
+  },
+  "entries": [
+    {
+      "blob": "db42e006ead9e7aa5295cb9792c8ffd3e7fe17d1",
+      "disposition": "delete-legacy-packaging",
+      "mode": "100644",
+      "path": ".dockerignore"
+    },
+    {
+      "blob": "0a125010f38d9ac325bca0244a1994617996082b",
+      "disposition": "retain-ci",
+      "mode": "100644",
+      "path": ".github/workflows/current-backend.yml"
+    },
+    {
+      "blob": "09574e94b5dde85ad87dc3c23cb0339f1dda6d78",
+      "disposition": "retain-ci",
+      "mode": "100644",
+      "path": ".github/workflows/tests.yml"
+    },
+    {
+      "blob": "c344eaa86b81cc0ca80ff10a06240cd4fd1a6088",
+      "disposition": "retain-repository",
+      "mode": "100644",
+      "path": ".gitignore"
+    },
+    {
+      "blob": "0925776b573d939ddb352d677cab35ce16f8896c",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "AGENTS.md"
+    },
+    {
+      "blob": "50dee4d988d9851b82b792c9783919d6f5d66dd2",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "DESIGN.md"
+    },
+    {
+      "blob": "acb73a796d9bd49a715d63f8512a1791af004b01",
+      "disposition": "delete-legacy-packaging",
+      "mode": "100644",
+      "path": "Dockerfile"
+    },
+    {
+      "blob": "3211a9232f350d8106bd4206a9023fdacdc6717a",
+      "disposition": "retain-repository",
+      "mode": "100644",
+      "path": "LICENSE"
+    },
+    {
+      "blob": "a029c278c75f40f07015ceae83186ea30e0ed994",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "README.md"
+    },
+    {
+      "blob": "5962548dd76054c6146c89f0212f2cfbbd2dab36",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "SERVER_PRODUCT_ROLLOUT.md"
+    },
+    {
+      "blob": "5939293839c9cc1d8fa47f5e4c443011ad87e063",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "activity-seeded-live-test.sh"
+    },
+    {
+      "blob": "3313de11c20a2fced1bc36161cc522411775fa1f",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/README.md"
+    },
+    {
+      "blob": "8d946ce1981fb22a9f2c73e3cea768f5b7beddb1",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/activity-870-runtime-law-inventory.json"
+    },
+    {
+      "blob": "0654c4c35c2becd0a9be574d1a369ba5b714a773",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/architecture-test-harness-batch-closeout.json"
+    },
+    {
+      "blob": "4a84f0a1e7b9371efb9dbb9d00648cce47966a6b",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/contract-boundary-classification.json"
+    },
+    {
+      "blob": "8acabff0adebf4513e2330ffd3c8c3570b60b838",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/control-route-boundary-classification.json"
+    },
+    {
+      "blob": "2a57cb81577e2c9a888c0249d605dfb3dc620b23",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/core-release-candidate-evidence.json"
+    },
+    {
+      "blob": "7224a63bc1daef031d8fe1259cc012512cfcf9d9",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/extract-b-closeout-report.json"
+    },
+    {
+      "blob": "baf037ac958eb0eeac2be5aeea0ec2d95d543eb7",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/extract-e-closeout-report.json"
+    },
+    {
+      "blob": "ec47a8177bf08b399e5a19f335539f1363aff09c",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/extract-f-804-cpk-server-handoff-inventory.json"
+    },
+    {
+      "blob": "4831e023d3f5aad418208077ed2551f5457b61ad",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/extract-g-closeout-report.json"
+    },
+    {
+      "blob": "a83f763326c937ab8b8538a49b9103a491987e18",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/extract-interpreters-closeout-report.json"
+    },
+    {
+      "blob": "49a53c5ed5e4748458ce1f3a67853c02e6ee2a2f",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1320-evidence.json"
+    },
+    {
+      "blob": "cc1a4902a32e8e51fea79a3dce5fa5ec860682eb",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1321-evidence.json"
+    },
+    {
+      "blob": "5a76d0e5d1692cb1fa1435cfb356580730b2d7df",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1322-evidence.json"
+    },
+    {
+      "blob": "c68c7150edf6f3d1cd5e5a40517333514e946877",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1323-evidence.json"
+    },
+    {
+      "blob": "3451bbd86b1f00f4f80245baaaf6ce8b0f07ee16",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1324-evidence.json"
+    },
+    {
+      "blob": "808fb7199a298907e209033e32d0d1cfc7b00972",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1345-evidence.json"
+    },
+    {
+      "blob": "022a1029bbbc6668a7c6a5977ee873b73c7aade6",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1346-evidence.json"
+    },
+    {
+      "blob": "957aac4aa9b41f59cac46dc74d003d8425ccaf0a",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1347-evidence.json"
+    },
+    {
+      "blob": "605f5b9e0e1c623e8a5e5d88617b7bf1050ec815",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1347-live-script-dispositions.json"
+    },
+    {
+      "blob": "67a8ae958a2d93e4b6159be107a1a421f83ddbeb",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/harden-tests-parity-1348-evidence.json"
+    },
+    {
+      "blob": "4eb84ab50acb97278989331cf1359b3e407e8a80",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/interpreter-runtime-batch-closeout.json"
+    },
+    {
+      "blob": "232ece821a139b71a45ee625dc517bc8ba2a65fa",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/interpreter-runtime-dry-run.json"
+    },
+    {
+      "blob": "a5e485a994611769870cd691eaeaadc2669a9072",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/law-overrides.json"
+    },
+    {
+      "blob": "627bcba8a4c69d05a820ec54c8428db5f53f6ceb",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/operations-contract-batch-audit.json"
+    },
+    {
+      "blob": "04c6b9da4efe5a24f0792a450f818b01941b6aa1",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/operations-contract-batch-closeout.json"
+    },
+    {
+      "blob": "6cbf178892a289bd07e926b13f9dcb4a6d2f78df",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/operations-topology-refresh.json"
+    },
+    {
+      "blob": "45ab15f147446afd89efcd0069d802a392022eb6",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/ownership-rules.json"
+    },
+    {
+      "blob": "ed794a7684ff1010442f28c05160a36b5e5f6b97",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/parity-manifest.json"
+    },
+    {
+      "blob": "0ed4e60efbc3b651c1c739042927354cfe3dc4dd",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/parity-validation-report.json"
+    },
+    {
+      "blob": "5bbb5ed4732bed7c7b1869db66516ba9783730e6",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/planning-saga-batch-audit.json"
+    },
+    {
+      "blob": "e252abaf0c947526b292fdab8aee2d20835fe78f",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/planning-saga-batch-closeout.json"
+    },
+    {
+      "blob": "d20850dcb1c247b0e931554626e990812810bfca",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/pure-core-batch-audit.json"
+    },
+    {
+      "blob": "e5f39a9e9cfd1a97822163051ec43ecf545d4d5a",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/pure-core-batch-closeout.json"
+    },
+    {
+      "blob": "c02ce2698bcfcb22379d294b0f1da4b6fc1093c3",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/recursive-cpk-server-scenario-matrix.json"
+    },
+    {
+      "blob": "cac1ff4c507788c37e7135d81eb1bfe75cefb349",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/reference-baseline.json"
+    },
+    {
+      "blob": "df9896c410f4b584178a99d12c82e1435fe52660",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/reference-demos.json"
+    },
+    {
+      "blob": "14ef627e807fe83d84c4726008d5a9ccb38d1ae9",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/reference-law-ownership.json"
+    },
+    {
+      "blob": "ec071743cfa69c4b92d96eb57c63c9a1d276ccfb",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/reference-tests.json"
+    },
+    {
+      "blob": "4715e606ee23f2bd419ce61a74cc125dbac7ff6e",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/required-core-batch-plan.json"
+    },
+    {
+      "blob": "bc0704652c0dc7655c033058023a8bb192de1ba5",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/required-core-closeout-report.json"
+    },
+    {
+      "blob": "30fa219314ea0e3a49427d9849c76ff766dde88b",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/required-core-family-inventory.json"
+    },
+    {
+      "blob": "8f4057aef2a81c8ee4776f06cfc34ef27e8dcf13",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/runtime-auth-961-dry-run.json"
+    },
+    {
+      "blob": "f5f1f0c16ce7b10da26e6de468d36aaec9e48a73",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/seeded-stress-1004-public-workspace-matrix.json"
+    },
+    {
+      "blob": "76392a3b6b989822c3ee0fd88b01e702e0424e2f",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/seeded-stress-942-scenario-matrix.json"
+    },
+    {
+      "blob": "cec3c1e627f08d504a8b95c16b4d0f3237148ab7",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/semantic-migration-closeout.json"
+    },
+    {
+      "blob": "991348dda1349eb34c60ab04d699c96f1cced1cc",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/semantic-migration-completion-report.json"
+    },
+    {
+      "blob": "8d62305bbe697a0a1772614fff5b1eb057e614f2",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/semantic-test-migration-inventory.json"
+    },
+    {
+      "blob": "cb1e7c4f45a6bf712539660955d0539df2eaec49",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/semantic-test-migration-rules.json"
+    },
+    {
+      "blob": "5ddd91afa1d9be809809b4877026bdbfc98a96c1",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/semantic-test-reconciliation-decisions.json"
+    },
+    {
+      "blob": "f6d0887ce23bc371f689d41d715e1d767a7cd0db",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/semantic-test-reconciliation.json"
+    },
+    {
+      "blob": "426eb20147654af35b5d8be454ce1ca32a69e68e",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-evidence.json"
+    },
+    {
+      "blob": "38722e178c9c419fba64251eb76945fa3a630980",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-b-614-pure-kernel.json"
+    },
+    {
+      "blob": "57af680ac76246ec214634c2df6befad44bab04a",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-b-677-graph-duplicate-identity.json"
+    },
+    {
+      "blob": "f141551bf3c3068b211a93060ddc2ac0e9808d48",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-729-activity-plan-family.json"
+    },
+    {
+      "blob": "b14f8bdf29011cb6dd9faf328e9241d5fcf6477d",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-741-architecture-test-harness.json"
+    },
+    {
+      "blob": "e6272593992316f105939a91c3b37a31ca22cb70",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-742-complete-suite-validation.json"
+    },
+    {
+      "blob": "e38f514762f482748da4c0c3625997480ea33061",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-742-core-release-contracts.json"
+    },
+    {
+      "blob": "e903dc328f21f955f8c3a52c2a8ad438284459be",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-746-topology-protocol-compile.json"
+    },
+    {
+      "blob": "f2031f4679bc229aafe29ceccb7aef1d671c8b36",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-747-graph-codec-validation-diff.json"
+    },
+    {
+      "blob": "5d1e1de9628a49b5a9d17cf1918fd3e306ac4329",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-754-configuration-rendering.json"
+    },
+    {
+      "blob": "108291680da89dbb5c6b917409d9d84267dc491b",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-755-environment-secrets.json"
+    },
+    {
+      "blob": "2d9ab9641545b8a21ccc614ab63b93942e9d5df6",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-756-verification-capabilities.json"
+    },
+    {
+      "blob": "642ff87a902547ad2001f0f68b946eac206f3666",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-761-probe-intents.json"
+    },
+    {
+      "blob": "99a2dabf13fdba35f4e45cc69bd067305139c867",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-762-control-routes.json"
+    },
+    {
+      "blob": "256134dfcc3ee89e0314032515388244ddf74a31",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-763-policy-decisions.json"
+    },
+    {
+      "blob": "34c61a78fdadb03a1ce137edb0ca4f21d7516be4",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-764-control-contracts.json"
+    },
+    {
+      "blob": "2b72602e5ad9188dce8c350dbc0d0b9552e9c73d",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-772-activity-plan-codec-compiler.json"
+    },
+    {
+      "blob": "4ec7a9100996e70f42fa8db1d89d279b0cada819",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-773-planning-scenario-expectations.json"
+    },
+    {
+      "blob": "e3814bbca68522fc0547a0b9f9176ab0281fe427",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-774-saga-program-state-journal.json"
+    },
+    {
+      "blob": "cea08aeea9396a75dd7ae54b826a6ccc7dd7b495",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-775-pure-scheduling-laws.json"
+    },
+    {
+      "blob": "f76c6f76c8411184b9555167b9e902f204be5e3d",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-776-compensation-recovery-planning.json"
+    },
+    {
+      "blob": "ede356aa90114bbe10e4f716a818f633f62f1c4c",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-786-deployment-program-boundary.json"
+    },
+    {
+      "blob": "c4d5c238bafea1c9e397f0d29c32c088ffe068a9",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-787-command-workflow-contract.json"
+    },
+    {
+      "blob": "ced754e2307474d0c4379213d9849e902b1597ac",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-788-read-projection-contract.json"
+    },
+    {
+      "blob": "6dbe49836122efe4290acacc8978c1833c6c3eff",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-789-execution-lifecycle-contract.json"
+    },
+    {
+      "blob": "eb4366bcf4e165da6de3834a9bcd5e2c71d97057",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-790-execution-coordinator-contract.json"
+    },
+    {
+      "blob": "62c2564d2a5c4ada75847a5febb1e4b41883abdc",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/successor-proofs/extract-e-791-persistence-boundary-contract.json"
+    },
+    {
+      "blob": "1b42f61dded93c1985b819ce21729cbeeaf29499",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/supersession-reviews/extract-e-732-reviewed-supersession-classification.json"
+    },
+    {
+      "blob": "28e283aac8f278eb4ae9a288644f76bfa75855e9",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/supersession-reviews/extract-e-742-validation-packaging-demo-handoff.json"
+    },
+    {
+      "blob": "249f02fe07d13ed84127318ed10bb9348a356af6",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/supersession-reviews/extract-e-743-interpreter-runtime-handoff.json"
+    },
+    {
+      "blob": "3fa56a04350f81b8af04042135ff9b4c8d508f15",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/supersession-reviews/extract-e-773-planning-workflow-supersession.json"
+    },
+    {
+      "blob": "1b08acd719c1719cf9a3e0196d8e7bdd63a7adb0",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/supersession-reviews/extract-e-792-workflow-service-operations-handoff.json"
+    },
+    {
+      "blob": "e89d74977c7d9833817f6def8f2eb421a692713d",
+      "disposition": "retain-extraction-evidence",
+      "mode": "100644",
+      "path": "artifacts/extraction/validation-packaging-demo-batch-closeout.json"
+    },
+    {
+      "blob": "e0d82e5385c7327e7b9e5fde1237efd8abc43a42",
+      "disposition": "retain-parity-tooling",
+      "mode": "100755",
+      "path": "build-parity-manifest.sh"
+    },
+    {
+      "blob": "48f6c71362cc94646f6a301c656a312580f90c3f",
+      "disposition": "retain-parity-tooling",
+      "mode": "100755",
+      "path": "build-semantic-test-migration-inventory.sh"
+    },
+    {
+      "blob": "5d4f8a4462c6b6044667bf4c05a1a820a4f116bd",
+      "disposition": "retain-parity-tooling",
+      "mode": "100755",
+      "path": "classify-reference-laws.sh"
+    },
+    {
+      "blob": "68c0b8afbbe6630dcd9305006ed0db34eff96273",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "configuration-live-test.sh"
+    },
+    {
+      "blob": "92a608dcbc1cf277c00c9a7e531c5c48472e8bdf",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/AGENTS.md"
+    },
+    {
+      "blob": "74e68de95a27da0601049c4502128f0a7736052d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/README.md"
+    },
+    {
+      "blob": "53ad87cb0cbb26c66270f804ff0472f3a5491b7c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/docs/EXTRACTION.md"
+    },
+    {
+      "blob": "aacfe8b19fd5e6698500c3611be997a5d1a2dd74",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/docs/EXTRACT_D_TOPOLOGY.md"
+    },
+    {
+      "blob": "7b05c39623d38a6ccdd64df0dedb4ed794f1d7bb",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/examples/external-product-descriptor.md"
+    },
+    {
+      "blob": "9d370025df45811aa4b3c241c36e5a47bd90067d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/pyproject.toml"
+    },
+    {
+      "blob": "72b7d9d52c934371bf351773b4362e88e57c29d0",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/__init__.py"
+    },
+    {
+      "blob": "a37f721910e462ff936d2beea62a6b9361bbd399",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/algebra.py"
+    },
+    {
+      "blob": "3d3bba88e89615fb21809278216b10eece929a26",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/approval_subjects.py"
+    },
+    {
+      "blob": "f747938e04e42a1470f1fb6547872725ca3f91f5",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/capabilities.py"
+    },
+    {
+      "blob": "fe455d77fd1ada5cfea6475ceba54e4048966991",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/configuration.py"
+    },
+    {
+      "blob": "69e9a4e4a93ae22f44a878a2255c27d357618c31",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/configuration_rendering.py"
+    },
+    {
+      "blob": "3346bbeb6d1cfefd828737471d32355773dde6fa",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/control_contracts.py"
+    },
+    {
+      "blob": "b574487c6c7776db6a011f5122cbeaf2e645989c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/control_routes.py"
+    },
+    {
+      "blob": "9d5423274ca22059bd4d728a6011f5d18dd48079",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/delegation_authority.py"
+    },
+    {
+      "blob": "51035e851bd5ce7ab308656b004f45e22855510a",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/delegation_keys.py"
+    },
+    {
+      "blob": "a4afc6476de99411fa2e80daa44bd8e165ef5178",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/environment.py"
+    },
+    {
+      "blob": "31f7d85b1c84306663adc0a51742744e0c0d897b",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/gateway_delegation.py"
+    },
+    {
+      "blob": "88eaf1e4a37bf966721272cd069a71d72587fc38",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/identity.py"
+    },
+    {
+      "blob": "332c4a9005cbc4d2948f2a7d9d5b8b00472a4c03",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/lifecycle.py"
+    },
+    {
+      "blob": "21f6869ac31117dbb42e13c6246acee878a1eea1",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py"
+    },
+    {
+      "blob": "26467010f3ede9692e35c17e0bed20805fa89d4c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/commands.py"
+    },
+    {
+      "blob": "15385a412f6d6f0ff59129689f92a2dd7eee777b",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/execution.py"
+    },
+    {
+      "blob": "c1051ac2e6c299efa4a95a4a4dca46d2e69baeaf",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py"
+    },
+    {
+      "blob": "5d63c8c9fb879a2bdf30fdc20946cfae427875f4",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/http.py"
+    },
+    {
+      "blob": "e2b2d6e0b75fcf95c105c7b7db59da3b7bad532b",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/lifecycle.py"
+    },
+    {
+      "blob": "e5f9e67e099951ebb7967dbd892e907cdef87df8",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/mcp.py"
+    },
+    {
+      "blob": "83dac38e3adec13efc716383cfa265d501755806",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/parity.py"
+    },
+    {
+      "blob": "7b29e0ca5fb2ee77805da824d20c130160ce9dd1",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/persistence.py"
+    },
+    {
+      "blob": "7a62bdde7b8d4cb85bb1712aa5373d1ef34fe798",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/process.py"
+    },
+    {
+      "blob": "fa3203af5cd9e4a213fe19178a772aabaf396b46",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/projections.py"
+    },
+    {
+      "blob": "5126345d89d4f9da80412d2e5bae43688ef74151",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/services.py"
+    },
+    {
+      "blob": "b2862a8397a6c71594f0d6c0f23f5858e2b0ea1f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/operations/transactions.py"
+    },
+    {
+      "blob": "6ca07bd67884cea950870211f7d035fc91adaacc",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/planning/__init__.py"
+    },
+    {
+      "blob": "968f24a9430d4c7eecd3250337b385dc6e286e2e",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/planning/activity_plan.py"
+    },
+    {
+      "blob": "d60aca0866b5fc263b6b9fdce4a7f91e9f044d6d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/planning/codec.py"
+    },
+    {
+      "blob": "b0b3a466ad777391f39e760b56317c3747b06ef2",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/planning/compiler.py"
+    },
+    {
+      "blob": "f126c01a1f0a007c5c2e51803ecd6df357193681",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/planning/recovery.py"
+    },
+    {
+      "blob": "4f795b6848d19a436c4915f76ac8938d8b1e8819",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/planning/saga.py"
+    },
+    {
+      "blob": "22f1c9d69dc622fd90d0b90a3a6f0233e7716d47",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py"
+    },
+    {
+      "blob": "429df7b75a9e837723c7c4ba0ef5c035f4df0ddc",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/policies.py"
+    },
+    {
+      "blob": "34417894c17c80b81c2dfe92af7c2e8363ad916f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/probe_intents.py"
+    },
+    {
+      "blob": "93b4fa1f415d225f6a2b8f7e52b8f442273fc9bd",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/products.py"
+    },
+    {
+      "blob": "7df1924c1c470069684b3a850951f4f6285c9e4d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/public_ingress.py"
+    },
+    {
+      "blob": "867d501380d3a7c6b1a419da161c9973e170365d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py"
+    },
+    {
+      "blob": "ae808383a5b2a4c45ce4c227329d64ca21db5222",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py"
+    },
+    {
+      "blob": "8f6d222ef6b0589c50cefa61eb2c84ffe05c8f84",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/secrets.py"
+    },
+    {
+      "blob": "bfe09c53ca31c634bd01fbe651d192e27cd4cb88",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/topology/__init__.py"
+    },
+    {
+      "blob": "dcf64c28174572d0c9ea14884b30632b44aad0e7",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/topology/changes.py"
+    },
+    {
+      "blob": "660b1ec115d009afc0999cee64329b06d5af639e",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/topology/codec.py"
+    },
+    {
+      "blob": "1816206b939ee19001ecf21c1f8e1093db076200",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/topology/compiler.py"
+    },
+    {
+      "blob": "d0236387bbbca334de3b8a5fa6babf4d4b6fa6ce",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/topology/diff.py"
+    },
+    {
+      "blob": "728d50112c6ab39a6356be0cc8d02fea71922e9f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/topology/graph.py"
+    },
+    {
+      "blob": "241f39039abfb946b108c579ae2fdd88deb6a666",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/topology/validation.py"
+    },
+    {
+      "blob": "1d99e42a4cbba5bb758b9bbf43f3f9b3b9f63ab1",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/types.py"
+    },
+    {
+      "blob": "6cd7ad3a2838e9236ab5a56fa5f227f4066ea616",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/src/control_plane_kit_core/verification.py"
+    },
+    {
+      "blob": "3e026c950e14600255718bfebabcfd9c25ac2cb3",
+      "disposition": "retain-current-distribution",
+      "mode": "100755",
+      "path": "control-plane-kit-core/test.sh"
+    },
+    {
+      "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/approved_skips.json"
+    },
+    {
+      "blob": "1f1654eee44b1477ef60f66ac0547fc9b8619d28",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/contract_security_assertions.py"
+    },
+    {
+      "blob": "2454195c437cc43c4c73648b3d9a59c5a9740baf",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/fixtures/external-products/proxy/product.cpk.json"
+    },
+    {
+      "blob": "3e67da802208b1695b95071d4790f39ab3773e65",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_activity_plan.py"
+    },
+    {
+      "blob": "66d722b8f50c414583778bdfd08dcdc5745ca6b3",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_activity_plan_codec.py"
+    },
+    {
+      "blob": "b20e8996cf388c0e6047c9936a532e44d9306446",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_activity_plan_compiler.py"
+    },
+    {
+      "blob": "bc9732ed243fc89c17a5e434f59e432deff14e22",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_adapter_parity_contract.py"
+    },
+    {
+      "blob": "2088cf1509f6eed43d1e5a8e5f0b6b49ce39c1b2",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_approval_subjects.py"
+    },
+    {
+      "blob": "8c97c18e13b59b391628c0fcff73e2c43438dd92",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_authorization_history_parity_contract.py"
+    },
+    {
+      "blob": "dd1d8d17705a96b4610fd64bba5ba37bf17a6e75",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_command_parity_contract.py"
+    },
+    {
+      "blob": "157efbce7a3589f778e9e11f798704f15ba2e8a7",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_command_workflow_contract.py"
+    },
+    {
+      "blob": "6943cc24a833034f22b09dece70bb922c3c3927c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_compensation_planning.py"
+    },
+    {
+      "blob": "f05d6959717a6f3035e2bcda6d132ffa4a7a22d1",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_configuration_artifacts.py"
+    },
+    {
+      "blob": "bc2ac0ceed4c29662655005853a066edc8c8ff10",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_container_server_product.py"
+    },
+    {
+      "blob": "b7cb71817e493c8b1597d9415c0cb83235d2c103",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_control_contracts.py"
+    },
+    {
+      "blob": "d957d9b90b27b655c84e0cf9d9afa03b2cb85643",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_control_routes.py"
+    },
+    {
+      "blob": "bb33a529e707f2226b8dd29335935e1ac7a7c830",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_cpk_server_entrypoint_handoff.py"
+    },
+    {
+      "blob": "5a721e1b7625877f6bb120109b2c03794f2468fd",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_delegation_authority_projection.py"
+    },
+    {
+      "blob": "c84e74c3872de64b0130191ef2f9c37c7fdfacb1",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_delegation_keys.py"
+    },
+    {
+      "blob": "1d121e03d88cfb890fc526213e5d8c03239f36e9",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_deployment_program_boundary.py"
+    },
+    {
+      "blob": "b978f36484cd90977b0df90ff6d9a1017f8cfeaf",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_environment_secrets.py"
+    },
+    {
+      "blob": "65ea8f6f03cc998757643cd4f0c35b5812af88c4",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_execution_coordinator_contract.py"
+    },
+    {
+      "blob": "343eba56b681d27cdef1fd05df761c98512f1d37",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_execution_lifecycle_contract.py"
+    },
+    {
+      "blob": "8e9e684b2bb98b15b3f53a11ec92f0858153fbce",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_external_product_fixture.py"
+    },
+    {
+      "blob": "1d837239897a2bcb5a93c95e6e64ea67dccf43c5",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_extract_d_closeout.py"
+    },
+    {
+      "blob": "1a3cfd7794a2dece9f446eadba4d1b1aa5514d6c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_extract_d_topology.py"
+    },
+    {
+      "blob": "60a323adc2ec7b7512db04a3df32f05fc615231d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_gateway_delegation.py"
+    },
+    {
+      "blob": "6c0bc7bb06039fd7aac2b01cdd7aaa4973b1c245",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_graph_codec.py"
+    },
+    {
+      "blob": "3ca300912b779f96ba51628f16d1d996c73fd2af",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_graph_diff.py"
+    },
+    {
+      "blob": "bd8c9d2b66c2af754031d478c964f487c7d44e57",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_graph_validation.py"
+    },
+    {
+      "blob": "9040fadb6f2a6cdbd2e410dc8383c98237ee513e",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_http_api_contract.py"
+    },
+    {
+      "blob": "38667d8a3e4021fd75b8c9f6167dc36f57484462",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_identity.py"
+    },
+    {
+      "blob": "cb736c976985b65e87e72260728dc01be68cf68e",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_kernel_pipeline.py"
+    },
+    {
+      "blob": "f8edb253dceb8fe55af12d26670a5a6fe5b78b3d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_mcp_streamable_http_contract.py"
+    },
+    {
+      "blob": "03d32ac4199d94bb41838d7ebc8dab7f770f45e5",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_milestone_closeout.py"
+    },
+    {
+      "blob": "f18311dc55ccdbf07754151dfe980948c7b8c6fc",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_oci_image_reference.py"
+    },
+    {
+      "blob": "43a407f98320f21b778fac1d0e83ced6b5ea6474",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_package_boundary.py"
+    },
+    {
+      "blob": "e00ed5c47212efcbd8e88077afebfb27010bda56",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_persistence_boundary_contract.py"
+    },
+    {
+      "blob": "cefff31c07e75d96d6f7219701dc0ebb25aa55dd",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_planning_scenarios.py"
+    },
+    {
+      "blob": "9407f72efbcd65e7c097ed2da8449a24d3a7a660",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_policies.py"
+    },
+    {
+      "blob": "9b42a744036e25984dcda8c44dbaa78e777e09dc",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_probe_intents.py"
+    },
+    {
+      "blob": "67f96a29fda8e636df126813673f74626286c7a7",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_process_operational_contract.py"
+    },
+    {
+      "blob": "40bd04218ec3f994aa7fe52629b998834c928668",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_product_catalog.py"
+    },
+    {
+      "blob": "43f7f757ac112b253da5de66034c20338108e867",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_product_descriptor.py"
+    },
+    {
+      "blob": "4010020e8bc6dc8b414196ba24837317d0b314c6",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_product_descriptor_hardening.py"
+    },
+    {
+      "blob": "d0b4e9d1aaa9645166133c4035b8f50eb7f85443",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_product_identity.py"
+    },
+    {
+      "blob": "e93147a9dbd7f6666ec5de612c1f98bc6f3133e3",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_product_instantiation.py"
+    },
+    {
+      "blob": "25fa4f6b3ff85d38e139b2305fb507c0266027bd",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_product_pipeline_propagation.py"
+    },
+    {
+      "blob": "3111911c1e94c1516b11b320e107a243b4953521",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_product_reference.py"
+    },
+    {
+      "blob": "8e1a8afde4c934cae696d640c338cebceebc5ed9",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_product_runtime_contract.py"
+    },
+    {
+      "blob": "0b76e2f5aed0a76dc885c3966adcbe992e478305",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_protocol.py"
+    },
+    {
+      "blob": "8dfc845f59e989d62cf8cc38187f41bcfb6c20ae",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_public_ingress.py"
+    },
+    {
+      "blob": "be3bfef867545a0f54347bd36e058aec63601483",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_read_projection_contract.py"
+    },
+    {
+      "blob": "c1aeb2985a48528a1621de612e795520e32bcce4",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_recovery_planning.py"
+    },
+    {
+      "blob": "09811bd1c7b4cfbce86ccce772b9c24f931a680b",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_resource_lifecycle.py"
+    },
+    {
+      "blob": "d41f614a79bfadb40722383468e56274bb10f93f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_runtime_effects.py"
+    },
+    {
+      "blob": "16c0336f717d562ce1b3ae151adf97a42b8b4611",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_saga.py"
+    },
+    {
+      "blob": "841a7c326a9248f7848fa5acfc5588583fc4e09d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_scaffold.py"
+    },
+    {
+      "blob": "1baa7edd451d066eda82b1db1b080d89a91c75f0",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_scheduling.py"
+    },
+    {
+      "blob": "ac7083f198a1ab6d5dcc9ad91a2783b5415bfca3",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_secret_provider_contract.py"
+    },
+    {
+      "blob": "25b09731762425a646c40dab5ac0c3ea81574e0f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_topology_graph.py"
+    },
+    {
+      "blob": "d48d5ff5891137bd8e7a55ef7654d5084e7d6787",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_unit_of_work_boundary.py"
+    },
+    {
+      "blob": "1c9bf784e344dbf080870122650d5f0c27248f45",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-core/tests/test_verification_capabilities.py"
+    },
+    {
+      "blob": "c743951c1451ee3f18d67bc128258223c5fcc6f3",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/AGENTS.md"
+    },
+    {
+      "blob": "d9f670f977eaf4cca13e739c79cfa4575d32afad",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/README.md"
+    },
+    {
+      "blob": "a2e926d491ccf0641ecd49f4bd73fa5789be2952",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/pyproject.toml"
+    },
+    {
+      "blob": "ccc5ba7275f5b84c86f758214255b30ec6a8bd39",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/session-command-serialization.json"
+    },
+    {
+      "blob": "1a9313b58b911e8d74a9cbc0adcfee9b2477172b",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/__init__.py"
+    },
+    {
+      "blob": "7158a47658ce586c602a929d0442d72c7f7bc37a",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/activity_journal.py"
+    },
+    {
+      "blob": "f99a02dba2ecbb7d63ad6bf4aa14e46237141d64",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/admission.py"
+    },
+    {
+      "blob": "4994e422b7fb14d274147e36f73e10519126a957",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/advancement.py"
+    },
+    {
+      "blob": "3799f6b04f965f3f710c436a195f5a3ca0225962",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/approvals.py"
+    },
+    {
+      "blob": "27bd9af33ca3c191835146a76a70f1fffd3f60b9",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py"
+    },
+    {
+      "blob": "cebbc115564ba88f17f2b922cfbc5e8b0ce0a2e4",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py"
+    },
+    {
+      "blob": "96ac1759157e8afb042be97f5c5657560cd5f718",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/delegation_key_generation.py"
+    },
+    {
+      "blob": "0fa3573797c63668cb5e5e86f1e5bb390b948704",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/delegation_signing_keys.py"
+    },
+    {
+      "blob": "41a20c4b6fe0a20b96ec5ed677a12b178867ce2f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/desired_realized_projections.py"
+    },
+    {
+      "blob": "36e44744312da15dde0c2e86b5568b3d5a4090be",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/foundation.py"
+    },
+    {
+      "blob": "447f7a376fd7567e1a059cf4e8ffc4f5f4755240",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_activation.py"
+    },
+    {
+      "blob": "b5fb990cb16d4d256146ffa4ca9ab0a994a7c3ed",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_completion_program.py"
+    },
+    {
+      "blob": "6a22f9c6f679def57211258a6ec21323044fbb30",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_deployment_execution.py"
+    },
+    {
+      "blob": "a4692e9b125be30256f991db5842d061cb0776b6",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_deployment_preparation.py"
+    },
+    {
+      "blob": "4a793e39a6651d942949fbdb90aa5c0d307ed54d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap.py"
+    },
+    {
+      "blob": "9a9071b6082955990acf78eeaab63bfdd8c52a47",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap_execution.py"
+    },
+    {
+      "blob": "811a677c844b30add2de5f430c7beafeff230e3e",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap_program.py"
+    },
+    {
+      "blob": "1078440eb96c768ed6b3af6c75a2ee77bba00ae0",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_program.py"
+    },
+    {
+      "blob": "1610ae4890c344c60b7dd74b0e34aa93fd430aab",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_projection.py"
+    },
+    {
+      "blob": "e320e5c6dfd19b6155ee983395ba517e9383d40c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement.py"
+    },
+    {
+      "blob": "7ed5bd3c0c3caaabac413442d9ff69cab93e5bff",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement_execution.py"
+    },
+    {
+      "blob": "abf020a9275b25297d6450eec6f750a292901124",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement_program.py"
+    },
+    {
+      "blob": "c8dd0aac2293eeaf9e98681aa3e061b3c9a091ad",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotations.py"
+    },
+    {
+      "blob": "8e75932f43d927ce4881aef5f297b85242967bd3",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_probes.py"
+    },
+    {
+      "blob": "a19cbc08131a4e3f4a2cf2274a8c63f931f6f89f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/graph_authoring.py"
+    },
+    {
+      "blob": "e2c24e83bcf897a3724a38ea9b60256ea0879bb8",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/ingress_authorities.py"
+    },
+    {
+      "blob": "42777ed941b1982ed3238b71893f3b05531427b1",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/ingress_realization.py"
+    },
+    {
+      "blob": "414add63a14326a296fc2c423929e2c4e7c8d3c5",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/lifecycle.py"
+    },
+    {
+      "blob": "827991b986baf67bfce6c22619e68c4144849e6c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/planning.py"
+    },
+    {
+      "blob": "01b5c474078586b5a66a65fadd18f880a14aa849",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/__init__.py"
+    },
+    {
+      "blob": "b74ebbdbe3deefb3ba6425191c0f2bd979fd651f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/activity_history.py"
+    },
+    {
+      "blob": "04e986f7b61a1acd6635eec9f82b63bf6919f500",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/delegation_signing_key_store.py"
+    },
+    {
+      "blob": "b3c5431117959fa796aa6c18a56bf84e7c0c54b3",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/execution.py"
+    },
+    {
+      "blob": "6180e731d26f7d9da7ce502b2bbc914c3a3c968e",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/gateway_key_rotation_store.py"
+    },
+    {
+      "blob": "73679b0f0905b11a900bef923334676d8a6c6365",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/gateway_probe_store.py"
+    },
+    {
+      "blob": "61a8313accf20c4771b05b49976ecbd07ab4b280",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/graph_store.py"
+    },
+    {
+      "blob": "6b545e79c21c1ac445ad8a98c1f20a3cfea6b03c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/image_pull_authority_store.py"
+    },
+    {
+      "blob": "8de4d58f56477abcb30bf499ad5eed67708bf851",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/ingress_authority_store.py"
+    },
+    {
+      "blob": "71e5a35312e326192f14f8df9c12dfac29fd6626",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/observed_state.py"
+    },
+    {
+      "blob": "d6b71c881eac658c32f73e2bfc76b44405de020f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/product_store.py"
+    },
+    {
+      "blob": "15cf190585892727a66a6491411c2f26df608a45",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/runtime_authority_store.py"
+    },
+    {
+      "blob": "72bcd29faf0f6165c916cc3632f1ac4493808cfd",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/schema.py"
+    },
+    {
+      "blob": "ece6ebecc0dac62667a8dd5f67ad2a19584f6705",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/secret_provider_store.py"
+    },
+    {
+      "blob": "6a004af8b4ab946da3cabac21c69e75ed8384411",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/stores.py"
+    },
+    {
+      "blob": "1a97d44401f3c834d635ef39d347ec4ea279a43f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/unit_of_work.py"
+    },
+    {
+      "blob": "c855e0ea3608389c37978ff14e982bb0621543d1",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/products.py"
+    },
+    {
+      "blob": "91408642a2555038d042e04abb042e5d5e59f7e3",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/read_services.py"
+    },
+    {
+      "blob": "bbcd1530b820e34634b3b5cd8de1052f89964ea0",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/records.py"
+    },
+    {
+      "blob": "bae34d3c15172f51f219013377ca00fc6761d838",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_authorities.py"
+    },
+    {
+      "blob": "56a2f68cec8336df5212ec4e90aa4746805a30d7",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_dispatcher_bootstrap.py"
+    },
+    {
+      "blob": "01cb1b89d7c4883e194c2667ec03c68e11033136",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py"
+    },
+    {
+      "blob": "1142ec88b3d794e593f610502654a076a13643ba",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/secret_providers.py"
+    },
+    {
+      "blob": "e8ba62b47c99d46631206da0aaaab56400d23f26",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/workflows.py"
+    },
+    {
+      "blob": "6adae6cf843dcfb8414681d848af93d2783c8343",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/src/control_plane_kit_operations/workspaces.py"
+    },
+    {
+      "blob": "8f6f92bdbafde1662f16a2f581769ea10fe6cb7e",
+      "disposition": "retain-current-distribution",
+      "mode": "100755",
+      "path": "control-plane-kit-operations/test.sh"
+    },
+    {
+      "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/approved_skips.json"
+    },
+    {
+      "blob": "f7629c018ae8e83110f823402160c9a1d8a4de2f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/gateway_rotation_overlap_fixture.py"
+    },
+    {
+      "blob": "f0552348cfe67a948473eaa12595eaf1d6c12a34",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/gateway_rotation_retirement_fixture.py"
+    },
+    {
+      "blob": "775ed8ab2ec5c41ccd834a79a88502de08c5bd15",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_approvals.py"
+    },
+    {
+      "blob": "10d39eae4e543e10a4bce9303bc02cc41e4c0bfa",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_cpk_server_adapters.py"
+    },
+    {
+      "blob": "7fdc26035722120de9e2a231aca1dcfc02089e33",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_current_graph_advancement.py"
+    },
+    {
+      "blob": "75f67c8d1cb7105bd25cc313d061ccfb5d25ad92",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_delegation_key_generation.py"
+    },
+    {
+      "blob": "bc3e39ce84bf0d966255e83c5f2a74b6ff145cd5",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_delegation_signing_keys.py"
+    },
+    {
+      "blob": "f1288bf025c9aa3da73fbab8a7871dd682d195df",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_execution_admission.py"
+    },
+    {
+      "blob": "636a7f486e015ef3798055a69d0f40581ef45b37",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_execution_coordinator.py"
+    },
+    {
+      "blob": "7369615b95e5ee15659187eef46bcd133b1121d4",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_activation.py"
+    },
+    {
+      "blob": "ad0a2e0e3de446812b9b930656a62129fda4487f",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_approvals.py"
+    },
+    {
+      "blob": "e1274dc061fa774301f8219e7ff857d8ab783dac",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_completion_program.py"
+    },
+    {
+      "blob": "e628f782c9435cd459efcf056b606d2c72dfd636",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_generation_program.py"
+    },
+    {
+      "blob": "40b2a91f92ea228cf7c06c67fbeb1dcb8170dff2",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_admission.py"
+    },
+    {
+      "blob": "e57d9788efa98533eaec140d680df6ed4747c902",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_execution.py"
+    },
+    {
+      "blob": "f9048ca1e49af2e237b7192662912f747dd0d9b1",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_program.py"
+    },
+    {
+      "blob": "c395107b0ce56e4987a4746a19b0c8a3180709d4",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_projection.py"
+    },
+    {
+      "blob": "ec8f7e41f876e6ad911cdcfaf6a6381e6313cec2",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_program_acceptance.py"
+    },
+    {
+      "blob": "4fa2d4efeba22169f3a4fd8df101ecdf857dda15",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_retirement_execution.py"
+    },
+    {
+      "blob": "95b0747eed21cd25f2e42b71ed1f3ceb77e4d0e5",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotation_retirement_program.py"
+    },
+    {
+      "blob": "2bb79d0cde4e62a510d8535b47f9c142a5ff1874",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_key_rotations.py"
+    },
+    {
+      "blob": "b538a5301300187a81db18b334873ffe235f119e",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_gateway_probes.py"
+    },
+    {
+      "blob": "0afe6a65819e46062f1a9324611f110b63d52aa3",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_graph_authoring.py"
+    },
+    {
+      "blob": "b9dcc407115f5fddf308e9ef5fe31716507dd539",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_ingress_authorities.py"
+    },
+    {
+      "blob": "271d961f61a558a83533d587b06916d9dfcf6bd5",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_ingress_realization.py"
+    },
+    {
+      "blob": "f5b90a00eac5282b20f03b6d9c0ad3d35e099011",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_package_boundary.py"
+    },
+    {
+      "blob": "b5025d03b8eac746313c41e1b84c359a5dfb8cd6",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_package_gate.py"
+    },
+    {
+      "blob": "ab3c91a7210a84a6c0f03b0303f73ced2eba58aa",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py"
+    },
+    {
+      "blob": "5cb8a7adde2daea736d35641d8e2ad27936a4c48",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_postgres_schema.py"
+    },
+    {
+      "blob": "ac85a874ff48b1ac9d9d6fe104bde8148b832e30",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_read_services.py"
+    },
+    {
+      "blob": "00700c080033e1928ed8c86ce7c6bb21c746f661",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_realized_graph_projection_store.py"
+    },
+    {
+      "blob": "3efce0a9ca00b2da99a7ef40db6823ceb10b5d88",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_registered_products.py"
+    },
+    {
+      "blob": "be193693ba8d8bc4ac5161999268612b69d6c945",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_run_lifecycle.py"
+    },
+    {
+      "blob": "0fa6748b5005c7245bd0b2ee27884b97bc2fbae5",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_runtime_authorities.py"
+    },
+    {
+      "blob": "20223fd4bba342caa503e8ac84b24fb12fb61796",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_runtime_dispatcher_bootstrap.py"
+    },
+    {
+      "blob": "33b676011d24f7240198e237c94dc4c7e485b129",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_runtime_effect_translation.py"
+    },
+    {
+      "blob": "c8e88edf76e647c3548a6aa4747bde3f8c84df0d",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_runtime_interpreter_dispatcher.py"
+    },
+    {
+      "blob": "aedeadac2ee509abcd25ae37f8e6d648181975bc",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_scaffold.py"
+    },
+    {
+      "blob": "994c021ed42103c3cda13bc1834c13f272335d33",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_secret_providers.py"
+    },
+    {
+      "blob": "febd022cb61c71624244022945bcbeac8095277c",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py"
+    },
+    {
+      "blob": "19c214c4aa034e7c8bdc7fbef35c9ccbeba07382",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_session_serialization_primitives.py"
+    },
+    {
+      "blob": "9476bf75f0b778ac34bd56cf10f9525e175e676e",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_unit_of_work.py"
+    },
+    {
+      "blob": "7abad3d087c674abf2e4ed171f59c34849fbd255",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_workflows.py"
+    },
+    {
+      "blob": "6c7f8f9abb7373db14749285e349548917b21a2a",
+      "disposition": "retain-current-distribution",
+      "mode": "100644",
+      "path": "control-plane-kit-operations/tests/test_workspace_graph_stores.py"
+    },
+    {
+      "blob": "10a633eeecd7452b6cb20271b36b86fe5b4687f2",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/__init__.py"
+    },
+    {
+      "blob": "d9a186a876176f36169b4129e329e9a663c76f19",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/_optional.py"
+    },
+    {
+      "blob": "291f1daccc6ead2f4f327e644ea69eaab71d02df",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/__init__.py"
+    },
+    {
+      "blob": "268a7bcfafc287a88b55db0095d3b785e74d607c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/control_http/__init__.py"
+    },
+    {
+      "blob": "e9c293894c1382196fcd7ec0ee99de9924973dba",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/control_http/client.py"
+    },
+    {
+      "blob": "01ebfb299a0e88edcf9e26475104c578004dbc31",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/control_http/security.py"
+    },
+    {
+      "blob": "4aa6d58d123cfe702cf5c9a0f03aeca645664e01",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/http_forwarding.py"
+    },
+    {
+      "blob": "3392b6faa653b3248f08fae6625f348574ad0210",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/probes/__init__.py"
+    },
+    {
+      "blob": "ebc8142cf7e3493d111fe0a3bfc56082de546421",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/probes/clients.py"
+    },
+    {
+      "blob": "7ca1c2c720368622193516dfcaefd17416da8e4d",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/probes/interpreter.py"
+    },
+    {
+      "blob": "b19d984f321cb71f4d18c42a7e33bc165e7dace1",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/probes/security.py"
+    },
+    {
+      "blob": "bf78219809df8668ac0dabe692ad567298a8f5d5",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/adapters/verification.py"
+    },
+    {
+      "blob": "267b032f4f2105d6d4efab358beb73661eb999bb",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/application/__init__.py"
+    },
+    {
+      "blob": "f57b6d1e7cd421c325a317200180262cc416c23a",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/application/deploy/__init__.py"
+    },
+    {
+      "blob": "c2282667c13fec20b27494add06150de4f3c0016",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/application/deploy/program.py"
+    },
+    {
+      "blob": "092e2ea4df7f6c678cb8e95a9007b105d2731a63",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/application/deploy/stages.py"
+    },
+    {
+      "blob": "b9565bbcc1b4e23d5dd3f6706509c38d8d16c915",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/application/deploy/values.py"
+    },
+    {
+      "blob": "aa7111bcfa14b5a62dbf407bc5fe5c1a0c129a69",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/contracts.py"
+    },
+    {
+      "blob": "532c7ff207afb1c96edbf0aa9d467260119d4c41",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/__init__.py"
+    },
+    {
+      "blob": "b300b7e16b1aef4afc20d809ad5d538f417e4e8c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/algebra.py"
+    },
+    {
+      "blob": "403e411361d83a50f48a5cac6ef6ef311a807033",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/capabilities.py"
+    },
+    {
+      "blob": "376ad166b5b00732e5bad1f99d2a5325d6568e82",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/configuration.py"
+    },
+    {
+      "blob": "b574487c6c7776db6a011f5122cbeaf2e645989c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/control_routes.py"
+    },
+    {
+      "blob": "a4afc6476de99411fa2e80daa44bd8e165ef5178",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/environment.py"
+    },
+    {
+      "blob": "332c4a9005cbc4d2948f2a7d9d5b8b00472a4c03",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/lifecycle.py"
+    },
+    {
+      "blob": "d427602b7a704d85ff3cbc26ae5239c6d31ee2c2",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/planning/__init__.py"
+    },
+    {
+      "blob": "e4fb08efa752d0bc048f6d2e66e568d0a1f94f2e",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/planning/activity_plan.py"
+    },
+    {
+      "blob": "1ba39863aa151787734c35d62dee79b98f5dd14c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/planning/codec.py"
+    },
+    {
+      "blob": "c3f75bd44511eed77a60785b37cc84ae7976e16f",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/planning/compiler.py"
+    },
+    {
+      "blob": "ff453eab1f9dd370c92a59ff001fbc54f2700ad0",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/secrets.py"
+    },
+    {
+      "blob": "1915e94a2c5a93cc36742b2a8b87914496d694a7",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/topology/__init__.py"
+    },
+    {
+      "blob": "ec77341988e4e46bf360183e62854f16ae158aa5",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/topology/changes.py"
+    },
+    {
+      "blob": "39dbe793a4042cbfd446d96af29aac9a72eeedf8",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/topology/codec.py"
+    },
+    {
+      "blob": "da79acff4942e0760518f4f49f84d4bdca4ac9f2",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/topology/compiler.py"
+    },
+    {
+      "blob": "275b2d931c6fe78e058447ed7b3c6e2e9874d971",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/topology/diff.py"
+    },
+    {
+      "blob": "ae2791555162cb0cc56ba9fe279ef72301e78cb3",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/topology/graph.py"
+    },
+    {
+      "blob": "671e33a16106c843e32b91e6f5693975dee3cee0",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/topology/validation.py"
+    },
+    {
+      "blob": "21ce79dc6985105392044ca974439b52e60392e4",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/types.py"
+    },
+    {
+      "blob": "ad8a2f0f851766610dec4ac62fea6e34f285802a",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/core/verification.py"
+    },
+    {
+      "blob": "daef686cb774855aa21211d0ff45dcb88ebbe011",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/discovery_registry/__init__.py"
+    },
+    {
+      "blob": "d26b3d797a112c797826bc0889d8232285202483",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/discovery_registry/postgres.py"
+    },
+    {
+      "blob": "21589b865cfc905b0adb4b37aa5d525b7ba70bbe",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/discovery_registry/protocols.py"
+    },
+    {
+      "blob": "2852d9dd5c1c18d8c63babf377511bc83b14c8a6",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/discovery_registry/service.py"
+    },
+    {
+      "blob": "c5dbe35e20d5725cb6b5edec2956280a5ca3f8bb",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/discovery_registry/unit_of_work.py"
+    },
+    {
+      "blob": "b525476668a6d6f2639743f7cad2581936ca619e",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/discovery_server/__init__.py"
+    },
+    {
+      "blob": "775683135d06791a4c455ad9429e40910f9d32bf",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/discovery_server/app.py"
+    },
+    {
+      "blob": "4f0663b44e3fa6f17294844fd5a3c4fd31d5df08",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/discovery_server/main.py"
+    },
+    {
+      "blob": "43010570bbfc3884589310519ed82a90fd73191e",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/docker_runtime.py"
+    },
+    {
+      "blob": "1ca69fbea391e932ee4c6fe12eb1d89b70482871",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/__init__.py"
+    },
+    {
+      "blob": "b15f180df96198d86560b553bfb17f87013bc73c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/discovery/__init__.py"
+    },
+    {
+      "blob": "43f1e7cb7aa1f1f28bd94ad867976ab3c991f700",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/discovery/language.py"
+    },
+    {
+      "blob": "816a86f260036646db52e9a9c09825b1997263d4",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/idempotency/__init__.py"
+    },
+    {
+      "blob": "55ea3ea1f992d00b033e68811f8d1ba57273df28",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/idempotency/language.py"
+    },
+    {
+      "blob": "bebcdb5563051386faa2aad76c9214c501648512",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/load_generation/__init__.py"
+    },
+    {
+      "blob": "bce63563fcb08d8b30b468ae5ea622e6564dac26",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/load_generation/language.py"
+    },
+    {
+      "blob": "deae3009494109418c6bfa3fefd716f229bc10eb",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/webhook/__init__.py"
+    },
+    {
+      "blob": "66d43747c1af032366ac488ef525ada3b1a1a1ca",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/domains/webhook/language.py"
+    },
+    {
+      "blob": "68f0ab0a72eeaaffd015ceb0b9cbc3a8690975a0",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/effects/__init__.py"
+    },
+    {
+      "blob": "bff9260646aee1ef0fd39a661a07de8049f25350",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/effects/dispatch.py"
+    },
+    {
+      "blob": "87d2d2b54aa70898385fee50dc79aba52c1f9743",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/effects/material.py"
+    },
+    {
+      "blob": "f5f54c12ec717f8466e8a0b1dcf51c7496073414",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/effects/probes.py"
+    },
+    {
+      "blob": "5755b87b442a75590c1ae46969396d26cf5d3f93",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/effects/values.py"
+    },
+    {
+      "blob": "34e1cd086e9c27470a70253757c407938cdf624f",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/effects/verification.py"
+    },
+    {
+      "blob": "7b4a7c517c1ff0422a2f5cda26354db7652b6702",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/entrypoints/__init__.py"
+    },
+    {
+      "blob": "fa218463fda3f55a6d1ba203e66c8a94db41c205",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/entrypoints/cli.py"
+    },
+    {
+      "blob": "f6abd414f65b83550aaa1db950bd46abbc2c178b",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/entrypoints/webhook_server/__init__.py"
+    },
+    {
+      "blob": "e79585ef6ba9be50d0a1257e8ec69a806ad605c8",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/entrypoints/webhook_server/app.py"
+    },
+    {
+      "blob": "9e76b582e40f8095fa1b3a62eda0c465bc1fbd1c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/entrypoints/webhook_server/main.py"
+    },
+    {
+      "blob": "e2d627d0509a96eb4ab79962de33a4a3e24bb52d",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/execution/__init__.py"
+    },
+    {
+      "blob": "447b26f4b598275b3aa87322407c75bd5b662358",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/execution/codec.py"
+    },
+    {
+      "blob": "45d6a1670ea8548c461b60464075a0f8e0122bc9",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/execution/observations.py"
+    },
+    {
+      "blob": "ca227ff7808f2e3cdda3de45d4df883625b1bfce",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/execution/recovery.py"
+    },
+    {
+      "blob": "9f05af9f9d0829ce4e6c0a341eecc3871e734b7c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/execution/values.py"
+    },
+    {
+      "blob": "070fcb414bc7cddce57372f82a7a3e90f6bcfac1",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/idempotency_gateway/__init__.py"
+    },
+    {
+      "blob": "eb849751f639a008307e417d3f826d68c9bd4027",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/idempotency_gateway/main.py"
+    },
+    {
+      "blob": "4638674f3b2fb5bca6234c7e4e537a2d985ae04b",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/idempotency_gateway/postgres.py"
+    },
+    {
+      "blob": "a2074834f90df395f07b35c9241edd04f186bba9",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/idempotency_gateway/protocols.py"
+    },
+    {
+      "blob": "0f994acb1ab62ca9549e7a5fa2ad2e4e00212411",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/idempotency_gateway/service.py"
+    },
+    {
+      "blob": "34f87889177b2f2de93dac5353952a057d10af01",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/idempotency_gateway/unit_of_work.py"
+    },
+    {
+      "blob": "d32f5341c2d3243cc2bd0f9b134efaae41b88b79",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/implementations.py"
+    },
+    {
+      "blob": "3f67ee2b155da9faa5960cff68e9bd63d3ac74db",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/interpreters/__init__.py"
+    },
+    {
+      "blob": "5e6cb291d80485cf88e2090fe206d1bdcee0464b",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/interpreters/configuration_rendering.py"
+    },
+    {
+      "blob": "b4be8e2d8ebffbdaba40a94646db45d85e76f923",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/interpreters/webhook_http.py"
+    },
+    {
+      "blob": "719e0d74b6103690b325a2b4dcac3bf27c13db8a",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/load_generator_server/__init__.py"
+    },
+    {
+      "blob": "ac75a74b01fb27fc7bf0868f4a8b943a56326831",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/load_generator_server/main.py"
+    },
+    {
+      "blob": "3ee2baf14f2934b387f7b0fff75f47fca54e5961",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/mcp_read.py"
+    },
+    {
+      "blob": "b45ed1005ddbbdffd0b71af793fdb101240e0dbc",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/operations/__init__.py"
+    },
+    {
+      "blob": "ae122be13dffe2547dbc17b2d1deffd148002621",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/operations/planning/__init__.py"
+    },
+    {
+      "blob": "9c1fc49b6751fc15854701c80d3dd1239d9430dc",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/operations/planning/recovery.py"
+    },
+    {
+      "blob": "c272dafd631b744fbae5eec2d1644f9c018fda89",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/operations/webhook/__init__.py"
+    },
+    {
+      "blob": "5f7d3a0e4033be0580761cf89dbf7c673a03bac1",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/operations/webhook/postgres.py"
+    },
+    {
+      "blob": "3a048f60cf815bcc4a91b41d59c5d8c0dd5db259",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/operations/webhook/protocols.py"
+    },
+    {
+      "blob": "9afdc1dd6d494c20825f934c92062d7813793db5",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/operations/webhook/service.py"
+    },
+    {
+      "blob": "0225d1b5bf8cdf918a55b8d2e1970d9e797df962",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/operations/webhook/unit_of_work.py"
+    },
+    {
+      "blob": "2b3d17ee51f0d17543001be4f07030d0ac08c54c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/policies/__init__.py"
+    },
+    {
+      "blob": "acc26ac5c67b0c618bf748d82fa109d63ce46c67",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/policies/lifecycle.py"
+    },
+    {
+      "blob": "7489b6d52fef5c9ed12b91c4263eaffe612490a5",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/policies/services.py"
+    },
+    {
+      "blob": "7cb77e5743a9cc6e84a61e05e11a3e95dceb931a",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/product_templates/opentelemetry_collector.yaml.j2"
+    },
+    {
+      "blob": "973c213091930bcc82721c74066ccfa7d96bd37d",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/__init__.py"
+    },
+    {
+      "blob": "afe0ce6bbc29140f65d0f71e8b02a502294adae0",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/__init__.py"
+    },
+    {
+      "blob": "c5d87791cd12aa918a50d5fb7233de02d67f5498",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/catalog.py"
+    },
+    {
+      "blob": "488bdb0b9bba8f44526f3e63e1d7f7b9361b6eac",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/coredns.py"
+    },
+    {
+      "blob": "c2877248969fef42beaa524c35108f0868e29561",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/http_auth_gateway.py"
+    },
+    {
+      "blob": "be62ac8bf95ea62047e05fe5a2f5dc37a2dd1334",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/__init__.py"
+    },
+    {
+      "blob": "3f92deb8a571233ee5bedc56171f4a2eddec3244",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/command_rendering.py"
+    },
+    {
+      "blob": "8912ab1895d1568cd5b7fec7da52926ace5bce8a",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/http_messages.py"
+    },
+    {
+      "blob": "f0b9b98f2dfca57bcfd029a9a99dbe71d787a413",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/hello.py.j2"
+    },
+    {
+      "blob": "2383207a484529299ff42b989e486e8e6e4782ea",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_auth_gateway.py.j2"
+    },
+    {
+      "blob": "eac6f64dd2ed02e7534a6c6fc7c57bf39605b2ce",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_bulkhead.py.j2"
+    },
+    {
+      "blob": "70b02ba952819bbc31c3773eb14a6976f6249ebb",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_cache.py.j2"
+    },
+    {
+      "blob": "f49ae5c3abd3226eef0ab54f1276d08e9c43dec9",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_circuit_breaker.py.j2"
+    },
+    {
+      "blob": "2b693303fac05aaa99f2156fb3bbb8060fb85f94",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_fault_injector.py.j2"
+    },
+    {
+      "blob": "e41818790b1d4fe000cf647d1e884ec4bef0634a",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_forwarder.py.j2"
+    },
+    {
+      "blob": "741f788e4b6f7d86b820b32e5950c06931fb1aa7",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_multiplexer.py.j2"
+    },
+    {
+      "blob": "be5aff4b508f3df1167a9f1ce4a514db64764716",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_rate_limiter.py.j2"
+    },
+    {
+      "blob": "2606d76358bb9b01113f59da9aa2dd3cfe1ed737",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_retry.py.j2"
+    },
+    {
+      "blob": "21e369b6d8a6be582ced893af89290540ca0c566",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_timeout.py.j2"
+    },
+    {
+      "blob": "f4e1c4ebf3f475fcd3f451a0511cffcde9fe5d54",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_traffic_logger.py.j2"
+    },
+    {
+      "blob": "754704f03961cc26ee8a4683c6c3ee3d4a2c90cc",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/http_weighted_balancer.py.j2"
+    },
+    {
+      "blob": "3d6b7854a5984c2bbc9c25362f9f76f1f575f117",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/support/templates/request_observer.py.j2"
+    },
+    {
+      "blob": "dfb498ae79f1069011fe0c98d0bf5b858a68093c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/templates/coredns.Corefile.j2"
+    },
+    {
+      "blob": "57082356443376971a0106d4dcab6e6528e55613",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/templates/coredns.zone.j2"
+    },
+    {
+      "blob": "15ff3661ee6156e03888ed345f8e6b8db8d59005",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/products/servers/webhook_delivery.py"
+    },
+    {
+      "blob": "195197ccada94c1adca2d0eac65a205a4d151405",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/projections/__init__.py"
+    },
+    {
+      "blob": "511c1f0aad96c4dc154a2ebb59d78a423acd09aa",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/projections/operator_graph.py"
+    },
+    {
+      "blob": "33234e3ad4b20795966185f95695864578d50ea7",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/projections/operator_recovery.py"
+    },
+    {
+      "blob": "52cb5dee661bc6093de8255e8c0e8d15991212c6",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/projections/saga_journal.py"
+    },
+    {
+      "blob": "0dacf8de748955a5424e6986e4e1a547be2ddca1",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/read_services/__init__.py"
+    },
+    {
+      "blob": "c2404bdf827ff2af19067562f93da6195ee69b89",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/read_services/instance.py"
+    },
+    {
+      "blob": "e9be374a51f7d5b0d4ce4c64557a7851efd85002",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/runtimes.py"
+    },
+    {
+      "blob": "ee75b9a78b3cfcac71cdc6adf27d101673bc3e70",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/saga/__init__.py"
+    },
+    {
+      "blob": "dda7f6269fc0e05654fc797a3a2ad74326ed0fb5",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/saga/program.py"
+    },
+    {
+      "blob": "f47f56b5c672b8b2008fb1639181cfa9ec8ee25b",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/saga/state.py"
+    },
+    {
+      "blob": "f0dc5916abd64e15bc1d6b44e71e150882b8bd7b",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/scheduling/__init__.py"
+    },
+    {
+      "blob": "644c907a9a06e9ae4010ea6a7fc3d8f9eb721356",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/scheduling/schedule.py"
+    },
+    {
+      "blob": "cd3504e7a641a673d4d4dd60fe43d473162c3548",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/__init__.py"
+    },
+    {
+      "blob": "ce4192d99b9b4a3800c81a3d8b315429f411553f",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/_fastapi.py"
+    },
+    {
+      "blob": "fd4c81c5208222513a43c8085ce3cf843ccd5cd5",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/block_control.py"
+    },
+    {
+      "blob": "039903dfa1d3e76bc973a72d987a4d28ab7c5e59",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/catalog.py"
+    },
+    {
+      "blob": "e6ca6631c0dcf819f548e4839c744e0bcb0f2592",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/hello.py"
+    },
+    {
+      "blob": "6ba790a6a916e0b76053991ea9a0aa20f7381806",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_active_router.py"
+    },
+    {
+      "blob": "74412d2517210e31ca4595aa7bff26b100dda717",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_bulkhead.py"
+    },
+    {
+      "blob": "05b8051302930782eaf5861bca53dfca9cac7242",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_cache.py"
+    },
+    {
+      "blob": "c1d790a5f4424174f69cef6db5bbb425d12f263b",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_circuit_breaker.py"
+    },
+    {
+      "blob": "30b671ffd6595d2e783fcfa767b1f49da656cf04",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_fault_injector.py"
+    },
+    {
+      "blob": "36a72f836b00b1ae66c6ecb942fd3d5c52a66dc8",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_idempotency_gateway.py"
+    },
+    {
+      "blob": "948b63798d7a3a1aee2cbc6e01bea944300539bd",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_load_generator.py"
+    },
+    {
+      "blob": "e6f78ea2fc7d771bfc80ade31c3868b3c7f0ec4f",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_multiplexer.py"
+    },
+    {
+      "blob": "1c6d99efe079c6db75218358ca21ca95975025e8",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_proxy.py"
+    },
+    {
+      "blob": "54c5d370a04f5841441384cf8b2d3c9edecd07e1",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_rate_limiter.py"
+    },
+    {
+      "blob": "b7b6d626681d31b6a42edd23f701ba2188161726",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_retry.py"
+    },
+    {
+      "blob": "33464f308d6835decd73568363a8c4bc7ae4e7cd",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_timeout.py"
+    },
+    {
+      "blob": "f167b97de90861bb810fcd2a9414ab09b87fed5e",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_traffic_logger.py"
+    },
+    {
+      "blob": "e7b8becdd901b502cfdc8eb396d3f645d192a463",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/http_weighted_balancer.py"
+    },
+    {
+      "blob": "4f3a6f18a5b695fb7b683b3eb5671038d93bcdf2",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/instance_read.py"
+    },
+    {
+      "blob": "f0571e1e59b914b44557185983eab00fcf067ac0",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/managed_http_router.py"
+    },
+    {
+      "blob": "e5b01ce3f4d87bb59a6514351bd34624892b5dac",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/opentelemetry_collector.py"
+    },
+    {
+      "blob": "bc540bc0ed6d9e5a5fa0a2dd0f3d0467f00a19be",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/request_observer.py"
+    },
+    {
+      "blob": "dfa7d5b9672e33c635f5a469f6b426ffc3f325ac",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/service_discovery.py"
+    },
+    {
+      "blob": "a56fddf1716e895c8a93525c448bf70e938d0b4e",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/servers/tcp_switch.py"
+    },
+    {
+      "blob": "264e234478bd263fa9a15868143617b63fa0fc3e",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/stores/__init__.py"
+    },
+    {
+      "blob": "94b717e3612510a5dac72304541f28419aa3f6a6",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/stores/postgres.py"
+    },
+    {
+      "blob": "376835bc5666d2358f4a262826d7a38493191999",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/stores/protocols.py"
+    },
+    {
+      "blob": "63c48f2f7dd6d7bd9071d85f138f11288f8412fa",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/stores/records.py"
+    },
+    {
+      "blob": "268989db0c7fc5d1baf1e92f6f1e3e50b04e9634",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/stores/unit_of_work.py"
+    },
+    {
+      "blob": "d6b2c98b0042fb200210d9f6604c15c3674efa0d",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/__init__.py"
+    },
+    {
+      "blob": "77eae29ce5b139333b1b4319ba6e0e41b168eee8",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/approvals.py"
+    },
+    {
+      "blob": "bcce2ea217ffc71a3acf3d556fd73c5a3fd25078",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/command_service.py"
+    },
+    {
+      "blob": "a9a1adc8e5be17a9cb602daa4c239cfd9660505c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/commands.py"
+    },
+    {
+      "blob": "ff1e1bb6b0d4b9cabb5af007cdac601d3afdf318",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/current_graph.py"
+    },
+    {
+      "blob": "d6855c815096ef81c7ee7599e366f16116a4de1e",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/deployment_context.py"
+    },
+    {
+      "blob": "47df2c5ee78cf2214b2f67fc53dc4f3a9b320a64",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/execution_admission.py"
+    },
+    {
+      "blob": "8618722ad8d04f3bba3c4598e4c789dcc1fe0572",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/execution_coordinator.py"
+    },
+    {
+      "blob": "4ac6c29637edc29c443e8c9dc8f168041a23eeb8",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/graph_edits.py"
+    },
+    {
+      "blob": "5c574fae9dd112319e9dc81079decc0c92f964d5",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/planning.py"
+    },
+    {
+      "blob": "3b4b878b98df535551fceec3649215530897c45e",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/run_lifecycle.py"
+    },
+    {
+      "blob": "e1463147b9294d3f86e203b74f49b06c87bfb20c",
+      "disposition": "delete-legacy-package",
+      "mode": "100644",
+      "path": "control_plane_kit/workflows/verification.py"
+    },
+    {
+      "blob": "92209bc8dbc05e4da43150165a98363bc518c523",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "coredns-live-test.sh"
+    },
+    {
+      "blob": "e8bbbbdc42050f7d522aa2714bd50a40bd62d7c3",
+      "disposition": "retain-current-backend",
+      "mode": "100755",
+      "path": "current-backend-test.sh"
+    },
+    {
+      "blob": "24a17f75b1ce51c82c29c37340bfc7909c34da90",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current-backend.contracts.json"
+    },
+    {
+      "blob": "bc50b67a679d61f6794f22c2ef67038342111426",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current-backend.lock.json"
+    },
+    {
+      "blob": "91438f804c74200823aed29f7f4b7b841f262307",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/README.md"
+    },
+    {
+      "blob": "3ed1eb91d6ccb6cf4e94e9dd15bb1a026749d484",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/__init__.py"
+    },
+    {
+      "blob": "05eee11cdf8260470c179b72720a1b7251081386",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/contracts.py"
+    },
+    {
+      "blob": "de26c7acac910f7f0801aff2c2a219878b0f980a",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/runner.py"
+    },
+    {
+      "blob": "363a7cf9d30aeb4103403f851805871645de137e",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/source_lock.py"
+    },
+    {
+      "blob": "6819b7d63c0446b046473b50aa53318f894e56ce",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/tests/__init__.py"
+    },
+    {
+      "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/tests/approved_skips.json"
+    },
+    {
+      "blob": "07899cc30e9875aded616365cecb5e8d2ce763e2",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/tests/test_contracts.py"
+    },
+    {
+      "blob": "cf04ac5f1ccd84e7de2022308671aa519d933e61",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/tests/test_runner.py"
+    },
+    {
+      "blob": "3f0df1b9579cb718d8261d299ff3820436a8ad2a",
+      "disposition": "retain-current-backend",
+      "mode": "100644",
+      "path": "current_backend/tests/test_source_lock.py"
+    },
+    {
+      "blob": "577544745fe69add9e94c9d2c887d1a934cc3823",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "differential-live-test.sh"
+    },
+    {
+      "blob": "7cb921aec85e68e8d32255e4782f503f11c10c2a",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "discovery-live-test.sh"
+    },
+    {
+      "blob": "10fb682927f729361f98a0db02e3aef687f6ce21",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/ACTIVITY_PLANNING.md"
+    },
+    {
+      "blob": "63878b98bcdf90cba1d88ede6217877fca3f9de8",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/CONNECTION_PROTOCOL.md"
+    },
+    {
+      "blob": "5ecb71ea78e0bc9c03cc749b76d95359fd555b19",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/CONTROL_PLANE_LANGUAGE.md"
+    },
+    {
+      "blob": "83197b6c12fd9cac9919593ddf1cfd6d065146a6",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/CONTROL_PLANE_LANGUAGE_STUDY_GUIDE.md"
+    },
+    {
+      "blob": "87bae072f8cbbc30b4dfe29da2232c2a43ae5a7e",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/DEPLOY_PROGRAM.md"
+    },
+    {
+      "blob": "6ea1254f817bc0ef58e04bc9e23c24a9ad6f2a93",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/GENERATED_HELLO_GRAPHS.md"
+    },
+    {
+      "blob": "9be3329f97cc19e42ef8658f97eb67b3d4cc3b09",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/HTTP_BLOCK_COMPOSITIONS.md"
+    },
+    {
+      "blob": "858271074283322268a39f221a172e1b0eb481b1",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/OPERATING_MODEL.md"
+    },
+    {
+      "blob": "69c8115fa426fc5f3c802ff9f50a4c54621236e4",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/PACKAGE_SERVER_CATALOG.md"
+    },
+    {
+      "blob": "7d898bf74afeb5ee75c781ed46c105b1fc6a22a0",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/POSTGRES_UNIT_OF_WORK.md"
+    },
+    {
+      "blob": "96d2d9091d11eabdaeebc4d0bef1e4a83f862864",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/READ_INTERFACES.md"
+    },
+    {
+      "blob": "425c77c6e41c81f68ce8184ad044f135cae346db",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0001-product-form-block-algebra.md"
+    },
+    {
+      "blob": "b51ad328e747697fe488079421e505f1fa874839",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0002-control-route-protocol.md"
+    },
+    {
+      "blob": "fa92029dd1d90807e79e86f205168e960b5fe100",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0003-capability-descriptors.md"
+    },
+    {
+      "blob": "c05e6a8ea0b93c92804f9331ad923996c2a10346",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0004-data-structure-first-and-data-safety.md"
+    },
+    {
+      "blob": "f78cf09e710621afbbc166a6876852b360b865e9",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0005-security-review-in-every-loop.md"
+    },
+    {
+      "blob": "613d5a498b28d342d0498b870f11bdb6aa0f9013",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0006-activity-history-and-operational-observability.md"
+    },
+    {
+      "blob": "5ad7d2b593c1b50b4fb0ea962304be363b72e7f2",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0007-operational-reliability-and-examples.md"
+    },
+    {
+      "blob": "7939f7132c872d6bc56dccec888c606ae16f724e",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0008-transactional-data-engineering-policy.md"
+    },
+    {
+      "blob": "02bed2f1831f0ec1589d8037f8a90e5ca589024a",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/adr/0009-package-boundary-topology.md"
+    },
+    {
+      "blob": "176977f3f53f77ec331849e70749cb67f9eb4509",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/architecture/SESSION_COMMAND_SERIALIZATION.md"
+    },
+    {
+      "blob": "797848188826b7be78cd2651bb181bb68be6e2fc",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/architecture/TRUSTED_IDENTITY_BOUNDARY.md"
+    },
+    {
+      "blob": "8c5213d4442db7d1e97162042916943c2cf3520a",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/architecture/domain-language-admission.md"
+    },
+    {
+      "blob": "32a6977e55bd304ad06cbedcf4bb4e5414ba365f",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/architecture/package-boundaries.md"
+    },
+    {
+      "blob": "0aaa927048ecd34a5ce639486d4bbdda503af479",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/architecture/package-module-inventory.json"
+    },
+    {
+      "blob": "e95d15d3a475de9625ff938a3341f8dafd6d1b1e",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/design/0001-control-plane-kit-architecture.md"
+    },
+    {
+      "blob": "c85adcd535469a03d17f47ed9d5c80bd57f52ac7",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/design/0002-mathematical-design-preference.md"
+    },
+    {
+      "blob": "bd6fadcf9bc0c73496c4c07c745646331c744f48",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/design/0003-control-plane-backend-topology-discussion.md"
+    },
+    {
+      "blob": "3a330cacc3ef575fe3faae5ad3cbf43c2628a1a4",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/design/0004-delegated-gateway-probe-threat-model.md"
+    },
+    {
+      "blob": "3961e40705f099141a6df9bb130535ce5d6115db",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/design/0005-durable-secret-provider-threat-model.md"
+    },
+    {
+      "blob": "e4850ae076b8d3abb45af09952d089e4e297bfff",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/activity-run-0001.md"
+    },
+    {
+      "blob": "384677c374e29202be6d4707da3aa477e1a542fd",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/extract-b-run-0001.md"
+    },
+    {
+      "blob": "95e12aa16cc7e06de1eab8fea8ca6ee7aa720acd",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/extract-c-run-0001.md"
+    },
+    {
+      "blob": "78c315407914c3e547ab2e84eefe0a18a5605ab0",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/extract-d-run-0001.md"
+    },
+    {
+      "blob": "9808790e018f85e6c054a0aeb433f7cd6d88ce9b",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/extract-e-run-0001.md"
+    },
+    {
+      "blob": "fbb06c7f517e20f0c97a128c3be37304e350c846",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/extract-f-run-0001.md"
+    },
+    {
+      "blob": "15f7c2d7c849629b062c97edf7bb25a5711b0c76",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/extract-g-run-0001.md"
+    },
+    {
+      "blob": "a8dc796cc6638d7d71b2c6925399a232867e54a0",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/run-0001.md"
+    },
+    {
+      "blob": "21926a610bbd67af8dc851c119aa02a1d63b74f6",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/extraction/server-seed-run-0001.md"
+    },
+    {
+      "blob": "5a6c2214f5bc1d98869b3f2a275844183a759982",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/harden-tests-parity/run-0001.md"
+    },
+    {
+      "blob": "22727af3bb550b94df8a56c3f50e7547b5acd2e5",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/roadmap-0006/run-0001.md"
+    },
+    {
+      "blob": "4d10c9c3e297dabe2b773994bf0e4013b161e4c7",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/roadmap-0006/run-0002.md"
+    },
+    {
+      "blob": "508ad613c291114aeddfe448f87111f7fa829ebc",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/roadmap-0007/run-0001.md"
+    },
+    {
+      "blob": "78b973b77edf6336f6a7215208003333e35a84d6",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/roadmap-0008/gate-f-bug-log.md"
+    },
+    {
+      "blob": "8d4fd04b5ac9cae9fe4c6bb20931c6b1acf3c3f2",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/roadmap-0008/overnight-0001.md"
+    },
+    {
+      "blob": "300ce666b5f0855f112f90a4f0862b27099067fd",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/roadmap-0008/overnight-0002.md"
+    },
+    {
+      "blob": "1bfa7079797dfa1883f945ab882f803d682c690b",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/learning/roadmap-0008/run-0001.md"
+    },
+    {
+      "blob": "3ea0df16d809581753ad11b04e4fe8f84d2dbf56",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/reviews/0008-gate-f-acceptance-report.md"
+    },
+    {
+      "blob": "53971439627fe511d8f86b0b7d7dabb644aa531e",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/reviews/0008-gate-f-cross-module-review.md"
+    },
+    {
+      "blob": "2c83793a064701e1b7f2e8e5ee34d7736928853b",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/reviews/0008-gate-f-live-boundary-matrix.md"
+    },
+    {
+      "blob": "bd01cbf47669ce8730f198f7dd2b608898b58546",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/reviews/0008-gate-g-package-consolidation-closeout.md"
+    },
+    {
+      "blob": "7f3fbf6cfb40a8517c7503920c39b46c7a38e352",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/reviews/0008-roadmap-closeout.md"
+    },
+    {
+      "blob": "57c6ccae0870fd8e779323aa20dc6d394e3e209a",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0001-foundation-and-naming.md"
+    },
+    {
+      "blob": "144c0e98cafe4a7d0af44f3b07f98e9f43e9ca78",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0002-runtime-interpreter-foundation.md"
+    },
+    {
+      "blob": "2b85c54be96eccafa05c9385811951bdfe0a367e",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0003-environment-and-runtime-contracts.md"
+    },
+    {
+      "blob": "4aef55dd62b5116927dd781441001164bb87e70d",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0004-package-server-blocks.md"
+    },
+    {
+      "blob": "06b8c2add6370ddb1006f463ee872adb5bceda45",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0005-control-plane-backend-topology.md"
+    },
+    {
+      "blob": "ae5316413d3e1919693639f29ed4120203bd27c7",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0006-control-plane-read-interfaces.md"
+    },
+    {
+      "blob": "e215c797540985b67af1731642edf23ab2e4595e",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0007-activity-sessions-and-planning.md"
+    },
+    {
+      "blob": "7aeebde93c8a363fcd8456a9c2186dae41e6754c",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0008-activity-execution-and-runtime-mutation.md"
+    },
+    {
+      "blob": "2641514bb35a6c05eb77fcee09e11c084334161d",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0009-control-plane-instance-block-and-recursive-navigation.md"
+    },
+    {
+      "blob": "4aa2a0523f1da01f14472c71f38e7b0e3cb9b3aa",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/0010-visual-ui-mcp-and-cross-language-contracts.md"
+    },
+    {
+      "blob": "1f7c7ed04f3af78240fd4cf24d60dce99d45323e",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/roadmap/README.md"
+    },
+    {
+      "blob": "a028a0a3264ecb1b57d608d3e1d6155cf7b0e34b",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/root-import-surfaces.md"
+    },
+    {
+      "blob": "df0526c73e7c2eba8421ef364c4236bf98e588a0",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/templates/child-issue.md"
+    },
+    {
+      "blob": "db912f1dc7c1c8d6404f6fa8759dd96512c56f14",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/templates/pr-decision-log.md"
+    },
+    {
+      "blob": "3a89f57abf1eeedff9705c6a24adc191fa47fcb3",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/templates/roadmap-closeout.md"
+    },
+    {
+      "blob": "4438b9fbe30de6d24e8a9b79d70ecc85b32bdc87",
+      "disposition": "retain-documentation",
+      "mode": "100644",
+      "path": "docs/templates/roadmap-parent-issue.md"
+    },
+    {
+      "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/__init__.py"
+    },
+    {
+      "blob": "06ef515e4de6720428515243c812b65d8ea1336f",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/activity_seeded_live.py"
+    },
+    {
+      "blob": "14b6782a6c4137bc1fef5671c5c7b982d499a185",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/app_with_postgres.py"
+    },
+    {
+      "blob": "879012569b70864adb652795842a90f8fceb1c5a",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/backend_swap_planning.py"
+    },
+    {
+      "blob": "cc0812488767067bdb383a58d6f78c5fe2de5f50",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/coredns_product_projection.py"
+    },
+    {
+      "blob": "91c1c42cdf133c8ded4ec9f652284f211f93ae1d",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/gate_d_live_smoke.py"
+    },
+    {
+      "blob": "f5563660c3076a6915af3b2c28372efa37438cb5",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/generated_hello_graphs.py"
+    },
+    {
+      "blob": "6452454a3a21451ff892b76c462bb365a46c3995",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/generated_hello_live.py"
+    },
+    {
+      "blob": "6c88315a71e3c104d3901ba0b8225c9b2b59266a",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/hello_runtime.py"
+    },
+    {
+      "blob": "e8dae7c671d02c7c7168379a0d70cd862055f234",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/http_block_compositions.py"
+    },
+    {
+      "blob": "161d420e022a035a911c1bebb2f033f32fcb6570",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/http_policy_family.py"
+    },
+    {
+      "blob": "552829358a159a9587c9f3e887e5579fcb8fc8f3",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/postgres_runtime.py"
+    },
+    {
+      "blob": "fbf3ec6c229898dd4f3914b1ea7e10188b7a95c9",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/read_interface_demo_server.py"
+    },
+    {
+      "blob": "d83a1c19573bf7a9e331f4570a32ae6df5313ad2",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/router_runtime.py"
+    },
+    {
+      "blob": "43c1d6c5930eeb1c01429cbaaca6496bb04c8f12",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/router_swap.py"
+    },
+    {
+      "blob": "5e3a9d816e30a19bf2b94409eeb44c47b769efa8",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/scenarios/README.md"
+    },
+    {
+      "blob": "33898fa0c2f629b003d642432789c9f5cd6cccb5",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/scenarios/__init__.py"
+    },
+    {
+      "blob": "299797b8d721ab671cc7f739d065e50436bbd45a",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/scenarios/catalog.py"
+    },
+    {
+      "blob": "4ec329ee6af24b9c09a42062affc0551f0158983",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/scenarios/corpus.py"
+    },
+    {
+      "blob": "0ca80689d1129934194baeb694f87e5411f9034f",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/scenarios/execution.py"
+    },
+    {
+      "blob": "38a035be6a147858486f204a31ac74b5a7018184",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/scenarios/model.py"
+    },
+    {
+      "blob": "d4d083f28828e0b89d55445575df1e181eef0b69",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/scenarios/runner.py"
+    },
+    {
+      "blob": "d14c51e61eb86078e1709bf0b762aa640e3bbae3",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/scenarios/workflow.py"
+    },
+    {
+      "blob": "b1ee406178416b0da6dbfba305fe5b4c730a0d3e",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/service_infrastructure.py"
+    },
+    {
+      "blob": "73e1efee3f8ce2b52ab4e0d587c10c2b072d8088",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/service_infrastructure_live.py"
+    },
+    {
+      "blob": "1f75e7633f74cd397aefe136169aced5f453a8fa",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/split_service.py"
+    },
+    {
+      "blob": "4e0f7217a5173ee38588907afa9f0a30ea3c54c3",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/verification_observation_live.py"
+    },
+    {
+      "blob": "190e94574d446c35ab2f2460a336602e8eebe93f",
+      "disposition": "delete-legacy-examples",
+      "mode": "100644",
+      "path": "examples/webhook_delivery_live.py"
+    },
+    {
+      "blob": "b37b15a113cca165f98bf5bc505588876da6940b",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/__init__.py"
+    },
+    {
+      "blob": "446125e15e3641a2b7fb0c169e277b332c9edc2d",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/completion.py"
+    },
+    {
+      "blob": "499966542d9c118a13c1ff1377a07fc0e3ad7f7c",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/demos.py"
+    },
+    {
+      "blob": "1c7159705c3b56b3b78538421d060f4d06c9b71f",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/differential.py"
+    },
+    {
+      "blob": "db0df2538d021a85b1db180a638d8ba60908623c",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/inventory.py"
+    },
+    {
+      "blob": "a9205b40bf9d5bfdd1bed111ae8fbe98caf5bd6c",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/manifest.py"
+    },
+    {
+      "blob": "44249cb62d39e7051cd7b2006876e9d3e6dfcbdf",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/migration_inventory.py"
+    },
+    {
+      "blob": "5d9bf758c8e3fb1ff30072204656cecf46ca103b",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/ownership.py"
+    },
+    {
+      "blob": "df0f502002a6067e4852a8a2ddc3b793442b2ad0",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/reconciliation.py"
+    },
+    {
+      "blob": "c28b1a57a1f415d028c7af49e89a1e07ae5a9026",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/reconciliation_builder.py"
+    },
+    {
+      "blob": "b02332a2c93ea9a97a823fed5293534bd3588ade",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/reference.py"
+    },
+    {
+      "blob": "d3a346a20b792b4d46dde3d0a5d76de9a12ad412",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/runner.py"
+    },
+    {
+      "blob": "729a5c818c3b72a37db171157be619c93542418f",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/__init__.py"
+    },
+    {
+      "blob": "d6e12dc650c0e209f8f9bf176272064aea3336c4",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_differential_language.py"
+    },
+    {
+      "blob": "d36ce16fd23ead9a8e077cbf0c5fecfbbdafb267",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_differential_runner.py"
+    },
+    {
+      "blob": "e90f32b58c2707583f2580a5001b61d102a61820",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_migration_inventory.py"
+    },
+    {
+      "blob": "018ec63c1798d7f225851c5d4b3199d1867f4701",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_parity_manifest.py"
+    },
+    {
+      "blob": "076e7c39530156c4fa6051f05c2ed38ed0204716",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_parity_validation.py"
+    },
+    {
+      "blob": "07408ebce9fe203b11ff466831065d41bb609f1a",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_reference_demo_inventory.py"
+    },
+    {
+      "blob": "c8661ef442a34f1213ce6bd0731b1c789d146349",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_reference_law_ownership.py"
+    },
+    {
+      "blob": "1b3d0155479f4d1334baef52376f479f095db7a4",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_reference_parity_evidence.py"
+    },
+    {
+      "blob": "d68d7c0e54b66d63e10c7281cee70acbed315e6e",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py"
+    },
+    {
+      "blob": "34f21fb7e3e8d831e7d71658035a7f5b94ada816",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_semantic_completion.py"
+    },
+    {
+      "blob": "273f8732536f38b8a92596e5b40bba5e73756b6e",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py"
+    },
+    {
+      "blob": "0d629b7dcec84f319424dfc4a57b952068ecc94b",
+      "disposition": "retain-parity-tooling",
+      "mode": "100644",
+      "path": "extraction_parity/validation.py"
+    },
+    {
+      "blob": "06b52bbd286b23c7ce25b671595a36a6564bf3e4",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "gate-d-live-test.sh"
+    },
+    {
+      "blob": "55f2e80d8adc6da39bb1acc5b7de8fff7be249cc",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "gate-f-live-test.sh"
+    },
+    {
+      "blob": "ae21768645a2214c2c2be14de4e0d1dfe71ff3d4",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "generated-hello-live-test.sh"
+    },
+    {
+      "blob": "0731f92f9da841e1ca8416b8317f404a2398f511",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "live-test.sh"
+    },
+    {
+      "blob": "c27ab386726bf4fe06657c3878693307ddfce185",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "opentelemetry-live-test.sh"
+    },
+    {
+      "blob": "524daeca9adced5c1a88328dc0e9499686cac13a",
+      "disposition": "delete-legacy-packaging",
+      "mode": "100755",
+      "path": "packaging-test.sh"
+    },
+    {
+      "blob": "148d11828fdeb1ce7881956e786dd451faa52ab6",
+      "disposition": "delete-legacy-packaging",
+      "mode": "100644",
+      "path": "pyproject.toml"
+    },
+    {
+      "blob": "b8bcda13909d2acf366195cce7ec3f08043d655d",
+      "disposition": "retain-parity-tooling",
+      "mode": "100755",
+      "path": "reference-inventory.sh"
+    },
+    {
+      "blob": "9d833b28630f728ad85cb5bd6808157cc2d3a6ec",
+      "disposition": "retain-immutable-reference-runner",
+      "mode": "100755",
+      "path": "reference-test.sh"
+    },
+    {
+      "blob": "ca316ef980a1b1140e5af647e494a2139348a595",
+      "disposition": "delete-legacy-demo-helper",
+      "mode": "100755",
+      "path": "scripts/read-demo-down.sh"
+    },
+    {
+      "blob": "b579acb7942f8a0c12c6a4a193645f0b13e8b3f2",
+      "disposition": "delete-legacy-demo-helper",
+      "mode": "100755",
+      "path": "scripts/read-demo-up.sh"
+    },
+    {
+      "blob": "9f47eb04a0faddb184e937f157ef764f24c5d73f",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "secret-live-test.sh"
+    },
+    {
+      "blob": "e148e2da5329dfcbab25d0bb1222315e558a147e",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "service-infrastructure-live-test.sh"
+    },
+    {
+      "blob": "cece1bd73bcacc3b545f68ecbec08ecfa9516306",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "tcp-switch-live-test.sh"
+    },
+    {
+      "blob": "c711328729b3667b032bebce1909d414bf937ef3",
+      "disposition": "delete-legacy-packaging",
+      "mode": "100755",
+      "path": "test.sh"
+    },
+    {
+      "blob": "de767336875256ed62218a2b4d17715be111e192",
+      "disposition": "retain-current-test-support",
+      "mode": "100644",
+      "path": "test_support/package_integrity.py"
+    },
+    {
+      "blob": "33e8bc159bd6666ced112fb9afcc9962435c094f",
+      "disposition": "retain-current-test-support",
+      "mode": "100644",
+      "path": "test_support/tests/test_package_integrity.py"
+    },
+    {
+      "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/__init__.py"
+    },
+    {
+      "blob": "b9dba5fc98e7cbb6634ec1764a19449cddf9d431",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/architecture/__init__.py"
+    },
+    {
+      "blob": "ca612e6ab09ba932004b6c4cfe5859f055690eb4",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/architecture/policies.py"
+    },
+    {
+      "blob": "5de89c75158f765b6c3bf0457e37eda66ecdede8",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/architecture/source.py"
+    },
+    {
+      "blob": "9224f563792a76152d9b0de956da392e0926af9b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/fixtures/Dockerfile.transport"
+    },
+    {
+      "blob": "d3900333ae06336ba218ec2b27852380cbd7bb07",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/fixtures/differential_scenario.py"
+    },
+    {
+      "blob": "de382b7b5a0d70e6ea9598fd1b4eb3cbb7508a93",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/fixtures/dual_transport_server.py"
+    },
+    {
+      "blob": "2a9d65d5c1595b69cb1a3b7d2ed26672c8bffab2",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/fixtures/tcp_reply_server.py"
+    },
+    {
+      "blob": "2eb662a0ccbe6843f3fa6823664c4b8e5e902e5f",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/fixtures/webhook_receiver.py"
+    },
+    {
+      "blob": "d50b2e9f1ad20628562c04a3ff19c9ef0777f7aa",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/live_coredns.py"
+    },
+    {
+      "blob": "eb25acac6cdf529c7abb6e54c6357b934917fa90",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/live_docker_configuration.py"
+    },
+    {
+      "blob": "594afeba33059099060155edac29e6225b8c7912",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/live_docker_publication.py"
+    },
+    {
+      "blob": "a9a86adf3b95f7a89aac9b8dce2aab90bea73e43",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/live_docker_secret.py"
+    },
+    {
+      "blob": "5626d033e0c4540301009516a291556ef3404691",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/live_docker_transport.py"
+    },
+    {
+      "blob": "f1721cca2ae5b9b3dbc9c6ec41cbbf18e1015086",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/live_opentelemetry_collector.py"
+    },
+    {
+      "blob": "2c2e758f52f284940dc4080c1ec2ce2e7a98ac2a",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/live_service_discovery.py"
+    },
+    {
+      "blob": "fac01a1114bd76acaadb685e883674b635cdf634",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/live_tcp_switch.py"
+    },
+    {
+      "blob": "19410fa28a531203174169dbd77260b0bae4d98c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/packaging/base_wheel.py"
+    },
+    {
+      "blob": "b3dab3d309b533f84826b1a2e917e704007eb985",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/packaging/http_extra.py"
+    },
+    {
+      "blob": "8d9004b73dcd21b007904ae76453a64d98662267",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/packaging/postgres_extra.py"
+    },
+    {
+      "blob": "a4d4e571edef39d5696d338bb689175f592f13ea",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/packaging/server_extra.py"
+    },
+    {
+      "blob": "705e983b450eba534d70e356fc298accaf6148ff",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/postgres_case.py"
+    },
+    {
+      "blob": "7a2ddf3fea7e8b94fbb3f449e963e9a5c3a557ff",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_activity_live_external_interpreter.py"
+    },
+    {
+      "blob": "64c3a5376a2435bee4231b8336343cfd05cb060a",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_activity_plan.py"
+    },
+    {
+      "blob": "1a2244d8f8b8310ecc0ead7c50a6ff5ca2d06d5b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_activity_plan_codec.py"
+    },
+    {
+      "blob": "a6f80053b7a78442d36fc6babf7c3f9894a7b542",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_activity_plan_compiler.py"
+    },
+    {
+      "blob": "e1d21df85372b7e0f291e55b5ddb46d9ef7abacd",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_activity_planning_command_service.py"
+    },
+    {
+      "blob": "e1513b821a3cfbee8fb1fde170fbdacb08896af7",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_algebra.py"
+    },
+    {
+      "blob": "75c42b2b145e57e5be95bfb3c73299fed8ad0b60",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_approval_command_service.py"
+    },
+    {
+      "blob": "7ff03d0131436474f199165bd1d221fc194d9372",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_architecture_analysis.py"
+    },
+    {
+      "blob": "ada537121e2413106a9382d910d8409923c423b7",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_architecture_dependencies.py"
+    },
+    {
+      "blob": "30ee503b2f6e539b08b22815aa96a39b7eed4b1b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_architecture_deploy.py"
+    },
+    {
+      "blob": "17e00744111ed90d52ad5ba673a2af12fdd47be3",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_architecture_ownership.py"
+    },
+    {
+      "blob": "aa6a6f72baad59dd68632c4ae294e981732bf0e8",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_architecture_protocol.py"
+    },
+    {
+      "blob": "9e19c4bc0f96e8aad3eda6bd652796fe920ad83e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_architecture_read_routes.py"
+    },
+    {
+      "blob": "c1a418d8f3d2b64fa0a22780927c448d7fe01820",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_architecture_scenarios.py"
+    },
+    {
+      "blob": "f01d2a4059d1d537f3f0e3a4c49d083d9b308113",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_architecture_test_integrity.py"
+    },
+    {
+      "blob": "ec5460174f95771c2caf2bfa9b758fb13bd67041",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_backend_boundaries.py"
+    },
+    {
+      "blob": "40d8c2cf2fcd8586d4d8f02dd43d36b3e55385a7",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_backend_swap_planning_example.py"
+    },
+    {
+      "blob": "3a373c555ab4546f0b2ff933934078f46d5c891b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_block_control_fastapi.py"
+    },
+    {
+      "blob": "5c5e3b1d309fa61c152a0a5f7daae639f9e8d9a2",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_block_control_state.py"
+    },
+    {
+      "blob": "2ac20d12aa0f856b5bc73a27cb4c69b46957d7c4",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_capabilities.py"
+    },
+    {
+      "blob": "667cae3ee7aec41e411fae8046f2ddaa8a133c5f",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_capability_compile.py"
+    },
+    {
+      "blob": "1a56b982770425682759bdc35adb12387d2d35de",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_capability_interpreter_registry.py"
+    },
+    {
+      "blob": "8f54afc963421a635e13456bc83ca813ff63fb73",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_cli.py"
+    },
+    {
+      "blob": "9c179dffee193dd185293fc272d6bd24b862e227",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_compensation_planning.py"
+    },
+    {
+      "blob": "a29b4e6f4c49500a4584f1ad2853f126a0414a3c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_compile.py"
+    },
+    {
+      "blob": "abb50fa55906cf7401764a75e7e24be384a81e58",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_configuration_artifacts.py"
+    },
+    {
+      "blob": "bdb230c897f87ca08dc8079768c454dfab829df0",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_configuration_rendering.py"
+    },
+    {
+      "blob": "306a985d643ee0b2966b445f03cf8a07e2512ea8",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_connection_protocol.py"
+    },
+    {
+      "blob": "90cfb08c9bea4f349f09ebb509892d1e593055bd",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_contracts.py"
+    },
+    {
+      "blob": "eb788771889d443868062b91a4f7bd922c95290c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_control_http_client.py"
+    },
+    {
+      "blob": "38b7e225014fc9bda696e157752e8a6a3104687e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_control_http_live.py"
+    },
+    {
+      "blob": "85d6dc886cb63f4e6fe346abf607cb6103df4224",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_control_http_security.py"
+    },
+    {
+      "blob": "aa92eb8110a3dea3885ad48ac86eb1191d6a806d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_control_routes.py"
+    },
+    {
+      "blob": "38f4798394d643b0f23bd4842b1bba46a5a67365",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_coredns.py"
+    },
+    {
+      "blob": "b494e772606739a093ebc78bf8a337ff695013d6",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_current_graph_advancement.py"
+    },
+    {
+      "blob": "36de7cf36b20a8491bdc420871d302948a7509fa",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_deployment_admit_claim_stages.py"
+    },
+    {
+      "blob": "4a7190914498d31878d3dd405bcbdf965c8e42f9",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_deployment_application_values.py"
+    },
+    {
+      "blob": "2c93f24921646da2239bfe2f51bc201823b7354c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_deployment_plan_approve_stages.py"
+    },
+    {
+      "blob": "07ddd1c0bc9a942cb03d5ed385c339f55daeef15",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_desired_graph_command_service.py"
+    },
+    {
+      "blob": "1f1f39348be062dc0dda11ae5f0d28f03b0a333b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_desired_graph_commands.py"
+    },
+    {
+      "blob": "d6e12dc650c0e209f8f9bf176272064aea3336c4",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_differential_language.py"
+    },
+    {
+      "blob": "d36ce16fd23ead9a8e077cbf0c5fecfbbdafb267",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_differential_runner.py"
+    },
+    {
+      "blob": "48b7d83ee04814838da748ba6db102615a983a30",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_discovery_language.py"
+    },
+    {
+      "blob": "8d8755b22e7f01ca6328a3a35019924a414a05a7",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_discovery_registry.py"
+    },
+    {
+      "blob": "ce459e18e2cb013b30d6b4cd1b8d6c26a92114c5",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_docker_configuration.py"
+    },
+    {
+      "blob": "f04e9a75486470dbc557845bdcb423509fa2f487",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_docker_effects.py"
+    },
+    {
+      "blob": "b9049e2b9bb9289d7fe7f32f8008f51234c7f124",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_docker_ownership.py"
+    },
+    {
+      "blob": "bc0bed338a493ef3e3d995eefc95535221e1b472",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_docker_retention.py"
+    },
+    {
+      "blob": "1966eb2859613d3487241b6683c56a2db31606f9",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_docker_runtime.py"
+    },
+    {
+      "blob": "a1f0832b98a0636de700e1286b1797deec864330",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_docker_secrets.py"
+    },
+    {
+      "blob": "63ca158e207df754327fe15ace83bc495f462f9f",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_effect_dispatch.py"
+    },
+    {
+      "blob": "bd23c256e7cffdf66e4997b9b60dbb763223ead8",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_effect_material.py"
+    },
+    {
+      "blob": "e673eacc1e0a7b62cc844b21adacc78124da6034",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_effect_values.py"
+    },
+    {
+      "blob": "39f823e5f40a995c9fb8dae6dc398e9315415d55",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_environment_bindings.py"
+    },
+    {
+      "blob": "d7d841bb1fbb86881037fe4b9b89b172971fc099",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_execution_admission.py"
+    },
+    {
+      "blob": "6c04989f38ef3b3fb15158b47a74f470fd99034e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_execution_concurrency.py"
+    },
+    {
+      "blob": "68552ee809278f6a02cf1224bf9f532f663ee3ce",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_execution_coordinator.py"
+    },
+    {
+      "blob": "f895cdde8f62e4b34ef4d0cf9b5f570fa5e55fce",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_execution_scenario_expectations.py"
+    },
+    {
+      "blob": "f6afe5fa0f20b39a04061e6d4d53d253e4f1bac6",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_execution_schema_migration.py"
+    },
+    {
+      "blob": "95ef79c45a2548db9bcd3998531fe681e52ebf07",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_execution_store.py"
+    },
+    {
+      "blob": "29fc30588ec5ec5667610776268311d37c4aebc1",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_execution_values.py"
+    },
+    {
+      "blob": "5e0ef775d6438457d487719af4c402d6a012a318",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_extract_interpreters_closeout.py"
+    },
+    {
+      "blob": "c60c26a80bdc0d56687b740283d6b7bf1464feec",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_extraction_batch_plan.py"
+    },
+    {
+      "blob": "cf483e1d77a0b0ca0a2bf89a001401b210a5dc56",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_extraction_contract_boundary.py"
+    },
+    {
+      "blob": "e7bd1d3385b6b924af703304c21aaccd983be771",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_extraction_control_route_boundary.py"
+    },
+    {
+      "blob": "4ccfe21ab40c043361014078660ee111e5847492",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_extraction_pure_core_audit.py"
+    },
+    {
+      "blob": "b8cd39097a0417f848482f5818cdeca2e3ef28ed",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_extraction_rollout_topology.py"
+    },
+    {
+      "blob": "89ac110ed29121b3c1a3e7bda1d9802b08a5c72c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_extraction_successor_mappings.py"
+    },
+    {
+      "blob": "59a73b65c6a0877c7a22ea6b68d675d048c0f0e7",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_extraction_supersession_review.py"
+    },
+    {
+      "blob": "bf74763a8943216e9500a4e3bb316b06d5e3b826",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_focused_read_hardening.py"
+    },
+    {
+      "blob": "79bff70ceb4665ae0a5e8ebc9baee638eb9d882e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_focused_workflow_reads.py"
+    },
+    {
+      "blob": "22f95fd581b6df869664950caa36c5a2e707f882",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_gate_d_live_smoke_scenario.py"
+    },
+    {
+      "blob": "07ff79620240cf4f7688f4add1a469302652be65",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_generated_hello_graphs.py"
+    },
+    {
+      "blob": "ce3d9ebd711b7f7f9224ecf5f753d216d24ccc84",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_generated_hello_live_scenario.py"
+    },
+    {
+      "blob": "fab52a88acf1edc803e6537ac60a1abeeab64ac0",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_generated_hello_program.py"
+    },
+    {
+      "blob": "638caf7cd1128bc735242606a810a71666052d48",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_graph_codec.py"
+    },
+    {
+      "blob": "d449d69879d1465cc350340c2905003e1b0ee5c7",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_graph_construction.py"
+    },
+    {
+      "blob": "b46abf5d1fe35318af5149eb83caae00e902e243",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_graph_diff.py"
+    },
+    {
+      "blob": "a73383c1081ad3d779179e4b57735223164ba76b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_graph_validation.py"
+    },
+    {
+      "blob": "d4609b8f1ea6a560313c978253bb53f47d2ddf3d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_hello_runtime.py"
+    },
+    {
+      "blob": "7a1f44cd1ca962c196f31ff06c361f0cb203c661",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_hello_server_block.py"
+    },
+    {
+      "blob": "4214fa6f49abdca5280f6d55ac0b24f4a25e6190",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_host_publication.py"
+    },
+    {
+      "blob": "8da204f4c1d31ff5ee077ea98ef693c08bc98aff",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_active_router_server_block.py"
+    },
+    {
+      "blob": "918051ca7f9a0a666e937053a912497d11340e08",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_auth_gateway_server_block.py"
+    },
+    {
+      "blob": "d767a664e801ac5af8dea89c9f30623134359a54",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_block_compositions.py"
+    },
+    {
+      "blob": "6b8613d7cb8a06a380144da5c61230899a5069bb",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_bulkhead_server_block.py"
+    },
+    {
+      "blob": "13e3c2e5006c1cdb60439f3ce97ac71c3d409054",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_cache_server_block.py"
+    },
+    {
+      "blob": "005430fd2b623f730e812561e6479892e13885e8",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_circuit_breaker_server_block.py"
+    },
+    {
+      "blob": "56c1e8777814268358547e3ecde2996224682595",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_fault_injector_server_block.py"
+    },
+    {
+      "blob": "016c12706188159f96e8c280b43cdef46a7b779b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_load_generator.py"
+    },
+    {
+      "blob": "86be4fe8fc5e4417bf789d4f6c1b9b7a45ace24e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_multiplexer_server_block.py"
+    },
+    {
+      "blob": "ae11290cc11490433df4fe5b15aa56eb83b27c8c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_policy_family_acceptance.py"
+    },
+    {
+      "blob": "053e81ec40eb74d80bcac666465650afc5a1dd94",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_proxy_server_block.py"
+    },
+    {
+      "blob": "3cb8402b331ef79837e749641cd5259ddb1dc3e4",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_rate_limiter_server_block.py"
+    },
+    {
+      "blob": "abd296f12250861d13147583ba2db4c734b00ca6",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_retry_server_block.py"
+    },
+    {
+      "blob": "2bba38910cc3ee84a55939432ef76fb94afbe3f1",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_timeout_server_block.py"
+    },
+    {
+      "blob": "806fcfc147e93b8e2d66f4f1ecf06b746426ac93",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_traffic_logger_server_block.py"
+    },
+    {
+      "blob": "9a023e7ba350b47c0206d34fa3daf9da0d48c87d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_http_weighted_balancer_server_block.py"
+    },
+    {
+      "blob": "2f04e7d8236b8b06ccc31cc9706fe04fc82bf809",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_idempotency_gateway.py"
+    },
+    {
+      "blob": "1017782bf7f094e1cd1b01d4d298e293334999cf",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_instance_read_fastapi.py"
+    },
+    {
+      "blob": "3a46d81926ae3025db0c9a53c8a35a6c01251652",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_instance_read_service.py"
+    },
+    {
+      "blob": "002fb0755b8876f6dc4e723a6c74df917a97423d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_interpreter_runtime_dry_run.py"
+    },
+    {
+      "blob": "489b31cf8a591adf4ff6e953d4fbcc1dc5c60c4c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_managed_http_router.py"
+    },
+    {
+      "blob": "a35c27187da720571670c76303ec93e842f02f6d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_mcp_read.py"
+    },
+    {
+      "blob": "6add61462ca1fd346ddbb2cbb1f96a729456b038",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_observation_projection.py"
+    },
+    {
+      "blob": "5944ace8b54ca0640a4fac64ba0f8145a6eab18f",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_opentelemetry_collector.py"
+    },
+    {
+      "blob": "dcb4375e9d63db81e12a3c51f0e0d924003bbd2c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_operation_command_service.py"
+    },
+    {
+      "blob": "3c9ff2a9ce38f9c8ae07d24f0d6b7128bcc684ba",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_operation_commands.py"
+    },
+    {
+      "blob": "d644661f1ada621ada6570ac7a6882637d8398e6",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_operation_postgres_primitives.py"
+    },
+    {
+      "blob": "194bda04b60f61e166f922929144796dfaa4aca5",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_operations_extraction_topology.py"
+    },
+    {
+      "blob": "f08e673b4b3bca28aa7128c12fe958495aa1a5b2",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_operations_package_foundation.py"
+    },
+    {
+      "blob": "2877ada0a2458561312e2e9fde6a041a57b445bd",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_operator_graph_projection.py"
+    },
+    {
+      "blob": "51c4d5455d2d39bb217a5e926bbedf4917984d9b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_operator_recovery_projection.py"
+    },
+    {
+      "blob": "cbd364db4ecaf0e45ffaf8d08095f3dcf36fb127",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_optional_dependencies.py"
+    },
+    {
+      "blob": "34e2efc6d559cbbf8ff9edfdedde2c346b0e5f9e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_package_inventory.py"
+    },
+    {
+      "blob": "bad20a2e7a90cd5986face47eacc1e32624a2e3c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_package_server_catalog.py"
+    },
+    {
+      "blob": "dd72ac248235ee9dfdf6e65ccd79861a6dbad0f2",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_package_structure.py"
+    },
+    {
+      "blob": "311fa9eed9a642f35fedf0ab0a88d336c7791a21",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_package_topology.py"
+    },
+    {
+      "blob": "018ec63c1798d7f225851c5d4b3199d1867f4701",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_parity_manifest.py"
+    },
+    {
+      "blob": "076e7c39530156c4fa6051f05c2ed38ed0204716",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_parity_validation.py"
+    },
+    {
+      "blob": "06dc4837144b4c01cd6cda60921dda6ea5c9e377",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_planning_scenarios.py"
+    },
+    {
+      "blob": "d9b2ef25d48f976e70b304faaf6414e98d9a1452",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_policies.py"
+    },
+    {
+      "blob": "e0d7ac044911620453ae3bbf8d9ff23da386c04e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_postgres_scenario_runner.py"
+    },
+    {
+      "blob": "5a30de8753312b323b19d5607dba2a25517a3ec7",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_probe_execution.py"
+    },
+    {
+      "blob": "75d390c0dc1d4339f67fb7032861cecb5de08331",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_probe_intents.py"
+    },
+    {
+      "blob": "600e341b973ff1ac91da72266a41af81a7eff52d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_read_interface_demo_server.py"
+    },
+    {
+      "blob": "1a936f595bfd8c9696c41e7c5671e1dd44b259ad",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_recovery_concurrency.py"
+    },
+    {
+      "blob": "210c4b9f515382989437f6682c8f8d952b4607c2",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_recovery_decisions.py"
+    },
+    {
+      "blob": "9a4ea905396260290112e1fef7ddee33f61c263c",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_recovery_planning.py"
+    },
+    {
+      "blob": "07408ebce9fe203b11ff466831065d41bb609f1a",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_reference_demo_inventory.py"
+    },
+    {
+      "blob": "c8661ef442a34f1213ce6bd0731b1c789d146349",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_reference_law_ownership.py"
+    },
+    {
+      "blob": "6a52b5162f55bfa3e1a62600118e0e8a18a2ce3b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_reference_parity_evidence.py"
+    },
+    {
+      "blob": "6eb2d520131eabd2c50d380e6bc88f91af75939e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_reference_test_inventory.py"
+    },
+    {
+      "blob": "7de9c04a10f9700540c02d96f44b887794c988ed",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_request_observer_server_block.py"
+    },
+    {
+      "blob": "927aed56656ef421dc58fb9b153b12a79575ee1e",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_resource_lifecycle.py"
+    },
+    {
+      "blob": "8ad69b6705075a01745baa00b587eb227ade54c6",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_root_api.py"
+    },
+    {
+      "blob": "67fdb8a8eda142731c0f4b40a1bfbf8692aff526",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_run_lifecycle.py"
+    },
+    {
+      "blob": "f8ee93a1fa5bc5c6f809f0047f986f31b69a6824",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_runtime_examples.py"
+    },
+    {
+      "blob": "905975f530a93bdecc6bb5a213076c7220d43000",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_runtimes.py"
+    },
+    {
+      "blob": "d60d313c2c1a5fa86716b091f0e20df16b8ada5d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_saga_journal.py"
+    },
+    {
+      "blob": "e3b91bceca4a787993de5ae2183cd647038196f3",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_saga_program.py"
+    },
+    {
+      "blob": "2cb185016bcb91c47fa037e86d661157cf2e0638",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_saga_state.py"
+    },
+    {
+      "blob": "0d631f626d6250328523d643285403f4d496cffa",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_scheduling.py"
+    },
+    {
+      "blob": "e80e15f8cd02dff959930396cd5dfffb3bd6c811",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_scheduling_scenarios.py"
+    },
+    {
+      "blob": "98c84ec05f095d6e75cb9c80211025be55bcc991",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_secret_delivery_topology.py"
+    },
+    {
+      "blob": "2d46825f81640721aa25a7deeac376a3d9cdd9d0",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_secrets.py"
+    },
+    {
+      "blob": "5b47ce09d72a25f93dc85fec18f3289cade5485b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_server_command_templates.py"
+    },
+    {
+      "blob": "e5e63a0be0d8a9fd4164de630b1e11e60656ee2d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_service_discovery_fastapi.py"
+    },
+    {
+      "blob": "12bd3cc998872f880e7d5fba901e4f3a2d1e8706",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_service_infrastructure_acceptance.py"
+    },
+    {
+      "blob": "89e8c9582a9810261f0f457fd23f060899d8bbcd",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_service_infrastructure_live.py"
+    },
+    {
+      "blob": "3482435710ea699443b4fee869a440984ce62bba",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_service_infrastructure_program.py"
+    },
+    {
+      "blob": "1575c15da8dec561bf85e42efef3925f1420273b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_stores.py"
+    },
+    {
+      "blob": "f71d1fead0cae6b69bc2549451cb0a3b6202a135",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_tcp_switch.py"
+    },
+    {
+      "blob": "0495536cc5a6ef12a9516b3690ef075e342c7080",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_unit_of_work.py"
+    },
+    {
+      "blob": "c31e75224ccc711a51de119914e686134e8cc18b",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_verification_adapters.py"
+    },
+    {
+      "blob": "bd068fd448466242f14540645b0e87719882c842",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_verification_command_service.py"
+    },
+    {
+      "blob": "49c7ea42a7b3e4e535a449bb17d3b1b2630baa45",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_verification_contract.py"
+    },
+    {
+      "blob": "8d5d55a2bbae09da5167235976cf95b63a219041",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_verification_dispatch.py"
+    },
+    {
+      "blob": "c14f3fbfe961c7915cdbefc6fd10cd313c80afe6",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_webhook.py"
+    },
+    {
+      "blob": "c033fa960304f0893c566ea8a03dc01360a06c61",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_webhook_app.py"
+    },
+    {
+      "blob": "0333e61e317bc0cd2ea2636c0900e36e984c1ec4",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_webhook_http.py"
+    },
+    {
+      "blob": "5b3061904b44a952a8602c00ea2589fd10fd8b59",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_webhook_live_harness.py"
+    },
+    {
+      "blob": "9b418763d89ba37de8fb134bd23b36df95e0fde4",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_webhook_postgres.py"
+    },
+    {
+      "blob": "df55d5953cc65d4604ea4f57f3bc11617131d794",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_webhook_server_block.py"
+    },
+    {
+      "blob": "1aa09c58ca8b2592a9c535a680128d709f1b1503",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_webhook_service.py"
+    },
+    {
+      "blob": "8c41ae27ea88798e631f43aa70e07f5b0904fc3d",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_webhook_service_hardening.py"
+    },
+    {
+      "blob": "e9ec0d3092ea77c9155b03d60c393311d07482f0",
+      "disposition": "delete-legacy-tests",
+      "mode": "100644",
+      "path": "tests/test_workflows.py"
+    },
+    {
+      "blob": "e2f5e7608eda1253006e3b62577e2f13410825b8",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "transport-live-test.sh"
+    },
+    {
+      "blob": "02b7af4f2dfedf16d49199d588cc9e47a23b24a8",
+      "disposition": "retain-parity-tooling",
+      "mode": "100755",
+      "path": "validate-parity.sh"
+    },
+    {
+      "blob": "b660536ea6b1dffa4f97cd71ca116c3fef706ec0",
+      "disposition": "retain-parity-tooling",
+      "mode": "100755",
+      "path": "validate-reference-demos.sh"
+    },
+    {
+      "blob": "7a0f4fa926274ebcb32c4538165c78c67861e76d",
+      "disposition": "retain-parity-tooling",
+      "mode": "100755",
+      "path": "validate-semantic-test-migration-inventory.sh"
+    },
+    {
+      "blob": "43e7c8408dcdcee2482bf9ec6278910de2198a27",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "verification-live-test.sh"
+    },
+    {
+      "blob": "e9c15955c3f065d922cb66cde86aaf2f3609b728",
+      "disposition": "delete-legacy-live-shell",
+      "mode": "100755",
+      "path": "webhook-live-test.sh"
+    }
+  ],
+  "inputs": {
+    "future_owner_refresh": "sha256:bb8478af7963659f3633345fd063168c8983f31bcd2743782fae23c9e98d11c1",
+    "live_script_dispositions": "sha256:03546455f220cc600ccebfab02fa5aaccc9b1372af7756b020121e69fbbd540c",
+    "semantic_completion": "sha256:bad4a7446bd20e34b0b1dd887b849c7135d5b60b522245386e79334e5a83598f"
+  },
+  "issue": 1318,
+  "post_baseline_additions": [
+    "artifacts/extraction/harden-tests-parity-1318-completed-owner-promotion.json",
+    "artifacts/extraction/harden-tests-parity-1318-evidence.json",
+    "artifacts/extraction/harden-tests-parity-1318-future-owner-refresh.json",
+    "artifacts/extraction/harden-tests-parity-1318-retirement-manifest.json",
+    "build-legacy-retirement-manifest.sh",
+    "extraction_parity/retirement.py",
+    "extraction_parity/tests/test_legacy_retirement.py",
+    "validate-legacy-retirement.sh"
+  ],
+  "reference": {
+    "commit": "20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec",
+    "tag": "pre-server-product-extraction-2026-07-20"
+  },
+  "schema": "cpk.legacy-retirement-manifest"
+}

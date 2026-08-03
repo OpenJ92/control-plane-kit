@@ -1,0 +1,40 @@
+{
+  "schema": "cpk.control-route-boundary-classification",
+  "issue": "#762",
+  "parent": "#749",
+  "summary": "Control route descriptor values belong to extracted core. FastAPI process behavior, mutable block-control runtime state, and effect interpreter dispatch do not belong to extracted core and remain visible for downstream owner issues.",
+  "pure_core_successors": [
+    {
+      "family": "test_control_routes",
+      "owner": "control-plane-kit-core",
+      "successor_evidence": "extract-e-762-control-routes.unittest",
+      "reason": "The family asserts closed route-set names, route methods, paths, scopes, descriptors, configurable prefix construction, and fail-closed lookup. These are protocol values, not a web-framework implementation."
+    }
+  ],
+  "downstream_handoffs": [
+    {
+      "family": "test_block_control_fastapi",
+      "owner_issue": "#740",
+      "owner": "control-plane-kit-servers/cpk-server or package-owned process boundary",
+      "reason": "The family asserts FastAPI routing, optional dependency behavior, token enforcement, request body bounds, ordinary route separation, and authenticated runtime mutation semantics. Those are process/API laws, not pure core descriptor values."
+    },
+    {
+      "family": "test_block_control_state",
+      "owner_issue": "#740",
+      "owner": "operations/process composition boundary",
+      "reason": "The family asserts mutable in-process runtime state, target replacement, observer mutation, status/log provider callbacks, and runtime contract backing. Core already owns pure control contracts; mutable state and callbacks belong to operations or cpk-server process composition."
+    },
+    {
+      "family": "test_capability_interpreter_registry",
+      "owner_issue": "#743",
+      "owner": "interpreter/effect dispatch boundary",
+      "reason": "The family asserts dispatch to capability-specific effect interpreters and rejection of misadvertised interpreters. That is interpreter registry behavior, not the pure route descriptor language."
+    }
+  ],
+  "laws": [
+    "FastAPI, ASGI, request parsing, optional server dependencies, and HTTP process auth do not enter extracted core.",
+    "Mutable block-control state does not enter extracted core.",
+    "Effect interpreter dispatch does not enter extracted core.",
+    "Pure control-route values remain in extracted core as closed descriptors."
+  ]
+}

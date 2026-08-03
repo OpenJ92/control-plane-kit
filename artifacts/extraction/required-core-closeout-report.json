@@ -1,0 +1,1614 @@
+{
+  "counts": {
+    "completed_required_core": 780,
+    "deferred": 227,
+    "entries": 1107,
+    "failed_core_successors": 0,
+    "findings": 0,
+    "incomplete_required_core": 0,
+    "passing_core_successors": 1046,
+    "required_core": 780,
+    "required_non_core": 100,
+    "reviewed_core_supersessions": 174
+  },
+  "deferred_entries": [
+    {
+      "kind": "demo",
+      "law": "demo.coredns",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "demo.coredns"
+    },
+    {
+      "kind": "demo",
+      "law": "demo.opentelemetry",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "demo.opentelemetry"
+    },
+    {
+      "kind": "demo",
+      "law": "demo.service-discovery",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "demo.service-discovery"
+    },
+    {
+      "kind": "demo",
+      "law": "demo.tcp-switch",
+      "owner": "control-plane-kit-servers:tcp-switch",
+      "owner_kind": "deferred-product",
+      "reference": "demo.tcp-switch"
+    },
+    {
+      "kind": "demo",
+      "law": "demo.webhook-delivery",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "demo.webhook-delivery"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.a-and-aaaa-projection-deliberately-discards-endpoint-port",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_a_and_aaaa_projection_deliberately_discards_endpoint_port"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.artifact-change-is-an-explicit-graph-change-and-round-trips",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_artifact_change_is_an_explicit_graph_change_and_round_trips"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-uses-official-pinned-image-and-exact-socket-products",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_block_uses_official_pinned_image_and_exact_socket_products"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.catalogue-exposes-probe-and-runtime-restart-evidence",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_catalogue_exposes_probe_and_runtime_restart_evidence"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.configuration-canonicalizes-record-permutations",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_configuration_canonicalizes_record_permutations"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.configuration-rejects-out-of-zone-and-duplicate-records",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_configuration_rejects_out_of_zone_and_duplicate_records"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.names-and-records-are-closed-typed-values",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_names_and_records_are_closed_typed_values"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.projection-rejects-stale-inactive-and-unprojectable-records",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_projection_rejects_stale_inactive_and_unprojectable_records"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.public-example-exposes-the-complete-pure-projection",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_public_example_exposes_the_complete_pure_projection"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.registry-projection-is-deterministic-and-preserves-truth-boundary",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_registry_projection_is_deterministic_and_preserves_truth_boundary"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.strict-rendering-is-deterministic-read-only-and-secret-free",
+      "owner": "control-plane-kit-servers:coredns",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_coredns.CoreDnsTests.test_strict_rendering_is_deterministic_read_only_and_secret_free"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.authority-keeps-workspace-and-self-identity-explicit",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_language.DiscoveryLanguageTests.test_authority_keeps_workspace_and_self_identity_explicit"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-is-graph-data-with-explicit-database-requirement",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_language.DiscoveryLanguageTests.test_block_is_graph_data_with_explicit_database_requirement"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.closed-command-language-round-trips-exhaustively",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_language.DiscoveryLanguageTests.test_closed_command_language_round_trips_exhaustively"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.endpoint-scheme-must-match-closed-protocol",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_language.DiscoveryLanguageTests.test_endpoint_scheme_must_match_closed_protocol"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.lease-and-identifiers-are-bounded-typed-values",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_language.DiscoveryLanguageTests.test_lease_and_identifiers_are_bounded_typed_values"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.registry-endpoint-is-typed-literal-and-not-process-local",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_language.DiscoveryLanguageTests.test_registry_endpoint_is_typed_literal_and_not_process_local"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.self-authority-requires-service-and-instance-as-one-product",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_language.DiscoveryLanguageTests.test_self_authority_requires_service_and_instance_as_one_product"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.unknown-variants-and-fields-fail-closed",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_language.DiscoveryLanguageTests.test_unknown_variants_and_fields_fail_closed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.changed-command-intent-conflicts-without-mutation",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_changed_command_intent_conflicts_without_mutation"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.concurrent-heartbeats-have-one-winner",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_concurrent_heartbeats_have_one_winner"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.concurrent-registrations-have-one-winner",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_concurrent_registrations_have_one_winner"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.deregister-and-heartbeat-race-has-one-state-winner",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_deregister_and_heartbeat_race_has_one_state_winner"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.deregister-and-self-registration-enforce-authority",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_deregister_and_self_registration_enforce_authority"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.expired-identity-can-register-again-but-cannot-heartbeat",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_expired_identity_can_register_again_but_cannot_heartbeat"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.expiry-and-heartbeat-race-cannot-both-mutate-the-lease",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_expiry_and_heartbeat_race_cannot_both_mutate_the_lease"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.expiry-boundary-removes-resolution-without-deleting-truth",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_expiry_boundary_removes_resolution_without_deleting_truth"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.heartbeat-requires-current-expiry-and-extends-revision",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_heartbeat_requires_current_expiry_and_extends_revision"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.late-heartbeat-after-deregistration-fails-closed",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_late_heartbeat_after_deregistration_fails_closed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.late-ledger-failure-rolls-back-projection-mutation",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_late_ledger_failure_rolls_back_projection_mutation"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.register-resolve-and-exact-replay-share-one-command-ledger",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_register_resolve_and_exact_replay_share_one_command_ledger"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.resolution-limit-is-deterministic-and-workspace-scoped",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_resolution_limit_is_deterministic_and_workspace_scoped"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.schema-reinstall-preserves-rows-and-named-constraints",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_schema_reinstall_preserves_rows_and_named_constraints"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.workspace-authority-fails-before-writes",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_discovery_registry.DiscoveryRegistryTests.test_workspace_authority_fails_before_writes"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.active-router-block-advertises-provider-and-active-requirement",
+      "owner": "control-plane-kit-servers:http-router",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_block_advertises_provider_and_active_requirement"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.active-router-block-compiles-socket-connection-to-environment",
+      "owner": "control-plane-kit-servers:http-router",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_block_compiles_socket_connection_to_environment"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.active-router-forwards-to-active-target",
+      "owner": "control-plane-kit-servers:http-router",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_forwards_to_active_target"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.active-router-rejects-unknown-active-target",
+      "owner": "control-plane-kit-servers:http-router",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_rejects_unknown_active_target"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.authentication-and-authorization-are-separate-closed-decisions",
+      "owner": "control-plane-kit-servers:http-auth-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_authentication_and_authorization_are_separate_closed_decisions"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-is-test-only-and-secret-values-are-runtime-material",
+      "owner": "control-plane-kit-servers:http-auth-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_block_is_test_only_and_secret_values_are_runtime_material"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-test-adapter-strips-forgery-enforces-policy-and-redacts",
+      "owner": "control-plane-kit-servers:http-auth-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_live_test_adapter_strips_forgery_enforces_policy_and_redacts"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-language-is-closed-and-mechanism-specific",
+      "owner": "control-plane-kit-servers:http-auth-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_policy_language_is_closed_and_mechanism_specific"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.route-prefixes-match-segments-not-lexical-prefixes",
+      "owner": "control-plane-kit-servers:http-auth-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_route_prefixes_match_segments_not_lexical_prefixes"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.untrusted-identity-headers-are-replaced-after-authentication",
+      "owner": "control-plane-kit-servers:http-auth-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_untrusted_identity_headers_are_replaced_after_authentication"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.validator-unavailability-fails-closed-without-becoming-forbidden",
+      "owner": "control-plane-kit-servers:http-auth-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_validator_unavailability_fails_closed_without_becoming_forbidden"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-generated-server-enforces-concurrency-queue-and-auth",
+      "owner": "control-plane-kit-servers:http-bulkhead",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_live_generated_server_enforces_concurrency_queue_and_auth"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.http-bulkhead.policy-and-block-identity-are-closed-and-bounded",
+      "owner": "control-plane-kit-servers:http-bulkhead",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_policy_and_block_identity_are_closed_and_bounded"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.queue-timeout-and-target-failure-recover-without-negative-permits",
+      "owner": "control-plane-kit-servers:http-bulkhead",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_queue_timeout_and_target_failure_recover_without_negative_permits"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.ticketed-queue-rejects-overflow-and-releases-all-permits",
+      "owner": "control-plane-kit-servers:http-bulkhead",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_ticketed_queue_rejects_overflow_and_releases_all_permits"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.capacity-eviction-and-purge-are-exact",
+      "owner": "control-plane-kit-servers:http-cache",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_cache_server_block.HttpCacheTests.test_capacity_eviction_and_purge_are_exact"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.explicit-safe-vary-headers-partition-hashed-keys",
+      "owner": "control-plane-kit-servers:http-cache",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_cache_server_block.HttpCacheTests.test_explicit_safe_vary_headers_partition_hashed_keys"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.hit-miss-expiry-and-stale-refresh-are-deterministic",
+      "owner": "control-plane-kit-servers:http-cache",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_cache_server_block.HttpCacheTests.test_hit_miss_expiry_and_stale_refresh_are_deterministic"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-generated-server-caches-bounds-purges-and-redacts",
+      "owner": "control-plane-kit-servers:http-cache",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_cache_server_block.HttpCacheTests.test_live_generated_server_caches_bounds_purges_and_redacts"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.http-cache.policy-and-block-identity-are-closed-and-bounded",
+      "owner": "control-plane-kit-servers:http-cache",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_cache_server_block.HttpCacheTests.test_policy_and_block_identity_are_closed_and_bounded"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.sensitive-private-and-unknown-vary-responses-fail-closed",
+      "owner": "control-plane-kit-servers:http-cache",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_cache_server_block.HttpCacheTests.test_sensitive_private_and_unknown_vary_responses_fail_closed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-preserves-product-policy-and-opaque-control-secret",
+      "owner": "control-plane-kit-servers:http-circuit-breaker",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_block_preserves_product_policy_and_opaque_control_secret"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.closed-open-half-open-closed-is-pure-and-bounded",
+      "owner": "control-plane-kit-servers:http-circuit-breaker",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_closed_open_half_open_closed_is_pure_and_bounded"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.half-open-failure-reopens-and-safe-method-policy-is-explicit",
+      "owner": "control-plane-kit-servers:http-circuit-breaker",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_half_open_failure_reopens_and_safe_method_policy_is_explicit"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-generated-server-enforces-state-auth-and-reset",
+      "owner": "control-plane-kit-servers:http-circuit-breaker",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_live_generated_server_enforces_state_auth_and_reset"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-bounds-request-response-and-typed-methods",
+      "owner": "control-plane-kit-servers:http-circuit-breaker",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_policy_bounds_request_response_and_typed_methods"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-maturity-survives-graph-codec-and-production-policy-rejects-it",
+      "owner": "control-plane-kit-servers:http-fault-injector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_block_maturity_survives_graph_codec_and_production_policy_rejects_it"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.closed-fault-variants-have-exact-behavior",
+      "owner": "control-plane-kit-servers:http-fault-injector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_closed_fault_variants_have_exact_behavior"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.disabled-default-and-injected-and-natural-evidence-are-independent",
+      "owner": "control-plane-kit-servers:http-fault-injector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_disabled_default_and_injected_and_natural_evidence_are_independent"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.fault-descriptor-language-is-exact-closed-and-bounded",
+      "owner": "control-plane-kit-servers:http-fault-injector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_fault_descriptor_language_is_exact_closed_and_bounded"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.graph-composition-drives-retry-and-circuit-interactions",
+      "owner": "control-plane-kit-servers:http-fault-injector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_graph_composition_drives_retry_and_circuit_interactions"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-generated-server-mutates-only-with-auth-and-cleans-up",
+      "owner": "control-plane-kit-servers:http-fault-injector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_live_generated_server_mutates_only_with_auth_and_cleans_up"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.seeded-probability-replays-exact-selection-sequence",
+      "owner": "control-plane-kit-servers:http-fault-injector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_seeded_probability_replays_exact_selection_sequence"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-is-test-only-application-with-graph-wired-target",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_block_is_test_only_application_with_graph_wired_target"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.cancellation-stops-future-dispatch-and-shutdown-settles-workers",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_cancellation_stops_future_dispatch_and_shutdown_settles_workers"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.exact-trigger-replays-and-changed-intent-conflicts",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_exact_trigger_replays_and_changed_intent_conflicts"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.fastapi-control-routes-fail-closed-and-replay-exact-command",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_fastapi_control_routes_fail_closed_and_replay_exact_command"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.injected-clock-executes-the-pure-deterministic-schedule",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_injected_clock_executes_the_pure_deterministic_schedule"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-process-drives-rate-limiter-and-weighted-balancer",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_live_process_drives_rate_limiter_and_weighted_balancer"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.outcomes-are-aggregate-only-and-concurrency-is-bounded",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_outcomes_are_aggregate_only_and_concurrency_is_bounded"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-command-codec-and-schedule-are-closed-and-deterministic",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_policy_command_codec_and_schedule_are_closed_and_deterministic"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.startup-policy-rejects-excessive-or-overlapping-runs-before-dispatch",
+      "owner": "control-plane-kit-servers:http-load-generator",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_load_generator.HttpLoadGeneratorTests.test_startup_policy_rejects_excessive_or_overlapping_runs_before_dispatch"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.multiplexer-block-advertises-provider-and-target-requirements",
+      "owner": "control-plane-kit-servers:http-multiplexer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_block_advertises_provider_and_target_requirements"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.multiplexer-block-compiles-socket-connections-to-environment",
+      "owner": "control-plane-kit-servers:http-multiplexer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_block_compiles_socket_connections_to_environment"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.multiplexer-observer-failure-is-recorded-but-primary-response-wins",
+      "owner": "control-plane-kit-servers:http-multiplexer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_observer_failure_is_recorded_but_primary_response_wins"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.multiplexer-returns-primary-response-and-copies-to-observers",
+      "owner": "control-plane-kit-servers:http-multiplexer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_multiplexer_server_block.HttpMultiplexerServerBlockTests.test_multiplexer_returns_primary_response_and_copies_to_observers"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.proxy-block-advertises-provider-and-target-requirement",
+      "owner": "control-plane-kit-servers:http-proxy",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_block_advertises_provider_and_target_requirement"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.proxy-block-compiles-socket-connection-to-environment",
+      "owner": "control-plane-kit-servers:http-proxy",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_block_compiles_socket_connection_to_environment"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.proxy-forwards-request-to-active-target",
+      "owner": "control-plane-kit-servers:http-proxy",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_forwards_request_to_active_target"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.proxy-runtime-target-change-affects-later-requests",
+      "owner": "control-plane-kit-servers:http-proxy",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_runtime_target_change_affects_later_requests"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.rate-limiter-allows-until-quota-is-exhausted-then-returns-429",
+      "owner": "control-plane-kit-servers:http-rate-limiter",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_allows_until_quota_is_exhausted_then_returns_429"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.rate-limiter-block-advertises-provider-and-target-requirement",
+      "owner": "control-plane-kit-servers:http-rate-limiter",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_block_advertises_provider_and_target_requirement"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.rate-limiter-block-compiles-socket-connection-to-environment",
+      "owner": "control-plane-kit-servers:http-rate-limiter",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_block_compiles_socket_connection_to_environment"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.rate-limiter-reset-reloads-quota",
+      "owner": "control-plane-kit-servers:http-rate-limiter",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_reset_reloads_quota"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-has-closed-product-and-policy-identity",
+      "owner": "control-plane-kit-servers:http-retry",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_retry_server_block.HttpRetryTests.test_block_has_closed_product_and_policy_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.graph-order-expresses-retry-and-circuit-composition",
+      "owner": "control-plane-kit-servers:http-retry",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_retry_server_block.HttpRetryTests.test_graph_order_expresses_retry_and_circuit_composition"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-generated-server-bounds-retries-timeouts-and-evidence",
+      "owner": "control-plane-kit-servers:http-retry",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_retry_server_block.HttpRetryTests.test_live_generated_server_bounds_retries_timeouts_and_evidence"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.non-idempotent-retry-requires-explicit-key-policy",
+      "owner": "control-plane-kit-servers:http-retry",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_retry_server_block.HttpRetryTests.test_non_idempotent_retry_requires_explicit_key_policy"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-and-payloads-are-bounded-closed-values",
+      "owner": "control-plane-kit-servers:http-retry",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_retry_server_block.HttpRetryTests.test_policy_and_payloads_are_bounded_closed_values"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.success-recovery-and-exhaustion-are-finite",
+      "owner": "control-plane-kit-servers:http-retry",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_retry_server_block.HttpRetryTests.test_success_recovery_and_exhaustion_are_finite"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-generated-server-bounds-effect-and-reports-client-disconnect",
+      "owner": "control-plane-kit-servers:http-timeout",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_timeout_server_block.HttpTimeoutTests.test_live_generated_server_bounds_effect_and_reports_client_disconnect"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.per-attempt-and-total-deadline-remain-separate",
+      "owner": "control-plane-kit-servers:http-timeout",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_timeout_server_block.HttpTimeoutTests.test_per_attempt_and_total_deadline_remain_separate"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-and-block-identity-are-closed-and-finite",
+      "owner": "control-plane-kit-servers:http-timeout",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_timeout_server_block.HttpTimeoutTests.test_policy_and_block_identity_are_closed_and_finite"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.success-timeout-disconnect-and-bounds-are-distinct",
+      "owner": "control-plane-kit-servers:http-timeout",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_timeout_server_block.HttpTimeoutTests.test_success_timeout_disconnect_and_bounds_are_distinct"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.evidence-is-bounded-paginated-and-evicts-oldest",
+      "owner": "control-plane-kit-servers:http-traffic-logger",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_evidence_is_bounded_paginated_and_evicts_oldest"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-generated-server-forwards-and-exposes-only-authenticated-pages",
+      "owner": "control-plane-kit-servers:http-traffic-logger",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_live_generated_server_forwards_and_exposes_only_authenticated_pages"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.local-rejection-and-target-loss-are-visible-without-raising",
+      "owner": "control-plane-kit-servers:http-traffic-logger",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_local_rejection_and_target_loss_are_visible_without_raising"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.one-block-type-logs-inbound-and-outbound-by-graph-position",
+      "owner": "control-plane-kit-servers:http-traffic-logger",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_one_block_type_logs_inbound_and_outbound_by_graph_position"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-and-block-identity-are-closed",
+      "owner": "control-plane-kit-servers:http-traffic-logger",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_policy_and_block_identity_are_closed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.redacted-and-hashed-paths-never-retain-sensitive-values",
+      "owner": "control-plane-kit-servers:http-traffic-logger",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_redacted_and_hashed_paths_never_retain_sensitive_values"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.weighted-balancer-block-advertises-provider-and-target-requirements",
+      "owner": "control-plane-kit-servers:http-weighted-balancer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_block_advertises_provider_and_target_requirements"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.weighted-balancer-block-compiles-socket-connections-to-environment",
+      "owner": "control-plane-kit-servers:http-weighted-balancer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_block_compiles_socket_connections_to_environment"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.weighted-balancer-rejects-no-positive-weights",
+      "owner": "control-plane-kit-servers:http-weighted-balancer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_rejects_no_positive_weights"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.weighted-balancer-routes-by-deterministic-weighted-cycle",
+      "owner": "control-plane-kit-servers:http-weighted-balancer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_routes_by_deterministic_weighted_cycle"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.authority-and-route-eligibility-fail-before-effect-or-write",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_authority_and_route_eligibility_fail_before_effect_or_write"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.concurrent-identical-requests-have-one-execution-winner",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_concurrent_identical_requests_have_one_execution_winner"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.effect-loss-is-uncertain-and-never-replays-automatically",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_effect_loss_is_uncertain_and_never_replays_automatically"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.exact-replay-returns-reference-without-persisting-body-or-key",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_exact_replay_returns_reference_without_persisting_body_or_key"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.expired-in-flight-record-becomes-uncertain-without-dispatch",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_expired_in_flight_record_becomes_uncertain_without_dispatch"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.expired-terminal-record-can-be-reused-as-fresh-intent",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_expired_terminal_record_can_be_reused_as_fresh_intent"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.fastapi-boundary-rejects-oversized-body-before-service",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_fastapi_boundary_rejects_oversized_body_before_service"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.fastapi-boundary-requires-attestation-and-reconstructs-durable-replay",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_fastapi_boundary_requires_attestation_and_reconstructs_durable_replay"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.gateway-unit-of-work-rolls-back-without-commit-request",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_gateway_unit_of_work_rolls_back_without_commit_request"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-process-bootstraps-own-store-and-replays-without-second-effect",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_live_process_bootstraps_own_store_and_replays_without_second_effect"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.oversized-result-reference-is-not-retained-for-replay",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_oversized_result_reference_is_not_retained_for_replay"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-codec-and-block-preserve-closed-runtime-requirements",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_policy_codec_and_block_preserve_closed_runtime_requirements"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.result-persistence-loss-becomes-uncertain-after-lease-expiry",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_result_persistence_loss_becomes_uncertain_after_lease_expiry"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.same-key-with-changed-actor-conflicts-without-effect",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_actor_conflicts_without_effect"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.same-key-with-changed-payload-conflicts-without-effect",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_payload_conflicts_without_effect"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.same-key-with-changed-query-conflicts-without-effect",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_query_conflicts_without_effect"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.idempotency-gateway.schema-reinstall-preserves-rows-and-constraint-identity",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_schema_reinstall_preserves_rows_and_constraint_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.uncertain-records-are-not-evicted-to-make-capacity",
+      "owner": "control-plane-kit-servers:idempotency-gateway",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_uncertain_records_are_not_evicted_to_make_capacity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-declares-graph-wired-targets-and-opaque-control-secret",
+      "owner": "control-plane-kit-servers:http-router",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_managed_http_router.ManagedHttpRouterTests.test_block_declares_graph_wired_targets_and_opaque_control_secret"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.same-data-path-changes-only-after-authenticated-switch",
+      "owner": "control-plane-kit-servers:http-router",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_managed_http_router.ManagedHttpRouterTests.test_same_data_path_changes_only_after_authenticated_switch"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-advertises-exact-otlp-and-health-sockets",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_block_advertises_exact_otlp_and_health_sockets"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.catalogue-marks-official-integration-operational",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_catalogue_marks_official_integration_operational"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.default-configuration-is-deterministic-closed-yaml",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_default_configuration_is_deterministic_closed_yaml"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.exporter-headers-are-bounded",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_exporter_headers_are_bounded"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.exporter-requirement-and-environment-names-are-globally-unique",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_exporter_requirement_and_environment_names_are_globally_unique"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.graph-codec-and-diff-retain-exact-artifact-identity",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_graph_codec_and_diff_retain_exact_artifact_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.invalid-pipeline-references-fail-at-pure-boundary",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_invalid_pipeline_references_fail_at_pure_boundary"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.provider-socket-names-and-ports-are-globally-unique",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_provider_socket_names_and_ports_are_globally_unique"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.remote-exporter-uses-socket-and-opaque-secret-delivery",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_remote_exporter_uses_socket_and_opaque_secret_delivery"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.sampling-is-rejected-outside-trace-pipeline",
+      "owner": "control-plane-kit-servers:opentelemetry-collector",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_sampling_is_rejected_outside_trace_pipeline"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.behavior-retains-only-count-and-generated-identity",
+      "owner": "control-plane-kit-servers:http-request-observer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_request_observer_server_block.RequestObserverServerTests.test_behavior_retains_only_count_and_generated_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-is-a-closed-docker-product-with-opaque-control-secret",
+      "owner": "control-plane-kit-servers:http-request-observer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_request_observer_server_block.RequestObserverServerTests.test_block_is_a_closed_docker_product_with_opaque_control_secret"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-command-authenticates-metrics-and-redacts-traffic",
+      "owner": "control-plane-kit-servers:http-request-observer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_request_observer_server_block.RequestObserverServerTests.test_live_command_authenticates_metrics_and_redacts_traffic"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.live-multiplexer-copies-traffic-to-observer",
+      "owner": "control-plane-kit-servers:http-request-observer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_request_observer_server_block.RequestObserverServerTests.test_live_multiplexer_copies_traffic_to_observer"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.oversized-request-is-rejected-without-observation",
+      "owner": "control-plane-kit-servers:http-request-observer",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_request_observer_server_block.RequestObserverServerTests.test_oversized_request_is_rejected_without_observation"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.invalid-rendered-source-fails-without-retaining-source",
+      "owner": "control-plane-kit-servers:server-support",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_server_command_templates.ServerCommandTemplateTests.test_invalid_rendered_source_fails_without_retaining_source"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.rendered-commands-include-expected-environment-names",
+      "owner": "control-plane-kit-servers:server-support",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_server_command_templates.ServerCommandTemplateTests.test_rendered_commands_include_expected_environment_names"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.server-commands-render-python-scripts",
+      "owner": "control-plane-kit-servers:server-support",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_server_command_templates.ServerCommandTemplateTests.test_server_commands_render_python_scripts"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.validated-command-preserves-valid-source-exactly",
+      "owner": "control-plane-kit-servers:server-support",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_server_command_templates.ServerCommandTemplateTests.test_validated_command_preserves_valid_source_exactly"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-now-advertises-only-real-docker-capabilities",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_block_now_advertises_only_real_docker_capabilities"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.body-bounds-and-closed-descriptors-fail-before-service",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_body_bounds_and_closed_descriptors_fail_before_service"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.expiry-route-requires-management-scope",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_expiry_route_requires_management_scope"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.health-is-distinct-from-semantic-readiness",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_health_is_distinct_from_semantic_readiness"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.heartbeat-and-deregister-enforce-path-identity",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_heartbeat_and_deregister_enforce_path_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.maximum-resolution-page-has-a-bounded-response",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_maximum_resolution_page_has_a_bounded_response"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.process-boundary-vends-direct-psycopg-dsn-from-graph-identity",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_process_boundary_vends_direct_psycopg_dsn_from_graph_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.register-and-resolve-use-scoped-authenticated-service-commands",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_register_and_resolve_use_scoped_authenticated_service_commands"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.rejected-endpoint-and-identity-material-are-redacted",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_rejected_endpoint_and_identity_material_are_redacted"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.self-registration-is-bound-to-service-and-instance-identity",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_self_registration_is_bound_to_service_and_instance_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.under-scoped-mutation-fails-before-registry-write",
+      "owner": "control-plane-kit-servers:service-discovery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_under_scoped_mutation_fails_before_registry_write"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.authority-descriptor-is-closed-typed-and-deterministic",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_authority_descriptor_is_closed_typed_and_deterministic"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.backoff-is-deterministic-bounded-and-capped",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_backoff_is_deterministic_bounded_and_capped"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.claim-release-is-explicit-and-safe-only-before-dispatch",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_claim_release_is_explicit_and_safe_only_before_dispatch"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.endpoint-authority-is-closed-exact-and-interpreter-independent",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_endpoint_authority_is_closed_exact_and_interpreter_independent"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.endpoint-shape-rejects-unsafe-or-open-forms",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_endpoint_shape_rejects_unsafe_or_open_forms"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.every-event-variant-round-trips-through-exact-codec",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_every_event_variant_round_trips_through_exact_codec"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.impossible-histories-fail-at-the-pure-boundary",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_impossible_histories_fail_at_the_pure_boundary"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.intent-is-closed-bounded-and-deterministically-fingerprinted",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_intent_is_closed_bounded_and_deterministically_fingerprinted"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.payload-is-nonempty-bounded-and-digest-verified",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_payload_is_nonempty_bounded_and_digest_verified"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.retry-history-requires-exact-policy-time-and-attempt-order",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_retry_history_requires_exact_policy_time_and_attempt_order"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.signing-is-opaque-closed-and-uses-non-reserved-header",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_signing_is_opaque_closed_and_uses_non_reserved_header"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.success-history-reconstructs-without-mutable-cursor",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_success_history_reconstructs_without_mutable_cursor"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.terminal-and-uncertain-histories-have-distinct-destinations",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_terminal_and_uncertain_histories_have_distinct_destinations"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.unknown-extra-and-malformed-descriptor-values-fail-closed",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook.WebhookAlgebraTests.test_unknown_extra_and_malformed_descriptor_values_fail_closed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.app-factory-reports-its-entrypoint-home",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_app.WebhookFastApiTests.test_app_factory_reports_its_entrypoint_home"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.authenticated-routes-drive-canonical-service-and-read-projection",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_app.WebhookFastApiTests.test_authenticated_routes_drive_canonical_service_and_read_projection"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.authentication-scope-and-workspace-fail-closed",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_app.WebhookFastApiTests.test_authentication_scope_and_workspace_fail_closed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.body-is-bounded-before-json-or-service-execution",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_app.WebhookFastApiTests.test_body_is_bounded_before_json_or_service_execution"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.unknown-command-fields-and-read-scope-are-exact",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_app.WebhookFastApiTests.test_unknown_command_fields_and_read_scope_are_exact"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.endpoint-must-match-exact-grant-before-secret-resolution",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_http.WebhookHttpTests.test_endpoint_must_match_exact_grant_before_secret_resolution"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.exact-local-grant-signs-body-only-at-dispatch-boundary",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_http.WebhookHttpTests.test_exact_local_grant_signs_body_only_at_dispatch_boundary"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.http-delivery-reports-its-interpreter-home",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_http.WebhookHttpTests.test_http_delivery_reports_its_interpreter_home"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.http-statuses-redirects-and-transport-failures-are-distinct",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_http.WebhookHttpTests.test_http_statuses_redirects_and_transport_failures_are_distinct"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.public-dns-rebinding-and-public-plaintext-fail-closed",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_http.WebhookHttpTests.test_public_dns_rebinding_and_public_plaintext_fail_closed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.public-hostname-is-resolved-and-pinned-for-same-request",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_http.WebhookHttpTests.test_public_hostname_is_resolved_and_pinned_for_same_request"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.response-body-and-headers-are-bounded-after-send",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_http.WebhookHttpTests.test_response_body_and_headers_are_bounded_after_send"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.runtime-private-scope-rejects-other-address-classes",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_http.WebhookHttpTests.test_runtime_private_scope_rejects_other_address_classes"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.restart-readiness-rejects-malformed-success",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_rejects_malformed_success"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.restart-readiness-retries-only-startup-unavailability",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_retries_only_startup_unavailability"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.restart-readiness-timeout-is-bounded-and-non-secret",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_timeout_is_bounded_and_non_secret"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.command-ledger-preserves-exact-replay-identity",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_command_ledger_preserves_exact_replay_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.concurrent-claim-has-one-winner-and-one-canonical-event",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_concurrent_claim_has_one_winner_and_one_canonical_event"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.concurrent-enqueue-has-one-winner-on-independent-connections",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_concurrent_enqueue_has_one_winner_on_independent_connections"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.intent-journal-and-projection-reconstruct-exact-canonical-state",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_intent_journal_and_projection_reconstruct_exact_canonical_state"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.one-unit-of-work-rolls-back-all-webhook-relations-together",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_one_unit_of_work_rolls_back_all_webhook_relations_together"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.schema-installer-leaves-commit-and-rollback-to-caller",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_schema_installer_leaves_commit_and_rollback_to_caller"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.webhook-postgres.schema-reinstall-preserves-rows-and-constraint-identity",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_schema_reinstall_preserves_rows_and_constraint_identity"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.unknown-closed-values-and-malformed-shapes-fail-in-postgres",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_unknown_closed_values_and_malformed_shapes_fail_in_postgres"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.versioned-append-and-projection-reject-stale-writers",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_postgres.WebhookPostgresTests.test_versioned_append_and_projection_reject_stale_writers"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.block-declares-product-database-http-and-opaque-secrets",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_block_declares_product_database_http_and_opaque_secrets"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.catalogue-exposes-only-executable-readiness-capability",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_catalogue_exposes_only_executable_readiness_capability"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.graph-connection-supplies-the-only-database-url",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_graph_connection_supplies_the_only_database_url"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-codec-is-deterministic-closed-and-bounded",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_policy_codec_is_deterministic_closed_and_bounded"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.policy-rejects-excessive-grants-and-encoded-content",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_policy_rejects_excessive_grants_and_encoded_content"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.process-factory-reports-its-entrypoint-home",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_process_factory_reports_its_entrypoint_home"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.product-and-verification-round-trip-through-graph-codec",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_product_and_verification_round_trip_through_graph_codec"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.psycopg-interpreter-preserves-graph-identity-but-vends-driver-dsn",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_psycopg_interpreter_preserves_graph_identity_but_vends_driver_dsn"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.competing-service-claims-have-one-winner",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_competing_service_claims_have_one_winner"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.crash-after-effect-start-is-reconstructed-as-uncertain-and-never-replayed",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_crash_after_effect_start_is_reconstructed_as_uncertain_and_never_replayed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.crash-before-dispatch-releases-expired-claim-for-new-worker",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_crash_before_dispatch_releases_expired_claim_for_new_worker"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.effect-exception-becomes-operator-required-without-secret-or-payload-evidence",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_effect_exception_becomes_operator_required_without_secret_or_payload_evidence"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.enqueue-is-atomic-exactly-idempotent-and-authorized",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_enqueue_is_atomic_exactly_idempotent_and_authorized"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.expired-claim-cannot-be-relabelled-as-voluntary-abandonment",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_expired_claim_cannot_be_relabelled_as_voluntary_abandonment"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.retry-failure-dead-letters-when-backoff-cannot-fit-deadline",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_retry_failure_dead_letters_when_backoff_cannot_fit_deadline"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.retry-policy-schedules-next-attempt-then-delivers",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_retry_policy_schedules_next_attempt_then_delivers"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.successful-dispatch-uses-split-transactions-and-never-replays-effect",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_successful_dispatch_uses_split_transactions_and_never_replays_effect"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.terminal-failure-dead-letters-without-retry",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_terminal_failure_dead_letters_without_retry"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.worker-can-abandon-claim-before-attempt-start",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service.WebhookServiceTests.test_worker_can_abandon_claim_before_attempt_start"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.command-ledger-failure-rolls-back-all-enqueue-facts",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_command_ledger_failure_rolls_back_all_enqueue_facts"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.committed-result-wins-before-late-recovery",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_committed_result_wins_before_late_recovery"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.dispatch-at-expiry-and-recovery-before-expiry-fail-closed",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_dispatch_at_expiry_and_recovery_before_expiry_fail_closed"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.effect-success-with-result-transaction-failure-remains-uncertain",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_effect_success_with_result_transaction_failure_remains_uncertain"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.malformed-capability-result-cannot-publish-false-result",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_malformed_capability_result_cannot_publish_false_result"
+    },
+    {
+      "kind": "test",
+      "law": "behavior.recovery-wins-race-against-late-effect-result",
+      "owner": "control-plane-kit-servers:webhook-delivery",
+      "owner_kind": "deferred-product",
+      "reference": "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_recovery_wins_race_against_late_effect_result"
+    }
+  ],
+  "findings": [],
+  "incomplete_required_core_entries": [],
+  "reference": {
+    "commit": "20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec",
+    "tag": "pre-server-product-extraction-2026-07-20"
+  },
+  "required_core_complete": true,
+  "schema": "cpk.required-core-parity-closeout",
+  "valid": true
+}

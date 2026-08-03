@@ -1,0 +1,23 @@
+{
+  "candidate_reviews": [
+    {
+      "decision": "not_superseded",
+      "family": "test_architecture_analysis",
+      "reason": "The frozen tests assert architecture-analysis language behavior, not merely obsolete package structure. These laws need successor ownership or an explicit later harness extraction; superseding them now would erase negative AST-policy cases."
+    },
+    {
+      "decision": "not_superseded",
+      "family": "test_architecture_dependencies",
+      "reason": "The frozen tests assert dependency and transport ownership laws. Some package names are stale, but the behavioral boundary remains active and needs successor evidence rather than supersession."
+    },
+    {
+      "decision": "not_superseded",
+      "family": "validation",
+      "reason": "Complete-suite and package-installation validations remain real release-candidate obligations. They are not obsolete structural assertions."
+    }
+  ],
+  "review": "issue-732",
+  "reviewed_supersessions": [],
+  "schema": "cpk.supersession-review",
+  "summary": "No required-core frozen law was safely superseded in #732. The manifest language was hardened so future supersessions must state the obsolete assumption, replacement, and negative-case disposition."
+}

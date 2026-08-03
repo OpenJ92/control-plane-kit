@@ -1,0 +1,109 @@
+{
+  "candidate_reviews": [
+    {
+      "decision": "superseded",
+      "family": "demo",
+      "law": "demo.docker-publication",
+      "reason": "Live Docker publication is interpreter/runtime behavior and remains a #743 handoff; extracted core owns typed publication/protocol contract values only."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_cli",
+      "law": "behavior.environment-supplies-base-url-and-token",
+      "reason": "Executable CLI behavior is an entrypoint/client concern; extracted core owns the HTTP contract vocabulary, not urllib execution."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_cli",
+      "law": "behavior.focused-read-commands-encode-identifiers-and-pagination",
+      "reason": "Executable CLI behavior is an entrypoint/client concern; extracted core owns the HTTP contract vocabulary, not urllib execution."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_cli",
+      "law": "behavior.http-error-returns-nonzero-and-prints-detail",
+      "reason": "Executable CLI behavior is an entrypoint/client concern; extracted core owns the HTTP contract vocabulary, not urllib execution."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_cli",
+      "law": "behavior.missing-base-url-is-usage-error",
+      "reason": "Executable CLI behavior is an entrypoint/client concern; extracted core owns the HTTP contract vocabulary, not urllib execution."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_cli",
+      "law": "behavior.pointer-and-limit-commands-encode-query-parameters",
+      "reason": "Executable CLI behavior is an entrypoint/client concern; extracted core owns the HTTP contract vocabulary, not urllib execution."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_cli",
+      "law": "behavior.token-sets-bearer-header",
+      "reason": "Executable CLI behavior is an entrypoint/client concern; extracted core owns the HTTP contract vocabulary, not urllib execution."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_cli",
+      "law": "behavior.workspace-command-reads-from-base-url-and-prints-json",
+      "reason": "Executable CLI behavior is an entrypoint/client concern; extracted core owns the HTTP contract vocabulary, not urllib execution."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_read_interface_demo_server",
+      "law": "behavior.demo-server-requires-configured-token",
+      "reason": "Read demo server behavior starts FastAPI and Postgres-backed seeded state; extracted core owns the HTTP/MCP read contract language only."
+    },
+    {
+      "decision": "superseded",
+      "family": "test_read_interface_demo_server",
+      "law": "behavior.demo-server-seeds-and-serves-read-routes",
+      "reason": "Read demo server behavior starts FastAPI and Postgres-backed seeded state; extracted core owns the HTTP/MCP read contract language only."
+    }
+  ],
+  "review": "issue-742",
+  "reviewed_supersessions": [
+    {
+      "law": "demo.docker-publication",
+      "reference": "demo.docker-publication"
+    },
+    {
+      "law": "behavior.environment-supplies-base-url-and-token",
+      "reference": "tests.test_cli.CliTests.test_environment_supplies_base_url_and_token"
+    },
+    {
+      "law": "behavior.focused-read-commands-encode-identifiers-and-pagination",
+      "reference": "tests.test_cli.CliTests.test_focused_read_commands_encode_identifiers_and_pagination"
+    },
+    {
+      "law": "behavior.http-error-returns-nonzero-and-prints-detail",
+      "reference": "tests.test_cli.CliTests.test_http_error_returns_nonzero_and_prints_detail"
+    },
+    {
+      "law": "behavior.missing-base-url-is-usage-error",
+      "reference": "tests.test_cli.CliTests.test_missing_base_url_is_usage_error"
+    },
+    {
+      "law": "behavior.pointer-and-limit-commands-encode-query-parameters",
+      "reference": "tests.test_cli.CliTests.test_pointer_and_limit_commands_encode_query_parameters"
+    },
+    {
+      "law": "behavior.token-sets-bearer-header",
+      "reference": "tests.test_cli.CliTests.test_token_sets_bearer_header"
+    },
+    {
+      "law": "behavior.workspace-command-reads-from-base-url-and-prints-json",
+      "reference": "tests.test_cli.CliTests.test_workspace_command_reads_from_base_url_and_prints_json"
+    },
+    {
+      "law": "behavior.demo-server-requires-configured-token",
+      "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_requires_configured_token"
+    },
+    {
+      "law": "behavior.demo-server-seeds-and-serves-read-routes",
+      "reference": "tests.test_read_interface_demo_server.ReadInterfaceDemoServerTests.test_demo_server_seeds_and_serves_read_routes"
+    }
+  ],
+  "schema": "cpk.supersession-review",
+  "summary": "#742 supersedes only the stale claim that executable CLI, read-demo FastAPI/Postgres process behavior, and live Docker publication execution belong inside extracted core. Core keeps public HTTP/MCP, package/import, configuration, secret, transport, and verification contract evidence; executable clients, server processes, and interpreter/runtime Docker effects remain handoffs."
+}

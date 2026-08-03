@@ -1,395 +1,230 @@
 # control-plane-kit
 
-`control-plane-kit` is a Python algebra and control-plane application for
-describing deployable systems as values: blocks, runtimes, sockets, and
-connections. Tools can build topology visually, diff it, compile an activity
-plan, request explicit approval, and execute the approved transition through
-runtime adapters.
+`control-plane-kit` is a deployment language and durable control-plane backend.
+It describes applications as graphs of products, runtimes, sockets, authorities,
+secret references, and public ingress. Operations can compare current and
+desired graph truth, produce a reviewable plan, require approval, realize the
+accepted effects, record observations, and advance current truth only after
+successful realization.
 
-The central equation is:
+This repository is the coordination, pure-language, and durable-operations
+repository. Concrete interpreters, packaged server products, and durable secret
+custody live in sibling repositories.
 
-```text
-DeployBlock = BlockSpec x RuntimeImplementation x BlockSockets
-```
-
-The block variant carries the domain distinction:
-
-```text
-Block
-  = ApplicationBlock(BlockSpec, RuntimeImplementation, BlockSockets)
-  | DataBlock(BlockSpec, RuntimeImplementation, BlockSockets)
-  | ProxyBlock(BlockSpec, RuntimeImplementation, BlockSockets)
-```
-
-A developer brings ordinary server code. The code listens on a port and reads
-unknown addresses from environment variables. `control-plane-kit` gives those
-unknown addresses meaning by wiring provider sockets into consumer requirement
-sockets.
-
-## Developer Contract
-
-Application code does not import this package. It only externalizes topology:
-
-```python
-DATABASE_URL = os.environ["DATABASE_URL"]
-PAYMENTS_BASE_URL = os.environ["PAYMENTS_BASE_URL"]
-```
-
-The deployment graph declares how those values are fulfilled:
-
-```python
-from control_plane_kit import (
-    ApplicationBlock,
-    BlockSpec,
-    DeploymentRecipe,
-    DockerImageImplementation,
-    DockerPostgresImplementation,
-    DockerRuntime,
-    Protocol,
-    RequirementSocket,
-    ProviderSocket,
-    BlockSockets,
-    SocketConnection,
-    compile_recipe,
-)
-
-api = ApplicationBlock(
-    spec=BlockSpec(role_id="orders-api", display_name="Orders API"),
-    implementation=DockerImageImplementation(
-        image="orders-api:latest",
-        command=("java", "-jar", "orders.jar"),
-        ports={"internal": 8080},
-    ),
-    sockets=BlockSockets(
-        requirements=(
-            RequirementSocket("DATABASE_URL", Protocol.POSTGRES, ("DATABASE_URL",)),
-            RequirementSocket("PAYMENTS_BASE_URL", Protocol.HTTP, ("PAYMENTS_BASE_URL",)),
-        ),
-        providers=(ProviderSocket("internal", Protocol.HTTP),),
-    ),
-)
-
-postgres = ApplicationBlock(
-    spec=BlockSpec(role_id="postgres"),
-    implementation=DockerPostgresImplementation(database="orders"),
-    sockets=BlockSockets(providers=(ProviderSocket("internal", Protocol.POSTGRES),)),
-)
-
-recipe = DeploymentRecipe(
-    name="orders-local",
-    root=DockerRuntime(
-        children=(
-            api,
-            postgres,
-            SocketConnection(
-                provider_role="postgres",
-                provider_socket="internal",
-                consumer_role="orders-api",
-                requirement_socket="DATABASE_URL",
-            ),
-        ),
-    ),
-)
-
-graph = compile_recipe(recipe)
-print(graph.node("orders-api").environment["DATABASE_URL"])
-```
-
-## Mental Model
+## Repository Shape
 
 ```text
-RuntimeContext
-  interprets child blocks
+control-plane-kit-core
+  pure graph, product, socket, planning, policy, authorization,
+  runtime-effect, ingress, verification, and secret-reference language
 
-DeployBlock
-  spec: identity and domain metadata
-  implementation: how the thing exists in a runtime
-  sockets: what it needs and what it exposes
+control-plane-kit-operations
+  Postgres stores, UnitOfWork, workspace and graph truth, registrations,
+  planning, approval, lifecycle, coordinator, observations, and read models
 
-SocketConnection
-  provider socket -> consumer requirement socket
+control-plane-kit-interpreters
+  concrete RuntimeEffectRequest -> IO RuntimeEffectResult implementations
+  Docker SDK, Cloudflare API, runtime verification, and secret-provider clients
+
+control-plane-kit-secrets
+  encrypted durable secret custody, scoped resolution, rotation, revocation,
+  and provider-local audit
+
+control-plane-kit-servers
+  cpk-server, cpk-local-gateway, seeded product processes, descriptors,
+  Dockerfiles, OCI coordinates, and catalogue metadata
 ```
 
-A runtime is ambient. A Docker image implementation does not create Docker; it
-means "when this block is interpreted under a Docker runtime, run this image as
-a container in that runtime." The same block shape can later be interpreted by
-Kubernetes, ECS, or a dry-run runtime.
-
-## Why Sockets?
-
-Sockets are the UI/editor boundary.
-
-- Provider sockets are provided endpoints: HTTP base URLs, Postgres connection
-  strings, TCP addresses.
-- Requirement sockets are environment expectations: env vars that need to be
-  filled from a compatible provider.
-
-A visual editor can render provider sockets on one side of a block and
-requirement sockets on the other. Dragging from a provider to a requirement
-creates a `SocketConnection`.
-
-## Capabilities
-
-Blocks may advertise operator capabilities independently from their application
-traffic sockets. A capability says what the control plane or UI may ask a
-running block to do. When a capability is backed by protocol routes, it points
-at a route set such as `common-status`, `logs`, `targets`, or `observers`.
-
-```python
-BlockSpec(
-    role_id="api-router",
-    capabilities=(
-        CapabilityName.HEALTH_CHECKABLE,
-        CapabilityName.TARGET_MUTABLE,
-        CapabilityName.SWITCHABLE,
-    ),
-)
-```
-
-The compiled node descriptor then exposes JSON-friendly capability descriptors
-for inspectors and graph editors.
-
-## Included Blocks and Implementations
-
-The first implementation is deliberately small:
-
-- `ApplicationBlock`
-- `DataBlock`
-- `ProxyBlock`
-- `DockerImageImplementation`
-- `LocalSourceImplementation`
-- `ExternalHttpImplementation`
-- `ExternalTcpImplementation`
-- `ExternalPostgresImplementation`
-- `DockerPostgresImplementation`
-- `PlanOnlyImplementation`
-
-The package also includes graph diffing and a conservative activity planner.
-
-## Control Plane Reads
-
-The first control-plane instance read surfaces are available through one shared
-service boundary:
+The governing dependency direction is:
 
 ```text
-Postgres-backed stores
-  -> InstanceReadService
-    -> FastAPI read routes
-    -> CLI read commands
-    -> MCP-shaped read adapter
+core
+  <- operations
+  <- composition boundaries
+
+core
+  <- interpreters
+
+core + operations + interpreters + secrets clients
+  <- cpk-server process composition
+
+descriptors and images
+  <- control-plane-kit-servers
 ```
 
-Read interfaces are intentionally non-mutating. They expose workspace summaries,
-current/desired graph descriptors, operator graph projections, activity
-timelines, observed state, and declared control surfaces.
+Core does not import Postgres, Docker, Cloudflare, FastAPI, HTTPX, MCP, or
+package-owned server code. Operations does not import concrete interpreter SDKs.
 
-See [Control Plane Read Interfaces](docs/READ_INTERFACES.md) for route, CLI,
-and MCP-shaped examples.
+## Operator Program
 
-Mutation command services use an explicit caller-owned Postgres transaction.
-See [Postgres Unit Of Work](docs/POSTGRES_UNIT_OF_WORK.md) for the connection,
-store, commit, rollback, and saga boundaries.
-
-Operation sessions, desired graph edits, typed activity planning, approvals,
-recovery candidates, and focused workflow reads are documented in
-[Activity Sessions And Planning](docs/ACTIVITY_PLANNING.md).
-
-## Deployment Program
-
-The intentional long-lived application entrance is:
-
-```python
-from control_plane_kit.application.deploy import DeploymentProgram
-```
-
-One program binds every graph-pair transition:
+The intended deployment program is:
 
 ```text
-initial deployment = program.between(EmptyGraph, desired)
-update             = program.between(current, desired)
-teardown           = program.between(current, EmptyGraph)
-no-op              = program.between(graph, graph)
+Deploy(current, desired)
+  -> plan
+    -> review and approve
+      -> admit
+        -> claim
+          -> start
+            -> execute external effects
+              -> observe
+                -> advance current graph
 ```
 
-It composes `Plan -> Approve -> Admit -> Claim -> Execute -> Advance` while
-keeping approval and recovery as explicit suspension boundaries. Later HTTP
-requests reconstruct with `program.for_plan(plan_id)` rather than retaining a
-Python object as workflow state. See
-[Deployment Application Program](docs/DEPLOY_PROGRAM.md) for construction,
-typed outcomes, operator grants, transaction laws, recovery, and live examples.
+The same shape covers:
 
-Run the complete Docker/Postgres live proof with:
-
-```bash
-./gate-f-live-test.sh
+```text
+initial deployment = Deploy(EmptyGraph, desired)
+update             = Deploy(current, desired)
+teardown           = Deploy(current, EmptyGraph)
+no-op              = Deploy(graph, graph)
 ```
 
-Run a generated Hello topology with paired HTTP and Postgres dependencies through
-the same canonical deployment program:
+Every operator command owns one explicit Postgres transaction. Stores share the
+UnitOfWork connection and never commit independently. Docker, Cloudflare, HTTP,
+filesystem, probe, and secret-provider effects occur outside those transactions.
 
-```bash
-./generated-hello-live-test.sh
+## Runtime Effects
+
+Operations and interpreters meet at a provider-neutral boundary:
+
+```text
+core:
+  RuntimeEffectRequest
+
+interpreter:
+  RuntimeEffectRequest -> IO RuntimeEffectResult
+
+operations:
+  ActivityJournal x RuntimeEffectResult -> ActivityJournal'
 ```
 
-The default is a two-branch, one-level graph. Set
-`CPK_GENERATED_HELLO_BRANCHING_FACTOR` and `CPK_GENERATED_HELLO_DEPTH` to exercise
-a larger bounded generated topology. Live execution defaults to at most 31
-application and database containers. Raising
-`CPK_GENERATED_HELLO_MAX_LIVE_NODES` is an explicit acknowledgement that a
-larger graph will consume correspondingly more local Docker resources; it does
-not change the larger bound of the pure graph generator.
+The Docker composition currently follows:
 
-Run the local read demo with:
-
-```bash
-./scripts/read-demo-up.sh
+```text
+cpk-server
+  -> configured operations application
+    -> ExecutionCoordinator
+      -> RuntimeInterpreterDispatcher
+        -> DockerRuntimeInterpreter
+          -> Python Docker SDK
 ```
 
-Then query `http://localhost:8011/workspaces/demo-workspace` with bearer token
-`demo-token`.
+Interpreter availability is process capability. A
+`RegisteredRuntimeAuthority` is workspace-scoped permission and material for a
+specific runtime target. Graph nodes reference admitted authorities; endpoints,
+TLS private material, tokens, and local socket paths do not become graph truth.
 
-If `8011` is busy, set `CPK_DEMO_HOST_PORT` before running the script.
+## Products And Sockets
 
-Stop it with:
+Products are immutable, digest-pinned descriptors. A graph instantiates
+registered products and connects typed provider sockets to compatible
+requirement sockets:
 
-```bash
-./scripts/read-demo-down.sh
+```text
+provider node.socket
+  -> SocketConnection
+    -> consumer node.requirement
+      -> compiled runtime material
 ```
 
-The base installation contains the pure deployment language and planning
-pipeline:
+Socket edges drive dependency binding. Product identity must not trigger hidden
+Docker or operations branches. Removing an edge removes the authority and
+material compiled from that edge.
 
-```bash
-pip install control-plane-kit
+The current server-product catalogue includes cpk-server variants, the local
+gateway, Hello, router, multiplexer, Postgres data-service material, and
+Cloudflare connector material. Product descriptors and OCI coordinates are
+owned by `control-plane-kit-servers`.
+
+## Runtime Islands And Ingress
+
+A runtime island can contain private workload nodes and a `cpk-local-gateway`.
+The gateway is an ordinary product node: it receives a graph-derived target map,
+accepts only closed authenticated commands, and probes declared private targets.
+It does not own graph truth and does not spawn workloads.
+
+Named public ingress is socket-adjacent exposure:
+
+```text
+NamedPublicIngress
+  -> provider-specific ingress interpreter
+    -> generated connector authority
+      -> cloudflared connector
+        -> cpk-local-gateway.control
 ```
 
-Install focused HTTP or Postgres boundaries independently when that is the
-only operational capability required:
+Runtime authority is the power to realize or change the island. Gateway plus
+public ingress is a removable access overlay.
 
-```bash
-pip install control-plane-kit[http]
-pip install control-plane-kit[postgres]
+## Secrets
+
+The pure language carries references and explicit delivery intent, never secret
+values:
+
+```text
+SecretReference
+  + SecretUseIntent
+    + SecretDelivery
+      -> interpreter resolves plaintext at IO
 ```
 
-The broad runnable-server bundle includes both boundaries plus process-server
-dependencies:
+Operations admits provider metadata, authorizes use, and records bounded audit
+correlation. `control-plane-kit-secrets` owns encrypted custody. Interpreters
+resolve and deliver values only at the external-effect boundary. Plaintext and
+ciphertext must not enter graph data, operations persistence, runtime request
+descriptors, events, observations, logs, errors, or public responses.
 
-```bash
-pip install control-plane-kit[server]
-```
+## Public Boundary
 
-They expose control protocol routes for package-provided block servers while
-leaving application traffic to concrete block implementations.
+`cpk-server` is the FastAPI/MCP process wrapper around operations. HTTP and MCP
+project the same operations command/read services and authorization laws. The
+server process composes dependencies; it does not own runtime, ingress, graph,
+approval, or secret semantics.
 
-## Testing
-
-The test suite is Docker-first because the control-plane stores use real
-Postgres.  Run:
-
-```bash
-./test.sh
-```
-
-The script builds the test image, starts a Postgres container, installs the
-control-plane schema, runs the tests, and removes the containers/volumes on
-exit.
-
-
-## Runtime Interpreters
-
-A compiled graph is still only topology. A runtime interpreter is the boundary
-where topology becomes effects:
-
-```python
-from control_plane_kit import compile_recipe
-from control_plane_kit.docker_runtime import DockerRuntimeInterpreter
-from control_plane_kit.runtimes import CleanupPolicy
-from examples.hello_runtime import hello_recipe
-
-graph = compile_recipe(hello_recipe("Hello, runtime!"))
-interpreter = DockerRuntimeInterpreter(
-    project_name="hello-demo",
-    cleanup_policy=CleanupPolicy.REMOVE_ON_STOP,
-)
-
-state = interpreter.up(graph, runtime_id="docker")
-try:
-    assert state.node("hello").healthy
-finally:
-    interpreter.down(state)
-```
-
-The Docker interpreter operates on one `RuntimeRecord` at a time. It consumes
-`DeploymentGraph` values, produces inspectable `RuntimePlan` values, and records
-live facts in `RuntimeState`. Container names, cleanup metadata, and health
-belong to runtime state; they do not belong to the graph.
-
-The older `DockerRuntimeInterpreter.up/down` surface is a focused low-level
-runtime example. New control-plane workflows should use the deployment program
-above. Current Docker support is intentionally narrow:
-
-- supported: one Docker runtime at a time,
-- supported: Docker image blocks and Docker Postgres blocks,
-- supported: fake-client tests that do not require Docker,
-- supported: default cleanup that removes owned containers and network,
-- supported: preserve cleanup that stops containers but keeps resources,
-- unsupported: cross-runtime Docker realization,
-- supported: explicit typed loopback host publication,
-- supported: distinct process, reachability, application-health, and readiness
-  probes,
-- unsupported: Kubernetes, ECS, EC2, RDS, and Cloudflare interpreters.
-
-Activity descriptors redact environment values. The executor still receives the
-real environment map because containers need those values to start.
-
-### Runtime Examples
-
-The example ladder is:
-
-- `examples/hello_runtime.py`: one HTTP application block through Docker.
-- `examples/postgres_runtime.py`: an application wired to Docker Postgres.
-- `examples/router_runtime.py`: two HTTP backends behind a Docker-backed active
-  router.
-- `examples/http_block_compositions.py`: graph-level compositions of the
-  package-provided HTTP proxy, router, weighted balancer, multiplexer, and rate
-  limiter blocks.
-
-Graph-only examples such as `examples/app_with_postgres.py` and
-`examples/router_swap.py` remain useful when you want to stop at topology.
-
-## Docker
-
-The project Docker image uses Python 3.14 by default:
-
-```bash
-docker build -t control-plane-kit:local .
-```
-
-Run the container smoke check:
-
-```bash
-docker run --rm control-plane-kit:local
-```
-
-Run the Docker test target, including optional FastAPI adapter tests:
-
-```bash
-docker build --target test -t control-plane-kit:test .
-```
-
-## Design Boundary
-
-This package is not Terraform, Kubernetes, Docker Compose, or a secret manager.
-It is an algebra and compiler for topology. Runtime interpreters can later use
-Docker, Kubernetes, AWS, Cloudflare, or any other substrate.
-
-The graph owns topology. Runtime interpreters own effects. Application code
-stays ordinary application code.
-
-## Design Documents
+## Documentation
 
 - [Operating Model](docs/OPERATING_MODEL.md)
-- [HTTP Block Compositions](docs/HTTP_BLOCK_COMPOSITIONS.md)
-- [Control Plane Kit Architecture Design](docs/design/0001-control-plane-kit-architecture.md)
-- [Mathematical Design Preference](docs/design/0002-mathematical-design-preference.md)
-- [Control Plane Kit Roadmap](docs/roadmap/README.md)
+- [Control Plane Language](docs/CONTROL_PLANE_LANGUAGE.md)
+- [Language Study Guide](docs/CONTROL_PLANE_LANGUAGE_STUDY_GUIDE.md)
+- [Postgres Unit Of Work](docs/POSTGRES_UNIT_OF_WORK.md)
+- [Server Product Rollout](SERVER_PRODUCT_ROLLOUT.md)
+- [Current Backend Validation](current_backend/README.md)
+- [Test Evidence And Acceptance](docs/TESTING.md)
+
+Historical roadmap, review, and learning documents remain as design evidence.
+They may name retired source paths and old commands, but they are not current
+execution instructions.
+
+## Validation
+
+Run current package gates independently:
+
+```bash
+./control-plane-kit-core/test.sh
+./control-plane-kit-operations/test.sh
+```
+
+Run the exact multi-repository, non-provider-mutating backend gate:
+
+```bash
+./current-backend-test.sh --report /tmp/current-backend-report.json
+```
+
+That gate materializes exact Git objects, validates cross-repository contracts,
+runs all five package suites, exercises authenticated cpk-server HTTP/MCP
+source-live acceptance, and audits Docker residue. It does not claim published
+OCI or provider-mutating acceptance.
+
+The mutable aggregate package and mixed root test suite have been retired.
+Historical reproducibility remains available only through the immutable tag:
+
+```bash
+./reference-test.sh
+```
+
+`reference-test.sh` verifies
+`pre-server-product-extraction-2026-07-20` resolves to
+`20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec`, archives that tag into a temporary
+directory, runs its own historical suite, records bounded evidence, and removes
+only exact-owned resources.

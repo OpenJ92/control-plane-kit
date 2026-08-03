@@ -1,0 +1,31 @@
+{
+  "command": "docker run --rm -v /Users/jacobvartuli/Software/self/control-plane-kit/control-plane-kit-core:/source:ro -w /tmp -e PYTHONDONTWRITEBYTECODE=1 python:3.14-slim sh -c 'cp -a /source /tmp/pkg && cd /tmp/pkg && python -m pip install --root-user-action=ignore . >/tmp/pip.log && python -m unittest tests.test_policies'",
+  "evidence": "The extracted core policy unittest module proves the #763 pure policy decision laws without importing the frozen package. Successor tests preserve closed authority scopes, bounded allow/deny decision descriptors, approval requirements derived from ActivityPlan risk and destructive impact, destructive activity classification, hub and instance access separation, lifecycle retention for destructive delete, and rejection of open string scopes while deliberately excluding command services, stores, authorization gateways, persistence, process state, HTTP, MCP, Docker, and mutable workflow publication.",
+  "frozen_laws": [
+    "behavior.approval-policy-derives-scope-and-risk-from-plan-data",
+    "behavior.approval-policy-requires-stronger-scope-for-destructive-plans",
+    "behavior.destructive-activity-policy-classifies-consequential-actions",
+    "behavior.hub-access-policy-returns-decisions-not-effects",
+    "behavior.instance-access-policy-separates-read-and-edit-scopes",
+    "behavior.lifecycle-retention-represents-destructive-delete"
+  ],
+  "reference_tests": [
+    "tests.test_policies.PolicyTests.test_approval_policy_derives_scope_and_risk_from_plan_data",
+    "tests.test_policies.PolicyTests.test_approval_policy_requires_stronger_scope_for_destructive_plans",
+    "tests.test_policies.PolicyTests.test_destructive_activity_policy_classifies_consequential_actions",
+    "tests.test_policies.PolicyTests.test_hub_access_policy_returns_decisions_not_effects",
+    "tests.test_policies.PolicyTests.test_instance_access_policy_separates_read_and_edit_scopes",
+    "tests.test_policies.PolicyTests.test_lifecycle_retention_represents_destructive_delete"
+  ],
+  "schema": "cpk.successor-proof",
+  "status": "passing",
+  "successor_tests": [
+    "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_approval_policy_derives_scope_and_risk_from_plan_data",
+    "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_approval_policy_requires_stronger_scope_for_destructive_plans",
+    "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_destructive_activity_policy_classifies_consequential_actions",
+    "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_hub_access_policy_returns_decisions_not_effects",
+    "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_instance_access_policy_separates_read_and_edit_scopes",
+    "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_lifecycle_retention_represents_destructive_delete",
+    "control-plane-kit-core.tests.test_policies.PolicyDecisionTests.test_policy_scopes_reject_open_strings_at_the_pure_boundary"
+  ]
+}

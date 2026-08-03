@@ -1,0 +1,11 @@
+{
+  "baseline_commit": "5bc3e7debb2aa7f65eeaf3d4c29f030da55d99a8",
+  "delete_files": 417,
+  "issue": 1318,
+  "legacy_deleted": true,
+  "manifest_digest": "sha256:7119474b2338217b962acce67d861e65e3afc69a66a72bb39b7c002fa6ba1da1",
+  "post_baseline_additions": 8,
+  "retain_files": 433,
+  "schema": "cpk.harden-tests-parity.legacy-retirement-evidence",
+  "zero_unowned": true
+}

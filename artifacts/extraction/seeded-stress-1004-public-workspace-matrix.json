@@ -1,0 +1,336 @@
+{
+  "schema": "control-plane-kit.extraction.seeded-stress-public-workspace-matrix",
+  "issue": 1004,
+  "parent": 941,
+  "status": "dry-run-complete",
+  "generated_from": {
+    "control_plane_kit_branch": "codex/1004-seeded-stress-matrix",
+    "control_plane_kit_roadmap_base": "roadmap/extract-c-external-product-language",
+    "server_products_coordinates": "control-plane-kit-servers/coordinates/server-products.json",
+    "server_products_catalogue": "control-plane-kit-servers/catalogue/products.json"
+  },
+  "topology": {
+    "canonical_order": [
+      "#1004 -> #1005",
+      "#1005 -> #1006",
+      "#1005 -> #1008",
+      "#1005 -> #1007",
+      "#1006 + #1008 + #1007 -> #1009 -> #1010"
+    ],
+    "older_issue_relationships": {
+      "#955": "still required before #1008 unless equivalent product-owned observer evidence appears",
+      "#945": "superseded by #1008 and #1007 once those complete",
+      "#946": "superseded by #1009 once complete",
+      "#947": "superseded by #1010 once complete"
+    }
+  },
+  "coordinate_truth": {
+    "coordinates_sha256": "087b5825fffcff264402252337885a92c40e5576027ed1727e045685fc42e1cd",
+    "catalogue_products_json_sha256": "03695d4aa51577556e2cb8149f8127be6f9eb8d4a355ee0ba957829555a31515",
+    "upstreams": {
+      "control_plane_kit_commit": "35dcc8029d0b0e95c44caf8bfc642b5a1412c649",
+      "control_plane_kit_interpreters_commit": "48b273eb72fa3a35cf1051eac02a8de5794b6b81"
+    },
+    "products": {
+      "cpk-server": {
+        "descriptor": "products/cpk_server/product.cpk.json",
+        "descriptor_sha256": "f90968dc9641aa875d84c47bc8e7c29ecce94c513aacdf31ee2f848c230620a7",
+        "image": "ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:9eacda293d09953289a50adb9476a290b73a2406698ce352bb97904f27c1415b",
+        "interpreter_availability": "none"
+      },
+      "cpk-server-docker": {
+        "descriptor": "products/cpk_server/product.docker.cpk.json",
+        "descriptor_sha256": "0581717ca9dfd2b374ad3913e7b82b9355cf15c4aa83638e724b9ff6436bde88",
+        "image": "ghcr.io/openj92/control-plane-kit-servers/cpk-server@sha256:9eacda293d09953289a50adb9476a290b73a2406698ce352bb97904f27c1415b",
+        "interpreter_availability": "docker"
+      },
+      "hello-server": {
+        "descriptor": "products/hello_server/product.cpk.json",
+        "descriptor_sha256": "7c878cddfa597002f4536c1ac7aea0728df3bbe0e594f6dbc56b646968dab0cc",
+        "image": "ghcr.io/openj92/control-plane-kit-servers/hello-server@sha256:0b5d62c2706bdfc5b53b67c7e0a72e36b8af7d13f8b2abf26eaa6e6eb7dda5f0",
+        "product_family": "server"
+      },
+      "http-active-router": {
+        "descriptor": "products/http_active_router/product.cpk.json",
+        "descriptor_sha256": "c965218c439ea650421220d9977f641330564b86f6397bef05e4a87edbd43c6b",
+        "image": "ghcr.io/openj92/control-plane-kit-servers/http-active-router@sha256:9edd29c8b62f6413c7acb4009bfa655c065a31a0eac8728ec9d4350122e0a60d",
+        "product_family": "server"
+      },
+      "http-multiplexer": {
+        "descriptor": "products/http_multiplexer/product.cpk.json",
+        "descriptor_sha256": "0b74269a7b8c9b775d431a04382eaa268339330c55d4995a6a52ee6de79abc9d",
+        "image": "ghcr.io/openj92/control-plane-kit-servers/http-multiplexer@sha256:2b6466d87c7642691c4ce2ee52022450d7b7cf1055f1f25a1449adbb5c8131ec",
+        "product_family": "server"
+      },
+      "postgres-server": {
+        "descriptor": "products/postgres_server/product.cpk.json",
+        "descriptor_sha256": "96307788eb5a6603f3617e1d4b5fd02420997175b969e72304f8e5609acc5f40",
+        "image": "docker.io/library/postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
+        "product_family": "data-service"
+      }
+    }
+  },
+  "public_workflow_spine": {
+    "acceptance_boundary": "one published cpk-server-docker drives multiple workspaces through public HTTP and MCP-shaped routes",
+    "existing_source": [
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:40",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:59",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:73",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:114",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:136",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:160",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:173",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:189",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:203",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:226",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:240",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:252",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:261",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:285",
+      "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:289"
+    ],
+    "current_public_coverage": [
+      "HTTP create workspace",
+      "HTTP product descriptor import",
+      "HTTP desired graph submission",
+      "MCP deployment plan command",
+      "HTTP approval request",
+      "MCP pending approval read",
+      "MCP approval detail read",
+      "MCP approval decision command",
+      "HTTP admission",
+      "HTTP claim",
+      "HTTP run start",
+      "MCP execution command",
+      "HTTP current graph advancement",
+      "HTTP current graph readback",
+      "MCP activity read"
+    ],
+    "required_harness_gaps_for_1005": [
+      "workspace id must become per-scenario rather than a single module constant",
+      "runtime authority registration must be reusable from the recursive harness",
+      "runtime authority delivery registration must be reusable from the recursive harness",
+      "image pull authority registration must stay per workspace",
+      "scenario selection must support multiple workspaces in one cpk-server process",
+      "cleanup labels must be scenario/workspace scoped",
+      "public route/MCP usage must be reported per scenario"
+    ]
+  },
+  "workspaces": [
+    {
+      "workspace": "A",
+      "issue": 1006,
+      "name": "router-blue-green-transition",
+      "products": [
+        "hello-server",
+        "http-active-router"
+      ],
+      "scenario": [
+        "deploy hello-blue with HELLO_MESSAGE=Hello from blue",
+        "deploy router connected to hello-blue by SocketConnection",
+        "assert router returns Hello from blue",
+        "transition desired graph to hello-green with HELLO_MESSAGE=Hello from green",
+        "connect router active socket to hello-green by graph-derived binding",
+        "assert router returns Hello from green",
+        "advance current graph only after accepted successful runtime realization"
+      ],
+      "acceptance_contract": [
+        "HELLO_MESSAGE comes from ProductInstanceConfiguration.public_environment",
+        "ACTIVE_TARGET_URL comes from socket-derived runtime material",
+        "no shell-injected HELLO_MESSAGE or ACTIVE_TARGET_URL",
+        "safe plan ordering keeps the old path until replacement is ready"
+      ],
+      "existing_evidence": [
+        "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:398",
+        "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:528",
+        "control-plane-kit-servers/scripts/cpk_server_hosted_activity.py:572"
+      ],
+      "known_gaps": [
+        "the existing hosted script supports router-transition in one fixed workspace; #1005 must generalize it for the multi-workspace harness"
+      ],
+      "stop_conditions": [
+        "manual env injection is required",
+        "router target must be hard-coded outside graph binding",
+        "blue/green assertion would need weakening",
+        "current graph can advance before accepted success"
+      ]
+    },
+    {
+      "workspace": "B",
+      "issue": 1008,
+      "name": "multiplexer-primary-observer-delivery",
+      "depends_on": [
+        "#955 or equivalent package-owned observer receipt evidence"
+      ],
+      "products": [
+        "hello-server",
+        "http-multiplexer"
+      ],
+      "scenario": [
+        "deploy hello-primary",
+        "deploy hello-observer",
+        "deploy http-multiplexer with primary and observer socket requirements",
+        "send request to multiplexer",
+        "assert primary response wins",
+        "assert observer receipt through package-owned bounded evidence"
+      ],
+      "acceptance_contract": [
+        "MULTIPLEXER_PRIMARY_URL comes from the primary SocketConnection",
+        "MULTIPLEXER_OBSERVER_A_URL comes from the observer SocketConnection",
+        "observer proof is not weakened to primary-response-only",
+        "observer evidence is bounded and secret-free"
+      ],
+      "existing_evidence": [
+        "control-plane-kit-servers/products/http_multiplexer/src/control_plane_kit_servers_http_multiplexer/server.py:66",
+        "control-plane-kit-servers/products/hello_server/src/control_plane_kit_servers_hello_server/server.py:115"
+      ],
+      "known_gaps": [
+        "hello-server currently exposes live, ready, dependencies, and root message endpoints but no request receipt evidence endpoint",
+        "#955 remains required before #1008 unless #1004 follow-up discovers equivalent product-owned evidence"
+      ],
+      "stop_conditions": [
+        "observer proof requires a shell-only fake observer",
+        "observer proof requires direct process inspection",
+        "observer request retention would be unbounded",
+        "core or operations would need multiplexer-specific logic"
+      ]
+    },
+    {
+      "workspace": "C",
+      "issue": 1007,
+      "name": "postgres-data-service-secret-retained-data",
+      "products": [
+        "postgres-server"
+      ],
+      "scenario": [
+        "import postgres-server descriptor",
+        "register runtime authority and delivery",
+        "realize postgres-server data-service node",
+        "resolve POSTGRES_PASSWORD only through SecretReference at interpreter IO boundary",
+        "wait for semantic select-one readiness",
+        "teardown ephemeral compute/network while preserving retained postgres-data"
+      ],
+      "acceptance_contract": [
+        "product_family is data-service",
+        "official Postgres OCI image is digest pinned",
+        "POSTGRES_PASSWORD comes from secret://control-plane-kit/postgres/password",
+        "select-one readiness is semantic, not TCP-only",
+        "retained data is distinct from leaked resources"
+      ],
+      "existing_evidence": [
+        "control-plane-kit-servers/products/postgres_server/product.cpk.json",
+        "control-plane-kit-servers/products/postgres_server/tests/test_postgres_server_product.py",
+        "control-plane-kit-interpreters/tests/test_docker_runtime_interpreter.py:774"
+      ],
+      "known_gaps": [
+        "public hosted stress does not yet include a postgres-only workspace scenario",
+        "retained volume audit needs explicit scenario-owned naming and preservation proof"
+      ],
+      "stop_conditions": [
+        "raw password appears in descriptors, runtime request descriptors, observations, events, read models, logs, route responses, or errors",
+        "retained data cleanup is ambiguous",
+        "Postgres realization requires a product-specific Docker branch"
+      ]
+    },
+    {
+      "workspace": "D",
+      "issue": 1009,
+      "name": "seeded-negative-cases-cleanup-ownership",
+      "products": [
+        "cpk-server-docker",
+        "hello-server",
+        "http-active-router",
+        "http-multiplexer",
+        "postgres-server"
+      ],
+      "scenario": [
+        "exercise public route failures in an isolated workspace",
+        "prove graph/product/runtime authority errors fail closed",
+        "prove stale approval and stale current graph protections survive the stress harness",
+        "run Docker residue audit after scenario cleanup"
+      ],
+      "acceptance_contract": [
+        "unregistered products fail before planning/execution",
+        "incompatible sockets fail as graph/product language errors",
+        "missing runtime authority fails before Docker mutation",
+        "missing delivery fails before local Docker socket access",
+        "failed readiness blocks advancement",
+        "cleanup removes only owned ephemeral resources and preserves retained data"
+      ],
+      "existing_evidence": [
+        "control-plane-kit-servers/scripts/docker_residue_audit.sh",
+        "control-plane-kit-servers/scripts/cpk_server_hosted_activity_smoke.sh:22",
+        "control-plane-kit-servers/scripts/cpk_server_hosted_activity_smoke.sh:28"
+      ],
+      "known_gaps": [
+        "negative cases are not yet gathered into one public multi-workspace harness mode"
+      ],
+      "stop_conditions": [
+        "cleanup might affect Pottery Factory or unrelated Docker resources",
+        "public error leaks secrets or raw endpoints",
+        "negative assertion must be skipped or weakened",
+        "direct store mutation is needed to manufacture stale state"
+      ]
+    }
+  ],
+  "non_goals": [
+    "cloud runtimes",
+    "remote Docker runtime authority stress beyond existing recursive TLS evidence",
+    "control portals or Cloudflare ingress",
+    "automatic scaling",
+    "frontend/operator UX",
+    "Pottery Factory deployment",
+    "direct child cpk-server graph or activity inspection",
+    "product-specific branches in core or operations"
+  ],
+  "validation_plan_by_issue": {
+    "#1004": [
+      "git diff --check",
+      "JSON artifact parse check"
+    ],
+    "#1005": [
+      "git diff --check",
+      "focused cpk-server product tests",
+      "python3 -m compileall changed scripts",
+      "control-plane-kit-servers ./test.sh"
+    ],
+    "#1006": [
+      "router-transition public hosted smoke",
+      "control-plane-kit-servers ./test.sh",
+      "Docker residue audit"
+    ],
+    "#1008": [
+      "#955 product observer visibility validation or equivalent",
+      "multiplexer public hosted smoke",
+      "control-plane-kit-servers ./test.sh",
+      "Docker residue audit"
+    ],
+    "#1007": [
+      "postgres public hosted smoke",
+      "secret leak review",
+      "retained volume audit",
+      "control-plane-kit-interpreters ./test.sh if interpreter behavior changes",
+      "control-plane-kit-servers ./test.sh"
+    ],
+    "#1009": [
+      "negative public route suite",
+      "cleanup ownership audit",
+      "full changed package validation"
+    ],
+    "#1010": [
+      "git diff --check across changed repos",
+      "control-plane-kit ./test.sh if changed",
+      "control-plane-kit-interpreters ./test.sh if changed",
+      "control-plane-kit-servers ./test.sh",
+      "complete public multi-workspace seeded stress smoke"
+    ]
+  },
+  "decision": {
+    "is_955_required": true,
+    "reason": "The current hello-server product exposes /health/live, /health/ready, /dependencies, and /, but no bounded request receipt endpoint. The multiplexer observer proof would otherwise collapse to primary-response-only.",
+    "does_1005_need_new_runtime_behavior": false,
+    "reason_1005": "Existing public routes and runtime authority/delivery commands are sufficient; #1005 should factor and sequence them, not add new runtime semantics.",
+    "does_1004_change_source": false,
+    "reason_1004": "This issue records the matrix and current truth only."
+  }
+}
