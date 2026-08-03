@@ -1,213 +1,164 @@
 # control-plane-kit-core
 
-`control-plane-kit-core` is the extracted pure deployment kernel for
-`control-plane-kit`.
+`control-plane-kit-core` is the pure language kernel of Control Plane Kit. It
+describes deployable systems, proposed transitions, authority references, and
+runtime effects as immutable Python values. It performs no database, Docker,
+Cloudflare, HTTP, filesystem, or secret-provider IO.
 
-This package is built from the frozen reference laws recorded by EXTRACT.A. It
-does not import the frozen `control_plane_kit` package. The initial milestone
-owns only the pure planning pipeline:
+The package is pre-alpha. Its contracts are executable and extensively tested,
+but the public language continues to evolve while backend hardening proceeds.
+
+## Place In The System
+
+```text
+operator-authored topology
+  -> DeploymentGraph
+    -> validate
+      -> diff(current, desired)
+        -> ActivityPlan
+          -> RuntimeEffectRequest
+
+RuntimeEffectRequest
+  -> external interpreter IO
+    -> RuntimeEffectResult
+```
+
+Core owns the values and pure transformations in that diagram. Durable command
+execution belongs to `control-plane-kit-operations`; concrete effects belong to
+`control-plane-kit-interpreters`; process and OCI packaging belong to
+`control-plane-kit-servers`.
+
+## Language Families
+
+### Topology And Products
+
+- deployment topologies, runtimes, blocks, nodes, and graph descriptors;
+- typed provider and requirement sockets;
+- socket connections and graph-derived dependency binding;
+- immutable external product descriptors and digest-pinned OCI references;
+- product instance configuration, public environment, configuration artifacts,
+  retained data, and secret-delivery intent;
+- deterministic graph codecs, validation, and structural diffs.
+
+The principal pure pipeline is:
 
 ```text
 DeploymentTopology
-  -> DeploymentGraph
-  -> ValidatedGraph
-  -> GraphDiff
-  -> ActivityPlan
+  -> compile_topology
+    -> DeploymentGraph
+      -> validate_graph
+        -> diff_graphs
+          -> GraphDiff
+            -> compile_activity_plan
+              -> ActivityPlan
 ```
 
-The package deliberately excludes:
-
-- Docker and other runtime interpreters;
-- Postgres stores and UnitOfWork implementations;
-- FastAPI, HTTP clients, MCP transports, and process entrypoints;
-- package-owned server products;
-- live runtime effects;
-- Hello and other acceptance products.
-
-EXTRACT.D adds the pure control-plane service composition boundary. It names
-the generic service roles a future `DeploymentProgram` composes, but still does
-not implement stores, process entrypoints, hosted MCP, Docker images, or
-server-product descriptors:
+Socket connections carry dependency meaning:
 
 ```text
-DeploymentProgramBoundary
-  = planning
-  x approval
-  x admission
-  x lifecycle
-  x execution
-  x recovery
-  x observation
-  x reads
-  x authorization
+provider node.socket
+  -> SocketConnection
+    -> consumer node.requirement
+      -> compiled endpoint, configuration, and delivery material
 ```
 
-It also names the transaction boundary each role must obey:
+No product identity triggers hidden runtime behavior. Removing an edge removes
+the material derived from that edge.
+
+### Planning And Recovery Values
+
+Core defines closed activity variants, activity dependencies, schedules, saga
+journals, compensation plans, recovery decisions, and deterministic codecs.
+These values describe what should happen; they do not perform the work.
+
+### Runtime Effects And Authorities
+
+`RuntimeEffectRequest` is the provider-neutral handoff to an interpreter. It can
+carry pinned product material and references to admitted runtime, image-pull,
+ingress, delegation, and secret authorities. It never carries raw credentials.
 
 ```text
-UnitOfWorkBoundary
-  = DeploymentProgramBoundary
-  x ServiceTransactionBoundary*
+core:
+  RuntimeEffectRequest
 
-one operator command = one explicit transaction
-stores never commit
-external effects happen only after commit
+interpreter:
+  RuntimeEffectRequest -> IO RuntimeEffectResult
+
+operations:
+  ActivityJournal x RuntimeEffectResult -> ActivityJournal'
 ```
 
-MCP Streamable HTTP is represented as a typed contract, not as a hosted server:
+### Policy And Public Contracts
+
+Core also owns pure contracts for:
+
+- authenticated principals, workspace grants, and focused policy scopes;
+- approval subjects and command idempotency;
+- HTTP/MCP command and read parity;
+- process liveness, readiness, shutdown, and publication obligations;
+- runtime verification and bounded probe intents;
+- named public ingress and observed public endpoints;
+- gateway delegation grants and verifier projections;
+- secret references, use intents, and environment/file deliveries.
+
+These contracts let adapters share one vocabulary without importing FastAPI,
+MCP, Postgres, Docker, or provider SDKs into core.
+
+## Non-Negotiable Laws
+
+- Graph truth is desired operator intent, not observed runtime state.
+- Product descriptors are immutable and secret-free.
+- Accepted OCI references are digest-pinned.
+- Socket edges drive dependency binding.
+- Raw secret values never enter graphs, runtime request descriptors, events,
+  observations, logs, errors, or public projections.
+- Unknown variants and extra fields fail closed.
+- Core remains deterministic and free of external effects.
+
+## Package Map
+
+Important modules include:
 
 ```text
-Protocol.MCP_STREAMABLE_HTTP
-  = tcp x mcp-streamable-http
-
-McpStreamableHttpContract
-  = endpoint path
-  x POST/GET method contract
-  x required media/header policy
-  x authentication/origin-validation requirements
+control_plane_kit_core.algebra          topology authoring values
+control_plane_kit_core.topology         compilation, validation, codecs, diffs
+control_plane_kit_core.products         product and OCI descriptor language
+control_plane_kit_core.planning         plans, scheduling, saga, recovery
+control_plane_kit_core.runtime_effects  interpreter request/result boundary
+control_plane_kit_core.operations       command/read/process contracts
+control_plane_kit_core.public_ingress   provider-neutral ingress language
+control_plane_kit_core.secrets          secret references and delivery intent
+control_plane_kit_core.verification     closed health/readiness contracts
+control_plane_kit_core.gateway_delegation
+control_plane_kit_core.identity
+control_plane_kit_core.policies
 ```
 
-The future `cpk-server` process implements this contract. Core only describes
-and validates it.
+The package root re-exports established public values. New code may import from
+the focused modules when module ownership is useful to the reader.
 
-HTTP API routes are also values:
+## Installation
 
-```text
-HttpApiRouteContract
-  = route id
-  x method
-  x path template
-  x ControlPlaneServiceRole
-  x auth scope
-  x safety classification
-  x bounded request schema
-  x bounded response schema
-  x bounded error contract
+From this repository checkout:
+
+```bash
+python -m pip install ./control-plane-kit-core
 ```
 
-This lets future HTTP adapters bind routes to services without inventing route
-local workflow semantics.
+Host Python dependencies are not assumed for project validation. The supported
+development gate is Docker-first:
 
-Process operation is described as a handoff contract, still without process
-implementation:
-
-```text
-ControlPlaneProcessContract
-  = liveness probe
-  x readiness probe
-  x readiness dependencies
-  x verification contract
-  x observation handoff
-  x shutdown contract
-  x optional HTTP API contract
-  x optional MCP contract
+```bash
+./control-plane-kit-core/test.sh
 ```
 
-The contract states what `cpk-server` must prove. It does not host the server.
+The gate runs the current `unittest` suite, compile checks, import checks, and
+package-integrity policy. It does not execute the retired aggregate package.
 
-HTTP/MCP parity is a separate contract:
+## Documentation
 
-```text
-AdapterParityContract
-  = HttpApiContract
-  x McpStreamableHttpContract
-  x AdapterProjectionBinding*
-```
-
-Each projection binding names one canonical operation and the corresponding HTTP
-route id and MCP tool name.
-
-Command parity is explicit too:
-
-```text
-AdapterCommandParityContract
-  = HttpApiContract
-  x McpStreamableHttpContract
-  x UnitOfWorkBoundary
-  x AdapterCommandBinding*
-```
-
-Each command binding proves that HTTP and MCP share the same operation id,
-service role, request/response schema, approval policy, idempotency policy, and
-transaction law. Destructive commands require current approval, required
-idempotency, and after-commit external-effect timing.
-
-Authorization/history parity closes the adapter contract:
-
-```text
-AdapterOperationSecurityParityContract
-  = AdapterParityContract
-  x AdapterCommandParityContract
-  x AdapterOperationSecurityBinding*
-```
-
-Each operation binding proves that HTTP and MCP share the same auth scope,
-safety classification, activity-history requirement, and bounded redacted error
-policy. Accepted and rejected commands require activity evidence; read
-projections remain read-scoped and read-only.
-
-The future `cpk-server` process is represented only as a handoff contract:
-
-```text
-CpkServerEntrypointHandoffContract
-  = ControlPlaneProcessContract
-  x DeploymentProgramBoundary
-  x UnitOfWorkBoundary
-  x AdapterParityContract
-  x AdapterCommandParityContract
-  x AdapterOperationSecurityParityContract
-```
-
-This states that `control-plane-kit-servers/cpk-server` imports core and
-composes one `DeploymentProgram`. Core still does not own the FastAPI process,
-hosted MCP server, Dockerfile, OCI image, or product descriptor.
-
-The cpk-server product material handoff is also pure contract data:
-
-```text
-CpkServerMaterialHandoffContract
-  = CpkServerEntrypointHandoffContract
-  x ProductIdentity
-  x public environment requirements
-  x opaque secret deliveries
-  x bounded configuration artifacts
-  x product descriptor admission policy
-```
-
-This records that database URIs, runtime auth tokens, and private endpoints are
-runtime lookups or secret references. They are not baked into an image or
-descriptor, and the future product descriptor is ordinary external product data,
-not auto-trusted self-registration.
-
-The publication handoff records future OCI and live-evidence obligations:
-
-```text
-CpkServerPublicationHandoffContract
-  = CpkServerMaterialHandoffContract
-  x OciImageReference
-  x non-root execution
-  x no runtime package installation
-  x explicit publication policy
-  x live HTTP/MCP smoke obligations
-  x cleanup and retained-data evidence
-```
-
-Core may describe these obligations, but the image build, publication, live
-Docker smoke, and product descriptor still belong to
-`control-plane-kit-servers/cpk-server`.
-
-## Extraction Law
-
-Every migrated behavior must be justified by a frozen law card from the
-EXTRACT.A parity artifacts:
-
-```text
-inspect frozen law
-  -> dry-run target boundary
-    -> write focused successor test
-      -> prove red
-        -> implement green
-```
-
-Scaffold files do not claim parity. A frozen law is migrated only when this
-package has passing successor evidence.
+- [Repository overview](../README.md)
+- [Control Plane Language](../docs/CONTROL_PLANE_LANGUAGE.md)
+- [Language Study Guide](../docs/CONTROL_PLANE_LANGUAGE_STUDY_GUIDE.md)
+- [Operating Model](../docs/OPERATING_MODEL.md)
+- [Test Evidence And Acceptance](../docs/TESTING.md)
