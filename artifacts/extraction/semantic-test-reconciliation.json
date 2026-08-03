@@ -8318,6 +8318,54 @@
       "reviewed_by_issue": 1321
     },
     {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_router_change_compiles_to_typed_switch_and_is_deterministic",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_passes_socket_derived_environment_to_container"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.blue-to-green-compiles-to-one-typed-active-edge-switch",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_gate_d_live_smoke_scenario.GateDLiveSmokeScenarioTests.test_blue_to_green_compiles_to_one_typed_active_edge_switch",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_router_change_compiles_to_typed_switch_and_is_deterministic",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_passes_socket_derived_environment_to_container"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.initial-graph-is-valid-and-wires-both-targets",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_gate_d_live_smoke_scenario.GateDLiveSmokeScenarioTests.test_initial_graph_is_valid_and_wires_both_targets",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_router_change_compiles_to_typed_switch_and_is_deterministic",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_passes_socket_derived_environment_to_container"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.unprefixed-live-container-name-matches-compiled-docker-dns",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_gate_d_live_smoke_scenario.GateDLiveSmokeScenarioTests.test_unprefixed_live_container_name_matches_compiled_docker_dns",
+      "reviewed_by_issue": 1347
+    },
+    {
       "current_tests": [],
       "disposition": "future-issue",
       "future_issue": {
@@ -8401,6 +8449,91 @@
       "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
       "reference": "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_valid_generation_is_deterministic_and_counted_by_shape",
       "reviewed_by_issue": 1323
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#941 owns the generated bounded Hello topology, paired dependency edges, shape-limit rejection, probe-authority redaction, and cpk-server-driven live stress evidence.",
+        "number": 941,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.default-live-shape-is-a-valid-paired-dependency-topology",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its exact observable remains covered.",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#941",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_default_live_shape_is_a_valid_paired_dependency_topology",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#941 owns the generated bounded Hello topology, paired dependency edges, shape-limit rejection, probe-authority redaction, and cpk-server-driven live stress evidence.",
+        "number": 941,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.generated-startup-wiring-never-becomes-control-route-effects",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertFalse",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#941",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_generated_startup_wiring_never_becomes_control_route_effects",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#941 owns the generated bounded Hello topology, paired dependency edges, shape-limit rejection, probe-authority redaction, and cpk-server-driven live stress evidence.",
+        "number": 941,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.live-shape-limit-can-be-raised-explicitly",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its exact observable remains covered.",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#941",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_live_shape_limit_can_be_raised_explicitly",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#941 owns the generated bounded Hello topology, paired dependency edges, shape-limit rejection, probe-authority redaction, and cpk-server-driven live stress evidence.",
+        "number": 941,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.live-shape-rejects-accidental-container-explosion",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex, name:reject",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#941",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_live_shape_rejects_accidental_container_explosion",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#941 owns the generated bounded Hello topology, paired dependency edges, shape-limit rejection, probe-authority redaction, and cpk-server-driven live stress evidence.",
+        "number": 941,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.probe-authorities-drop-driver-and-database-path-information",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its exact observable remains covered.",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#941",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_probe_authorities_drop_driver_and_database_path_information",
+      "reviewed_by_issue": 1347
     },
     {
       "current_tests": [],
@@ -9269,6 +9402,124 @@
       "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
       "reference": "tests.test_hello_server_block.HelloServerBlockTests.test_paired_dependencies_compile_to_socket_derived_environment",
       "reviewed_by_issue": 1323
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_public_ingress.PublicIngressLanguageTests.test_named_public_ingress_is_provider_neutral_socket_exposure",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_named_public_ingress_round_trips_as_graph_level_obligation",
+        "control-plane-kit-core:tests.test_graph_diff.GraphDiffTests.test_public_ingress_obligations_are_explicit_structural_changes",
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_public_ingress_allocation_waits_for_target_before_connector_start",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_publication_postcondition_requires_exact_transport_and_host",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_seeded_stress_public_ingress"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.adding-publication-is-explicit-disruptive-plan-work",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_host_publication.HostPublicationTests.test_adding_publication_is_explicit_disruptive_plan_work",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_public_ingress.PublicIngressLanguageTests.test_named_public_ingress_is_provider_neutral_socket_exposure",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_named_public_ingress_round_trips_as_graph_level_obligation",
+        "control-plane-kit-core:tests.test_graph_diff.GraphDiffTests.test_public_ingress_obligations_are_explicit_structural_changes",
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_public_ingress_allocation_waits_for_target_before_connector_start",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_publication_postcondition_requires_exact_transport_and_host",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_seeded_stress_public_ingress"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.explicit-publication-survives-graph-and-pinned-materialization",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotEqual",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_host_publication.HostPublicationTests.test_explicit_publication_survives_graph_and_pinned_materialization",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_public_ingress.PublicIngressLanguageTests.test_named_public_ingress_is_provider_neutral_socket_exposure",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_named_public_ingress_round_trips_as_graph_level_obligation",
+        "control-plane-kit-core:tests.test_graph_diff.GraphDiffTests.test_public_ingress_obligations_are_explicit_structural_changes",
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_public_ingress_allocation_waits_for_target_before_connector_start",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_publication_postcondition_requires_exact_transport_and_host",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_seeded_stress_public_ingress"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.loopback-factories-are-closed-ip-values",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_host_publication.HostPublicationTests.test_loopback_factories_are_closed_ip_values",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_public_ingress.PublicIngressLanguageTests.test_named_public_ingress_is_provider_neutral_socket_exposure",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_named_public_ingress_round_trips_as_graph_level_obligation",
+        "control-plane-kit-core:tests.test_graph_diff.GraphDiffTests.test_public_ingress_obligations_are_explicit_structural_changes",
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_public_ingress_allocation_waits_for_target_before_connector_start",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_publication_postcondition_requires_exact_transport_and_host",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_seeded_stress_public_ingress"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.private-only-is-the-authoring-default",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_host_publication.HostPublicationTests.test_private_only_is_the_authoring_default",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_public_ingress.PublicIngressLanguageTests.test_named_public_ingress_is_provider_neutral_socket_exposure",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_named_public_ingress_round_trips_as_graph_level_obligation",
+        "control-plane-kit-core:tests.test_graph_diff.GraphDiffTests.test_public_ingress_obligations_are_explicit_structural_changes",
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_public_ingress_allocation_waits_for_target_before_connector_start",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_publication_postcondition_requires_exact_transport_and_host",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_seeded_stress_public_ingress"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.same-fixed-host-port-is-valid-once-per-transport",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_host_publication.HostPublicationTests.test_same_fixed_host_port_is_valid_once_per_transport",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_public_ingress.PublicIngressLanguageTests.test_named_public_ingress_is_provider_neutral_socket_exposure",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_named_public_ingress_round_trips_as_graph_level_obligation",
+        "control-plane-kit-core:tests.test_graph_diff.GraphDiffTests.test_public_ingress_obligations_are_explicit_structural_changes",
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_public_ingress_allocation_waits_for_target_before_connector_start",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_publication_postcondition_requires_exact_transport_and_host",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_seeded_stress_public_ingress",
+        "control-plane-kit-core:tests.test_public_ingress.PublicIngressLanguageTests.test_public_ingress_target_preserves_socket_boundary",
+        "control-plane-kit-core:tests.test_public_ingress.PublicIngressLanguageTests.test_named_public_ingress_codec_fails_closed_on_provider_fields",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_public_ingress_descriptor_rejects_provider_keys_and_missing_targets",
+        "control-plane-kit-interpreters:tests.test_docker_sdk_client.DockerSdkClientTests.test_udp_publication_is_not_inferred_from_tcp_publication"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.unknown-socket-and-fixed-port-collision-fail-at-authoring",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex, name:fail, name:unknown",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_host_publication.HostPublicationTests.test_unknown_socket_and_fixed_port_collision_fail_at_authoring",
+      "reviewed_by_issue": 1347
     },
     {
       "current_tests": [
@@ -14744,6 +14995,86 @@
       "reviewed_by_issue": 1321
     },
     {
+      "current_tests": [
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_resolves_secret_environment_before_docker_mutation",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_executes_postgres_verification_with_secret",
+        "control-plane-kit-servers:products.postgres_server.tests.test_postgres_server_product.PostgresServerProductTests.test_descriptor_uses_secret_delivery_for_password"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.postgres-execution-still-receives-actual-environment",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_postgres_execution_still_receives_actual_environment",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_review_diagnostic_carries_subject_not_changed_secret_value",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_secret_reference_address_round_trips_without_secret_resolution",
+        "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_plan_detail_uses_pinned_graph_truth_and_core_plan_codec"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.postgres-plan-redacts-environment-descriptors",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-operations",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_postgres_plan_redacts_environment_descriptors",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_router_change_compiles_to_typed_switch_and_is_deterministic",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_passes_socket_derived_environment_to_container"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.router-execution-receives-actual-active-target",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_router_execution_receives_actual_active_target",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_router_change_compiles_to_typed_switch_and_is_deterministic",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_passes_socket_derived_environment_to_container"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.router-graph-switches-active-target-by-socket-connection",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_router_graph_switches_active_target_by_socket_connection",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_router_change_compiles_to_typed_switch_and_is_deterministic",
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_proves_workspace_a_router_transition",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_passes_socket_derived_environment_to_container"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.router-plan-runs-three-docker-containers",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-interpreters+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_runtime_examples.RuntimeCompositionExampleTests.test_router_plan_runs_three_docker_containers",
+      "reviewed_by_issue": 1347
+    },
+    {
       "current_tests": [],
       "disposition": "future-issue",
       "future_issue": {
@@ -15640,6 +15971,224 @@
       "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
       "reference": "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_under_scoped_mutation_fails_before_registry_write",
       "reviewed_by_issue": 1323
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_graph_validation.GraphValidationTests.test_edge_assignments_binding_and_consumer_environment_must_match",
+        "control-plane-kit-core:tests.test_graph_validation.GraphValidationTests.test_verification_targets_require_declared_compatible_provider_sockets",
+        "control-plane-kit-core:tests.test_product_instantiation.ProductInstantiationTests.test_requirement_secret_reference_is_configured_but_inactive_without_edge",
+        "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+        "control-plane-kit-servers:products.postgres_server.tests.test_postgres_server_product.PostgresServerProductTests.test_descriptor_declares_private_postgres_provider",
+        "control-plane-kit-servers:products.postgres_server.tests.test_postgres_server_product.PostgresServerProductTests.test_descriptor_uses_database_readiness_not_tcp_only"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.application-owned-database-requirements-are-independently-wired",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_acceptance.ServiceInfrastructureAcceptanceTests.test_application_owned_database_requirements_are_independently_wired",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_graph_validation.GraphValidationTests.test_duplicate_sockets_and_multiple_requirement_connections_are_rejected",
+        "control-plane-kit-core:tests.test_graph_validation.GraphValidationTests.test_runtime_endpoint_and_undeclared_endpoint_invariants_fail_closed",
+        "control-plane-kit-core:tests.test_product_instantiation.ProductInstantiationTests.test_configuration_must_match_product_contract_exactly"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.missing-and-incompatible-database-edges-fail-at-pure-boundaries",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex, name:fail, name:missing",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_acceptance.ServiceInfrastructureAcceptanceTests.test_missing_and_incompatible_database_edges_fail_at_pure_boundaries",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_startup_dependencies_follow_runtime_node_health_connection_order",
+        "control-plane-kit-core:tests.test_activity_plan_compiler.ActivityPlanCompilerTests.test_reconciled_node_is_checked_healthy_before_transition_advancement"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.plan-orders-provider-health-before-each-database-consumer",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_acceptance.ServiceInfrastructureAcceptanceTests.test_plan_orders_provider_health_before_each_database_consumer",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-core:tests.test_graph_validation.GraphValidationTests.test_edge_assignments_binding_and_consumer_environment_must_match",
+        "control-plane-kit-core:tests.test_graph_validation.GraphValidationTests.test_verification_targets_require_declared_compatible_provider_sockets",
+        "control-plane-kit-core:tests.test_product_instantiation.ProductInstantiationTests.test_requirement_secret_reference_is_configured_but_inactive_without_edge",
+        "control-plane-kit-servers:tests.test_descriptor_catalogue.DescriptorCatalogueTests.test_default_catalogue_loads_completed_declarations",
+        "control-plane-kit-servers:products.postgres_server.tests.test_postgres_server_product.PostgresServerProductTests.test_descriptor_declares_private_postgres_provider",
+        "control-plane-kit-servers:products.postgres_server.tests.test_postgres_server_product.PostgresServerProductTests.test_descriptor_uses_database_readiness_not_tcp_only",
+        "control-plane-kit-core:tests.test_activity_plan_codec.ActivityPlanDescriptorCodecTests.test_review_diagnostic_carries_subject_not_changed_secret_value",
+        "control-plane-kit-core:tests.test_graph_codec.GraphDescriptorCodecTests.test_secret_reference_address_round_trips_without_secret_resolution",
+        "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_plan_detail_uses_pinned_graph_truth_and_core_plan_codec"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.recipe-preserves-exact-products-protocols-and-secret-references",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-core+control-plane-kit-operations+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_acceptance.ServiceInfrastructureAcceptanceTests.test_recipe_preserves_exact_products_protocols_and_secret_references",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_drives_public_workflow_over_http_and_mcp",
+        "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_application_boundary_requires_one_service_for_every_role",
+        "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_records_intent_and_result_without_transaction_spanning_adapter"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.architecture-policy-rejects-synthetic-and-direct-bypasses",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:reject",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-operations+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_architecture_policy_rejects_synthetic_and_direct_bypasses",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-operations:tests.test_gateway_probes.GatewayProbeCommandServiceTests.test_named_public_access_path_uses_exact_current_graph_ingress",
+        "control-plane-kit-operations:tests.test_gateway_probes.GatewayProbeCommandServiceTests.test_authority_and_current_graph_checks_reject_before_dispatch"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.endpoint-policy-is-derived-from-exact-graph-identity",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-operations",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_endpoint_policy_is_derived_from_exact_graph_identity",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-servers:products.cpk_server.tests.test_image_bootstrap.CpkServerImageBootstrapTests.test_hosted_activity_controller_drives_public_workflow_over_http_and_mcp",
+        "control-plane-kit-operations:tests.test_cpk_server_adapters.CpkServerOperationsAdapterTests.test_application_boundary_requires_one_service_for_every_role",
+        "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_records_intent_and_result_without_transaction_spanning_adapter"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.live-composition-obeys-the-canonical-application-boundary",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-operations+control-plane-kit-servers",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_live_composition_obeys_the_canonical_application_boundary",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-operations:tests.test_registered_products.RegisteredProductStoreTests.test_service_imports_descriptor_as_workspace_scoped_registered_product",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_pulls_digest_image_creates_network_container_and_observations",
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_uses_product_verification_cadence"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.real-registry-covers-graph-lifecycle-and-health-capabilities",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its observable remains covered.",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-interpreters+control-plane-kit-operations",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_real_registry_covers_graph_lifecycle_and_health_capabilities",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [
+        "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_records_intent_and_result_without_transaction_spanning_adapter",
+        "control-plane-kit-operations:tests.test_gateway_probes.GatewayProbeCommandServiceTests.test_commits_intent_before_external_dispatch_and_folds_bounded_result"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "behavior.recorder-observes-but-never-dispatches-inside-unit-of-work",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaisesRegex",
+      "obsolete_assumption_disposition": "Direct host publication, aggregate runtime objects, mutable root imports, and controller-side orchestration do not constrain the extracted implementation; named ingress and cpk-server workflows are strengthened successors.",
+      "owner": "control-plane-kit-operations",
+      "rationale": "Current package-owned language, operations, interpreter, product, and cpk-server tests preserve the observable without treating the legacy host shell as authoritative acceptance.",
+      "reference": "tests.test_service_infrastructure_live.ServiceInfrastructureLiveCompositionTests.test_recorder_observes_but_never_dispatches_inside_unit_of_work",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#1096 owns initial/no-op/update/teardown execution through one operations DeploymentProgram, including invalid-graph zero-write rejection and redacted durable readback.",
+        "number": 1096,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.deploy-reconstructs-and-advances-with-redacted-read-truth",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertNotIn",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1096",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_deploy_reconstructs_and_advances_with_redacted_read_truth",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#1096 owns initial/no-op/update/teardown execution through one operations DeploymentProgram, including invalid-graph zero-write rejection and redacted durable readback.",
+        "number": 1096,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.invalid-graph-records-no-plan-approval-run-effect-or-advancement",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: assertion:assertRaises, name:invalid",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1096",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_invalid_graph_records_no_plan_approval_run_effect_or_advancement",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#1096 owns initial/no-op/update/teardown execution through one operations DeploymentProgram, including invalid-graph zero-write rejection and redacted durable readback.",
+        "number": 1096,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.no-change-records-plan-without-approval-run-or-effect",
+      "negative_case_disposition": "Current evidence preserves the frozen negative cases: name:without",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1096",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_no_change_records_plan_without_approval_run_or_effect",
+      "reviewed_by_issue": 1347
+    },
+    {
+      "current_tests": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "evidence": "#1096 owns initial/no-op/update/teardown execution through one operations DeploymentProgram, including invalid-graph zero-write rejection and redacted durable readback.",
+        "number": 1096,
+        "repository": "OpenJ92/control-plane-kit",
+        "state": "open"
+      },
+      "law": "behavior.teardown-reconstructs-executes-and-advances-to-empty-graph",
+      "negative_case_disposition": "The frozen law has no separate negative-case assertion; its exact observable remains covered.",
+      "obsolete_assumption_disposition": "The frozen application module and aggregate import path are not current package structure.",
+      "owner": "OpenJ92/control-plane-kit#1096",
+      "rationale": "The behavioral law remains desired, but its application-level owner is deliberately outside this current package slice.",
+      "reference": "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_teardown_reconstructs_executes_and_advances_to_empty_graph",
+      "reviewed_by_issue": 1347
     },
     {
       "current_tests": [
