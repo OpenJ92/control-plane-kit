@@ -1,0 +1,104 @@
+{
+  "aggregate": {
+    "immutable": {
+      "current_strengthened": 81,
+      "future_issue": 38,
+      "reviewed_supersession": 30,
+      "total": 149
+    },
+    "mutable_only": {
+      "current_strengthened": 52,
+      "reviewed_archived": 66,
+      "total": 118
+    },
+    "unreviewed": 0
+  },
+  "foundation_validation": {
+    "deferred": 227,
+    "entries": 1107,
+    "findings": 0,
+    "incomplete_required": 177,
+    "migration_complete": false,
+    "policy": "foundation",
+    "required": 880,
+    "valid": true
+  },
+  "future_owners": {
+    "670": 2,
+    "941": 5,
+    "1096": 7,
+    "1316": 6,
+    "1317": 18
+  },
+  "issue": 1348,
+  "legacy_scripts": {
+    "current_authoritative": 5,
+    "current_diagnostic": 1,
+    "current_parity": 1,
+    "deletion_issue": 1318,
+    "future_issue": 9,
+    "script_dispositions_digest": "sha256:6bee8e26cb3322a0d42e704aaf48a78ee483301f8890d06a467f5a81516f6d85",
+    "total": 16
+  },
+  "package_gate_evidence": {
+    "control-plane-kit-core": {
+      "evidence_digest": "sha256:10fa13a66530baeb9824f614e3236ad4b05ed1b7bc16f36b349baa5f77428828",
+      "evidence_issue": 1322,
+      "tests": 484
+    },
+    "control-plane-kit-interpreters": {
+      "commit": "e9f19d558026d92af79df81fb9184d29da00110b",
+      "evidence_digest": "sha256:10fa13a66530baeb9824f614e3236ad4b05ed1b7bc16f36b349baa5f77428828",
+      "evidence_issue": 1322,
+      "tests": 147
+    },
+    "control-plane-kit-operations": {
+      "evidence_digest": "sha256:1810aa3037d18d058725dffcc28e6721dc82b93a459b156e1c3d85b0f1fdc90a",
+      "evidence_issue": 1321,
+      "tests": 377
+    },
+    "control-plane-kit-secrets": {
+      "commit": "313fd26cb15a362ef5196547a3f6b27122877609",
+      "evidence_digest": "sha256:c059c574ff4d146ffaf97286989067af8f34664976c1ffbbc5bb3604f01b066d",
+      "evidence_issue": 1324,
+      "tests": 51
+    },
+    "control-plane-kit-servers": {
+      "commit": "d2fe4cbde6766616981d67e87e3e81462a3f58e7",
+      "evidence_digest": "sha256:451515ea442d5a8466805db8546fa5685671d8ada62c647c7faa3ccdfdf21bed",
+      "evidence_issue": 1323,
+      "tests": 166
+    }
+  },
+  "predecessors": {
+    "1345": {
+      "evidence_digest": "sha256:f3e54c11edccd0bdd43387183b5c1874a1be237ead5ce64da5fe6da8e979d515",
+      "merge_commit": "220c4880d9a5b8a0cbd2c14f13b8980d992aa0e8"
+    },
+    "1346": {
+      "evidence_digest": "sha256:c151902b07a179a61aa3c5f51cf7224dfbd57e2bb081a95e812c5331cd59d870",
+      "merge_commit": "337333fed5cdf46bfb0713fbc00a2019450e800f"
+    },
+    "1347": {
+      "evidence_digest": "sha256:2934f69eeeea19b7d1777923520a17801b182e0149a52aa4a03b0e715a9c1c5a",
+      "merge_commit": "f037b50cf1b11b2f6ae7060c56f2f8454e324057"
+    }
+  },
+  "provider_mutation": false,
+  "roadmap_baseline": "f037b50cf1b11b2f6ae7060c56f2f8454e324057",
+  "schema": "cpk.harden-tests-parity.cross-repository-aggregate",
+  "standalone_parity": {
+    "command": "python3 -m unittest discover -s extraction_parity/tests -t .",
+    "exact_reconciliation_slices": [
+      1320,
+      1321,
+      1322,
+      1323,
+      1324,
+      1345,
+      1346,
+      1347
+    ],
+    "tests": 79
+  }
+}
