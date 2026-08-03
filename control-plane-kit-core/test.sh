@@ -3,6 +3,24 @@ set -eu
 
 IMAGE="${CPK_CORE_TEST_IMAGE:-python:3.14-slim}"
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+REPO_ROOT="$(CDPATH= cd -- "$ROOT/.." && pwd)"
+
+docker run --rm \
+  -v "$REPO_ROOT/test_support:/test-support:ro" \
+  -e PYTHONDONTWRITEBYTECODE=1 \
+  "$IMAGE" \
+  sh -c 'cd /test-support && python -m unittest discover -s tests -v'
+
+docker run --rm \
+  -v "$ROOT:/source:ro" \
+  -v "$REPO_ROOT/test_support:/test-support:ro" \
+  -e PYTHONDONTWRITEBYTECODE=1 \
+  "$IMAGE" \
+  python /test-support/package_integrity.py \
+    --package-root /source \
+    --source-root src \
+    --test-root tests \
+    --gate-file test.sh
 
 docker run --rm \
   -v "$ROOT:/source:ro" \

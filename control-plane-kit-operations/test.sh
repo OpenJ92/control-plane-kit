@@ -8,11 +8,22 @@ NETWORK_NAME="${CPK_OPERATIONS_TEST_NETWORK_NAME:-cpk-operations-test}"
 POSTGRES_CONTAINER="${CPK_OPERATIONS_TEST_POSTGRES_CONTAINER:-cpk-operations-test-postgres}"
 
 cleanup() {
-  docker rm -f "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
   docker network rm "$NETWORK_NAME" >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT
+
+docker run --rm \
+  -v "$ROOT:/source:ro" \
+  -v "$REPO_ROOT/test_support:/test-support:ro" \
+  -e PYTHONDONTWRITEBYTECODE=1 \
+  "$IMAGE" \
+  python /test-support/package_integrity.py \
+    --package-root /source \
+    --source-root src \
+    --test-root tests \
+    --gate-file test.sh
 
 cleanup
 docker network create "$NETWORK_NAME" >/dev/null
@@ -20,6 +31,7 @@ docker network create "$NETWORK_NAME" >/dev/null
 docker run -d \
   --name "$POSTGRES_CONTAINER" \
   --network "$NETWORK_NAME" \
+  --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=1g \
   -e POSTGRES_DB=cpk \
   -e POSTGRES_USER=cpk \
   -e POSTGRES_PASSWORD=cpk \
