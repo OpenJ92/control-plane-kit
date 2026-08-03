@@ -1,0 +1,20 @@
+{
+  "counts": {
+    "additional_current_tests": 85,
+    "current_live_laws": 31,
+    "current_test_identities": 1310,
+    "demo_reviews": 17,
+    "future_owned": 392,
+    "implemented_or_superseded": 715,
+    "manifest_entries": 1107,
+    "mutable_only_reviews": 120,
+    "required_future_owned": 176,
+    "required_implemented_or_superseded": 704,
+    "stale_successors": 0,
+    "test_reviews": 1090,
+    "unowned": 0
+  },
+  "schema": "cpk.semantic-migration-completion-report",
+  "valid": true,
+  "zero_unowned": true
+}

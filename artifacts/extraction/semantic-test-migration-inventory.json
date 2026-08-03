@@ -1,10 +1,10 @@
 {
   "counts": {
     "current_helpers": 7,
-    "current_methods": 1163,
+    "current_methods": 1225,
     "current_scripts": 31,
     "legacy_helpers": 21,
-    "legacy_scripts": 26,
+    "legacy_scripts": 28,
     "mutable_only_methods": 120,
     "reference_laws": 1090
   },
@@ -6270,11 +6270,123 @@
     },
     {
       "assertions": [
+        "assertEqual",
+        "assertIn",
+        "assertRaises"
+      ],
+      "class": "ResourceLifecycleSuccessorTests",
+      "id": "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_data_destruction_requires_explicit_critical_destructive_activity",
+      "line": 186,
+      "method": "test_data_destruction_requires_explicit_critical_destructive_activity",
+      "module": "tests.test_resource_lifecycle",
+      "negative_case_hints": [
+        "assertion:assertRaises"
+      ],
+      "path": "control-plane-kit-core/tests/test_resource_lifecycle.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "ResourceLifecycleSuccessorTests",
+      "id": "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_external_resources_are_topology_only_and_never_gain_lifecycle_work",
+      "line": 166,
+      "method": "test_external_resources_are_topology_only_and_never_gain_lifecycle_work",
+      "module": "tests.test_resource_lifecycle",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-core/tests/test_resource_lifecycle.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "ResourceLifecycleSuccessorTests",
+      "id": "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_graph_codec_preserves_lifecycle_without_string_inference",
+      "line": 92,
+      "method": "test_graph_codec_preserves_lifecycle_without_string_inference",
+      "module": "tests.test_resource_lifecycle",
+      "negative_case_hints": [
+        "name:without"
+      ],
+      "path": "control-plane-kit-core/tests/test_resource_lifecycle.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIs",
+        "assertRaisesRegex"
+      ],
+      "class": "ResourceLifecycleSuccessorTests",
+      "id": "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_lifecycle_is_a_closed_product_with_independent_data_resources",
+      "line": 71,
+      "method": "test_lifecycle_is_a_closed_product_with_independent_data_resources",
+      "module": "tests.test_resource_lifecycle",
+      "negative_case_hints": [
+        "assertion:assertRaisesRegex"
+      ],
+      "path": "control-plane-kit-core/tests/test_resource_lifecycle.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertFalse",
+        "assertIsInstance"
+      ],
+      "class": "ResourceLifecycleSuccessorTests",
+      "id": "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_lifecycle_policy_changes_are_review_blockers_not_reconciliation",
+      "line": 215,
+      "method": "test_lifecycle_policy_changes_are_review_blockers_not_reconciliation",
+      "module": "tests.test_resource_lifecycle",
+      "negative_case_hints": [
+        "assertion:assertFalse"
+      ],
+      "path": "control-plane-kit-core/tests/test_resource_lifecycle.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertFalse",
+        "assertTrue"
+      ],
+      "class": "ResourceLifecycleSuccessorTests",
+      "id": "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_retained_compute_stops_without_resource_removal",
+      "line": 131,
+      "method": "test_retained_compute_stops_without_resource_removal",
+      "module": "tests.test_resource_lifecycle",
+      "negative_case_hints": [
+        "assertion:assertFalse",
+        "name:without"
+      ],
+      "path": "control-plane-kit-core/tests/test_resource_lifecycle.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertFalse",
+        "assertIn"
+      ],
+      "class": "ResourceLifecycleSuccessorTests",
+      "id": "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_topology_removal_deletes_ephemeral_compute_but_never_data",
+      "line": 108,
+      "method": "test_topology_removal_deletes_ephemeral_compute_but_never_data",
+      "module": "tests.test_resource_lifecycle",
+      "negative_case_hints": [
+        "assertion:assertFalse"
+      ],
+      "path": "control-plane-kit-core/tests/test_resource_lifecycle.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
         "assertRaises"
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_failure_and_evidence_reject_secret_shaped_text",
-      "line": 607,
+      "line": 667,
       "method": "test_failure_and_evidence_reject_secret_shaped_text",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6291,7 +6403,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_gateway_target_map_codec_fails_closed_on_unknown_protocol",
-      "line": 703,
+      "line": 763,
       "method": "test_gateway_target_map_codec_fails_closed_on_unknown_protocol",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6309,7 +6421,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_gateway_target_map_encodes_http_and_postgres_targets",
-      "line": 620,
+      "line": 680,
       "method": "test_gateway_target_map_encodes_http_and_postgres_targets",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6324,7 +6436,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_gateway_target_map_fails_closed_on_duplicate_targets",
-      "line": 684,
+      "line": 744,
       "method": "test_gateway_target_map_fails_closed_on_duplicate_targets",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6342,7 +6454,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_gateway_target_map_rejects_credentials_and_secret_shaped_values",
-      "line": 724,
+      "line": 784,
       "method": "test_gateway_target_map_rejects_credentials_and_secret_shaped_values",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6360,7 +6472,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_image_pull_authority_fails_closed_on_unknown_or_secret_material",
-      "line": 537,
+      "line": 597,
       "method": "test_image_pull_authority_fails_closed_on_unknown_or_secret_material",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6380,7 +6492,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_image_pull_authority_is_secret_free_runtime_material",
-      "line": 500,
+      "line": 560,
       "method": "test_image_pull_authority_is_secret_free_runtime_material",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6396,7 +6508,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_product_material_carries_pull_authority_reference_not_credentials",
-      "line": 554,
+      "line": 614,
       "method": "test_product_material_carries_pull_authority_reference_not_credentials",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6411,7 +6523,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_product_material_rejects_identity_mismatch",
-      "line": 431,
+      "line": 491,
       "method": "test_product_material_rejects_identity_mismatch",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6427,7 +6539,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_product_material_rejects_wrong_or_duplicate_environment_material",
-      "line": 443,
+      "line": 503,
       "method": "test_product_material_rejects_wrong_or_duplicate_environment_material",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6446,7 +6558,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_request_carries_explicit_authority_delivery_without_socket_material",
-      "line": 303,
+      "line": 311,
       "method": "test_request_carries_explicit_authority_delivery_without_socket_material",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6463,7 +6575,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_request_carries_only_matching_committed_secret_grants",
-      "line": 387,
+      "line": 395,
       "method": "test_request_carries_only_matching_committed_secret_grants",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6479,7 +6591,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_request_descriptor_carries_pinned_runtime_material_without_docker",
-      "line": 223,
+      "line": 231,
       "method": "test_request_descriptor_carries_pinned_runtime_material_without_docker",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6496,7 +6608,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_request_descriptor_carries_runtime_authority_reference_not_material",
-      "line": 366,
+      "line": 374,
       "method": "test_request_descriptor_carries_runtime_authority_reference_not_material",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6511,7 +6623,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_request_rejects_delivery_without_matching_authority_reference",
-      "line": 335,
+      "line": 343,
       "method": "test_request_rejects_delivery_without_matching_authority_reference",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6524,11 +6636,44 @@
     },
     {
       "assertions": [
+        "assertRaisesRegex"
+      ],
+      "class": "RuntimeEffectContractTests",
+      "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_request_rejects_duplicate_secret_grants",
+      "line": 439,
+      "method": "test_request_rejects_duplicate_secret_grants",
+      "module": "tests.test_runtime_effects",
+      "negative_case_hints": [
+        "assertion:assertRaisesRegex",
+        "name:duplicate",
+        "name:reject"
+      ],
+      "path": "control-plane-kit-core/tests/test_runtime_effects.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertRaisesRegex"
+      ],
+      "class": "RuntimeEffectContractTests",
+      "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_request_rejects_open_kind_and_review_work",
+      "line": 468,
+      "method": "test_request_rejects_open_kind_and_review_work",
+      "module": "tests.test_runtime_effects",
+      "negative_case_hints": [
+        "assertion:assertRaisesRegex",
+        "name:reject"
+      ],
+      "path": "control-plane-kit-core/tests/test_runtime_effects.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
         "assertEqual"
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_result_descriptor_preserves_observations_as_pure_evidence",
-      "line": 576,
+      "line": 636,
       "method": "test_result_descriptor_preserves_observations_as_pure_evidence",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [],
@@ -6542,7 +6687,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_runtime_authority_access_delivery_can_reference_tls_secrets",
-      "line": 118,
+      "line": 126,
       "method": "test_runtime_authority_access_delivery_can_reference_tls_secrets",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6557,7 +6702,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_runtime_authority_access_delivery_fails_closed_on_material",
-      "line": 153,
+      "line": 161,
       "method": "test_runtime_authority_access_delivery_fails_closed_on_material",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6576,7 +6721,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_runtime_authority_access_delivery_is_secret_free_contract",
-      "line": 95,
+      "line": 103,
       "method": "test_runtime_authority_access_delivery_is_secret_free_contract",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6592,7 +6737,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_runtime_authority_delivery_secret_reference_codec_is_strict",
-      "line": 198,
+      "line": 206,
       "method": "test_runtime_authority_delivery_secret_reference_codec_is_strict",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6608,7 +6753,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_runtime_authority_reference_fails_closed_on_material_or_secrets",
-      "line": 68,
+      "line": 76,
       "method": "test_runtime_authority_reference_fails_closed_on_material_or_secrets",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -6628,7 +6773,7 @@
       ],
       "class": "RuntimeEffectContractTests",
       "id": "control-plane-kit-core:tests.test_runtime_effects.RuntimeEffectContractTests.test_runtime_authority_reference_is_secret_free_named_authority",
-      "line": 59,
+      "line": 67,
       "method": "test_runtime_authority_reference_is_secret_free_named_authority",
       "module": "tests.test_runtime_effects",
       "negative_case_hints": [
@@ -7959,7 +8104,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_delivery_rejects_wrong_intent_grant_without_resolution",
-      "line": 1298,
+      "line": 1557,
       "method": "test_authorized_delivery_rejects_wrong_intent_grant_without_resolution",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -7978,7 +8123,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_delivery_requires_exact_grant_without_legacy_fallback",
-      "line": 1264,
+      "line": 1523,
       "method": "test_authorized_delivery_requires_exact_grant_without_legacy_fallback",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -7994,7 +8139,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_delivery_resolves_exact_grant_before_docker_mutation",
-      "line": 1328,
+      "line": 1587,
       "method": "test_authorized_delivery_resolves_exact_grant_before_docker_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8009,7 +8154,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_file_delivery_materializes_only_after_exact_grant",
-      "line": 1403,
+      "line": 1662,
       "method": "test_authorized_file_delivery_materializes_only_after_exact_grant",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8026,7 +8171,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_oci_credential_uses_strict_provider_material",
-      "line": 1360,
+      "line": 1619,
       "method": "test_authorized_oci_credential_uses_strict_provider_material",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8043,7 +8188,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_oci_identity_token_uses_exact_shape",
-      "line": 1436,
+      "line": 1695,
       "method": "test_authorized_oci_identity_token_uses_exact_shape",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8059,7 +8204,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_postgres_password_requires_exact_grant_before_query",
-      "line": 1521,
+      "line": 1780,
       "method": "test_authorized_postgres_password_requires_exact_grant_before_query",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8073,10 +8218,27 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_authorized_remote_tls_requires_all_three_exact_grants",
-      "line": 1560,
+      "line": 1819,
       "method": "test_authorized_remote_tls_requires_all_three_exact_grants",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
+      "path": "tests/test_docker_runtime_interpreter.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIs"
+      ],
+      "class": "DockerRuntimeInterpreterTests",
+      "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_docker_timeout_is_uncertain_without_exception_text",
+      "line": 395,
+      "method": "test_docker_timeout_is_uncertain_without_exception_text",
+      "module": "tests.test_docker_runtime_interpreter",
+      "negative_case_hints": [
+        "name:timeout",
+        "name:without"
+      ],
       "path": "tests/test_docker_runtime_interpreter.py",
       "subtest_dimensions": []
     },
@@ -8088,7 +8250,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_existing_owned_container_is_started_without_recreation",
-      "line": 324,
+      "line": 583,
       "method": "test_existing_owned_container_is_started_without_recreation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8105,7 +8267,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_explicit_local_socket_delivery_mounts_socket_at_docker_boundary",
-      "line": 934,
+      "line": 1193,
       "method": "test_explicit_local_socket_delivery_mounts_socket_at_docker_boundary",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8121,7 +8283,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_local_runtime_authority_does_not_close_ambient_client",
-      "line": 1171,
+      "line": 1430,
       "method": "test_local_runtime_authority_does_not_close_ambient_client",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8135,7 +8297,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_local_runtime_authority_does_not_mount_socket_without_delivery",
-      "line": 914,
+      "line": 1173,
       "method": "test_local_runtime_authority_does_not_mount_socket_without_delivery",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8151,7 +8313,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_local_runtime_authority_uses_ambient_docker_client",
-      "line": 892,
+      "line": 1151,
       "method": "test_local_runtime_authority_uses_ambient_docker_client",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8165,7 +8327,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_malformed_authorized_oci_credential_fails_before_docker_mutation",
-      "line": 1475,
+      "line": 1734,
       "method": "test_malformed_authorized_oci_credential_fails_before_docker_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8183,8 +8345,25 @@
         "assertTrue"
       ],
       "class": "DockerRuntimeInterpreterTests",
+      "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_reconcile_failure_after_removal_is_uncertain_and_redacted",
+      "line": 417,
+      "method": "test_reconcile_failure_after_removal_is_uncertain_and_redacted",
+      "module": "tests.test_docker_runtime_interpreter",
+      "negative_case_hints": [
+        "name:fail"
+      ],
+      "path": "tests/test_docker_runtime_interpreter.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIs",
+        "assertTrue"
+      ],
+      "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_reconcile_node_recreates_owned_container_when_material_changes",
-      "line": 282,
+      "line": 541,
       "method": "test_reconcile_node_recreates_owned_container_when_material_changes",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8198,7 +8377,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_reconcile_runtime_reuses_owned_network_from_prior_graph",
-      "line": 115,
+      "line": 119,
       "method": "test_reconcile_runtime_reuses_owned_network_from_prior_graph",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8213,7 +8392,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_remote_tls_client_close_failure_is_bounded_and_uncertain",
-      "line": 1128,
+      "line": 1387,
       "method": "test_remote_tls_client_close_failure_is_bounded_and_uncertain",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8230,7 +8409,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_remote_tls_runtime_authority_closes_client_after_uncertain_effect",
-      "line": 1054,
+      "line": 1313,
       "method": "test_remote_tls_runtime_authority_closes_client_after_uncertain_effect",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8244,7 +8423,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_remote_tls_runtime_authority_closes_client_when_execution_raises",
-      "line": 1090,
+      "line": 1349,
       "method": "test_remote_tls_runtime_authority_closes_client_when_execution_raises",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8261,7 +8440,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_remote_tls_runtime_authority_missing_secret_fails_before_docker_mutation",
-      "line": 1192,
+      "line": 1451,
       "method": "test_remote_tls_runtime_authority_missing_secret_fails_before_docker_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8279,7 +8458,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_remote_tls_runtime_authority_requires_secret_resolver",
-      "line": 1217,
+      "line": 1476,
       "method": "test_remote_tls_runtime_authority_requires_secret_resolver",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8294,7 +8473,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_remote_tls_runtime_authority_resolves_secret_refs_before_docker_mutation",
-      "line": 1005,
+      "line": 1264,
       "method": "test_remote_tls_runtime_authority_resolves_secret_refs_before_docker_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8311,10 +8490,45 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_remove_runtime_removes_only_owned_runtime_network_from_prior_graph",
-      "line": 137,
+      "line": 141,
       "method": "test_remove_runtime_removes_only_owned_runtime_network_from_prior_graph",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
+      "path": "tests/test_docker_runtime_interpreter.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIs"
+      ],
+      "class": "DockerRuntimeInterpreterTests",
+      "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_retained_volume_is_mounted_and_survives_stop_and_compute_removal",
+      "line": 305,
+      "method": "test_retained_volume_is_mounted_and_survives_stop_and_compute_removal",
+      "module": "tests.test_docker_runtime_interpreter",
+      "negative_case_hints": [
+        "assertion:assertFalse"
+      ],
+      "path": "tests/test_docker_runtime_interpreter.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertFalse",
+        "assertIs"
+      ],
+      "class": "DockerRuntimeInterpreterTests",
+      "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_runtime_stop_is_a_non_deleting_logical_barrier",
+      "line": 374,
+      "method": "test_runtime_stop_is_a_non_deleting_logical_barrier",
+      "module": "tests.test_docker_runtime_interpreter",
+      "negative_case_hints": [
+        "assertion:assertFalse"
+      ],
       "path": "tests/test_docker_runtime_interpreter.py",
       "subtest_dimensions": []
     },
@@ -8325,7 +8539,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_secret_bearing_product_is_explicitly_failed_without_secret_material",
-      "line": 385,
+      "line": 644,
       "method": "test_secret_bearing_product_is_explicitly_failed_without_secret_material",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8341,8 +8555,22 @@
         "assertIs"
       ],
       "class": "DockerRuntimeInterpreterTests",
+      "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_completes_owned_configuration_volume_with_absent_content",
+      "line": 244,
+      "method": "test_start_node_completes_owned_configuration_volume_with_absent_content",
+      "module": "tests.test_docker_runtime_interpreter",
+      "negative_case_hints": [],
+      "path": "tests/test_docker_runtime_interpreter.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIs"
+      ],
+      "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_denied_pull_credential_fails_before_container_creation",
-      "line": 651,
+      "line": 910,
       "method": "test_start_node_denied_pull_credential_fails_before_container_creation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8355,11 +8583,28 @@
     {
       "assertions": [
         "assertEqual",
+        "assertIn",
+        "assertIs"
+      ],
+      "class": "DockerRuntimeInterpreterTests",
+      "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_materializes_and_replays_exact_configuration_artifact",
+      "line": 201,
+      "method": "test_start_node_materializes_and_replays_exact_configuration_artifact",
+      "module": "tests.test_docker_runtime_interpreter",
+      "negative_case_hints": [
+        "name:replay"
+      ],
+      "path": "tests/test_docker_runtime_interpreter.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertIs"
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_missing_pull_credential_fails_before_container_creation",
-      "line": 615,
+      "line": 874,
       "method": "test_start_node_missing_pull_credential_fails_before_container_creation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8376,7 +8621,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_missing_secret_fails_before_docker_mutation",
-      "line": 444,
+      "line": 703,
       "method": "test_start_node_missing_secret_fails_before_docker_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8393,7 +8638,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_passes_socket_derived_environment_to_container",
-      "line": 197,
+      "line": 456,
       "method": "test_start_node_passes_socket_derived_environment_to_container",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8407,7 +8652,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_pulls_digest_image_creates_network_container_and_observations",
-      "line": 160,
+      "line": 164,
       "method": "test_start_node_pulls_digest_image_creates_network_container_and_observations",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8420,8 +8665,25 @@
         "assertIs"
       ],
       "class": "DockerRuntimeInterpreterTests",
+      "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_rejects_wrong_configuration_digest_before_image_or_container",
+      "line": 270,
+      "method": "test_start_node_rejects_wrong_configuration_digest_before_image_or_container",
+      "module": "tests.test_docker_runtime_interpreter",
+      "negative_case_hints": [
+        "name:reject",
+        "name:wrong"
+      ],
+      "path": "tests/test_docker_runtime_interpreter.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIs"
+      ],
+      "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_requires_resolver_when_pull_authority_is_present",
-      "line": 584,
+      "line": 843,
       "method": "test_start_node_requires_resolver_when_pull_authority_is_present",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8436,7 +8698,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_resolves_file_secret_as_read_only_mount",
-      "line": 472,
+      "line": 731,
       "method": "test_start_node_resolves_file_secret_as_read_only_mount",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8453,7 +8715,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_resolves_pull_authority_before_image_pull",
-      "line": 531,
+      "line": 790,
       "method": "test_start_node_resolves_pull_authority_before_image_pull",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8470,7 +8732,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_resolves_secret_environment_before_docker_mutation",
-      "line": 407,
+      "line": 666,
       "method": "test_start_node_resolves_secret_environment_before_docker_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8486,7 +8748,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_uses_existing_owned_runtime_network_from_prior_graph",
-      "line": 261,
+      "line": 520,
       "method": "test_start_node_uses_existing_owned_runtime_network_from_prior_graph",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8500,7 +8762,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_uses_selected_public_environment_material",
-      "line": 234,
+      "line": 493,
       "method": "test_start_node_uses_selected_public_environment_material",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8514,7 +8776,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_node_wrong_scope_pull_authority_fails_closed",
-      "line": 685,
+      "line": 944,
       "method": "test_start_node_wrong_scope_pull_authority_fails_closed",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8531,7 +8793,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_start_runtime_creates_owned_network_without_product_material",
-      "line": 96,
+      "line": 100,
       "method": "test_start_runtime_creates_owned_network_without_product_material",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8548,7 +8810,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_stop_node_stops_only_owned_container",
-      "line": 367,
+      "line": 626,
       "method": "test_stop_node_stops_only_owned_container",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8562,7 +8824,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_unowned_container_conflict_fails_before_mutation",
-      "line": 344,
+      "line": 603,
       "method": "test_unowned_container_conflict_fails_before_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8578,8 +8840,24 @@
         "assertIs"
       ],
       "class": "DockerRuntimeInterpreterTests",
+      "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_unowned_retained_volume_fails_before_image_or_container_mutation",
+      "line": 345,
+      "method": "test_unowned_retained_volume_fails_before_image_or_container_mutation",
+      "module": "tests.test_docker_runtime_interpreter",
+      "negative_case_hints": [
+        "name:fail"
+      ],
+      "path": "tests/test_docker_runtime_interpreter.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIs"
+      ],
+      "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_unsupported_authority_delivery_fails_without_docker_mutation",
-      "line": 976,
+      "line": 1235,
       "method": "test_unsupported_authority_delivery_fails_without_docker_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8596,7 +8874,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_unsupported_runtime_authority_kind_is_explicit_without_docker_mutation",
-      "line": 1242,
+      "line": 1501,
       "method": "test_unsupported_runtime_authority_kind_is_explicit_without_docker_mutation",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8614,7 +8892,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_executes_http_verification_against_runtime_endpoint",
-      "line": 725,
+      "line": 984,
       "method": "test_wait_for_healthy_executes_http_verification_against_runtime_endpoint",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -8629,7 +8907,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_executes_postgres_verification_with_secret",
-      "line": 805,
+      "line": 1064,
       "method": "test_wait_for_healthy_executes_postgres_verification_with_secret",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8645,7 +8923,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_fails_when_http_verification_fails",
-      "line": 751,
+      "line": 1010,
       "method": "test_wait_for_healthy_fails_when_http_verification_fails",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8662,7 +8940,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_fails_when_postgres_verification_fails",
-      "line": 841,
+      "line": 1100,
       "method": "test_wait_for_healthy_fails_when_postgres_verification_fails",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8679,7 +8957,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_rejects_unsupported_verification_kind",
-      "line": 872,
+      "line": 1131,
       "method": "test_wait_for_healthy_rejects_unsupported_verification_kind",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [
@@ -8695,7 +8973,7 @@
       ],
       "class": "DockerRuntimeInterpreterTests",
       "id": "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_wait_for_healthy_uses_product_verification_cadence",
-      "line": 773,
+      "line": 1032,
       "method": "test_wait_for_healthy_uses_product_verification_cadence",
       "module": "tests.test_docker_runtime_interpreter",
       "negative_case_hints": [],
@@ -10010,7 +10288,7 @@
       ],
       "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_authority_fails_closed_and_destructive_plan_requires_scope",
-      "line": 191,
+      "line": 192,
       "method": "test_authority_fails_closed_and_destructive_plan_requires_scope",
       "module": "tests.test_approvals",
       "negative_case_hints": [
@@ -10023,12 +10301,29 @@
     {
       "assertions": [
         "assertEqual",
+        "assertRaises",
+        "assertTrue"
+      ],
+      "class": "ApprovalCommandTests",
+      "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_cancel_fences_a_later_approval_request",
+      "line": 424,
+      "method": "test_cancel_fences_a_later_approval_request",
+      "module": "tests.test_approvals",
+      "negative_case_hints": [
+        "assertion:assertRaises"
+      ],
+      "path": "control-plane-kit-operations/tests/test_approvals.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertIn",
         "assertIsNotNone"
       ],
       "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_concurrent_competing_decisions_publish_exactly_one_fact",
-      "line": 322,
+      "line": 323,
       "method": "test_concurrent_competing_decisions_publish_exactly_one_fact",
       "module": "tests.test_approvals",
       "negative_case_hints": [],
@@ -10040,8 +10335,21 @@
         "assertEqual"
       ],
       "class": "ApprovalCommandTests",
+      "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_concurrent_identical_decisions_converge_on_one_fact",
+      "line": 378,
+      "method": "test_concurrent_identical_decisions_converge_on_one_fact",
+      "module": "tests.test_approvals",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_approvals.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_concurrent_identical_requests_converge_on_one_request",
-      "line": 292,
+      "line": 293,
       "method": "test_concurrent_identical_requests_converge_on_one_request",
       "module": "tests.test_approvals",
       "negative_case_hints": [],
@@ -10054,7 +10362,7 @@
       ],
       "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_concurrent_request_and_close_serialize_without_partial_approval",
-      "line": 377,
+      "line": 472,
       "method": "test_concurrent_request_and_close_serialize_without_partial_approval",
       "module": "tests.test_approvals",
       "negative_case_hints": [
@@ -10069,7 +10377,7 @@
       ],
       "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_conflicting_reuse_and_second_decision_are_rejected",
-      "line": 249,
+      "line": 250,
       "method": "test_conflicting_reuse_and_second_decision_are_rejected",
       "module": "tests.test_approvals",
       "negative_case_hints": [
@@ -10087,7 +10395,7 @@
       ],
       "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_late_action_failure_rolls_back_request_and_decision",
-      "line": 265,
+      "line": 266,
       "method": "test_late_action_failure_rolls_back_request_and_decision",
       "module": "tests.test_approvals",
       "negative_case_hints": [
@@ -10104,7 +10412,7 @@
       ],
       "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_request_and_decision_are_distinct_durable_facts",
-      "line": 168,
+      "line": 169,
       "method": "test_request_and_decision_are_distinct_durable_facts",
       "module": "tests.test_approvals",
       "negative_case_hints": [],
@@ -10118,7 +10426,7 @@
       ],
       "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_request_and_decision_replay_without_duplicate_history",
-      "line": 221,
+      "line": 222,
       "method": "test_request_and_decision_replay_without_duplicate_history",
       "module": "tests.test_approvals",
       "negative_case_hints": [
@@ -10132,12 +10440,28 @@
     {
       "assertions": [
         "assertEqual",
+        "assertTrue"
+      ],
+      "class": "ApprovalCommandTests",
+      "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_request_and_decision_replays_survive_session_close",
+      "line": 395,
+      "method": "test_request_and_decision_replays_survive_session_close",
+      "module": "tests.test_approvals",
+      "negative_case_hints": [
+        "name:replay"
+      ],
+      "path": "control-plane-kit-operations/tests/test_approvals.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertFalse",
         "assertIsNone"
       ],
       "class": "ApprovalCommandTests",
       "id": "control-plane-kit-operations:tests.test_approvals.ApprovalCommandTests.test_request_is_pending_fact_with_plan_risk_evidence",
-      "line": 149,
+      "line": 150,
       "method": "test_request_is_pending_fact_with_plan_risk_evidence",
       "module": "tests.test_approvals",
       "negative_case_hints": [
@@ -10525,7 +10849,7 @@
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_changed_idempotent_intent_conflicts_without_second_event",
-      "line": 264,
+      "line": 306,
       "method": "test_changed_idempotent_intent_conflicts_without_second_event",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [
@@ -10539,12 +10863,30 @@
     {
       "assertions": [
         "assertEqual",
+        "assertNotIn",
+        "assertRaisesRegex"
+      ],
+      "class": "CurrentGraphAdvancementTests",
+      "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_closed_session_cannot_publish_a_new_advancement",
+      "line": 207,
+      "method": "test_closed_session_cannot_publish_a_new_advancement",
+      "module": "tests.test_current_graph_advancement",
+      "negative_case_hints": [
+        "assertion:assertNotIn",
+        "assertion:assertRaisesRegex"
+      ],
+      "path": "control-plane-kit-operations/tests/test_current_graph_advancement.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertIs",
         "assertTrue"
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_complete_durable_success_advances_current_graph_once",
-      "line": 139,
+      "line": 143,
       "method": "test_complete_durable_success_advances_current_graph_once",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [],
@@ -10557,7 +10899,7 @@
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_concurrent_advancement_has_one_winner",
-      "line": 482,
+      "line": 524,
       "method": "test_concurrent_advancement_has_one_winner",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [],
@@ -10571,7 +10913,7 @@
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_incomplete_uncertain_or_failed_evidence_cannot_advance",
-      "line": 192,
+      "line": 234,
       "method": "test_incomplete_uncertain_or_failed_evidence_cannot_advance",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [
@@ -10590,7 +10932,7 @@
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_late_action_failure_rolls_back_pointer_and_event",
-      "line": 453,
+      "line": 495,
       "method": "test_late_action_failure_rolls_back_pointer_and_event",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [
@@ -10607,7 +10949,7 @@
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_scope_worker_and_stale_graph_fail_closed",
-      "line": 215,
+      "line": 257,
       "method": "test_scope_worker_and_stale_graph_fail_closed",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [
@@ -10626,7 +10968,7 @@
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_stable_authored_graph_advances_a_to_overlap_to_b",
-      "line": 317,
+      "line": 359,
       "method": "test_stable_authored_graph_advances_a_to_overlap_to_b",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [
@@ -10643,7 +10985,7 @@
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_stale_realized_lineage_and_revision_fail_closed",
-      "line": 238,
+      "line": 280,
       "method": "test_stale_realized_lineage_and_revision_fail_closed",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [
@@ -10663,7 +11005,7 @@
       ],
       "class": "CurrentGraphAdvancementTests",
       "id": "control-plane-kit-operations:tests.test_current_graph_advancement.CurrentGraphAdvancementTests.test_wrong_workspace_plan_or_run_fails_closed",
-      "line": 280,
+      "line": 322,
       "method": "test_wrong_workspace_plan_or_run_fails_closed",
       "module": "tests.test_current_graph_advancement",
       "negative_case_hints": [
@@ -10840,6 +11182,26 @@
     },
     {
       "assertions": [
+        "assertEqual",
+        "assertRaises",
+        "assertRaisesRegex",
+        "assertTrue"
+      ],
+      "class": "ExecutionAdmissionTests",
+      "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_admission_replay_survives_close_but_new_admission_is_fenced",
+      "line": 325,
+      "method": "test_admission_replay_survives_close_but_new_admission_is_fenced",
+      "module": "tests.test_execution_admission",
+      "negative_case_hints": [
+        "assertion:assertRaises",
+        "assertion:assertRaisesRegex",
+        "name:replay"
+      ],
+      "path": "control-plane-kit-operations/tests/test_execution_admission.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
         "assert",
         "assertEqual",
         "assertGreater",
@@ -10847,7 +11209,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_approval_cannot_be_reused_after_projection_cycles_back",
-      "line": 246,
+      "line": 251,
       "method": "test_approval_cannot_be_reused_after_projection_cycles_back",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -10864,7 +11226,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_approved_current_plan_is_atomically_admitted_without_effect_dependency",
-      "line": 202,
+      "line": 207,
       "method": "test_approved_current_plan_is_atomically_admitted_without_effect_dependency",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -10880,7 +11242,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_concurrent_identical_admission_converges",
-      "line": 302,
+      "line": 307,
       "method": "test_concurrent_identical_admission_converges",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [],
@@ -10895,7 +11257,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_database_endpoint_switch_requires_reference_only_readiness",
-      "line": 506,
+      "line": 539,
       "method": "test_database_endpoint_switch_requires_reference_only_readiness",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -10911,7 +11273,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_destructive_plan_cannot_use_forged_non_destructive_approval",
-      "line": 433,
+      "line": 466,
       "method": "test_destructive_plan_cannot_use_forged_non_destructive_approval",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -10927,7 +11289,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_empty_plan_is_valid_planning_truth_but_not_executable_work",
-      "line": 409,
+      "line": 442,
       "method": "test_empty_plan_is_valid_planning_truth_but_not_executable_work",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -10943,7 +11305,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_foreign_workspace_stale_graph_and_review_blocker_fail_closed",
-      "line": 464,
+      "line": 497,
       "method": "test_foreign_workspace_stale_graph_and_review_blocker_fail_closed",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -10963,7 +11325,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_identical_replay_returns_original_and_changed_intent_conflicts",
-      "line": 222,
+      "line": 227,
       "method": "test_identical_replay_returns_original_and_changed_intent_conflicts",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -10981,7 +11343,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_late_action_failure_rolls_back_execution_request",
-      "line": 320,
+      "line": 353,
       "method": "test_late_action_failure_rolls_back_execution_request",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -10997,7 +11359,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_missing_scope_rejected_and_rejected_approval_rejected",
-      "line": 330,
+      "line": 363,
       "method": "test_missing_scope_rejected_and_rejected_approval_rejected",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -11014,7 +11376,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_readiness_evidence_cannot_claim_an_unrelated_activity",
-      "line": 582,
+      "line": 615,
       "method": "test_readiness_evidence_cannot_claim_an_unrelated_activity",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -11029,7 +11391,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_readiness_evidence_rejects_values_urls_and_unbounded_text",
-      "line": 572,
+      "line": 605,
       "method": "test_readiness_evidence_rejects_values_urls_and_unbounded_text",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -11048,7 +11410,7 @@
       ],
       "class": "ExecutionAdmissionTests",
       "id": "control-plane-kit-operations:tests.test_execution_admission.ExecutionAdmissionTests.test_runtime_and_ingress_use_permissions_are_independent_from_registration",
-      "line": 336,
+      "line": 369,
       "method": "test_runtime_and_ingress_use_permissions_are_independent_from_registration",
       "module": "tests.test_execution_admission",
       "negative_case_hints": [
@@ -11065,7 +11427,7 @@
       ],
       "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_adapter_exception_records_uncertainty_and_does_not_blind_replay",
-      "line": 411,
+      "line": 463,
       "method": "test_adapter_exception_records_uncertainty_and_does_not_blind_replay",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [
@@ -11081,7 +11443,7 @@
       ],
       "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_claimed_run_must_be_started_before_coordinator_execution",
-      "line": 538,
+      "line": 590,
       "method": "test_claimed_run_must_be_started_before_coordinator_execution",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [
@@ -11096,8 +11458,24 @@
         "assertIs"
       ],
       "class": "ExecutionCoordinatorTests",
+      "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_completed_replay_does_not_repeat_effect",
+      "line": 378,
+      "method": "test_completed_replay_does_not_repeat_effect",
+      "module": "tests.test_execution_coordinator",
+      "negative_case_hints": [
+        "name:replay"
+      ],
+      "path": "control-plane-kit-operations/tests/test_execution_coordinator.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIs"
+      ],
+      "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct",
-      "line": 485,
+      "line": 537,
       "method": "test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [
@@ -11114,7 +11492,7 @@
       ],
       "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_foreign_workspace_observation_becomes_uncertainty_without_persisting_row",
-      "line": 428,
+      "line": 480,
       "method": "test_foreign_workspace_observation_becomes_uncertainty_without_persisting_row",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [
@@ -11131,7 +11509,7 @@
       ],
       "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_incoherent_pinned_graph_material_fails_before_step_intent",
-      "line": 378,
+      "line": 430,
       "method": "test_incoherent_pinned_graph_material_fails_before_step_intent",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [
@@ -11148,7 +11526,7 @@
       ],
       "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_max_effects_limits_progress_without_losing_schedule",
-      "line": 550,
+      "line": 602,
       "method": "test_max_effects_limits_progress_without_losing_schedule",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [
@@ -11164,7 +11542,7 @@
       ],
       "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_next_activity_sees_side_evidence_written_by_prior_activity",
-      "line": 568,
+      "line": 620,
       "method": "test_next_activity_sees_side_evidence_written_by_prior_activity",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [],
@@ -11178,7 +11556,7 @@
       ],
       "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_started_intent_without_result_is_in_flight_and_not_replayed",
-      "line": 460,
+      "line": 512,
       "method": "test_started_intent_without_result_is_in_flight_and_not_replayed",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [
@@ -11213,7 +11591,7 @@
       ],
       "class": "ExecutionCoordinatorTests",
       "id": "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_worker_scope_and_claim_ownership_are_checked_before_adapter",
-      "line": 525,
+      "line": 577,
       "method": "test_worker_scope_and_claim_ownership_are_checked_before_adapter",
       "module": "tests.test_execution_coordinator",
       "negative_case_hints": [
@@ -13302,13 +13680,110 @@
       "subtest_dimensions": []
     },
     {
+      "assertions": [],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_cancel_lock_owner_rejects_later_planning_without_writes",
+      "line": 798,
+      "method": "test_cancel_lock_owner_rejects_later_planning_without_writes",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [
+        "name:reject",
+        "name:without"
+      ],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_close_lock_owner_rejects_later_planning_without_writes",
+      "line": 795,
+      "method": "test_close_lock_owner_rejects_later_planning_without_writes",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [
+        "name:reject",
+        "name:without"
+      ],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_close_and_plan_publish_in_a_serial_session_order",
+      "line": 683,
+      "method": "test_concurrent_close_and_plan_publish_in_a_serial_session_order",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIn"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_distinct_requests_publish_one_and_reject_one_stale",
+      "line": 357,
+      "method": "test_concurrent_distinct_requests_publish_one_and_reject_one_stale",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [
+        "name:reject",
+        "name:stale"
+      ],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_identical_request_persists_one_complete_result",
+      "line": 306,
+      "method": "test_concurrent_identical_request_persists_one_complete_result",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_identical_requests_converge_on_one_graph",
+      "line": 287,
+      "method": "test_concurrent_identical_requests_converge_on_one_graph",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_identical_requests_converge_on_one_plan",
+      "line": 663,
+      "method": "test_concurrent_identical_requests_converge_on_one_plan",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
       "assertions": [
         "assertEqual",
         "assertFalse"
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_command_records_graph_and_action_atomically",
-      "line": 178,
+      "line": 247,
       "method": "test_desired_graph_command_records_graph_and_action_atomically",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [
@@ -13324,7 +13799,7 @@
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_late_action_failure_rolls_back_graph_truth",
-      "line": 218,
+      "line": 441,
       "method": "test_desired_graph_late_action_failure_rolls_back_graph_truth",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [
@@ -13343,7 +13818,7 @@
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_replay_and_changed_intent_conflict",
-      "line": 204,
+      "line": 273,
       "method": "test_desired_graph_replay_and_changed_intent_conflict",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [
@@ -13357,11 +13832,27 @@
     {
       "assertions": [
         "assertEqual",
+        "assertTrue"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_desired_graph_replay_survives_pointer_change_and_session_close",
+      "line": 400,
+      "method": "test_desired_graph_replay_survives_pointer_change_and_session_close",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [
+        "name:replay"
+      ],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertRaises"
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_late_action_failure_rolls_back_plan_insert",
-      "line": 459,
+      "line": 864,
       "method": "test_late_action_failure_rolls_back_plan_insert",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [
@@ -13379,7 +13870,7 @@
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_malformed_durable_graph_cannot_become_desired_truth",
-      "line": 422,
+      "line": 827,
       "method": "test_malformed_durable_graph_cannot_become_desired_truth",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [
@@ -13392,11 +13883,25 @@
     {
       "assertions": [
         "assertEqual",
+        "assertTrue"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_planning_lock_owner_commits_before_close",
+      "line": 741,
+      "method": "test_planning_lock_owner_commits_before_close",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertFalse"
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_planning_pins_current_and_desired_graph_truth",
-      "line": 259,
+      "line": 482,
       "method": "test_planning_pins_current_and_desired_graph_truth",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [
@@ -13414,7 +13919,7 @@
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_planning_replay_conflict_and_stale_pointer_guards",
-      "line": 365,
+      "line": 588,
       "method": "test_planning_replay_conflict_and_stale_pointer_guards",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [
@@ -13433,10 +13938,26 @@
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_planning_uses_selected_realized_projection_for_stable_authored_graph",
-      "line": 303,
+      "line": 526,
       "method": "test_planning_uses_selected_realized_projection_for_stable_authored_graph",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertTrue"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_replay_survives_later_pointer_and_session_state_changes",
+      "line": 645,
+      "method": "test_replay_survives_later_pointer_and_session_state_changes",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [
+        "name:replay"
+      ],
       "path": "control-plane-kit-operations/tests/test_planning_commands.py",
       "subtest_dimensions": []
     },
@@ -13446,7 +13967,7 @@
       ],
       "class": "PlanningCommandTests",
       "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_stale_or_closed_desired_graph_command_writes_nothing",
-      "line": 229,
+      "line": 452,
       "method": "test_stale_or_closed_desired_graph_command_writes_nothing",
       "module": "tests.test_planning_commands",
       "negative_case_hints": [
@@ -13458,11 +13979,29 @@
     },
     {
       "assertions": [
+        "assertEqual",
+        "assertRaises",
+        "assertTrue"
+      ],
+      "class": "PlanningCommandTests",
+      "id": "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_terminal_transition_is_write_once_and_exactly_replayable",
+      "line": 801,
+      "method": "test_terminal_transition_is_write_once_and_exactly_replayable",
+      "module": "tests.test_planning_commands",
+      "negative_case_hints": [
+        "assertion:assertRaises",
+        "name:replay"
+      ],
+      "path": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
         "assertRaises"
       ],
       "class": "PostgresSchemaFoundationTests",
       "id": "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_closed_values_and_event_shapes_fail_closed",
-      "line": 316,
+      "line": 330,
       "method": "test_closed_values_and_event_shapes_fail_closed",
       "module": "tests.test_postgres_schema",
       "negative_case_hints": [
@@ -13482,10 +14021,26 @@
       ],
       "class": "PostgresSchemaFoundationTests",
       "id": "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_cloudflare_owned_ingress_resources_are_epoch_history_records",
-      "line": 266,
+      "line": 280,
       "method": "test_cloudflare_owned_ingress_resources_are_epoch_history_records",
       "module": "tests.test_postgres_schema",
       "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_postgres_schema.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertRaises"
+      ],
+      "class": "PostgresSchemaFoundationTests",
+      "id": "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_incompatible_schema_install_rolls_back_partial_ddl",
+      "line": 48,
+      "method": "test_incompatible_schema_install_rolls_back_partial_ddl",
+      "module": "tests.test_postgres_schema",
+      "negative_case_hints": [
+        "assertion:assertRaises"
+      ],
       "path": "control-plane-kit-operations/tests/test_postgres_schema.py",
       "subtest_dimensions": []
     },
@@ -13495,7 +14050,7 @@
       ],
       "class": "PostgresSchemaFoundationTests",
       "id": "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_install_backfills_legacy_plan_approval_as_closed_subject",
-      "line": 80,
+      "line": 94,
       "method": "test_install_backfills_legacy_plan_approval_as_closed_subject",
       "module": "tests.test_postgres_schema",
       "negative_case_hints": [],
@@ -13509,7 +14064,7 @@
       ],
       "class": "PostgresSchemaFoundationTests",
       "id": "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_install_expands_stale_approval_scope_checks_once",
-      "line": 116,
+      "line": 130,
       "method": "test_install_expands_stale_approval_scope_checks_once",
       "module": "tests.test_postgres_schema",
       "negative_case_hints": [
@@ -13524,7 +14079,7 @@
       ],
       "class": "PostgresSchemaFoundationTests",
       "id": "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_install_expands_stale_rotation_status_checks_without_row_loss",
-      "line": 172,
+      "line": 186,
       "method": "test_install_expands_stale_rotation_status_checks_without_row_loss",
       "module": "tests.test_postgres_schema",
       "negative_case_hints": [
@@ -13553,7 +14108,7 @@
       ],
       "class": "PostgresSchemaFoundationTests",
       "id": "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_repeated_install_preserves_rows_and_constraint_identities",
-      "line": 48,
+      "line": 62,
       "method": "test_repeated_install_preserves_rows_and_constraint_identities",
       "module": "tests.test_postgres_schema",
       "negative_case_hints": [],
@@ -13566,7 +14121,7 @@
       ],
       "class": "PostgresSchemaFoundationTests",
       "id": "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_schema_text_contains_no_unconditional_destructive_constraint_ddl",
-      "line": 423,
+      "line": 437,
       "method": "test_schema_text_contains_no_unconditional_destructive_constraint_ddl",
       "module": "tests.test_postgres_schema",
       "negative_case_hints": [
@@ -13581,7 +14136,7 @@
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals",
-      "line": 158,
+      "line": 159,
       "method": "test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals",
       "module": "tests.test_read_services",
       "negative_case_hints": [],
@@ -13594,7 +14149,7 @@
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_approval_detail_handles_public_ingress_graph_truth",
-      "line": 198,
+      "line": 199,
       "method": "test_approval_detail_handles_public_ingress_graph_truth",
       "module": "tests.test_read_services",
       "negative_case_hints": [],
@@ -13607,7 +14162,7 @@
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_approval_detail_joins_request_to_pinned_plan_review_context",
-      "line": 181,
+      "line": 182,
       "method": "test_approval_detail_joins_request_to_pinned_plan_review_context",
       "module": "tests.test_read_services",
       "negative_case_hints": [],
@@ -13621,7 +14176,7 @@
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_control_surface_reads_declared_nodes_without_endpoint_leakage",
-      "line": 273,
+      "line": 353,
       "method": "test_control_surface_reads_declared_nodes_without_endpoint_leakage",
       "module": "tests.test_read_services",
       "negative_case_hints": [
@@ -13633,11 +14188,39 @@
     },
     {
       "assertions": [
+        "assertRaisesRegex"
+      ],
+      "class": "InstanceReadServiceTests",
+      "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_correlated_record_requires_complete_typed_probe_identity",
+      "line": 328,
+      "method": "test_correlated_record_requires_complete_typed_probe_identity",
+      "module": "tests.test_read_services",
+      "negative_case_hints": [
+        "assertion:assertRaisesRegex"
+      ],
+      "path": "control-plane-kit-operations/tests/test_read_services.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "InstanceReadServiceTests",
+      "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_exact_clock_boundary_is_fresh_then_expires",
+      "line": 274,
+      "method": "test_exact_clock_boundary_is_fresh_then_expires",
+      "module": "tests.test_read_services",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_read_services.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
         "assertEqual"
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_explicit_stale_observation_stays_stale",
-      "line": 256,
+      "line": 257,
       "method": "test_explicit_stale_observation_stays_stale",
       "module": "tests.test_read_services",
       "negative_case_hints": [
@@ -13651,8 +14234,40 @@
         "assertEqual"
       ],
       "class": "InstanceReadServiceTests",
+      "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_future_timestamp_fails_closed",
+      "line": 316,
+      "method": "test_future_timestamp_fails_closed",
+      "module": "tests.test_read_services",
+      "negative_case_hints": [
+        "name:fail"
+      ],
+      "path": "control-plane-kit-operations/tests/test_read_services.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIs"
+      ],
+      "class": "InstanceReadServiceTests",
+      "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_malformed_timestamp_fails_closed_without_mutating_record",
+      "line": 300,
+      "method": "test_malformed_timestamp_fails_closed_without_mutating_record",
+      "module": "tests.test_read_services",
+      "negative_case_hints": [
+        "name:fail",
+        "name:without"
+      ],
+      "path": "control-plane-kit-operations/tests/test_read_services.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
-      "line": 214,
+      "line": 215,
       "method": "test_observed_state_is_latest_per_subject_and_does_not_rewrite_graph_truth",
       "module": "tests.test_read_services",
       "negative_case_hints": [],
@@ -13667,7 +14282,7 @@
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_open_sessions_are_paged_and_unknown_workspace_fails_readably",
-      "line": 142,
+      "line": 143,
       "method": "test_open_sessions_are_paged_and_unknown_workspace_fails_readably",
       "module": "tests.test_read_services",
       "negative_case_hints": [
@@ -13685,7 +14300,7 @@
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_operator_graph_projects_socket_contracts",
-      "line": 130,
+      "line": 131,
       "method": "test_operator_graph_projects_socket_contracts",
       "module": "tests.test_read_services",
       "negative_case_hints": [],
@@ -13699,7 +14314,7 @@
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_plan_detail_uses_pinned_graph_truth_and_core_plan_codec",
-      "line": 168,
+      "line": 169,
       "method": "test_plan_detail_uses_pinned_graph_truth_and_core_plan_codec",
       "module": "tests.test_read_services",
       "negative_case_hints": [],
@@ -13713,7 +14328,7 @@
       ],
       "class": "InstanceReadServiceTests",
       "id": "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_workspace_and_graph_reads_are_redacted",
-      "line": 97,
+      "line": 98,
       "method": "test_workspace_and_graph_reads_are_redacted",
       "module": "tests.test_read_services",
       "negative_case_hints": [],
@@ -13949,7 +14564,7 @@
       ],
       "class": "RunLifecycleTests",
       "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_claim_opens_one_run_and_event_atomically_without_effect_dependency",
-      "line": 154,
+      "line": 158,
       "method": "test_claim_opens_one_run_and_event_atomically_without_effect_dependency",
       "module": "tests.test_run_lifecycle",
       "negative_case_hints": [
@@ -13966,7 +14581,7 @@
       ],
       "class": "RunLifecycleTests",
       "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_claim_replay_conflict_scope_and_competing_worker_fail_closed",
-      "line": 171,
+      "line": 175,
       "method": "test_claim_replay_conflict_scope_and_competing_worker_fail_closed",
       "module": "tests.test_run_lifecycle",
       "negative_case_hints": [
@@ -13984,7 +14599,7 @@
       ],
       "class": "RunLifecycleTests",
       "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_concurrent_claims_have_exactly_one_worker_winner",
-      "line": 199,
+      "line": 203,
       "method": "test_concurrent_claims_have_exactly_one_worker_winner",
       "module": "tests.test_run_lifecycle",
       "negative_case_hints": [],
@@ -13999,7 +14614,7 @@
       ],
       "class": "RunLifecycleTests",
       "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_fail_records_bounded_failure_and_terminal_settlement_is_write_once",
-      "line": 294,
+      "line": 298,
       "method": "test_fail_records_bounded_failure_and_terminal_settlement_is_write_once",
       "module": "tests.test_run_lifecycle",
       "negative_case_hints": [
@@ -14012,11 +14627,29 @@
     {
       "assertions": [
         "assertEqual",
+        "assertRaisesRegex",
+        "assertTrue"
+      ],
+      "class": "RunLifecycleTests",
+      "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_lifecycle_replay_survives_close_but_new_transition_is_fenced",
+      "line": 328,
+      "method": "test_lifecycle_replay_survives_close_but_new_transition_is_fenced",
+      "module": "tests.test_run_lifecycle",
+      "negative_case_hints": [
+        "assertion:assertRaisesRegex",
+        "name:replay"
+      ],
+      "path": "control-plane-kit-operations/tests/test_run_lifecycle.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertIs"
       ],
       "class": "RunLifecycleTests",
       "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_start_pause_resume_complete_are_atomic_and_visible",
-      "line": 221,
+      "line": 225,
       "method": "test_start_pause_resume_complete_are_atomic_and_visible",
       "module": "tests.test_run_lifecycle",
       "negative_case_hints": [],
@@ -14031,7 +14664,7 @@
       ],
       "class": "RunLifecycleTests",
       "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunLifecycleTests.test_worker_ownership_and_late_action_failure_roll_back_transition",
-      "line": 263,
+      "line": 267,
       "method": "test_worker_ownership_and_late_action_failure_roll_back_transition",
       "module": "tests.test_run_lifecycle",
       "negative_case_hints": [
@@ -14047,7 +14680,7 @@
       ],
       "class": "RunRecordLawTests",
       "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunRecordLawTests.test_bounded_evidence_rejects_secret_shapes_and_non_json_values",
-      "line": 79,
+      "line": 83,
       "method": "test_bounded_evidence_rejects_secret_shapes_and_non_json_values",
       "module": "tests.test_run_lifecycle",
       "negative_case_hints": [
@@ -14063,7 +14696,7 @@
       ],
       "class": "RunRecordLawTests",
       "id": "control-plane-kit-operations:tests.test_run_lifecycle.RunRecordLawTests.test_run_timing_and_event_scope_fail_closed",
-      "line": 54,
+      "line": 58,
       "method": "test_run_timing_and_event_scope_fail_closed",
       "module": "tests.test_run_lifecycle",
       "negative_case_hints": [
@@ -15101,6 +15734,181 @@
     },
     {
       "assertions": [
+        "assertEqual",
+        "assertIn",
+        "assertTrue"
+      ],
+      "class": "SessionCommandSerializationContractTests",
+      "id": "control-plane-kit-operations:tests.test_session_command_serialization_contract.SessionCommandSerializationContractTests.test_each_command_uses_a_strict_global_order_subsequence",
+      "line": 96,
+      "method": "test_each_command_uses_a_strict_global_order_subsequence",
+      "module": "tests.test_session_command_serialization_contract",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py",
+      "subtest_dimensions": [
+        "command"
+      ]
+    },
+    {
+      "assertions": [
+        "assertLess"
+      ],
+      "class": "SessionCommandSerializationContractTests",
+      "id": "control-plane-kit-operations:tests.test_session_command_serialization_contract.SessionCommandSerializationContractTests.test_every_existing_session_writer_acquires_locks_in_contract_order",
+      "line": 71,
+      "method": "test_every_existing_session_writer_acquires_locks_in_contract_order",
+      "module": "tests.test_session_command_serialization_contract",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py",
+      "subtest_dimensions": [
+        "command"
+      ]
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertTrue"
+      ],
+      "class": "SessionCommandSerializationContractTests",
+      "id": "control-plane-kit-operations:tests.test_session_command_serialization_contract.SessionCommandSerializationContractTests.test_every_session_action_writer_has_one_role_map",
+      "line": 54,
+      "method": "test_every_session_action_writer_has_one_role_map",
+      "module": "tests.test_session_command_serialization_contract",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertTrue"
+      ],
+      "class": "SessionCommandSerializationContractTests",
+      "id": "control-plane-kit-operations:tests.test_session_command_serialization_contract.SessionCommandSerializationContractTests.test_global_lock_roles_are_closed_unique_and_ordered",
+      "line": 41,
+      "method": "test_global_lock_roles_are_closed_unique_and_ordered",
+      "module": "tests.test_session_command_serialization_contract",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertTrue"
+      ],
+      "class": "SessionCommandSerializationContractTests",
+      "id": "control-plane-kit-operations:tests.test_session_command_serialization_contract.SessionCommandSerializationContractTests.test_replay_terminal_and_transaction_outcomes_are_explicit",
+      "line": 116,
+      "method": "test_replay_terminal_and_transaction_outcomes_are_explicit",
+      "module": "tests.test_session_command_serialization_contract",
+      "negative_case_hints": [
+        "name:replay"
+      ],
+      "path": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "SessionCommandSerializationContractTests",
+      "id": "control-plane-kit-operations:tests.test_session_command_serialization_contract.SessionCommandSerializationContractTests.test_role_map_covers_every_current_operation_action_writer",
+      "line": 66,
+      "method": "test_role_map_covers_every_current_operation_action_writer",
+      "module": "tests.test_session_command_serialization_contract",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertLess"
+      ],
+      "class": "SessionCommandSerializationContractTests",
+      "id": "control-plane-kit-operations:tests.test_session_command_serialization_contract.SessionCommandSerializationContractTests.test_rotation_projection_locks_workspace_before_rotation_truth",
+      "line": 85,
+      "method": "test_rotation_projection_locks_workspace_before_rotation_truth",
+      "module": "tests.test_session_command_serialization_contract",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [],
+      "class": "SessionSerializationPrimitiveTests",
+      "id": "control-plane-kit-operations:tests.test_session_serialization_primitives.SessionSerializationPrimitiveTests.test_action_identity_locks_do_not_block_independent_sessions",
+      "line": 72,
+      "method": "test_action_identity_locks_do_not_block_independent_sessions",
+      "module": "tests.test_session_serialization_primitives",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_session_serialization_primitives.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIsNone"
+      ],
+      "class": "SessionSerializationPrimitiveTests",
+      "id": "control-plane-kit-operations:tests.test_session_serialization_primitives.SessionSerializationPrimitiveTests.test_rollback_releases_locks_and_discards_partial_action",
+      "line": 169,
+      "method": "test_rollback_releases_locks_and_discards_partial_action",
+      "module": "tests.test_session_serialization_primitives",
+      "negative_case_hints": [
+        "assertion:assertIsNone",
+        "name:rollback"
+      ],
+      "path": "control-plane-kit-operations/tests/test_session_serialization_primitives.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertRaises"
+      ],
+      "class": "SessionSerializationPrimitiveTests",
+      "id": "control-plane-kit-operations:tests.test_session_serialization_primitives.SessionSerializationPrimitiveTests.test_same_action_identity_blocks_until_transaction_finishes",
+      "line": 47,
+      "method": "test_same_action_identity_blocks_until_transaction_finishes",
+      "module": "tests.test_session_serialization_primitives",
+      "negative_case_hints": [
+        "assertion:assertRaises"
+      ],
+      "path": "control-plane-kit-operations/tests/test_session_serialization_primitives.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIsNotNone",
+        "assertRaises"
+      ],
+      "class": "SessionSerializationPrimitiveTests",
+      "id": "control-plane-kit-operations:tests.test_session_serialization_primitives.SessionSerializationPrimitiveTests.test_session_for_update_serializes_and_reveals_terminal_state",
+      "line": 90,
+      "method": "test_session_for_update_serializes_and_reveals_terminal_state",
+      "module": "tests.test_session_serialization_primitives",
+      "negative_case_hints": [
+        "assertion:assertRaises"
+      ],
+      "path": "control-plane-kit-operations/tests/test_session_serialization_primitives.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "SessionSerializationPrimitiveTests",
+      "id": "control-plane-kit-operations:tests.test_session_serialization_primitives.SessionSerializationPrimitiveTests.test_session_lock_serializes_unique_monotonic_action_ordinals",
+      "line": 123,
+      "method": "test_session_lock_serializes_unique_monotonic_action_ordinals",
+      "module": "tests.test_session_serialization_primitives",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_session_serialization_primitives.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
         "assertEqual"
       ],
       "class": "PostgresUnitOfWorkIntegrationTests",
@@ -15235,7 +16043,7 @@
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_action_records_ordinals_replay_and_conflict",
-      "line": 127,
+      "line": 162,
       "method": "test_action_records_ordinals_replay_and_conflict",
       "module": "tests.test_workflows",
       "negative_case_hints": [
@@ -15250,11 +16058,48 @@
     {
       "assertions": [
         "assertEqual",
+        "assertRaises",
+        "assertTrue"
+      ],
+      "class": "OperationWorkflowTests",
+      "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_cancelled_session_replays_cancel_and_rejects_new_actions",
+      "line": 220,
+      "method": "test_cancelled_session_replays_cancel_and_rejects_new_actions",
+      "module": "tests.test_workflows",
+      "negative_case_hints": [
+        "assertion:assertRaises",
+        "name:reject",
+        "name:replay"
+      ],
+      "path": "control-plane-kit-operations/tests/test_workflows.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertRaises",
+        "assertTrue"
+      ],
+      "class": "OperationWorkflowTests",
+      "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_close_fences_a_later_manual_action_without_partial_history",
+      "line": 276,
+      "method": "test_close_fences_a_later_manual_action_without_partial_history",
+      "module": "tests.test_workflows",
+      "negative_case_hints": [
+        "assertion:assertRaises",
+        "name:without"
+      ],
+      "path": "control-plane-kit-operations/tests/test_workflows.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertRaises"
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_closed_session_rejects_new_actions",
-      "line": 165,
+      "line": 200,
       "method": "test_closed_session_rejects_new_actions",
       "module": "tests.test_workflows",
       "negative_case_hints": [
@@ -15266,11 +16111,54 @@
     },
     {
       "assertions": [
+        "assertEqual",
+        "assertIn"
+      ],
+      "class": "OperationWorkflowTests",
+      "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_concurrent_close_and_cancel_are_write_once_without_deadlock",
+      "line": 320,
+      "method": "test_concurrent_close_and_cancel_are_write_once_without_deadlock",
+      "module": "tests.test_workflows",
+      "negative_case_hints": [
+        "name:without"
+      ],
+      "path": "control-plane-kit-operations/tests/test_workflows.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "OperationWorkflowTests",
+      "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_concurrent_identical_starts_converge_on_one_session",
+      "line": 132,
+      "method": "test_concurrent_identical_starts_converge_on_one_session",
+      "module": "tests.test_workflows",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_workflows.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertTrue"
+      ],
+      "class": "OperationWorkflowTests",
+      "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_independent_session_commands_do_not_share_a_lifecycle_lock",
+      "line": 382,
+      "method": "test_independent_session_commands_do_not_share_a_lifecycle_lock",
+      "module": "tests.test_workflows",
+      "negative_case_hints": [],
+      "path": "control-plane-kit-operations/tests/test_workflows.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
         "assertRaises"
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_late_action_failure_rolls_back_session_start",
-      "line": 194,
+      "line": 427,
       "method": "test_late_action_failure_rolls_back_session_start",
       "module": "tests.test_workflows",
       "negative_case_hints": [
@@ -15282,11 +16170,28 @@
     },
     {
       "assertions": [
+        "assertEqual",
+        "assertRaises",
+        "assertTrue"
+      ],
+      "class": "OperationWorkflowTests",
+      "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_manual_action_and_close_follow_the_session_lock_order",
+      "line": 244,
+      "method": "test_manual_action_and_close_follow_the_session_lock_order",
+      "module": "tests.test_workflows",
+      "negative_case_hints": [
+        "assertion:assertRaises"
+      ],
+      "path": "control-plane-kit-operations/tests/test_workflows.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
         "assertRaisesRegex"
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_records_reject_untyped_status_and_action_kind",
-      "line": 249,
+      "line": 482,
       "method": "test_records_reject_untyped_status_and_action_kind",
       "module": "tests.test_workflows",
       "negative_case_hints": [
@@ -15302,7 +16207,7 @@
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_reserved_lifecycle_actions_cannot_be_forged",
-      "line": 185,
+      "line": 418,
       "method": "test_reserved_lifecycle_actions_cannot_be_forged",
       "module": "tests.test_workflows",
       "negative_case_hints": [
@@ -15317,7 +16222,7 @@
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_session_and_action_queries_are_deterministic",
-      "line": 216,
+      "line": 449,
       "method": "test_session_and_action_queries_are_deterministic",
       "module": "tests.test_workflows",
       "negative_case_hints": [],
@@ -15331,7 +16236,7 @@
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_commits_session_and_initial_action_atomically",
-      "line": 78,
+      "line": 94,
       "method": "test_start_commits_session_and_initial_action_atomically",
       "module": "tests.test_workflows",
       "negative_case_hints": [
@@ -15348,7 +16253,7 @@
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_replays_same_intent_and_conflicts_on_changed_intent",
-      "line": 98,
+      "line": 114,
       "method": "test_start_replays_same_intent_and_conflicts_on_changed_intent",
       "module": "tests.test_workflows",
       "negative_case_hints": [
@@ -15365,7 +16270,7 @@
       ],
       "class": "OperationWorkflowTests",
       "id": "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_start_requires_workspace_truth",
-      "line": 116,
+      "line": 151,
       "method": "test_start_requires_workspace_truth",
       "module": "tests.test_workflows",
       "negative_case_hints": [
@@ -17969,7 +18874,7 @@
       ],
       "class": "HttpActiveRouterProductTests",
       "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_declares_http_provider_and_active_requirement",
-      "line": 64,
+      "line": 67,
       "method": "test_descriptor_declares_http_provider_and_active_requirement",
       "module": "products.http_active_router.tests.test_http_active_router_product",
       "negative_case_hints": [],
@@ -17982,7 +18887,7 @@
       ],
       "class": "HttpActiveRouterProductTests",
       "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_digest_is_catalogue_ready",
-      "line": 145,
+      "line": 213,
       "method": "test_descriptor_digest_is_catalogue_ready",
       "module": "products.http_active_router.tests.test_http_active_router_product",
       "negative_case_hints": [],
@@ -17996,7 +18901,7 @@
       ],
       "class": "HttpActiveRouterProductTests",
       "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_instantiates_without_importing_process_code",
-      "line": 88,
+      "line": 91,
       "method": "test_descriptor_instantiates_without_importing_process_code",
       "module": "products.http_active_router.tests.test_http_active_router_product",
       "negative_case_hints": [
@@ -18013,7 +18918,7 @@
       ],
       "class": "HttpActiveRouterProductTests",
       "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_descriptor_round_trips_as_external_product_contract",
-      "line": 40,
+      "line": 43,
       "method": "test_descriptor_round_trips_as_external_product_contract",
       "module": "products.http_active_router.tests.test_http_active_router_product",
       "negative_case_hints": [],
@@ -18027,7 +18932,7 @@
       ],
       "class": "HttpActiveRouterProductTests",
       "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_dockerfile_uses_product_entrypoint_and_non_root_user",
-      "line": 136,
+      "line": 204,
       "method": "test_dockerfile_uses_product_entrypoint_and_non_root_user",
       "module": "products.http_active_router.tests.test_http_active_router_product",
       "negative_case_hints": [
@@ -18043,7 +18948,7 @@
       ],
       "class": "HttpActiveRouterProductTests",
       "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_entrypoint_source_preserves_bounded_no_redirect_forwarding",
-      "line": 124,
+      "line": 191,
       "method": "test_entrypoint_source_preserves_bounded_no_redirect_forwarding",
       "module": "products.http_active_router.tests.test_http_active_router_product",
       "negative_case_hints": [
@@ -18055,12 +18960,43 @@
     {
       "assertions": [
         "assertEqual",
+        "assertNotIn"
+      ],
+      "class": "HttpActiveRouterProductTests",
+      "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_process_failure_is_bounded_without_upstream_exception_text",
+      "line": 164,
+      "method": "test_process_failure_is_bounded_without_upstream_exception_text",
+      "module": "products.http_active_router.tests.test_http_active_router_product",
+      "negative_case_hints": [
+        "assertion:assertNotIn",
+        "name:fail",
+        "name:without"
+      ],
+      "path": "products/http_active_router/tests/test_http_active_router_product.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual"
+      ],
+      "class": "HttpActiveRouterProductTests",
+      "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_process_forwards_method_path_headers_and_body_to_active_target",
+      "line": 127,
+      "method": "test_process_forwards_method_path_headers_and_body_to_active_target",
+      "module": "products.http_active_router.tests.test_http_active_router_product",
+      "negative_case_hints": [],
+      "path": "products/http_active_router/tests/test_http_active_router_product.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
         "assertRaises",
         "assertRaisesRegex"
       ],
       "class": "HttpActiveRouterProductTests",
       "id": "control-plane-kit-servers:products.http_active_router.tests.test_http_active_router_product.HttpActiveRouterProductTests.test_process_requires_absolute_http_active_target",
-      "line": 105,
+      "line": 108,
       "method": "test_process_requires_absolute_http_active_target",
       "module": "products.http_active_router.tests.test_http_active_router_product",
       "negative_case_hints": [
@@ -18081,7 +19017,7 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_descriptor_declares_primary_and_optional_observer_requirements",
-      "line": 66,
+      "line": 67,
       "method": "test_descriptor_declares_primary_and_optional_observer_requirements",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [
@@ -18096,7 +19032,7 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_descriptor_digest_is_catalogue_ready",
-      "line": 225,
+      "line": 253,
       "method": "test_descriptor_digest_is_catalogue_ready",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [],
@@ -18110,7 +19046,7 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_descriptor_instantiates_without_importing_process_code",
-      "line": 99,
+      "line": 100,
       "method": "test_descriptor_instantiates_without_importing_process_code",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [
@@ -18127,7 +19063,7 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_descriptor_round_trips_as_external_product_contract",
-      "line": 42,
+      "line": 43,
       "method": "test_descriptor_round_trips_as_external_product_contract",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [],
@@ -18141,7 +19077,7 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_dockerfile_uses_product_entrypoint_and_non_root_user",
-      "line": 216,
+      "line": 244,
       "method": "test_dockerfile_uses_product_entrypoint_and_non_root_user",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [
@@ -18157,8 +19093,25 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_entrypoint_source_preserves_bounded_fail_open_observers",
-      "line": 203,
+      "line": 229,
       "method": "test_entrypoint_source_preserves_bounded_fail_open_observers",
+      "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
+      "negative_case_hints": [
+        "assertion:assertNotIn",
+        "name:fail"
+      ],
+      "path": "products/http_multiplexer/tests/test_http_multiplexer_product.py",
+      "subtest_dimensions": []
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertNotIn"
+      ],
+      "class": "HttpMultiplexerProductTests",
+      "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_observer_failure_evidence_excludes_raw_exception_text",
+      "line": 204,
+      "method": "test_observer_failure_evidence_excludes_raw_exception_text",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [
         "assertion:assertNotIn",
@@ -18174,7 +19127,7 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_observer_failure_is_reported_but_primary_response_can_survive",
-      "line": 180,
+      "line": 181,
       "method": "test_observer_failure_is_reported_but_primary_response_can_survive",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [
@@ -18189,7 +19142,7 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_primary_response_wins_and_observer_receives_copied_request",
-      "line": 140,
+      "line": 141,
       "method": "test_primary_response_wins_and_observer_receives_copied_request",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [],
@@ -18204,7 +19157,7 @@
       ],
       "class": "HttpMultiplexerProductTests",
       "id": "control-plane-kit-servers:products.http_multiplexer.tests.test_http_multiplexer_product.HttpMultiplexerProductTests.test_process_requires_primary_and_accepts_optional_observers",
-      "line": 116,
+      "line": 117,
       "method": "test_process_requires_primary_and_accepts_optional_observers",
       "module": "products.http_multiplexer.tests.test_http_multiplexer_product",
       "negative_case_hints": [
@@ -18420,7 +19373,7 @@
       ],
       "class": "CoordinateGenerationTests",
       "id": "control-plane-kit-servers:tests.test_coordinates.CoordinateGenerationTests.test_coordinate_manifest_is_the_source_for_generated_files",
-      "line": 24,
+      "line": 38,
       "method": "test_coordinate_manifest_is_the_source_for_generated_files",
       "module": "tests.test_coordinates",
       "negative_case_hints": [],
@@ -18433,10 +19386,29 @@
       ],
       "class": "CoordinateGenerationTests",
       "id": "control-plane-kit-servers:tests.test_coordinates.CoordinateGenerationTests.test_coordinates_drive_every_generated_dependency_pin",
-      "line": 37,
+      "line": 51,
       "method": "test_coordinates_drive_every_generated_dependency_pin",
       "module": "tests.test_coordinates",
       "negative_case_hints": [],
+      "path": "tests/test_coordinates.py",
+      "subtest_dimensions": [
+        "path"
+      ]
+    },
+    {
+      "assertions": [
+        "assertEqual",
+        "assertIn",
+        "assertNotIn"
+      ],
+      "class": "CoordinateGenerationTests",
+      "id": "control-plane-kit-servers:tests.test_coordinates.CoordinateGenerationTests.test_published_product_smokes_resolve_digest_from_coordinates",
+      "line": 92,
+      "method": "test_published_product_smokes_resolve_digest_from_coordinates",
+      "module": "tests.test_coordinates",
+      "negative_case_hints": [
+        "assertion:assertNotIn"
+      ],
       "path": "tests/test_coordinates.py",
       "subtest_dimensions": [
         "path"
@@ -20099,6 +21071,11 @@
       "reference_demo": null
     },
     {
+      "path": "build-semantic-test-migration-inventory.sh",
+      "provisional_issue": 1325,
+      "reference_demo": null
+    },
+    {
       "path": "classify-reference-laws.sh",
       "provisional_issue": 1325,
       "reference_demo": null
@@ -20205,6 +21182,11 @@
     },
     {
       "path": "validate-reference-demos.sh",
+      "provisional_issue": 1325,
+      "reference_demo": null
+    },
+    {
+      "path": "validate-semantic-test-migration-inventory.sh",
       "provisional_issue": 1325,
       "reference_demo": null
     },
@@ -21713,7 +22695,7 @@
       }
     }
   ],
-  "parity_manifest_digest": "sha256:31007856495f80edd9f31f3ba522b3ebe191571d5650045368ef235c784d21ce",
+  "parity_manifest_digest": "sha256:9b3adf1f7a33b26119c45594f806b8a35d1169b74b1ea1cad77066e3d3991fa0",
   "provisional_target_counts": [
     {
       "distribution": "control-plane-kit-core",
@@ -21758,18 +22740,6 @@
       "reference_laws": 117
     },
     {
-      "distribution": "cross-repository-architecture-package",
-      "issue": 1346,
-      "mutable_only_methods": 0,
-      "reference_laws": 117
-    },
-    {
-      "distribution": "cross-repository-live-demo",
-      "issue": 1347,
-      "mutable_only_methods": 0,
-      "reference_laws": 32
-    },
-    {
       "distribution": "cross-repository-live-demo",
       "issue": 1347,
       "mutable_only_methods": 0,
@@ -21777,9 +22747,9 @@
     }
   ],
   "recorded_parity_counts": {
-    "with_successors": 559,
-    "with_supersession": 148,
-    "without_completion_record": 383
+    "with_successors": 667,
+    "with_supersession": 39,
+    "without_completion_record": 384
   },
   "reference": {
     "commit": "20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec",
@@ -22477,7 +23447,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_close_and_plan_publish_in_a_serial_session_order"
+      ],
       "law": "behavior.concurrent-close-and-plan-publish-in-a-serial-session-order",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -22495,7 +23467,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_identical_requests_converge_on_one_plan"
+      ],
       "law": "behavior.concurrent-identical-requests-converge-on-one-plan",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -22602,7 +23576,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_replay_survives_later_pointer_and_session_state_changes"
+      ],
       "law": "behavior.replay-survives-later-pointer-and-session-state-changes",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -27211,7 +28187,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_distinct_requests_publish_one_and_reject_one_stale"
+      ],
       "law": "behavior.concurrent-distinct-requests-publish-one-and-reject-one-stale",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -27233,7 +28211,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_planning_commands.PlanningCommandTests.test_concurrent_identical_requests_converge_on_one_graph"
+      ],
       "law": "behavior.concurrent-identical-requests-converge-on-one-graph",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -28431,7 +29411,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-interpreters:tests.test_docker_runtime_interpreter.DockerRuntimeInterpreterTests.test_runtime_stop_is_a_non_deleting_logical_barrier"
+      ],
       "law": "behavior.runtime-stop-is-a-non-deleting-logical-barrier",
       "provisional_target": {
         "distribution": "control-plane-kit-interpreters",
@@ -30224,7 +31206,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_execution_coordinator.ExecutionCoordinatorTests.test_completed_replay_does_not_repeat_effect"
+      ],
       "law": "behavior.completed-replay-does-not-repeat-effect",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -30995,7 +31979,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_postgres_schema.PostgresSchemaFoundationTests.test_incompatible_schema_install_rolls_back_partial_ddl"
+      ],
       "law": "behavior.incompatible-schema-install-rolls-back-partial-ddl",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -36325,7 +37311,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_correlated_record_requires_complete_typed_probe_identity"
+      ],
       "law": "behavior.correlated-record-requires-complete-typed-probe-identity",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -36345,7 +37333,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_exact_clock_boundary_is_fresh_then_expires"
+      ],
       "law": "behavior.exact-clock-boundary-is-fresh-then-expires",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -36366,7 +37356,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_future_timestamp_fails_closed"
+      ],
       "law": "behavior.future-timestamp-fails-closed",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -36406,7 +37398,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_read_services.InstanceReadServiceTests.test_malformed_timestamp_fails_closed_without_mutating_record"
+      ],
       "law": "behavior.malformed-timestamp-fails-closed-without-mutating-record",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -36678,7 +37672,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-operations:tests.test_workflows.OperationWorkflowTests.test_concurrent_identical_starts_converge_on_one_session"
+      ],
       "law": "behavior.concurrent-identical-starts-converge-on-one-session",
       "provisional_target": {
         "distribution": "control-plane-kit-operations",
@@ -39827,7 +40823,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_data_destruction_requires_explicit_critical_destructive_activity"
+      ],
       "law": "behavior.data-destruction-requires-explicit-critical-destructive-activity",
       "provisional_target": {
         "distribution": "control-plane-kit-core",
@@ -39849,7 +40847,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_external_resources_are_topology_only_and_never_gain_lifecycle_work"
+      ],
       "law": "behavior.external-resources-are-topology-only-and-never-gain-lifecycle-work",
       "provisional_target": {
         "distribution": "control-plane-kit-core",
@@ -39867,7 +40867,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_graph_codec_preserves_lifecycle_without_string_inference"
+      ],
       "law": "behavior.graph-codec-preserves-lifecycle-without-string-inference",
       "provisional_target": {
         "distribution": "control-plane-kit-core",
@@ -39887,7 +40889,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_lifecycle_is_a_closed_product_with_independent_data_resources"
+      ],
       "law": "behavior.lifecycle-is-a-closed-product-with-independent-data-resources",
       "provisional_target": {
         "distribution": "control-plane-kit-core",
@@ -39909,7 +40913,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_lifecycle_policy_changes_are_review_blockers_not_reconciliation"
+      ],
       "law": "behavior.lifecycle-policy-changes-are-review-blockers-not-reconciliation",
       "provisional_target": {
         "distribution": "control-plane-kit-core",
@@ -39931,7 +40937,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_retained_compute_stops_without_resource_removal"
+      ],
       "law": "behavior.retained-compute-stops-without-resource-removal",
       "provisional_target": {
         "distribution": "control-plane-kit-core",
@@ -39953,7 +40961,9 @@
       }
     },
     {
-      "current_successor_candidates": [],
+      "current_successor_candidates": [
+        "control-plane-kit-core:tests.test_resource_lifecycle.ResourceLifecycleSuccessorTests.test_topology_removal_deletes_ephemeral_compute_but_never_data"
+      ],
       "law": "behavior.topology-removal-deletes-ephemeral-compute-but-never-data",
       "provisional_target": {
         "distribution": "control-plane-kit-core",
@@ -44702,52 +45712,52 @@
       "script_count": 18
     },
     {
-      "commit": "9007e435444a9bd3e8cbf507f64747f7d791d987",
+      "commit": "211062b6f7bdb3f01855614c88078ac4161940c7",
       "distribution": "legacy-mutable",
       "gate": "./test.sh (migration input only)",
       "helper_count": 21,
       "method_count": 1210,
       "repository": "OpenJ92/control-plane-kit",
-      "script_count": 26
+      "script_count": 28
     },
     {
-      "commit": "9007e435444a9bd3e8cbf507f64747f7d791d987",
+      "commit": "211062b6f7bdb3f01855614c88078ac4161940c7",
       "distribution": "control-plane-kit-core",
       "gate": "./control-plane-kit-core/test.sh",
       "helper_count": 1,
-      "method_count": 475,
+      "method_count": 484,
       "repository": "OpenJ92/control-plane-kit",
       "script_count": 1
     },
     {
-      "commit": "9007e435444a9bd3e8cbf507f64747f7d791d987",
+      "commit": "211062b6f7bdb3f01855614c88078ac4161940c7",
       "distribution": "control-plane-kit-operations",
       "gate": "./control-plane-kit-operations/test.sh",
       "helper_count": 2,
-      "method_count": 336,
+      "method_count": 377,
       "repository": "OpenJ92/control-plane-kit",
       "script_count": 1
     },
     {
-      "commit": "d36788e24dcf0c43f49c398d9e01ab02ad453f02",
+      "commit": "e9f19d558026d92af79df81fb9184d29da00110b",
       "distribution": "control-plane-kit-interpreters",
       "gate": "./test.sh",
       "helper_count": 4,
-      "method_count": 139,
+      "method_count": 147,
       "repository": "OpenJ92/control-plane-kit-interpreters",
       "script_count": 1
     },
     {
-      "commit": "00eeeada9bc19e86944836e1f5dfe15ee9524971",
+      "commit": "d2fe4cbde6766616981d67e87e3e81462a3f58e7",
       "distribution": "control-plane-kit-servers",
       "gate": "./test.sh",
       "helper_count": 0,
-      "method_count": 162,
+      "method_count": 166,
       "repository": "OpenJ92/control-plane-kit-servers",
       "script_count": 27
     },
     {
-      "commit": "553f01c4391223db076e196ac865759e8ce1eb9a",
+      "commit": "313fd26cb15a362ef5196547a3f6b27122877609",
       "distribution": "control-plane-kit-secrets",
       "gate": "./test.sh",
       "helper_count": 0,
