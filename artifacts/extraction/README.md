@@ -83,3 +83,17 @@ The #1321 passing operations evidence is recorded in
 `successor-evidence.json`, and its decision slice deliberately scans both live
 core and operations tests because pure execution contracts and durable
 application behavior have different package owners.
+
+`semantic-migration-closeout.json` is the #1326 deletion-gate input. It binds
+the current manifest, reconciliation, source inventory, successor evidence,
+and #1325 aggregate by canonical digest. It reviews all demo identities, records
+the exact law set assigned to each open future issue, inventories every current
+package/live shell entry point, and adds source-digest-bound parity test
+identities that do not belong to a distributable package.
+
+`semantic-migration-completion-report.json` is generated with
+`python3 -m extraction_parity.completion`. Zero unowned means every frozen law
+is either implemented, reviewed-superseded, or assigned to one detailed open
+issue. It does not claim that future-owned behavior is implemented. The older
+foundation report remains useful and intentionally reports those future-owned
+required laws as incomplete.

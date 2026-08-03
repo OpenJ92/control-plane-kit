@@ -1,0 +1,1618 @@
+{
+  "additional_current_tests": [
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_differential_result_rejects_tampered_digest_status_and_normalization",
+      "path": "extraction_parity/tests/test_differential_language.py",
+      "source_digest": "sha256:08ae3463a905d087cd49ec7f622f27fc351ac2c47c53228aa217ae1b539813aa"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_equivalent_incidental_values_compare_equal",
+      "path": "extraction_parity/tests/test_differential_language.py",
+      "source_digest": "sha256:08ae3463a905d087cd49ec7f622f27fc351ac2c47c53228aa217ae1b539813aa"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_incidental_values_are_typed_and_policy_is_closed",
+      "path": "extraction_parity/tests/test_differential_language.py",
+      "source_digest": "sha256:08ae3463a905d087cd49ec7f622f27fc351ac2c47c53228aa217ae1b539813aa"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_nonzero_completed_exit_is_comparable_and_output_is_audit_only",
+      "path": "extraction_parity/tests/test_differential_language.py",
+      "source_digest": "sha256:08ae3463a905d087cd49ec7f622f27fc351ac2c47c53228aa217ae1b539813aa"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_normalization_is_idempotent",
+      "path": "extraction_parity/tests/test_differential_language.py",
+      "source_digest": "sha256:08ae3463a905d087cd49ec7f622f27fc351ac2c47c53228aa217ae1b539813aa"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_observation_codec_is_closed_and_pins_source_identity",
+      "path": "extraction_parity/tests/test_differential_language.py",
+      "source_digest": "sha256:08ae3463a905d087cd49ec7f622f27fc351ac2c47c53228aa217ae1b539813aa"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_process_failure_is_not_behavioral_drift",
+      "path": "extraction_parity/tests/test_differential_language.py",
+      "source_digest": "sha256:08ae3463a905d087cd49ec7f622f27fc351ac2c47c53228aa217ae1b539813aa"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_language.DifferentialLanguageTests.test_untagged_semantic_drift_remains_visible",
+      "path": "extraction_parity/tests/test_differential_language.py",
+      "source_digest": "sha256:08ae3463a905d087cd49ec7f622f27fc351ac2c47c53228aa217ae1b539813aa"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_cli_captures_declared_artifacts_without_hiding_process_identity",
+      "path": "extraction_parity/tests/test_differential_runner.py",
+      "source_digest": "sha256:4dbd0798afb316319643d88e0672c67eec2c03c7c84db383fa2535dcf6cfdd48"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_completed_command_produces_closed_observation",
+      "path": "extraction_parity/tests/test_differential_runner.py",
+      "source_digest": "sha256:4dbd0798afb316319643d88e0672c67eec2c03c7c84db383fa2535dcf6cfdd48"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_declared_secret_is_redacted_before_persistence_and_forbidden_in_behavior",
+      "path": "extraction_parity/tests/test_differential_runner.py",
+      "source_digest": "sha256:4dbd0798afb316319643d88e0672c67eec2c03c7c84db383fa2535dcf6cfdd48"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_equivalent_result_emits_deterministic_passing_evidence",
+      "path": "extraction_parity/tests/test_differential_runner.py",
+      "source_digest": "sha256:4dbd0798afb316319643d88e0672c67eec2c03c7c84db383fa2535dcf6cfdd48"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_missing_or_malformed_behavior_is_infrastructure_failure",
+      "path": "extraction_parity/tests/test_differential_runner.py",
+      "source_digest": "sha256:4dbd0798afb316319643d88e0672c67eec2c03c7c84db383fa2535dcf6cfdd48"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_redaction_cannot_expand_output_past_the_declared_bound",
+      "path": "extraction_parity/tests/test_differential_runner.py",
+      "source_digest": "sha256:4dbd0798afb316319643d88e0672c67eec2c03c7c84db383fa2535dcf6cfdd48"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_semantic_drift_emits_failed_evidence",
+      "path": "extraction_parity/tests/test_differential_runner.py",
+      "source_digest": "sha256:4dbd0798afb316319643d88e0672c67eec2c03c7c84db383fa2535dcf6cfdd48"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_differential_runner.DifferentialRunnerTests.test_timeout_and_output_limit_are_infrastructure_outcomes",
+      "path": "extraction_parity/tests/test_differential_runner.py",
+      "source_digest": "sha256:4dbd0798afb316319643d88e0672c67eec2c03c7c84db383fa2535dcf6cfdd48"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_migration_inventory.MethodInventoryTests.test_build_requires_exhaustive_module_assignment_and_finds_candidate",
+      "path": "extraction_parity/tests/test_migration_inventory.py",
+      "source_digest": "sha256:d2e213009e063ab8bef3da1b10937f3f5b8ace8385dd9c32e8a480460af34929"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_migration_inventory.MethodInventoryTests.test_inventory_decoder_rejects_count_drift",
+      "path": "extraction_parity/tests/test_migration_inventory.py",
+      "source_digest": "sha256:d2e213009e063ab8bef3da1b10937f3f5b8ace8385dd9c32e8a480460af34929"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_migration_inventory.MethodInventoryTests.test_method_record_exposes_negative_and_subtest_hints",
+      "path": "extraction_parity/tests/test_migration_inventory.py",
+      "source_digest": "sha256:d2e213009e063ab8bef3da1b10937f3f5b8ace8385dd9c32e8a480460af34929"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_migration_inventory.MethodInventoryTests.test_snapshot_scan_records_only_configured_test_and_script_roots",
+      "path": "extraction_parity/tests/test_migration_inventory.py",
+      "source_digest": "sha256:d2e213009e063ab8bef3da1b10937f3f5b8ace8385dd9c32e8a480460af34929"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_migration_inventory.MigrationRulesTests.test_mutable_only_target_is_closed_and_distinct_from_reference_target",
+      "path": "extraction_parity/tests/test_migration_inventory.py",
+      "source_digest": "sha256:d2e213009e063ab8bef3da1b10937f3f5b8ace8385dd9c32e8a480460af34929"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_migration_inventory.MigrationRulesTests.test_rules_are_closed",
+      "path": "extraction_parity/tests/test_migration_inventory.py",
+      "source_digest": "sha256:d2e213009e063ab8bef3da1b10937f3f5b8ace8385dd9c32e8a480460af34929"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_migration_inventory.MigrationRulesTests.test_rules_reject_duplicate_module_ownership",
+      "path": "extraction_parity/tests/test_migration_inventory.py",
+      "source_digest": "sha256:d2e213009e063ab8bef3da1b10937f3f5b8ace8385dd9c32e8a480460af34929"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_builder_preserves_owner_and_deferred_state",
+      "path": "extraction_parity/tests/test_parity_manifest.py",
+      "source_digest": "sha256:2789a89605cddd5f3304401fd29883604d5d101db409f10d325bdbe8be81d303"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_closed_manifest_round_trips_required_and_deferred_entries",
+      "path": "extraction_parity/tests/test_parity_manifest.py",
+      "source_digest": "sha256:2789a89605cddd5f3304401fd29883604d5d101db409f10d325bdbe8be81d303"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_successor_and_supersession_states_are_closed_bounded_and_exclusive",
+      "path": "extraction_parity/tests/test_parity_manifest.py",
+      "source_digest": "sha256:2789a89605cddd5f3304401fd29883604d5d101db409f10d325bdbe8be81d303"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_unknown_fields_duplicates_and_unreviewed_supersession_fail_closed",
+      "path": "extraction_parity/tests/test_parity_manifest.py",
+      "source_digest": "sha256:2789a89605cddd5f3304401fd29883604d5d101db409f10d325bdbe8be81d303"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_manifest.ParityManifestTests.test_writer_is_deterministic_atomic_and_creates_its_parent",
+      "path": "extraction_parity/tests/test_parity_manifest.py",
+      "source_digest": "sha256:2789a89605cddd5f3304401fd29883604d5d101db409f10d325bdbe8be81d303"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_evidence_index_is_closed_unique_and_digest_bounded",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_foundation_accepts_exhaustive_mapping_without_claiming_migration",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_migration_policy_requires_passing_successor_evidence",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_missing_and_stale_mappings_fail_closed",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_accepts_explicit_successor_or_supersession",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_fails_on_unmapped_core_only",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_rejects_missing_or_failed_successor_evidence",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_closeout_rejects_non_core_supersession",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_family_inventory_fails_closed_on_invalid_report_shape",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_required_core_family_inventory_groups_unmapped_laws_deterministically",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_reviewed_supersession_completes_required_entry_but_not_deferred_work",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_parity_validation.ParityValidationTests.test_successor_must_resolve_to_matching_passing_evidence",
+      "path": "extraction_parity/tests/test_parity_validation.py",
+      "source_digest": "sha256:0e3d6185016b5025f12599d7f27205cf2d01eeaddc7217c711c71703e52eada0"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_demo_inventory.ReferenceDemoInventoryTests.test_every_discovered_script_is_accounted_for_exactly_once",
+      "path": "extraction_parity/tests/test_reference_demo_inventory.py",
+      "source_digest": "sha256:3e1e44165759a3db4a85edeb85b36f371d4c9a25f872c1aeb6d526cab856b868"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_demo_inventory.ReferenceDemoInventoryTests.test_unknown_fields_states_and_semantic_normalization_fail_closed",
+      "path": "extraction_parity/tests/test_reference_demo_inventory.py",
+      "source_digest": "sha256:3e1e44165759a3db4a85edeb85b36f371d4c9a25f872c1aeb6d526cab856b868"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_closed_owner_kinds_and_named_product",
+      "path": "extraction_parity/tests/test_reference_law_ownership.py",
+      "source_digest": "sha256:19c2a05da280f4b9cf7a4a4acb6d6fee545f9d72520a8b3f72adbd5325fe7442"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_inventory_preserves_occurrences_and_assigns_exactly_one_owner",
+      "path": "extraction_parity/tests/test_reference_law_ownership.py",
+      "source_digest": "sha256:19c2a05da280f4b9cf7a4a4acb6d6fee545f9d72520a8b3f72adbd5325fe7442"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_law_ownership.ReferenceLawOwnershipTests.test_unlisted_product_vocabulary_cannot_fall_through_to_core",
+      "path": "extraction_parity/tests/test_reference_law_ownership.py",
+      "source_digest": "sha256:19c2a05da280f4b9cf7a4a4acb6d6fee545f9d72520a8b3f72adbd5325fe7442"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_evidence_encoding_is_deterministic_and_atomic",
+      "path": "extraction_parity/tests/test_reference_parity_evidence.py",
+      "source_digest": "sha256:6cb708111858ad233079d87c879b394d5858756d7b5e12f2f4bf7e56a9f9afa1"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_evidence_requires_exact_reference_commit_and_contains_no_raw_log",
+      "path": "extraction_parity/tests/test_reference_parity_evidence.py",
+      "source_digest": "sha256:6cb708111858ad233079d87c879b394d5858756d7b5e12f2f4bf7e56a9f9afa1"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_resource_inventory_reports_additions_without_cleanup_instructions",
+      "path": "extraction_parity/tests/test_reference_parity_evidence.py",
+      "source_digest": "sha256:6cb708111858ad233079d87c879b394d5858756d7b5e12f2f4bf7e56a9f9afa1"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_runner_uses_archived_source_and_has_no_global_cleanup",
+      "path": "extraction_parity/tests/test_reference_parity_evidence.py",
+      "source_digest": "sha256:6cb708111858ad233079d87c879b394d5858756d7b5e12f2f4bf7e56a9f9afa1"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_successful_unittest_summary_is_closed_and_bounded",
+      "path": "extraction_parity/tests/test_reference_parity_evidence.py",
+      "source_digest": "sha256:6cb708111858ad233079d87c879b394d5858756d7b5e12f2f4bf7e56a9f9afa1"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_parity_evidence.ReferenceParityEvidenceTests.test_summary_rejects_failure_missing_summary_and_oversized_output",
+      "path": "extraction_parity/tests/test_reference_parity_evidence.py",
+      "source_digest": "sha256:6cb708111858ad233079d87c879b394d5858756d7b5e12f2f4bf7e56a9f9afa1"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_ambiguous_or_invalid_test_names_fail_closed",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py",
+      "source_digest": "sha256:cab60832aa3eebb43345ede38ee84498d5236d8200e09dd8c1071704ddc17a08"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_descriptor_is_sorted_and_closed",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py",
+      "source_digest": "sha256:cab60832aa3eebb43345ede38ee84498d5236d8200e09dd8c1071704ddc17a08"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_descriptor_preserves_duplicate_collection_as_one_law_with_occurrences",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py",
+      "source_digest": "sha256:cab60832aa3eebb43345ede38ee84498d5236d8200e09dd8c1071704ddc17a08"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_inventory_rejects_duplicate_reference_and_law_identity",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py",
+      "source_digest": "sha256:cab60832aa3eebb43345ede38ee84498d5236d8200e09dd8c1071704ddc17a08"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_inventory_runner_uses_the_frozen_archive",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py",
+      "source_digest": "sha256:cab60832aa3eebb43345ede38ee84498d5236d8200e09dd8c1071704ddc17a08"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_law_identity_uses_behavior_name_not_module_or_class",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py",
+      "source_digest": "sha256:cab60832aa3eebb43345ede38ee84498d5236d8200e09dd8c1071704ddc17a08"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_optional_discovery_package_prefix_canonicalizes_to_one_reference",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py",
+      "source_digest": "sha256:cab60832aa3eebb43345ede38ee84498d5236d8200e09dd8c1071704ddc17a08"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_reference_test_inventory.ReferenceTestInventoryTests.test_subtest_dimensions_preserve_parameter_names",
+      "path": "extraction_parity/tests/test_reference_test_inventory.py",
+      "source_digest": "sha256:cab60832aa3eebb43345ede38ee84498d5236d8200e09dd8c1071704ddc17a08"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_completion.SemanticCompletionTests.test_closed_or_incomplete_future_owner_fails_closed",
+      "path": "extraction_parity/tests/test_semantic_completion.py",
+      "source_digest": "sha256:67cf6163e483a4bf4be0e31564ad1c5dece257f7f46aea36ff1ffd7694a11fee"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_completion.SemanticCompletionTests.test_count_only_claim_and_uninventoried_live_entry_fail_closed",
+      "path": "extraction_parity/tests/test_semantic_completion.py",
+      "source_digest": "sha256:67cf6163e483a4bf4be0e31564ad1c5dece257f7f46aea36ff1ffd7694a11fee"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_completion.SemanticCompletionTests.test_exact_ownership_distinguishes_implemented_and_future_laws",
+      "path": "extraction_parity/tests/test_semantic_completion.py",
+      "source_digest": "sha256:67cf6163e483a4bf4be0e31564ad1c5dece257f7f46aea36ff1ffd7694a11fee"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_completion.SemanticCompletionTests.test_missing_demo_or_current_identity_fails_closed",
+      "path": "extraction_parity/tests/test_semantic_completion.py",
+      "source_digest": "sha256:67cf6163e483a4bf4be0e31564ad1c5dece257f7f46aea36ff1ffd7694a11fee"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_completion.SemanticCompletionTests.test_repository_artifact_proves_zero_unowned_laws",
+      "path": "extraction_parity/tests/test_semantic_completion.py",
+      "source_digest": "sha256:67cf6163e483a4bf4be0e31564ad1c5dece257f7f46aea36ff1ffd7694a11fee"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_completion.SemanticCompletionTests.test_stale_package_coordinate_fails_closed",
+      "path": "extraction_parity/tests/test_semantic_completion.py",
+      "source_digest": "sha256:67cf6163e483a4bf4be0e31564ad1c5dece257f7f46aea36ff1ffd7694a11fee"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_archived_mutable_only_decision_requires_named_artifact",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_closed_reconciliation_accepts_current_and_future_dispositions",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_current_test_index_requires_and_scans_explicit_external_root",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_decision_slice_accepts_multiple_unique_current_distributions",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_decision_slice_rejects_empty_or_duplicate_distributions",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_future_issue_must_be_open_and_current_disposition_must_name_tests",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1320_artifact_names_only_live_core_tests",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1321_artifact_names_only_live_core_and_operations_tests",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1322_artifact_records_external_interpreter_evidence",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1323_artifact_records_server_product_evidence",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1324_artifact_records_durable_secret_evidence",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1345_artifact_closes_every_mutable_only_law",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1346_artifact_closes_architecture_and_package_laws",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1347_artifacts_close_live_laws_and_legacy_scripts",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_1348_aggregates_every_cross_repository_input",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_issue_slice_requires_exactly_one_review_per_assigned_law",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_mutable_only_decisions_require_exact_current_or_archive_evidence",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_server_index_includes_repository_and_product_owned_tests",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_validation_rejects_law_drift_and_duplicate_ownership",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    },
+    {
+      "distribution": "control-plane-kit-parity",
+      "gate": "python3 -m unittest discover -s extraction_parity/tests -t .",
+      "id": "control-plane-kit-parity:tests.test_semantic_reconciliation.SemanticReconciliationTests.test_validation_rejects_nonexistent_current_test",
+      "path": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "source_digest": "sha256:b4dd5c638f304387fb06134cdfff5ab245a995f5c006beb51d3abed5f272f483"
+    }
+  ],
+  "current_live_laws": [
+    {
+      "classification": "package-gate",
+      "distribution": "control-plane-kit-core",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The control-plane-kit-core/test.sh entry point remains explicitly classified as package-gate evidence.",
+      "owner": "OpenJ92/control-plane-kit#1316",
+      "path": "control-plane-kit-core/test.sh"
+    },
+    {
+      "classification": "package-gate",
+      "distribution": "control-plane-kit-interpreters",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The test.sh entry point remains explicitly classified as package-gate evidence.",
+      "owner": "OpenJ92/control-plane-kit#1316",
+      "path": "test.sh"
+    },
+    {
+      "classification": "package-gate",
+      "distribution": "control-plane-kit-operations",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The control-plane-kit-operations/test.sh entry point remains explicitly classified as package-gate evidence.",
+      "owner": "OpenJ92/control-plane-kit#1316",
+      "path": "control-plane-kit-operations/test.sh"
+    },
+    {
+      "classification": "package-gate",
+      "distribution": "control-plane-kit-secrets",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The test.sh entry point remains explicitly classified as package-gate evidence.",
+      "owner": "OpenJ92/control-plane-kit#1316",
+      "path": "test.sh"
+    },
+    {
+      "classification": "diagnostic-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_cloudflare_two_gateway_smoke.sh entry point remains explicitly classified as diagnostic-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1133",
+      "path": "scripts/cpk_cloudflare_two_gateway_smoke.sh"
+    },
+    {
+      "classification": "diagnostic-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_local_gateway_private_probe_smoke.sh entry point remains explicitly classified as diagnostic-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1133",
+      "path": "scripts/cpk_local_gateway_private_probe_smoke.sh"
+    },
+    {
+      "classification": "image-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_local_gateway_structural_grant_image_smoke.sh entry point remains explicitly classified as image-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/cpk_local_gateway_structural_grant_image_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_cloudflare_secret_custody_source_live_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_cloudflare_secret_custody_source_live_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_hosted_activity_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_hosted_activity_smoke.sh"
+    },
+    {
+      "classification": "image-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_image_smoke.sh entry point remains explicitly classified as image-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/cpk_server_image_smoke.sh"
+    },
+    {
+      "classification": "publication-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_published_image_smoke.sh entry point remains explicitly classified as publication-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/cpk_server_published_image_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_recursive_activity_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_recursive_activity_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_recursive_tls_activity_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_recursive_tls_activity_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_remote_tls_secret_custody_source_live_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_remote_tls_secret_custody_source_live_smoke.sh"
+    },
+    {
+      "classification": "publication-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_secret_consumers_published_live_smoke.sh entry point remains explicitly classified as publication-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/cpk_server_secret_consumers_published_live_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_secret_provider_source_live_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_secret_provider_source_live_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_seeded_stress_public_ingress_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_seeded_stress_public_ingress_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_workspace_a_router_transition_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_workspace_a_router_transition_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_workspace_b_multiplexer_observer_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_workspace_b_multiplexer_observer_smoke.sh"
+    },
+    {
+      "classification": "authoritative-live",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/cpk_server_workspace_c_postgres_retained_data_smoke.sh entry point remains explicitly classified as authoritative-live evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/cpk_server_workspace_c_postgres_retained_data_smoke.sh"
+    },
+    {
+      "classification": "resource-audit",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/docker_residue_audit.sh entry point remains explicitly classified as resource-audit evidence.",
+      "owner": "OpenJ92/control-plane-kit#1207",
+      "path": "scripts/docker_residue_audit.sh"
+    },
+    {
+      "classification": "image-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/hello_server_image_smoke.sh entry point remains explicitly classified as image-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/hello_server_image_smoke.sh"
+    },
+    {
+      "classification": "publication-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/hello_server_published_image_smoke.sh entry point remains explicitly classified as publication-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/hello_server_published_image_smoke.sh"
+    },
+    {
+      "classification": "image-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/http_active_router_image_smoke.sh entry point remains explicitly classified as image-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/http_active_router_image_smoke.sh"
+    },
+    {
+      "classification": "publication-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/http_active_router_published_image_smoke.sh entry point remains explicitly classified as publication-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/http_active_router_published_image_smoke.sh"
+    },
+    {
+      "classification": "image-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/http_multiplexer_image_smoke.sh entry point remains explicitly classified as image-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/http_multiplexer_image_smoke.sh"
+    },
+    {
+      "classification": "publication-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/http_multiplexer_published_image_smoke.sh entry point remains explicitly classified as publication-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/http_multiplexer_published_image_smoke.sh"
+    },
+    {
+      "classification": "image-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/postgres_server_image_smoke.sh entry point remains explicitly classified as image-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/postgres_server_image_smoke.sh"
+    },
+    {
+      "classification": "publication-tool",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/publish_product_image.sh entry point remains explicitly classified as publication-tool evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/publish_product_image.sh"
+    },
+    {
+      "classification": "image-smoke",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The scripts/secrets_server_image_smoke.sh entry point remains explicitly classified as image-smoke evidence.",
+      "owner": "OpenJ92/control-plane-kit-servers:OCI-publication",
+      "path": "scripts/secrets_server_image_smoke.sh"
+    },
+    {
+      "classification": "package-gate",
+      "distribution": "control-plane-kit-servers",
+      "evidence": "Exact path and distribution are present in the pinned current source inventory.",
+      "law": "The test.sh entry point remains explicitly classified as package-gate evidence.",
+      "owner": "OpenJ92/control-plane-kit#1316",
+      "path": "test.sh"
+    }
+  ],
+  "demo_reviews": [
+    {
+      "current_evidence": [
+        "core-release.contract-boundary"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "demo.configuration-artifact",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Passing current package or acceptance evidence preserves the behavior without the mutable demo structure.",
+      "reference": "demo.configuration-artifact",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "number": 670,
+        "repository": "OpenJ92/control-plane-kit"
+      },
+      "law": "demo.coredns",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "The desired behavior is copied to a detailed open issue; the root demo is deleted by #1318.",
+      "reference": "demo.coredns",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "reviewed-supersession",
+      "future_issue": null,
+      "law": "demo.docker-publication",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Frozen Docker publication demo executes Docker host-publication effects. Extracted core owns protocol/publication contract values; interpreter/runtime execution belongs to #743.",
+      "reference": "demo.docker-publication",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [
+        "control-plane-kit-servers:scripts/cpk_server_workspace_a_router_transition_smoke.sh"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "demo.gate-d-router-switch",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Passing current package or acceptance evidence preserves the behavior without the mutable demo structure.",
+      "reference": "demo.gate-d-router-switch",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "number": 1096,
+        "repository": "OpenJ92/control-plane-kit"
+      },
+      "law": "demo.gate-f-deployment-program",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "The desired behavior is copied to a detailed open issue; the root demo is deleted by #1318.",
+      "reference": "demo.gate-f-deployment-program",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "number": 941,
+        "repository": "OpenJ92/control-plane-kit"
+      },
+      "law": "demo.generated-hello",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "The desired behavior is copied to a detailed open issue; the root demo is deleted by #1318.",
+      "reference": "demo.generated-hello",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "number": 672,
+        "repository": "OpenJ92/control-plane-kit"
+      },
+      "law": "demo.opentelemetry",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "The desired behavior is copied to a detailed open issue; the root demo is deleted by #1318.",
+      "reference": "demo.opentelemetry",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [
+        "core-release.contract-boundary"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "demo.read-interface",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Passing current package or acceptance evidence preserves the behavior without the mutable demo structure.",
+      "reference": "demo.read-interface",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [
+        "core-release.contract-boundary"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "demo.secret-delivery",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Passing current package or acceptance evidence preserves the behavior without the mutable demo structure.",
+      "reference": "demo.secret-delivery",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "number": 1153,
+        "repository": "OpenJ92/control-plane-kit"
+      },
+      "law": "demo.service-discovery",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "The desired behavior is copied to a detailed open issue; the root demo is deleted by #1318.",
+      "reference": "demo.service-discovery",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "number": 941,
+        "repository": "OpenJ92/control-plane-kit"
+      },
+      "law": "demo.service-infrastructure",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "The desired behavior is copied to a detailed open issue; the root demo is deleted by #1318.",
+      "reference": "demo.service-infrastructure",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "number": 672,
+        "repository": "OpenJ92/control-plane-kit"
+      },
+      "law": "demo.tcp-switch",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "The desired behavior is copied to a detailed open issue; the root demo is deleted by #1318.",
+      "reference": "demo.tcp-switch",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [
+        "core-release.contract-boundary"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "demo.transport",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Passing current package or acceptance evidence preserves the behavior without the mutable demo structure.",
+      "reference": "demo.transport",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [
+        "core-release.contract-boundary"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "demo.verification-observation",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Passing current package or acceptance evidence preserves the behavior without the mutable demo structure.",
+      "reference": "demo.verification-observation",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [],
+      "disposition": "future-issue",
+      "future_issue": {
+        "number": 672,
+        "repository": "OpenJ92/control-plane-kit"
+      },
+      "law": "demo.webhook-delivery",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "The desired behavior is copied to a detailed open issue; the root demo is deleted by #1318.",
+      "reference": "demo.webhook-delivery",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [
+        "release-candidate.complete-suite"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "validation.complete-suite",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Passing current package or acceptance evidence preserves the behavior without the mutable demo structure.",
+      "reference": "validation.complete-suite",
+      "reviewed_by_issue": 1326
+    },
+    {
+      "current_evidence": [
+        "core-release.contract-boundary"
+      ],
+      "disposition": "current-strengthened",
+      "future_issue": null,
+      "law": "validation.package-installation",
+      "negative_case_disposition": "Negative cases remain in current evidence or are copied explicitly to the named future owner.",
+      "obsolete_assumption_disposition": "Root scripts and aggregate package placement are not retained as semantic ownership.",
+      "rationale": "Passing current package or acceptance evidence preserves the behavior without the mutable demo structure.",
+      "reference": "validation.package-installation",
+      "reviewed_by_issue": 1326
+    }
+  ],
+  "expected_counts": {
+    "additional_current_tests": 85,
+    "current_live_laws": 31,
+    "current_test_identities": 1310,
+    "demo_reviews": 17,
+    "future_owned": 392,
+    "manifest_entries": 1107,
+    "mutable_only_reviews": 120,
+    "required_future_owned": 176,
+    "stale_successors": 0,
+    "test_reviews": 1090,
+    "unowned": 0
+  },
+  "future_issues": [
+    {
+      "content_digest": "sha256:3e0340926483f1649389a25977c6abd92967eaadd38f782b98485ef950dcbd02",
+      "law_references": [
+        "demo.coredns",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_product_interpreter_edge_is_exactly_coredns_to_configuration_rendering",
+        "tests.test_coredns.CoreDnsTests.test_a_and_aaaa_projection_deliberately_discards_endpoint_port",
+        "tests.test_coredns.CoreDnsTests.test_artifact_change_is_an_explicit_graph_change_and_round_trips",
+        "tests.test_coredns.CoreDnsTests.test_block_uses_official_pinned_image_and_exact_socket_products",
+        "tests.test_coredns.CoreDnsTests.test_catalogue_exposes_probe_and_runtime_restart_evidence",
+        "tests.test_coredns.CoreDnsTests.test_configuration_canonicalizes_record_permutations",
+        "tests.test_coredns.CoreDnsTests.test_configuration_rejects_out_of_zone_and_duplicate_records",
+        "tests.test_coredns.CoreDnsTests.test_names_and_records_are_closed_typed_values",
+        "tests.test_coredns.CoreDnsTests.test_projection_rejects_stale_inactive_and_unprojectable_records",
+        "tests.test_coredns.CoreDnsTests.test_public_example_exposes_the_complete_pure_projection",
+        "tests.test_coredns.CoreDnsTests.test_registry_projection_is_deterministic_and_preserves_truth_boundary",
+        "tests.test_coredns.CoreDnsTests.test_strict_rendering_is_deterministic_read_only_and_secret_free",
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_coredns_relocation_invariants_are_recorded"
+      ],
+      "number": 670,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "ACCUMULATE.1 Externalize CoreDNS as the first representative upstream-image product",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/670"
+    },
+    {
+      "content_digest": "sha256:0375e382d2109e7e4cee76e822eeef0ecb92ed8c237733eea9e3270764fc5cb6",
+      "law_references": [
+        "tests.test_http_block_compositions.HttpBlockCompositionTests.test_all_http_block_composition_examples_compile",
+        "tests.test_http_block_compositions.HttpBlockCompositionTests.test_proxy_composition_binds_target_environment",
+        "tests.test_http_block_compositions.HttpBlockCompositionTests.test_rate_limiter_composition_binds_target",
+        "tests.test_http_block_compositions.HttpBlockCompositionTests.test_weighted_balancer_composition_binds_two_targets",
+        "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_live_generated_server_enforces_concurrency_queue_and_auth",
+        "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_policy_and_block_identity_are_closed_and_bounded",
+        "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_queue_timeout_and_target_failure_recover_without_negative_permits",
+        "tests.test_http_bulkhead_server_block.HttpBulkheadTests.test_ticketed_queue_rejects_overflow_and_releases_all_permits",
+        "tests.test_http_cache_server_block.HttpCacheTests.test_capacity_eviction_and_purge_are_exact",
+        "tests.test_http_cache_server_block.HttpCacheTests.test_explicit_safe_vary_headers_partition_hashed_keys",
+        "tests.test_http_cache_server_block.HttpCacheTests.test_hit_miss_expiry_and_stale_refresh_are_deterministic",
+        "tests.test_http_cache_server_block.HttpCacheTests.test_live_generated_server_caches_bounds_purges_and_redacts",
+        "tests.test_http_cache_server_block.HttpCacheTests.test_policy_and_block_identity_are_closed_and_bounded",
+        "tests.test_http_cache_server_block.HttpCacheTests.test_sensitive_private_and_unknown_vary_responses_fail_closed",
+        "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_block_preserves_product_policy_and_opaque_control_secret",
+        "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_closed_open_half_open_closed_is_pure_and_bounded",
+        "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_half_open_failure_reopens_and_safe_method_policy_is_explicit",
+        "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_live_generated_server_enforces_state_auth_and_reset",
+        "tests.test_http_circuit_breaker_server_block.HttpCircuitBreakerTests.test_policy_bounds_request_response_and_typed_methods",
+        "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_block_maturity_survives_graph_codec_and_production_policy_rejects_it",
+        "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_closed_fault_variants_have_exact_behavior",
+        "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_disabled_default_and_injected_and_natural_evidence_are_independent",
+        "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_fault_descriptor_language_is_exact_closed_and_bounded",
+        "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_graph_composition_drives_retry_and_circuit_interactions",
+        "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_live_generated_server_mutates_only_with_auth_and_cleans_up",
+        "tests.test_http_fault_injector_server_block.HttpFaultInjectionTests.test_seeded_probability_replays_exact_selection_sequence",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_block_is_test_only_application_with_graph_wired_target",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_cancellation_stops_future_dispatch_and_shutdown_settles_workers",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_exact_trigger_replays_and_changed_intent_conflicts",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_fastapi_control_routes_fail_closed_and_replay_exact_command",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_injected_clock_executes_the_pure_deterministic_schedule",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_live_process_drives_rate_limiter_and_weighted_balancer",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_outcomes_are_aggregate_only_and_concurrency_is_bounded",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_policy_command_codec_and_schedule_are_closed_and_deterministic",
+        "tests.test_http_load_generator.HttpLoadGeneratorTests.test_startup_policy_rejects_excessive_or_overlapping_runs_before_dispatch",
+        "tests.test_http_policy_family_acceptance.HttpPolicyFamilyAcceptanceTests.test_live_representative_chain_composes_real_http_servers",
+        "tests.test_http_policy_family_acceptance.HttpPolicyFamilyAcceptanceTests.test_plan_derives_provider_health_before_consumer_start",
+        "tests.test_http_policy_family_acceptance.HttpPolicyFamilyAcceptanceTests.test_production_policy_rejects_test_and_teaching_products",
+        "tests.test_http_policy_family_acceptance.HttpPolicyFamilyAcceptanceTests.test_recipe_contains_the_complete_typed_http_product_family",
+        "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_block_advertises_provider_and_target_requirement",
+        "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_block_compiles_socket_connection_to_environment",
+        "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_forwards_request_to_active_target",
+        "tests.test_http_proxy_server_block.HttpProxyServerBlockTests.test_proxy_runtime_target_change_affects_later_requests",
+        "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_allows_until_quota_is_exhausted_then_returns_429",
+        "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_block_advertises_provider_and_target_requirement",
+        "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_block_compiles_socket_connection_to_environment",
+        "tests.test_http_rate_limiter_server_block.HttpRateLimiterServerBlockTests.test_rate_limiter_reset_reloads_quota",
+        "tests.test_http_retry_server_block.HttpRetryTests.test_block_has_closed_product_and_policy_identity",
+        "tests.test_http_retry_server_block.HttpRetryTests.test_graph_order_expresses_retry_and_circuit_composition",
+        "tests.test_http_retry_server_block.HttpRetryTests.test_live_generated_server_bounds_retries_timeouts_and_evidence",
+        "tests.test_http_retry_server_block.HttpRetryTests.test_non_idempotent_retry_requires_explicit_key_policy",
+        "tests.test_http_retry_server_block.HttpRetryTests.test_policy_and_payloads_are_bounded_closed_values",
+        "tests.test_http_retry_server_block.HttpRetryTests.test_success_recovery_and_exhaustion_are_finite",
+        "tests.test_http_timeout_server_block.HttpTimeoutTests.test_live_generated_server_bounds_effect_and_reports_client_disconnect",
+        "tests.test_http_timeout_server_block.HttpTimeoutTests.test_per_attempt_and_total_deadline_remain_separate",
+        "tests.test_http_timeout_server_block.HttpTimeoutTests.test_policy_and_block_identity_are_closed_and_finite",
+        "tests.test_http_timeout_server_block.HttpTimeoutTests.test_success_timeout_disconnect_and_bounds_are_distinct",
+        "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_evidence_is_bounded_paginated_and_evicts_oldest",
+        "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_live_generated_server_forwards_and_exposes_only_authenticated_pages",
+        "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_local_rejection_and_target_loss_are_visible_without_raising",
+        "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_one_block_type_logs_inbound_and_outbound_by_graph_position",
+        "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_policy_and_block_identity_are_closed",
+        "tests.test_http_traffic_logger_server_block.HttpTrafficLoggerTests.test_redacted_and_hashed_paths_never_retain_sensitive_values",
+        "tests.test_request_observer_server_block.RequestObserverServerTests.test_behavior_retains_only_count_and_generated_identity",
+        "tests.test_request_observer_server_block.RequestObserverServerTests.test_block_is_a_closed_docker_product_with_opaque_control_secret",
+        "tests.test_request_observer_server_block.RequestObserverServerTests.test_live_command_authenticates_metrics_and_redacts_traffic",
+        "tests.test_request_observer_server_block.RequestObserverServerTests.test_live_multiplexer_copies_traffic_to_observer",
+        "tests.test_request_observer_server_block.RequestObserverServerTests.test_oversized_request_is_rejected_without_observation"
+      ],
+      "number": 671,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "ACCUMULATE.2 Accumulate teaching HTTP proxy, routing, balancing, resilience, and observability products",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/671"
+    },
+    {
+      "content_digest": "sha256:75e49199e584cc65928e8b94ca5acc08a67e1baa60cb88df2be2d39869cbbde4",
+      "law_references": [
+        "demo.opentelemetry",
+        "demo.tcp-switch",
+        "demo.webhook-delivery",
+        "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_authentication_and_authorization_are_separate_closed_decisions",
+        "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_block_is_test_only_and_secret_values_are_runtime_material",
+        "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_live_test_adapter_strips_forgery_enforces_policy_and_redacts",
+        "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_policy_language_is_closed_and_mechanism_specific",
+        "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_route_prefixes_match_segments_not_lexical_prefixes",
+        "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_untrusted_identity_headers_are_replaced_after_authentication",
+        "tests.test_http_auth_gateway_server_block.HttpAuthGatewayTests.test_validator_unavailability_fails_closed_without_becoming_forbidden",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_authority_and_route_eligibility_fail_before_effect_or_write",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_concurrent_identical_requests_have_one_execution_winner",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_effect_loss_is_uncertain_and_never_replays_automatically",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_exact_replay_returns_reference_without_persisting_body_or_key",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_expired_in_flight_record_becomes_uncertain_without_dispatch",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_expired_terminal_record_can_be_reused_as_fresh_intent",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_fastapi_boundary_rejects_oversized_body_before_service",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_fastapi_boundary_requires_attestation_and_reconstructs_durable_replay",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_gateway_unit_of_work_rolls_back_without_commit_request",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_live_process_bootstraps_own_store_and_replays_without_second_effect",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_oversized_result_reference_is_not_retained_for_replay",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_policy_codec_and_block_preserve_closed_runtime_requirements",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_result_persistence_loss_becomes_uncertain_after_lease_expiry",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_actor_conflicts_without_effect",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_payload_conflicts_without_effect",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_same_key_with_changed_query_conflicts_without_effect",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_schema_reinstall_preserves_rows_and_constraint_identity",
+        "tests.test_idempotency_gateway.IdempotencyGatewayTests.test_uncertain_records_are_not_evicted_to_make_capacity",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_block_advertises_exact_otlp_and_health_sockets",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_catalogue_marks_official_integration_operational",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_default_configuration_is_deterministic_closed_yaml",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_exporter_headers_are_bounded",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_exporter_requirement_and_environment_names_are_globally_unique",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_graph_codec_and_diff_retain_exact_artifact_identity",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_invalid_pipeline_references_fail_at_pure_boundary",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_provider_socket_names_and_ports_are_globally_unique",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_remote_exporter_uses_socket_and_opaque_secret_delivery",
+        "tests.test_opentelemetry_collector.OpenTelemetryCollectorTests.test_sampling_is_rejected_outside_trace_pipeline",
+        "tests.test_tcp_switch.TcpSwitchTests.test_active_data_path_changes_only_after_authenticated_switch",
+        "tests.test_tcp_switch.TcpSwitchTests.test_block_retains_exact_product_protocol_and_control_contract",
+        "tests.test_tcp_switch.TcpSwitchTests.test_round_robin_selects_connections_without_inspecting_bytes",
+        "tests.test_tcp_switch.TcpSwitchTests.test_runtime_target_replacement_is_bounded_and_validated",
+        "tests.test_tcp_switch.TcpSwitchTests.test_target_parser_rejects_credentials_paths_and_wrong_protocol",
+        "tests.test_webhook.WebhookAlgebraTests.test_authority_descriptor_is_closed_typed_and_deterministic",
+        "tests.test_webhook.WebhookAlgebraTests.test_backoff_is_deterministic_bounded_and_capped",
+        "tests.test_webhook.WebhookAlgebraTests.test_claim_release_is_explicit_and_safe_only_before_dispatch",
+        "tests.test_webhook.WebhookAlgebraTests.test_endpoint_authority_is_closed_exact_and_interpreter_independent",
+        "tests.test_webhook.WebhookAlgebraTests.test_endpoint_shape_rejects_unsafe_or_open_forms",
+        "tests.test_webhook.WebhookAlgebraTests.test_every_event_variant_round_trips_through_exact_codec",
+        "tests.test_webhook.WebhookAlgebraTests.test_impossible_histories_fail_at_the_pure_boundary",
+        "tests.test_webhook.WebhookAlgebraTests.test_intent_is_closed_bounded_and_deterministically_fingerprinted",
+        "tests.test_webhook.WebhookAlgebraTests.test_payload_is_nonempty_bounded_and_digest_verified",
+        "tests.test_webhook.WebhookAlgebraTests.test_retry_history_requires_exact_policy_time_and_attempt_order",
+        "tests.test_webhook.WebhookAlgebraTests.test_signing_is_opaque_closed_and_uses_non_reserved_header",
+        "tests.test_webhook.WebhookAlgebraTests.test_success_history_reconstructs_without_mutable_cursor",
+        "tests.test_webhook.WebhookAlgebraTests.test_terminal_and_uncertain_histories_have_distinct_destinations",
+        "tests.test_webhook.WebhookAlgebraTests.test_unknown_extra_and_malformed_descriptor_values_fail_closed",
+        "tests.test_webhook_app.WebhookFastApiTests.test_app_factory_reports_its_entrypoint_home",
+        "tests.test_webhook_app.WebhookFastApiTests.test_authenticated_routes_drive_canonical_service_and_read_projection",
+        "tests.test_webhook_app.WebhookFastApiTests.test_authentication_scope_and_workspace_fail_closed",
+        "tests.test_webhook_app.WebhookFastApiTests.test_body_is_bounded_before_json_or_service_execution",
+        "tests.test_webhook_app.WebhookFastApiTests.test_unknown_command_fields_and_read_scope_are_exact",
+        "tests.test_webhook_http.WebhookHttpTests.test_endpoint_must_match_exact_grant_before_secret_resolution",
+        "tests.test_webhook_http.WebhookHttpTests.test_exact_local_grant_signs_body_only_at_dispatch_boundary",
+        "tests.test_webhook_http.WebhookHttpTests.test_http_delivery_reports_its_interpreter_home",
+        "tests.test_webhook_http.WebhookHttpTests.test_http_statuses_redirects_and_transport_failures_are_distinct",
+        "tests.test_webhook_http.WebhookHttpTests.test_public_dns_rebinding_and_public_plaintext_fail_closed",
+        "tests.test_webhook_http.WebhookHttpTests.test_public_hostname_is_resolved_and_pinned_for_same_request",
+        "tests.test_webhook_http.WebhookHttpTests.test_response_body_and_headers_are_bounded_after_send",
+        "tests.test_webhook_http.WebhookHttpTests.test_runtime_private_scope_rejects_other_address_classes",
+        "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_rejects_malformed_success",
+        "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_retries_only_startup_unavailability",
+        "tests.test_webhook_live_harness.WebhookLiveHarnessTests.test_restart_readiness_timeout_is_bounded_and_non_secret",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_command_ledger_preserves_exact_replay_identity",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_concurrent_claim_has_one_winner_and_one_canonical_event",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_concurrent_enqueue_has_one_winner_on_independent_connections",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_intent_journal_and_projection_reconstruct_exact_canonical_state",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_one_unit_of_work_rolls_back_all_webhook_relations_together",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_schema_installer_leaves_commit_and_rollback_to_caller",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_schema_reinstall_preserves_rows_and_constraint_identity",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_unknown_closed_values_and_malformed_shapes_fail_in_postgres",
+        "tests.test_webhook_postgres.WebhookPostgresTests.test_versioned_append_and_projection_reject_stale_writers",
+        "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_block_declares_product_database_http_and_opaque_secrets",
+        "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_catalogue_exposes_only_executable_readiness_capability",
+        "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_graph_connection_supplies_the_only_database_url",
+        "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_policy_codec_is_deterministic_closed_and_bounded",
+        "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_policy_rejects_excessive_grants_and_encoded_content",
+        "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_process_factory_reports_its_entrypoint_home",
+        "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_product_and_verification_round_trip_through_graph_codec",
+        "tests.test_webhook_server_block.WebhookDeliveryBlockTests.test_psycopg_interpreter_preserves_graph_identity_but_vends_driver_dsn",
+        "tests.test_webhook_service.WebhookServiceTests.test_competing_service_claims_have_one_winner",
+        "tests.test_webhook_service.WebhookServiceTests.test_crash_after_effect_start_is_reconstructed_as_uncertain_and_never_replayed",
+        "tests.test_webhook_service.WebhookServiceTests.test_crash_before_dispatch_releases_expired_claim_for_new_worker",
+        "tests.test_webhook_service.WebhookServiceTests.test_effect_exception_becomes_operator_required_without_secret_or_payload_evidence",
+        "tests.test_webhook_service.WebhookServiceTests.test_enqueue_is_atomic_exactly_idempotent_and_authorized",
+        "tests.test_webhook_service.WebhookServiceTests.test_expired_claim_cannot_be_relabelled_as_voluntary_abandonment",
+        "tests.test_webhook_service.WebhookServiceTests.test_retry_failure_dead_letters_when_backoff_cannot_fit_deadline",
+        "tests.test_webhook_service.WebhookServiceTests.test_retry_policy_schedules_next_attempt_then_delivers",
+        "tests.test_webhook_service.WebhookServiceTests.test_successful_dispatch_uses_split_transactions_and_never_replays_effect",
+        "tests.test_webhook_service.WebhookServiceTests.test_terminal_failure_dead_letters_without_retry",
+        "tests.test_webhook_service.WebhookServiceTests.test_worker_can_abandon_claim_before_attempt_start",
+        "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_command_ledger_failure_rolls_back_all_enqueue_facts",
+        "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_committed_result_wins_before_late_recovery",
+        "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_dispatch_at_expiry_and_recovery_before_expiry_fail_closed",
+        "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_effect_success_with_result_transaction_failure_remains_uncertain",
+        "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_malformed_capability_result_cannot_publish_false_result",
+        "tests.test_webhook_service_hardening.WebhookServiceHardeningTests.test_recovery_wins_race_against_late_effect_result"
+      ],
+      "number": 672,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "ACCUMULATE.3 Externalize domain-backed discovery, webhook, idempotency, auth-test, telemetry, and TCP products",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/672"
+    },
+    {
+      "content_digest": "sha256:5d64d31a86808a9dba026470eac5f1fa2dbc86ce27432ac11987d5175383e7d9",
+      "law_references": [
+        "demo.generated-hello",
+        "demo.service-infrastructure",
+        "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_every_application_dependency_has_paired_edges",
+        "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_generated_graph_round_trips_and_compiles_from_empty",
+        "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_invalidities_produce_exact_structured_findings",
+        "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_shape_has_closed_resource_bounds",
+        "tests.test_generated_hello_graphs.GeneratedHelloGraphTests.test_valid_generation_is_deterministic_and_counted_by_shape",
+        "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_default_live_shape_is_a_valid_paired_dependency_topology",
+        "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_generated_startup_wiring_never_becomes_control_route_effects",
+        "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_live_shape_limit_can_be_raised_explicitly",
+        "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_live_shape_rejects_accidental_container_explosion",
+        "tests.test_generated_hello_live_scenario.GeneratedHelloLiveScenarioTests.test_probe_authorities_drop_driver_and_database_path_information"
+      ],
+      "number": 941,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "SEEDED.STRESS: Exercise richer local Docker product topologies after recursive baseline",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/941"
+    },
+    {
+      "content_digest": "sha256:1296cd6832f6de89a3991a8a8c15e3ea2c0afe4e8d02fa1724e52f79df6bebfc",
+      "law_references": [
+        "tests.test_docker_configuration.DockerConfigurationTests.test_cleanup_preflights_every_artifact_before_container_removal",
+        "tests.test_docker_retention.DockerRetentionTests.test_explicit_data_destruction_removes_only_the_named_owned_volume",
+        "tests.test_docker_retention.DockerRetentionTests.test_start_and_explicit_destruction_replay_converge",
+        "tests.test_docker_secrets.DockerSecretTests.test_known_container_start_failure_removes_owned_secret_volume",
+        "tests.test_docker_secrets.DockerSecretTests.test_reference_rotation_changes_container_and_volume_ownership",
+        "tests.test_docker_secrets.DockerSecretTests.test_teardown_ownership_conflict_preserves_container_and_volume",
+        "tests.test_docker_secrets.DockerSecretTests.test_teardown_preflights_secret_volume_before_container_removal",
+        "tests.test_docker_secrets.DockerSecretTests.test_uncertain_materialization_preserves_owned_volume_for_recovery"
+      ],
+      "number": 1070,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "[FUTURE] Generalize owned external resource lifecycle across runtimes, ingress, data services, and secrets",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1070"
+    },
+    {
+      "content_digest": "sha256:f8b73b461cb1cd13a5c83efddc116515084e0575356d16519216267d30dab414",
+      "law_references": [
+        "tests.test_docker_configuration.DockerConfigurationTests.test_concurrent_identical_starts_converge_on_exact_artifact",
+        "tests.test_docker_configuration.DockerConfigurationTests.test_partial_materialization_is_uncertain_and_cleanup_is_artifact_only",
+        "tests.test_docker_ownership.DockerOwnershipTests.test_concurrent_equivalent_creation_converges_on_owned_resource",
+        "tests.test_execution_concurrency.ExecutionConcurrencyTests.test_expired_claim_remains_durable_and_cannot_be_reclaimed",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_adapter_loss_becomes_uncertain_after_restart",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_crash_before_dispatch_reconstructs_without_replay",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_executes_pinned_inverse_and_settles_run",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_failure_is_partial_and_preserves_forward_failure",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_compensation_result_transaction_crash_rolls_back_evidence",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_concurrent_observer_reports_in_flight_without_duplicate_effect",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_crash_after_effect_records_uncertainty_without_replay",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_crash_after_intent_never_blindly_attempts_effect",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_earlier_compensation_survives_later_failure",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_failed_result_commit_resumes_run_settlement_without_replay",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_parallel_compensation_uses_reverse_durable_completion_order",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_result_transaction_crash_rolls_back_result_and_observation",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_success_result_commit_resumes_run_settlement_without_replay",
+        "tests.test_execution_coordinator.ExecutionCoordinatorTests.test_uncertain_compensation_pauses_without_blind_replay",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_accepted_uncompensated_and_recovery_history_remain_visible",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_compensation_failure_never_replaces_original_failure",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_compensation_progress_is_derived_from_the_canonical_journal",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_empty_and_active_runs_preserve_distinct_run_and_saga_status",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_expired_claim_replaces_effect_recovery_with_claim_recovery",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_failed_run_preserves_failure_and_offers_closed_recovery",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_foreign_identity_and_malformed_observation_fail_closed",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_non_compensatable_failure_projects_bounded_activity_ids",
+        "tests.test_operator_recovery_projection.OperatorRecoveryProjectionTests.test_paused_uncertainty_exposes_only_evidence_guarded_choices",
+        "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_expired_renew_takeover_and_abandon_have_one_postgres_winner",
+        "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_incompatible_recovery_decisions_have_one_postgres_winner",
+        "tests.test_recovery_concurrency.RecoveryConcurrencyTests.test_late_action_failure_rolls_back_expired_claim_recovery",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_acceptance_and_remain_paused_preserve_distinct_projection_meaning",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_cancel_clears_request_claim_and_still_replays_exact_command",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_committed_recovery_command_drives_canonical_operator_projection",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_compensation_failure_records_partial_failure",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_compensation_uses_events_and_settles_without_erasing_failure",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_abandonment_is_terminal_and_event_producing",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_renewal_preserves_prior_ownership_evidence",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_expired_claim_takeover_changes_owner_with_immutable_evidence",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_failure_compensation_and_retry_preserve_truthful_lineage",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_authority_and_late_action_failure_fail_closed",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_journal_version_rejects_a_stale_competing_choice",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rechecks_current_approval_without_journal_writes",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_recovery_rejects_foreign_worker_without_journal_writes",
+        "tests.test_run_lifecycle.RunLifecycleTests.test_uncertainty_resolution_records_choice_and_consequence_atomically"
+      ],
+      "number": 1092,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "HARDEN.2 Execution recovery, leases, fencing, and interrupted effects",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1092"
+    },
+    {
+      "content_digest": "sha256:db85910f8491c5199f2c60ae5527db78cac5f1c2fedcc1a511f7c653a33aa2c1",
+      "law_references": [
+        "demo.gate-f-deployment-program",
+        "tests.test_architecture_deploy.DeploymentApplicationArchitectureTests.test_deployment_application_obeys_composition_boundary",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_runner_uses_deploy_program_not_manual_command_chain",
+        "tests.test_backend_swap_planning_example.BackendSwapPlanningExampleTests.test_complete_workflow_persists_reviewable_plan_without_runtime_effects",
+        "tests.test_backend_swap_planning_example.BackendSwapPlanningExampleTests.test_replaying_the_complete_workflow_reuses_every_durable_fact",
+        "tests.test_deployment_admit_claim_stages.DeploymentAdmitClaimStageTests.test_approved_plan_reaches_execution_through_callable_stages",
+        "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_acceptance_corpus_exercises_all_four_deploy_transition_forms",
+        "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_one_interpreter_classifies_all_transition_forms",
+        "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_transition_constructors_make_invalid_forms_unrepresentable",
+        "tests.test_deployment_application_values.DeploymentApplicationValueTests.test_two_distinct_empty_graphs_are_an_update_not_a_no_op",
+        "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_approve_preserves_canonical_authorization_failure",
+        "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_no_op_preserves_plan_evidence_without_requesting_approval",
+        "tests.test_deployment_plan_approve_stages.DeploymentPlanApproveStageTests.test_plan_suspends_then_approve_records_explicit_authorized_decision",
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_preserves_containers_when_cleanup_policy_preserves",
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_down_stops_without_removing_owned_resources",
+        "tests.test_docker_runtime.DockerRuntimeExecutorTests.test_up_executes_planned_activities_and_returns_runtime_state",
+        "tests.test_generated_hello_program.GeneratedHelloProgramTests.test_generated_graphs_plan_and_reconstruct_through_deployment_program",
+        "tests.test_generated_hello_program.GeneratedHelloProgramTests.test_invalid_generated_graph_records_no_plan_approval_or_effect",
+        "tests.test_package_structure.PackageStructureTests.test_deployment_program_has_one_intentional_package_entrance",
+        "tests.test_planning_scenarios.PlanningScenarioWorkflowTests.test_every_scenario_runs_through_the_postgres_planning_workflow",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_complete_acceptance_corpus_uses_canonical_pipeline",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_cross_workspace_graph_truth",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_context_rejects_missing_plan_truth",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_deployment_program_reconstructs_plan_across_operator_requests",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_executable_scenario_uses_canonical_pipeline_and_projection",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_no_change_records_plan_but_no_approval_run_or_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_failure_uses_real_coordinator_and_does_not_advance",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_programmed_uncertainty_remains_visible_without_advancement",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_readiness_gated_scenario_records_approval_but_no_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_repeated_runs_have_distinct_workspaces_and_fake_state",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_review_blocked_scenario_never_requests_approval_or_effect",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_scenario_order_does_not_change_semantic_results",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_semantic_diagnostic_reports_event_order_not_generated_values",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_preserves_stale_graph_admission_guard",
+        "tests.test_postgres_scenario_runner.PostgresScenarioRunnerTests.test_stored_deployment_refuses_run_before_durable_approval",
+        "tests.test_runtimes.RuntimeStateTests.test_dry_run_plan_stop_is_idempotent_shape",
+        "tests.test_runtimes.RuntimeStateTests.test_dry_run_runtime_returns_interpreted_node_state",
+        "tests.test_runtimes.RuntimeStateTests.test_runtime_state_descriptor_is_json_friendly",
+        "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_deploy_reconstructs_and_advances_with_redacted_read_truth",
+        "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_invalid_graph_records_no_plan_approval_run_effect_or_advancement",
+        "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_no_change_records_plan_without_approval_run_or_effect",
+        "tests.test_service_infrastructure_program.ServiceInfrastructureProgramTests.test_teardown_reconstructs_executes_and_advances_to_empty_graph"
+      ],
+      "number": 1096,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "HARDEN.6 Executable DeploymentProgram and production workflow composition",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1096"
+    },
+    {
+      "content_digest": "sha256:c27540e9f03a1502530cb4ab06e976cf47c390887e5ee5beeb4dd62b7ee0f5a5",
+      "law_references": [
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_configured_token_protects_control_routes",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_control_routes_can_be_called_without_token_when_unconfigured",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_auth_does_not_protect_ordinary_data_routes",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mode_requires_auth_configuration",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutation_body_is_bounded_before_application",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_execution_mutations_require_identity_replay_and_conflict",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_observers_route_mutates_state",
+        "tests.test_block_control_fastapi.BlockControlFastAPITests.test_unknown_active_target_returns_bad_request",
+        "tests.test_block_control_state.BlockControlStateTests.test_capability_payload_uses_descriptors",
+        "tests.test_block_control_state.BlockControlStateTests.test_control_state_is_backed_by_runtime_contract",
+        "tests.test_block_control_state.BlockControlStateTests.test_observer_mutation_updates_observer_state",
+        "tests.test_block_control_state.BlockControlStateTests.test_replacing_targets_clears_stale_active_target",
+        "tests.test_block_control_state.BlockControlStateTests.test_status_and_log_providers_are_used_when_present",
+        "tests.test_block_control_state.BlockControlStateTests.test_target_switch_rejects_unknown_targets",
+        "tests.test_control_http_client.ControlHttpClientTests.test_missing_remote_capability_is_unsupported_without_mutation",
+        "tests.test_control_http_client.ControlHttpClientTests.test_mutation_without_a_trustworthy_result_is_explicitly_uncertain",
+        "tests.test_control_http_client.ControlHttpClientTests.test_redirect_malformed_and_oversized_responses_fail_without_body_echo",
+        "tests.test_control_http_client.ControlHttpClientTests.test_socket_operation_matrix_discovers_capability_before_mutation",
+        "tests.test_control_http_client.ControlHttpClientTests.test_status_and_logs_are_bounded_typed_operator_reads",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_adversarial_peers_remain_bounded_and_redirect_free",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_authentication_fails_closed_without_leaking_token",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_live_mutation_replay_converges_and_changed_intent_conflicts",
+        "tests.test_control_http_live.ControlHttpLiveTests.test_package_blocks_use_authenticated_live_protocol",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_arbitrary_secret_endpoint_and_missing_token_fail_closed",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_docker_private_endpoint_requires_observed_network_and_credential",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_host_local_and_public_authority_are_separate_explicit_policies",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_redirect_like_route_and_invalid_resolver_result_fail_closed",
+        "tests.test_control_http_security.ControlHttpSecurityTests.test_unsafe_authorities_fail_without_echoing_address_or_secret",
+        "tests.test_effect_values.EffectValueTests.test_control_actions_are_provider_neutral_and_typed",
+        "tests.test_http_active_router_server_block.HttpActiveRouterServerBlockTests.test_active_router_rejects_unknown_active_target",
+        "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_block_advertises_provider_and_target_requirements",
+        "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_block_compiles_socket_connections_to_environment",
+        "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_rejects_no_positive_weights",
+        "tests.test_http_weighted_balancer_server_block.HttpWeightedLoadBalancerServerBlockTests.test_weighted_balancer_routes_by_deterministic_weighted_cycle",
+        "tests.test_managed_http_router.ManagedHttpRouterTests.test_block_declares_graph_wired_targets_and_opaque_control_secret",
+        "tests.test_managed_http_router.ManagedHttpRouterTests.test_same_data_path_changes_only_after_authenticated_switch"
+      ],
+      "number": 1146,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "HARDEN.AUTH.NODE-CONTROL: Authenticated server SDK and workload control surfaces",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1146"
+    },
+    {
+      "content_digest": "sha256:67a5da9edeea9a55d9a4273444d772d84af24376652719fd60d808d3cca3af24",
+      "law_references": [
+        "demo.service-discovery",
+        "tests.test_discovery_language.DiscoveryLanguageTests.test_authority_keeps_workspace_and_self_identity_explicit",
+        "tests.test_discovery_language.DiscoveryLanguageTests.test_block_is_graph_data_with_explicit_database_requirement",
+        "tests.test_discovery_language.DiscoveryLanguageTests.test_closed_command_language_round_trips_exhaustively",
+        "tests.test_discovery_language.DiscoveryLanguageTests.test_endpoint_scheme_must_match_closed_protocol",
+        "tests.test_discovery_language.DiscoveryLanguageTests.test_lease_and_identifiers_are_bounded_typed_values",
+        "tests.test_discovery_language.DiscoveryLanguageTests.test_registry_endpoint_is_typed_literal_and_not_process_local",
+        "tests.test_discovery_language.DiscoveryLanguageTests.test_self_authority_requires_service_and_instance_as_one_product",
+        "tests.test_discovery_language.DiscoveryLanguageTests.test_unknown_variants_and_fields_fail_closed",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_changed_command_intent_conflicts_without_mutation",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_concurrent_heartbeats_have_one_winner",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_concurrent_registrations_have_one_winner",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_deregister_and_heartbeat_race_has_one_state_winner",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_deregister_and_self_registration_enforce_authority",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_expired_identity_can_register_again_but_cannot_heartbeat",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_expiry_and_heartbeat_race_cannot_both_mutate_the_lease",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_expiry_boundary_removes_resolution_without_deleting_truth",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_heartbeat_requires_current_expiry_and_extends_revision",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_late_heartbeat_after_deregistration_fails_closed",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_late_ledger_failure_rolls_back_projection_mutation",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_register_resolve_and_exact_replay_share_one_command_ledger",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_resolution_limit_is_deterministic_and_workspace_scoped",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_schema_reinstall_preserves_rows_and_named_constraints",
+        "tests.test_discovery_registry.DiscoveryRegistryTests.test_workspace_authority_fails_before_writes",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_block_now_advertises_only_real_docker_capabilities",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_body_bounds_and_closed_descriptors_fail_before_service",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_expiry_route_requires_management_scope",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_health_is_distinct_from_semantic_readiness",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_heartbeat_and_deregister_enforce_path_identity",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_maximum_resolution_page_has_a_bounded_response",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_process_boundary_vends_direct_psycopg_dsn_from_graph_identity",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_register_and_resolve_use_scoped_authenticated_service_commands",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_rejected_endpoint_and_identity_material_are_redacted",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_self_registration_is_bound_to_service_and_instance_identity",
+        "tests.test_service_discovery_fastapi.ServiceDiscoveryFastAPITests.test_under_scoped_mutation_fails_before_registry_write"
+      ],
+      "number": 1153,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "AUTH.NODE-CONTROL.DISCOVERY.1: Implement durable discovery distribution and OCI product",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1153"
+    },
+    {
+      "content_digest": "sha256:d5ca2537c6ad4fc4713ffbe5524387df042b8248aaa7bc80447e6df87d20997d",
+      "law_references": [
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_allowed_skip_requires_a_reviewable_reason",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_duplicate_and_literal_false_approved_skips_fail_closed",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_mocks_are_reported_without_becoming_automatic_failures",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_placeholders_empty_tests_and_swallowed_exceptions_fail",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_repository_has_only_explicit_optional_dependency_skips",
+        "tests.test_architecture_test_integrity.ArchitectureTestIntegrityTests.test_unconditional_and_unapproved_skips_fail_with_locations"
+      ],
+      "number": 1316,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "HARDEN.TESTS.PARITY.1 Make every live distribution test-complete and continuously gated",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1316"
+    },
+    {
+      "content_digest": "sha256:1c87ec63a39072235335e0658281d59b0fbd05fea2a221b7f20e20290b6c2683",
+      "law_references": [
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_process_and_http_clients_are_adapter_owned",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_repository_obeys_declared_dependency_and_transport_ownership",
+        "tests.test_architecture_dependencies.ArchitectureDependencyTests.test_reverse_dependency_is_rejected_for_import_and_from_import",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_atomic_contract_suites_remain_independent_of_scenario_runner",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_fake_effect_is_a_typed_capability_provider_not_an_application_mock",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_policy_rejects_store_scheduler_mock_and_private_coordinator_bypass",
+        "tests.test_architecture_scenarios.ScenarioArchitectureTests.test_scenario_modules_obey_application_and_persistence_boundaries",
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_domain_inventory_is_exactly_the_admitted_closed_languages",
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_distinguishes_completed_and_deferred_movement",
+        "tests.test_package_inventory.PackageModuleInventoryTests.test_inventory_is_exhaustive_and_assigns_one_owner",
+        "tests.test_package_topology.CurrentPackageTopologyTests.test_current_package_graph_is_acyclic",
+        "tests.test_package_topology.CurrentPackageTopologyTests.test_current_source_has_one_way_recovery_policy_planning_edges",
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_declared_edges_cannot_hide_direct_or_multi_node_cycles",
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_domain_language_rejects_operations_products_interpreters_and_entrypoints",
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_legal_acyclic_sibling_dependencies_are_representable",
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_product_may_project_domain_but_not_registry_or_process",
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_product_to_domain_projection_does_not_authorize_reverse_edge",
+        "tests.test_package_topology.PackageTopologyPolicyTests.test_transitive_product_to_process_path_is_rejected"
+      ],
+      "number": 1317,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "HARDEN.TESTS.PARITY.2 Add a current multi-repository backend validation gate",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1317"
+    },
+    {
+      "content_digest": "sha256:c0bd4d1e16ae7951284076c9ee853baf906aa88ab02908926a7abf856cdab158",
+      "law_references": [
+        "tests.test_hello_server_block.HelloServerBlockTests.test_dependencies_expand_to_paired_http_and_postgres_requirements",
+        "tests.test_hello_server_block.HelloServerBlockTests.test_paired_dependencies_compile_to_socket_derived_environment"
+      ],
+      "number": 1342,
+      "repository": "OpenJ92/control-plane-kit",
+      "state": "open",
+      "title": "[FUTURE] Parameterize per-instance product requirement sockets",
+      "url": "https://github.com/OpenJ92/control-plane-kit/issues/1342"
+    }
+  ],
+  "input_digests": {
+    "aggregate": "sha256:1273e32da014e73181b31c37bfead5b8101fde6faba9620913abc8ac27b0ebde",
+    "evidence": "sha256:229955bf9b745d36a33abfd90a5b9380da454c3635499765e1c4f591884d55ca",
+    "inventory": "sha256:eb41bda9407f0617ac57d61aaeaafdc5ddfa50211258bd507a1a02a67f661d72",
+    "manifest": "sha256:9b3adf1f7a33b26119c45594f806b8a35d1169b74b1ea1cad77066e3d3991fa0",
+    "reconciliation": "sha256:4e63c389e71249a8f23a400cc74d64db71752eadac378e539341f3f1736e12d2"
+  },
+  "issue": 1326,
+  "reference": {
+    "commit": "20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec",
+    "tag": "pre-server-product-extraction-2026-07-20"
+  },
+  "schema": "cpk.semantic-migration-closeout"
+}
