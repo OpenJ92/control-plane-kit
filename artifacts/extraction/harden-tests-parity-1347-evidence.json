@@ -1,0 +1,24 @@
+{
+  "future_owners": {
+    "1096": 4,
+    "941": 5
+  },
+  "immutable_laws": {
+    "current_strengthened": 23,
+    "future_issue": 9,
+    "reviewed_supersession": 0,
+    "total": 32
+  },
+  "issue": 1347,
+  "legacy_scripts": {
+    "current_authoritative": 5,
+    "current_diagnostic": 1,
+    "current_parity": 1,
+    "deletion_issue": 1318,
+    "future_issue": 9,
+    "total": 16
+  },
+  "provider_mutation": false,
+  "schema": "cpk.harden-tests-parity.live-demo-evidence",
+  "script_dispositions_digest": "sha256:6bee8e26cb3322a0d42e704aaf48a78ee483301f8890d06a467f5a81516f6d85"
+}

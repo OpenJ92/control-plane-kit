@@ -164,6 +164,11 @@
       "digest": "sha256:c151902b07a179a61aa3c5f51cf7224dfbd57e2bb081a95e812c5331cd59d870",
       "id": "harden-tests-parity-1346.architecture-package",
       "status": "passing"
+    },
+    {
+      "digest": "sha256:2934f69eeeea19b7d1777923520a17801b182e0149a52aa4a03b0e715a9c1c5a",
+      "id": "harden-tests-parity-1347.live-demo",
+      "status": "passing"
     }
   ],
   "schema": "cpk.successor-evidence-index"

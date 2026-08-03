@@ -814,6 +814,78 @@ class SemanticReconciliationTests(unittest.TestCase):
             {"670": 2, "1096": 3, "1316": 6, "1317": 18},
         )
 
+    def test_issue_1347_artifacts_close_live_laws_and_legacy_scripts(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        artifact_root = root / "artifacts" / "extraction"
+        reconciliation = json.loads(
+            (artifact_root / "semantic-test-reconciliation.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        evidence = json.loads(
+            (artifact_root / "harden-tests-parity-1347-evidence.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        script_dispositions = json.loads(
+            (
+                artifact_root
+                / "harden-tests-parity-1347-live-script-dispositions.json"
+            ).read_text(encoding="utf-8")
+        )
+        reviews = [
+            value
+            for value in reconciliation["reviews"]
+            if value["reviewed_by_issue"] == 1347
+        ]
+        scripts = script_dispositions["scripts"]
+
+        self.assertEqual(len(reviews), 32)
+        self.assertEqual(
+            sum(value["disposition"] == "current-strengthened" for value in reviews),
+            23,
+        )
+        self.assertEqual(
+            sum(value["disposition"] == "future-issue" for value in reviews),
+            9,
+        )
+        self.assertEqual(
+            {
+                value["future_issue"]["number"]
+                for value in reviews
+                if value["future_issue"] is not None
+            },
+            {941, 1096},
+        )
+        self.assertEqual(len(scripts), 16)
+        self.assertEqual(len({value["legacy_script"] for value in scripts}), 16)
+        self.assertTrue(all(value["deletion_issue"] == 1318 for value in scripts))
+        self.assertEqual(
+            {
+                value["owner"]
+                for value in scripts
+                if value["disposition"] == "future-issue"
+            },
+            {
+                "OpenJ92/control-plane-kit#670",
+                "OpenJ92/control-plane-kit#672",
+                "OpenJ92/control-plane-kit#941",
+                "OpenJ92/control-plane-kit#1096",
+                "OpenJ92/control-plane-kit#1153",
+            },
+        )
+        self.assertEqual(
+            evidence["legacy_scripts"],
+            {
+                "total": 16,
+                "current_authoritative": 5,
+                "current_diagnostic": 1,
+                "current_parity": 1,
+                "future_issue": 9,
+                "deletion_issue": 1318,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

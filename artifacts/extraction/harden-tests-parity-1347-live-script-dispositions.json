@@ -1,0 +1,202 @@
+{
+  "issue": 1347,
+  "law": "Legacy shells are deleted after their behavioral laws have current or detailed future ownership; none remain as compatibility wrappers.",
+  "schema": "cpk.harden-tests-parity.live-script-dispositions",
+  "scripts": [
+    {
+      "classification": "The current cpk-server workflow is authoritative; the old operations controller and socket mount are not.",
+      "deletion_issue": 1318,
+      "disposition": "current-authoritative",
+      "helpers": [
+        "examples/activity_seeded_live.py"
+      ],
+      "legacy_script": "activity-seeded-live-test.sh",
+      "owner": "control-plane-kit-servers:cpk-server-hosted-activity",
+      "successors": [
+        "scripts/cpk_server_hosted_activity_smoke.sh"
+      ]
+    },
+    {
+      "classification": "Useful direct Docker interpreter diagnostic; #1207 owns consolidation and it cannot determine cpk-server release success.",
+      "deletion_issue": 1318,
+      "disposition": "current-diagnostic",
+      "helpers": [
+        "tests/live_docker_configuration.py"
+      ],
+      "legacy_script": "configuration-live-test.sh",
+      "owner": "control-plane-kit-interpreters:docker-configuration-diagnostic",
+      "successors": [
+        "tests/live_docker_configuration.py"
+      ]
+    },
+    {
+      "classification": "CoreDNS product, TCP/UDP DNS, immutable configuration, readiness, replay, and cleanup remain deferred.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "tests/live_coredns.py"
+      ],
+      "legacy_script": "coredns-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#670",
+      "successors": []
+    },
+    {
+      "classification": "Standalone bounded differential evidence is parity validation, not deployment acceptance.",
+      "deletion_issue": 1318,
+      "disposition": "current-parity",
+      "helpers": [
+        "tests/fixtures/differential_scenario.py"
+      ],
+      "legacy_script": "differential-live-test.sh",
+      "owner": "control-plane-kit-parity",
+      "successors": [
+        "extraction_parity.runner",
+        "extraction_parity/tests/test_differential_runner.py"
+      ]
+    },
+    {
+      "classification": "Durable authenticated discovery, restart, replay, concurrency, expiry, and OCI publication remain deferred.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "tests/live_service_discovery.py"
+      ],
+      "legacy_script": "discovery-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#1153",
+      "successors": []
+    },
+    {
+      "classification": "The current cpk-server route drives graph binding and router transition; host Docker inspection is corroborative only.",
+      "deletion_issue": 1318,
+      "disposition": "current-authoritative",
+      "helpers": [
+        "examples/gate_d_live_smoke.py"
+      ],
+      "legacy_script": "gate-d-live-test.sh",
+      "owner": "control-plane-kit-servers:workspace-a-router-transition",
+      "successors": [
+        "scripts/cpk_server_workspace_a_router_transition_smoke.sh"
+      ]
+    },
+    {
+      "classification": "The aggregate executable DeploymentProgram must own initial/update/no-op/teardown composition instead of a shell chaining demos.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "live-test.sh",
+        "gate-d-live-test.sh"
+      ],
+      "legacy_script": "gate-f-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#1096",
+      "successors": []
+    },
+    {
+      "classification": "Generated bounded multi-node Hello topology stress remains explicitly owned by SEEDED.STRESS.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "examples/generated_hello_live.py"
+      ],
+      "legacy_script": "generated-hello-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#941",
+      "successors": []
+    },
+    {
+      "classification": "Named public ingress through cpk-server replaces direct loopback host-port publication as release evidence.",
+      "deletion_issue": 1318,
+      "disposition": "current-authoritative",
+      "helpers": [
+        "tests/live_docker_publication.py"
+      ],
+      "legacy_script": "live-test.sh",
+      "owner": "control-plane-kit-servers:seeded-stress-public-ingress",
+      "successors": [
+        "scripts/cpk_server_seeded_stress_public_ingress_smoke.sh"
+      ]
+    },
+    {
+      "classification": "The OpenTelemetry Collector product, OTLP receipt, pinned configuration, replay, and cleanup remain deferred.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "tests/live_opentelemetry_collector.py"
+      ],
+      "legacy_script": "opentelemetry-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#672",
+      "successors": []
+    },
+    {
+      "classification": "Durable provider custody through cpk-server is authoritative; direct interpreter delivery remains diagnostic only.",
+      "deletion_issue": 1318,
+      "disposition": "current-authoritative",
+      "helpers": [
+        "tests/live_docker_secret.py"
+      ],
+      "legacy_script": "secret-live-test.sh",
+      "owner": "control-plane-kit-servers:cpk-server-secret-provider-source-live",
+      "successors": [
+        "scripts/cpk_server_secret_provider_source_live_smoke.sh"
+      ]
+    },
+    {
+      "classification": "Richer heterogeneous topology transition belongs to SEEDED.STRESS; executable stage composition separately belongs to #1096.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "examples/service_infrastructure_live.py"
+      ],
+      "legacy_script": "service-infrastructure-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#941",
+      "successors": []
+    },
+    {
+      "classification": "The TCP switch product and selected-target live behavior remain deferred product work.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "tests/live_tcp_switch.py",
+        "tests/fixtures/tcp_reply_server.py"
+      ],
+      "legacy_script": "tcp-switch-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#672",
+      "successors": []
+    },
+    {
+      "classification": "The retained live TCP/UDP same-port proof belongs to the deferred CoreDNS product; current protocol and SDK tests remain lower-level evidence.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "tests/live_docker_transport.py",
+        "tests/fixtures/dual_transport_server.py"
+      ],
+      "legacy_script": "transport-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#670",
+      "successors": []
+    },
+    {
+      "classification": "Authenticated cpk-server gateway probes and durable operations observations replace direct fixture invocation.",
+      "deletion_issue": 1318,
+      "disposition": "current-authoritative",
+      "helpers": [
+        "examples/verification_observation_live.py"
+      ],
+      "legacy_script": "verification-live-test.sh",
+      "owner": "control-plane-kit-servers:authenticated-gateway-probe-live",
+      "successors": [
+        "scripts/cpk_local_gateway_private_probe_smoke.sh",
+        "scripts/cpk_server_seeded_stress_public_ingress_smoke.sh"
+      ]
+    },
+    {
+      "classification": "Signed webhook delivery, retry, idempotency, restart, and durable result remain deferred product work.",
+      "deletion_issue": 1318,
+      "disposition": "future-issue",
+      "helpers": [
+        "examples/webhook_delivery_live.py"
+      ],
+      "legacy_script": "webhook-live-test.sh",
+      "owner": "OpenJ92/control-plane-kit#672",
+      "successors": []
+    }
+  ]
+}
