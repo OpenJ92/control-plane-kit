@@ -431,6 +431,14 @@ def _public_environment_for_node(
 ) -> tuple[PublicStaticEnvironmentBinding, ...]:
     del product
     public_environment = tuple(node.public_environment)
+    verifier_projection = node.delegation_verifier_projection
+    if verifier_projection is not None:
+        public_environment += verifier_projection.public_environment()
+    names = tuple(binding.name for binding in public_environment)
+    if len(set(names)) != len(names):
+        raise InvalidOperationCommand(
+            "runtime public environment destinations must be unique"
+        )
     if not any(binding.name == _GATEWAY_TARGETS_ENVIRONMENT for binding in public_environment):
         return public_environment
     target_map = gateway_target_map_for_node(

@@ -14,6 +14,15 @@ from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
 )
+from control_plane_kit_core.delegation_authority import (
+    DelegationAuthorityBinding,
+    DelegationVerifierProjection,
+)
+from control_plane_kit_core.delegation_keys import (
+    DelegationKeyAlgorithm,
+    DelegationKeyPurpose,
+    DelegationPublicKey,
+)
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -484,6 +493,96 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
         self.assertNotIn("cpk-postgres-smoke-password", repr(request.descriptor()))
         self.assertNotIn("secret://", repr(request.descriptor()))
+
+    def test_realized_delegation_projection_lowers_to_runtime_environment(self) -> None:
+        graph = _gateway_graph()
+        graph = replace(
+            graph,
+            delegation_authorities=(
+                DelegationAuthorityBinding(
+                    delegate_node_id="gateway",
+                    purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+                    issuer="issuer-a",
+                ),
+            ),
+        )
+        gateway = graph.node("gateway")
+        projection = DelegationVerifierProjection(
+            delegate_node_id="gateway",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="issuer-a",
+            audience="gateway:workspace-a:gateway",
+            projection_id="projection-a",
+            public_keys=(
+                DelegationPublicKey(
+                    key_id="key-a",
+                    algorithm=DelegationKeyAlgorithm.ED25519,
+                    public_key_pem=(
+                        "-----BEGIN PUBLIC KEY-----\nQUFB\n-----END PUBLIC KEY-----\n"
+                    ),
+                ),
+            ),
+        )
+        graph = graph.update_node(
+            replace(gateway, delegation_verifier_projection=projection)
+        )
+        context = _context(
+            activity=PlannedActivity(
+                ActivityId("activity-gateway"),
+                StartNode(NodeTarget("gateway")),
+            ),
+            desired_graph=graph,
+            registered_products=(
+                _registered_product(
+                    name="cpk-local-gateway",
+                    provider_socket="control",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                    public_environment=(
+                        PublicStaticEnvironmentBinding(
+                            "CPK_GATEWAY_TARGETS_JSON",
+                            "{}",
+                        ),
+                    ),
+                ),
+                _registered_product(
+                    name="postgres-server",
+                    provider_socket="postgres",
+                    protocol=Protocol.POSTGRES,
+                    port=5432,
+                ),
+                _registered_product(
+                    name="http-active-router",
+                    provider_socket="internal",
+                    protocol=Protocol.HTTP,
+                    port=8000,
+                ),
+            ),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(
+            tuple(binding.name for binding in gateway.public_environment),
+            ("CPK_GATEWAY_TARGETS_JSON",),
+        )
+        environment = {
+            binding.name: binding.value
+            for binding in request.products[0].public_environment
+        }
+        self.assertEqual(environment["CPK_GATEWAY_PROBE_AUDIENCE"], projection.audience)
+        self.assertEqual(environment["CPK_GATEWAY_PROBE_ISSUER"], projection.issuer)
+        self.assertEqual(environment["CPK_GATEWAY_PROBE_NODE_ID"], "gateway")
+        self.assertEqual(
+            environment["CPK_GATEWAY_PROBE_PROJECTION_ID"],
+            projection.projection_id,
+        )
+        self.assertEqual(environment["CPK_GATEWAY_PROBE_VERIFIER"], "ed25519")
+        self.assertEqual(
+            json.loads(environment["CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON"]),
+            {"key-a": projection.public_keys[0].public_key_pem},
+        )
+        self.assertIn("CPK_GATEWAY_TARGETS_JSON", environment)
 
     def test_gateway_target_map_requires_declared_provider_port(self) -> None:
         graph = _gateway_graph(postgres_product_provider_socket="other")
