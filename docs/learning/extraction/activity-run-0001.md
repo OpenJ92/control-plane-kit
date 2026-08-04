@@ -7623,3 +7623,31 @@ labelled ephemeral signer/provider fixture only when they still register and
 activate matching public delegation-key truth through authenticated cpk-server
 operations. #1383 owns that composition; #1384 then removes descriptor
 placeholders and migrates every authoritative graph before #1272 resumes.
+
+## #1384 verifier projection runtime lowering
+
+The first placeholder-free source-live rotation proved that desired graph,
+planning, and execution evidence can all be correct while a realized process
+still lacks required compiled material. Public readback showed the gateway in
+desired truth, the plan contained its exact `start-node` activity, and the
+activity journal contained the matching successful step. The gateway container
+then exited and disappeared from the runtime network because the Docker request
+did not contain the public verifier bindings held by its typed realized
+projection.
+
+The missing seam was operations runtime-effect translation. Core already
+defined `DelegationVerifierProjection.public_environment()`, and desired-graph
+publication already persisted typed projection A. Operations forwarded authored
+node environment and generated gateway targets but omitted the realized
+delegation projection. It now lowers that typed public projection into the
+product material carried by `RuntimeEffectRequest`, rejecting duplicate runtime
+environment destinations before dispatch. Docker remains a generic interpreter;
+there is no gateway product branch and no generated verifier material returns
+to authored graph truth or the product descriptor.
+
+Focused translation coverage first failed on the missing audience binding and
+then passed with all six bounded public verifier values plus the graph-derived
+target map. The complete Docker-first operations gate passed 407 tests,
+compileall, installed import, zero mocks, and zero approved skips. Source-live
+acceptance remains the final #1384 proof after server-products consumes the
+merged operations commit.
