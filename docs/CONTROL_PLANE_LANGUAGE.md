@@ -891,6 +891,23 @@ laws:
   and digest evidence; focused programs must derive its material from durable
   approved truth rather than accept verifier keys or environment from callers.
 
+  Initial publication is part of the desired-graph command transaction. For
+  each stable authored binding, operations serializes the matching delegation
+  key scope and requires exactly one `ACTIVE` verification key with no
+  `VERIFY_ONLY` overlap. It materializes that public key as initial projection
+  A, saves the immutable projection, and advances the desired authored and
+  realized pointers together. A graph with no binding preserves the identity
+  projection.
+  Missing keys, issuer mismatch, or an overlap set fail before graph, pointer,
+  or action commit. Exact command replay returns the originally committed
+  projection without consulting later key state.
+
+  This settled-only rule prevents ordinary graph authoring from bypassing the
+  rotation program. Only the approved rotation workflow may publish A+B and B.
+  Key registration, activation, retirement, revocation, and initial projection
+  compilation share one key-scope transaction lock, so a lifecycle transition
+  cannot race the public material selected for a desired projection.
+
   Gateway-key overlap publication applies that command as:
 
   ```text

@@ -179,6 +179,29 @@ class DelegationSigningKeyStore:
         ).fetchall()
         return tuple(_row(row) for row in rows)
 
+    def list_for_projection(
+        self,
+        workspace_id: str,
+        purpose: DelegationKeyPurpose,
+        issuer: str,
+    ) -> tuple[RegisteredDelegationSigningKey, ...]:
+        """Serialize one scope and return its exact executable verifier set."""
+
+        self._lock_scope(workspace_id, purpose, issuer)
+        rows = self._connection.execute(
+            f"""
+            {_SELECT}
+            WHERE workspace_id = %s
+              AND purpose = %s
+              AND issuer = %s
+              AND status IN ('active', 'verify-only')
+            ORDER BY key_id
+            FOR UPDATE
+            """,
+            (workspace_id, purpose.value, issuer),
+        ).fetchall()
+        return tuple(_row(row) for row in rows)
+
     def activate(
         self,
         workspace_id: str,

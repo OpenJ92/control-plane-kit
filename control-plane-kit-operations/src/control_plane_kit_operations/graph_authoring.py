@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from hashlib import sha256
+import json
 from typing import Any, Callable
 
+from control_plane_kit_core.delegation_authority import (
+    DelegationAuthorityError,
+    DelegationVerifierProjection,
+    materialize_delegation_verifiers,
+)
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.products import (
     ProductDescriptorDigest,
     ProductIdentity,
@@ -16,8 +24,13 @@ from control_plane_kit_operations.products import (
     ProductRegistrationNotFound,
     RegisteredProductStatus,
 )
+from control_plane_kit_operations.delegation_signing_keys import (
+    RegisteredDelegationSigningKey,
+    RegisteredDelegationSigningKeyStatus,
+)
 from control_plane_kit_operations.records import (
     GraphVersionRecord,
+    RealizedGraphProjectionKind,
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
@@ -173,9 +186,10 @@ def set_desired_graph_in_unit_of_work(
     )
     unit_of_work.stores.graphs.save(graph_version)
     realized_projection = unit_of_work.stores.realized_graphs.save(
-        unit_of_work.stores.realized_graphs.identity_for_authored(
-            command.workspace_id,
-            graph_version.graph_id,
+        _initial_realized_projection(
+            unit_of_work.stores,
+            graph_version,
+            command.graph,
         )
     )
     updated = unit_of_work.stores.workspaces.set_desired_graph(
@@ -189,6 +203,103 @@ def set_desired_graph_in_unit_of_work(
         realized_projection=realized_projection,
         product_references=product_references,
     )
+
+
+def _initial_realized_projection(
+    stores: Any,
+    authored_record: GraphVersionRecord,
+    authored_graph: DeploymentGraph,
+) -> RealizedGraphProjectionRecord:
+    bindings = authored_graph.delegation_authorities
+    if not bindings:
+        return stores.realized_graphs.identity_for_authored(
+            authored_record.workspace_id,
+            authored_record.graph_id,
+        )
+
+    projections: list[DelegationVerifierProjection] = []
+    key_scopes: dict[
+        tuple[str, str],
+        tuple[RegisteredDelegationSigningKey, ...],
+    ] = {}
+    for binding in bindings:
+        scope = (binding.purpose.value, binding.issuer)
+        keys = key_scopes.get(scope)
+        if keys is None:
+            keys = stores.delegation_signing_keys.list_for_projection(
+                authored_record.workspace_id,
+                binding.purpose,
+                binding.issuer,
+            )
+            key_scopes[scope] = keys
+        active = tuple(
+            key
+            for key in keys
+            if key.status is RegisteredDelegationSigningKeyStatus.ACTIVE
+        )
+        if len(keys) != 1 or len(active) != 1:
+            raise GraphAuthoringError(
+                "exactly one settled active delegation key is required "
+                "for each authored binding"
+            )
+        public_key = active[0].public_key
+        projection_descriptor = {
+            "workspace_id": authored_record.workspace_id,
+            "delegate_node_id": binding.delegate_node_id,
+            "purpose": binding.purpose.value,
+            "issuer": binding.issuer,
+            "public_key": public_key.descriptor(),
+        }
+        projection_digest = sha256(
+            json.dumps(
+                projection_descriptor,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("ascii")
+        ).hexdigest()
+        projections.append(
+            DelegationVerifierProjection(
+                delegate_node_id=binding.delegate_node_id,
+                purpose=binding.purpose,
+                issuer=binding.issuer,
+                audience=_delegation_audience(
+                    authored_record.workspace_id,
+                    binding.delegate_node_id,
+                    binding.purpose,
+                ),
+                projection_id=f"delegation-{projection_digest}",
+                public_keys=(public_key,),
+            )
+        )
+    try:
+        realized_graph = materialize_delegation_verifiers(
+            authored_graph,
+            tuple(projections),
+        )
+    except DelegationAuthorityError as error:
+        raise GraphAuthoringError(str(error)) from error
+    draft = RealizedGraphProjectionRecord.from_graph(
+        projection_id="projection-pending",
+        workspace_id=authored_record.workspace_id,
+        source_authored_graph_id=authored_record.graph_id,
+        projection_kind=RealizedGraphProjectionKind.DELEGATION_VERIFIER,
+        projection_key="initial-delegation-verifier",
+        graph=realized_graph,
+        created_by=authored_record.created_by,
+        created_at=authored_record.created_at,
+    )
+    return replace(draft, projection_id=f"projection-{draft.projection_digest}")
+
+
+def _delegation_audience(
+    workspace_id: str,
+    delegate_node_id: str,
+    purpose: DelegationKeyPurpose,
+) -> str:
+    if purpose is DelegationKeyPurpose.GATEWAY_PROBE:
+        return f"gateway:{workspace_id}:{delegate_node_id}"
+    raise GraphAuthoringError("delegation key purpose cannot be materialized")
 
 
 def product_references_in_graph(graph: DeploymentGraph) -> tuple[ProductReference, ...]:

@@ -7563,3 +7563,33 @@ Real-Postgres tests prove restart/resume, exact action equality, one prepare and
 one success transition, zero duplicate provider calls, replay, and uncertainty
 rejection. The Docker-first operations gate passed 400 tests, compileall,
 installed import, zero mocks, and zero approved skips.
+
+## #1379 initial delegation verifier projection
+
+The first source-live rotation attempt proved that process configuration is not
+realized-graph lineage. A stable authored `DelegationAuthorityBinding` plus
+harness-injected public verifier environment could start the gateway, but the
+accepted initial deployment still advanced an identity projection. Rotation
+correctly refused to derive A+B because current truth did not contain typed A.
+
+Initial projection compilation now belongs to ordinary desired-graph
+publication. In the existing caller-owned transaction, operations locks each
+bound key scope, requires exactly one active verification key and no overlap,
+materializes typed public projection A, persists it, and advances desired graph
+and projection pointers together. Graphs without bindings keep their identity
+projection. Missing, mismatched, or overlapping key truth rolls back all graph
+and pointer writes. Idempotent replay returns the original projection even when
+key lifecycle truth later changes.
+
+The settled-only restriction is intentional. A verify-only key makes ordinary
+authoring reject rather than silently publish A+B; only the approved rotation
+program may derive overlap and retirement projections. A bounded two-connection
+Postgres test proves registration and activation wait for an in-flight
+projection compiler holding the same advisory key-scope lock. Provider,
+network, Docker, and secret IO remain outside the transaction, and authored
+truth remains free of key ids, public PEM, private references, and generated
+environment.
+
+Focused acceptance passed six real-Postgres tests. The complete operations
+Docker-first gate passed 406 tests, compileall, installed import, zero mocks,
+and zero approved skips.

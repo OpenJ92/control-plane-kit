@@ -242,6 +242,12 @@ Gateway delegation-key rotation:
                       -> realized verifier B
 ```
 
+The first `realized verifier A` is not harness configuration. When the operator
+publishes an authored graph containing a stable delegation binding, operations
+locks that admitted key scope and compiles exactly one settled active public
+key into desired projection A in the same transaction. Ordinary authoring
+rejects A+B; the approved rotation program alone owns overlap and retirement.
+
 Then draw the durable operations program beside the realized projections:
 
 ```text
