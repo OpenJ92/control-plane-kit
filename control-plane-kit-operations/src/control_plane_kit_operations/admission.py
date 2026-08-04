@@ -626,17 +626,32 @@ def _require_authority_use_scopes(
     current: DeploymentGraph,
     desired: DeploymentGraph,
 ) -> None:
-    runtimes = (*current.runtimes.values(), *desired.runtimes.values())
+    required = required_authority_use_scopes(current, desired)
     if (
-        any(runtime.authority_ref is not None for runtime in runtimes)
+        PolicyScope.RUNTIME_AUTHORITY_USE in required
         and PolicyScope.RUNTIME_AUTHORITY_USE not in actor_scopes
     ):
         raise ExecutionAdmissionDenied("scope runtime-authority:use is missing")
     if (
-        (current.public_ingresses or desired.public_ingresses)
+        PolicyScope.INGRESS_AUTHORITY_USE in required
         and PolicyScope.INGRESS_AUTHORITY_USE not in actor_scopes
     ):
         raise ExecutionAdmissionDenied("scope ingress-authority:use is missing")
+
+
+def required_authority_use_scopes(
+    current: DeploymentGraph,
+    desired: DeploymentGraph,
+) -> frozenset[PolicyScope]:
+    """Return external authority scopes implied by exact graph material."""
+
+    required: set[PolicyScope] = set()
+    runtimes = (*current.runtimes.values(), *desired.runtimes.values())
+    if any(runtime.authority_ref is not None for runtime in runtimes):
+        required.add(PolicyScope.RUNTIME_AUTHORITY_USE)
+    if current.public_ingresses or desired.public_ingresses:
+        required.add(PolicyScope.INGRESS_AUTHORITY_USE)
+    return frozenset(required)
 
 
 def _graph(

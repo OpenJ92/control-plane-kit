@@ -942,7 +942,13 @@ laws:
   Another workspace, plan, projection, revision, phase, key set, publication
   provenance, or compiled activity set fails before execution admission. The
   operator still requires `plan:execute` and every runtime/ingress authority-use
-  scope implied by the exact child graphs.
+  scope implied by the exact child graphs. The public application boundary
+  derives those scopes only from the authenticated `TrustedCommandContext`.
+  The rotation program may translate `delegation-key:rotate` into its closed
+  internal key-lifecycle capabilities, but it cannot manufacture runtime or
+  ingress access. Each public deployment-phase advance checks current trusted
+  authority before writing its phase command receipt, and child admission
+  receives only the exact bounded external authority it needs.
 
   Overlap preparation is a bounded operations program over the existing
   transactional services:

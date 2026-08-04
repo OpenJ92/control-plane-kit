@@ -7687,3 +7687,31 @@ regression: overlap projection is owned by the approved operations rotation
 program. #1272 must therefore replace the remaining harness-authored A -> A+B
 -> B policy with the public rotation program rather than weakening projection
 compilation.
+
+## #1388 trusted runtime authority in rotation children
+
+The first public-program source-live attempt after verifier projection
+materialization exposed an authorization composition defect. The authenticated
+operator held `runtime-authority:use`, but
+`GatewayKeyRotationApplicationService` passed only actor identity to the phase
+executor. The operations-owned program then constructed its closed internal
+rotation scopes and ordinary child admission truthfully rejected the missing
+runtime-use authority.
+
+The correction preserves the distinction between program permission and
+external authority. `TrustedCommandContext.granted_scopes` now crosses the
+operations application boundary into the phase executor. Under the locked
+program-command transaction, the executor checks the exact stored phase before
+creating or replaying a command receipt. Generation and database-only phases
+remain independent; overlap and retirement deployment preparation/execution
+require current `plan:execute` plus the runtime/ingress authority-use scopes
+derived by the same pure graph law as ordinary admission. Only those verified
+external scopes are added to the exact child admission tuple. Rotation
+permission does not self-grant plan execution or runtime/ingress access, caller
+payloads do not supply scopes, and denial writes no pending receipt or child
+execution evidence.
+
+Focused red evidence first showed the missing phase-executor argument and the
+later graph-lineage failure reached without runtime authorization. The same
+tests then passed, and the complete Docker-first operations gate passed 408
+tests, compileall, installed import, zero mocks, and zero approved skips.
