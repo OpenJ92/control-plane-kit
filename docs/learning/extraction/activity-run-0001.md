@@ -7485,3 +7485,28 @@ published server-products coordinate set: coordination
 from the 389-test branch-specific operations proof above; #1312 changes no
 cpk-server runtime bytes and therefore does not alter publication coordinates.
 Only the five protected Pottery Factory containers remained after validation.
+
+## #1371 Public gateway-key rotation boundary
+
+Gateway-key rotation now has one provider-neutral public contract shared by
+cpk-server HTTP and MCP. Core declares request, approval-request, decision, and
+bounded advance commands plus list, detail, and transition reads. Operations
+owns the typed facade boundary and secret-free projections. The cpk-server
+adapter only authenticates, authorizes, decodes route data, and delegates; it
+does not select a rotation phase, construct intermediate graphs, mint worker
+authority, resolve secrets, or perform provider/runtime effects.
+
+Public commands receive a trusted command context separately from their
+operator-supplied arguments. Caller-provided actor or scope fields therefore
+cannot become grants. Public views expose stable rotation identity, status,
+version, correlation, bounded failure, and transition evidence while omitting
+private-key references, provider registrations/versions, public PEM, compact
+grants, and generated verifier environment. Focused tests prove that HTTP and
+MCP produce the same typed operations call and that missing focused scopes
+reject before facade access.
+
+This issue intentionally stops at dependency inversion. #1372 composes the
+existing generation, overlap, activation/drain, retirement, and exact-version
+revocation programs behind this facade. That composition must preserve one
+bounded phase per public advance and exact expected-version/idempotency replay;
+no lifecycle switch may move into the route adapter.

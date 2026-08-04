@@ -57,6 +57,10 @@ class OperatorCommandKind(StrEnum):
     ACTIVATE_DELEGATION_KEY = "activate-delegation-key"
     RETIRE_DELEGATION_KEY = "retire-delegation-key"
     REVOKE_DELEGATION_KEY = "revoke-delegation-key"
+    REQUEST_GATEWAY_KEY_ROTATION = "request-gateway-key-rotation"
+    REQUEST_GATEWAY_KEY_ROTATION_APPROVAL = "request-gateway-key-rotation-approval"
+    DECIDE_GATEWAY_KEY_ROTATION = "decide-gateway-key-rotation"
+    ADVANCE_GATEWAY_KEY_ROTATION = "advance-gateway-key-rotation"
     START_OPERATION_SESSION = "start-operation-session"
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
@@ -128,6 +132,18 @@ _KIND_FAMILY = {
     OperatorCommandKind.ACTIVATE_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
     OperatorCommandKind.RETIRE_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
     OperatorCommandKind.REVOKE_DELEGATION_KEY: OperatorCommandFamily.DELEGATION_KEY,
+    OperatorCommandKind.REQUEST_GATEWAY_KEY_ROTATION: (
+        OperatorCommandFamily.DELEGATION_KEY
+    ),
+    OperatorCommandKind.REQUEST_GATEWAY_KEY_ROTATION_APPROVAL: (
+        OperatorCommandFamily.DELEGATION_KEY
+    ),
+    OperatorCommandKind.DECIDE_GATEWAY_KEY_ROTATION: (
+        OperatorCommandFamily.DELEGATION_KEY
+    ),
+    OperatorCommandKind.ADVANCE_GATEWAY_KEY_ROTATION: (
+        OperatorCommandFamily.DELEGATION_KEY
+    ),
     OperatorCommandKind.START_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CANCEL_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
@@ -470,6 +486,54 @@ _CANONICAL_COMMANDS = (
         "RevokeDelegationSigningKeyRequest",
         "RegisteredDelegationSigningKeyResponse",
         ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "gateway-key-rotation.request",
+        OperatorCommandKind.REQUEST_GATEWAY_KEY_ROTATION,
+        OperatorCommandFamily.DELEGATION_KEY,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RequestGatewayKeyRotationRequest",
+        "GatewayKeyRotationDetailReadResponse",
+        ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+        CommandPayloadPolicy.DELEGATION_KEY_REFERENCE,
+        requires_open_session=False,
+    ),
+    _CommandDefinition(
+        "gateway-key-rotation.request-approval",
+        OperatorCommandKind.REQUEST_GATEWAY_KEY_ROTATION_APPROVAL,
+        OperatorCommandFamily.DELEGATION_KEY,
+        DeploymentProgramStage.APPROVE,
+        ControlPlaneServiceRole.APPROVAL,
+        "RequestGatewayKeyRotationApprovalRequest",
+        "GatewayKeyRotationApprovalResponse",
+        ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+        CommandPayloadPolicy.APPROVAL_RISK_EVIDENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "gateway-key-rotation.decide",
+        OperatorCommandKind.DECIDE_GATEWAY_KEY_ROTATION,
+        OperatorCommandFamily.DELEGATION_KEY,
+        DeploymentProgramStage.APPROVE,
+        ControlPlaneServiceRole.APPROVAL,
+        "DecideGatewayKeyRotationRequest",
+        "GatewayKeyRotationApprovalResponse",
+        ApprovalPolicy.DECIDES_APPROVAL,
+        CommandPayloadPolicy.APPROVAL_RISK_EVIDENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "gateway-key-rotation.advance",
+        OperatorCommandKind.ADVANCE_GATEWAY_KEY_ROTATION,
+        OperatorCommandFamily.DELEGATION_KEY,
+        DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.PLANNING,
+        "AdvanceGatewayKeyRotationProgramRequest",
+        "GatewayKeyRotationProgramResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
         CommandPayloadPolicy.DELEGATION_KEY_REFERENCE,
         requires_open_session=False,
     ),

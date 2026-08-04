@@ -40,6 +40,9 @@ class ReadProjectionKind(StrEnum):
     SECRET_REFERENCES = "secret-references"
     SECRET_REFERENCE_DETAIL = "secret-reference-detail"
     DELEGATION_KEYS = "delegation-keys"
+    GATEWAY_KEY_ROTATION_LIST = "gateway-key-rotation-list"
+    GATEWAY_KEY_ROTATION_DETAIL = "gateway-key-rotation-detail"
+    GATEWAY_KEY_ROTATION_TRANSITIONS = "gateway-key-rotation-transitions"
     GATEWAY_VERIFIER_CONFIGURATION = "gateway-verifier-configuration"
     GATEWAY_PROBE_DETAIL = "gateway-probe-detail"
     GATEWAY_PROBE_TIMELINE = "gateway-probe-timeline"
@@ -60,6 +63,7 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_SECRET_PROVIDER = "redacted-secret-provider"
     REDACTED_SECRET_REFERENCE = "redacted-secret-reference"
     REDACTED_DELEGATION_KEY = "redacted-delegation-key"
+    REDACTED_GATEWAY_KEY_ROTATION = "redacted-gateway-key-rotation"
     PUBLIC_GATEWAY_VERIFIER_CONFIGURATION = "public-gateway-verifier-configuration"
     DELEGATED_GATEWAY_PROBE_EVIDENCE = "delegated-gateway-probe-evidence"
 
@@ -294,6 +298,24 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.GATEWAY_VERIFIER_CONFIGURATION,
         "GatewayVerifierConfigurationReadResponse",
         ReadProjectionPolicy.PUBLIC_GATEWAY_VERIFIER_CONFIGURATION,
+    ),
+    _ProjectionDefinition(
+        "read.gateway-key-rotation.list",
+        ReadProjectionKind.GATEWAY_KEY_ROTATION_LIST,
+        "GatewayKeyRotationCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_GATEWAY_KEY_ROTATION,
+    ),
+    _ProjectionDefinition(
+        "read.gateway-key-rotation.detail",
+        ReadProjectionKind.GATEWAY_KEY_ROTATION_DETAIL,
+        "GatewayKeyRotationDetailReadResponse",
+        ReadProjectionPolicy.REDACTED_GATEWAY_KEY_ROTATION,
+    ),
+    _ProjectionDefinition(
+        "read.gateway-key-rotation.transitions",
+        ReadProjectionKind.GATEWAY_KEY_ROTATION_TRANSITIONS,
+        "GatewayKeyRotationTransitionCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_GATEWAY_KEY_ROTATION,
     ),
     _ProjectionDefinition(
         "read.gateway-probe-detail",

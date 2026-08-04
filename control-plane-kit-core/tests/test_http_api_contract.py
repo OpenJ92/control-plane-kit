@@ -27,6 +27,15 @@ class HttpApiContractTests(unittest.TestCase):
                 ("GET", "/workspaces/{workspace_id}/approvals/{approval_id}"),
                 ("GET", "/workspaces/{workspace_id}/control-surface"),
                 ("GET", "/workspaces/{workspace_id}/delegation-keys"),
+                ("GET", "/workspaces/{workspace_id}/gateway-key-rotations"),
+                (
+                    "GET",
+                    "/workspaces/{workspace_id}/gateway-key-rotations/{rotation_id}",
+                ),
+                (
+                    "GET",
+                    "/workspaces/{workspace_id}/gateway-key-rotations/{rotation_id}/transitions",
+                ),
                 ("GET", "/workspaces/{workspace_id}/gateway-probes"),
                 ("GET", "/workspaces/{workspace_id}/gateway-probes/{probe_id}"),
                 (
@@ -124,6 +133,9 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/approvals/{approval_id}",
                 "/workspaces/{workspace_id}/control-surface",
                 "/workspaces/{workspace_id}/delegation-keys",
+                "/workspaces/{workspace_id}/gateway-key-rotations",
+                "/workspaces/{workspace_id}/gateway-key-rotations/{rotation_id}",
+                "/workspaces/{workspace_id}/gateway-key-rotations/{rotation_id}/transitions",
                 "/workspaces/{workspace_id}/gateway-probes",
                 "/workspaces/{workspace_id}/gateway-probes/{probe_id}",
                 "/workspaces/{workspace_id}/gateways/{gateway_node_id}/verifier-configuration",
