@@ -7715,3 +7715,29 @@ Focused red evidence first showed the missing phase-executor argument and the
 later graph-lineage failure reached without runtime authorization. The same
 tests then passed, and the complete Docker-first operations gate passed 408
 tests, compileall, installed import, zero mocks, and zero approved skips.
+
+## #1390 trusted secret-use authority in rotation workers
+
+The next source-live overlap reached the real dispatcher and stopped before
+interpreter IO with `overlap-effect-unsupported`. The authenticated operator
+held `secret-provider:use`, but the operations-owned rotation executor created
+its internal worker with only `execution:operate`. This mattered because the
+gateway graph activates a socket-bound Postgres password delivery, and the
+dispatcher authorizes secret use from worker authority rather than from the
+public caller directly.
+
+Admission authority and execution-worker authority remain deliberately
+separate. Child admission continues to receive only rotation plus trusted
+plan/runtime/ingress scopes. One bounded worker projection now always derives
+`execution:operate`, conditionally forwards trusted `secret-provider:use`, and
+drops unrelated ambient scopes. The scope does not bypass the existing exact
+workspace/provider/reference/intent authorization, and missing secret use still
+fails closed before provider or interpreter IO. The same worker projection is
+used by overlap and retirement, while completed command replay remains
+effect-free.
+
+The focused tests first failed only because the projection was absent. The
+complete Docker-first operations gate then passed 411 tests, compileall,
+package integrity, and installed import with zero mocks and zero approved
+skips. No transaction, provider protocol, Docker operation, graph type, or
+secret-bearing persistence changed.

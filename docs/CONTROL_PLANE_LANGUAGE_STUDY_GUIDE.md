@@ -387,6 +387,11 @@ Inside the execution box, draw an additional intersection with the current
 `runtime-authority:use` grant. The focused rotation permission supplies program
 intent, while runtime use supplies access to the selected runtime. Neither
 implies the other, and the program never draws that runtime-use arrow itself.
+When a child runtime effect needs a secret delivery, draw a second narrow
+intersection with the current `secret-provider:use` grant. The internal worker
+always receives `execution:operate`, receives secret use only from trusted
+operator authority, and still passes the exact provider/reference/intent check
+before any plaintext is resolved at interpreter IO.
 
 For each example, mark:
 

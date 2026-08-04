@@ -527,6 +527,40 @@ class GatewayKeyRotationApplicationTests(unittest.TestCase):
             ),
         )
 
+    def test_child_worker_authority_preserves_only_trusted_secret_use(self) -> None:
+        worker = GatewayKeyRotationProgramExecutor._child_worker_authority(
+            "rotation-a",
+            (
+                PolicyScope.SECRET_PROVIDER_USE,
+                PolicyScope.SECRET_PROVIDER_READ,
+                PolicyScope.HUB_INSTANCE_CREATE,
+            ),
+        )
+
+        self.assertEqual(worker.worker_id, "gkrot-worker-rotation-a")
+        self.assertEqual(
+            worker.scopes,
+            (
+                PolicyScope.EXECUTION_OPERATE,
+                PolicyScope.SECRET_PROVIDER_USE,
+            ),
+        )
+
+    def test_child_worker_authority_does_not_manufacture_secret_use(self) -> None:
+        worker = GatewayKeyRotationProgramExecutor._child_worker_authority(
+            "rotation-without-secret-use",
+            (
+                PolicyScope.DELEGATION_KEY_ROTATE,
+                PolicyScope.PLAN_EXECUTE,
+                PolicyScope.SECRET_PROVIDER_READ,
+            ),
+        )
+
+        self.assertEqual(
+            worker.scopes,
+            (PolicyScope.EXECUTION_OPERATE,),
+        )
+
     def test_completed_public_advance_replays_receipt_without_provider_io(self) -> None:
         requested = self.requested()
         approval = self.application.request_approval(

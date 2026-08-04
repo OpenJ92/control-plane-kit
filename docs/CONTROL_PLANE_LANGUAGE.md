@@ -950,6 +950,16 @@ laws:
   authority before writing its phase command receipt, and child admission
   receives only the exact bounded external authority it needs.
 
+  Child execution authority is a separate projection from child admission.
+  The rotation program derives `execution:operate` for its internal worker and
+  may forward `secret-provider:use` only when that scope is present in the
+  authenticated `TrustedCommandContext`. It drops unrelated ambient scopes.
+  The forwarded scope is not a secret grant by itself: the operations-owned
+  secret-use authorizer still checks the exact workspace, provider,
+  `SecretReference`, and `SecretUseIntent` before interpreter IO. A rotation
+  therefore cannot manufacture secret access merely because its realized
+  graph contains a secret delivery.
+
   Overlap preparation is a bounded operations program over the existing
   transactional services:
 
