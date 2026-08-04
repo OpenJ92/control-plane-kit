@@ -669,6 +669,31 @@ CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotation_transitions (
     CHECK (transition_fingerprint ~ '^[0-9a-f]{64}$')
 );
 
+CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotation_program_commands (
+  rotation_id text NOT NULL REFERENCES cpk_gateway_key_rotations(rotation_id),
+  idempotency_key text NOT NULL,
+  intent_fingerprint text NOT NULL,
+  expected_version integer NOT NULL,
+  phase text NOT NULL,
+  state text NOT NULL,
+  requested_by text NOT NULL,
+  requested_at text NOT NULL,
+  result_descriptor jsonb,
+  completed_at text,
+  PRIMARY KEY (rotation_id, idempotency_key),
+  CONSTRAINT cpk_gateway_key_rotation_program_commands_version_check
+    CHECK (expected_version > 0),
+  CONSTRAINT cpk_gateway_key_rotation_program_commands_fingerprint_check
+    CHECK (intent_fingerprint ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT cpk_gateway_key_rotation_program_commands_state_check
+    CHECK (state IN ('pending', 'completed')),
+  CONSTRAINT cpk_gateway_key_rotation_program_commands_result_check CHECK (
+    (state = 'pending' AND result_descriptor IS NULL AND completed_at IS NULL)
+    OR
+    (state = 'completed' AND result_descriptor IS NOT NULL AND completed_at IS NOT NULL)
+  )
+);
+
 CREATE TABLE IF NOT EXISTS cpk_gateway_key_rotation_deployments (
   rotation_id text NOT NULL REFERENCES cpk_gateway_key_rotations(rotation_id),
   phase text NOT NULL,

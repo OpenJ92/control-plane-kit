@@ -24,7 +24,10 @@ from control_plane_kit_operations.records import (
     OperationSessionStatus,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotation,
+    GatewayKeyRotation,
     GatewayKeyRotationStatus,
+    advance_gateway_key_rotation_in_unit_of_work,
     gateway_key_rotation_approval_subject,
 )
 from control_plane_kit_operations.workflows import (
@@ -246,6 +249,13 @@ class ApprovalDecisionResult:
         return descriptor
 
 
+@dataclass(frozen=True)
+class GatewayKeyRotationApprovalResult:
+    """Approval evidence and rotation truth committed by one operator command."""
+
+    rotation: GatewayKeyRotation
+    approval: ApprovalRequestResult | ApprovalDecisionResult
+
 ApprovalCommand = RequestApproval | RequestGatewayKeyRotationApproval | DecideApproval
 
 
@@ -276,6 +286,106 @@ class ApprovalCommandService:
         if isinstance(command, DecideApproval):
             return self._decide(command)
         raise InvalidOperationCommand("unsupported approval command")
+
+    def request_gateway_key_rotation(
+        self,
+        command: RequestGatewayKeyRotationApproval,
+    ) -> GatewayKeyRotationApprovalResult:
+        """Persist review evidence and AWAITING_APPROVAL truth atomically."""
+
+        fingerprint = _fingerprint(command)
+        with self._unit_of_work_factory() as unit_of_work:
+            result, rotation = self._request_rotation_in_unit_of_work(
+                unit_of_work,
+                command,
+                fingerprint,
+            )
+            if result.replayed:
+                current = unit_of_work.stores.gateway_key_rotations.get(
+                    command.rotation_id
+                )
+                if (
+                    current.approval_request_id != result.request.request_id
+                    or current.status is not GatewayKeyRotationStatus.AWAITING_APPROVAL
+                ):
+                    raise ApprovalStateConflict(
+                        "approval request replay disagrees with rotation truth"
+                    )
+                unit_of_work.commit()
+                return GatewayKeyRotationApprovalResult(current, result)
+            advanced = advance_gateway_key_rotation_in_unit_of_work(
+                unit_of_work,
+                AdvanceGatewayKeyRotation(
+                    rotation_id=rotation.rotation_id,
+                    transition_id=_rotation_transition_id(
+                        rotation.rotation_id,
+                        "approval-request",
+                        command.idempotency_key.value,
+                    ),
+                    expected_status=GatewayKeyRotationStatus.REQUESTED,
+                    expected_version=rotation.version,
+                    target_status=GatewayKeyRotationStatus.AWAITING_APPROVAL,
+                    advanced_by=command.actor_id,
+                    advanced_at=result.request.requested_at,
+                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                    approval_request_id=result.request.request_id,
+                ),
+                clock=lambda: 0,
+            )
+            unit_of_work.commit()
+            return GatewayKeyRotationApprovalResult(advanced, result)
+
+    def decide_gateway_key_rotation(
+        self,
+        command: DecideApproval,
+    ) -> GatewayKeyRotationApprovalResult:
+        """Persist a focused decision and its rotation transition atomically."""
+
+        fingerprint = _fingerprint(command)
+        with self._unit_of_work_factory() as unit_of_work:
+            result = self._decide_in_unit_of_work(unit_of_work, command, fingerprint)
+            if not isinstance(result.request.subject, GatewayKeyRotationApprovalSubject):
+                raise ApprovalStateConflict(
+                    "approval request is not for a gateway key rotation"
+                )
+            rotation_id = result.request.subject.rotation_id
+            current = unit_of_work.stores.gateway_key_rotations.get_for_update(rotation_id)
+            target = (
+                GatewayKeyRotationStatus.APPROVED
+                if result.decision.decision is ApprovalDecisionKind.APPROVED
+                else GatewayKeyRotationStatus.REJECTED
+            )
+            if result.replayed:
+                if (
+                    current.approval_decision_id != result.decision.decision_id
+                    or current.status is not target
+                ):
+                    raise ApprovalStateConflict(
+                        "approval decision replay disagrees with rotation truth"
+                    )
+                unit_of_work.commit()
+                return GatewayKeyRotationApprovalResult(current, result)
+            advanced = advance_gateway_key_rotation_in_unit_of_work(
+                unit_of_work,
+                AdvanceGatewayKeyRotation(
+                    rotation_id=rotation_id,
+                    transition_id=_rotation_transition_id(
+                        rotation_id,
+                        "approval-decision",
+                        command.idempotency_key.value,
+                    ),
+                    expected_status=GatewayKeyRotationStatus.AWAITING_APPROVAL,
+                    expected_version=current.version,
+                    target_status=target,
+                    advanced_by=command.actor_id,
+                    advanced_at=result.decision.decided_at,
+                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                    approval_decision_id=result.decision.decision_id,
+                ),
+                clock=lambda: 0,
+            )
+            unit_of_work.commit()
+            return GatewayKeyRotationApprovalResult(advanced, result)
 
     def _request(self, command: RequestApproval) -> ApprovalRequestResult:
         fingerprint = _fingerprint(command)
@@ -354,83 +464,99 @@ class ApprovalCommandService:
     ) -> ApprovalRequestResult:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
-            history = unit_of_work.stores.activity_history
-            history.lock_action_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
+            result, _rotation = self._request_rotation_in_unit_of_work(
+                unit_of_work,
+                command,
+                fingerprint,
             )
-            replay = history.approval_request_for_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            if replay is not None:
-                result = _request_replay(history, replay, fingerprint)
-                unit_of_work.commit()
-                return result
-            session = _session_for_update(history, command.session_id)
-            _require_open(session)
-            _require_unused_action_key(
-                history,
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            try:
-                rotation = unit_of_work.stores.gateway_key_rotations.get(
-                    command.rotation_id
-                )
-            except KeyError as error:
-                raise ApprovalTargetNotFound(
-                    "gateway key rotation was not found"
-                ) from error
-            if rotation.workspace_id != session.workspace_id:
-                raise ApprovalStateConflict(
-                    "rotation and approval session must share a workspace"
-                )
-            if rotation.status is not GatewayKeyRotationStatus.REQUESTED:
-                raise ApprovalStateConflict(
-                    "rotation is not awaiting an approval request"
-                )
-            authority = self._policy.can_request_gateway_key_rotation(
-                command.actor_scopes
-            )
-            if not authority.allowed:
-                raise ApprovalAuthorizationDenied(authority.reason)
-            subject = gateway_key_rotation_approval_subject(rotation)
+            unit_of_work.commit()
+            return result
 
-            ordinal = history.next_action_ordinal(command.session_id)
-            current = unit_of_work.stores.gateway_key_rotations.get_for_update(
+    def _request_rotation_in_unit_of_work(
+        self,
+        unit_of_work: Any,
+        command: RequestGatewayKeyRotationApproval,
+        fingerprint: str,
+    ) -> tuple[ApprovalRequestResult, GatewayKeyRotation]:
+        history = unit_of_work.stores.activity_history
+        history.lock_action_idempotency(
+            command.session_id,
+            command.idempotency_key.value,
+        )
+        replay = history.approval_request_for_idempotency(
+            command.session_id,
+            command.idempotency_key.value,
+        )
+        if replay is not None:
+            result = _request_replay(history, replay, fingerprint)
+            rotation = unit_of_work.stores.gateway_key_rotations.get(
                 command.rotation_id
             )
-            if current != rotation:
-                raise ApprovalStateConflict(
-                    "rotation changed while approval was requested"
-                )
-            if history.approval_request_for_rotation(command.rotation_id) is not None:
-                raise ApprovalStateConflict(
-                    "rotation already has an approval request"
-                )
-            requested_at = self._clock()
-            request = history.add_approval_request(
-                ApprovalRequestRecord(
-                    request_id=self._id_factory(),
-                    session_id=command.session_id,
-                    subject=subject,
-                    requested_by=command.actor_id,
-                    requested_at=requested_at,
-                    required_scope=PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,
-                    max_risk=RiskLevel.HIGH,
-                    destructive=True,
-                    comment=command.comment,
-                    idempotency_key=command.idempotency_key.value,
-                    intent_fingerprint=fingerprint,
-                )
+            return result, rotation
+        session = _session_for_update(history, command.session_id)
+        _require_open(session)
+        _require_unused_action_key(
+            history,
+            command.session_id,
+            command.idempotency_key.value,
+        )
+        try:
+            rotation = unit_of_work.stores.gateway_key_rotations.get(
+                command.rotation_id
             )
-            action = history.add_action(
-                OperationActionRecord(
-                    action_id=self._id_factory(),
-                    session_id=command.session_id,
-                    ordinal=ordinal,
-                    action_type=OperatorCommandKind.REQUEST_APPROVAL,
+        except KeyError as error:
+            raise ApprovalTargetNotFound(
+                "gateway key rotation was not found"
+            ) from error
+        if rotation.workspace_id != session.workspace_id:
+            raise ApprovalStateConflict(
+                "rotation and approval session must share a workspace"
+            )
+        if rotation.status is not GatewayKeyRotationStatus.REQUESTED:
+            raise ApprovalStateConflict(
+                "rotation is not awaiting an approval request"
+            )
+        authority = self._policy.can_request_gateway_key_rotation(
+            command.actor_scopes
+        )
+        if not authority.allowed:
+            raise ApprovalAuthorizationDenied(authority.reason)
+        subject = gateway_key_rotation_approval_subject(rotation)
+
+        ordinal = history.next_action_ordinal(command.session_id)
+        current = unit_of_work.stores.gateway_key_rotations.get_for_update(
+            command.rotation_id
+        )
+        if current != rotation:
+            raise ApprovalStateConflict(
+                "rotation changed while approval was requested"
+            )
+        if history.approval_request_for_rotation(command.rotation_id) is not None:
+            raise ApprovalStateConflict(
+                "rotation already has an approval request"
+            )
+        requested_at = self._clock()
+        request = history.add_approval_request(
+            ApprovalRequestRecord(
+                request_id=self._id_factory(),
+                session_id=command.session_id,
+                subject=subject,
+                requested_by=command.actor_id,
+                requested_at=requested_at,
+                required_scope=PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,
+                max_risk=RiskLevel.HIGH,
+                destructive=True,
+                comment=command.comment,
+                idempotency_key=command.idempotency_key.value,
+                intent_fingerprint=fingerprint,
+            )
+        )
+        action = history.add_action(
+            OperationActionRecord(
+                action_id=self._id_factory(),
+                session_id=command.session_id,
+                ordinal=ordinal,
+                action_type=OperatorCommandKind.REQUEST_APPROVAL,
                     actor_id=command.actor_id,
                     payload=_request_evidence(request),
                     created_at=requested_at,
@@ -438,82 +564,90 @@ class ApprovalCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
-            unit_of_work.commit()
-            return ApprovalRequestResult(request, action)
+        return ApprovalRequestResult(request, action), current
 
     def _decide(self, command: DecideApproval) -> ApprovalDecisionResult:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
-            history = unit_of_work.stores.activity_history
-            history.lock_action_idempotency(
-                command.session_id,
-                command.idempotency_key.value,
-            )
-            replay = history.approval_decision_for_idempotency(
-                command.request_id,
-                command.idempotency_key.value,
-            )
-            if replay is not None:
-                try:
-                    request = history.get_approval_request(command.request_id)
-                except KeyError as error:
-                    raise ApprovalTargetNotFound(
-                        "approval request was not found"
-                    ) from error
-                result = _decision_replay(history, request, replay, fingerprint)
-                unit_of_work.commit()
-                return result
-            session = _session_for_update(history, command.session_id)
-            _require_open(session)
+            result = self._decide_in_unit_of_work(unit_of_work, command, fingerprint)
+            unit_of_work.commit()
+            return result
+
+    def _decide_in_unit_of_work(
+        self,
+        unit_of_work: Any,
+        command: DecideApproval,
+        fingerprint: str,
+    ) -> ApprovalDecisionResult:
+        history = unit_of_work.stores.activity_history
+        history.lock_action_idempotency(
+            command.session_id,
+            command.idempotency_key.value,
+        )
+        replay = history.approval_decision_for_idempotency(
+            command.request_id,
+            command.idempotency_key.value,
+        )
+        if replay is not None:
             try:
                 request = history.get_approval_request(command.request_id)
             except KeyError as error:
-                raise ApprovalTargetNotFound("approval request was not found") from error
-            if request.session_id != command.session_id:
-                raise ApprovalStateConflict("request and decision must share a session")
-            _require_unused_action_key(
-                history,
-                command.session_id,
-                command.idempotency_key.value,
+                raise ApprovalTargetNotFound(
+                    "approval request was not found"
+                ) from error
+            result = _decision_replay(history, request, replay, fingerprint)
+            return result
+        session = _session_for_update(history, command.session_id)
+        _require_open(session)
+        try:
+            request = history.get_approval_request(command.request_id)
+        except KeyError as error:
+            raise ApprovalTargetNotFound("approval request was not found") from error
+        if request.session_id != command.session_id:
+            raise ApprovalStateConflict("request and decision must share a session")
+        _require_unused_action_key(
+            history,
+            command.session_id,
+            command.idempotency_key.value,
+        )
+        if history.approval_decision_for_request(command.request_id) is not None:
+            raise ApprovalStateConflict("approval request already has a decision")
+        if isinstance(request.subject, GatewayKeyRotationApprovalSubject):
+            authority = self._policy.can_approve_gateway_key_rotation(
+                command.actor_scopes
             )
-            if history.approval_decision_for_request(command.request_id) is not None:
-                raise ApprovalStateConflict("approval request already has a decision")
-            if isinstance(request.subject, GatewayKeyRotationApprovalSubject):
-                authority = self._policy.can_approve_gateway_key_rotation(
-                    command.actor_scopes
-                )
-            else:
-                authority = self._policy.can_approve_plan(
-                    command.actor_scopes,
-                    destructive=request.destructive,
-                )
-            if not authority.allowed:
-                raise ApprovalAuthorizationDenied(authority.reason)
+        else:
+            authority = self._policy.can_approve_plan(
+                command.actor_scopes,
+                destructive=request.destructive,
+            )
+        if not authority.allowed:
+            raise ApprovalAuthorizationDenied(authority.reason)
 
-            ordinal = history.next_action_ordinal(command.session_id)
-            decided_at = self._clock()
-            decision = history.add_approval_decision(
-                ApprovalDecisionRecord(
-                    decision_id=self._id_factory(),
-                    request_id=command.request_id,
-                    actor_id=command.actor_id,
-                    decision=command.decision,
-                    scope=request.required_scope,
-                    decided_at=decided_at,
-                    comment=command.comment,
-                    idempotency_key=command.idempotency_key.value,
-                    intent_fingerprint=fingerprint,
-                )
+        ordinal = history.next_action_ordinal(command.session_id)
+        decided_at = self._clock()
+        decision = history.add_approval_decision(
+            ApprovalDecisionRecord(
+                decision_id=self._id_factory(),
+                request_id=command.request_id,
+                actor_id=command.actor_id,
+                decision=command.decision,
+                scope=request.required_scope,
+                decided_at=decided_at,
+                comment=command.comment,
+                idempotency_key=command.idempotency_key.value,
+                intent_fingerprint=fingerprint,
             )
-            action = history.add_action(
-                OperationActionRecord(
-                    action_id=self._id_factory(),
-                    session_id=command.session_id,
-                    ordinal=ordinal,
-                    action_type=OperatorCommandKind.DECIDE_APPROVAL,
-                    actor_id=command.actor_id,
-                    payload={
-                        **_request_evidence(request),
+        )
+        action = history.add_action(
+            OperationActionRecord(
+                action_id=self._id_factory(),
+                session_id=command.session_id,
+                ordinal=ordinal,
+                action_type=OperatorCommandKind.DECIDE_APPROVAL,
+                actor_id=command.actor_id,
+                payload={
+                    **_request_evidence(request),
                         "decision_id": decision.decision_id,
                         "decision": decision.decision.value,
                         "scope": decision.scope.value,
@@ -523,8 +657,7 @@ class ApprovalCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
-            unit_of_work.commit()
-            return ApprovalDecisionResult(request, decision, action)
+        return ApprovalDecisionResult(request, decision, action)
 
 
 def _session_for_update(history: Any, session_id: str) -> OperationSessionRecord:
@@ -607,6 +740,15 @@ def _require_unused_action_key(
         raise ApprovalIdempotencyConflict(
             "idempotency key was already used for another operation action"
         )
+
+
+def _rotation_transition_id(
+    rotation_id: str,
+    phase: str,
+    idempotency_key: str,
+) -> str:
+    digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+    return f"{rotation_id}:{phase}:{digest}"
 
 
 def _fingerprint(command: ApprovalCommand) -> str:

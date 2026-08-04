@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.gateway_key_rotations import (
@@ -70,6 +72,14 @@ class GatewayKeyRotationStore:
             (workspace_id, gateway_node_id, purpose.value, issuer)).fetchone()
         return None if row is None else self._row(row)
 
+    def list_for_workspace(self, workspace_id: str):
+        rows = self._connection.execute(
+            f"SELECT {_COLUMNS} FROM cpk_gateway_key_rotations "
+            "WHERE workspace_id=%s ORDER BY requested_at, rotation_id",
+            (workspace_id,),
+        ).fetchall()
+        return tuple(self._row(row) for row in rows)
+
     def compare_and_set(self, current, replacement):
         row = self._connection.execute(
             f"""UPDATE cpk_gateway_key_rotations SET
@@ -123,6 +133,97 @@ class GatewayKeyRotationStore:
                     value.transition_fingerprint, value.advanced_by,
                     value.advanced_at, value.failure_code))
         return value
+
+    def lock_program_command(self, rotation_id: str, idempotency_key: str) -> None:
+        self._connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"gateway-key-rotation-program:{rotation_id}:{idempotency_key}",),
+        )
+
+    def program_command(self, rotation_id: str, idempotency_key: str):
+        row = self._connection.execute(
+            """SELECT intent_fingerprint,expected_version,phase,state,
+                      requested_by,requested_at,result_descriptor,completed_at
+               FROM cpk_gateway_key_rotation_program_commands
+               WHERE rotation_id=%s AND idempotency_key=%s""",
+            (rotation_id, idempotency_key),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "intent_fingerprint": row[0],
+            "expected_version": row[1],
+            "phase": row[2],
+            "state": row[3],
+            "requested_by": row[4],
+            "requested_at": row[5],
+            "result_descriptor": row[6],
+            "completed_at": row[7],
+        }
+
+    def pending_program_command(self, rotation_id: str):
+        row = self._connection.execute(
+            """SELECT idempotency_key FROM cpk_gateway_key_rotation_program_commands
+               WHERE rotation_id=%s AND state='pending'
+               ORDER BY requested_at,idempotency_key LIMIT 1""",
+            (rotation_id,),
+        ).fetchone()
+        return None if row is None else row[0]
+
+    def add_program_command(
+        self,
+        *,
+        rotation_id: str,
+        idempotency_key: str,
+        intent_fingerprint: str,
+        expected_version: int,
+        phase: str,
+        requested_by: str,
+        requested_at: str,
+    ) -> None:
+        self._connection.execute(
+            """INSERT INTO cpk_gateway_key_rotation_program_commands
+                 (rotation_id,idempotency_key,intent_fingerprint,expected_version,
+                  phase,state,requested_by,requested_at)
+               VALUES (%s,%s,%s,%s,%s,'pending',%s,%s)""",
+            (
+                rotation_id,
+                idempotency_key,
+                intent_fingerprint,
+                expected_version,
+                phase,
+                requested_by,
+                requested_at,
+            ),
+        )
+
+    def complete_program_command(
+        self,
+        *,
+        rotation_id: str,
+        idempotency_key: str,
+        intent_fingerprint: str,
+        result_descriptor: dict[str, object],
+        completed_at: str,
+    ) -> None:
+        row = self._connection.execute(
+            """UPDATE cpk_gateway_key_rotation_program_commands
+               SET state='completed',result_descriptor=%s::jsonb,completed_at=%s
+               WHERE rotation_id=%s AND idempotency_key=%s
+                 AND intent_fingerprint=%s AND state='pending'
+               RETURNING rotation_id""",
+            (
+                json.dumps(result_descriptor, sort_keys=True, separators=(",", ":")),
+                completed_at,
+                rotation_id,
+                idempotency_key,
+                intent_fingerprint,
+            ),
+        ).fetchone()
+        if row is None:
+            raise GatewayKeyRotationConflict(
+                "rotation program command completion changed concurrently"
+            )
 
     def transitions(self, rotation_id):
         rows = self._connection.execute("""
