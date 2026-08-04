@@ -7510,3 +7510,36 @@ existing generation, overlap, activation/drain, retirement, and exact-version
 revocation programs behind this facade. That composition must preserve one
 bounded phase per public advance and exact expected-version/idempotency replay;
 no lifecycle switch may move into the route adapter.
+
+## #1372 Operations-owned rotation composition
+
+The public facade now owns real rotation composition without moving policy into
+HTTP or MCP. Approval request/decision evidence and their matching rotation
+transitions commit in one caller-owned UnitOfWork. Public reads remain
+workspace-scoped and secret-free, and route callers receive no internal
+generation, execution, activation, retirement, revocation, or provider scopes.
+
+One public `advance` records a durable command receipt before invoking one
+bounded phase. The receipt fixes rotation, expected version, actor, and phase.
+Completion folds a bounded response in a later short transaction. Exact replay
+returns that receipt without provider or runtime IO. Process loss may leave an
+explicitly pending command; only that same command identity may resume through
+the existing idempotent generation/coordinator phase machinery. A different
+command cannot infer an earlier phase from later rotation state or bypass an
+unfinished effect. This was added after review identified that status-only
+replay could otherwise redispatch an external effect without sufficient proof.
+
+The operations-owned phase interpreter derives settled graph lineage and
+internal worker authority after trusted public authorization. It invokes the
+existing generation, overlap deployment, activation/drain, retirement
+deployment, and exact-version revocation programs; it does not duplicate their
+graph, key, lifecycle, or effect models. Provider certainty remains closed:
+definite failure is retryable, uncertainty blocks, and successful generation
+returns only reference/version/public-key evidence.
+
+Focused real-Postgres tests prove atomic approval transitions, trusted scope
+separation, workspace opacity, exact completed-command replay with zero repeated
+provider calls, and unchanged session lock order. The complete Docker-first
+operations gate passed 397 tests, compileall, installed import, zero mocks, and
+zero approved skips. The cpk-server process composition and source-live proof
+remain the second half of #1372 and #1272 respectively.

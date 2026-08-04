@@ -534,55 +534,23 @@ class GatewayKeyRotationService:
 
     def read(self, rotation_id: str) -> GatewayKeyRotationReadModel:
         value = self.get(rotation_id)
-        return GatewayKeyRotationReadModel(
-            rotation_id=value.rotation_id, workspace_id=value.workspace_id,
-            gateway_node_id=value.gateway_node_id, purpose=value.purpose,
-            issuer=value.issuer, old_key_id=value.old_key_id,
-            new_key_id=value.new_key_id, status=value.status,
-            version=value.version, correlation_id=value.correlation_id,
-            requested_by=value.requested_by, requested_at=value.requested_at,
-            drain_deadline_epoch=value.drain_deadline_epoch,
-            failure_code=value.failure_code, updated_at=value.updated_at)
+        return gateway_key_rotation_read_model(value)
+
+    def list(self, workspace_id: str) -> tuple[GatewayKeyRotationReadModel, ...]:
+        with self._unit_of_work_factory() as uow:
+            values = uow.stores.gateway_key_rotations.list_for_workspace(workspace_id)
+            uow.commit()
+        return tuple(gateway_key_rotation_read_model(value) for value in values)
 
     def advance(self, command: AdvanceGatewayKeyRotation) -> GatewayKeyRotation:
         if not isinstance(command, AdvanceGatewayKeyRotation):
             raise TypeError("command must be AdvanceGatewayKeyRotation")
-        _scope(command.actor_scopes)
-        fingerprint = _transition_fingerprint(command)
         with self._unit_of_work_factory() as uow:
-            store = uow.stores.gateway_key_rotations
-            current = store.get_for_update(command.rotation_id)
-            existing = store.transition_for_id(
-                command.rotation_id, command.transition_id)
-            if existing is not None:
-                if existing.transition_fingerprint != fingerprint:
-                    raise GatewayKeyRotationConflict(
-                        "rotation transition id was reused with different intent")
-                uow.commit()
-                return current
-            if (current.status is not command.expected_status
-                    or current.version != command.expected_version):
-                raise GatewayKeyRotationConflict("rotation expected state is stale")
-            _validate_approval_evidence(uow, current, command)
-            now = self._clock()
-            if type(now) is not int or now < 0:
-                raise GatewayKeyRotationError("trusted clock returned malformed time")
-            replacement = _transition(current, command, now)
-            updated = store.compare_and_set(current, replacement)
-            if updated is None:
-                raise GatewayKeyRotationConflict("rotation advanced concurrently")
-            store.add_transition(GatewayKeyRotationTransition(
-                rotation_id=current.rotation_id,
-                transition_id=command.transition_id,
-                from_status=current.status,
-                to_status=updated.status,
-                from_version=current.version,
-                to_version=updated.version,
-                transition_fingerprint=fingerprint,
-                advanced_by=command.advanced_by,
-                advanced_at=command.advanced_at,
-                failure_code=command.failure_code,
-            ))
+            updated = advance_gateway_key_rotation_in_unit_of_work(
+                uow,
+                command,
+                clock=self._clock,
+            )
             uow.commit()
             return updated
 
@@ -591,6 +559,73 @@ class GatewayKeyRotationService:
             values = uow.stores.gateway_key_rotations.transitions(rotation_id)
             uow.commit()
             return values
+
+
+def gateway_key_rotation_read_model(
+    value: GatewayKeyRotation,
+) -> GatewayKeyRotationReadModel:
+    """Project secret-free rotation state for public/application readback."""
+
+    return GatewayKeyRotationReadModel(
+        rotation_id=value.rotation_id, workspace_id=value.workspace_id,
+        gateway_node_id=value.gateway_node_id, purpose=value.purpose,
+        issuer=value.issuer, old_key_id=value.old_key_id,
+        new_key_id=value.new_key_id, status=value.status,
+        version=value.version, correlation_id=value.correlation_id,
+        requested_by=value.requested_by, requested_at=value.requested_at,
+        drain_deadline_epoch=value.drain_deadline_epoch,
+        failure_code=value.failure_code, updated_at=value.updated_at)
+
+
+def advance_gateway_key_rotation_in_unit_of_work(
+    unit_of_work: Any,
+    command: AdvanceGatewayKeyRotation,
+    *,
+    clock: Callable[[], int],
+) -> GatewayKeyRotation:
+    """Fold one rotation transition into an already caller-owned transaction."""
+
+    if not isinstance(command, AdvanceGatewayKeyRotation):
+        raise TypeError("command must be AdvanceGatewayKeyRotation")
+    _scope(command.actor_scopes)
+    fingerprint = _transition_fingerprint(command)
+    store = unit_of_work.stores.gateway_key_rotations
+    current = store.get_for_update(command.rotation_id)
+    existing = store.transition_for_id(command.rotation_id, command.transition_id)
+    if existing is not None:
+        if existing.transition_fingerprint != fingerprint:
+            raise GatewayKeyRotationConflict(
+                "rotation transition id was reused with different intent"
+            )
+        return current
+    if (
+        current.status is not command.expected_status
+        or current.version != command.expected_version
+    ):
+        raise GatewayKeyRotationConflict("rotation expected state is stale")
+    _validate_approval_evidence(unit_of_work, current, command)
+    now = clock()
+    if type(now) is not int or now < 0:
+        raise GatewayKeyRotationError("trusted clock returned malformed time")
+    replacement = _transition(current, command, now)
+    updated = store.compare_and_set(current, replacement)
+    if updated is None:
+        raise GatewayKeyRotationConflict("rotation advanced concurrently")
+    store.add_transition(
+        GatewayKeyRotationTransition(
+            rotation_id=current.rotation_id,
+            transition_id=command.transition_id,
+            from_status=current.status,
+            to_status=updated.status,
+            from_version=current.version,
+            to_version=updated.version,
+            transition_fingerprint=fingerprint,
+            advanced_by=command.advanced_by,
+            advanced_at=command.advanced_at,
+            failure_code=command.failure_code,
+        )
+    )
+    return updated
 
 
 def _candidate(command: RequestGatewayKeyRotation) -> GatewayKeyRotation:

@@ -109,16 +109,16 @@
     },
     {
       "command": "request-gateway-key-rotation-approval",
-      "service": "ApprovalCommandService._request_rotation",
-      "writer": "approvals.py:ApprovalCommandService._request_rotation",
+      "service": "ApprovalCommandService._request_rotation_in_unit_of_work",
+      "writer": "approvals.py:ApprovalCommandService._request_rotation_in_unit_of_work",
       "source": "approvals.py",
       "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
       "session_rule": "requires OPEN after lock"
     },
     {
       "command": "decide-approval",
-      "service": "ApprovalCommandService._decide",
-      "writer": "approvals.py:ApprovalCommandService._decide",
+      "service": "ApprovalCommandService._decide_in_unit_of_work",
+      "writer": "approvals.py:ApprovalCommandService._decide_in_unit_of_work",
       "source": "approvals.py",
       "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
       "session_rule": "requires OPEN after lock"
