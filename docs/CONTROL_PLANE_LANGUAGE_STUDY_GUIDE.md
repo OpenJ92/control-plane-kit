@@ -328,6 +328,11 @@ hard arrow to `BLOCKED(uncertain)`, never back to the adapter. At every later
 mark, draw recovery from committed evidence with no duplicate effect. This is
 the distinction between durable history and safe effect replay.
 
+Draw verifier projections as maps keyed by public key id. Their serialized
+order is canonical but carries no old/new meaning. Label A and B from rotation
+identity and lifecycle truth, then require exact material and status for each
+id before drawing A+B -> B.
+
 Continue from accepted overlap with three separate committed boxes:
 
 ```text

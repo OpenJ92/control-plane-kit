@@ -4,8 +4,15 @@ from dataclasses import replace
 import os
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from gateway_rotation_overlap_fixture import GatewayRotationOverlapFixture
+from control_plane_kit_core.delegation_authority import (
+    DelegationVerifierProjection,
+    materialize_delegation_verifiers,
+)
+from control_plane_kit_core.delegation_keys import DelegationPublicKey
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
@@ -36,6 +43,7 @@ from control_plane_kit_operations.lifecycle import (
     RunLifecycleCommandService,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.records import RealizedGraphProjectionRecord
 
 
 class CountingIds:
@@ -120,7 +128,7 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
                 "workspace-a",
                 overlap.rotation.purpose,
                 overlap.rotation.issuer,
-                "key-b",
+                self.new_key_id,
                 activated_by="operator-a",
                 activated_at="2026-08-02T03:00:01Z",
             )
@@ -281,8 +289,56 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
                 "workspace-a",
                 rotation.purpose,
                 rotation.issuer,
-                "key-a",
+                self.old_key_id,
             )
+
+    def replace_overlap_target_public_keys(
+        self,
+        *public_keys: DelegationPublicKey,
+    ) -> None:
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            authored_record = stores.graphs.get("graph-a")
+            projection_record = stores.realized_graphs.get(
+                self.overlap_projection_id
+            )
+        authored = DEFAULT_GRAPH_CODEC.decode(authored_record.graph_descriptor)
+        realized = DEFAULT_GRAPH_CODEC.decode(projection_record.graph_descriptor)
+        target = realized.node("gateway-a").delegation_verifier_projection
+        other = realized.node("gateway-other").delegation_verifier_projection
+        assert target is not None
+        assert other is not None
+        replacement_target = DelegationVerifierProjection(
+            delegate_node_id=target.delegate_node_id,
+            purpose=target.purpose,
+            issuer=target.issuer,
+            audience=target.audience,
+            projection_id=target.projection_id,
+            public_keys=tuple(public_keys),
+        )
+        replacement = RealizedGraphProjectionRecord.from_graph(
+            projection_id=projection_record.projection_id,
+            workspace_id=projection_record.workspace_id,
+            source_authored_graph_id=projection_record.source_authored_graph_id,
+            projection_kind=projection_record.projection_kind,
+            projection_key=projection_record.projection_key,
+            graph=materialize_delegation_verifiers(
+                authored,
+                (replacement_target, other),
+            ),
+            created_by=projection_record.created_by,
+            created_at=projection_record.created_at,
+        )
+        self.connection.execute(
+            "UPDATE cpk_realized_graph_projections "
+            "SET projection_digest=%s, graph_descriptor=%s "
+            "WHERE projection_id=%s",
+            (
+                replacement.projection_digest,
+                Jsonb(replacement.graph_descriptor),
+                replacement.projection_id,
+            ),
+        )
 
     def rotation(self):
         return GatewayKeyRotationService(
