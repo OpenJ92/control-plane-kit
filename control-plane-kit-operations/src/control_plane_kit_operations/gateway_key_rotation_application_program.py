@@ -165,9 +165,9 @@ class GatewayKeyRotationProgramExecutor:
             return prepared
         phase, phase_version, fingerprint = prepared
         current = self._rotations.get(rotation.rotation_id)
-        worker = ExecutionWorkerAuthority(
-            f"gkrot-worker-{current.rotation_id[-24:]}",
-            (PolicyScope.EXECUTION_OPERATE,),
+        worker = self._child_worker_authority(
+            current.rotation_id,
+            actor_scopes,
         )
         try:
             if phase == "generation":
@@ -488,6 +488,25 @@ class GatewayKeyRotationProgramExecutor:
                 {PolicyScope.DELEGATION_KEY_ROTATE, *external},
                 key=lambda scope: scope.value,
             )
+        )
+
+    @staticmethod
+    def _child_worker_authority(
+        rotation_id: str,
+        actor_scopes: tuple[PolicyScope, ...],
+    ) -> ExecutionWorkerAuthority:
+        if not isinstance(actor_scopes, tuple) or any(
+            not isinstance(scope, PolicyScope) for scope in actor_scopes
+        ):
+            raise GatewayKeyRotationApplicationConflict(
+                "trusted actor scopes are malformed"
+            )
+        scopes = {PolicyScope.EXECUTION_OPERATE}
+        if PolicyScope.SECRET_PROVIDER_USE in actor_scopes:
+            scopes.add(PolicyScope.SECRET_PROVIDER_USE)
+        return ExecutionWorkerAuthority(
+            f"gkrot-worker-{rotation_id[-24:]}",
+            tuple(sorted(scopes, key=lambda scope: scope.value)),
         )
 
     @staticmethod
