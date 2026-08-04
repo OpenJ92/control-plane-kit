@@ -7651,3 +7651,39 @@ target map. The complete Docker-first operations gate passed 407 tests,
 compileall, installed import, zero mocks, and zero approved skips. Source-live
 acceptance remains the final #1384 proof after server-products consumes the
 merged operations commit.
+
+The server-products migration completed against operations commit
+`535f085b42f8a4194a85ef1345717cc65c62c23b` and interpreters commit
+`f65e4b0f4a5ca0d8eeb5b25dc24141404e631cff`, then merged through
+`OpenJ92/control-plane-kit-servers#77` at
+`6e012fc81804f2d7d27d955b2e7183d357f0e328`. The canonical gateway descriptor
+now retains only graph-derived target configuration. Authoritative private,
+public, Postgres, router, multiplexer, Cloudflare-custody, and rotation graphs
+author stable delegation bindings rather than generated verifier environment.
+The obsolete host-side two-gateway Cloudflare smoke was removed.
+
+The new `gateway-verifier-projection` source-live scenario proved the complete
+initial projection path through a real cpk-server, durable secrets provider,
+operations, dispatcher, external Docker interpreter, and gateway process. Key
+A was admitted and activated, the desired graph contained gateway, Hello, and
+Postgres, the plan and activity journal contained exact successful start-node
+evidence, authenticated HTTP reached private Hello, and authenticated MCP ran
+Postgres select-one. Cleanup and Docker residue audit passed. No Cloudflare
+resource was mutated, and all Pottery Factory containers and retained volumes
+were preserved.
+
+The complete server-products Docker gate passed 174 tests, package-integrity
+and import checks, the real Postgres-backed cpk-server image smoke, and residue
+audit. One cold image-smoke startup exceeded the bounded liveness window; the
+unchanged focused smoke and the warm complete rerun both passed, so no timeout
+or assertion was weakened. A later security scan found and corrected an
+obsolete Cloudflare public-key JSON bootstrap in favor of the exact public PEM
+consumed by delegation-key registration.
+
+The old rotation harness now reaches and proves initial projection A, then is
+correctly rejected when it attempts to publish A+B through ordinary
+`set-desired-graph`. That rejection is the strengthened #1379 law, not a
+regression: overlap projection is owned by the approved operations rotation
+program. #1272 must therefore replace the remaining harness-authored A -> A+B
+-> B policy with the public rotation program rather than weakening projection
+compilation.
