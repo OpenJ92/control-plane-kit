@@ -8,6 +8,8 @@ import json
 from typing import Any, Callable, Protocol
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError
+from control_plane_kit_operations.admission import required_authority_use_scopes
 from control_plane_kit_operations.coordinator import ExecutionCoordinator
 from control_plane_kit_operations.gateway_key_rotation_activation import (
     GatewayKeyRotationActivationProgram,
@@ -58,6 +60,16 @@ class GatewayKeyGenerationAdapter(Protocol):
     """Provider effect returning closed certainty and secret-free evidence."""
 
     def generate(self, grant: object) -> GatewayKeyGenerationResult: ...
+
+
+_DEPLOYMENT_PHASES = frozenset(
+    {
+        "overlap-preparation",
+        "overlap-execution",
+        "drain-or-retirement",
+        "retirement-execution",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -138,12 +150,15 @@ class GatewayKeyRotationProgramExecutor:
         *,
         expected_version: int,
         actor_id: str,
+        actor_scopes: tuple[PolicyScope, ...],
         idempotency_key: str,
     ) -> GatewayKeyRotationProgramView:
         prepared = self._prepare_command(
             rotation.rotation_id,
+            rotation.workspace_id,
             expected_version,
             actor_id,
+            actor_scopes,
             idempotency_key,
         )
         if isinstance(prepared, GatewayKeyRotationProgramView):
@@ -215,10 +230,7 @@ class GatewayKeyRotationProgramExecutor:
                         ),
                         expected_desired_graph_revision=lineage.desired_revision,
                         actor_id=actor_id,
-                        actor_scopes=(
-                            PolicyScope.DELEGATION_KEY_ROTATE,
-                            PolicyScope.PLAN_EXECUTE,
-                        ),
+                        actor_scopes=self._child_deployment_scopes(actor_scopes),
                         worker_authority=worker,
                         lease_expires_at=self._lease_expiry_clock(),
                     )
@@ -300,10 +312,7 @@ class GatewayKeyRotationProgramExecutor:
                         ),
                         expected_desired_graph_revision=lineage.desired_revision,
                         actor_id=actor_id,
-                        actor_scopes=(
-                            PolicyScope.DELEGATION_KEY_ROTATE,
-                            PolicyScope.PLAN_EXECUTE,
-                        ),
+                        actor_scopes=self._child_deployment_scopes(actor_scopes),
                         worker_authority=worker,
                         lease_expires_at=self._lease_expiry_clock(),
                     )
@@ -365,8 +374,10 @@ class GatewayKeyRotationProgramExecutor:
     def _prepare_command(
         self,
         rotation_id: str,
+        workspace_id: str,
         expected_version: int,
         actor_id: str,
+        actor_scopes: tuple[PolicyScope, ...],
         idempotency_key: str,
     ) -> tuple[str, int, str] | GatewayKeyRotationProgramView:
         fingerprint = sha256(
@@ -389,6 +400,13 @@ class GatewayKeyRotationProgramExecutor:
                     raise GatewayKeyRotationApplicationConflict(
                         "rotation advance idempotency key was reused with different intent"
                     )
+                phase = str(existing["phase"])
+                self._require_phase_authority(
+                    unit_of_work,
+                    workspace_id,
+                    phase,
+                    actor_scopes,
+                )
                 if existing["state"] == "completed":
                     result = GatewayKeyRotationProgramView.from_descriptor(
                         existing["result_descriptor"],
@@ -398,7 +416,7 @@ class GatewayKeyRotationProgramExecutor:
                     return result
                 unit_of_work.commit()
                 return (
-                    str(existing["phase"]),
+                    phase,
                     int(existing["expected_version"]),
                     fingerprint,
                 )
@@ -413,6 +431,12 @@ class GatewayKeyRotationProgramExecutor:
                     "rotation has an unfinished advance command"
                 )
             phase = self._phase_for_status(current.status)
+            self._require_phase_authority(
+                unit_of_work,
+                workspace_id,
+                phase,
+                actor_scopes,
+            )
             requested_at = self._clock()
             store.add_program_command(
                 rotation_id=rotation_id,
@@ -425,6 +449,81 @@ class GatewayKeyRotationProgramExecutor:
             )
             unit_of_work.commit()
         return phase, expected_version, fingerprint
+
+    def _require_phase_authority(
+        self,
+        unit_of_work: Any,
+        workspace_id: str,
+        phase: str,
+        actor_scopes: tuple[PolicyScope, ...],
+    ) -> None:
+        if not isinstance(actor_scopes, tuple) or any(
+            not isinstance(scope, PolicyScope) for scope in actor_scopes
+        ):
+            raise GatewayKeyRotationApplicationConflict(
+                "trusted actor scopes are malformed"
+            )
+        if phase not in _DEPLOYMENT_PHASES:
+            return
+        required = self._required_deployment_scopes(unit_of_work, workspace_id)
+        missing = required - set(actor_scopes)
+        if missing:
+            scope = sorted(missing, key=lambda value: value.value)[0]
+            raise GatewayKeyRotationApplicationConflict(
+                f"scope {scope.value} is missing"
+            )
+
+    @staticmethod
+    def _child_deployment_scopes(
+        actor_scopes: tuple[PolicyScope, ...],
+    ) -> tuple[PolicyScope, ...]:
+        allowed = {
+            PolicyScope.PLAN_EXECUTE,
+            PolicyScope.RUNTIME_AUTHORITY_USE,
+            PolicyScope.INGRESS_AUTHORITY_USE,
+        }
+        external = allowed.intersection(actor_scopes)
+        return tuple(
+            sorted(
+                {PolicyScope.DELEGATION_KEY_ROTATE, *external},
+                key=lambda scope: scope.value,
+            )
+        )
+
+    @staticmethod
+    def _required_deployment_scopes(
+        unit_of_work: Any,
+        workspace_id: str,
+    ) -> frozenset[PolicyScope]:
+        workspace = unit_of_work.stores.workspaces.get(workspace_id)
+        projection_ids = (
+            workspace.current_realized_projection_id,
+            workspace.desired_realized_projection_id,
+        )
+        if any(value is None for value in projection_ids):
+            raise GatewayKeyRotationApplicationConflict(
+                "gateway rotation deployment lacks realized graph lineage"
+            )
+        try:
+            graphs = tuple(
+                DEFAULT_GRAPH_CODEC.decode(
+                    unit_of_work.stores.realized_graphs.get(
+                        projection_id
+                    ).graph_descriptor
+                )
+                for projection_id in projection_ids
+                if projection_id is not None
+            )
+        except (KeyError, GraphDescriptorError) as error:
+            raise GatewayKeyRotationApplicationConflict(
+                "gateway rotation deployment graph is unavailable or invalid"
+            ) from error
+        return frozenset(
+            {
+                PolicyScope.PLAN_EXECUTE,
+                *required_authority_use_scopes(graphs[0], graphs[1]),
+            }
+        )
 
     def _complete_command(
         self,

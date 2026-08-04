@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import psycopg
 
+from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
 from control_plane_kit_core.delegation_keys import (
     DelegationKeyAlgorithm,
     DelegationKeyPurpose,
@@ -20,12 +21,14 @@ from control_plane_kit_core.identity import (
     WorkspaceGrant,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference,
     SecretProviderId,
     SecretReference,
     SecretUseIntent,
 )
+from control_plane_kit_core.topology import compile_topology
 from control_plane_kit_operations.delegation_key_generation import (
     DelegationKeyGenerationEvidence,
 )
@@ -49,9 +52,14 @@ from control_plane_kit_operations.gateway_key_rotation_program import (
 from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationStatus,
 )
-from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.lifecycle import RunLifecycleCommandService
-from control_plane_kit_operations.records import ApprovalDecisionKind, WorkspaceRecord
+from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.records import (
+    ApprovalDecisionKind,
+    GraphVersionRecord,
+    RealizedGraphProjectionRecord,
+    WorkspaceRecord,
+)
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand,
     SecretProviderKind,
@@ -74,10 +82,11 @@ class RecordingPhaseExecutor:
         *,
         expected_version,
         actor_id,
+        actor_scopes,
         idempotency_key,
     ):
         self.calls.append(
-            (rotation, expected_version, actor_id, idempotency_key)
+            (rotation, expected_version, actor_id, actor_scopes, idempotency_key)
         )
         return GatewayKeyRotationProgramView(
             rotation=GatewayKeyRotationApplicationService._view(rotation),
@@ -300,6 +309,41 @@ class GatewayKeyRotationApplicationTests(unittest.TestCase):
             phase_executor=executor,
         )
 
+    def install_runtime_authority_graph(self) -> None:
+        graph = compile_topology(
+            DeploymentTopology(
+                "gateway-runtime",
+                DockerRuntime(
+                    authority_ref=RuntimeAuthorityReference("docker-local"),
+                ),
+            )
+        )
+        authored = GraphVersionRecord.from_graph(
+            graph_id="gateway-runtime-graph",
+            workspace_id="workspace-a",
+            version=1,
+            graph=graph,
+            created_by="operator-a",
+            created_at="2026-08-04T00:00:30Z",
+        )
+        projection = RealizedGraphProjectionRecord.identity_for_authored(
+            authored_record=authored,
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.graphs.save(authored)
+            unit_of_work.stores.realized_graphs.save(projection)
+            unit_of_work.stores.workspaces.set_desired_graph(
+                "workspace-a",
+                authored.graph_id,
+                projection.projection_id,
+            )
+            unit_of_work.stores.workspaces.set_current_graph(
+                "workspace-a",
+                authored.graph_id,
+                projection.projection_id,
+            )
+            unit_of_work.commit()
+
     def test_public_approval_request_and_decision_are_atomic_and_replay(self) -> None:
         requested = self.requested()
         request_command = RequestGatewayKeyRotationProgramApproval(
@@ -380,6 +424,10 @@ class GatewayKeyRotationApplicationTests(unittest.TestCase):
 
     def test_advance_delegates_one_bounded_phase_without_public_internal_scopes(self) -> None:
         requested = self.requested()
+        trusted_scopes = (
+            PolicyScope.DELEGATION_KEY_ROTATE,
+            PolicyScope.RUNTIME_AUTHORITY_USE,
+        )
         result = self.application.advance(
             AdvanceGatewayKeyRotationProgram(
                 workspace_id="workspace-a",
@@ -387,16 +435,97 @@ class GatewayKeyRotationApplicationTests(unittest.TestCase):
                 expected_version=requested.version,
                 idempotency_key="advance-rotation-a",
             ),
-            self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+            self.context(*trusted_scopes),
         )
         self.assertEqual(result.phase, "generation")
         self.assertEqual(len(self.phases.calls), 1)
-        durable, version, actor, idempotency_key = self.phases.calls[0]
+        durable, version, actor, actor_scopes, idempotency_key = self.phases.calls[0]
         self.assertEqual(durable.rotation_id, requested.rotation_id)
         self.assertEqual(version, requested.version)
         self.assertEqual(actor, "operator-a")
+        self.assertEqual(actor_scopes, trusted_scopes)
         self.assertEqual(idempotency_key, "advance-rotation-a")
         self.assertNotIn("private", repr(result).lower())
+
+    def test_overlap_requires_trusted_execution_scopes_before_command_receipt(self) -> None:
+        approved = self.approved()
+        application = self.application_with(GeneratedKeyAdapter())
+        generated = application.advance(
+            AdvanceGatewayKeyRotationProgram(
+                "workspace-a",
+                approved.rotation_id,
+                approved.version,
+                "generate-key-b-before-runtime-use-check",
+            ),
+            self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+        )
+        self.assertEqual(
+            generated.rotation.status,
+            GatewayKeyRotationStatus.KEY_GENERATED,
+        )
+        self.install_runtime_authority_graph()
+
+        cases = (
+            (
+                "overlap-without-plan-execute",
+                (
+                    PolicyScope.DELEGATION_KEY_ROTATE,
+                    PolicyScope.RUNTIME_AUTHORITY_USE,
+                ),
+                "scope plan:execute is missing",
+            ),
+            (
+                "overlap-without-runtime-use",
+                (
+                    PolicyScope.DELEGATION_KEY_ROTATE,
+                    PolicyScope.PLAN_EXECUTE,
+                ),
+                "scope runtime-authority:use is missing",
+            ),
+        )
+        for idempotency_key, scopes, message in cases:
+            with self.subTest(idempotency_key=idempotency_key):
+                with self.assertRaisesRegex(
+                    GatewayKeyRotationApplicationConflict,
+                    message,
+                ):
+                    application.advance(
+                        AdvanceGatewayKeyRotationProgram(
+                            "workspace-a",
+                            generated.rotation.rotation_id,
+                            generated.rotation.version,
+                            idempotency_key,
+                        ),
+                        self.context(*scopes),
+                    )
+
+                receipt_count = self.connection.execute(
+                    "SELECT COUNT(*) "
+                    "FROM cpk_gateway_key_rotation_program_commands "
+                    "WHERE rotation_id=%s AND idempotency_key=%s",
+                    (generated.rotation.rotation_id, idempotency_key),
+                ).fetchone()[0]
+                self.assertEqual(receipt_count, 0)
+
+    def test_child_deployment_scopes_drop_unrelated_ambient_authority(self) -> None:
+        self.assertEqual(
+            GatewayKeyRotationProgramExecutor._child_deployment_scopes(
+                (
+                    PolicyScope.DELEGATION_KEY_ROTATE,
+                    PolicyScope.PLAN_EXECUTE,
+                    PolicyScope.RUNTIME_AUTHORITY_USE,
+                    PolicyScope.INGRESS_AUTHORITY_USE,
+                    PolicyScope.SECRET_PROVIDER_READ,
+                    PolicyScope.HUB_INSTANCE_CREATE,
+                )
+            ),
+            (
+                PolicyScope.DELEGATION_KEY_ROTATE,
+                PolicyScope.INGRESS_AUTHORITY_USE,
+                PolicyScope.PLAN_EXECUTE,
+                PolicyScope.RUNTIME_AUTHORITY_USE,
+            ),
+        )
 
     def test_completed_public_advance_replays_receipt_without_provider_io(self) -> None:
         requested = self.requested()

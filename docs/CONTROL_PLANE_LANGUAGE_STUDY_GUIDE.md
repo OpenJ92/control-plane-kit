@@ -383,6 +383,10 @@ Keep the three authorities visually separate: requesting rotation, reviewing
 the rotation subject, and executing the accepted deployment are not equivalent
 permissions. The reviewer sees bounded rotation intent, never a secret
 reference, provider version, private key, or generated verifier material.
+Inside the execution box, draw an additional intersection with the current
+`runtime-authority:use` grant. The focused rotation permission supplies program
+intent, while runtime use supplies access to the selected runtime. Neither
+implies the other, and the program never draws that runtime-use arrow itself.
 
 For each example, mark:
 

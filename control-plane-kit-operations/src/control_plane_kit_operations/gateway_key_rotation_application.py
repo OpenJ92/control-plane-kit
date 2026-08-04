@@ -345,6 +345,7 @@ class GatewayKeyRotationPhaseExecutor(Protocol):
         *,
         expected_version: int,
         actor_id: str,
+        actor_scopes: tuple[PolicyScope, ...],
         idempotency_key: str,
     ) -> GatewayKeyRotationProgramView: ...
 
@@ -486,6 +487,7 @@ class GatewayKeyRotationApplicationService:
             rotation,
             expected_version=command.expected_version,
             actor_id=context.actor_id,
+            actor_scopes=context.granted_scopes,
             idempotency_key=command.idempotency_key,
         )
 
