@@ -73,6 +73,16 @@ from control_plane_kit_operations.gateway_probes import (
     GatewayProbeNotFound,
     RequestGatewayProbe,
 )
+from control_plane_kit_operations.gateway_key_rotation_application import (
+    AdvanceGatewayKeyRotationProgram,
+    DecideGatewayKeyRotationProgram,
+    GatewayKeyRotationApplication,
+    GatewayKeyRotationApplicationConflict,
+    GatewayKeyRotationApplicationError,
+    GatewayKeyRotationApplicationNotFound,
+    RequestGatewayKeyRotationProgram,
+    RequestGatewayKeyRotationProgramApproval,
+)
 from control_plane_kit_operations.delegation_signing_keys import (
     ActivateDelegationSigningKeyCommand,
     DelegationSigningKeyAuthorizationDenied,
@@ -272,6 +282,15 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.gateway-verifier-configuration": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
     ),
+    "read.gateway-key-rotation.list": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
+    ),
+    "read.gateway-key-rotation.detail": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
+    ),
+    "read.gateway-key-rotation.transitions": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
+    ),
     "command.workspace.create": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.HUB_INSTANCE_CREATE,)
     ),
@@ -325,6 +344,18 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     ),
     "command.delegation-key.revoke": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.DELEGATION_KEY_REVOKE,)
+    ),
+    "command.gateway-key-rotation.request": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,)
+    ),
+    "command.gateway-key-rotation.request-approval": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,)
+    ),
+    "command.gateway-key-rotation.decide": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,)
+    ),
+    "command.gateway-key-rotation.advance": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,)
     ),
     "command.operation-session.start": _WORKSPACE_EDIT,
     "command.operation-session.close": _WORKSPACE_EDIT,
@@ -385,12 +416,62 @@ class CpkServerReadService:
         unit_of_work_factory: Callable[[], Any],
         *,
         clock: Callable[[], object] | None = None,
+        gateway_key_rotations: GatewayKeyRotationApplication | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._clock = clock
+        self._gateway_key_rotations = gateway_key_rotations
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
-        _trusted_context(request)
+        context = _trusted_context(request)
+        if request.route_id.startswith("read.gateway-key-rotation."):
+            if self._gateway_key_rotations is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            workspace_id = _workspace_id(payload)
+            try:
+                if request.route_id == "read.gateway-key-rotation.list":
+                    return {
+                        "workspace_id": workspace_id,
+                        "rotations": [
+                            value.descriptor()
+                            for value in self._gateway_key_rotations.list(
+                                workspace_id,
+                                context,
+                            )
+                        ],
+                    }
+                rotation_id = _path_or_payload(
+                    payload,
+                    "rotation_id",
+                    "rotation_id",
+                )
+                if request.route_id == "read.gateway-key-rotation.detail":
+                    return self._gateway_key_rotations.detail(
+                        workspace_id,
+                        rotation_id,
+                        context,
+                    ).descriptor()
+                if request.route_id == "read.gateway-key-rotation.transitions":
+                    return {
+                        "workspace_id": workspace_id,
+                        "rotation_id": rotation_id,
+                        "transitions": [
+                            value.descriptor()
+                            for value in self._gateway_key_rotations.transitions(
+                                workspace_id,
+                                rotation_id,
+                                context,
+                            )
+                        ],
+                    }
+            except GatewayKeyRotationApplicationNotFound as error:
+                raise CpkServerApplicationError(404, str(error)) from error
+            except GatewayKeyRotationApplicationConflict as error:
+                raise CpkServerApplicationError(409, str(error)) from error
+            except GatewayKeyRotationApplicationError as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            raise _unsupported_route(request)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -433,6 +514,7 @@ class CpkServerPlanningService:
         secret_providers: SecretProviderRegistrationService | None = None,
         delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
+        gateway_key_rotations: GatewayKeyRotationApplication | None = None,
     ) -> None:
         self._service = service
         self._workspaces = workspaces
@@ -443,9 +525,78 @@ class CpkServerPlanningService:
         self._secret_providers = secret_providers
         self._delegation_signing_keys = delegation_signing_keys
         self._desired_graphs = desired_graphs
+        self._gateway_key_rotations = gateway_key_rotations
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         context = _trusted_context(request)
+        if request.route_id == "command.gateway-key-rotation.request":
+            if self._gateway_key_rotations is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            try:
+                result = self._gateway_key_rotations.request(
+                    RequestGatewayKeyRotationProgram(
+                        workspace_id=_workspace_id(payload),
+                        gateway_node_id=_text(payload, "gateway_node_id"),
+                        purpose=DelegationKeyPurpose(_text(payload, "purpose")),
+                        issuer=_text(payload, "issuer"),
+                        old_key_id=_text(payload, "old_key_id"),
+                        new_secret_reference=SecretReference(
+                            _text(payload, "new_secret_reference")
+                        ),
+                        key_generation_correlation=_text(
+                            payload,
+                            "key_generation_correlation",
+                        ),
+                        maximum_grant_lifetime_seconds=_positive_int(
+                            payload,
+                            "maximum_grant_lifetime_seconds",
+                            default=60,
+                        ),
+                        clock_skew_seconds=_non_negative_int(
+                            payload,
+                            "clock_skew_seconds",
+                            default=5,
+                        ),
+                        idempotency_key=_text(payload, "idempotency_key"),
+                        requested_at=_text(payload, "requested_at"),
+                    ),
+                    context,
+                )
+            except GatewayKeyRotationApplicationConflict as error:
+                raise CpkServerApplicationError(409, str(error)) from error
+            except GatewayKeyRotationApplicationError as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return result.descriptor()
+        if request.route_id == "command.gateway-key-rotation.advance":
+            if self._gateway_key_rotations is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            try:
+                result = self._gateway_key_rotations.advance(
+                    AdvanceGatewayKeyRotationProgram(
+                        workspace_id=_workspace_id(payload),
+                        rotation_id=_path_or_payload(
+                            payload,
+                            "rotation_id",
+                            "rotation_id",
+                        ),
+                        expected_version=_positive_int(
+                            payload,
+                            "expected_version",
+                            default=0,
+                        ),
+                        idempotency_key=_text(payload, "idempotency_key"),
+                    ),
+                    context,
+                )
+            except GatewayKeyRotationApplicationNotFound as error:
+                raise CpkServerApplicationError(404, str(error)) from error
+            except GatewayKeyRotationApplicationConflict as error:
+                raise CpkServerApplicationError(409, str(error)) from error
+            except GatewayKeyRotationApplicationError as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return result.descriptor()
         if request.route_id == "command.workspace.create":
             if self._workspaces is None:
                 raise _service_not_configured(request)
@@ -923,11 +1074,74 @@ def _handle_delegation_signing_key_command(
 
 
 class CpkServerApprovalService:
-    def __init__(self, service: ApprovalCommandService) -> None:
+    def __init__(
+        self,
+        service: ApprovalCommandService,
+        *,
+        gateway_key_rotations: GatewayKeyRotationApplication | None = None,
+    ) -> None:
         self._service = service
+        self._gateway_key_rotations = gateway_key_rotations
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         context = _trusted_context(request)
+        if request.route_id == "command.gateway-key-rotation.request-approval":
+            if self._gateway_key_rotations is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            try:
+                result = self._gateway_key_rotations.request_approval(
+                    RequestGatewayKeyRotationProgramApproval(
+                        workspace_id=_workspace_id(payload),
+                        session_id=_text(payload, "session_id"),
+                        rotation_id=_path_or_payload(
+                            payload,
+                            "rotation_id",
+                            "rotation_id",
+                        ),
+                        idempotency_key=_text(payload, "idempotency_key"),
+                        comment=_optional_text(payload, "comment"),
+                    ),
+                    context,
+                )
+            except GatewayKeyRotationApplicationNotFound as error:
+                raise CpkServerApplicationError(404, str(error)) from error
+            except GatewayKeyRotationApplicationConflict as error:
+                raise CpkServerApplicationError(409, str(error)) from error
+            except GatewayKeyRotationApplicationError as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return result.descriptor()
+        if request.route_id == "command.gateway-key-rotation.decide":
+            if self._gateway_key_rotations is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            try:
+                result = self._gateway_key_rotations.decide(
+                    DecideGatewayKeyRotationProgram(
+                        workspace_id=_workspace_id(payload),
+                        session_id=_text(payload, "session_id"),
+                        rotation_id=_path_or_payload(
+                            payload,
+                            "rotation_id",
+                            "rotation_id",
+                        ),
+                        approval_request_id=_text(
+                            payload,
+                            "approval_request_id",
+                        ),
+                        decision=ApprovalDecisionKind(_text(payload, "decision")),
+                        idempotency_key=_text(payload, "idempotency_key"),
+                        comment=_optional_text(payload, "comment"),
+                    ),
+                    context,
+                )
+            except GatewayKeyRotationApplicationNotFound as error:
+                raise CpkServerApplicationError(404, str(error)) from error
+            except GatewayKeyRotationApplicationConflict as error:
+                raise CpkServerApplicationError(409, str(error)) from error
+            except GatewayKeyRotationApplicationError as error:
+                raise CpkServerApplicationError(400, str(error)) from error
+            return result.descriptor()
         if request.route_id == "command.approval.request":
             payload = _arguments(request)
             result = self._service.execute(
@@ -1217,6 +1431,7 @@ def cpk_server_services(
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
     gateway_probes: GatewayProbeCommandService | None = None,
+    gateway_key_rotations: GatewayKeyRotationApplication | None = None,
     clock: Callable[[], object] | None = None,
 ) -> Mapping[ControlPlaneServiceRole, CpkServerApplicationService]:
     """Return the complete service map required by cpk-server composition."""
@@ -1239,8 +1454,12 @@ def cpk_server_services(
             secret_providers=secret_providers,
             delegation_signing_keys=delegation_signing_keys,
             desired_graphs=desired_graphs,
+            gateway_key_rotations=gateway_key_rotations,
         ),
-        ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(approval),
+        ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(
+            approval,
+            gateway_key_rotations=gateway_key_rotations,
+        ),
         ControlPlaneServiceRole.ADMISSION: CpkServerAdmissionService(admission),
         ControlPlaneServiceRole.LIFECYCLE: CpkServerLifecycleService(
             lifecycle,
@@ -1254,6 +1473,7 @@ def cpk_server_services(
         ControlPlaneServiceRole.READS: CpkServerReadService(
             unit_of_work_factory,
             clock=clock,
+            gateway_key_rotations=gateway_key_rotations,
         ),
         ControlPlaneServiceRole.OBSERVATION: (
             CpkServerUnsupportedService(ControlPlaneServiceRole.OBSERVATION)

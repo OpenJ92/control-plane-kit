@@ -66,6 +66,24 @@ class AdapterParityContractTests(unittest.TestCase):
                     "GraphReadResponse",
                 ),
                 (
+                    "read.gateway-key-rotation.detail",
+                    "read.gateway-key-rotation.detail",
+                    "get_gateway_key_rotation",
+                    "GatewayKeyRotationDetailReadResponse",
+                ),
+                (
+                    "read.gateway-key-rotation.list",
+                    "read.gateway-key-rotation.list",
+                    "list_gateway_key_rotations",
+                    "GatewayKeyRotationCollectionReadResponse",
+                ),
+                (
+                    "read.gateway-key-rotation.transitions",
+                    "read.gateway-key-rotation.transitions",
+                    "list_gateway_key_rotation_transitions",
+                    "GatewayKeyRotationTransitionCollectionReadResponse",
+                ),
+                (
                     "read.gateway-probe-detail",
                     "read.gateway-probe-detail",
                     "get_gateway_probe_detail",
