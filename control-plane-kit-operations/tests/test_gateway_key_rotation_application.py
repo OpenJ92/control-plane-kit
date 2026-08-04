@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import itertools
 import os
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 
 import psycopg
 
@@ -31,6 +33,7 @@ from control_plane_kit_operations.coordinator import ExecutionCoordinator
 from control_plane_kit_operations.gateway_key_rotation_application import (
     AdvanceGatewayKeyRotationProgram,
     DecideGatewayKeyRotationProgram,
+    GatewayKeyRotationApplicationConflict,
     GatewayKeyRotationApplicationError,
     GatewayKeyRotationApplicationService,
     GatewayKeyRotationProgramView,
@@ -89,26 +92,55 @@ class GeneratedKeyAdapter:
 
     def generate(self, grant):
         self.calls.append(grant)
-        return GatewayKeyGenerationResult.generated(
-            DelegationKeyGenerationEvidence(
-                workspace_id=grant.workspace_id,
-                reference=grant.reference,
-                purpose=grant.purpose,
-                issuer=grant.issuer,
-                correlation_id=grant.correlation_id,
-                version_id="version-b",
-                version_number=1,
-                public_key=DelegationPublicKey(
-                    "gateway-key-b",
-                    DelegationKeyAlgorithm.ED25519,
-                    """-----BEGIN PUBLIC KEY-----
+        return generated_key_result(grant)
+
+
+def generated_key_result(grant):
+    return GatewayKeyGenerationResult.generated(
+        DelegationKeyGenerationEvidence(
+            workspace_id=grant.workspace_id,
+            reference=grant.reference,
+            purpose=grant.purpose,
+            issuer=grant.issuer,
+            correlation_id=grant.correlation_id,
+            version_id="version-b",
+            version_number=1,
+            public_key=DelegationPublicKey(
+                "gateway-key-b",
+                DelegationKeyAlgorithm.ED25519,
+                """-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
 -----END PUBLIC KEY-----
 """,
-                ),
-                replayed=False,
-            )
+            ),
+            replayed=False,
         )
+    )
+
+
+class SequencedKeyAdapter:
+    def __init__(self, *results):
+        self.results = list(results)
+        self.calls = []
+
+    def generate(self, grant):
+        self.calls.append(grant)
+        result = self.results.pop(0)
+        return generated_key_result(grant) if result == "generated" else result
+
+
+class BlockingGeneratedKeyAdapter:
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.calls = []
+
+    def generate(self, grant):
+        self.calls.append(grant)
+        self.entered.set()
+        if not self.release.wait(timeout=10):
+            raise AssertionError("generation test did not release provider effect")
+        return generated_key_result(grant)
 
 
 class UnusedActivityAdapter:
@@ -214,6 +246,58 @@ class GatewayKeyRotationApplicationTests(unittest.TestCase):
         return self.application.request(
             self.request_command(),
             self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+        )
+
+    def approved(self):
+        requested = self.requested()
+        approval = self.application.request_approval(
+            RequestGatewayKeyRotationProgramApproval(
+                "workspace-a",
+                self.session_id,
+                requested.rotation_id,
+                "request-approval-for-generation",
+            ),
+            self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+        )
+        return self.application.decide(
+            DecideGatewayKeyRotationProgram(
+                "workspace-a",
+                self.session_id,
+                requested.rotation_id,
+                approval.approval_request_id,
+                ApprovalDecisionKind.APPROVED,
+                "approve-generation",
+            ),
+            self.context(PolicyScope.DELEGATION_KEY_ROTATE_APPROVE),
+        ).rotation
+
+    def application_with(self, generation_adapter):
+        executor = GatewayKeyRotationProgramExecutor(
+            self.unit_of_work,
+            generation_adapter=generation_adapter,
+            revocation_adapter=object(),
+            coordinator=ExecutionCoordinator(
+                self.unit_of_work,
+                lifecycle=RunLifecycleCommandService(
+                    self.unit_of_work,
+                    clock=lambda: "2026-08-04T00:01:00Z",
+                    id_factory=self.id_factory,
+                ),
+                adapter=UnusedActivityAdapter(),
+                clock=lambda: "2026-08-04T00:01:00Z",
+                id_factory=self.id_factory,
+            ),
+            clock=lambda: "2026-08-04T00:01:00Z",
+            trusted_epoch_clock=lambda: 1_000,
+            lease_expiry_clock=lambda: "2026-08-04T00:06:00Z",
+            id_factory=self.id_factory,
+        )
+        return GatewayKeyRotationApplicationService(
+            self.unit_of_work,
+            clock=lambda: "2026-08-04T00:01:00Z",
+            trusted_epoch_clock=lambda: 1_000,
+            id_factory=self.id_factory,
+            phase_executor=executor,
         )
 
     def test_public_approval_request_and_decision_are_atomic_and_replay(self) -> None:
@@ -385,6 +469,149 @@ class GatewayKeyRotationApplicationTests(unittest.TestCase):
         self.assertEqual(replay.rotation, first.rotation)
         self.assertTrue(replay.replayed)
         self.assertEqual(len(generator.calls), 1)
+
+    def test_definite_generation_failure_resumes_exact_action_after_restart(self) -> None:
+        approved = self.approved()
+        failed_adapter = SequencedKeyAdapter(
+            GatewayKeyGenerationResult.definite_failure("provider-unavailable")
+        )
+        first_application = self.application_with(failed_adapter)
+        first_command = AdvanceGatewayKeyRotationProgram(
+            "workspace-a",
+            approved.rotation_id,
+            approved.version,
+            "generate-key-b-first-attempt",
+        )
+
+        failed = first_application.advance(
+            first_command,
+            self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+        )
+        replay = first_application.advance(
+            first_command,
+            self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+        )
+
+        self.assertEqual(failed.outcome, "definite-failure")
+        self.assertEqual(failed.failure_code, "provider-unavailable")
+        self.assertNotIn("secret", str(failed.descriptor()).lower())
+        with self.assertRaises(ValueError):
+            GatewayKeyRotationProgramView(
+                failed.rotation,
+                "generation",
+                "definite-failure",
+                failure_code="provider-token\nleak",
+            )
+        self.assertEqual(
+            failed.rotation.status,
+            GatewayKeyRotationStatus.GENERATION_PREPARED,
+        )
+        self.assertTrue(replay.replayed)
+        self.assertEqual(len(failed_adapter.calls), 1)
+
+        resumed_adapter = SequencedKeyAdapter("generated")
+        restarted_application = self.application_with(resumed_adapter)
+        generated = restarted_application.advance(
+            AdvanceGatewayKeyRotationProgram(
+                "workspace-a",
+                approved.rotation_id,
+                failed.rotation.version,
+                "generate-key-b-retry",
+            ),
+            self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+        )
+
+        self.assertEqual(generated.outcome, "generated")
+        self.assertEqual(
+            generated.rotation.status,
+            GatewayKeyRotationStatus.KEY_GENERATED,
+        )
+        self.assertEqual(len(resumed_adapter.calls), 1)
+        self.assertEqual(resumed_adapter.calls[0], failed_adapter.calls[0])
+        transitions = self.connection.execute(
+            "SELECT from_status,to_status FROM cpk_gateway_key_rotation_transitions "
+            "WHERE rotation_id=%s ORDER BY to_version",
+            (approved.rotation_id,),
+        ).fetchall()
+        self.assertEqual(
+            transitions.count(("approved", "generation-prepared")),
+            1,
+        )
+        self.assertEqual(
+            transitions.count(("generation-prepared", "key-generated")),
+            1,
+        )
+
+    def test_uncertain_generation_blocks_public_retry(self) -> None:
+        approved = self.approved()
+        adapter = SequencedKeyAdapter(
+            GatewayKeyGenerationResult.uncertain("provider-response-uncertain")
+        )
+        application = self.application_with(adapter)
+        blocked = application.advance(
+            AdvanceGatewayKeyRotationProgram(
+                "workspace-a",
+                approved.rotation_id,
+                approved.version,
+                "generate-key-b-uncertain",
+            ),
+            self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+        )
+
+        self.assertEqual(blocked.outcome, "uncertain")
+        self.assertEqual(blocked.failure_code, "provider-response-uncertain")
+        self.assertEqual(blocked.rotation.status, GatewayKeyRotationStatus.BLOCKED)
+        with self.assertRaises(GatewayKeyRotationApplicationConflict):
+            application.advance(
+                AdvanceGatewayKeyRotationProgram(
+                    "workspace-a",
+                    approved.rotation_id,
+                    blocked.rotation.version,
+                    "do-not-retry-uncertain-generation",
+                ),
+                self.context(PolicyScope.DELEGATION_KEY_ROTATE),
+            )
+        self.assertEqual(len(adapter.calls), 1)
+
+    def test_concurrent_public_generation_does_not_duplicate_provider_effect(self) -> None:
+        approved = self.approved()
+        adapter = BlockingGeneratedKeyAdapter()
+        first_application = self.application_with(adapter)
+        competing_application = self.application_with(adapter)
+        context = self.context(PolicyScope.DELEGATION_KEY_ROTATE)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(
+                first_application.advance,
+                AdvanceGatewayKeyRotationProgram(
+                    "workspace-a",
+                    approved.rotation_id,
+                    approved.version,
+                    "generate-key-b-owner",
+                ),
+                context,
+            )
+            self.assertTrue(adapter.entered.wait(timeout=10))
+            prepared = competing_application.detail(
+                "workspace-a",
+                approved.rotation_id,
+                self.context(PolicyScope.DELEGATION_KEY_READ),
+            )
+            with self.assertRaises(GatewayKeyRotationApplicationConflict):
+                competing_application.advance(
+                    AdvanceGatewayKeyRotationProgram(
+                        "workspace-a",
+                        approved.rotation_id,
+                        prepared.version,
+                        "generate-key-b-competing",
+                    ),
+                    context,
+                )
+            adapter.release.set()
+            generated = first.result(timeout=10)
+
+        self.assertEqual(generated.outcome, "generated")
+        self.assertEqual(len(adapter.calls), 1)
 
 
 if __name__ == "__main__":

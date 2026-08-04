@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Callable, Protocol
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
@@ -197,14 +198,26 @@ class GatewayKeyRotationProgramView:
     phase: str
     outcome: str
     replayed: bool = False
+    failure_code: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.failure_code is not None and (
+            not isinstance(self.failure_code, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", self.failure_code)
+            is None
+        ):
+            raise ValueError("rotation program failure code is malformed")
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "rotation": self.rotation.descriptor(),
             "phase": self.phase,
             "outcome": self.outcome,
             "replayed": self.replayed,
         }
+        if self.failure_code is not None:
+            result["failure_code"] = self.failure_code
+        return result
 
     @classmethod
     def from_descriptor(
@@ -223,6 +236,11 @@ class GatewayKeyRotationProgramView:
                 phase=str(value["phase"]),
                 outcome=str(value["outcome"]),
                 replayed=replayed,
+                failure_code=(
+                    None
+                    if value.get("failure_code") is None
+                    else str(value["failure_code"])
+                ),
             )
         except (KeyError, TypeError, ValueError) as error:
             raise GatewayKeyRotationApplicationConflict(

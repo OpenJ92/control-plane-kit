@@ -156,10 +156,16 @@ class GatewayKeyRotationProgramExecutor:
         )
         try:
             if phase == "generation":
+                generation_base_version = (
+                    phase_version - 1
+                    if current.status
+                    is GatewayKeyRotationStatus.GENERATION_PREPARED
+                    else phase_version
+                )
                 action = self._generation.prepare(
                     PrepareGatewayKeyRotationGeneration(
                         rotation_id=current.rotation_id,
-                        expected_version=phase_version,
+                        expected_version=generation_base_version,
                         actor_subject=actor_id,
                         prepared_by=actor_id,
                         prepared_at=self._clock(),
@@ -191,6 +197,7 @@ class GatewayKeyRotationProgramExecutor:
                         "generation",
                         result.outcome.value,
                         result.replayed,
+                        effect.failure_code,
                     ),
                 )
             if phase == "overlap-preparation":
@@ -455,6 +462,7 @@ class GatewayKeyRotationProgramExecutor:
     def _phase_for_status(status: GatewayKeyRotationStatus) -> str:
         phases = {
             GatewayKeyRotationStatus.APPROVED: "generation",
+            GatewayKeyRotationStatus.GENERATION_PREPARED: "generation",
             GatewayKeyRotationStatus.KEY_GENERATED: "overlap-preparation",
             GatewayKeyRotationStatus.OVERLAP_DEPLOYING: "overlap-execution",
             GatewayKeyRotationStatus.OVERLAP_READY: "activation",
@@ -503,14 +511,16 @@ class GatewayKeyRotationProgramExecutor:
         phase: str,
         outcome: str,
         replayed: bool = False,
+        failure_code: str | None = None,
     ) -> GatewayKeyRotationProgramView:
         return GatewayKeyRotationProgramView(
-            GatewayKeyRotationPublicView.from_read_model(
+            rotation=GatewayKeyRotationPublicView.from_read_model(
                 gateway_key_rotation_read_model(current)
             ),
-            phase,
-            outcome,
-            replayed,
+            phase=phase,
+            outcome=outcome,
+            replayed=replayed,
+            failure_code=failure_code,
         )
 
 
