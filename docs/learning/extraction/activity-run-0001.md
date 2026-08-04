@@ -7593,3 +7593,33 @@ environment.
 Focused acceptance passed six real-Postgres tests. The complete operations
 Docker-first gate passed 406 tests, compileall, installed import, zero mocks,
 and zero approved skips.
+
+## #1382 gateway verifier material ownership
+
+The gateway descriptor still declared placeholder values for the same verifier
+environment that operations now owns as a realized delegation projection. That
+made exact product instantiation and the new reserved-name guard disagree: a
+hosted graph could not omit the placeholders, but an authoritative graph could
+not truthfully author them either.
+
+The ownership matrix in
+`docs/design/0006-gateway-verifier-material-ownership.md` resolves the conflict
+without adding replacement magic. Every authoritative private, public,
+aggregate, Cloudflare-custody, and rotation path must register admitted public
+key truth through cpk-server, author only a stable
+`DelegationAuthorityBinding`, and receive bounded public verifier environment
+from operations-owned realized projection at the interpreter boundary.
+
+The matrix also preserves a useful diagnostic boundary. Direct gateway process
+and structural image tests may generate and inject explicit ephemeral verifier
+material, but they do not prove cpk-server authorization or graph realization.
+The old host-side two-gateway Cloudflare smoke is superseded and should be
+removed. `CPK_GATEWAY_TARGETS_JSON` remains graph-derived target material, and
+socket-bound secrets remain separate from delegation authority.
+
+Durable provider custody remains mandatory for the Cloudflare custody and
+gateway rotation live paths. General hosted source tests may use an explicitly
+labelled ephemeral signer/provider fixture only when they still register and
+activate matching public delegation-key truth through authenticated cpk-server
+operations. #1383 owns that composition; #1384 then removes descriptor
+placeholders and migrates every authoritative graph before #1272 resumes.
