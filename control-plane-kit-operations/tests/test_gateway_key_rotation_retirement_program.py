@@ -5,6 +5,8 @@ import unittest
 from gateway_rotation_overlap_fixture import (
     CrashAfterCommitUnitOfWork,
     CrashControl,
+    PUBLIC_KEY_A,
+    PUBLIC_KEY_B,
     PUBLIC_KEY_OTHER,
     SimulatedProcessLoss,
 )
@@ -67,6 +69,98 @@ class GatewayKeyRotationRetirementPreparationTests(
             GatewayKeyRotationRetirementPreparationOutcome.PREPARED_REPLAY,
         )
         self.assertEqual(replay.checkpoint, checkpoint)
+
+    def test_prepares_when_canonical_key_order_differs_from_rotation_role(self) -> None:
+        self.old_key_id = "source-live-rotation-key-a"
+        self.new_key_id = "gateway-00000000000000000000000000000000"
+        self.reset_truth()
+
+        result = self.program(prefix="reverse-order").prepare(self.command())
+
+        projection = self.connection.execute(
+            "SELECT graph_descriptor FROM cpk_realized_graph_projections "
+            "WHERE projection_id=%s",
+            (result.checkpoint.desired_realized_projection_id,),
+        ).fetchone()[0]
+        realized = DEFAULT_GRAPH_CODEC.decode(projection)
+        target = realized.node("gateway-a").delegation_verifier_projection
+        self.assertEqual(
+            tuple(key.key_id for key in target.public_keys),
+            (self.new_key_id,),
+        )
+
+    def test_substituted_old_or_new_public_material_fails_closed(self) -> None:
+        cases = (
+            (
+                "substituted-old",
+                self.public_key(self.old_key_id, PUBLIC_KEY_B),
+                self.public_key(self.new_key_id, PUBLIC_KEY_B),
+            ),
+            (
+                "substituted-new",
+                self.public_key(self.old_key_id, PUBLIC_KEY_A),
+                self.public_key(self.new_key_id, PUBLIC_KEY_A),
+            ),
+        )
+        for prefix, old_key, new_key in cases:
+            with self.subTest(prefix=prefix):
+                self.reset_truth()
+                pointer = self.desired_pointer()
+                self.replace_overlap_target_public_keys(old_key, new_key)
+
+                with self.assertRaises(
+                    GatewayKeyRotationRetirementPreparationConflict
+                ):
+                    self.program(prefix=prefix).prepare(self.command())
+
+                self.assertEqual(self.desired_pointer(), pointer)
+
+    def test_missing_or_extra_projected_key_identity_fails_closed(self) -> None:
+        cases = (
+            (
+                "missing-new",
+                (self.public_key(self.old_key_id, PUBLIC_KEY_A),),
+            ),
+            (
+                "extra-key",
+                (
+                    self.public_key(self.old_key_id, PUBLIC_KEY_A),
+                    self.public_key(self.new_key_id, PUBLIC_KEY_B),
+                    self.public_key("key-extra", PUBLIC_KEY_OTHER),
+                ),
+            ),
+        )
+        for prefix, public_keys in cases:
+            with self.subTest(prefix=prefix):
+                self.reset_truth()
+                pointer = self.desired_pointer()
+                self.replace_overlap_target_public_keys(*public_keys)
+
+                with self.assertRaises(
+                    GatewayKeyRotationRetirementPreparationConflict
+                ):
+                    self.program(prefix=prefix).prepare(self.command())
+
+                self.assertEqual(self.desired_pointer(), pointer)
+
+    def test_wrong_old_and_new_lifecycle_roles_fail_closed(self) -> None:
+        self.connection.execute(
+            "UPDATE cpk_delegation_signing_keys SET status='verify-only' "
+            "WHERE key_id=%s",
+            (self.new_key_id,),
+        )
+        self.connection.execute(
+            "UPDATE cpk_delegation_signing_keys "
+            "SET status='active', activated_by='operator-a', "
+            "activated_at='2026-08-02T03:00:03Z' WHERE key_id=%s",
+            (self.old_key_id,),
+        )
+        pointer = self.desired_pointer()
+
+        with self.assertRaises(GatewayKeyRotationRetirementPreparationConflict):
+            self.program(prefix="wrong-lifecycle-role").prepare(self.command())
+
+        self.assertEqual(self.desired_pointer(), pointer)
 
     def test_premature_drain_rejects_before_child_or_desired_mutation(self) -> None:
         before = self.child_counts()

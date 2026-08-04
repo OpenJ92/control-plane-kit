@@ -236,14 +236,16 @@ def derive_gateway_key_rotation_projection_graph(
         raise GatewayKeyRotationProjectionConflict(
             "current realized target does not match rotation authority"
         )
+    current_public_keys = {
+        key.key_id: key for key in current_target.public_keys
+    }
     if phase is GatewayKeyRotationDeploymentPhase.OVERLAP:
         if (
             old_key.status is not RegisteredDelegationSigningKeyStatus.ACTIVE
             or new_key.status
             is not RegisteredDelegationSigningKeyStatus.VERIFY_ONLY
-            or tuple(key.key_id for key in current_target.public_keys)
-            != (rotation.old_key_id,)
-            or current_target.public_keys[0] != old_key.public_key
+            or set(current_public_keys) != {rotation.old_key_id}
+            or current_public_keys[rotation.old_key_id] != old_key.public_key
         ):
             raise GatewayKeyRotationProjectionConflict(
                 "overlap source is not exact active-A/verify-B projection A"
@@ -254,10 +256,10 @@ def derive_gateway_key_rotation_projection_graph(
             old_key.status
             is not RegisteredDelegationSigningKeyStatus.VERIFY_ONLY
             or new_key.status is not RegisteredDelegationSigningKeyStatus.ACTIVE
-            or tuple(key.key_id for key in current_target.public_keys)
-            != (rotation.old_key_id, rotation.new_key_id)
-            or current_target.public_keys
-            != (old_key.public_key, new_key.public_key)
+            or set(current_public_keys)
+            != {rotation.old_key_id, rotation.new_key_id}
+            or current_public_keys[rotation.old_key_id] != old_key.public_key
+            or current_public_keys[rotation.new_key_id] != new_key.public_key
         ):
             raise GatewayKeyRotationProjectionConflict(
                 "retirement source is not exact verify-A/active-B projection A+B"

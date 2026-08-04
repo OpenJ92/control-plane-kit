@@ -115,6 +115,9 @@ class CrashAfterCommitUnitOfWork:
 class GatewayRotationOverlapFixture:
     """Shared real-store fixture for exact A -> A+B rotation tests."""
 
+    old_key_id = "key-a"
+    new_key_id = "key-b"
+
     def seed_graph_and_keys(
         self,
         *,
@@ -127,7 +130,7 @@ class GatewayRotationOverlapFixture:
                 self.projection(
                     "gateway-a",
                     "projection-key-a",
-                    self.public_key("key-a", PUBLIC_KEY_A),
+                    self.public_key(self.old_key_id, PUBLIC_KEY_A),
                 ),
                 self.projection(
                     "gateway-other",
@@ -166,19 +169,19 @@ class GatewayRotationOverlapFixture:
                 "workspace-a", "graph-a", "projection-a"
             )
             stores.delegation_signing_keys.register(
-                self.signing_key("key-a", PUBLIC_KEY_A)
+                self.signing_key(self.old_key_id, PUBLIC_KEY_A)
             )
             stores.delegation_signing_keys.activate(
                 "workspace-a",
                 DelegationKeyPurpose.GATEWAY_PROBE,
                 "cpk-server",
-                "key-a",
+                self.old_key_id,
                 activated_by="operator-a",
                 activated_at="2026-08-02T01:00:01Z",
             )
             if include_replacement_key:
                 stores.delegation_signing_keys.register(
-                    self.signing_key("key-b", PUBLIC_KEY_B)
+                    self.signing_key(self.new_key_id, PUBLIC_KEY_B)
                 )
             unit_of_work.commit()
 
@@ -202,9 +205,9 @@ class GatewayRotationOverlapFixture:
                 gateway_node_id="gateway-a",
                 purpose=DelegationKeyPurpose.GATEWAY_PROBE,
                 issuer="cpk-server",
-                old_key_id="key-a",
+                old_key_id=self.old_key_id,
                 new_secret_reference=SecretReference(
-                    "secret://workspace-secrets/keys/key-b"
+                    f"secret://workspace-secrets/keys/{self.new_key_id}"
                 ),
                 key_generation_correlation="generate-key-b",
                 maximum_grant_lifetime_seconds=60,
@@ -294,7 +297,7 @@ class GatewayRotationOverlapFixture:
                 "operator-a",
                 "2026-08-02T01:01:06Z",
                 (PolicyScope.DELEGATION_KEY_ROTATE,),
-                new_key_id="key-b",
+                new_key_id=self.new_key_id,
                 new_secret_version_id="version-b",
                 new_secret_version_number=1,
             )

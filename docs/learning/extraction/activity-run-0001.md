@@ -7741,3 +7741,27 @@ complete Docker-first operations gate then passed 411 tests, compileall,
 package integrity, and installed import with zero mocks and zero approved
 skips. No transaction, provider protocol, Docker operation, graph type, or
 secret-bearing persistence changed.
+
+## #1392 retirement verifier identity
+
+The next source-live run completed overlap, activated B, demoted A, and passed
+the durable drain barrier before retirement rejected exact A+B. Core
+intentionally canonicalizes `DelegationVerifierProjection.public_keys` by key
+id, while retirement compared that tuple positionally as old A then new B.
+The original fixture's `key-a` and `key-b` names hid the defect. A real
+provider-generated `gateway-<sha256>` B sorts before the source-live A id.
+
+Retirement now builds one key-id map from canonical projection material. It
+requires the exact `{old_key_id, new_key_id}` set, exact registered public key
+for each id, `VERIFY_ONLY` A, and `ACTIVE` B. Overlap uses the same keyed
+interpretation for its exact A source. Serialization remains deterministic;
+tuple order no longer carries lifecycle semantics.
+
+The realistic real-Postgres test first failed with the same retirement
+conflict as source-live while the other 414 operations tests passed. Added
+negative coverage preserves rejection of substituted A or B material,
+missing/extra projected identities, and reversed lifecycle roles. The complete
+Docker-first operations gate then passed 415 tests, compileall, package
+integrity, and installed import with zero mocks and zero approved skips. No
+transaction, authored graph, provider protocol, private material, or runtime
+effect changed.

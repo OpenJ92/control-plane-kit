@@ -1034,6 +1034,14 @@ laws:
   aggregate remains `DRAINING_OLD_GRANTS`, leaving retirement projection
   preparation to the next explicit phase.
 
+  Retirement interprets G[A+B] as an exact key-identity map, not as a tuple
+  whose position carries lifecycle meaning. `DelegationVerifierProjection`
+  canonically sorts public keys by `key_id`; rotation role instead comes from
+  the durable `old_key_id` and `new_key_id`. Retirement therefore requires
+  exactly those two ids, exact registered public material for each id,
+  `VERIFY_ONLY` A, and `ACTIVE` B before deriving immutable G[B]. Missing,
+  extra, substituted, or wrong-status truth still fails before publication.
+
 ### DelegationKeyGenerationGrant / DelegationKeyGenerationEvidence
 
 meaning:
