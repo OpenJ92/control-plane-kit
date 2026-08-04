@@ -7543,3 +7543,23 @@ provider calls, and unchanged session lock order. The complete Docker-first
 operations gate passed 397 tests, compileall, installed import, zero mocks, and
 zero approved skips. The cpk-server process composition and source-live proof
 remain the second half of #1372 and #1272 respectively.
+
+## #1375 prepared generation recovery prerequisite
+
+The first real #1272 source-live rotation exposed a gap between the inner
+generation program and its public application interpreter. A definite provider
+failure correctly retained `generation-prepared` and the exact retry action,
+but the public phase map rejected that status. The harness could not repair this
+without taking ownership of rotation policy.
+
+The public executor now resumes `generation-prepared` from the original
+prepared transition's base version. Same-command replay returns the stored
+definite-failure receipt without provider IO; a new authorized retry
+reconstructs the same custody grant and action digest; concurrent commands
+cannot enter the provider while another command receipt is pending. Uncertainty
+remains blocked. Public receipts expose only a bounded failure code.
+
+Real-Postgres tests prove restart/resume, exact action equality, one prepare and
+one success transition, zero duplicate provider calls, replay, and uncertainty
+rejection. The Docker-first operations gate passed 400 tests, compileall,
+installed import, zero mocks, and zero approved skips.

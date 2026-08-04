@@ -1171,6 +1171,16 @@ laws:
   folds bounded evidence. Exact success and uncertainty replay are idempotent;
   changed action lineage, provider evidence, or failure identity conflicts.
 
+  A definite provider failure leaves generation at `generation-prepared`. The
+  next authorized public advance resumes the exact prepared transition using
+  its original base version and custody-grant fingerprint; it does not prepare
+  a new action. Replaying the completed failed command returns its bounded
+  receipt with zero provider IO, while a competing command is rejected whenever
+  another command owns the pending effect. Public receipts may expose a closed
+  failure code, but never provider credentials, secret references, versions, or
+  key material. An uncertain provider result advances to `blocked` and is not
+  publicly retryable.
+
   Program outcomes are closed progress vocabulary, not hidden loops. Overlap
   and retirement execution return `dispatched`, `progressed`, `accepted`,
   `accepted-replay`, `already-advanced`, or `blocked`. Activation returns
