@@ -8,6 +8,8 @@ from control_plane_kit_core.planning import (
     ActivityPlan,
     DataResourceTarget,
     DestroyDataResource,
+    PublicIngressActivityTarget,
+    ReleasePublicIngressReservation,
     NodeTarget,
     PlannedActivity,
     RiskLevel,
@@ -119,6 +121,14 @@ class PolicyDecisionTests(unittest.TestCase):
         self.assertEqual(
             policy.classify_operation(
                 DestroyDataResource(DataResourceTarget("postgres", "volume"))
+            ).required_scope,
+            PolicyScope.PLAN_APPROVE_DESTRUCTIVE,
+        )
+        self.assertEqual(
+            policy.classify_operation(
+                ReleasePublicIngressReservation(
+                    PublicIngressActivityTarget("gateway-public")
+                )
             ).required_scope,
             PolicyScope.PLAN_APPROVE_DESTRUCTIVE,
         )

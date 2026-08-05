@@ -26,6 +26,7 @@ from control_plane_kit_core.planning.activity_plan import (
     PublicIngressActivityTarget,
     ReconcileNode,
     ReconcileRuntime,
+    ReleasePublicIngressReservation,
     RemoveNodeResource,
     RemovePublicIngress,
     RemoveRuntimeResource,
@@ -239,6 +240,8 @@ class ActivityPlanDescriptorCodec:
                 return _targeted("wait-for-public-ingress-ready", target)
             case RemovePublicIngress(target=target):
                 return _targeted("remove-public-ingress", target)
+            case ReleasePublicIngressReservation(target=target):
+                return _targeted("release-public-ingress-reservation", target)
             case ReconcileNode(target=target):
                 return _targeted("reconcile-node", target)
             case ReconcileRuntime(target=target):
@@ -284,6 +287,10 @@ class ActivityPlanDescriptorCodec:
                 return WaitForPublicIngressReady(_public_ingress_target(target))
             case "remove-public-ingress":
                 return RemovePublicIngress(_public_ingress_target(target))
+            case "release-public-ingress-reservation":
+                return ReleasePublicIngressReservation(
+                    _public_ingress_target(target)
+                )
             case "reconcile-node":
                 return ReconcileNode(_node_target(target))
             case "reconcile-runtime":

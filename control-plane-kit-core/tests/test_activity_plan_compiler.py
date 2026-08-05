@@ -34,6 +34,7 @@ from control_plane_kit_core.planning import (
     WaitForHealthy,
     compile_activity_plan,
 )
+from control_plane_kit_core.public_ingress import PublicIngressLifecycle
 from control_plane_kit_core.topology import (
     AddedChange,
     AmbiguityReason,
@@ -256,6 +257,99 @@ class ActivityPlanCompilerTests(unittest.TestCase):
         self.assertIn(
             connector_stop.activity_id,
             {dependency.predecessor for dependency in removal.dependencies},
+        )
+
+    def test_external_public_ingress_is_observed_without_owned_resource_effects(
+        self,
+    ) -> None:
+        managed = public_ingress_graph()
+        external = replace(
+            managed,
+            public_ingresses=(
+                replace(
+                    managed.public_ingresses[0],
+                    lifecycle=PublicIngressLifecycle.EXTERNAL,
+                ),
+            ),
+        )
+        empty = validate_graph(DeploymentGraph(external.name))
+
+        plan = compile_activity_plan(diff_graphs(empty, validate_graph(external)))
+
+        self.assertFalse(
+            any(
+                isinstance(activity.operation, AllocatePublicIngress)
+                for activity in plan.activities
+            )
+        )
+        readiness = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, WaitForPublicIngressReady)
+        )
+        prerequisites = {
+            dependency.predecessor for dependency in readiness.dependencies
+        }
+        self.assertTrue(
+            any(
+                activity.activity_id in prerequisites
+                and isinstance(activity.operation, WaitForHealthy)
+                and activity.operation.target.node_id == "gateway"
+                for activity in plan.activities
+            )
+        )
+        self.assertTrue(
+            any(
+                activity.activity_id in prerequisites
+                and isinstance(activity.operation, WaitForHealthy)
+                and activity.operation.target.node_id == "cloudflared-gateway"
+                for activity in plan.activities
+            )
+        )
+
+        without_ingress = replace(external, public_ingresses=())
+        removal = compile_activity_plan(
+            diff_graphs(validate_graph(external), validate_graph(without_ingress))
+        )
+        self.assertFalse(
+            any(
+                isinstance(activity.operation, RemovePublicIngress)
+                for activity in removal.activities
+            )
+        )
+
+    def test_retained_graph_removal_deactivates_without_compiling_final_release(
+        self,
+    ) -> None:
+        managed = public_ingress_graph()
+        retained = replace(
+            managed,
+            public_ingresses=(
+                replace(
+                    managed.public_ingresses[0],
+                    lifecycle=PublicIngressLifecycle.RETAINED,
+                ),
+            ),
+        )
+        without_ingress = replace(retained, public_ingresses=())
+
+        plan = compile_activity_plan(
+            diff_graphs(validate_graph(retained), validate_graph(without_ingress))
+        )
+
+        self.assertEqual(
+            sum(
+                isinstance(activity.operation, RemovePublicIngress)
+                for activity in plan.activities
+            ),
+            1,
+        )
+        self.assertFalse(
+            any(
+                activity.operation.__class__.__name__
+                == "ReleasePublicIngressReservation"
+                for activity in plan.activities
+            )
         )
 
     def test_teardown_dependencies_remove_connections_before_nodes_and_runtime(self) -> None:

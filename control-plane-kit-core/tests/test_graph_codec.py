@@ -295,6 +295,11 @@ class GraphDescriptorCodecTests(unittest.TestCase):
                     "readiness_check_id": "ready",
                     "exposure": "https",
                     "lifecycle": "ephemeral",
+                    "convergence": {
+                        "attempt_timeout_seconds": 5.0,
+                        "retry_interval_seconds": 5.0,
+                        "maximum_elapsed_seconds": 300.0,
+                    },
                 }
             ],
         )

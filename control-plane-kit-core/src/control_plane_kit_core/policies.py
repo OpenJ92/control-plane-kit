@@ -12,6 +12,7 @@ from control_plane_kit_core.planning import (
     ActivityPlan,
     DestroyDataResource,
     RemoveNodeResource,
+    ReleasePublicIngressReservation,
     RemoveRuntimeResource,
     RiskLevel,
     SwitchSocketConnection,
@@ -387,7 +388,11 @@ def _activity_type_for_operation(operation: ActivityOperation) -> str:
     match operation:
         case DestroyDataResource():
             return "drop_database"
-        case RemoveNodeResource() | RemoveRuntimeResource():
+        case (
+            RemoveNodeResource()
+            | RemoveRuntimeResource()
+            | ReleasePublicIngressReservation()
+        ):
             return "delete_retained_state"
         case SwitchSocketConnection():
             return "switch_production_traffic"
