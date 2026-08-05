@@ -7861,3 +7861,24 @@ and installed import. Focused coverage also proves dispatcher ownership and that
 the verifier sees no active UnitOfWork. Interpreter retry cadence, repeated DNS
 resolution, and address safety remain the concrete interpreter work for the
 second half of #1415.
+
+## #1419 exact public-ingress readiness binding
+
+The first #1416 source-live run reached the operations-owned
+`WaitForPublicIngressReady` activity but stopped before network IO because the
+gateway descriptor correctly declared both `live` and `ready` HTTP checks.
+Selecting the only target-socket check was therefore not a durable law.
+
+`NamedPublicIngress` now carries a required, provider-neutral
+`readiness_check_id`. Core requires that identity to name exactly one
+descriptor-defined `HttpCheck` on the exposed provider socket. Unknown ids,
+non-HTTP checks, and checks attached to another socket fail during strict graph
+encoding/decoding. Changing the identity is an ordinary typed public-ingress
+modification in graph diff truth.
+
+Operations no longer counts or orders target checks. It looks up only the
+pinned identity and repeats the type/socket checks as defense in depth before
+calling the injected readiness verifier outside every UnitOfWork. The core gate
+passed 496 tests and the real-Postgres operations gate passed 430 tests. No
+Cloudflare API, Docker, DNS, HTTP, secret, or transaction behavior changed in
+this prerequisite.

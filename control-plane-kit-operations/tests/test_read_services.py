@@ -39,6 +39,7 @@ from control_plane_kit_core.public_ingress import (
 )
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
 from control_plane_kit_core.types import Protocol, SocketBinding, WorkspaceLifecycle
+from control_plane_kit_core.verification import HttpCheck, VerificationContract
 from control_plane_kit_operations import (
     ActivityPlanRecord,
     ActivityPlanStatus,
@@ -610,7 +611,16 @@ def public_ingress_graph(name: str) -> object:
                     ),
                 ),
                 providers=(ProviderSocket("control", Protocol.HTTP),),
-            )
+            ),
+            verification=VerificationContract(
+                (
+                    HttpCheck(
+                        check_id="ready",
+                        provider_socket="control",
+                        path="/health/ready",
+                    ),
+                )
+            ),
         ),
         display_name="Gateway",
         description="Gateway product used for public ingress read projection tests.",
@@ -660,6 +670,7 @@ def public_ingress_graph(name: str) -> object:
                     target=PublicIngressTarget("gateway", "control"),
                     connector_node_id="cloudflared-gateway",
                     hostname="cpk-gateway-001.openj92.dev",
+                    readiness_check_id="ready",
                 ),
             ),
         )

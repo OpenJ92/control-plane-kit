@@ -55,6 +55,7 @@ from control_plane_kit_core.topology import (
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
 from control_plane_kit_core.verification import (
     HttpCheck,
+    PostgresQueryCheck,
     VerificationContract,
     VerificationPolicy,
 )
@@ -70,6 +71,7 @@ from control_plane_kit_operations.ingress_authorities import (
 from control_plane_kit_operations.ingress_realization import (
     IngressOwnedResourceCoordinates,
     IngressRealizationAdapter,
+    _public_ingress_http_check,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
@@ -94,6 +96,7 @@ from control_plane_kit_operations.secret_providers import (
     RegisteredSecretReference,
     SecretProviderKind,
 )
+from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
 class TrackingUnitOfWorkFactory:
@@ -462,6 +465,11 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             verification=VerificationContract(
                 (
                     HttpCheck(
+                        check_id="gateway-live",
+                        provider_socket="control",
+                        path="/health/live",
+                    ),
+                    HttpCheck(
                         check_id="gateway-ready",
                         provider_socket="control",
                         path="/health/ready",
@@ -548,17 +556,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         )
         self.assertNotIn("secret://", repr(outcome))
 
-    def test_public_ingress_readiness_requires_one_exact_target_http_check(self) -> None:
-        verifier = RecordingPublicIngressReadinessVerifier(
-            self.tracker,
-            PublicIngressObservationStatus.READY,
-        )
-        adapter = IngressRealizationAdapter(
-            self.unit_of_work,
-            interpreters={},
-            clock=lambda: "2026-07-28T08:01:00Z",
-            readiness_verifier=verifier,
-        )
+    def test_public_ingress_readiness_binding_fails_closed_before_verifier_io(self) -> None:
         checks = (
             (),
             (
@@ -573,27 +571,26 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                     path="/health/ready",
                 ),
             ),
+            (
+                HttpCheck(
+                    check_id="gateway-ready",
+                    provider_socket="other",
+                    path="/health/ready",
+                ),
+            ),
+            (
+                PostgresQueryCheck(
+                    check_id="gateway-ready",
+                    provider_socket="control",
+                ),
+            ),
         )
 
         for ordinal, values in enumerate(checks):
             with self.subTest(count=len(values)):
-                outcome = adapter.execute(
-                    self.context(
-                        activity_id=f"wait-gateway-public-{ordinal}",
-                        operation=WaitForPublicIngressReady(
-                            PublicIngressActivityTarget("gateway-001")
-                        ),
-                        desired_graph=self.graph(
-                            verification=VerificationContract(values)
-                        ),
-                    )
-                )
-                self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-                self.assertEqual(
-                    outcome.failure.code,
-                    "ingress.readiness-contract-unsupported",
-                )
-        self.assertEqual(verifier.calls, [])
+                graph = self.graph(verification=VerificationContract(values))
+                with self.assertRaises(InvalidOperationCommand):
+                    _public_ingress_http_check(graph, graph.public_ingresses[0])
 
     def test_mismatched_custody_receipt_compensates_without_admission(self) -> None:
         interpreter = RecordingIngressInterpreter(self.tracker)
@@ -826,8 +823,18 @@ class IngressRealizationAdapterTests(unittest.TestCase):
     def graph(
         self,
         *,
-        verification: VerificationContract = VerificationContract(),
+        verification: VerificationContract | None = None,
     ) -> DeploymentGraph:
+        if verification is None:
+            verification = VerificationContract(
+                (
+                    HttpCheck(
+                        check_id="gateway-ready",
+                        provider_socket="control",
+                        path="/health/ready",
+                    ),
+                )
+            )
         return DeploymentGraph(
             "ingress-test",
             nodes={
@@ -870,6 +877,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                     target=PublicIngressTarget("gateway", "control"),
                     connector_node_id="cloudflared",
                     hostname="cpk-gateway-001.openj92.dev",
+                    readiness_check_id="gateway-ready",
                 ),
             ),
         )

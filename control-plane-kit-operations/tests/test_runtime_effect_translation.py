@@ -813,7 +813,18 @@ def _public_ingress_graph(
     gateway = Node(
         node_id="gateway",
         block_family=BlockFamily.APPLICATION,
-        block_spec=BlockSpec("gateway"),
+        block_spec=BlockSpec(
+            "gateway",
+            verification=VerificationContract(
+                (
+                    HttpCheck(
+                        check_id="ready",
+                        provider_socket="control",
+                        path="/health/ready",
+                    ),
+                )
+            ),
+        ),
         kind="container-server",
         runtime_id="docker",
         sockets=BlockSockets(providers=(ProviderSocket("control", Protocol.HTTP),)),
@@ -825,6 +836,7 @@ def _public_ingress_graph(
         target=PublicIngressTarget("gateway", "control"),
         connector_node_id="cloudflared",
         hostname="cpk-gateway-001.openj92.dev",
+        readiness_check_id="ready",
         lifecycle=ingress_lifecycle,
     )
     return DeploymentGraph(

@@ -60,7 +60,7 @@ from control_plane_kit_core.types import (
     RuntimeKind,
     SocketBinding,
 )
-from control_plane_kit_core.verification import VerificationContract
+from control_plane_kit_core.verification import HttpCheck, VerificationContract
 
 
 class GraphDescriptorError(ValueError):
@@ -415,6 +415,26 @@ class GraphDescriptorCodec:
             if connector.runtime_id != target.runtime_id:
                 raise InvalidGraphReference(
                     f"public ingress {ingress.ingress_id!r} connector must share target runtime"
+                )
+            readiness_checks = tuple(
+                check
+                for check in target.block_spec.verification.checks
+                if check.check_id == ingress.readiness_check_id
+            )
+            if len(readiness_checks) != 1:
+                raise InvalidGraphReference(
+                    f"public ingress {ingress.ingress_id!r} readiness check "
+                    f"{ingress.readiness_check_id!r} is missing"
+                )
+            readiness_check = readiness_checks[0]
+            if not isinstance(readiness_check, HttpCheck):
+                raise InvalidGraphReference(
+                    f"public ingress {ingress.ingress_id!r} readiness check must be HTTP"
+                )
+            if readiness_check.provider_socket != ingress.target.provider_socket:
+                raise InvalidGraphReference(
+                    f"public ingress {ingress.ingress_id!r} readiness check must use "
+                    "the exposed provider socket"
                 )
         for binding in graph.delegation_authorities:
             try:

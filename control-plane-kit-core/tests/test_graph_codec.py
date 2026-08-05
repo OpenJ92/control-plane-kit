@@ -34,6 +34,11 @@ from control_plane_kit_core.topology import (
     compile_topology,
 )
 from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.verification import (
+    HttpCheck,
+    PostgresQueryCheck,
+    VerificationContract,
+)
 
 
 @dataclass(frozen=True)
@@ -287,6 +292,7 @@ class GraphDescriptorCodecTests(unittest.TestCase):
                     },
                     "connector_node_id": "cloudflared-gateway",
                     "hostname": "cpk-gateway-001.openj92.dev",
+                    "readiness_check_id": "ready",
                     "exposure": "https",
                     "lifecycle": "ephemeral",
                 }
@@ -315,6 +321,56 @@ class GraphDescriptorCodecTests(unittest.TestCase):
         descriptor["public_ingresses"][0]["connector_node_id"] = "missing"
         with self.assertRaises(InvalidGraphReference):
             codec.decode(descriptor)
+
+        descriptor = codec.encode(public_ingress_graph())
+        descriptor["public_ingresses"][0]["readiness_check_id"] = "missing"
+        with self.assertRaisesRegex(InvalidGraphReference, "readiness check"):
+            codec.decode(descriptor)
+
+        descriptor = codec.encode(public_ingress_graph())
+        del descriptor["public_ingresses"][0]["readiness_check_id"]
+        with self.assertRaises(ValueError):
+            codec.decode(descriptor)
+
+    def test_public_ingress_readiness_binding_requires_http_on_target_socket(self) -> None:
+        codec = GraphDescriptorCodec()
+        graph = public_ingress_graph()
+        gateway = graph.node("gateway")
+
+        wrong_socket = replace(
+            gateway,
+            block_spec=replace(
+                gateway.block_spec,
+                verification=VerificationContract(
+                    (
+                        HttpCheck(
+                            check_id="ready",
+                            provider_socket="other",
+                            path="/health/ready",
+                        ),
+                    )
+                ),
+            ),
+        )
+        with self.assertRaisesRegex(InvalidGraphReference, "exposed provider socket"):
+            codec.encode(replace(graph, nodes={**graph.nodes, "gateway": wrong_socket}))
+
+        non_http = replace(
+            gateway,
+            block_spec=replace(
+                gateway.block_spec,
+                verification=VerificationContract(
+                    (
+                        PostgresQueryCheck(
+                            check_id="ready",
+                            provider_socket="control",
+                        ),
+                    )
+                ),
+            ),
+        )
+        with self.assertRaisesRegex(InvalidGraphReference, "must be HTTP"):
+            codec.encode(replace(graph, nodes={**graph.nodes, "gateway": non_http}))
 
     def test_public_ingress_connector_must_share_target_runtime(self) -> None:
         graph = public_ingress_graph(cross_runtime_connector=True)
@@ -372,9 +428,29 @@ def app_with_database_graph():
     )
 
 
-def public_ingress_graph(*, cross_runtime_connector: bool = False):
+def public_ingress_graph(
+    *,
+    cross_runtime_connector: bool = False,
+    readiness_check_id: str = "ready",
+):
     gateway = ApplicationBlock(
-        BlockSpec("gateway"),
+        BlockSpec(
+            "gateway",
+            verification=VerificationContract(
+                (
+                    HttpCheck(
+                        check_id="live",
+                        provider_socket="control",
+                        path="/health/live",
+                    ),
+                    HttpCheck(
+                        check_id="ready",
+                        provider_socket="control",
+                        path="/health/ready",
+                    ),
+                )
+            ),
+        ),
         PureImplementation("gateway", {"control": "http://gateway:8000"}),
         BlockSockets(providers=(ProviderSocket("control", Protocol.HTTP),)),
     )
@@ -418,6 +494,7 @@ def public_ingress_graph(*, cross_runtime_connector: bool = False):
                     target=PublicIngressTarget("gateway", "control"),
                     connector_node_id="cloudflared-gateway",
                     hostname="cpk-gateway-001.openj92.dev",
+                    readiness_check_id=readiness_check_id,
                 ),
             ),
         )

@@ -651,14 +651,22 @@ def _public_ingress_http_check(
     checks = tuple(
         check
         for check in node.block_spec.verification.checks
-        if isinstance(check, HttpCheck)
-        and check.provider_socket == ingress.target.provider_socket
+        if check.check_id == ingress.readiness_check_id
     )
     if len(checks) != 1:
         raise InvalidOperationCommand(
-            "public ingress readiness requires exactly one target HTTP check"
+            "public ingress readiness check is missing from the pinned graph"
         )
-    return checks[0]
+    check = checks[0]
+    if not isinstance(check, HttpCheck):
+        raise InvalidOperationCommand(
+            "public ingress readiness check must be HTTP"
+        )
+    if check.provider_socket != ingress.target.provider_socket:
+        raise InvalidOperationCommand(
+            "public ingress readiness check must use the exposed provider socket"
+        )
+    return check
 
 
 def _require_matching_readiness_observation(

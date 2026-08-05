@@ -185,6 +185,21 @@ class GraphDiffTests(unittest.TestCase):
         self.assertNotIn("provider_kind", descriptor)
         self.assertNotIn("cloudflarenamedingress", descriptor)
 
+    def test_public_ingress_readiness_binding_change_is_typed_modification(self) -> None:
+        current = validate_graph(public_ingress_graph(readiness_check_id="live"))
+        desired = validate_graph(public_ingress_graph(readiness_check_id="ready"))
+
+        changes = tuple(
+            change
+            for change in diff_graphs(current, desired).changes
+            if isinstance(change, ModifiedChange)
+            and isinstance(change.subject, PublicIngressSubject)
+        )
+
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0].before.ingress.readiness_check_id, "live")
+        self.assertEqual(changes[0].after.ingress.readiness_check_id, "ready")
+
     def test_router_swap_is_a_typed_socket_connection_change(self) -> None:
         result = diff_graphs(
             validate_graph(router_graph("api-v1")),

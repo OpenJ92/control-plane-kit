@@ -63,6 +63,7 @@ from control_plane_kit_core.topology import (
     RuntimeRecord,
 )
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
+from control_plane_kit_core.verification import HttpCheck, VerificationContract
 from control_plane_kit_operations.cpk_server import CpkServerGatewayProbeService
 from control_plane_kit_operations.gateway_probes import (
     GatewayProbeAttemptStatus,
@@ -673,7 +674,18 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                 "gateway": Node(
                     node_id="gateway",
                     block_family=BlockFamily.PROXY,
-                    block_spec=BlockSpec("gateway"),
+                    block_spec=BlockSpec(
+                        "gateway",
+                        verification=VerificationContract(
+                            (
+                                HttpCheck(
+                                    check_id="ready",
+                                    provider_socket="control",
+                                    path="/health/ready",
+                                ),
+                            )
+                        ),
+                    ),
                     kind="container-server",
                     runtime_id="docker-a",
                     sockets=BlockSockets(
@@ -691,7 +703,18 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                 "hello": Node(
                     node_id="hello",
                     block_family=BlockFamily.APPLICATION,
-                    block_spec=BlockSpec("hello"),
+                    block_spec=BlockSpec(
+                        "hello",
+                        verification=VerificationContract(
+                            (
+                                HttpCheck(
+                                    check_id="ready",
+                                    provider_socket="http",
+                                    path="/health/ready",
+                                ),
+                            )
+                        ),
+                    ),
                     kind="container-server",
                     runtime_id="docker-a",
                     sockets=BlockSockets(
@@ -734,6 +757,7 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                     target=PublicIngressTarget("gateway", "control"),
                     connector_node_id="connector",
                     hostname="gateway-public.example.test",
+                    readiness_check_id="ready",
                 ),
             ),
         )
