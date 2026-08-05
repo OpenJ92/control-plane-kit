@@ -318,14 +318,11 @@ class IngressResourceStore:
         self,
         workspace_id: str,
         ingress_id: str,
-        *,
-        source_run_id: str,
     ) -> CloudflareOwnedIngressResource:
         resource = self.require_active_cloudflare(workspace_id, ingress_id)
         updated = replace(
             resource,
             status=OwnedIngressResourceStatus.REMOVING,
-            source_run_id=source_run_id,
         )
         self._update_cloudflare_status(updated)
         return updated
@@ -361,8 +358,6 @@ class IngressResourceStore:
         self,
         workspace_id: str,
         ingress_id: str,
-        *,
-        source_run_id: str,
     ) -> CloudflareOwnedIngressResource:
         resource = self._get_blocking_cloudflare(workspace_id, ingress_id)
         if resource is None:
@@ -370,7 +365,6 @@ class IngressResourceStore:
         updated = replace(
             resource,
             status=OwnedIngressResourceStatus.UNCERTAIN,
-            source_run_id=source_run_id,
         )
         self._update_cloudflare_status(updated)
         return updated
@@ -498,7 +492,6 @@ class IngressResourceStore:
             UPDATE cpk_cloudflare_ingress_resources
             SET
               status = %s,
-              source_run_id = %s,
               removed_at = %s,
               removed_by_run_id = %s
             WHERE workspace_id = %s
@@ -507,7 +500,6 @@ class IngressResourceStore:
             """,
             (
                 resource.status.value,
-                resource.source_run_id,
                 resource.removed_at,
                 resource.removed_by_run_id,
                 resource.workspace_id,

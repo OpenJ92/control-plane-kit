@@ -378,6 +378,9 @@ class IngressAuthorityValueTests(unittest.TestCase):
         hostname: str = "cpk-gateway-001.openj92.dev",
         tunnel_name: str = "cpk-gateway-001",
         tunnel_id: str = "tunnel-001",
+        source_run_id: str = "run-001",
+        source_activity_id: str = "activity-001",
+        source_event_id: str = "event-001",
         removed_at: str | None = None,
         removed_by_run_id: str | None = None,
     ) -> CloudflareOwnedIngressResource:
@@ -395,9 +398,9 @@ class IngressAuthorityValueTests(unittest.TestCase):
             lifecycle=lifecycle,
             created_at="2026-07-27T23:30:00Z",
             observed_at="2026-07-27T23:31:00Z",
-            source_run_id="run-001",
-            source_activity_id="activity-001",
-            source_event_id="event-001",
+            source_run_id=source_run_id,
+            source_activity_id=source_activity_id,
+            source_event_id=source_event_id,
             epoch=epoch,
             status=status,
             removed_at=removed_at,
@@ -735,7 +738,6 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             removing = unit_of_work.stores.ingress_resources.mark_removing(
                 "workspace-a",
                 "gateway-001",
-                source_run_id="run-002",
             )
             removed = unit_of_work.stores.ingress_resources.mark_removed(
                 "workspace-a",
@@ -747,9 +749,128 @@ class IngressAuthorityStoreTests(unittest.TestCase):
 
         self.assertEqual(removing.epoch, 1)
         self.assertEqual(removing.status, OwnedIngressResourceStatus.REMOVING)
+        self.assertEqual(removing.source_run_id, "run-001")
+        self.assertEqual(removing.source_activity_id, "activity-001")
+        self.assertEqual(removing.source_event_id, "event-001")
         self.assertEqual(removed.epoch, 1)
         self.assertEqual(removed.status, OwnedIngressResourceStatus.REMOVED)
+        self.assertEqual(removed.source_run_id, "run-001")
+        self.assertEqual(removed.source_activity_id, "activity-001")
+        self.assertEqual(removed.source_event_id, "event-001")
         self.assertEqual(removed.removed_by_run_id, "run-003")
+
+    def test_uncertain_cloudflare_resource_preserves_allocation_provenance(
+        self,
+    ) -> None:
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.ingress_resources.record_cloudflare(
+                IngressAuthorityValueTests().cloudflare_resource()
+            )
+            unit_of_work.stores.ingress_resources.mark_removing(
+                "workspace-a",
+                "gateway-001",
+            )
+            uncertain = unit_of_work.stores.ingress_resources.mark_uncertain(
+                "workspace-a",
+                "gateway-001",
+            )
+            unit_of_work.commit()
+
+        self.assertEqual(uncertain.status, OwnedIngressResourceStatus.UNCERTAIN)
+        self.assertEqual(uncertain.source_run_id, "run-001")
+        self.assertEqual(uncertain.source_activity_id, "activity-001")
+        self.assertEqual(uncertain.source_event_id, "event-001")
+
+    def test_removed_cloudflare_resource_keeps_generated_secret_joinable(
+        self,
+    ) -> None:
+        first_secret = record_generated_ingress_secret(
+            workspace_id="workspace-a",
+            purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            receipt=SecretCustodyReceipt(
+                custody_id="scust-allocation",
+                provider_registration_id="sprov-generated-ingress",
+                reference=SecretReference(
+                    "secret://generated/ingress/cloudflared-tunnel-token/token-001"
+                ),
+                version_id="version-allocation",
+                version_number=1,
+            ),
+            reference_registration_id="sref-allocation",
+            source_run_id="run-001",
+            source_activity_id="activity-001",
+            source_event_id="event-001",
+            recorded_at="2026-08-05T13:00:00Z",
+        )
+        second_secret = record_generated_ingress_secret(
+            workspace_id="workspace-a",
+            purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            receipt=SecretCustodyReceipt(
+                custody_id="scust-reallocation",
+                provider_registration_id="sprov-generated-ingress",
+                reference=SecretReference(
+                    "secret://generated/ingress/cloudflared-tunnel-token/token-002"
+                ),
+                version_id="version-reallocation",
+                version_number=2,
+            ),
+            reference_registration_id="sref-reallocation",
+            source_run_id="run-002",
+            source_activity_id="activity-002",
+            source_event_id="event-002",
+            recorded_at="2026-08-05T13:05:00Z",
+        )
+
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.ingress_resources.record_cloudflare(
+                IngressAuthorityValueTests().cloudflare_resource()
+            )
+            unit_of_work.stores.generated_ingress_secrets.record(first_secret)
+            unit_of_work.stores.ingress_resources.mark_removing(
+                "workspace-a",
+                "gateway-001",
+            )
+            removed = unit_of_work.stores.ingress_resources.mark_removed(
+                "workspace-a",
+                "gateway-001",
+                removed_at="removed-at",
+                removed_by_run_id="run-remove",
+            )
+            reallocated = unit_of_work.stores.ingress_resources.record_cloudflare(
+                IngressAuthorityValueTests().cloudflare_resource(
+                    tunnel_id="tunnel-002",
+                    source_run_id="run-002",
+                    source_activity_id="activity-002",
+                    source_event_id="event-002",
+                )
+            )
+            unit_of_work.stores.generated_ingress_secrets.record(second_secret)
+            unit_of_work.commit()
+
+        with self.unit_of_work() as unit_of_work:
+            joined_first_secret = (
+                unit_of_work.stores.generated_ingress_secrets.get_by_source(
+                    workspace_id=removed.workspace_id,
+                    purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                    source_run_id=removed.source_run_id,
+                    source_activity_id=removed.source_activity_id,
+                    source_event_id=removed.source_event_id,
+                )
+            )
+            joined_second_secret = (
+                unit_of_work.stores.generated_ingress_secrets.get_by_source(
+                    workspace_id=reallocated.workspace_id,
+                    purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                    source_run_id=reallocated.source_run_id,
+                    source_activity_id=reallocated.source_activity_id,
+                    source_event_id=reallocated.source_event_id,
+                )
+            )
+
+        self.assertEqual(removed.epoch, 1)
+        self.assertEqual(reallocated.epoch, 2)
+        self.assertEqual(joined_first_secret, first_secret)
+        self.assertEqual(joined_second_secret, second_secret)
 
     def test_generated_ingress_secret_reference_is_durable_and_secret_free(
         self,
