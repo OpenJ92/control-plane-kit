@@ -123,6 +123,11 @@ class AllocatePublicIngress:
 
 
 @dataclass(frozen=True)
+class WaitForPublicIngressReady:
+    target: PublicIngressActivityTarget
+
+
+@dataclass(frozen=True)
 class RemovePublicIngress:
     target: PublicIngressActivityTarget
 
@@ -177,6 +182,7 @@ ActivityOperation: TypeAlias = (
     | SwitchSocketConnection
     | RemoveSocketConnection
     | AllocatePublicIngress
+    | WaitForPublicIngressReady
     | RemovePublicIngress
     | ReconcileNode
     | ReconcileRuntime
@@ -358,6 +364,8 @@ def _require_typed_operation(operation: object) -> None:
             return
         case AllocatePublicIngress(target=PublicIngressActivityTarget()):
             return
+        case WaitForPublicIngressReady(target=PublicIngressActivityTarget()):
+            return
         case RemovePublicIngress(target=PublicIngressActivityTarget()):
             return
         case ReconcileNode(target=NodeTarget()):
@@ -422,7 +430,7 @@ def compensation_for_operation(operation: ActivityOperation) -> CompensationSpec
                 ReconcileRuntime(target),
                 CompensationMaterialSource.BASE_GRAPH,
             )
-        case WaitForHealthy() | ReviewChange():
+        case WaitForHealthy() | WaitForPublicIngressReady() | ReviewChange():
             return NoCompensationRequired()
         case RemoveNodeResource() | RemoveRuntimeResource():
             return NonCompensatable(NonCompensatableReason.RESOURCE_REMOVAL)

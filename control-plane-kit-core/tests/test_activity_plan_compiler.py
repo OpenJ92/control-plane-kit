@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 from control_plane_kit_core.algebra import (
@@ -29,6 +30,7 @@ from control_plane_kit_core.planning import (
     StopNode,
     StopRuntime,
     SwitchSocketConnection,
+    WaitForPublicIngressReady,
     WaitForHealthy,
     compile_activity_plan,
 )
@@ -163,6 +165,17 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             if isinstance(activity.operation, WaitForHealthy)
             and activity.operation.target.node_id == "gateway"
         )
+        connector_health = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, WaitForHealthy)
+            and activity.operation.target.node_id == "cloudflared-gateway"
+        )
+        readiness = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, WaitForPublicIngressReady)
+        )
 
         self.assertEqual(allocation.operation.target.ingress_id, "gateway-public")
         self.assertIn(
@@ -172,6 +185,37 @@ class ActivityPlanCompilerTests(unittest.TestCase):
         self.assertIn(
             allocation.activity_id,
             {dependency.predecessor for dependency in connector_start.dependencies},
+        )
+        self.assertEqual(readiness.operation.target.ingress_id, "gateway-public")
+        self.assertEqual(
+            {dependency.predecessor for dependency in readiness.dependencies},
+            {allocation.activity_id, connector_health.activity_id},
+        )
+
+    def test_public_ingress_readiness_around_existing_connector_waits_for_allocation(self) -> None:
+        desired_graph = public_ingress_graph()
+        current_graph = replace(desired_graph, public_ingresses=())
+
+        plan = compile_activity_plan(
+            diff_graphs(validate_graph(current_graph), validate_graph(desired_graph))
+        )
+
+        allocation = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, AllocatePublicIngress)
+        )
+        readiness = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, WaitForPublicIngressReady)
+        )
+        self.assertEqual(
+            {dependency.predecessor for dependency in readiness.dependencies},
+            {allocation.activity_id},
+        )
+        self.assertFalse(
+            any(isinstance(activity.operation, StartNode) for activity in plan.activities)
         )
 
     def test_public_ingress_teardown_stops_connector_before_removal(self) -> None:
@@ -199,6 +243,12 @@ class ActivityPlanCompilerTests(unittest.TestCase):
         )
 
         self.assertEqual(removal.operation.target.ingress_id, "gateway-public")
+        self.assertFalse(
+            any(
+                isinstance(activity.operation, WaitForPublicIngressReady)
+                for activity in plan.activities
+            )
+        )
         self.assertIn(
             removal.activity_id,
             {dependency.predecessor for dependency in gateway_stop.dependencies},

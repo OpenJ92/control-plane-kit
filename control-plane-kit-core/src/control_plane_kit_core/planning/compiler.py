@@ -36,6 +36,7 @@ from control_plane_kit_core.planning.activity_plan import (
     StopNode,
     StopRuntime,
     SwitchSocketConnection,
+    WaitForPublicIngressReady,
     WaitForHealthy,
 )
 from control_plane_kit_core.topology.changes import (
@@ -101,6 +102,7 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
     stop_node: dict[str, _ActivityDraft] = {}
     remove_node: dict[str, _ActivityDraft] = {}
     allocate_ingress: dict[str, _ActivityDraft] = {}
+    ready_ingress: dict[str, _ActivityDraft] = {}
     remove_ingress: dict[str, _ActivityDraft] = {}
     added_public_ingresses: dict[str, PublicIngressValue] = {}
     removed_public_ingresses: dict[str, PublicIngressValue] = {}
@@ -179,6 +181,10 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
                     target=PublicIngressActivityTarget(ingress_id=ingress_id)
                 ):
                     allocate_ingress[ingress_id] = draft
+                case WaitForPublicIngressReady(
+                    target=PublicIngressActivityTarget(ingress_id=ingress_id)
+                ):
+                    ready_ingress[ingress_id] = draft
                 case RemovePublicIngress(
                     target=PublicIngressActivityTarget(ingress_id=ingress_id)
                 ):
@@ -218,6 +224,7 @@ def compile_activity_plan(diff: GraphDiff) -> ActivityPlan:
             stop_node=stop_node,
             remove_node=remove_node,
             allocate_ingress=allocate_ingress,
+            ready_ingress=ready_ingress,
             remove_ingress=remove_ingress,
             added_public_ingresses=added_public_ingresses,
             removed_public_ingresses=removed_public_ingresses,
@@ -383,15 +390,23 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
             subject=PublicIngressSubject(ingress_id=ingress_id),
             after=PublicIngressValue(),
         ):
-            return (
-                _draft(
-                    change,
-                    "allocate-public-ingress",
-                    AllocatePublicIngress(PublicIngressActivityTarget(ingress_id)),
-                    RiskLevel.MEDIUM,
-                    ActivityImpact.NON_DESTRUCTIVE,
-                ),
+            target = PublicIngressActivityTarget(ingress_id)
+            allocate = _draft(
+                change,
+                "allocate-public-ingress",
+                AllocatePublicIngress(target),
+                RiskLevel.MEDIUM,
+                ActivityImpact.NON_DESTRUCTIVE,
             )
+            ready = _draft(
+                change,
+                "wait-public-ingress-ready",
+                WaitForPublicIngressReady(target),
+                RiskLevel.MEDIUM,
+                ActivityImpact.NON_DESTRUCTIVE,
+            )
+            ready.dependencies.add(allocate.activity_id)
+            return allocate, ready
         case RemovedChange(
             subject=PublicIngressSubject(ingress_id=ingress_id),
             before=PublicIngressValue(),
@@ -427,6 +442,7 @@ def _add_dependencies(
     stop_node: dict[str, _ActivityDraft],
     remove_node: dict[str, _ActivityDraft],
     allocate_ingress: dict[str, _ActivityDraft],
+    ready_ingress: dict[str, _ActivityDraft],
     remove_ingress: dict[str, _ActivityDraft],
     added_public_ingresses: dict[str, PublicIngressValue],
     removed_public_ingresses: dict[str, PublicIngressValue],
@@ -459,6 +475,9 @@ def _add_dependencies(
                     allocate.dependencies.add(reconcile.activity_id)
                 if connector_start := start_node.get(ingress.connector_node_id):
                     connector_start.dependencies.add(allocate.activity_id)
+            if readiness := ready_ingress.get(ingress_id):
+                if connector_health := healthy_node.get(ingress.connector_node_id):
+                    readiness.dependencies.add(connector_health.activity_id)
         case AddedChange(subject=EdgeSubject(), after=EdgeValue(edge=edge)):
             if not matching:
                 predecessor = healthy_node.get(edge.provider_role)

@@ -40,6 +40,7 @@ from control_plane_kit_core.planning.activity_plan import (
     StopNode,
     StopRuntime,
     SwitchSocketConnection,
+    WaitForPublicIngressReady,
     WaitForHealthy,
 )
 from control_plane_kit_core.topology.changes import DiffSubject, FieldSubject, StructuralField
@@ -234,6 +235,8 @@ class ActivityPlanDescriptorCodec:
                 return _targeted("remove-socket-connection", target)
             case AllocatePublicIngress(target=target):
                 return _targeted("allocate-public-ingress", target)
+            case WaitForPublicIngressReady(target=target):
+                return _targeted("wait-for-public-ingress-ready", target)
             case RemovePublicIngress(target=target):
                 return _targeted("remove-public-ingress", target)
             case ReconcileNode(target=target):
@@ -277,6 +280,8 @@ class ActivityPlanDescriptorCodec:
                 return RemoveSocketConnection(_socket_target(target))
             case "allocate-public-ingress":
                 return AllocatePublicIngress(_public_ingress_target(target))
+            case "wait-for-public-ingress-ready":
+                return WaitForPublicIngressReady(_public_ingress_target(target))
             case "remove-public-ingress":
                 return RemovePublicIngress(_public_ingress_target(target))
             case "reconcile-node":

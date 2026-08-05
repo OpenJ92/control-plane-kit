@@ -38,6 +38,7 @@ from control_plane_kit_core.planning import (
     StopRuntime,
     SwitchSocketConnection,
     UnknownActivityPlanVariant,
+    WaitForPublicIngressReady,
     WaitForHealthy,
 )
 from control_plane_kit_core.topology import (
@@ -125,6 +126,7 @@ class ActivityPlanDescriptorCodecTests(unittest.TestCase):
             SwitchSocketConnection(SocketConnectionTarget("router.active")),
             RemoveSocketConnection(SocketConnectionTarget("api.database")),
             AllocatePublicIngress(PublicIngressActivityTarget("gateway-public")),
+            WaitForPublicIngressReady(PublicIngressActivityTarget("gateway-public")),
             RemovePublicIngress(PublicIngressActivityTarget("gateway-public")),
             ReconcileNode(NodeTarget("api")),
             ReconcileRuntime(RuntimeTarget("docker")),

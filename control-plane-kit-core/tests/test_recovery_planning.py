@@ -19,6 +19,7 @@ from control_plane_kit_core.planning import (
     StartRuntime,
     StopNode,
     StopRuntime,
+    WaitForPublicIngressReady,
 )
 from control_plane_kit_core.planning.recovery import (
     RECOVERY_CANDIDATE_SCHEMA,
@@ -212,6 +213,20 @@ class RecoveryPlanningSuccessorTests(unittest.TestCase):
                 isinstance(activity.operation, AllocatePublicIngress)
                 for activity in reconstruction.plan.activities
             )
+        )
+        readiness = next(
+            activity
+            for activity in reconstruction.plan.activities
+            if isinstance(activity.operation, WaitForPublicIngressReady)
+        )
+        readiness_assessment = next(
+            assessment
+            for assessment in reconstruction.assessments
+            if assessment.activity_id == readiness.activity_id.value
+        )
+        self.assertIs(
+            readiness_assessment.disposition,
+            RecoveryDisposition.TOPOLOGY_CANDIDATE,
         )
         self.assertIn(
             RecoveryDisposition.TOPOLOGY_CANDIDATE,

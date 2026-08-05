@@ -30,6 +30,7 @@ from control_plane_kit_core.planning.activity_plan import (
     StopNode,
     StopRuntime,
     SwitchSocketConnection,
+    WaitForPublicIngressReady,
     WaitForHealthy,
 )
 from control_plane_kit_core.planning.codec import DEFAULT_ACTIVITY_PLAN_CODEC
@@ -315,6 +316,7 @@ def _assess(activity: PlannedActivity) -> RecoveryActivityAssessment:
             | SwitchSocketConnection()
             | RemovePublicIngress()
             | RemoveSocketConnection()
+            | WaitForPublicIngressReady()
             | WaitForHealthy()
         ):
             return RecoveryActivityAssessment(
