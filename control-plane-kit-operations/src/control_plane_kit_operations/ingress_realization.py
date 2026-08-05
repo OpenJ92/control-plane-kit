@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import hashlib
 from typing import Any, Mapping, Protocol
 
@@ -122,6 +123,7 @@ class PublicIngressReadinessVerifier(Protocol):
         ingress: NamedPublicIngress,
         check: HttpCheck,
         endpoint: RuntimeEndpointObservation,
+        attempt_timeout_seconds: float,
     ) -> PublicIngressObservation: ...
 
 
@@ -220,6 +222,14 @@ class IngressRealizationAdapter:
                     f"https://{ingress.hostname}:443"
                 ),
             )
+            attempted_at = _utc_timestamp(self.clock(), "ingress convergence clock")
+            started_at = _utc_timestamp(
+                context.intent_event.occurred_at,
+                "ingress convergence start",
+            )
+            deadline = started_at + timedelta(
+                seconds=ingress.convergence.maximum_elapsed_seconds
+            )
         except (KeyError, TypeError, ValueError, InvalidOperationCommand) as error:
             return _unsupported(
                 context,
@@ -227,11 +237,23 @@ class IngressRealizationAdapter:
                 str(error),
             )
 
+        if attempted_at < started_at:
+            return _unsupported(
+                context,
+                "ingress.convergence-clock-invalid",
+                "ingress convergence clock precedes durable step intent",
+            )
+        if attempted_at >= deadline:
+            return _convergence_timeout(context, ingress, deadline)
+
         try:
             observation = self.readiness_verifier.observe(
                 ingress=ingress,
                 check=check,
                 endpoint=endpoint,
+                attempt_timeout_seconds=(
+                    ingress.convergence.attempt_timeout_seconds
+                ),
             )
             _require_matching_readiness_observation(observation, ingress)
         except (TypeError, ValueError, InvalidOperationCommand):
@@ -241,38 +263,50 @@ class IngressRealizationAdapter:
                 "public ingress readiness evidence is invalid",
             )
         except Exception as error:  # noqa: BLE001 - observation failure is bounded.
-            return ActivityExecutionOutcome.failed(
-                FailureEvidence(
-                    FailureCategory.RETRYABLE,
-                    "ingress.readiness-failed",
-                    "public ingress readiness could not be observed",
-                    BoundedEvidence.from_mapping(
-                        {"exception_type": type(error).__name__}
-                    ),
+            finished_at = _utc_timestamp(
+                self.clock(),
+                "ingress convergence clock",
+            )
+            if finished_at >= deadline:
+                return _convergence_timeout(
+                    context,
+                    ingress,
+                    deadline,
+                    details={"exception_type": type(error).__name__},
                 )
+            return _convergence_progress(
+                ingress,
+                finished_at,
+                deadline,
+                details={"exception_type": type(error).__name__},
             )
 
         record = _readiness_observation_record(context, observation)
         evidence = BoundedEvidence.from_mapping(
             {"public_ingress_observation": observation.descriptor()}
         )
+        finished_at = _utc_timestamp(
+            self.clock(),
+            "ingress convergence clock",
+        )
+        if finished_at >= deadline:
+            return _convergence_timeout(
+                context,
+                ingress,
+                deadline,
+                details={"public_ingress_observation": observation.descriptor()},
+                observations=(record,),
+            )
         if observation.status is PublicIngressObservationStatus.READY:
             return ActivityExecutionOutcome.succeeded(
                 evidence,
                 observations=(record,),
             )
-        code = (
-            "ingress.readiness-unready"
-            if observation.status is PublicIngressObservationStatus.UNREADY
-            else "ingress.readiness-unknown"
-        )
-        return ActivityExecutionOutcome.failed(
-            FailureEvidence(
-                FailureCategory.RETRYABLE,
-                code,
-                "public ingress did not produce ready evidence",
-                evidence,
-            ),
+        return _convergence_progress(
+            ingress,
+            finished_at,
+            deadline,
+            details={"public_ingress_observation": observation.descriptor()},
             observations=(record,),
         )
 
@@ -825,6 +859,77 @@ def _generated_secret_reference(
             )
         )
     )
+
+
+def _convergence_progress(
+    ingress: NamedPublicIngress,
+    attempted_at: datetime,
+    deadline: datetime,
+    *,
+    details: Mapping[str, object],
+    observations: tuple[ObservationRecord, ...] = (),
+) -> ActivityExecutionOutcome:
+    next_attempt = min(
+        attempted_at
+        + timedelta(seconds=ingress.convergence.retry_interval_seconds),
+        deadline,
+    )
+    return ActivityExecutionOutcome.progress(
+        progress_kind="public-ingress-convergence",
+        next_attempt_not_before=_utc_text(next_attempt),
+        deadline=_utc_text(deadline),
+        evidence=BoundedEvidence.from_mapping(
+            {
+                "ingress_id": ingress.ingress_id,
+                **details,
+            }
+        ),
+        observations=observations,
+    )
+
+
+def _convergence_timeout(
+    context: ActivityRealizationContext,
+    ingress: NamedPublicIngress,
+    deadline: datetime,
+    *,
+    details: Mapping[str, object] | None = None,
+    observations: tuple[ObservationRecord, ...] = (),
+) -> ActivityExecutionOutcome:
+    return ActivityExecutionOutcome.failed(
+        FailureEvidence(
+            FailureCategory.TERMINAL,
+            "ingress.convergence-timeout",
+            "public ingress did not become ready within its convergence window",
+            BoundedEvidence.from_mapping(
+                {
+                    "activity_id": context.activity.activity_id.value,
+                    "ingress_id": ingress.ingress_id,
+                    "deadline": _utc_text(deadline),
+                    **dict(details or {}),
+                }
+            ),
+        ),
+        observations=observations,
+    )
+
+
+def _utc_timestamp(value: object, field: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidOperationCommand(f"{field} must be a timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise InvalidOperationCommand(
+            f"{field} must be an ISO-8601 timestamp"
+        ) from error
+    if parsed.tzinfo is None:
+        raise InvalidOperationCommand(f"{field} must include a timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _utc_text(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _unsupported(

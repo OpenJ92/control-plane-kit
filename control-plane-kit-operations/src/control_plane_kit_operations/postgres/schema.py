@@ -1501,6 +1501,7 @@ def install_schema(connection: PostgresConnection) -> None:
     """Install the current operations schema on a caller-managed transaction."""
 
     connection.execute(POSTGRES_SCHEMA)
+    _upgrade_activity_event_constraints(connection)
     _upgrade_operation_action_kind_constraint(connection)
     _upgrade_approval_scope_constraints(connection)
     _upgrade_gateway_key_rotation_status_constraints(connection)
@@ -1509,6 +1510,58 @@ def install_schema(connection: PostgresConnection) -> None:
     _install_ingress_reservation_foreign_key(connection)
     _backfill_graph_lineage(connection)
     connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
+
+
+def _upgrade_activity_event_constraints(connection: PostgresConnection) -> None:
+    """Expand installed event checks without rewriting activity history."""
+
+    table = "cpk_activity_events"
+    required = ActivityEventKind.STEP_LIMITED_PROGRESS.value
+    definitions = {
+        row[0]: row[1]
+        for row in connection.execute(
+            """
+            SELECT conname, pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conrelid = %s::regclass
+              AND conname IN (
+                'cpk_activity_events_kind_check',
+                'cpk_activity_events_shape_check'
+              )
+            """,
+            (table,),
+        ).fetchall()
+    }
+    kind_constraint = "cpk_activity_events_kind_check"
+    if required not in definitions.get(kind_constraint, ""):
+        if kind_constraint in definitions:
+            connection.execute(
+                f"ALTER TABLE {table} DROP CONSTRAINT {kind_constraint}"
+            )
+        connection.execute(
+            f"ALTER TABLE {table} ADD CONSTRAINT {kind_constraint} "
+            f"CHECK (event_type IN ({_sql_values(tuple(ActivityEventKind))}))"
+        )
+
+    shape_constraint = "cpk_activity_events_shape_check"
+    if required in definitions.get(shape_constraint, ""):
+        return
+    if shape_constraint in definitions:
+        connection.execute(
+            f"ALTER TABLE {table} DROP CONSTRAINT {shape_constraint}"
+        )
+    connection.execute(
+        f"ALTER TABLE {table} ADD CONSTRAINT {shape_constraint} CHECK ("
+        f"((event_type IN ({_sql_values(_ACTIVITY_EVENT_KINDS)}) "
+        "AND NULLIF(payload->>'activity_id', '') IS NOT NULL) OR "
+        f"(event_type IN ({_sql_values(_RUN_EVENT_KINDS)}) "
+        "AND payload->>'activity_id' IS NULL)) AND "
+        "((event_type = 'recovery_decision_recorded' "
+        "AND payload ? 'recovery' "
+        "AND jsonb_typeof(payload->'recovery') = 'object') OR "
+        "(event_type <> 'recovery_decision_recorded' AND "
+        "(NOT payload ? 'recovery' OR payload->'recovery' = 'null'::jsonb))))"
+    )
 
 
 def _backfill_retained_hostname_reservations(

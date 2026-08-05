@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Callable, Mapping, Protocol
 
@@ -111,6 +112,7 @@ class CoordinatorStatus(StrEnum):
     FAILED = "failed"
     PROGRESSED = "progressed"
     IN_FLIGHT = "in-flight"
+    WAITING = "waiting"
     UNCERTAIN = "uncertain"
     UNSUPPORTED = "unsupported"
     BLOCKED = "blocked"
@@ -325,6 +327,10 @@ class ActivityExecutionOutcome:
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
     failure: FailureEvidence | None = None
     observations: tuple[ObservationRecord, ...] = ()
+    limited_progress: "ActivityLimitedProgress | None" = field(
+        default=None,
+        init=False,
+    )
 
     @classmethod
     def succeeded(
@@ -377,6 +383,30 @@ class ActivityExecutionOutcome:
             observations,
         )
 
+    @classmethod
+    def progress(
+        cls,
+        *,
+        progress_kind: str,
+        next_attempt_not_before: str,
+        deadline: str,
+        evidence: BoundedEvidence | None = None,
+        observations: tuple[ObservationRecord, ...] = (),
+    ) -> "ActivityExecutionOutcome":
+        details = dict((evidence or BoundedEvidence()).descriptor())
+        details.update(
+            {
+                "progress_kind": progress_kind,
+                "next_attempt_not_before": next_attempt_not_before,
+                "deadline": deadline,
+            }
+        )
+        return cls(
+            EffectResultKind.LIMITED_PROGRESS,
+            BoundedEvidence.from_mapping(details),
+            observations=observations,
+        )
+
     def __post_init__(self) -> None:
         if not isinstance(self.kind, EffectResultKind):
             raise InvalidOperationCommand("outcome kind must be EffectResultKind")
@@ -388,21 +418,73 @@ class ActivityExecutionOutcome:
         if not all(isinstance(value, ObservationRecord) for value in observations):
             raise InvalidOperationCommand("outcome observations must be ObservationRecord values")
         object.__setattr__(self, "observations", observations)
+        if self.kind is EffectResultKind.LIMITED_PROGRESS:
+            object.__setattr__(
+                self,
+                "limited_progress",
+                ActivityLimitedProgress.from_evidence(self.evidence),
+            )
         if self.kind in {
             EffectResultKind.FAILED,
             EffectResultKind.UNSUPPORTED,
             EffectResultKind.UNCERTAIN,
         } and self.failure is None:
             raise InvalidOperationCommand("non-success outcomes require failure evidence")
-        if self.kind is EffectResultKind.SUCCEEDED and self.failure is not None:
-            raise InvalidOperationCommand("successful outcomes must not carry failure")
+        if self.kind in {
+            EffectResultKind.SUCCEEDED,
+            EffectResultKind.LIMITED_PROGRESS,
+        } and self.failure is not None:
+            raise InvalidOperationCommand(
+                "successful or progressing outcomes must not carry failure"
+            )
         if self.kind not in {
             EffectResultKind.SUCCEEDED,
             EffectResultKind.FAILED,
             EffectResultKind.UNSUPPORTED,
             EffectResultKind.UNCERTAIN,
+            EffectResultKind.LIMITED_PROGRESS,
         }:
             raise InvalidOperationCommand("adapter outcome is not executable")
+
+
+@dataclass(frozen=True)
+class ActivityLimitedProgress:
+    """Trusted scheduling coordinates persisted for one nonterminal effect."""
+
+    progress_kind: str
+    next_attempt_not_before: str
+    deadline: str
+
+    def __post_init__(self) -> None:
+        if self.progress_kind != "public-ingress-convergence":
+            raise InvalidOperationCommand("limited progress kind is unsupported")
+        next_attempt = _timestamp(
+            self.next_attempt_not_before,
+            "next_attempt_not_before",
+        )
+        deadline = _timestamp(self.deadline, "deadline")
+        if next_attempt > deadline:
+            raise InvalidOperationCommand(
+                "limited progress next attempt must not exceed its deadline"
+            )
+
+    @classmethod
+    def from_evidence(cls, evidence: BoundedEvidence) -> "ActivityLimitedProgress":
+        values = evidence.descriptor()
+        try:
+            progress_kind = values["progress_kind"]
+            next_attempt = values["next_attempt_not_before"]
+            deadline = values["deadline"]
+        except KeyError as error:
+            raise InvalidOperationCommand(
+                "limited progress evidence is incomplete"
+            ) from error
+        if not all(
+            isinstance(value, str)
+            for value in (progress_kind, next_attempt, deadline)
+        ):
+            raise InvalidOperationCommand("limited progress evidence must be text")
+        return cls(progress_kind, next_attempt, deadline)
 
 
 class ActivityExecutionAdapter(Protocol):
@@ -694,15 +776,19 @@ class ExecutionCoordinatorResult:
     status: CoordinatorStatus
     effects_attempted: int = 0
     activity_id: str | None = None
+    next_attempt_not_before: str | None = None
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor: dict[str, object] = {
             "run_id": self.run.run_id,
             "run_status": self.run.status.value,
             "coordinator_status": self.status.value,
             "effects_attempted": self.effects_attempted,
             "activity_id": self.activity_id,
         }
+        if self.next_attempt_not_before is not None:
+            descriptor["next_attempt_not_before"] = self.next_attempt_not_before
+        return descriptor
 
 
 class ExecutionCoordinator:
@@ -736,12 +822,14 @@ class ExecutionCoordinator:
             if activity is None:
                 raise ExecutionCoordinatorConflict("ready activity identity is missing")
             planned = context.plan.activity(ActivityId(activity))
-            intent_event = self._record_step_event(
-                command,
-                planned,
-                ActivityEventKind.STEP_STARTED,
-                BoundedEvidence.from_mapping({"phase": "intent"}),
-            )
+            intent_event = _started_intent(context, planned)
+            if intent_event is None:
+                intent_event = self._record_step_event(
+                    command,
+                    planned,
+                    ActivityEventKind.STEP_STARTED,
+                    BoundedEvidence.from_mapping({"phase": "intent"}),
+                )
             realization = context.realization_context(planned, intent_event)
             attempted += 1
             try:
@@ -760,6 +848,15 @@ class ExecutionCoordinator:
             self._record_outcome(command, planned, outcome)
             if outcome.kind is EffectResultKind.SUCCEEDED:
                 continue
+            if outcome.kind is EffectResultKind.LIMITED_PROGRESS:
+                classified = self._classify_current(self._load_context(command))
+                return ExecutionCoordinatorResult(
+                    classified.run,
+                    classified.status,
+                    attempted,
+                    planned.activity_id.value,
+                    classified.next_attempt_not_before,
+                )
             classified = self._classify_current(self._load_context(command))
             run = classified.run
             if outcome.kind is EffectResultKind.UNSUPPORTED:
@@ -836,10 +933,30 @@ class ExecutionCoordinator:
                 run = self._fresh_run(run.run_id)
             return ExecutionCoordinatorResult(run, CoordinatorStatus.FAILED)
         if context.schedule.running:
+            activity = context.schedule.running[0]
+            progress = _latest_limited_progress(context, activity)
+            if progress is not None:
+                now = _timestamp(self._clock(), "coordinator clock")
+                not_before = _timestamp(
+                    progress.next_attempt_not_before,
+                    "next_attempt_not_before",
+                )
+                if now < not_before:
+                    return ExecutionCoordinatorResult(
+                        run,
+                        CoordinatorStatus.WAITING,
+                        activity_id=activity.activity_id.value,
+                        next_attempt_not_before=progress.next_attempt_not_before,
+                    )
+                return ExecutionCoordinatorResult(
+                    run,
+                    CoordinatorStatus.PROGRESSED,
+                    activity_id=activity.activity_id.value,
+                )
             return ExecutionCoordinatorResult(
                 run,
                 CoordinatorStatus.IN_FLIGHT,
-                activity_id=context.schedule.running[0].activity_id.value,
+                activity_id=activity.activity_id.value,
             )
         if context.schedule.successful:
             result = self._lifecycle.execute(
@@ -949,6 +1066,15 @@ class ExecutionCoordinator:
                 activity,
                 ActivityEventKind.STEP_UNCERTAIN,
                 failure=outcome.failure,
+                observations=outcome.observations,
+            )
+            return
+        if outcome.kind is EffectResultKind.LIMITED_PROGRESS:
+            self._record_step_event(
+                command,
+                activity,
+                ActivityEventKind.STEP_LIMITED_PROGRESS,
+                outcome.evidence,
                 observations=outcome.observations,
             )
             return
@@ -1199,6 +1325,49 @@ class _CoordinatorContext:
         )
 
 
+def _started_intent(
+    context: _CoordinatorContext,
+    activity: PlannedActivity,
+) -> ActivityEventRecord | None:
+    starts = tuple(
+        event
+        for event in context.events
+        if event.activity_id == activity.activity_id.value
+        and event.kind is ActivityEventKind.STEP_STARTED
+    )
+    if not starts:
+        return None
+    if len(starts) != 1:
+        raise ExecutionCoordinatorConflict(
+            "one activity must have exactly one durable step intent"
+        )
+    if _latest_limited_progress(context, activity) is None:
+        raise ExecutionCoordinatorConflict(
+            "started activity cannot be replayed without limited progress evidence"
+        )
+    return starts[0]
+
+
+def _latest_limited_progress(
+    context: _CoordinatorContext,
+    activity: PlannedActivity,
+) -> ActivityLimitedProgress | None:
+    events = tuple(
+        event
+        for event in context.events
+        if event.activity_id == activity.activity_id.value
+        and event.kind is ActivityEventKind.STEP_LIMITED_PROGRESS
+    )
+    if not events:
+        return None
+    try:
+        return ActivityLimitedProgress.from_evidence(events[-1].evidence)
+    except InvalidOperationCommand as error:
+        raise ExecutionCoordinatorConflict(
+            "limited progress evidence is invalid"
+        ) from error
+
+
 def _get_run(stores: Any, run_id: str) -> ActivityRunRecord:
     try:
         return stores.execution.get_run(run_id)
@@ -1365,3 +1534,17 @@ def _unsupported_dispatch(
 def _required_text(value: object, field: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise InvalidOperationCommand(f"{field} must not be empty")
+
+
+def _timestamp(value: object, field: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise InvalidOperationCommand(f"{field} must be a timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise InvalidOperationCommand(
+            f"{field} must be an ISO-8601 timestamp"
+        ) from error
+    if parsed.tzinfo is None:
+        raise InvalidOperationCommand(f"{field} must include a timezone")
+    return parsed

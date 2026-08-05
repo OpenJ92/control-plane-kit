@@ -228,7 +228,10 @@ class GatewayKeyRotationDeploymentExecutionProgram:
                 command,
                 effects_attempted=coordinated.effects_attempted,
             )
-        if coordinated.status is CoordinatorStatus.PROGRESSED:
+        if coordinated.status in {
+            CoordinatorStatus.PROGRESSED,
+            CoordinatorStatus.WAITING,
+        }:
             outcome = (
                 GatewayKeyRotationDeploymentExecutionOutcome.DISPATCHED
                 if coordinated.effects_attempted

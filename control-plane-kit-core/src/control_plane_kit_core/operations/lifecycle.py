@@ -60,6 +60,7 @@ class ActivityEventKind(StrEnum):
     RUN_PAUSED = "run_paused"
     RUN_RESUMED = "run_resumed"
     STEP_STARTED = "step_started"
+    STEP_LIMITED_PROGRESS = "step_limited_progress"
     STEP_SUCCEEDED = "step_succeeded"
     STEP_FAILED = "step_failed"
     STEP_UNSUPPORTED = "step_unsupported"
@@ -842,6 +843,7 @@ _SETTLED_RUN_STATUSES = frozenset(
 _STEP_EVENT_KINDS = frozenset(
     {
         ActivityEventKind.STEP_STARTED,
+        ActivityEventKind.STEP_LIMITED_PROGRESS,
         ActivityEventKind.STEP_SUCCEEDED,
         ActivityEventKind.STEP_FAILED,
         ActivityEventKind.STEP_UNSUPPORTED,
