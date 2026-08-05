@@ -258,11 +258,20 @@ class PublicIngressReservationTests(unittest.TestCase):
             resources = unit_of_work.stores.ingress_resources
             reservations.record_cloudflare(self.reservation())
             resources.record_cloudflare(self.resource())
+            with self.assertRaises(
+                ingress_authorities.OwnedIngressResourceConflict
+            ):
+                resources.mark_removing(
+                    "workspace-a",
+                    "gateway-001",
+                    expected_epoch=2,
+                )
             resources.mark_removed(
                 "workspace-a",
                 "gateway-001",
                 removed_at="removed-at",
                 removed_by_run_id="run-remove",
+                expected_epoch=1,
             )
             reservation = reservations.require_live_cloudflare_for_ingress(
                 "workspace-a",

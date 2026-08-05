@@ -185,6 +185,7 @@ class RecordingIngressInterpreter:
         self.return_invalid_coordinates = False
         self.on_create: Callable[[], None] | None = None
         self.on_rebind: Callable[[], None] | None = None
+        self.on_deactivate: Callable[[], None] | None = None
 
     def create(
         self,
@@ -292,6 +293,8 @@ class RecordingIngressInterpreter:
         self.deactivate_active_counts.append(self.tracker.active)
         self.deactivate_reservations.append(reservation)
         self.deactivate_resources.append(resources)
+        if self.on_deactivate is not None:
+            self.on_deactivate()
         if self.fail_deactivate:
             raise RuntimeError("Bearer must-not-survive")
         presence = ingress_realization.IngressResourcePresence
@@ -1098,6 +1101,65 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertNotIn("must-not-survive", repr(outcome))
         self.assertEqual(interpreter.deactivate_active_counts, [0])
 
+    def test_retained_deactivation_fold_race_keeps_both_truths_uncertain(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:03:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_retained_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        def race_reservation() -> None:
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.ingress_reservations.mark_uncertain(
+                    "workspace-a",
+                    "reservation-001",
+                    expected_version=1,
+                    transitioned_at="2026-07-28T08:02:59Z",
+                    source_run_id="run-race",
+                    source_activity_id="race",
+                    source_event_id="event-race",
+                )
+                unit_of_work.commit()
+
+        interpreter.on_deactivate = race_reservation
+        outcome = adapter.execute(
+            self.context(
+                activity_id="remove-gateway",
+                run_id="run-off",
+                intent_event_id="event-off",
+                operation=RemovePublicIngress(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                base_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(
+            outcome.failure.code,
+            "ingress.deactivate-fold-uncertain",
+        )
+        with self.unit_of_work() as unit_of_work:
+            resource = unit_of_work.stores.ingress_resources.get_cloudflare(
+                "workspace-a", "gateway-001"
+            )
+            reservation = unit_of_work.stores.ingress_reservations.require_cloudflare(
+                "workspace-a", "reservation-001"
+            )
+        self.assertIs(resource.status, OwnedIngressResourceStatus.UNCERTAIN)
+        self.assertIs(
+            reservation.status,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+        )
+
     def test_reserved_reentry_rebinds_distinct_epoch_and_custody_lineage(self) -> None:
         interpreter = RecordingIngressInterpreter(self.tracker)
         adapter = IngressRealizationAdapter(
@@ -1197,6 +1259,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
 
         self.assertEqual(outcome.kind.name, "UNCERTAIN")
         self.assertEqual(interpreter.teardown_resources, [])
+        self.assertNotIn("dns-foreign", repr(outcome))
         with self.unit_of_work() as unit_of_work:
             reservation = unit_of_work.stores.ingress_reservations.require_cloudflare(
                 "workspace-a", "reservation-001"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 import hashlib
 from typing import Any, Mapping, Protocol
 
@@ -42,7 +43,6 @@ from control_plane_kit_operations.coordinator import (
     ActivityRealizationContext,
 )
 from control_plane_kit_operations.ingress_authorities import (
-    CloudflareIngressTeardownActionKind,
     CloudflareOwnedHostnameReservation,
     CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthority,
@@ -90,6 +90,84 @@ class IngressOwnedResourceCoordinates(Protocol):
     hostname: str
 
 
+@dataclass(frozen=True)
+class IngressReservationCoordinates:
+    """Exact provider coordinates projected from durable reservation truth."""
+
+    dns_record_id: str
+    hostname: str
+    expected_tunnel_id: str
+
+    def __post_init__(self) -> None:
+        _exact_coordinate(self.dns_record_id, "dns_record_id")
+        _exact_hostname(self.hostname)
+        _exact_coordinate(self.expected_tunnel_id, "expected_tunnel_id")
+
+
+class IngressResourcePresence(StrEnum):
+    """Closed exact-resource presence returned by an ingress interpreter."""
+
+    PRESENT = "present"
+    ABSENT = "absent"
+
+
+@dataclass(frozen=True)
+class IngressReservationObservation:
+    """Secret-free postcondition for one exact retained DNS record."""
+
+    dns_record_id: str
+    hostname: str
+    presence: IngressResourcePresence
+    tunnel_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _exact_coordinate(self.dns_record_id, "dns_record_id")
+        _exact_hostname(self.hostname)
+        if not isinstance(self.presence, IngressResourcePresence):
+            raise InvalidOperationCommand("reservation presence must be closed")
+        if self.presence is IngressResourcePresence.PRESENT:
+            if self.tunnel_id is None:
+                raise InvalidOperationCommand(
+                    "present reservation observation requires tunnel_id"
+                )
+            _exact_coordinate(self.tunnel_id, "tunnel_id")
+        elif self.tunnel_id is not None:
+            raise InvalidOperationCommand(
+                "absent reservation observation cannot carry tunnel_id"
+            )
+
+
+@dataclass(frozen=True)
+class IngressTunnelObservation:
+    """Secret-free postcondition for one exact tunnel epoch."""
+
+    tunnel_id: str
+    presence: IngressResourcePresence
+
+    def __post_init__(self) -> None:
+        _exact_coordinate(self.tunnel_id, "tunnel_id")
+        if not isinstance(self.presence, IngressResourcePresence):
+            raise InvalidOperationCommand("tunnel presence must be closed")
+
+
+@dataclass(frozen=True)
+class RetainedIngressDeactivationResult:
+    """Verified retained-off postconditions returned by an interpreter."""
+
+    reservation: IngressReservationObservation
+    tunnel: IngressTunnelObservation
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reservation, IngressReservationObservation):
+            raise InvalidOperationCommand(
+                "retained deactivation reservation observation is malformed"
+            )
+        if not isinstance(self.tunnel, IngressTunnelObservation):
+            raise InvalidOperationCommand(
+                "retained deactivation tunnel observation is malformed"
+            )
+
+
 class IngressProviderInterpreter(Protocol):
     """Provider-specific interpreter supplied at the composition boundary."""
 
@@ -112,6 +190,28 @@ class IngressProviderInterpreter(Protocol):
         secret_resolution_grant: SecretResolutionGrant,
         secret_custody_grant: SecretCustodyGrant,
     ) -> None: ...
+
+    def rebind(
+        self,
+        ingress: NamedPublicIngress,
+        *,
+        authority: CloudflareZoneIngressAuthority,
+        reservation: IngressReservationCoordinates,
+        allocation_name: str,
+        origin_service_url: str,
+        secret_resolution_grant: SecretResolutionGrant,
+        secret_custody_grant: SecretCustodyGrant,
+    ) -> IngressAllocationResult: ...
+
+    def deactivate_preserving_reservation(
+        self,
+        *,
+        authority: CloudflareZoneIngressAuthority,
+        reservation: IngressReservationCoordinates,
+        resources: IngressOwnedResourceCoordinates,
+        secret_resolution_grant: SecretResolutionGrant,
+        secret_custody_grant: SecretCustodyGrant,
+    ) -> RetainedIngressDeactivationResult: ...
 
 
 class PublicIngressReadinessVerifier(Protocol):
@@ -315,9 +415,14 @@ class IngressRealizationAdapter:
         context: ActivityRealizationContext,
         operation: AllocatePublicIngress,
     ) -> ActivityExecutionOutcome:
+        existing_reservation: CloudflareOwnedHostnameReservation | None = None
+        removed_resource: CloudflareOwnedIngressResource | None = None
+        rebind_coordinates_valid = False
         try:
             graph = DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
             ingress = _ingress_by_id(graph, operation.target.ingress_id)
+            if ingress.lifecycle is PublicIngressLifecycle.EXTERNAL:
+                return _external_noop(context, ingress, "allocate")
             origin_service_url = _origin_service_url(graph, ingress)
             authority = self._active_authority(context, ingress)
             interpreter = self._interpreter(authority.provider_kind)
@@ -335,9 +440,39 @@ class IngressRealizationAdapter:
                         "ingress.allocate-conflict",
                         "owned ingress resource already exists",
                     )
+                if ingress.lifecycle is PublicIngressLifecycle.RETAINED:
+                    try:
+                        existing_reservation = (
+                            unit_of_work.stores.ingress_reservations
+                            .require_live_cloudflare_for_ingress(
+                                context.request.identity.workspace_id,
+                                ingress.ingress_id,
+                            )
+                        )
+                    except IngressAuthorityNotFound:
+                        pass
+                    if existing_reservation is not None:
+                        _require_rebindable_reservation(
+                            existing_reservation,
+                            ingress,
+                            authority.authority,
+                        )
+                        removed_resource = (
+                            unit_of_work.stores.ingress_resources
+                            .require_latest_removed_cloudflare(
+                                context.request.identity.workspace_id,
+                                ingress.ingress_id,
+                                existing_reservation.reservation_id,
+                            )
+                        )
+                        _require_reservation_resource_agreement(
+                            existing_reservation,
+                            removed_resource,
+                        )
         except (KeyError, ValueError, InvalidOperationCommand) as error:
             return _unsupported(context, "ingress.allocate-unsupported", str(error))
 
+        recorded_at = context.intent_event.occurred_at
         try:
             grant = self._authorize_api_token(context, authority.authority)
             custody_grant = self._generated_secret_custody_grant(
@@ -346,14 +481,29 @@ class IngressRealizationAdapter:
             )
             recorded_at = self.clock()
             _validate_fold_timestamp(recorded_at)
-            allocation = interpreter.create(
-                ingress,
-                authority=authority.authority,
-                allocation_name=_allocation_name(context, ingress),
-                origin_service_url=origin_service_url,
-                secret_resolution_grant=grant,
-                secret_custody_grant=custody_grant,
-            )
+            if existing_reservation is None:
+                allocation = interpreter.create(
+                    ingress,
+                    authority=authority.authority,
+                    allocation_name=_allocation_name(context, ingress),
+                    origin_service_url=origin_service_url,
+                    secret_resolution_grant=grant,
+                    secret_custody_grant=custody_grant,
+                )
+            else:
+                assert removed_resource is not None
+                allocation = interpreter.rebind(
+                    ingress,
+                    authority=authority.authority,
+                    reservation=_reservation_coordinates(
+                        existing_reservation,
+                        removed_resource,
+                    ),
+                    allocation_name=_allocation_name(context, ingress),
+                    origin_service_url=origin_service_url,
+                    secret_resolution_grant=grant,
+                    secret_custody_grant=custody_grant,
+                )
         except SecretProviderRegistrationError:
             return _unsupported(
                 context,
@@ -367,14 +517,34 @@ class IngressRealizationAdapter:
                 "ingress secret authorization could not be established",
             )
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
+            if existing_reservation is not None:
+                uncertainty_recorded = self._mark_reservation_uncertain(
+                    context,
+                    existing_reservation,
+                    transitioned_at=recorded_at,
+                )
+                return _retained_uncertain(
+                    "ingress.rebind-uncertain",
+                    "retained ingress rebind result is uncertain",
+                    existing_reservation,
+                    exception_type=type(error).__name__,
+                    uncertainty_recorded=uncertainty_recorded,
+                )
             return _uncertain("ingress.allocate-uncertain", type(error).__name__)
 
         try:
-            reservation = None
-            reservation_id = None
-            if ingress.lifecycle is PublicIngressLifecycle.RETAINED:
+            reservation_to_record = None
+            reservation_id = (
+                None
+                if existing_reservation is None
+                else existing_reservation.reservation_id
+            )
+            if (
+                ingress.lifecycle is PublicIngressLifecycle.RETAINED
+                and existing_reservation is None
+            ):
                 reservation_id = _reservation_id(context, ingress)
-                reservation = CloudflareOwnedHostnameReservation(
+                reservation_to_record = CloudflareOwnedHostnameReservation(
                     reservation_id=reservation_id,
                     workspace_id=context.request.identity.workspace_id,
                     ingress_id=ingress.ingress_id,
@@ -391,6 +561,14 @@ class IngressRealizationAdapter:
                     source_activity_id=context.activity.activity_id.value,
                     source_event_id=context.intent_event.event_id,
                 )
+            if existing_reservation is not None:
+                assert removed_resource is not None
+                _require_rebind_allocation(
+                    allocation,
+                    existing_reservation,
+                    removed_resource,
+                )
+                rebind_coordinates_valid = True
             resource = CloudflareOwnedIngressResource(
                 workspace_id=context.request.identity.workspace_id,
                 runtime_id=graph.node(ingress.connector_node_id).runtime_id,
@@ -446,14 +624,42 @@ class IngressRealizationAdapter:
                         "secret custody provider changed before durable fold"
                     )
                 unit_of_work.stores.secret_references.register(reference_candidate)
-                if reservation is not None:
+                if reservation_to_record is not None:
                     unit_of_work.stores.ingress_reservations.record_cloudflare(
-                        reservation
+                        reservation_to_record
                     )
                 unit_of_work.stores.ingress_resources.record_cloudflare(resource)
                 unit_of_work.stores.generated_ingress_secrets.record(secret_evidence)
+                if existing_reservation is not None:
+                    unit_of_work.stores.ingress_reservations.mark_bound(
+                        context.request.identity.workspace_id,
+                        existing_reservation.reservation_id,
+                        expected_version=existing_reservation.version,
+                        transitioned_at=recorded_at,
+                        source_run_id=context.run.run_id,
+                        source_activity_id=context.activity.activity_id.value,
+                        source_event_id=context.intent_event.event_id,
+                    )
                 unit_of_work.commit()
         except Exception as error:  # noqa: BLE001 - compensate exact provider effect.
+            if existing_reservation is not None:
+                uncertainty_recorded = self._mark_reservation_uncertain(
+                    context,
+                    existing_reservation,
+                    transitioned_at=recorded_at,
+                )
+                return _retained_uncertain(
+                    "ingress.rebind-fold-uncertain",
+                    "retained ingress rebind could not be folded durably",
+                    existing_reservation,
+                    exception_type=type(error).__name__,
+                    uncertainty_recorded=uncertainty_recorded,
+                    tunnel_id=(
+                        allocation.tunnel_id
+                        if rebind_coordinates_valid
+                        else None
+                    ),
+                )
             try:
                 interpreter.teardown(
                     authority=authority.authority,
@@ -492,15 +698,38 @@ class IngressRealizationAdapter:
         context: ActivityRealizationContext,
         operation: RemovePublicIngress,
     ) -> ActivityExecutionOutcome:
+        reservation: CloudflareOwnedHostnameReservation | None = None
         try:
             graph = DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor)
             ingress = _ingress_by_id(graph, operation.target.ingress_id)
+            if ingress.lifecycle is PublicIngressLifecycle.EXTERNAL:
+                return _external_noop(context, ingress, "remove")
             authority = self._active_authority(context, ingress)
             with self.unit_of_work_factory() as unit_of_work:
                 resource = unit_of_work.stores.ingress_resources.require_active_cloudflare(
                     context.request.identity.workspace_id,
                     ingress.ingress_id,
                 )
+                if ingress.lifecycle is PublicIngressLifecycle.RETAINED:
+                    if resource.reservation_id is None:
+                        raise InvalidOperationCommand(
+                            "retained realization is missing reservation identity"
+                        )
+                    reservation = (
+                        unit_of_work.stores.ingress_reservations.require_cloudflare(
+                            context.request.identity.workspace_id,
+                            resource.reservation_id,
+                        )
+                    )
+                    _require_bound_reservation(
+                        reservation,
+                        ingress,
+                        authority.authority,
+                    )
+                    _require_reservation_resource_agreement(
+                        reservation,
+                        resource,
+                    )
             plan = cloudflare_ingress_teardown_plan(
                 authority=authority.authority,
                 resource=resource,
@@ -522,6 +751,8 @@ class IngressRealizationAdapter:
                 authority.authority,
                 generated_secret.secret_ref,
             )
+            transitioned_at = self.clock()
+            _validate_fold_timestamp(transitioned_at)
         except SecretProviderRegistrationError:
             return _unsupported(
                 context,
@@ -531,44 +762,185 @@ class IngressRealizationAdapter:
         except (KeyError, ValueError, InvalidOperationCommand) as error:
             return _unsupported(context, "ingress.remove-unsupported", str(error))
 
-        if tuple(action.kind for action in plan.actions) == (
-            CloudflareIngressTeardownActionKind.SKIP_RETAINED_OR_EXTERNAL,
-        ):
-            return ActivityExecutionOutcome.succeeded(
-                BoundedEvidence.from_mapping(plan.descriptor())
-            )
         with self.unit_of_work_factory() as unit_of_work:
             resource = unit_of_work.stores.ingress_resources.mark_removing(
                 context.request.identity.workspace_id,
                 ingress.ingress_id,
+                expected_epoch=resource.epoch,
             )
             unit_of_work.commit()
         try:
-            interpreter.teardown(
-                authority=authority.authority,
-                resources=resource,
-                secret_resolution_grant=grant,
-                secret_custody_grant=custody_grant,
-            )
+            if reservation is None:
+                interpreter.teardown(
+                    authority=authority.authority,
+                    resources=resource,
+                    secret_resolution_grant=grant,
+                    secret_custody_grant=custody_grant,
+                )
+            else:
+                result = interpreter.deactivate_preserving_reservation(
+                    authority=authority.authority,
+                    reservation=_reservation_coordinates(
+                        reservation,
+                        resource,
+                    ),
+                    resources=resource,
+                    secret_resolution_grant=grant,
+                    secret_custody_grant=custody_grant,
+                )
+                _require_retained_deactivation(result, reservation, resource)
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
+            if reservation is not None:
+                uncertainty_recorded = self._mark_retained_off_uncertain(
+                    context,
+                    reservation,
+                    transitioned_at=transitioned_at,
+                    expected_epoch=resource.epoch,
+                )
+                return _retained_uncertain(
+                    "ingress.deactivate-uncertain",
+                    "retained ingress deactivation result is uncertain",
+                    reservation,
+                    exception_type=type(error).__name__,
+                    uncertainty_recorded=uncertainty_recorded,
+                    tunnel_id=resource.tunnel_id,
+                )
             with self.unit_of_work_factory() as unit_of_work:
                 unit_of_work.stores.ingress_resources.mark_uncertain(
                     context.request.identity.workspace_id,
                     ingress.ingress_id,
+                    expected_epoch=resource.epoch,
                 )
                 unit_of_work.commit()
             return _uncertain("ingress.remove-uncertain", type(error).__name__)
-        with self.unit_of_work_factory() as unit_of_work:
-            unit_of_work.stores.ingress_resources.mark_removed(
-                context.request.identity.workspace_id,
-                ingress.ingress_id,
-                removed_at=self.clock(),
-                removed_by_run_id=context.run.run_id,
+        try:
+            with self.unit_of_work_factory() as unit_of_work:
+                unit_of_work.stores.ingress_resources.mark_removed(
+                    context.request.identity.workspace_id,
+                    ingress.ingress_id,
+                    removed_at=transitioned_at,
+                    removed_by_run_id=context.run.run_id,
+                    expected_epoch=resource.epoch,
+                )
+                if reservation is not None:
+                    unit_of_work.stores.ingress_reservations.mark_reserved(
+                        context.request.identity.workspace_id,
+                        reservation.reservation_id,
+                        expected_version=reservation.version,
+                        transitioned_at=transitioned_at,
+                        source_run_id=context.run.run_id,
+                        source_activity_id=context.activity.activity_id.value,
+                        source_event_id=context.intent_event.event_id,
+                    )
+                unit_of_work.commit()
+        except Exception as error:  # noqa: BLE001 - provider effect already occurred.
+            if reservation is None:
+                raise
+            uncertainty_recorded = self._mark_retained_off_uncertain(
+                context,
+                reservation,
+                transitioned_at=transitioned_at,
+                expected_epoch=resource.epoch,
             )
-            unit_of_work.commit()
+            return _retained_uncertain(
+                "ingress.deactivate-fold-uncertain",
+                "retained ingress deactivation could not be folded durably",
+                reservation,
+                exception_type=type(error).__name__,
+                uncertainty_recorded=uncertainty_recorded,
+                tunnel_id=resource.tunnel_id,
+            )
+        if reservation is not None:
+            return ActivityExecutionOutcome.succeeded(
+                BoundedEvidence.from_mapping(
+                    {
+                        "provider_kind": authority.provider_kind.value,
+                        "ingress_id": ingress.ingress_id,
+                        "reservation_id": reservation.reservation_id,
+                        "dns_record_id": reservation.dns_record_id,
+                        "hostname": reservation.hostname,
+                        "removed_tunnel_id": resource.tunnel_id,
+                        "reservation_status": (
+                            OwnedHostnameReservationStatus.RESERVED.value
+                        ),
+                    }
+                )
+            )
         return ActivityExecutionOutcome.succeeded(
             BoundedEvidence.from_mapping(plan.descriptor())
         )
+
+    def _mark_reservation_uncertain(
+        self,
+        context: ActivityRealizationContext,
+        reservation: CloudflareOwnedHostnameReservation,
+        *,
+        transitioned_at: str,
+    ) -> bool:
+        try:
+            with self.unit_of_work_factory() as unit_of_work:
+                current = (
+                    unit_of_work.stores.ingress_reservations
+                    .require_cloudflare_for_update(
+                        context.request.identity.workspace_id,
+                        reservation.reservation_id,
+                    )
+                )
+                if current.status is not OwnedHostnameReservationStatus.UNCERTAIN:
+                    if current.version != reservation.version:
+                        return False
+                    unit_of_work.stores.ingress_reservations.mark_uncertain(
+                        context.request.identity.workspace_id,
+                        reservation.reservation_id,
+                        expected_version=reservation.version,
+                        transitioned_at=transitioned_at,
+                        source_run_id=context.run.run_id,
+                        source_activity_id=context.activity.activity_id.value,
+                        source_event_id=context.intent_event.event_id,
+                    )
+                unit_of_work.commit()
+        except Exception:  # noqa: BLE001 - activity evidence retains uncertainty.
+            return False
+        return True
+
+    def _mark_retained_off_uncertain(
+        self,
+        context: ActivityRealizationContext,
+        reservation: CloudflareOwnedHostnameReservation,
+        *,
+        transitioned_at: str,
+        expected_epoch: int,
+    ) -> bool:
+        try:
+            with self.unit_of_work_factory() as unit_of_work:
+                unit_of_work.stores.ingress_resources.mark_uncertain(
+                    context.request.identity.workspace_id,
+                    reservation.ingress_id,
+                    expected_epoch=expected_epoch,
+                )
+                current = (
+                    unit_of_work.stores.ingress_reservations
+                    .require_cloudflare_for_update(
+                        context.request.identity.workspace_id,
+                        reservation.reservation_id,
+                    )
+                )
+                if current.status is not OwnedHostnameReservationStatus.UNCERTAIN:
+                    if current.version != reservation.version:
+                        return False
+                    unit_of_work.stores.ingress_reservations.mark_uncertain(
+                        context.request.identity.workspace_id,
+                        reservation.reservation_id,
+                        expected_version=reservation.version,
+                        transitioned_at=transitioned_at,
+                        source_run_id=context.run.run_id,
+                        source_activity_id=context.activity.activity_id.value,
+                        source_event_id=context.intent_event.event_id,
+                    )
+                unit_of_work.commit()
+        except Exception:  # noqa: BLE001 - activity evidence retains uncertainty.
+            return False
+        return True
 
     def _active_authority(
         self,
@@ -689,6 +1061,117 @@ class IngressRealizationAdapter:
             run_id=context.run.run_id,
             activity_id=context.activity.activity_id.value,
             effect_id=context.intent_event.event_id,
+        )
+
+
+def _require_rebindable_reservation(
+    reservation: CloudflareOwnedHostnameReservation,
+    ingress: NamedPublicIngress,
+    authority: CloudflareZoneIngressAuthority,
+) -> None:
+    if reservation.status is not OwnedHostnameReservationStatus.RESERVED:
+        raise InvalidOperationCommand(
+            "retained ingress reservation is not reserved for rebind"
+        )
+    _require_reservation_ingress_authority(reservation, ingress, authority)
+
+
+def _require_bound_reservation(
+    reservation: CloudflareOwnedHostnameReservation,
+    ingress: NamedPublicIngress,
+    authority: CloudflareZoneIngressAuthority,
+) -> None:
+    if reservation.status is not OwnedHostnameReservationStatus.BOUND:
+        raise InvalidOperationCommand(
+            "retained ingress reservation is not bound for deactivation"
+        )
+    _require_reservation_ingress_authority(reservation, ingress, authority)
+
+
+def _require_reservation_ingress_authority(
+    reservation: CloudflareOwnedHostnameReservation,
+    ingress: NamedPublicIngress,
+    authority: CloudflareZoneIngressAuthority,
+) -> None:
+    if (
+        reservation.ingress_id != ingress.ingress_id
+        or reservation.authority_ref != ingress.authority_ref
+        or reservation.hostname != ingress.hostname
+        or reservation.zone_id != authority.zone_id
+        or reservation.lifecycle is not PublicIngressLifecycle.RETAINED
+        or ingress.lifecycle is not PublicIngressLifecycle.RETAINED
+    ):
+        raise InvalidOperationCommand(
+            "retained ingress reservation disagrees with desired authority"
+        )
+
+
+def _require_reservation_resource_agreement(
+    reservation: CloudflareOwnedHostnameReservation,
+    resource: CloudflareOwnedIngressResource,
+) -> None:
+    if (
+        resource.workspace_id != reservation.workspace_id
+        or resource.ingress_id != reservation.ingress_id
+        or resource.reservation_id != reservation.reservation_id
+        or resource.authority_ref != reservation.authority_ref
+        or resource.provider_kind is not reservation.provider_kind
+        or resource.dns_record_id != reservation.dns_record_id
+        or resource.hostname != reservation.hostname
+        or resource.zone_id != reservation.zone_id
+        or resource.lifecycle is not PublicIngressLifecycle.RETAINED
+    ):
+        raise InvalidOperationCommand(
+            "retained reservation and realization coordinates disagree"
+        )
+
+
+def _reservation_coordinates(
+    reservation: CloudflareOwnedHostnameReservation,
+    resource: CloudflareOwnedIngressResource,
+) -> IngressReservationCoordinates:
+    _require_reservation_resource_agreement(reservation, resource)
+    return IngressReservationCoordinates(
+        dns_record_id=reservation.dns_record_id,
+        hostname=reservation.hostname,
+        expected_tunnel_id=resource.tunnel_id,
+    )
+
+
+def _require_rebind_allocation(
+    allocation: IngressAllocationResult,
+    reservation: CloudflareOwnedHostnameReservation,
+    removed_resource: CloudflareOwnedIngressResource,
+) -> None:
+    if (
+        allocation.dns_record_id != reservation.dns_record_id
+        or allocation.hostname != reservation.hostname
+        or allocation.tunnel_id == removed_resource.tunnel_id
+    ):
+        raise InvalidOperationCommand(
+            "retained rebind result contradicts exact reservation truth"
+        )
+
+
+def _require_retained_deactivation(
+    result: object,
+    reservation: CloudflareOwnedHostnameReservation,
+    resource: CloudflareOwnedIngressResource,
+) -> None:
+    if not isinstance(result, RetainedIngressDeactivationResult):
+        raise InvalidOperationCommand(
+            "retained deactivation result must be operations-owned evidence"
+        )
+    if (
+        result.reservation.dns_record_id != reservation.dns_record_id
+        or result.reservation.hostname != reservation.hostname
+        or result.reservation.presence is not IngressResourcePresence.PRESENT
+        or result.reservation.tunnel_id != resource.tunnel_id
+        or result.tunnel.tunnel_id != resource.tunnel_id
+        or result.tunnel.presence is not IngressResourcePresence.ABSENT
+    ):
+        raise InvalidOperationCommand(
+            "retained deactivation result contradicts exact durable truth"
         )
 
 
@@ -961,6 +1444,73 @@ def _uncertain(code: str, exception_type: str) -> ActivityExecutionOutcome:
             BoundedEvidence.from_mapping({"exception_type": exception_type}),
         )
     )
+
+
+def _retained_uncertain(
+    code: str,
+    message: str,
+    reservation: CloudflareOwnedHostnameReservation,
+    *,
+    exception_type: str,
+    uncertainty_recorded: bool,
+    tunnel_id: object | None = None,
+) -> ActivityExecutionOutcome:
+    details: dict[str, object] = {
+        "reservation_id": reservation.reservation_id,
+        "ingress_id": reservation.ingress_id,
+        "dns_record_id": reservation.dns_record_id,
+        "hostname": reservation.hostname,
+        "exception_type": exception_type,
+        "uncertainty_recorded": uncertainty_recorded,
+    }
+    if isinstance(tunnel_id, str) and tunnel_id.strip():
+        details["tunnel_id"] = tunnel_id
+    return ActivityExecutionOutcome.uncertain(
+        FailureEvidence(
+            FailureCategory.UNCERTAIN,
+            code,
+            message,
+            BoundedEvidence.from_mapping(details),
+        )
+    )
+
+
+def _external_noop(
+    context: ActivityRealizationContext,
+    ingress: NamedPublicIngress,
+    operation: str,
+) -> ActivityExecutionOutcome:
+    return ActivityExecutionOutcome.succeeded(
+        BoundedEvidence.from_mapping(
+            {
+                "activity_id": context.activity.activity_id.value,
+                "ingress_id": ingress.ingress_id,
+                "lifecycle": PublicIngressLifecycle.EXTERNAL.value,
+                "owned_effect": False,
+                "operation": operation,
+            }
+        )
+    )
+
+
+def _exact_coordinate(value: object, field: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or value != value.strip()
+        or any(character.isspace() or ord(character) < 32 for character in value)
+    ):
+        raise InvalidOperationCommand(f"{field} must be an exact provider identifier")
+
+
+def _exact_hostname(value: object) -> None:
+    if (
+        not isinstance(value, str)
+        or value != value.strip().lower()
+        or "." not in value
+        or any(character.isspace() or ord(character) < 32 for character in value)
+    ):
+        raise InvalidOperationCommand("hostname must be an exact lowercase DNS name")
 
 
 def _validate_fold_timestamp(value: object) -> None:
