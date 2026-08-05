@@ -22,6 +22,7 @@ _NAMED_PUBLIC_INGRESS_KEYS = frozenset(
         "target",
         "connector_node_id",
         "hostname",
+        "readiness_check_id",
         "exposure",
         "lifecycle",
     }
@@ -144,6 +145,7 @@ class NamedPublicIngress:
     target: PublicIngressTarget
     connector_node_id: str
     hostname: str
+    readiness_check_id: str
     exposure: PublicIngressExposure = PublicIngressExposure.HTTPS
     lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL
 
@@ -159,6 +161,7 @@ class NamedPublicIngress:
             )
         _validate_node_id(self.connector_node_id)
         _validate_hostname(self.hostname)
+        _validate_reference(self.readiness_check_id, "public ingress readiness check id")
         if not isinstance(self.exposure, PublicIngressExposure):
             raise PublicIngressContractError("public ingress exposure must be closed")
         if not isinstance(self.lifecycle, PublicIngressLifecycle):
@@ -171,6 +174,7 @@ class NamedPublicIngress:
             "target": self.target.descriptor(),
             "connector_node_id": self.connector_node_id,
             "hostname": self.hostname,
+            "readiness_check_id": self.readiness_check_id,
             "exposure": self.exposure.value,
             "lifecycle": self.lifecycle.value,
         }
@@ -213,6 +217,7 @@ class NamedPublicIngressCodec:
             ),
             connector_node_id=_text(mapping, "connector_node_id"),
             hostname=_text(mapping, "hostname"),
+            readiness_check_id=_text(mapping, "readiness_check_id"),
             exposure=exposure_value,
             lifecycle=lifecycle_value,
         )

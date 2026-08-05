@@ -39,6 +39,7 @@ from control_plane_kit_core.topology import DeploymentGraph, compile_topology, v
 from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.verification import HttpCheck, VerificationContract
 
 
 @dataclass(frozen=True)
@@ -102,7 +103,18 @@ def topology(active_name: str = "api-v1") -> DeploymentTopology:
 
 def public_ingress_topology() -> DeploymentTopology:
     gateway = ApplicationBlock(
-        BlockSpec("gateway"),
+        BlockSpec(
+            "gateway",
+            verification=VerificationContract(
+                (
+                    HttpCheck(
+                        check_id="ready",
+                        provider_socket="control",
+                        path="/health/ready",
+                    ),
+                )
+            ),
+        ),
         MultiSocketImplementation("gateway"),
         BlockSockets(providers=(ProviderSocket("control", Protocol.HTTP),)),
     )
@@ -121,6 +133,7 @@ def public_ingress_topology() -> DeploymentTopology:
                 target=PublicIngressTarget("gateway", "control"),
                 connector_node_id="cloudflared-gateway",
                 hostname="cpk-gateway-001.openj92.dev",
+                readiness_check_id="ready",
             ),
         ),
     )

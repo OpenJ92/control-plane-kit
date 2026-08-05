@@ -386,6 +386,7 @@ class ExecutionAdmissionTests(unittest.TestCase):
                     target=PublicIngressTarget("gateway", "control"),
                     connector_node_id="cloudflared",
                     hostname="cpk-gateway-001.openj92.dev",
+                    readiness_check_id="ready",
                 ),
             ),
         )

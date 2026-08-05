@@ -750,7 +750,9 @@ NamedPublicIngress
   = ingress_id
   x IngressAuthorityReference
   x PublicIngressTarget(node_id, provider_socket)
+  x connector_node_id
   x hostname
+  x readiness_check_id
   x PublicIngressExposure
   x PublicIngressLifecycle
 ```
@@ -762,9 +764,10 @@ owned by:
   effects such as Cloudflare tunnel/DNS mutation.
 
 durable:
-  The desired hostname and target socket may be graph/control-plane truth.
-  Provider-generated tunnel ids, DNS record ids, and readiness checks are
-  effect evidence and observations.
+  The desired hostname, target socket, connector node, and exact descriptor
+  readiness-check identity are graph/control-plane truth. Provider-generated
+  tunnel ids, DNS record ids, and readiness results are effect evidence and
+  observations.
 
 may contain secrets:
   No. The authority is referenced by `IngressAuthorityReference`; provider API
@@ -780,7 +783,9 @@ laws:
   Named public ingress is socket-adjacent exposure, not a replacement for
   sockets. Core does not define `CloudflareNamedIngress`. Cloudflare appears as
   provider data and interpreter implementation, not as the name of the core
-  graph language.
+  graph language. `readiness_check_id` must name exactly one `HttpCheck` on the
+  exposed provider socket. There is no default, first-check selection, or
+  provider-specific inference.
 
 ### GatewayProbeRequest / DelegatedGatewayProbeGrant
 

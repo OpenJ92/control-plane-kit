@@ -28,6 +28,7 @@ class PublicIngressLanguageTests(unittest.TestCase):
             target=PublicIngressTarget("gateway", "control"),
             connector_node_id="cloudflared-gateway",
             hostname="cpk-gateway-001.openj92.dev",
+            readiness_check_id="ready",
         )
 
         descriptor = NamedPublicIngressCodec().encode(ingress)
@@ -43,6 +44,7 @@ class PublicIngressLanguageTests(unittest.TestCase):
                 },
                 "connector_node_id": "cloudflared-gateway",
                 "hostname": "cpk-gateway-001.openj92.dev",
+                "readiness_check_id": "ready",
                 "exposure": "https",
                 "lifecycle": "ephemeral",
             },
@@ -98,6 +100,7 @@ class PublicIngressLanguageTests(unittest.TestCase):
             target=PublicIngressTarget("gateway", "control"),
             connector_node_id="cloudflared-gateway",
             hostname="cpk-gateway-001.openj92.dev",
+            readiness_check_id="ready",
             exposure=PublicIngressExposure.HTTPS,
             lifecycle=PublicIngressLifecycle.RETAINED,
         ).descriptor()
