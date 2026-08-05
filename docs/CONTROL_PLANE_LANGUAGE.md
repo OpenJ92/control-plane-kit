@@ -902,6 +902,16 @@ laws:
   or action commit. Exact command replay returns the originally committed
   projection without consulting later key state.
 
+  An accepted verifier projection may carry forward across a later authored
+  graph change only when the authored binding identity, issuer, and complete
+  delegate node truth remain compatible. Unrelated topology additions therefore
+  preserve the exact accepted projection identity and public keys. Removing or
+  changing the binding, changing the delegate node, or supplying generated
+  projection material in authored truth prevents carry-forward. Malformed
+  realized projection lineage fails closed. The pure carry-forward operation
+  returns compatible projections; operations remains responsible for combining
+  them with newly compiled projections under durable key and graph truth.
+
   This settled-only rule prevents ordinary graph authoring from bypassing the
   rotation program. Only the approved rotation workflow may publish A+B and B.
   Key registration, activation, retirement, revocation, and initial projection

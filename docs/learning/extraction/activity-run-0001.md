@@ -7765,3 +7765,26 @@ Docker-first operations gate then passed 415 tests, compileall, package
 integrity, and installed import with zero mocks and zero approved skips. No
 transaction, authored graph, provider protocol, private material, or runtime
 effect changed.
+
+## #1407 compatible verifier projection carry-forward
+
+The public-overlay restart proof exposed a distinction that initial projection
+compilation alone did not cover. A completed key rotation left the accepted
+gateway on lifecycle projection B. A later ordinary graph authoring command
+retained the same binding and key B but compiled a fresh initial projection id.
+Because projection identity is real public runtime material, the graph diff and
+Docker interpreter correctly treated that as a gateway reconciliation.
+
+Core now defines one provider-neutral carry-forward law. It preserves the exact
+accepted projection only when binding identity, issuer, and the delegate node's
+entire authored truth remain compatible after removing realized projection
+material. Unrelated topology additions can therefore retain the gateway
+container identity. Binding removal, issuer or purpose change, delegate-node
+change, generated material in authored input, and malformed realized lineage do
+not inherit authority and fail closed where state is incoherent. The function
+returns only compatible projections; operations will merge them with newly
+compiled projections inside the graph-authoring transaction in #1408.
+
+Focused Docker-first coverage first failed on the missing primitive and then
+passed 12 tests. No persistence, provider, runtime, gateway, Docker, Cloudflare,
+private-key, or transaction behavior changed in this pure-language issue.

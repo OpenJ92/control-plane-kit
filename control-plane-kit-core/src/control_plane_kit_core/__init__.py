@@ -142,6 +142,7 @@ from control_plane_kit_core.approval_subjects import (
     approval_subject_from_descriptor,
 )
 from control_plane_kit_core.delegation_authority import (
+    carry_forward_compatible_delegation_verifiers,
     DelegationAuthorityBinding,
     DelegationAuthorityError,
     DelegationVerifierProjection,
@@ -451,6 +452,7 @@ __all__ = [
     "canonical_operator_command_workflow_contract",
     "canonical_operator_read_projection_set",
     "canonical_persistence_boundary_contract_set",
+    "carry_forward_compatible_delegation_verifiers",
     "instantiate_catalog_product",
     "instantiate_product",
     "materialize_delegation_verifiers",
