@@ -283,6 +283,7 @@ from .ingress_realization import (
     IngressAllocationResult,
     IngressProviderInterpreter,
     IngressRealizationAdapter,
+    PublicIngressReadinessVerifier,
 )
 from .graph_authoring import (
     GraphAuthoringError,
@@ -701,6 +702,7 @@ __all__ = [
     "IngressAllocationResult",
     "IngressProviderInterpreter",
     "IngressRealizationAdapter",
+    "PublicIngressReadinessVerifier",
     "ImportProductDescriptorCommand",
     "InlineDescriptorSource",
     "IngressAuthorityAuthorizationDenied",

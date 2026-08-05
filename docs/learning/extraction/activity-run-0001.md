@@ -7838,3 +7838,26 @@ and requires no compensation. It is still a normal durable activity: missing or
 failed evidence prevents a successful schedule. Cloudflare DNS behavior,
 bounded retry policy, and network IO remain interpreter concerns rather than
 core compiler branches or harness sleeps.
+
+## #1415 public readiness interpretation boundary
+
+Operations now interprets `WaitForPublicIngressReady` through a narrow injected
+`PublicIngressReadinessVerifier` protocol. It decodes the pinned realized graph,
+requires exactly one `HttpCheck` for the exposed provider socket, and derives a
+typed public endpoint from the named ingress hostname. It then invokes the
+verifier only after the command UnitOfWork has ended. No Postgres transaction is
+held across DNS or HTTP IO.
+
+The verifier returns a bounded provider-neutral `PublicIngressObservation`.
+READY completes the activity; UNREADY or UNKNOWN records the observation and
+fails the activity with retryable evidence, so graph advancement cannot claim a
+public endpoint that has not become observable. Missing or ambiguous target
+verification contracts fail closed before external IO. The operations layer
+does not import HTTPX, DNS clients, Cloudflare code, or concrete interpreter
+packages; cpk-server remains responsible for composing the concrete verifier.
+
+The Docker-first operations gate passed 430 tests, package integrity, compileall,
+and installed import. Focused coverage also proves dispatcher ownership and that
+the verifier sees no active UnitOfWork. Interpreter retry cadence, repeated DNS
+resolution, and address safety remain the concrete interpreter work for the
+second half of #1415.
