@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from math import isfinite
 import re
 from typing import Mapping
 
@@ -15,7 +16,7 @@ _SOCKET = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 _HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _PUBLIC_INGRESS_REFERENCE_KEYS = frozenset({"reference_id"})
 _PUBLIC_INGRESS_TARGET_KEYS = frozenset({"node_id", "provider_socket"})
-_NAMED_PUBLIC_INGRESS_KEYS = frozenset(
+_LEGACY_NAMED_PUBLIC_INGRESS_KEYS = frozenset(
     {
         "ingress_id",
         "authority_ref",
@@ -25,6 +26,16 @@ _NAMED_PUBLIC_INGRESS_KEYS = frozenset(
         "readiness_check_id",
         "exposure",
         "lifecycle",
+    }
+)
+_NAMED_PUBLIC_INGRESS_KEYS = _LEGACY_NAMED_PUBLIC_INGRESS_KEYS | frozenset(
+    {"convergence"}
+)
+_PUBLIC_INGRESS_CONVERGENCE_KEYS = frozenset(
+    {
+        "attempt_timeout_seconds",
+        "retry_interval_seconds",
+        "maximum_elapsed_seconds",
     }
 )
 _PUBLIC_INGRESS_OBSERVATION_KEYS = frozenset(
@@ -51,11 +62,71 @@ class PublicIngressExposure(StrEnum):
 
 
 class PublicIngressLifecycle(StrEnum):
-    """Closed ownership lifecycle for a public ingress allocation."""
+    """Closed ownership and removal policy for public ingress identity."""
 
     EPHEMERAL = "ephemeral"
     RETAINED = "retained"
     EXTERNAL = "external"
+
+
+@dataclass(frozen=True, order=True)
+class PublicIngressConvergencePolicy:
+    """Finite scheduling bounds for proving public exposure readiness."""
+
+    attempt_timeout_seconds: float = 5.0
+    retry_interval_seconds: float = 5.0
+    maximum_elapsed_seconds: float = 300.0
+
+    def __post_init__(self) -> None:
+        _validate_bounded_number(
+            self.attempt_timeout_seconds,
+            "public ingress convergence attempt timeout",
+            maximum=300,
+        )
+        _validate_bounded_number(
+            self.retry_interval_seconds,
+            "public ingress convergence retry interval",
+            maximum=3_600,
+        )
+        _validate_bounded_number(
+            self.maximum_elapsed_seconds,
+            "public ingress convergence maximum elapsed time",
+            maximum=86_400,
+        )
+        if self.attempt_timeout_seconds > self.maximum_elapsed_seconds:
+            raise PublicIngressContractError(
+                "public ingress convergence attempt timeout cannot exceed maximum elapsed time"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "attempt_timeout_seconds": float(self.attempt_timeout_seconds),
+            "retry_interval_seconds": float(self.retry_interval_seconds),
+            "maximum_elapsed_seconds": float(self.maximum_elapsed_seconds),
+        }
+
+    @classmethod
+    def from_descriptor(cls, value: object) -> PublicIngressConvergencePolicy:
+        descriptor = _mapping(value, "public ingress convergence policy")
+        _require_keys(
+            descriptor,
+            _PUBLIC_INGRESS_CONVERGENCE_KEYS,
+            "public ingress convergence policy",
+        )
+        return cls(
+            attempt_timeout_seconds=_number(
+                descriptor,
+                "attempt_timeout_seconds",
+            ),
+            retry_interval_seconds=_number(
+                descriptor,
+                "retry_interval_seconds",
+            ),
+            maximum_elapsed_seconds=_number(
+                descriptor,
+                "maximum_elapsed_seconds",
+            ),
+        )
 
 
 class PublicIngressObservationStatus(StrEnum):
@@ -148,6 +219,9 @@ class NamedPublicIngress:
     readiness_check_id: str
     exposure: PublicIngressExposure = PublicIngressExposure.HTTPS
     lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL
+    convergence: PublicIngressConvergencePolicy = field(
+        default_factory=PublicIngressConvergencePolicy
+    )
 
     def __post_init__(self) -> None:
         _validate_reference(self.ingress_id, "public ingress id")
@@ -166,6 +240,10 @@ class NamedPublicIngress:
             raise PublicIngressContractError("public ingress exposure must be closed")
         if not isinstance(self.lifecycle, PublicIngressLifecycle):
             raise PublicIngressContractError("public ingress lifecycle must be closed")
+        if not isinstance(self.convergence, PublicIngressConvergencePolicy):
+            raise PublicIngressContractError(
+                "public ingress convergence policy must be closed"
+            )
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -177,6 +255,7 @@ class NamedPublicIngress:
             "readiness_check_id": self.readiness_check_id,
             "exposure": self.exposure.value,
             "lifecycle": self.lifecycle.value,
+            "convergence": self.convergence.descriptor(),
         }
 
 
@@ -193,7 +272,11 @@ class NamedPublicIngressCodec:
 
     def decode(self, descriptor: Mapping[str, object]) -> NamedPublicIngress:
         mapping = _mapping(descriptor, "named public ingress")
-        _require_keys(mapping, _NAMED_PUBLIC_INGRESS_KEYS, "named public ingress")
+        if frozenset(mapping) not in (
+            _LEGACY_NAMED_PUBLIC_INGRESS_KEYS,
+            _NAMED_PUBLIC_INGRESS_KEYS,
+        ):
+            _require_keys(mapping, _NAMED_PUBLIC_INGRESS_KEYS, "named public ingress")
         exposure = mapping.get("exposure")
         lifecycle = mapping.get("lifecycle")
         if not isinstance(exposure, str):
@@ -220,6 +303,13 @@ class NamedPublicIngressCodec:
             readiness_check_id=_text(mapping, "readiness_check_id"),
             exposure=exposure_value,
             lifecycle=lifecycle_value,
+            convergence=(
+                PublicIngressConvergencePolicy.from_descriptor(
+                    mapping.get("convergence")
+                )
+                if "convergence" in mapping
+                else PublicIngressConvergencePolicy()
+            ),
         )
 
 
@@ -336,6 +426,26 @@ def _text(mapping: Mapping[str, object], key: str) -> str:
     if not isinstance(value, str):
         raise PublicIngressContractError(f"{key} must be text")
     return value
+
+
+def _number(mapping: Mapping[str, object], key: str) -> float:
+    value = mapping.get(key)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise PublicIngressContractError(f"{key} must be numeric")
+    return float(value)
+
+
+def _validate_bounded_number(value: object, label: str, *, maximum: float) -> None:
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not isfinite(float(value))
+        or value <= 0
+        or value > maximum
+    ):
+        raise PublicIngressContractError(
+            f"{label} must be greater than zero and at most {maximum:g} seconds"
+        )
 
 
 def _validate_reference(value: str, label: str) -> None:

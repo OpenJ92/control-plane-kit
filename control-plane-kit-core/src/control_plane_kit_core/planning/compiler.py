@@ -39,6 +39,7 @@ from control_plane_kit_core.planning.activity_plan import (
     WaitForPublicIngressReady,
     WaitForHealthy,
 )
+from control_plane_kit_core.public_ingress import PublicIngressLifecycle
 from control_plane_kit_core.topology.changes import (
     AddedChange,
     AmbiguousChange,
@@ -388,9 +389,19 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
             )
         case AddedChange(
             subject=PublicIngressSubject(ingress_id=ingress_id),
-            after=PublicIngressValue(),
+            after=PublicIngressValue(ingress=ingress),
         ):
             target = PublicIngressActivityTarget(ingress_id)
+            if ingress.lifecycle is PublicIngressLifecycle.EXTERNAL:
+                return (
+                    _draft(
+                        change,
+                        "wait-public-ingress-ready",
+                        WaitForPublicIngressReady(target),
+                        RiskLevel.MEDIUM,
+                        ActivityImpact.NON_DESTRUCTIVE,
+                    ),
+                )
             allocate = _draft(
                 change,
                 "allocate-public-ingress",
@@ -409,8 +420,10 @@ def _compile_change(change: StructuralChange) -> tuple[_ActivityDraft, ...]:
             return allocate, ready
         case RemovedChange(
             subject=PublicIngressSubject(ingress_id=ingress_id),
-            before=PublicIngressValue(),
+            before=PublicIngressValue(ingress=ingress),
         ):
+            if ingress.lifecycle is PublicIngressLifecycle.EXTERNAL:
+                return ()
             return (
                 _draft(
                     change,
@@ -475,6 +488,11 @@ def _add_dependencies(
                     allocate.dependencies.add(reconcile.activity_id)
                 if connector_start := start_node.get(ingress.connector_node_id):
                     connector_start.dependencies.add(allocate.activity_id)
+            elif readiness := ready_ingress.get(ingress_id):
+                if healthy := healthy_node.get(ingress.target.node_id):
+                    readiness.dependencies.add(healthy.activity_id)
+                if reconcile := reconcile_node.get(ingress.target.node_id):
+                    readiness.dependencies.add(reconcile.activity_id)
             if readiness := ready_ingress.get(ingress_id):
                 if connector_health := healthy_node.get(ingress.connector_node_id):
                     readiness.dependencies.add(connector_health.activity_id)

@@ -755,6 +755,7 @@ NamedPublicIngress
   x readiness_check_id
   x PublicIngressExposure
   x PublicIngressLifecycle
+  x PublicIngressConvergencePolicy
 ```
 
 owned by:
@@ -768,6 +769,12 @@ durable:
   readiness-check identity are graph/control-plane truth. Provider-generated
   tunnel ids, DNS record ids, and readiness results are effect evidence and
   observations.
+
+  `PublicIngressLifecycle.EPHEMERAL` releases CPK-owned public identity on graph
+  removal. `RETAINED` deactivates access while preserving an operations-visible
+  hostname reservation; final reservation release is separate explicit
+  destructive intent. `EXTERNAL` permits readiness observation but no CPK-owned
+  allocation or removal effect.
 
 may contain secrets:
   No. The authority is referenced by `IngressAuthorityReference`; provider API
@@ -785,7 +792,9 @@ laws:
   provider data and interpreter implementation, not as the name of the core
   graph language. `readiness_check_id` must name exactly one `HttpCheck` on the
   exposed provider socket. There is no default, first-check selection, or
-  provider-specific inference.
+  provider-specific inference. `HttpCheck` defines one semantic endpoint attempt;
+  `PublicIngressConvergencePolicy` provides finite scheduling bounds for public
+  exposure convergence without performing waits or effects in core.
 
 ### GatewayProbeRequest / DelegatedGatewayProbeGrant
 

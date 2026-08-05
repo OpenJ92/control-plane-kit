@@ -20,6 +20,7 @@ from control_plane_kit_core.planning.activity_plan import (
     PlannedActivity,
     ReconcileNode,
     ReconcileRuntime,
+    ReleasePublicIngressReservation,
     RemoveNodeResource,
     RemovePublicIngress,
     RemoveRuntimeResource,
@@ -309,6 +310,12 @@ def _assess(activity: PlannedActivity) -> RecoveryActivityAssessment:
                 activity_id,
                 RecoveryDisposition.MANUAL_REVIEW_REQUIRED,
                 "explicit data destruction is not structurally reversible",
+            )
+        case ReleasePublicIngressReservation():
+            return RecoveryActivityAssessment(
+                activity_id,
+                RecoveryDisposition.MANUAL_REVIEW_REQUIRED,
+                "final public ingress reservation release is not structurally reversible",
             )
         case (
             AddSocketConnection()

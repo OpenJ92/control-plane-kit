@@ -133,6 +133,13 @@ class RemovePublicIngress:
 
 
 @dataclass(frozen=True)
+class ReleasePublicIngressReservation:
+    """Explicit final release of retained public hostname identity."""
+
+    target: PublicIngressActivityTarget
+
+
+@dataclass(frozen=True)
 class ReconcileNode:
     target: NodeTarget
 
@@ -184,6 +191,7 @@ ActivityOperation: TypeAlias = (
     | AllocatePublicIngress
     | WaitForPublicIngressReady
     | RemovePublicIngress
+    | ReleasePublicIngressReservation
     | ReconcileNode
     | ReconcileRuntime
     | StartRuntime
@@ -301,6 +309,7 @@ class PlanViolationCode(StrEnum):
     DEPENDENCY_CYCLE = "dependency-cycle"
     DESTRUCTIVE_RISK = "destructive-risk"
     DATA_DESTRUCTION_SAFETY = "data-destruction-safety"
+    RESOURCE_RELEASE_SAFETY = "resource-release-safety"
     REVIEW_RISK = "review-risk"
 
 
@@ -368,6 +377,8 @@ def _require_typed_operation(operation: object) -> None:
             return
         case RemovePublicIngress(target=PublicIngressActivityTarget()):
             return
+        case ReleasePublicIngressReservation(target=PublicIngressActivityTarget()):
+            return
         case ReconcileNode(target=NodeTarget()):
             return
         case ReconcileRuntime(target=RuntimeTarget()):
@@ -432,7 +443,11 @@ def compensation_for_operation(operation: ActivityOperation) -> CompensationSpec
             )
         case WaitForHealthy() | WaitForPublicIngressReady() | ReviewChange():
             return NoCompensationRequired()
-        case RemoveNodeResource() | RemoveRuntimeResource():
+        case (
+            RemoveNodeResource()
+            | RemoveRuntimeResource()
+            | ReleasePublicIngressReservation()
+        ):
             return NonCompensatable(NonCompensatableReason.RESOURCE_REMOVAL)
         case DestroyDataResource():
             return NonCompensatable(NonCompensatableReason.DATA_DESTRUCTION)
@@ -510,6 +525,20 @@ def _validate_composition(
                     PlanViolationCode.DATA_DESTRUCTION_SAFETY,
                     (
                         f"data destruction activity {activity.activity_id.value!r} "
+                        "must be critical risk and destructive"
+                    ),
+                    activity.activity_id,
+                )
+            )
+        if isinstance(activity.operation, ReleasePublicIngressReservation) and (
+            activity.risk is not RiskLevel.CRITICAL
+            or activity.impact is not ActivityImpact.DESTRUCTIVE
+        ):
+            violations.append(
+                PlanViolation(
+                    PlanViolationCode.RESOURCE_RELEASE_SAFETY,
+                    (
+                        f"public ingress reservation release {activity.activity_id.value!r} "
                         "must be critical risk and destructive"
                     ),
                     activity.activity_id,
