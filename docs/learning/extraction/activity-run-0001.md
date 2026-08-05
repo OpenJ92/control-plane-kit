@@ -7788,3 +7788,33 @@ compiled projections inside the graph-authoring transaction in #1408.
 Focused Docker-first coverage first failed on the missing primitive and then
 passed 12 tests. No persistence, provider, runtime, gateway, Docker, Cloudflare,
 private-key, or transaction behavior changed in this pure-language issue.
+
+## #1408 transactional verifier projection continuity
+
+Ordinary desired-graph authoring previously locked the workspace correctly but
+always compiled every delegation binding as a fresh initial projection. The
+focused real-Postgres red proved the consequence directly: adding an unrelated
+worker or removing the public overlay replaced the accepted lifecycle B
+projection id even though the gateway binding, node truth, audience, and active
+public key were unchanged.
+
+The existing graph-authoring UnitOfWork now loads the exact prior desired
+authored and realized graphs from the locked workspace pointers. It first proves
+that stripping generated projections from realized truth reproduces the exact
+authored source. It then applies core's compatible carry-forward law, locks and
+reads each durable delegation-key scope, verifies that every carried projection
+still equals the single settled active public key and expected audience, and
+compiles only missing or incompatible bindings. It saves the authored graph,
+realized projection, workspace pointers, desired revision, and caller-owned
+action in the same transaction. An overlap key set still rejects, so ordinary
+authoring cannot bypass rotation policy.
+
+Focused coverage passed 17 real-Postgres tests. It proves exact B continuity for
+additive and overlay-removal graph changes, fresh compilation after delegate
+node changes, binding removal, multiple-binding exactness, stale pointer
+rejection, replay after later pointer movement, full rollback, settled-key
+enforcement, malformed realized/source lineage rejection, and a
+barrier-controlled race with projection publication. The race has one
+workspace-lock winner; the loser observes stale lineage and writes nothing. No
+external IO, provider call, private material, second transaction, process-local
+mutex, retry, or sleep was added.

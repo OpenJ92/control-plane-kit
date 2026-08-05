@@ -8,6 +8,7 @@ import json
 from typing import Any, Callable
 
 from control_plane_kit_core.delegation_authority import (
+    carry_forward_compatible_delegation_verifiers,
     DelegationAuthorityError,
     DelegationVerifierProjection,
     materialize_delegation_verifiers,
@@ -18,7 +19,7 @@ from control_plane_kit_core.products import (
     ProductIdentity,
     ProductReference,
 )
-from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_operations.products import (
     ProductRegistrationError,
     ProductRegistrationNotFound,
@@ -174,6 +175,10 @@ def set_desired_graph_in_unit_of_work(
             raise GraphAuthoringError(
                 f"unregistered product {reference.identity.key}"
             )
+    previous_realized_graph = _desired_realized_graph(
+        unit_of_work.stores,
+        workspace,
+    )
     graph_version = GraphVersionRecord.from_graph(
         graph_id=graph_id,
         workspace_id=command.workspace_id,
@@ -186,10 +191,11 @@ def set_desired_graph_in_unit_of_work(
     )
     unit_of_work.stores.graphs.save(graph_version)
     realized_projection = unit_of_work.stores.realized_graphs.save(
-        _initial_realized_projection(
+        _realized_projection_for_authored_graph(
             unit_of_work.stores,
             graph_version,
             command.graph,
+            previous_realized_graph,
         )
     )
     updated = unit_of_work.stores.workspaces.set_desired_graph(
@@ -205,10 +211,11 @@ def set_desired_graph_in_unit_of_work(
     )
 
 
-def _initial_realized_projection(
+def _realized_projection_for_authored_graph(
     stores: Any,
     authored_record: GraphVersionRecord,
     authored_graph: DeploymentGraph,
+    previous_realized_graph: DeploymentGraph | None = None,
 ) -> RealizedGraphProjectionRecord:
     bindings = authored_graph.delegation_authorities
     if not bindings:
@@ -217,6 +224,20 @@ def _initial_realized_projection(
             authored_record.graph_id,
         )
 
+    try:
+        carried = (
+            ()
+            if previous_realized_graph is None
+            else carry_forward_compatible_delegation_verifiers(
+                authored_graph,
+                previous_realized_graph,
+            )
+        )
+    except DelegationAuthorityError as error:
+        raise GraphAuthoringError(str(error)) from error
+    carried_by_identity = {
+        projection.binding_identity: projection for projection in carried
+    }
     projections: list[DelegationVerifierProjection] = []
     key_scopes: dict[
         tuple[str, str],
@@ -243,6 +264,23 @@ def _initial_realized_projection(
                 "for each authored binding"
             )
         public_key = active[0].public_key
+        audience = _delegation_audience(
+            authored_record.workspace_id,
+            binding.delegate_node_id,
+            binding.purpose,
+        )
+        carried_projection = carried_by_identity.get(binding.identity)
+        if carried_projection is not None:
+            if (
+                carried_projection.audience != audience
+                or carried_projection.public_keys != (public_key,)
+            ):
+                raise GraphAuthoringError(
+                    "carried delegation verifier projection does not match "
+                    "settled delegation key truth"
+                )
+            projections.append(carried_projection)
+            continue
         projection_descriptor = {
             "workspace_id": authored_record.workspace_id,
             "delegate_node_id": binding.delegate_node_id,
@@ -263,11 +301,7 @@ def _initial_realized_projection(
                 delegate_node_id=binding.delegate_node_id,
                 purpose=binding.purpose,
                 issuer=binding.issuer,
-                audience=_delegation_audience(
-                    authored_record.workspace_id,
-                    binding.delegate_node_id,
-                    binding.purpose,
-                ),
+                audience=audience,
                 projection_id=f"delegation-{projection_digest}",
                 public_keys=(public_key,),
             )
@@ -290,6 +324,66 @@ def _initial_realized_projection(
         created_at=authored_record.created_at,
     )
     return replace(draft, projection_id=f"projection-{draft.projection_digest}")
+
+
+def _desired_realized_graph(
+    stores: Any,
+    workspace: WorkspaceRecord,
+) -> DeploymentGraph | None:
+    if workspace.desired_graph_id is None:
+        if workspace.desired_realized_projection_id is not None:
+            raise GraphAuthoringError(
+                "workspace desired realized pointer has no authored graph"
+            )
+        return None
+    if workspace.desired_realized_projection_id is None:
+        raise GraphAuthoringError(
+            "workspace desired authored graph has no realized projection"
+        )
+    try:
+        realized_record = stores.realized_graphs.get(
+            workspace.desired_realized_projection_id
+        )
+    except KeyError as error:
+        raise GraphAuthoringError(
+            "workspace desired realized pointer has no projection truth"
+        ) from error
+    if (
+        realized_record.workspace_id != workspace.workspace_id
+        or realized_record.source_authored_graph_id != workspace.desired_graph_id
+    ):
+        raise GraphAuthoringError(
+            "workspace desired realized projection does not match authored truth"
+        )
+    try:
+        authored_record = stores.graphs.get(workspace.desired_graph_id)
+    except KeyError as error:
+        raise GraphAuthoringError(
+            "workspace desired authored pointer has no graph truth"
+        ) from error
+    if authored_record.workspace_id != workspace.workspace_id:
+        raise GraphAuthoringError(
+            "workspace desired authored graph belongs to another workspace"
+        )
+    try:
+        authored_graph = DEFAULT_GRAPH_CODEC.decode(authored_record.graph_descriptor)
+        realized_graph = DEFAULT_GRAPH_CODEC.decode(realized_record.graph_descriptor)
+    except ValueError as error:
+        raise GraphAuthoringError(
+            "workspace desired realized projection is malformed"
+        ) from error
+    projected_authored_graph = realized_graph
+    for node_id in sorted(realized_graph.nodes):
+        node = projected_authored_graph.node(node_id)
+        if node.delegation_verifier_projection is not None:
+            projected_authored_graph = projected_authored_graph.update_node(
+                replace(node, delegation_verifier_projection=None)
+            )
+    if projected_authored_graph != authored_graph:
+        raise GraphAuthoringError(
+            "workspace desired realized projection does not match authored graph truth"
+        )
+    return realized_graph
 
 
 def _delegation_audience(

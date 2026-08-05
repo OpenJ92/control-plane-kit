@@ -912,6 +912,18 @@ laws:
   returns compatible projections; operations remains responsible for combining
   them with newly compiled projections under durable key and graph truth.
 
+  Ordinary desired-graph authoring performs that combination while holding the
+  workspace row lock in its existing command transaction. It loads the exact
+  prior desired authored and realized lineage and verifies that removing only
+  generated projections reproduces the exact authored source. It then carries
+  only compatible projections and locks each delegation-key scope before
+  accepting a carried projection or compiling a missing one. A carried
+  projection must still equal the one settled `ACTIVE` public key and expected
+  audience. Authored graph, realized projection, workspace pointers, desired
+  revision, and operation action commit together. Projection publication and
+  ordinary authoring therefore serialize; the loser observes stale lineage and
+  writes nothing.
+
   This settled-only rule prevents ordinary graph authoring from bypassing the
   rotation program. Only the approved rotation workflow may publish A+B and B.
   Key registration, activation, retirement, revocation, and initial projection
