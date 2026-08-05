@@ -12,6 +12,7 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
     ExecutionRequestStatus,
+    FailureCategory,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.planning import (
@@ -271,6 +272,8 @@ class RecordingPublicIngressReadinessVerifier:
         self.tracker = tracker
         self.status = status
         self.active_counts: list[int] = []
+        self.attempt_timeouts: list[float] = []
+        self.error: Exception | None = None
         self.calls: list[
             tuple[NamedPublicIngress, HttpCheck, RuntimeEndpointObservation]
         ] = []
@@ -281,9 +284,13 @@ class RecordingPublicIngressReadinessVerifier:
         ingress: NamedPublicIngress,
         check: HttpCheck,
         endpoint: RuntimeEndpointObservation,
+        attempt_timeout_seconds: float,
     ) -> PublicIngressObservation:
         self.active_counts.append(self.tracker.active)
+        self.attempt_timeouts.append(attempt_timeout_seconds)
         self.calls.append((ingress, check, endpoint))
+        if self.error is not None:
+            raise self.error
         return PublicIngressObservation(
             ingress_id=ingress.ingress_id,
             hostname=ingress.hostname,
@@ -495,6 +502,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(outcome.kind.name, "SUCCEEDED")
         self.assertEqual(verifier.active_counts, [0])
         self.assertEqual(len(verifier.calls), 1)
+        self.assertEqual(verifier.attempt_timeouts, [5.0])
         ingress, check, endpoint = verifier.calls[0]
         self.assertEqual(ingress.ingress_id, "gateway-001")
         self.assertEqual(check.check_id, "gateway-ready")
@@ -513,7 +521,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(len(outcome.observations), 1)
         self.assertIs(outcome.observations[0].status, ObservationStatus.VERIFIED)
 
-    def test_unready_public_ingress_fails_activity_and_keeps_bounded_observation(
+    def test_unready_public_ingress_records_bounded_resumable_progress(
         self,
     ) -> None:
         verifier = RecordingPublicIngressReadinessVerifier(
@@ -523,7 +531,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         adapter = IngressRealizationAdapter(
             self.unit_of_work,
             interpreters={},
-            clock=lambda: "2026-07-28T08:01:00Z",
+            clock=lambda: "2026-07-28T08:01:30Z",
             readiness_verifier=verifier,
         )
 
@@ -547,8 +555,29 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(outcome.kind.name, "FAILED")
-        self.assertEqual(outcome.failure.code, "ingress.readiness-unready")
+        self.assertEqual(outcome.kind.name, "LIMITED_PROGRESS")
+        self.assertIsNone(outcome.failure)
+        self.assertEqual(
+            outcome.evidence.descriptor(),
+            {
+                "deadline": "2026-07-28T08:06:00Z",
+                "ingress_id": "gateway-001",
+                "next_attempt_not_before": "2026-07-28T08:01:35Z",
+                "progress_kind": "public-ingress-convergence",
+                "public_ingress_observation": {
+                    "ingress_id": "gateway-001",
+                    "hostname": "cpk-gateway-001.openj92.dev",
+                    "url": "https://cpk-gateway-001.openj92.dev",
+                    "target": {
+                        "node_id": "gateway",
+                        "provider_socket": "control",
+                    },
+                    "observed_at": "2026-07-28T08:01:30Z",
+                    "status": "unready",
+                    "evidence": {"verification": "bounded"},
+                },
+            },
+        )
         self.assertEqual(len(outcome.observations), 1)
         self.assertIs(
             outcome.observations[0].status,
@@ -591,6 +620,84 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 graph = self.graph(verification=VerificationContract(values))
                 with self.assertRaises(InvalidOperationCommand):
                     _public_ingress_http_check(graph, graph.public_ingresses[0])
+
+    def test_convergence_deadline_fails_without_another_external_attempt(self) -> None:
+        verifier = RecordingPublicIngressReadinessVerifier(
+            self.tracker,
+            PublicIngressObservationStatus.READY,
+        )
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={},
+            clock=lambda: "2026-07-28T08:06:00Z",
+            readiness_verifier=verifier,
+        )
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="wait-gateway-public",
+                operation=WaitForPublicIngressReady(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                desired_graph=self.graph(
+                    verification=VerificationContract(
+                        (
+                            HttpCheck(
+                                check_id="gateway-ready",
+                                provider_socket="control",
+                                path="/health/ready",
+                            ),
+                        )
+                    )
+                ),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "FAILED")
+        assert outcome.failure is not None
+        self.assertEqual(outcome.failure.code, "ingress.convergence-timeout")
+        self.assertIs(outcome.failure.category, FailureCategory.TERMINAL)
+        self.assertEqual(verifier.calls, [])
+
+    def test_transient_attempt_error_records_redacted_limited_progress(self) -> None:
+        verifier = RecordingPublicIngressReadinessVerifier(
+            self.tracker,
+            PublicIngressObservationStatus.READY,
+        )
+        verifier.error = RuntimeError("Bearer should-not-be-recorded")
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={},
+            clock=lambda: "2026-07-28T08:01:30Z",
+            readiness_verifier=verifier,
+        )
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="wait-gateway-public",
+                operation=WaitForPublicIngressReady(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                desired_graph=self.graph(
+                    verification=VerificationContract(
+                        (
+                            HttpCheck(
+                                check_id="gateway-ready",
+                                provider_socket="control",
+                                path="/health/ready",
+                            ),
+                        )
+                    )
+                ),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "LIMITED_PROGRESS")
+        self.assertEqual(
+            outcome.evidence.descriptor()["exception_type"],
+            "RuntimeError",
+        )
+        self.assertNotIn("should-not-be-recorded", repr(outcome))
 
     def test_mismatched_custody_receipt_compensates_without_admission(self) -> None:
         interpreter = RecordingIngressInterpreter(self.tracker)

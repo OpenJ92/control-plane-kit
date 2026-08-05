@@ -20,6 +20,7 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
+    CoordinatorStatus,
     ExecutionCoordinator,
 )
 from control_plane_kit_operations.gateway_key_rotation_overlap_execution import (
@@ -243,6 +244,35 @@ class GatewayKeyRotationOverlapExecutionTests(
         )
         self.assertEqual(len(adapter.calls), activity_count)
         self.assertEqual(self._current_advancement_count(), 1)
+
+    def test_limited_progress_wait_does_not_block_deployment(self) -> None:
+        adapter = RecordingAdapter(
+            ActivityExecutionOutcome.progress(
+                progress_kind="public-ingress-convergence",
+                next_attempt_not_before="2026-08-02T03:05:00Z",
+                deadline="2026-08-02T03:10:00Z",
+            )
+        )
+        program = self.program(adapter)
+
+        dispatched = program.progress(self.command())
+        waiting = program.progress(self.command())
+
+        self.assertIs(
+            dispatched.outcome,
+            GatewayKeyRotationOverlapExecutionOutcome.DISPATCHED,
+        )
+        self.assertIs(
+            waiting.outcome,
+            GatewayKeyRotationOverlapExecutionOutcome.PROGRESSED,
+        )
+        self.assertIs(waiting.coordinator_status, CoordinatorStatus.WAITING)
+        self.assertEqual(len(adapter.calls), 1)
+        self.assertIs(
+            waiting.rotation.status,
+            GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+        )
+        self.assertEqual(self._current_advancement_count(), 0)
 
     def test_failed_and_uncertain_effects_block_with_bounded_codes(self) -> None:
         cases = (

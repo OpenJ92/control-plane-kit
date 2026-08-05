@@ -10,6 +10,11 @@ from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.operations import LifecycleOperationKind, OperatorCommandKind
+from control_plane_kit_core.operations.lifecycle import (
+    ActivityEventKind,
+    ActivityEventScope,
+    activity_event_scope,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.gateway_key_rotations import (
@@ -181,6 +186,68 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             (1,),
         )
 
+        install_schema(self.connection)
+        self.assertEqual(self._constraint_identities(), after_upgrade)
+
+    def test_install_expands_stale_activity_event_checks_once(self) -> None:
+        install_schema(self.connection)
+        old_kinds = tuple(
+            kind
+            for kind in ActivityEventKind
+            if kind is not ActivityEventKind.STEP_LIMITED_PROGRESS
+        )
+        old_step_kinds = tuple(
+            kind
+            for kind in old_kinds
+            if activity_event_scope(kind) is ActivityEventScope.ACTIVITY
+        )
+        old_run_kinds = tuple(
+            kind
+            for kind in old_kinds
+            if activity_event_scope(kind) is ActivityEventScope.RUN
+        )
+        def values(kinds: tuple[ActivityEventKind, ...]) -> str:
+            return ", ".join(f"'{kind.value}'" for kind in kinds)
+        self.connection.execute(
+            "ALTER TABLE cpk_activity_events "
+            "DROP CONSTRAINT cpk_activity_events_kind_check"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_activity_events "
+            "DROP CONSTRAINT cpk_activity_events_shape_check"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_activity_events "
+            "ADD CONSTRAINT cpk_activity_events_kind_check "
+            f"CHECK (event_type IN ({values(old_kinds)}))"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_activity_events "
+            "ADD CONSTRAINT cpk_activity_events_shape_check CHECK ("
+            f"(event_type IN ({values(old_step_kinds)}) "
+            "AND NULLIF(payload->>'activity_id', '') IS NOT NULL) OR "
+            f"(event_type IN ({values(old_run_kinds)}) "
+            "AND payload->>'activity_id' IS NULL))"
+        )
+
+        install_schema(self.connection)
+        after_upgrade = self._constraint_identities()
+        definitions = " ".join(
+            row[0]
+            for row in self.connection.execute(
+                """
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname IN (
+                  'cpk_activity_events_kind_check',
+                  'cpk_activity_events_shape_check'
+                )
+                ORDER BY conname
+                """
+            ).fetchall()
+        )
+
+        self.assertIn(ActivityEventKind.STEP_LIMITED_PROGRESS.value, definitions)
         install_schema(self.connection)
         self.assertEqual(self._constraint_identities(), after_upgrade)
 

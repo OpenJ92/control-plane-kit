@@ -11,6 +11,7 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     FailureCategory,
 )
+from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.probe_intents import ProbeKind, ProbeOutcome
 from control_plane_kit_core.products import (
     ContainerServerProduct,
@@ -234,14 +235,116 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             id_factory=Sequence(*ids),
         )
 
-    def coordinator(self, adapter: RecordingAdapter) -> ExecutionCoordinator:
+    def coordinator(
+        self,
+        adapter: RecordingAdapter,
+        *,
+        now: str = "2026-07-22T13:01:00Z",
+    ) -> ExecutionCoordinator:
         return ExecutionCoordinator(
             self.unit_of_work,
             lifecycle=self.lifecycle(),
             adapter=adapter,
-            clock=lambda: "2026-07-22T13:01:00Z",
+            clock=lambda: now,
             id_factory=self.ids,
         )
+
+    def test_limited_progress_waits_without_io_then_resumes_same_intent(self) -> None:
+        self.claim_and_start()
+        progress = ActivityExecutionOutcome(
+            EffectResultKind.LIMITED_PROGRESS,
+            BoundedEvidence.from_mapping(
+                {
+                    "progress_kind": "public-ingress-convergence",
+                    "ingress_id": "gateway-001",
+                    "next_attempt_not_before": "2026-07-22T13:01:05Z",
+                    "deadline": "2026-07-22T13:02:00Z",
+                }
+            ),
+        )
+        adapter = RecordingAdapter(
+            self.tracker,
+            progress,
+            ActivityExecutionOutcome.succeeded(),
+        )
+
+        first = self.coordinator(adapter).execute(self.command())
+        early = self.coordinator(
+            adapter,
+            now="2026-07-22T13:01:04Z",
+        ).execute(self.command())
+        due = self.coordinator(
+            adapter,
+            now="2026-07-22T13:01:05Z",
+        ).execute(self.command())
+
+        self.assertIs(first.status, CoordinatorStatus.WAITING)
+        self.assertEqual(first.next_attempt_not_before, "2026-07-22T13:01:05Z")
+        self.assertIs(early.status, CoordinatorStatus.WAITING)
+        self.assertEqual(adapter.calls, ["start-api", "start-api"])
+        self.assertIs(due.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(
+            adapter.contexts[0].intent_event.event_id,
+            adapter.contexts[1].intent_event.event_id,
+        )
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(
+            [event.kind for event in events],
+            [
+                ActivityEventKind.RUN_OPENED,
+                ActivityEventKind.RUN_STARTED,
+                ActivityEventKind.STEP_STARTED,
+                ActivityEventKind.STEP_LIMITED_PROGRESS,
+                ActivityEventKind.STEP_SUCCEEDED,
+                ActivityEventKind.RUN_SUCCEEDED,
+            ],
+        )
+
+    def test_malformed_durable_progress_never_authorizes_effect_replay(self) -> None:
+        self.claim_and_start()
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution.add_event(
+                ActivityEventRecord(
+                    "manual-step-intent",
+                    "run-a",
+                    stores.execution.next_event_ordinal("run-a"),
+                    ActivityEventKind.STEP_STARTED,
+                    "2026-07-22T13:00:30Z",
+                    activity_id="start-api",
+                )
+            )
+            stores.execution.add_event(
+                ActivityEventRecord(
+                    "manual-step-progress",
+                    "run-a",
+                    stores.execution.next_event_ordinal("run-a"),
+                    ActivityEventKind.STEP_LIMITED_PROGRESS,
+                    "2026-07-22T13:00:31Z",
+                    activity_id="start-api",
+                    evidence=BoundedEvidence.from_mapping(
+                        {
+                            "progress_kind": "public-ingress-convergence",
+                            "next_attempt_not_before": "not-a-timestamp",
+                            "deadline": "2026-07-22T13:02:00Z",
+                        }
+                    ),
+                )
+            )
+            unit_of_work.commit()
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+
+        with self.assertRaisesRegex(
+            ExecutionCoordinatorConflict,
+            "limited progress evidence is invalid",
+        ):
+            self.coordinator(adapter).execute(self.command())
+
+        self.assertEqual(adapter.calls, [])
 
     def authority(
         self,
