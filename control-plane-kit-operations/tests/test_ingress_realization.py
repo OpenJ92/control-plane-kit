@@ -7,6 +7,7 @@ import unittest
 
 import psycopg
 
+import control_plane_kit_operations.ingress_realization as ingress_realization
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec, ProviderSocket
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -62,11 +63,13 @@ from control_plane_kit_core.verification import (
 )
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.ingress_authorities import (
+    CloudflareOwnedHostnameReservation,
     CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthority,
     GeneratedIngressSecretReference,
     GeneratedSecretPurpose,
     IngressAuthorityProviderKind,
+    OwnedHostnameReservationStatus,
     OwnedIngressResourceStatus,
 )
 from control_plane_kit_operations.ingress_realization import (
@@ -167,10 +170,21 @@ class RecordingIngressInterpreter:
         self.teardown_resources: list[IngressOwnedResourceCoordinates] = []
         self.teardown_grants: list[SecretResolutionGrant] = []
         self.teardown_custody_grants: list[SecretCustodyGrant] = []
+        self.rebind_active_counts: list[int] = []
+        self.rebind_reservations: list[object] = []
+        self.rebind_custody_grants: list[SecretCustodyGrant] = []
+        self.deactivate_active_counts: list[int] = []
+        self.deactivate_reservations: list[object] = []
+        self.deactivate_resources: list[IngressOwnedResourceCoordinates] = []
         self.fail_teardown = False
+        self.fail_rebind = False
+        self.fail_deactivate = False
+        self.contradict_deactivation = False
+        self.contradict_rebind = False
         self.return_mismatched_custody_receipt = False
         self.return_invalid_coordinates = False
         self.on_create: Callable[[], None] | None = None
+        self.on_rebind: Callable[[], None] | None = None
 
     def create(
         self,
@@ -229,6 +243,78 @@ class RecordingIngressInterpreter:
         self.teardown_custody_grants.append(secret_custody_grant)
         if self.fail_teardown:
             raise RuntimeError("provider teardown failed")
+
+    def rebind(
+        self,
+        ingress: NamedPublicIngress,
+        *,
+        authority: CloudflareZoneIngressAuthority,
+        reservation: object,
+        allocation_name: str,
+        origin_service_url: str,
+        secret_resolution_grant: SecretResolutionGrant,
+        secret_custody_grant: SecretCustodyGrant,
+    ) -> FakeIngressAllocation:
+        del authority, origin_service_url, secret_resolution_grant
+        self.rebind_active_counts.append(self.tracker.active)
+        self.rebind_reservations.append(reservation)
+        self.rebind_custody_grants.append(secret_custody_grant)
+        if self.on_rebind is not None:
+            self.on_rebind()
+        if self.fail_rebind:
+            raise RuntimeError("Bearer must-not-survive")
+        return FakeIngressAllocation(
+            secret_custody_receipt=SecretCustodyReceipt(
+                custody_id=secret_custody_grant.custody_id,
+                provider_registration_id=(
+                    secret_custody_grant.provider_registration_id
+                ),
+                reference=secret_custody_grant.reference,
+                version_id="version-rebound-token",
+                version_number=2,
+            ),
+            tunnel_id=("tunnel-001" if self.contradict_rebind else "tunnel-002"),
+            tunnel_name=allocation_name,
+            dns_record_id=("dns-foreign" if self.contradict_rebind else "dns-001"),
+            hostname=ingress.hostname,
+        )
+
+    def deactivate_preserving_reservation(
+        self,
+        *,
+        authority: CloudflareZoneIngressAuthority,
+        reservation: object,
+        resources: IngressOwnedResourceCoordinates,
+        secret_resolution_grant: SecretResolutionGrant,
+        secret_custody_grant: SecretCustodyGrant,
+    ) -> object:
+        del authority, secret_resolution_grant, secret_custody_grant
+        self.deactivate_active_counts.append(self.tracker.active)
+        self.deactivate_reservations.append(reservation)
+        self.deactivate_resources.append(resources)
+        if self.fail_deactivate:
+            raise RuntimeError("Bearer must-not-survive")
+        presence = ingress_realization.IngressResourcePresence
+        return ingress_realization.RetainedIngressDeactivationResult(
+            reservation=ingress_realization.IngressReservationObservation(
+                dns_record_id=resources.dns_record_id,
+                hostname=resources.hostname,
+                presence=presence.PRESENT,
+                tunnel_id=(
+                    "tunnel-foreign"
+                    if self.contradict_deactivation
+                    else resources.tunnel_id
+                ),
+            ),
+            tunnel=ingress_realization.IngressTunnelObservation(
+                tunnel_id=resources.tunnel_id,
+                presence=(
+                    presence.PRESENT
+                    if self.contradict_deactivation
+                    else presence.ABSENT
+                ),
+            ),
+        )
 
 
 class RecordingSecretUseAuthorizer:
@@ -853,6 +939,337 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         for allocation_name in interpreter.create_allocation_names:
             self.assertRegex(allocation_name, r"^cpk-gateway-001-[0-9a-f]{12}$")
 
+    def test_retained_provider_boundary_is_owned_by_operations(self) -> None:
+        for name in (
+            "IngressReservationCoordinates",
+            "IngressResourcePresence",
+            "IngressReservationObservation",
+            "IngressTunnelObservation",
+            "RetainedIngressDeactivationResult",
+        ):
+            with self.subTest(name=name):
+                self.assertTrue(hasattr(ingress_realization, name))
+
+    def test_initial_retained_allocation_creates_bound_reservation(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:01:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+
+        outcome = adapter.execute(
+            self.context(
+                desired_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED)
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(interpreter.create_active_counts, [0])
+        self.assertEqual(interpreter.rebind_active_counts, [])
+        with self.unit_of_work() as unit_of_work:
+            reservations = unit_of_work.stores.ingress_reservations.list_cloudflare(
+                "workspace-a"
+            )
+            resources = unit_of_work.stores.ingress_resources.list_cloudflare(
+                "workspace-a"
+            )
+        self.assertEqual(len(reservations), 1)
+        self.assertIs(reservations[0].status, OwnedHostnameReservationStatus.BOUND)
+        self.assertEqual(resources[0].reservation_id, reservations[0].reservation_id)
+        self.assertEqual(resources[0].epoch, 1)
+
+    def test_retained_removal_deactivates_exact_epoch_and_reserves_hostname(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:03:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_retained_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="remove-gateway",
+                run_id="run-off",
+                intent_event_id="event-off",
+                operation=RemovePublicIngress(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                base_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(interpreter.teardown_active_counts, [])
+        self.assertEqual(interpreter.deactivate_active_counts, [0])
+        coordinates = interpreter.deactivate_reservations[0]
+        self.assertEqual(coordinates.dns_record_id, "dns-001")
+        self.assertEqual(coordinates.hostname, "cpk-gateway-001.openj92.dev")
+        self.assertEqual(coordinates.expected_tunnel_id, "tunnel-001")
+        with self.unit_of_work() as unit_of_work:
+            resource = unit_of_work.stores.ingress_resources.list_cloudflare(
+                "workspace-a"
+            )[0]
+            reservation = unit_of_work.stores.ingress_reservations.list_cloudflare(
+                "workspace-a"
+            )[0]
+        self.assertIs(resource.status, OwnedIngressResourceStatus.REMOVED)
+        self.assertIs(
+            reservation.status,
+            OwnedHostnameReservationStatus.RESERVED,
+        )
+
+    def test_retained_deactivation_ambiguity_marks_both_truths_uncertain(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        interpreter.contradict_deactivation = True
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:03:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_retained_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="remove-gateway",
+                run_id="run-off",
+                intent_event_id="event-off",
+                operation=RemovePublicIngress(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                base_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertNotIn("must-not-survive", repr(outcome))
+        with self.unit_of_work() as unit_of_work:
+            resource = unit_of_work.stores.ingress_resources.get_cloudflare(
+                "workspace-a", "gateway-001"
+            )
+            reservation = unit_of_work.stores.ingress_reservations.require_cloudflare(
+                "workspace-a", "reservation-001"
+            )
+        self.assertIs(resource.status, OwnedIngressResourceStatus.UNCERTAIN)
+        self.assertIs(
+            reservation.status,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+        )
+
+    def test_retained_deactivation_error_is_redacted_and_uncertain(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        interpreter.fail_deactivate = True
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:03:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_retained_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="remove-gateway",
+                run_id="run-off",
+                intent_event_id="event-off",
+                operation=RemovePublicIngress(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                base_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertNotIn("must-not-survive", repr(outcome))
+        self.assertEqual(interpreter.deactivate_active_counts, [0])
+
+    def test_reserved_reentry_rebinds_distinct_epoch_and_custody_lineage(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:04:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                run_id="run-on",
+                intent_event_id="event-on",
+                desired_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(interpreter.create_active_counts, [])
+        self.assertEqual(interpreter.rebind_active_counts, [0])
+        coordinates = interpreter.rebind_reservations[0]
+        self.assertEqual(coordinates.dns_record_id, "dns-001")
+        self.assertEqual(coordinates.expected_tunnel_id, "tunnel-001")
+        with self.unit_of_work() as unit_of_work:
+            reservation = unit_of_work.stores.ingress_reservations.require_cloudflare(
+                "workspace-a", "reservation-001"
+            )
+            resources = unit_of_work.stores.ingress_resources.list_cloudflare(
+                "workspace-a"
+            )
+            secrets = unit_of_work.stores.generated_ingress_secrets.list_for_workspace(
+                "workspace-a"
+            )
+        self.assertIs(reservation.status, OwnedHostnameReservationStatus.BOUND)
+        self.assertEqual([resource.epoch for resource in resources], [1, 2])
+        self.assertEqual(resources[0].tunnel_id, "tunnel-001")
+        self.assertEqual(resources[1].tunnel_id, "tunnel-002")
+        self.assertEqual(
+            {secret.provider_version_id for secret in secrets},
+            {"version-existing-ingress", "version-rebound-token"},
+        )
+        self.assertEqual(len({secret.secret_ref for secret in secrets}), 2)
+
+    def test_bound_reservation_without_active_epoch_never_fresh_creates(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:04:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_retained_ingress(unit_of_work)
+            unit_of_work.stores.ingress_resources.mark_removed(
+                "workspace-a",
+                "gateway-001",
+                removed_at="2026-07-28T08:02:00Z",
+                removed_by_run_id="run-off",
+            )
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                run_id="run-on",
+                intent_event_id="event-on",
+                desired_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        self.assertEqual(interpreter.create_active_counts, [])
+        self.assertEqual(interpreter.rebind_active_counts, [])
+
+    def test_contradictory_rebind_result_is_uncertain_without_teardown(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        interpreter.contradict_rebind = True
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:04:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                run_id="run-on",
+                intent_event_id="event-on",
+                desired_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(interpreter.teardown_resources, [])
+        with self.unit_of_work() as unit_of_work:
+            reservation = unit_of_work.stores.ingress_reservations.require_cloudflare(
+                "workspace-a", "reservation-001"
+            )
+        self.assertIs(
+            reservation.status,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+        )
+
+    def test_rebind_fold_race_stays_uncertain_without_generic_teardown(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:04:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        def race_reservation() -> None:
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.ingress_reservations.mark_uncertain(
+                    "workspace-a",
+                    "reservation-001",
+                    expected_version=2,
+                    transitioned_at="2026-07-28T08:03:59Z",
+                    source_run_id="run-race",
+                    source_activity_id="race",
+                    source_event_id="event-race",
+                )
+                unit_of_work.commit()
+
+        interpreter.on_rebind = race_reservation
+        outcome = adapter.execute(
+            self.context(
+                run_id="run-on",
+                intent_event_id="event-on",
+                desired_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(interpreter.teardown_resources, [])
+        self.assertNotIn("secret://", repr(outcome))
+
+    def test_external_lifecycle_performs_no_owned_provider_effect(self) -> None:
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={},
+            clock=lambda: "2026-07-28T08:04:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        external = self.graph(lifecycle=PublicIngressLifecycle.EXTERNAL)
+        entered_before = self.tracker.entered
+
+        allocation = adapter.execute(self.context(desired_graph=external))
+        removal = adapter.execute(
+            self.context(
+                activity_id="remove-gateway",
+                operation=RemovePublicIngress(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                base_graph=external,
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(allocation.kind.name, "SUCCEEDED")
+        self.assertEqual(removal.kind.name, "SUCCEEDED")
+        self.assertEqual(self.tracker.entered, entered_before)
+
     def test_remove_public_ingress_marks_resource_removed_around_provider_io(
         self,
     ) -> None:
@@ -931,6 +1348,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self,
         *,
         verification: VerificationContract | None = None,
+        lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
     ) -> DeploymentGraph:
         if verification is None:
             verification = VerificationContract(
@@ -985,15 +1403,22 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                     connector_node_id="cloudflared",
                     hostname="cpk-gateway-001.openj92.dev",
                     readiness_check_id="gateway-ready",
+                    lifecycle=lifecycle,
                 ),
             ),
         )
 
-    def cloudflare_resource(self) -> CloudflareOwnedIngressResource:
+    def cloudflare_resource(
+        self,
+        *,
+        lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
+        reservation_id: str | None = None,
+    ) -> CloudflareOwnedIngressResource:
         return CloudflareOwnedIngressResource(
             workspace_id="workspace-a",
             runtime_id="docker-a",
             ingress_id="gateway-001",
+            reservation_id=reservation_id,
             authority_ref=IngressAuthorityReference("openj92-public-ingress"),
             provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,
             tunnel_name="cpk-gateway-001",
@@ -1001,7 +1426,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             dns_record_id="dns-001",
             hostname="cpk-gateway-001.openj92.dev",
             zone_id="zone-openj92",
-            lifecycle=self.graph().public_ingresses[0].lifecycle,
+            lifecycle=lifecycle,
             created_at="2026-07-28T08:01:00Z",
             observed_at="2026-07-28T08:01:00Z",
             source_run_id="run-a",
@@ -1009,7 +1434,13 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             source_event_id="event-001",
         )
 
-    def record_existing_ingress(self, unit_of_work: TrackingUnitOfWork) -> None:
+    def record_existing_ingress(
+        self,
+        unit_of_work: TrackingUnitOfWork,
+        *,
+        lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
+        reservation_id: str | None = None,
+    ) -> None:
         reference = SecretReference(
             "secret://generated/ingress/cloudflared-tunnel-token/existing"
         )
@@ -1025,7 +1456,10 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             )
         )
         unit_of_work.stores.ingress_resources.record_cloudflare(
-            self.cloudflare_resource()
+            self.cloudflare_resource(
+                lifecycle=lifecycle,
+                reservation_id=reservation_id,
+            )
         )
         unit_of_work.stores.generated_ingress_secrets.record(
             GeneratedIngressSecretReference(
@@ -1042,6 +1476,52 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 source_activity_id="allocate-gateway",
                 source_event_id="event-001",
             )
+        )
+
+    def record_retained_ingress(self, unit_of_work: TrackingUnitOfWork) -> None:
+        unit_of_work.stores.ingress_reservations.record_cloudflare(
+            CloudflareOwnedHostnameReservation(
+                reservation_id="reservation-001",
+                workspace_id="workspace-a",
+                ingress_id="gateway-001",
+                authority_ref=IngressAuthorityReference(
+                    "openj92-public-ingress"
+                ),
+                provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,
+                dns_record_id="dns-001",
+                hostname="cpk-gateway-001.openj92.dev",
+                zone_id="zone-openj92",
+                lifecycle=PublicIngressLifecycle.RETAINED,
+                status=OwnedHostnameReservationStatus.BOUND,
+                created_at="2026-07-28T08:01:00Z",
+                observed_at="2026-07-28T08:01:00Z",
+                source_run_id="run-a",
+                source_activity_id="allocate-gateway",
+                source_event_id="event-001",
+            )
+        )
+        self.record_existing_ingress(
+            unit_of_work,
+            lifecycle=PublicIngressLifecycle.RETAINED,
+            reservation_id="reservation-001",
+        )
+
+    def record_reserved_ingress(self, unit_of_work: TrackingUnitOfWork) -> None:
+        self.record_retained_ingress(unit_of_work)
+        unit_of_work.stores.ingress_resources.mark_removed(
+            "workspace-a",
+            "gateway-001",
+            removed_at="2026-07-28T08:02:00Z",
+            removed_by_run_id="run-off",
+        )
+        unit_of_work.stores.ingress_reservations.mark_reserved(
+            "workspace-a",
+            "reservation-001",
+            expected_version=1,
+            transitioned_at="2026-07-28T08:02:00Z",
+            source_run_id="run-off",
+            source_activity_id="remove-gateway",
+            source_event_id="event-off",
         )
 
     def context(

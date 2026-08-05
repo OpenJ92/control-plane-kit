@@ -250,6 +250,40 @@ class PublicIngressReservationTests(unittest.TestCase):
                 2,
             )
 
+    def test_exact_live_reservation_and_removed_epoch_queries_fail_closed(
+        self,
+    ) -> None:
+        with self.unit_of_work() as unit_of_work:
+            reservations = unit_of_work.stores.ingress_reservations
+            resources = unit_of_work.stores.ingress_resources
+            reservations.record_cloudflare(self.reservation())
+            resources.record_cloudflare(self.resource())
+            resources.mark_removed(
+                "workspace-a",
+                "gateway-001",
+                removed_at="removed-at",
+                removed_by_run_id="run-remove",
+            )
+            reservation = reservations.require_live_cloudflare_for_ingress(
+                "workspace-a",
+                "gateway-001",
+            )
+            removed = resources.require_latest_removed_cloudflare(
+                "workspace-a",
+                "gateway-001",
+                "reservation-001",
+            )
+            with self.assertRaises(ingress_authorities.IngressAuthorityNotFound):
+                resources.require_latest_removed_cloudflare(
+                    "workspace-a",
+                    "gateway-001",
+                    "reservation-foreign",
+                )
+
+        self.assertEqual(reservation.reservation_id, "reservation-001")
+        self.assertEqual(removed.reservation_id, reservation.reservation_id)
+        self.assertEqual(removed.epoch, 1)
+
     def test_reservation_cannot_become_reserved_until_realization_is_removed(
         self,
     ) -> None:
