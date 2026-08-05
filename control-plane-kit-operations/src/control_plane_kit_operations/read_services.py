@@ -109,6 +109,14 @@ class IngressAuthorityStore(Protocol):
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
 
 
+class IngressReservationStore(Protocol):
+    def list_cloudflare(self, workspace_id: str) -> tuple[object, ...]: ...
+
+
+class IngressResourceStore(Protocol):
+    def list_cloudflare(self, workspace_id: str) -> tuple[object, ...]: ...
+
+
 class SecretProviderStore(Protocol):
     def get_active(
         self,
@@ -324,6 +332,20 @@ class IngressAuthorityCollectionReadModel:
 
 
 @dataclass(frozen=True)
+class PublicIngressResourceReadModel:
+    """Provider-neutral retained hostname and realization history projection."""
+
+    workspace_id: str
+    items: tuple[Mapping[str, object], ...]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "workspace_id": self.workspace_id,
+            "items": [dict(item) for item in self.items],
+        }
+
+
+@dataclass(frozen=True)
 class SecretMetadataCollectionReadModel:
     """Secret-free provider or handle registration metadata."""
 
@@ -393,6 +415,8 @@ class InstanceReadService:
         runtime_authority_store: RuntimeAuthorityStore | None = None,
         runtime_authority_delivery_store: RuntimeAuthorityDeliveryStore | None = None,
         ingress_authority_store: IngressAuthorityStore | None = None,
+        ingress_reservation_store: IngressReservationStore | None = None,
+        ingress_resource_store: IngressResourceStore | None = None,
         secret_provider_store: SecretProviderStore | None = None,
         secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
@@ -409,6 +433,8 @@ class InstanceReadService:
         self._runtime_authority_store = runtime_authority_store
         self._runtime_authority_delivery_store = runtime_authority_delivery_store
         self._ingress_authority_store = ingress_authority_store
+        self._ingress_reservation_store = ingress_reservation_store
+        self._ingress_resource_store = ingress_resource_store
         self._secret_provider_store = secret_provider_store
         self._secret_reference_store = secret_reference_store
         self._gateway_probe_store = gateway_probe_store
@@ -749,6 +775,34 @@ class InstanceReadService:
             workspace_id=workspace_id,
             kind="ingress-authority-detail",
             payload={"ingress_authority": _redacted_ingress_authority(authority)},
+        )
+
+    def public_ingress_resources(
+        self,
+        workspace_id: str,
+    ) -> PublicIngressResourceReadModel:
+        self._workspace(workspace_id)
+        if self._ingress_reservation_store is None:
+            raise ReadModelError("ingress reservation store is not configured")
+        if self._ingress_resource_store is None:
+            raise ReadModelError("ingress resource store is not configured")
+        resources = self._ingress_resource_store.list_cloudflare(workspace_id)
+        return PublicIngressResourceReadModel(
+            workspace_id=workspace_id,
+            items=tuple(
+                _public_ingress_resource_descriptor(
+                    reservation,
+                    tuple(
+                        resource
+                        for resource in resources
+                        if getattr(resource, "reservation_id", None)
+                        == getattr(reservation, "reservation_id")
+                    ),
+                )
+                for reservation in self._ingress_reservation_store.list_cloudflare(
+                    workspace_id
+                )
+            ),
         )
 
     def secret_providers(
@@ -1255,6 +1309,39 @@ def _redacted_ingress_authority(value: object) -> Mapping[str, object]:
         raise ReadModelError("ingress authority record cannot be projected")
     descriptor = _mapping(descriptor_method())
     return _redact_descriptor_value("ingress_authority", descriptor)
+
+
+def _public_ingress_resource_descriptor(
+    reservation: object,
+    resources: tuple[object, ...],
+) -> Mapping[str, object]:
+    try:
+        return {
+            "reservation_id": reservation.reservation_id,
+            "ingress_id": reservation.ingress_id,
+            "authority_ref": reservation.authority_ref.reference_id,
+            "hostname": reservation.hostname,
+            "lifecycle": reservation.lifecycle.value,
+            "status": reservation.status.value,
+            "version": reservation.version,
+            "created_at": reservation.created_at,
+            "observed_at": reservation.observed_at,
+            "realizations": [
+                {
+                    "epoch": resource.epoch,
+                    "status": resource.status.value,
+                    "runtime_id": resource.runtime_id,
+                    "created_at": resource.created_at,
+                    "observed_at": resource.observed_at,
+                    "removed_at": resource.removed_at,
+                }
+                for resource in sorted(resources, key=lambda item: item.epoch)
+            ],
+        }
+    except AttributeError as error:
+        raise ReadModelError(
+            "public ingress resource truth cannot be projected"
+        ) from error
 
 
 def _redacted_runtime_authority_delivery(value: object) -> Mapping[str, object]:

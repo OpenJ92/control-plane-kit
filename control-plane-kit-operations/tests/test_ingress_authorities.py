@@ -381,13 +381,17 @@ class IngressAuthorityValueTests(unittest.TestCase):
         source_run_id: str = "run-001",
         source_activity_id: str = "activity-001",
         source_event_id: str = "event-001",
+        reservation_id: str | None = None,
         removed_at: str | None = None,
         removed_by_run_id: str | None = None,
     ) -> CloudflareOwnedIngressResource:
+        if lifecycle is PublicIngressLifecycle.RETAINED and reservation_id is None:
+            reservation_id = "reservation-001"
         return CloudflareOwnedIngressResource(
             workspace_id=workspace_id,
             runtime_id=runtime_id,
             ingress_id=ingress_id,
+            reservation_id=reservation_id,
             authority_ref=IngressAuthorityReference("openj92-public-ingress"),
             provider_kind=IngressAuthorityProviderKind.CLOUDFLARE,
             tunnel_name=tunnel_name,

@@ -13,6 +13,7 @@ from control_plane_kit_core.public_ingress import (
 )
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.ingress_authorities import (
+    CloudflareOwnedHostnameReservation,
     CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthorityCodec,
     GeneratedIngressSecretReference,
@@ -23,6 +24,8 @@ from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationConflict,
     IngressAuthorityRegistrationError,
+    OwnedHostnameReservationConflict,
+    OwnedHostnameReservationStatus,
     OwnedIngressResourceStatus,
     OwnedIngressResourceConflict,
     RegisteredIngressAuthority,
@@ -38,6 +41,44 @@ _BLOCKING_INGRESS_RESOURCE_STATUSES = (
     OwnedIngressResourceStatus.UNCERTAIN,
     OwnedIngressResourceStatus.ORPHANED,
 )
+
+_RESERVATION_COLUMNS = """
+  reservation_id, workspace_id, ingress_id, authority_ref, provider_kind,
+  dns_record_id, hostname, zone_id, lifecycle, status, version, created_at,
+  observed_at, source_run_id, source_activity_id, source_event_id,
+  transitioned_at, transition_run_id, transition_activity_id,
+  transition_event_id, released_at, released_by_run_id
+"""
+
+_ALLOWED_RESERVATION_TRANSITIONS = {
+    OwnedHostnameReservationStatus.RESERVING: frozenset(
+        {
+            OwnedHostnameReservationStatus.BOUND,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+        }
+    ),
+    OwnedHostnameReservationStatus.BOUND: frozenset(
+        {
+            OwnedHostnameReservationStatus.RESERVED,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+        }
+    ),
+    OwnedHostnameReservationStatus.RESERVED: frozenset(
+        {
+            OwnedHostnameReservationStatus.BOUND,
+            OwnedHostnameReservationStatus.RELEASING,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+        }
+    ),
+    OwnedHostnameReservationStatus.RELEASING: frozenset(
+        {
+            OwnedHostnameReservationStatus.RELEASED,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+        }
+    ),
+    OwnedHostnameReservationStatus.RELEASED: frozenset(),
+    OwnedHostnameReservationStatus.UNCERTAIN: frozenset(),
+}
 
 
 class IngressAuthorityStore:
@@ -217,6 +258,316 @@ class IngressAuthorityStore:
         return _row_to_authority(row)
 
 
+class IngressReservationStore:
+    """Persist exact retained hostname identity independently from tunnel epochs."""
+
+    def __init__(self, connection: PostgresConnection) -> None:
+        self._connection = connection
+
+    def record_cloudflare(
+        self,
+        reservation: CloudflareOwnedHostnameReservation,
+    ) -> CloudflareOwnedHostnameReservation:
+        if not isinstance(reservation, CloudflareOwnedHostnameReservation):
+            raise TypeError(
+                "record_cloudflare requires CloudflareOwnedHostnameReservation"
+            )
+        self._lock_workspace(reservation.workspace_id)
+        by_id = self._get_by_id(
+            reservation.workspace_id,
+            reservation.reservation_id,
+        )
+        if by_id is not None:
+            if by_id == reservation:
+                return by_id
+            raise OwnedHostnameReservationConflict(
+                "hostname reservation identity replacement requires explicit policy"
+            )
+        blocking = self._get_live_by_keys(
+            reservation.workspace_id,
+            reservation.ingress_id,
+            reservation.authority_ref.reference_id,
+            reservation.hostname,
+        )
+        if blocking is not None:
+            if blocking == reservation:
+                return blocking
+            raise OwnedHostnameReservationConflict(
+                "live hostname reservation ownership already exists"
+            )
+        self._connection.execute(
+            """
+            INSERT INTO cpk_cloudflare_hostname_reservations (
+              reservation_id, workspace_id, ingress_id, authority_ref,
+              provider_kind, dns_record_id, hostname, zone_id, lifecycle,
+              status, version, created_at, observed_at, source_run_id,
+              source_activity_id, source_event_id, transitioned_at,
+              transition_run_id, transition_activity_id, transition_event_id,
+              released_at, released_by_run_id
+            ) VALUES (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            """,
+            _reservation_parameters(reservation),
+        )
+        return reservation
+
+    def require_cloudflare(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+    ) -> CloudflareOwnedHostnameReservation:
+        reservation = self._get_by_id(workspace_id, reservation_id)
+        if reservation is None:
+            raise IngressAuthorityNotFound("hostname reservation was not found")
+        return reservation
+
+    def require_cloudflare_for_update(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+    ) -> CloudflareOwnedHostnameReservation:
+        row = self._connection.execute(
+            f"""
+            SELECT {_RESERVATION_COLUMNS}
+            FROM cpk_cloudflare_hostname_reservations
+            WHERE workspace_id = %s AND reservation_id = %s
+            FOR UPDATE
+            """,
+            (workspace_id, reservation_id),
+        ).fetchone()
+        if row is None:
+            raise IngressAuthorityNotFound("hostname reservation was not found")
+        return _row_to_cloudflare_reservation(row)
+
+    def list_cloudflare(
+        self,
+        workspace_id: str,
+    ) -> tuple[CloudflareOwnedHostnameReservation, ...]:
+        rows = self._connection.execute(
+            f"""
+            SELECT {_RESERVATION_COLUMNS}
+            FROM cpk_cloudflare_hostname_reservations
+            WHERE workspace_id = %s
+            ORDER BY ingress_id, created_at, reservation_id
+            """,
+            (workspace_id,),
+        ).fetchall()
+        return tuple(_row_to_cloudflare_reservation(row) for row in rows)
+
+    def mark_bound(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+        **evidence: object,
+    ) -> CloudflareOwnedHostnameReservation:
+        return self._transition(
+            workspace_id,
+            reservation_id,
+            OwnedHostnameReservationStatus.BOUND,
+            **evidence,
+        )
+
+    def mark_reserved(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+        **evidence: object,
+    ) -> CloudflareOwnedHostnameReservation:
+        return self._transition(
+            workspace_id,
+            reservation_id,
+            OwnedHostnameReservationStatus.RESERVED,
+            **evidence,
+        )
+
+    def mark_releasing(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+        **evidence: object,
+    ) -> CloudflareOwnedHostnameReservation:
+        return self._transition(
+            workspace_id,
+            reservation_id,
+            OwnedHostnameReservationStatus.RELEASING,
+            **evidence,
+        )
+
+    def mark_released(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+        *,
+        released_by_run_id: str,
+        **evidence: object,
+    ) -> CloudflareOwnedHostnameReservation:
+        return self._transition(
+            workspace_id,
+            reservation_id,
+            OwnedHostnameReservationStatus.RELEASED,
+            released_by_run_id=released_by_run_id,
+            **evidence,
+        )
+
+    def mark_uncertain(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+        **evidence: object,
+    ) -> CloudflareOwnedHostnameReservation:
+        return self._transition(
+            workspace_id,
+            reservation_id,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+            **evidence,
+        )
+
+    def _transition(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+        status: OwnedHostnameReservationStatus,
+        *,
+        expected_version: int,
+        transitioned_at: str,
+        source_run_id: str,
+        source_activity_id: str,
+        source_event_id: str,
+        released_by_run_id: str | None = None,
+    ) -> CloudflareOwnedHostnameReservation:
+        current = self.require_cloudflare_for_update(workspace_id, reservation_id)
+        if current.version != expected_version:
+            raise OwnedHostnameReservationConflict(
+                "hostname reservation version changed"
+            )
+        if status not in _ALLOWED_RESERVATION_TRANSITIONS[current.status]:
+            raise OwnedHostnameReservationConflict(
+                f"hostname reservation cannot transition from {current.status.value} "
+                f"to {status.value}"
+            )
+        if (
+            status is OwnedHostnameReservationStatus.RESERVED
+            and self._has_blocking_realization(reservation_id)
+        ):
+            raise OwnedHostnameReservationConflict(
+                "hostname reservation cannot become reserved while a realization remains"
+            )
+        updated = replace(
+            current,
+            status=status,
+            version=current.version + 1,
+            observed_at=transitioned_at,
+            transitioned_at=transitioned_at,
+            transition_run_id=source_run_id,
+            transition_activity_id=source_activity_id,
+            transition_event_id=source_event_id,
+            released_at=(
+                transitioned_at
+                if status is OwnedHostnameReservationStatus.RELEASED
+                else None
+            ),
+            released_by_run_id=released_by_run_id,
+        )
+        cursor = self._connection.execute(
+            """
+            UPDATE cpk_cloudflare_hostname_reservations
+            SET status = %s,
+                version = %s,
+                observed_at = %s,
+                transitioned_at = %s,
+                transition_run_id = %s,
+                transition_activity_id = %s,
+                transition_event_id = %s,
+                released_at = %s,
+                released_by_run_id = %s
+            WHERE workspace_id = %s
+              AND reservation_id = %s
+              AND version = %s
+            """,
+            (
+                updated.status.value,
+                updated.version,
+                updated.observed_at,
+                updated.transitioned_at,
+                updated.transition_run_id,
+                updated.transition_activity_id,
+                updated.transition_event_id,
+                updated.released_at,
+                updated.released_by_run_id,
+                workspace_id,
+                reservation_id,
+                expected_version,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise OwnedHostnameReservationConflict(
+                "hostname reservation transition lost optimistic concurrency"
+            )
+        return updated
+
+    def _get_by_id(
+        self,
+        workspace_id: str,
+        reservation_id: str,
+    ) -> CloudflareOwnedHostnameReservation | None:
+        row = self._connection.execute(
+            f"""
+            SELECT {_RESERVATION_COLUMNS}
+            FROM cpk_cloudflare_hostname_reservations
+            WHERE workspace_id = %s AND reservation_id = %s
+            """,
+            (workspace_id, reservation_id),
+        ).fetchone()
+        return None if row is None else _row_to_cloudflare_reservation(row)
+
+    def _has_blocking_realization(self, reservation_id: str) -> bool:
+        row = self._connection.execute(
+            """
+            SELECT 1
+            FROM cpk_cloudflare_ingress_resources
+            WHERE reservation_id = %s
+              AND status <> 'removed'
+            LIMIT 1
+            """,
+            (reservation_id,),
+        ).fetchone()
+        return row is not None
+
+    def _get_live_by_keys(
+        self,
+        workspace_id: str,
+        ingress_id: str,
+        authority_ref: str,
+        hostname: str,
+    ) -> CloudflareOwnedHostnameReservation | None:
+        row = self._connection.execute(
+            f"""
+            SELECT {_RESERVATION_COLUMNS}
+            FROM cpk_cloudflare_hostname_reservations
+            WHERE workspace_id = %s
+              AND status <> 'released'
+              AND (
+                ingress_id = %s
+                OR (authority_ref = %s AND hostname = %s)
+              )
+            ORDER BY created_at, reservation_id
+            LIMIT 1
+            """,
+            (workspace_id, ingress_id, authority_ref, hostname),
+        ).fetchone()
+        return None if row is None else _row_to_cloudflare_reservation(row)
+
+    def _lock_workspace(self, workspace_id: str) -> None:
+        row = self._connection.execute(
+            "SELECT workspace_id FROM cpk_workspaces WHERE workspace_id = %s FOR UPDATE",
+            (workspace_id,),
+        ).fetchone()
+        if row is None:
+            raise IngressAuthorityNotFound("reservation workspace was not found")
+
+
 class IngressResourceStore:
     """Persist owned public-ingress allocation evidence."""
 
@@ -229,6 +580,31 @@ class IngressResourceStore:
     ) -> CloudflareOwnedIngressResource:
         if not isinstance(resource, CloudflareOwnedIngressResource):
             raise TypeError("record_cloudflare requires CloudflareOwnedIngressResource")
+        if resource.reservation_id is not None:
+            reservation = IngressReservationStore(
+                self._connection
+            ).require_cloudflare_for_update(
+                resource.workspace_id,
+                resource.reservation_id,
+            )
+            if (
+                reservation.ingress_id != resource.ingress_id
+                or reservation.authority_ref != resource.authority_ref
+                or reservation.hostname != resource.hostname
+                or reservation.zone_id != resource.zone_id
+                or reservation.dns_record_id != resource.dns_record_id
+            ):
+                raise OwnedIngressResourceConflict(
+                    "ingress realization does not match hostname reservation"
+                )
+            if reservation.status in {
+                OwnedHostnameReservationStatus.RELEASING,
+                OwnedHostnameReservationStatus.RELEASED,
+                OwnedHostnameReservationStatus.UNCERTAIN,
+            }:
+                raise OwnedIngressResourceConflict(
+                    "hostname reservation status blocks tunnel realization"
+                )
         existing = self._get_blocking_cloudflare(
             resource.workspace_id,
             resource.ingress_id,
@@ -252,6 +628,7 @@ class IngressResourceStore:
               workspace_id,
               runtime_id,
               ingress_id,
+              reservation_id,
               epoch,
               status,
               authority_ref,
@@ -272,13 +649,14 @@ class IngressResourceStore:
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s
             )
             """,
             (
                 resource.workspace_id,
                 resource.runtime_id,
                 resource.ingress_id,
+                resource.reservation_id,
                 resource.epoch,
                 resource.status.value,
                 resource.authority_ref.reference_id,
@@ -389,6 +767,7 @@ class IngressResourceStore:
               workspace_id,
               runtime_id,
               ingress_id,
+              reservation_id,
               epoch,
               status,
               authority_ref,
@@ -441,6 +820,7 @@ class IngressResourceStore:
               workspace_id,
               runtime_id,
               ingress_id,
+              reservation_id,
               epoch,
               status,
               authority_ref,
@@ -678,23 +1058,82 @@ def _row_to_cloudflare_resource(row: tuple[Any, ...]) -> CloudflareOwnedIngressR
         workspace_id=row[0],
         runtime_id=row[1],
         ingress_id=row[2],
-        epoch=row[3],
-        status=OwnedIngressResourceStatus(row[4]),
-        authority_ref=IngressAuthorityReference(row[5]),
-        provider_kind=IngressAuthorityProviderKind(row[6]),
-        tunnel_name=row[7],
-        tunnel_id=row[8],
-        dns_record_id=row[9],
-        hostname=row[10],
-        zone_id=row[11],
-        lifecycle=PublicIngressLifecycle(row[12]),
-        created_at=row[13],
-        observed_at=row[14],
-        source_run_id=row[15],
-        source_activity_id=row[16],
-        source_event_id=row[17],
-        removed_at=row[18],
-        removed_by_run_id=row[19],
+        reservation_id=row[3],
+        epoch=row[4],
+        status=OwnedIngressResourceStatus(row[5]),
+        authority_ref=IngressAuthorityReference(row[6]),
+        provider_kind=IngressAuthorityProviderKind(row[7]),
+        tunnel_name=row[8],
+        tunnel_id=row[9],
+        dns_record_id=row[10],
+        hostname=row[11],
+        zone_id=row[12],
+        lifecycle=PublicIngressLifecycle(row[13]),
+        created_at=row[14],
+        observed_at=row[15],
+        source_run_id=row[16],
+        source_activity_id=row[17],
+        source_event_id=row[18],
+        removed_at=row[19],
+        removed_by_run_id=row[20],
+    )
+
+
+def _row_to_cloudflare_reservation(
+    row: tuple[Any, ...],
+) -> CloudflareOwnedHostnameReservation:
+    return CloudflareOwnedHostnameReservation(
+        reservation_id=row[0],
+        workspace_id=row[1],
+        ingress_id=row[2],
+        authority_ref=IngressAuthorityReference(row[3]),
+        provider_kind=IngressAuthorityProviderKind(row[4]),
+        dns_record_id=row[5],
+        hostname=row[6],
+        zone_id=row[7],
+        lifecycle=PublicIngressLifecycle(row[8]),
+        status=OwnedHostnameReservationStatus(row[9]),
+        version=row[10],
+        created_at=row[11],
+        observed_at=row[12],
+        source_run_id=row[13],
+        source_activity_id=row[14],
+        source_event_id=row[15],
+        transitioned_at=row[16],
+        transition_run_id=row[17],
+        transition_activity_id=row[18],
+        transition_event_id=row[19],
+        released_at=row[20],
+        released_by_run_id=row[21],
+    )
+
+
+def _reservation_parameters(
+    reservation: CloudflareOwnedHostnameReservation,
+) -> tuple[object, ...]:
+    return (
+        reservation.reservation_id,
+        reservation.workspace_id,
+        reservation.ingress_id,
+        reservation.authority_ref.reference_id,
+        reservation.provider_kind.value,
+        reservation.dns_record_id,
+        reservation.hostname,
+        reservation.zone_id,
+        reservation.lifecycle.value,
+        reservation.status.value,
+        reservation.version,
+        reservation.created_at,
+        reservation.observed_at,
+        reservation.source_run_id,
+        reservation.source_activity_id,
+        reservation.source_event_id,
+        reservation.transitioned_at,
+        reservation.transition_run_id,
+        reservation.transition_activity_id,
+        reservation.transition_event_id,
+        reservation.released_at,
+        reservation.released_by_run_id,
     )
 
 

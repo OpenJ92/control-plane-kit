@@ -5,10 +5,11 @@ import unittest
 import uuid
 
 import psycopg
-from psycopg.errors import CheckViolation, UndefinedColumn
+from psycopg.errors import CheckViolation, ForeignKeyViolation, UndefinedColumn
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.operations import LifecycleOperationKind, OperatorCommandKind
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.gateway_key_rotations import (
@@ -183,6 +184,51 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
         install_schema(self.connection)
         self.assertEqual(self._constraint_identities(), after_upgrade)
 
+    def test_install_expands_stale_operation_action_kinds_without_row_loss(
+        self,
+    ) -> None:
+        install_schema(self.connection)
+        self._seed_minimal_execution_truth()
+        old_kinds = tuple(
+            kind
+            for kind in OperatorCommandKind
+            if kind
+            is not OperatorCommandKind.REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE
+        ) + tuple(LifecycleOperationKind)
+        old_values = ", ".join(f"'{kind.value}'" for kind in old_kinds)
+        self.connection.execute(
+            "ALTER TABLE cpk_operation_actions "
+            "DROP CONSTRAINT cpk_operation_actions_type_check"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_operation_actions "
+            "ADD CONSTRAINT cpk_operation_actions_type_check "
+            f"CHECK (action_type IN ({old_values}))"
+        )
+
+        install_schema(self.connection)
+        after_upgrade = self._constraint_identities()
+        self.connection.execute(
+            """
+            INSERT INTO cpk_operation_actions
+              (action_id, session_id, ordinal, action_type, actor_id, created_at)
+            VALUES (
+              'release-action', 'session-a', 1,
+              'request-public-ingress-reservation-release',
+              'operator', 'release-at'
+            )
+            """
+        )
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_operation_actions"
+            ).fetchone(),
+            (1,),
+        )
+        install_schema(self.connection)
+        self.assertEqual(self._constraint_identities(), after_upgrade)
+
     def test_install_expands_stale_rotation_status_checks_without_row_loss(
         self,
     ) -> None:
@@ -326,6 +372,166 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
         self.assertIn("'active'::text", active_index[0])
         self.assertIn("'allocating'::text", active_index[0])
         self.assertIn("'removing'::text", active_index[0])
+
+    def test_install_backfills_exact_legacy_retained_ingress_reservation(self) -> None:
+        install_schema(self.connection)
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-a', 'Workspace A', 'running')
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_cloudflare_ingress_resources (
+              workspace_id, runtime_id, ingress_id, epoch, status,
+              authority_ref, provider_kind, tunnel_name, tunnel_id,
+              dns_record_id, hostname, zone_id, lifecycle, created_at,
+              observed_at, source_run_id, source_activity_id, source_event_id
+            ) VALUES (
+              'workspace-a', 'docker-a', 'gateway-001', 1, 'active',
+              'openj92-public-ingress', 'cloudflare', 'cpk-gateway-001',
+              'tunnel-001', 'dns-001', 'cpk-gateway-001.openj92.dev',
+              'zone-openj92', 'retained', 'created-at', 'observed-at',
+              'run-001', 'activity-001', 'event-001'
+            )
+            """
+        )
+
+        install_schema(self.connection)
+
+        reservation = self.connection.execute(
+            """
+            SELECT reservation_id, workspace_id, ingress_id, status,
+                   dns_record_id, hostname, source_run_id
+            FROM cpk_cloudflare_hostname_reservations
+            """
+        ).fetchone()
+        joined = self.connection.execute(
+            """
+            SELECT reservation_id
+            FROM cpk_cloudflare_ingress_resources
+            WHERE workspace_id = 'workspace-a' AND ingress_id = 'gateway-001'
+            """
+        ).fetchone()
+        self.assertEqual(reservation[1:], (
+            'workspace-a', 'gateway-001', 'bound', 'dns-001',
+            'cpk-gateway-001.openj92.dev', 'run-001'
+        ))
+        self.assertEqual(joined[0], reservation[0])
+
+        install_schema(self.connection)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_cloudflare_hostname_reservations"
+            ).fetchone(),
+            (1,),
+        )
+
+    def test_ambiguous_legacy_retained_ownership_rolls_back_install(self) -> None:
+        install_schema(self.connection)
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-a', 'Workspace A', 'running')
+            """
+        )
+        for ingress_id, tunnel_id, dns_record_id in (
+            ('gateway-a', 'tunnel-a', 'dns-a'),
+            ('gateway-b', 'tunnel-b', 'dns-b'),
+        ):
+            self.connection.execute(
+                """
+                INSERT INTO cpk_cloudflare_ingress_resources (
+                  workspace_id, runtime_id, ingress_id, epoch, status,
+                  authority_ref, provider_kind, tunnel_name, tunnel_id,
+                  dns_record_id, hostname, zone_id, lifecycle, created_at,
+                  observed_at, source_run_id, source_activity_id, source_event_id
+                ) VALUES (
+                  'workspace-a', 'docker-a', %s, 1, 'active',
+                  'openj92-public-ingress', 'cloudflare', %s, %s,
+                  %s, 'cpk-gateway-001.openj92.dev', 'zone-openj92',
+                  'retained', 'created-at', 'observed-at', %s, %s, %s
+                )
+                """,
+                (
+                    ingress_id,
+                    f'cpk-{ingress_id}',
+                    tunnel_id,
+                    dns_record_id,
+                    f'run-{ingress_id}',
+                    f'activity-{ingress_id}',
+                    f'event-{ingress_id}',
+                ),
+            )
+
+        self.connection.autocommit = False
+        try:
+            with self.assertRaisesRegex(ValueError, "ambiguous legacy retained"):
+                install_schema(self.connection)
+        finally:
+            self.connection.rollback()
+            self.connection.autocommit = True
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_cloudflare_hostname_reservations"
+            ).fetchone(),
+            (0,),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_cloudflare_ingress_resources"
+            ).fetchone(),
+            (2,),
+        )
+
+    def test_realization_join_requires_exact_reservation_workspace_and_ingress(
+        self,
+    ) -> None:
+        install_schema(self.connection)
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES
+              ('workspace-a', 'Workspace A', 'running'),
+              ('workspace-b', 'Workspace B', 'running')
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_cloudflare_hostname_reservations (
+              reservation_id, workspace_id, ingress_id, authority_ref,
+              provider_kind, dns_record_id, hostname, zone_id, lifecycle,
+              status, created_at, observed_at, source_run_id,
+              source_activity_id, source_event_id
+            ) VALUES (
+              'reservation-001', 'workspace-a', 'gateway-001',
+              'openj92-public-ingress', 'cloudflare', 'dns-001',
+              'gateway.openj92.dev', 'zone-openj92', 'retained', 'bound',
+              'created-at', 'observed-at', 'run-001', 'activity-001', 'event-001'
+            )
+            """
+        )
+
+        with self.assertRaises(ForeignKeyViolation):
+            self.connection.execute(
+                """
+                INSERT INTO cpk_cloudflare_ingress_resources (
+                  workspace_id, runtime_id, ingress_id, reservation_id, epoch,
+                  status, authority_ref, provider_kind, tunnel_name, tunnel_id,
+                  dns_record_id, hostname, zone_id, lifecycle, created_at,
+                  observed_at, source_run_id, source_activity_id, source_event_id
+                ) VALUES (
+                  'workspace-b', 'docker-b', 'gateway-001', 'reservation-001', 1,
+                  'active', 'openj92-public-ingress', 'cloudflare',
+                  'cpk-gateway-001', 'tunnel-001', 'dns-001',
+                  'gateway.openj92.dev', 'zone-openj92', 'retained',
+                  'created-at', 'observed-at', 'run-001', 'activity-001',
+                  'event-001'
+                )
+                """
+            )
 
     def test_closed_values_and_event_shapes_fail_closed(self) -> None:
         install_schema(self.connection)

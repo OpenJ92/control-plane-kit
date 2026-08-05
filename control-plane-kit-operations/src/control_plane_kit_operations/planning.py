@@ -8,7 +8,16 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
-from control_plane_kit_core.planning import compile_activity_plan
+from control_plane_kit_core.planning import (
+    ActivityId,
+    ActivityImpact,
+    ActivityPlan,
+    PlannedActivity,
+    PublicIngressReservationTarget,
+    ReleasePublicIngressReservation,
+    RiskLevel,
+    compile_activity_plan,
+)
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
@@ -29,6 +38,10 @@ from control_plane_kit_operations.records import (
     ActivityPlanStatus,
     OperationActionRecord,
     OperationSessionStatus,
+)
+from control_plane_kit_operations.ingress_authorities import (
+    IngressAuthorityNotFound,
+    OwnedHostnameReservationStatus,
 )
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
@@ -78,6 +91,22 @@ class ActivityPlanningSessionConflict(ActivityPlanningError):
 
 class ActivityPlanningWorkspaceNotFound(ActivityPlanningError):
     """Raised when workspace truth does not exist."""
+
+
+class PublicIngressReservationReleasePlanningError(RuntimeError):
+    """Base error for exact retained hostname release-plan requests."""
+
+
+class PublicIngressReservationReleasePlanningConflict(
+    PublicIngressReservationReleasePlanningError
+):
+    """Raised when session, graph, or reservation truth changed."""
+
+
+class PublicIngressReservationReleasePlanningIdempotencyConflict(
+    PublicIngressReservationReleasePlanningError
+):
+    """Raised when one action key is reused for different release intent."""
 
 
 @dataclass(frozen=True)
@@ -243,7 +272,9 @@ class RequestActivityPlan:
 
     def descriptor(self) -> dict[str, object]:
         return {
-            "command": OperatorCommandKind.REQUEST_ACTIVITY_PLAN.value,
+            "command": (
+                OperatorCommandKind.REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE.value
+            ),
             "session_id": self.session_id,
             "workspace_id": self.workspace_id,
             "actor_id": self.actor_id,
@@ -261,6 +292,70 @@ class RequestActivityPlan:
 
 
 @dataclass(frozen=True)
+class RequestPublicIngressReservationRelease:
+    """Request a destructive plan for one exact reserved hostname version."""
+
+    session_id: str
+    workspace_id: str
+    actor_id: str
+    ingress_id: str
+    reservation_id: str
+    expected_reservation_version: int
+    expected_current_graph_id: str
+    expected_current_realized_projection_id: str
+    expected_desired_graph_revision: int
+    idempotency_key: IdempotencyKey
+
+    def __post_init__(self) -> None:
+        for value, field_name in (
+            (self.session_id, "session_id"),
+            (self.workspace_id, "workspace_id"),
+            (self.actor_id, "actor_id"),
+            (self.ingress_id, "ingress_id"),
+            (self.reservation_id, "reservation_id"),
+            (self.expected_current_graph_id, "expected_current_graph_id"),
+            (
+                self.expected_current_realized_projection_id,
+                "expected_current_realized_projection_id",
+            ),
+        ):
+            _required_text(value, field_name)
+        if (
+            type(self.expected_reservation_version) is not int
+            or self.expected_reservation_version < 1
+        ):
+            raise InvalidOperationCommand(
+                "expected_reservation_version must be positive"
+            )
+        if (
+            type(self.expected_desired_graph_revision) is not int
+            or self.expected_desired_graph_revision < 0
+        ):
+            raise InvalidOperationCommand(
+                "expected_desired_graph_revision must be nonnegative"
+            )
+        _require_idempotency_key(self.idempotency_key)
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "command": OperatorCommandKind.REQUEST_ACTIVITY_PLAN.value,
+            "intent": "release-public-ingress-reservation",
+            "session_id": self.session_id,
+            "workspace_id": self.workspace_id,
+            "actor_id": self.actor_id,
+            "ingress_id": self.ingress_id,
+            "reservation_id": self.reservation_id,
+            "expected_reservation_version": self.expected_reservation_version,
+            "expected_current_graph_id": self.expected_current_graph_id,
+            "expected_current_realized_projection_id": (
+                self.expected_current_realized_projection_id
+            ),
+            "expected_desired_graph_revision": self.expected_desired_graph_revision,
+            "idempotency_key": self.idempotency_key.value,
+        }
+
+
+@dataclass(frozen=True)
 class ActivityPlanningResult:
     """Durable plan and operation-action evidence from one command."""
 
@@ -269,9 +364,12 @@ class ActivityPlanningResult:
     replayed: bool = False
 
     def __post_init__(self) -> None:
-        if self.action.action_type is not OperatorCommandKind.REQUEST_ACTIVITY_PLAN:
+        if self.action.action_type not in {
+            OperatorCommandKind.REQUEST_ACTIVITY_PLAN,
+            OperatorCommandKind.REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE,
+        }:
             raise InvalidOperationCommand(
-                "activity planning result requires REQUEST_ACTIVITY_PLAN action evidence"
+                "activity planning result requires planning command action evidence"
             )
         if self.action.session_id != self.plan_record.session_id:
             raise InvalidOperationCommand("plan and action must belong to one session")
@@ -585,6 +683,185 @@ class ActivityPlanningCommandService:
             return ActivityPlanningResult(plan_record, action)
 
 
+class PublicIngressReservationReleasePlanningService:
+    """Persist exact release intent as an ordinary destructive activity plan."""
+
+    def __init__(
+        self,
+        unit_of_work_factory: Callable[[], Any],
+        *,
+        clock: Callable[[], str],
+        id_factory: Callable[[], str],
+        graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
+    ) -> None:
+        self._unit_of_work_factory = unit_of_work_factory
+        self._clock = clock
+        self._id_factory = id_factory
+        self._graph_codec = graph_codec
+
+    def execute(
+        self,
+        command: RequestPublicIngressReservationRelease,
+    ) -> ActivityPlanningResult:
+        if not isinstance(command, RequestPublicIngressReservationRelease):
+            raise InvalidOperationCommand(
+                "release planning requires RequestPublicIngressReservationRelease"
+            )
+        fingerprint = _fingerprint(command.descriptor())
+        with self._unit_of_work_factory() as unit_of_work:
+            history = unit_of_work.stores.activity_history
+            history.lock_action_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            existing = history.action_for_idempotency(
+                command.session_id,
+                command.idempotency_key.value,
+            )
+            if existing is not None:
+                result = _release_plan_replay(unit_of_work, existing, fingerprint)
+                unit_of_work.commit()
+                return result
+            try:
+                session = history.get_session_for_update(command.session_id)
+                workspace = unit_of_work.stores.workspaces.get_for_update(
+                    command.workspace_id
+                )
+            except KeyError as error:
+                raise PublicIngressReservationReleasePlanningConflict(
+                    "release planning truth was not found"
+                ) from error
+            if (
+                session.workspace_id != command.workspace_id
+                or session.status is not OperationSessionStatus.OPEN
+            ):
+                raise PublicIngressReservationReleasePlanningConflict(
+                    "release planning requires one open workspace session"
+                )
+            if (
+                workspace.current_graph_id != command.expected_current_graph_id
+                or workspace.desired_graph_id != command.expected_current_graph_id
+                or workspace.current_realized_projection_id
+                != command.expected_current_realized_projection_id
+                or workspace.desired_realized_projection_id
+                != command.expected_current_realized_projection_id
+                or workspace.desired_graph_revision
+                != command.expected_desired_graph_revision
+            ):
+                raise PublicIngressReservationReleasePlanningConflict(
+                    "release planning requires quiescent accepted graph truth"
+                )
+            try:
+                reservation = (
+                    unit_of_work.stores.ingress_reservations
+                    .require_cloudflare_for_update(
+                        command.workspace_id,
+                        command.reservation_id,
+                    )
+                )
+            except IngressAuthorityNotFound as error:
+                raise PublicIngressReservationReleasePlanningConflict(
+                    "hostname reservation was not found"
+                ) from error
+            if (
+                reservation.ingress_id != command.ingress_id
+                or reservation.version != command.expected_reservation_version
+                or reservation.status is not OwnedHostnameReservationStatus.RESERVED
+            ):
+                raise PublicIngressReservationReleasePlanningConflict(
+                    "exact reserved hostname truth changed"
+                )
+            projection = _projection_record(
+                unit_of_work,
+                command.expected_current_realized_projection_id,
+                command.expected_current_graph_id,
+                command.workspace_id,
+            )
+            try:
+                graph = validate_graph(
+                    self._graph_codec.decode(projection.graph_descriptor),
+                    codec=self._graph_codec,
+                )
+                graph.require_valid()
+            except (GraphDescriptorError, GraphValidationError) as error:
+                raise PublicIngressReservationReleasePlanningConflict(
+                    "accepted graph truth is invalid"
+                ) from error
+            if any(
+                ingress.ingress_id == command.ingress_id
+                for ingress in graph.graph.public_ingresses
+            ):
+                raise PublicIngressReservationReleasePlanningConflict(
+                    "active graph ingress must be removed before final release"
+                )
+            plan = ActivityPlan(
+                (
+                    PlannedActivity(
+                        activity_id=ActivityId(
+                            f"release-public-ingress-reservation:{reservation.reservation_id}"
+                        ),
+                        operation=ReleasePublicIngressReservation(
+                            PublicIngressReservationTarget(
+                                ingress_id=reservation.ingress_id,
+                                reservation_id=reservation.reservation_id,
+                                reservation_version=reservation.version,
+                            )
+                        ),
+                        risk=RiskLevel.CRITICAL,
+                        impact=ActivityImpact.DESTRUCTIVE,
+                    ),
+                )
+            )
+            created_at = self._clock()
+            plan_record = ActivityPlanRecord(
+                plan_id=self._id_factory(),
+                session_id=command.session_id,
+                base_graph_id=command.expected_current_graph_id,
+                desired_graph_id=command.expected_current_graph_id,
+                status=ActivityPlanStatus.PLANNED,
+                created_at=created_at,
+                plan=plan,
+                base_realized_projection_id=projection.projection_id,
+                desired_realized_projection_id=projection.projection_id,
+                desired_graph_revision=workspace.desired_graph_revision,
+            )
+            history.add_plan(plan_record)
+            action = OperationActionRecord(
+                action_id=self._id_factory(),
+                session_id=command.session_id,
+                ordinal=history.next_action_ordinal(command.session_id),
+                action_type=(
+                    OperatorCommandKind.REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE
+                ),
+                actor_id=command.actor_id,
+                payload={
+                    "workspace_id": command.workspace_id,
+                    "intent": "release-public-ingress-reservation",
+                    "ingress_id": reservation.ingress_id,
+                    "reservation_id": reservation.reservation_id,
+                    "reservation_version": reservation.version,
+                    "plan_id": plan_record.plan_id,
+                    "base_graph_id": plan_record.base_graph_id,
+                    "desired_graph_id": plan_record.desired_graph_id,
+                    "base_realized_projection_id": (
+                        plan_record.base_realized_projection_id
+                    ),
+                    "desired_realized_projection_id": (
+                        plan_record.desired_realized_projection_id
+                    ),
+                    "desired_graph_revision": plan_record.desired_graph_revision,
+                    "ready_for_execution": True,
+                    "activity_count": 1,
+                },
+                created_at=created_at,
+                idempotency_key=command.idempotency_key.value,
+                intent_fingerprint=fingerprint,
+            )
+            history.add_action(action)
+            unit_of_work.commit()
+            return ActivityPlanningResult(plan_record, action)
+
+
 def _desired_session(unit_of_work: Any, command: SetDesiredGraph) -> Any:
     try:
         session = unit_of_work.stores.activity_history.get_session_for_update(
@@ -652,6 +929,32 @@ def _activity_plan_replay(
     plan_id = action.payload.get("plan_id")
     if not isinstance(plan_id, str):
         raise ActivityPlanningError("planning action evidence is incomplete")
+    return ActivityPlanningResult(
+        unit_of_work.stores.activity_history.get_plan(plan_id),
+        action,
+        replayed=True,
+    )
+
+
+def _release_plan_replay(
+    unit_of_work: Any,
+    action: OperationActionRecord,
+    fingerprint: str,
+) -> ActivityPlanningResult:
+    if (
+        action.action_type
+        is not OperatorCommandKind.REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE
+        or action.payload.get("intent") != "release-public-ingress-reservation"
+        or action.intent_fingerprint != fingerprint
+    ):
+        raise PublicIngressReservationReleasePlanningIdempotencyConflict(
+            "idempotency key was already used for different release intent"
+        )
+    plan_id = action.payload.get("plan_id")
+    if not isinstance(plan_id, str):
+        raise PublicIngressReservationReleasePlanningError(
+            "release planning action evidence is incomplete"
+        )
     return ActivityPlanningResult(
         unit_of_work.stores.activity_history.get_plan(plan_id),
         action,

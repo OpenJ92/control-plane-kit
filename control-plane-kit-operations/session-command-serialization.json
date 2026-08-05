@@ -100,6 +100,14 @@
       "session_rule": "requires OPEN after lock"
     },
     {
+      "command": "request-public-ingress-reservation-release",
+      "service": "PublicIngressReservationReleasePlanningService.execute",
+      "writer": "planning.py:PublicIngressReservationReleasePlanningService.execute",
+      "source": "planning.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock; exact retained reservation must be RESERVED and absent from quiescent accepted graph truth"
+    },
+    {
       "command": "request-approval",
       "service": "ApprovalCommandService._request",
       "writer": "approvals.py:ApprovalCommandService._request",

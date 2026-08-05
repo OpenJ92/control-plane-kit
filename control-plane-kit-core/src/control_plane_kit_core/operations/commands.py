@@ -68,6 +68,9 @@ class OperatorCommandKind(StrEnum):
     SET_DESIRED_GRAPH = "set-desired-graph"
     PUBLISH_DESIRED_REALIZED_PROJECTION = "publish-desired-realized-projection"
     REQUEST_ACTIVITY_PLAN = "request-activity-plan"
+    REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE = (
+        "request-public-ingress-reservation-release"
+    )
     REQUEST_APPROVAL = "request-approval"
     DECIDE_APPROVAL = "decide-approval"
     REQUEST_GATEWAY_PROBE = "request-gateway-probe"
@@ -80,6 +83,7 @@ class CommandPayloadPolicy(StrEnum):
     GRAPH_DESCRIPTOR_REFERENCE = "graph-descriptor-reference"
     REALIZED_GRAPH_PROJECTION_REFERENCE = "realized-graph-projection-reference"
     PLAN_DESCRIPTOR_REFERENCE = "plan-descriptor-reference"
+    PUBLIC_INGRESS_RESERVATION_REFERENCE = "public-ingress-reservation-reference"
     APPROVAL_RISK_EVIDENCE = "approval-risk-evidence"
     PRODUCT_DESCRIPTOR_DOCUMENT = "product-descriptor-document"
     IMAGE_PULL_AUTHORITY_REFERENCE = "image-pull-authority-reference"
@@ -153,6 +157,9 @@ _KIND_FAMILY = {
         OperatorCommandFamily.DESIRED_GRAPH
     ),
     OperatorCommandKind.REQUEST_ACTIVITY_PLAN: OperatorCommandFamily.ACTIVITY_PLANNING,
+    OperatorCommandKind.REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE: (
+        OperatorCommandFamily.ACTIVITY_PLANNING
+    ),
     OperatorCommandKind.REQUEST_APPROVAL: OperatorCommandFamily.APPROVAL,
     OperatorCommandKind.DECIDE_APPROVAL: OperatorCommandFamily.APPROVAL,
     OperatorCommandKind.REQUEST_GATEWAY_PROBE: OperatorCommandFamily.GATEWAY_PROBE,
@@ -715,6 +722,18 @@ _CANONICAL_COMMANDS = (
         "ActivityPlanningResult",
         ApprovalPolicy.SUBMITS_FOR_APPROVAL,
         CommandPayloadPolicy.PLAN_DESCRIPTOR_REFERENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "public-ingress-reservation.release-plan",
+        OperatorCommandKind.REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE,
+        OperatorCommandFamily.ACTIVITY_PLANNING,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "RequestPublicIngressReservationRelease",
+        "ActivityPlanningResult",
+        ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+        CommandPayloadPolicy.PUBLIC_INGRESS_RESERVATION_REFERENCE,
         requires_open_session=True,
     ),
     _CommandDefinition(

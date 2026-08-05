@@ -42,12 +42,14 @@ from control_plane_kit_operations.coordinator import (
 )
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareIngressTeardownActionKind,
+    CloudflareOwnedHostnameReservation,
     CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthority,
     GeneratedSecretPurpose,
     IngressAuthorityNotFound,
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationError,
+    OwnedHostnameReservationStatus,
     cloudflare_ingress_teardown_plan,
     record_generated_ingress_secret,
 )
@@ -334,10 +336,32 @@ class IngressRealizationAdapter:
             return _uncertain("ingress.allocate-uncertain", type(error).__name__)
 
         try:
+            reservation = None
+            reservation_id = None
+            if ingress.lifecycle is PublicIngressLifecycle.RETAINED:
+                reservation_id = _reservation_id(context, ingress)
+                reservation = CloudflareOwnedHostnameReservation(
+                    reservation_id=reservation_id,
+                    workspace_id=context.request.identity.workspace_id,
+                    ingress_id=ingress.ingress_id,
+                    authority_ref=ingress.authority_ref,
+                    provider_kind=authority.provider_kind,
+                    dns_record_id=allocation.dns_record_id,
+                    hostname=allocation.hostname,
+                    zone_id=authority.authority.zone_id,
+                    lifecycle=ingress.lifecycle,
+                    status=OwnedHostnameReservationStatus.BOUND,
+                    created_at=recorded_at,
+                    observed_at=recorded_at,
+                    source_run_id=context.run.run_id,
+                    source_activity_id=context.activity.activity_id.value,
+                    source_event_id=context.intent_event.event_id,
+                )
             resource = CloudflareOwnedIngressResource(
                 workspace_id=context.request.identity.workspace_id,
                 runtime_id=graph.node(ingress.connector_node_id).runtime_id,
                 ingress_id=ingress.ingress_id,
+                reservation_id=reservation_id,
                 authority_ref=ingress.authority_ref,
                 provider_kind=authority.provider_kind,
                 tunnel_name=allocation.tunnel_name,
@@ -388,6 +412,10 @@ class IngressRealizationAdapter:
                         "secret custody provider changed before durable fold"
                     )
                 unit_of_work.stores.secret_references.register(reference_candidate)
+                if reservation is not None:
+                    unit_of_work.stores.ingress_reservations.record_cloudflare(
+                        reservation
+                    )
                 unit_of_work.stores.ingress_resources.record_cloudflare(resource)
                 unit_of_work.stores.generated_ingress_secrets.record(secret_evidence)
                 unit_of_work.commit()
@@ -418,6 +446,7 @@ class IngressRealizationAdapter:
                     "tunnel_name": allocation.tunnel_name,
                     "tunnel_id": allocation.tunnel_id,
                     "dns_record_id": allocation.dns_record_id,
+                    "reservation_id": resource.reservation_id,
                     "lifecycle": ingress.lifecycle.value,
                     "connector_material_recorded": True,
                 }
@@ -754,6 +783,22 @@ def _allocation_name(
     prefix = f"cpk-{ingress_part}"
     max_prefix_length = 128 - 1 - len(digest)
     return f"{prefix[:max_prefix_length]}-{digest}"
+
+
+def _reservation_id(
+    context: ActivityRealizationContext,
+    ingress: NamedPublicIngress,
+) -> str:
+    digest = hashlib.sha256(
+        "|".join(
+            (
+                context.request.identity.workspace_id,
+                ingress.ingress_id,
+                context.intent_event.event_id,
+            )
+        ).encode("utf-8")
+    ).hexdigest()[:24]
+    return f"reservation-{digest}"
 
 
 def _generated_secret_reference(

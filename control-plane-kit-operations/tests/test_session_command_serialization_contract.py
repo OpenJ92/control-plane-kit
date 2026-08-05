@@ -23,6 +23,7 @@ EXPECTED_COMMANDS = {
     "set-desired-graph",
     "publish-desired-realized-projection",
     "request-activity-plan",
+    "request-public-ingress-reservation-release",
     "request-approval",
     "request-gateway-key-rotation-approval",
     "decide-approval",

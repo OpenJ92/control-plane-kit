@@ -48,6 +48,10 @@ class OwnedIngressResourceConflict(IngressAuthorityRegistrationError):
     """Raised when owned ingress evidence conflicts with existing truth."""
 
 
+class OwnedHostnameReservationConflict(IngressAuthorityRegistrationError):
+    """Raised when stable hostname ownership or transition truth conflicts."""
+
+
 class GeneratedSecretRecordingConflict(IngressAuthorityRegistrationError):
     """Raised when generated secret evidence conflicts with existing truth."""
 
@@ -82,6 +86,17 @@ class OwnedIngressResourceStatus(StrEnum):
     REMOVED = "removed"
     UNCERTAIN = "uncertain"
     ORPHANED = "orphaned"
+
+
+class OwnedHostnameReservationStatus(StrEnum):
+    """Closed durable lifecycle of one exact retained hostname identity."""
+
+    RESERVING = "reserving"
+    BOUND = "bound"
+    RESERVED = "reserved"
+    RELEASING = "releasing"
+    RELEASED = "released"
+    UNCERTAIN = "uncertain"
 
 
 class CloudflareIngressTeardownActionKind(StrEnum):
@@ -171,6 +186,130 @@ IngressAuthority = CloudflareZoneIngressAuthority
 
 
 @dataclass(frozen=True)
+class CloudflareOwnedHostnameReservation:
+    """Exact secret-free ownership of one stable retained DNS identity."""
+
+    reservation_id: str
+    workspace_id: str
+    ingress_id: str
+    authority_ref: IngressAuthorityReference
+    provider_kind: IngressAuthorityProviderKind
+    dns_record_id: str
+    hostname: str
+    zone_id: str
+    lifecycle: PublicIngressLifecycle
+    status: OwnedHostnameReservationStatus
+    created_at: str
+    observed_at: str
+    source_run_id: str
+    source_activity_id: str
+    source_event_id: str
+    version: int = 1
+    transitioned_at: str | None = None
+    transition_run_id: str | None = None
+    transition_activity_id: str | None = None
+    transition_event_id: str | None = None
+    released_at: str | None = None
+    released_by_run_id: str | None = None
+
+    def __post_init__(self) -> None:
+        for value, field_name in (
+            (self.reservation_id, "reservation_id"),
+            (self.workspace_id, "workspace_id"),
+            (self.ingress_id, "ingress_id"),
+            (self.dns_record_id, "dns_record_id"),
+            (self.zone_id, "zone_id"),
+            (self.created_at, "created_at"),
+            (self.observed_at, "observed_at"),
+            (self.source_run_id, "source_run_id"),
+            (self.source_activity_id, "source_activity_id"),
+            (self.source_event_id, "source_event_id"),
+        ):
+            _validate_identifier(value, field_name)
+        if not isinstance(self.authority_ref, IngressAuthorityReference):
+            raise IngressAuthorityRegistrationError(
+                "hostname reservation requires IngressAuthorityReference"
+            )
+        if self.provider_kind is not IngressAuthorityProviderKind.CLOUDFLARE:
+            raise IngressAuthorityRegistrationError(
+                "Cloudflare hostname reservation provider kind must be cloudflare"
+            )
+        _validate_hostname(self.hostname)
+        if self.lifecycle is not PublicIngressLifecycle.RETAINED:
+            raise IngressAuthorityRegistrationError(
+                "hostname reservation lifecycle must be retained"
+            )
+        if not isinstance(self.status, OwnedHostnameReservationStatus):
+            raise IngressAuthorityRegistrationError(
+                "hostname reservation status must be closed"
+            )
+        if type(self.version) is not int or self.version < 1:
+            raise IngressAuthorityRegistrationError(
+                "hostname reservation version must be positive"
+            )
+        transition_values = (
+            self.transitioned_at,
+            self.transition_run_id,
+            self.transition_activity_id,
+            self.transition_event_id,
+        )
+        if any(value is not None for value in transition_values):
+            if any(value is None for value in transition_values):
+                raise IngressAuthorityRegistrationError(
+                    "hostname reservation transition evidence must be complete"
+                )
+            for value, field_name in zip(
+                transition_values,
+                (
+                    "transitioned_at",
+                    "transition_run_id",
+                    "transition_activity_id",
+                    "transition_event_id",
+                ),
+                strict=True,
+            ):
+                _validate_identifier(value, field_name)
+        release_values = (self.released_at, self.released_by_run_id)
+        if self.status is OwnedHostnameReservationStatus.RELEASED:
+            if any(value is None for value in release_values):
+                raise IngressAuthorityRegistrationError(
+                    "released hostname reservation requires release evidence"
+                )
+            _validate_identifier(self.released_at, "released_at")
+            _validate_identifier(self.released_by_run_id, "released_by_run_id")
+        elif any(value is not None for value in release_values):
+            raise IngressAuthorityRegistrationError(
+                "only released hostname reservation may carry release evidence"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "reservation_id": self.reservation_id,
+            "workspace_id": self.workspace_id,
+            "ingress_id": self.ingress_id,
+            "authority_ref": self.authority_ref.reference_id,
+            "provider_kind": self.provider_kind.value,
+            "dns_record_id": self.dns_record_id,
+            "hostname": self.hostname,
+            "zone_id": self.zone_id,
+            "lifecycle": self.lifecycle.value,
+            "status": self.status.value,
+            "version": self.version,
+            "created_at": self.created_at,
+            "observed_at": self.observed_at,
+            "source_run_id": self.source_run_id,
+            "source_activity_id": self.source_activity_id,
+            "source_event_id": self.source_event_id,
+            "transitioned_at": self.transitioned_at,
+            "transition_run_id": self.transition_run_id,
+            "transition_activity_id": self.transition_activity_id,
+            "transition_event_id": self.transition_event_id,
+            "released_at": self.released_at,
+            "released_by_run_id": self.released_by_run_id,
+        }
+
+
+@dataclass(frozen=True)
 class CloudflareOwnedIngressResource:
     """Bounded evidence for Cloudflare resources allocated by one CPK activity."""
 
@@ -190,6 +329,7 @@ class CloudflareOwnedIngressResource:
     source_run_id: str
     source_activity_id: str
     source_event_id: str
+    reservation_id: str | None = None
     epoch: int = 1
     status: OwnedIngressResourceStatus = OwnedIngressResourceStatus.ACTIVE
     removed_at: str | None = None
@@ -199,6 +339,15 @@ class CloudflareOwnedIngressResource:
         _validate_identifier(self.workspace_id, "workspace_id")
         _validate_identifier(self.runtime_id, "runtime_id")
         _validate_identifier(self.ingress_id, "ingress_id")
+        if self.reservation_id is not None:
+            _validate_identifier(self.reservation_id, "reservation_id")
+        if (
+            self.lifecycle is PublicIngressLifecycle.RETAINED
+            and self.reservation_id is None
+        ):
+            raise IngressAuthorityRegistrationError(
+                "retained ingress resource requires hostname reservation identity"
+            )
         if type(self.epoch) is not int or self.epoch < 1:
             raise IngressAuthorityRegistrationError(
                 "Cloudflare ingress resource epoch must be a positive integer"
@@ -257,6 +406,7 @@ class CloudflareOwnedIngressResource:
             "workspace_id": self.workspace_id,
             "runtime_id": self.runtime_id,
             "ingress_id": self.ingress_id,
+            "reservation_id": self.reservation_id,
             "epoch": self.epoch,
             "status": self.status.value,
             "authority_ref": self.authority_ref.reference_id,
