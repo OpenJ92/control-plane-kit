@@ -234,6 +234,81 @@ class DelegationVerifierProjection:
         )
 
 
+def carry_forward_compatible_delegation_verifiers(
+    authored_graph: DeploymentGraph,
+    current_realized_graph: DeploymentGraph,
+) -> tuple[DelegationVerifierProjection, ...]:
+    """Preserve exact accepted verifier identity across compatible graph changes."""
+
+    from control_plane_kit_core.topology.graph import DeploymentGraph
+
+    if not isinstance(authored_graph, DeploymentGraph) or not isinstance(
+        current_realized_graph,
+        DeploymentGraph,
+    ):
+        raise TypeError("delegation verifier carry-forward requires DeploymentGraph")
+    if any(
+        node.delegation_verifier_projection is not None
+        for node in authored_graph.nodes.values()
+    ):
+        raise DelegationAuthorityError(
+            "authored graph must not contain delegation verifier projections"
+        )
+
+    current_bindings = {
+        binding.identity: binding
+        for binding in current_realized_graph.delegation_authorities
+    }
+    current_projections: dict[
+        tuple[str, DelegationKeyPurpose],
+        DelegationVerifierProjection,
+    ] = {}
+    for node_id in sorted(current_realized_graph.nodes):
+        node = current_realized_graph.node(node_id)
+        projection = node.delegation_verifier_projection
+        if projection is None:
+            continue
+        binding = current_bindings.get(projection.binding_identity)
+        if (
+            projection.delegate_node_id != node_id
+            or binding is None
+            or binding.issuer != projection.issuer
+            or projection.binding_identity in current_projections
+        ):
+            raise DelegationAuthorityError(
+                "current verifier projection does not match its authored binding"
+            )
+        current_projections[projection.binding_identity] = projection
+
+    carried: list[DelegationVerifierProjection] = []
+    for binding in sorted(
+        authored_graph.delegation_authorities,
+        key=lambda value: (value.delegate_node_id, value.purpose.value),
+    ):
+        current_binding = current_bindings.get(binding.identity)
+        projection = current_projections.get(binding.identity)
+        if (
+            current_binding is None
+            or projection is None
+            or current_binding.issuer != binding.issuer
+        ):
+            continue
+        try:
+            authored_node = authored_graph.node(binding.delegate_node_id)
+            current_node = current_realized_graph.node(binding.delegate_node_id)
+        except KeyError as error:
+            raise DelegationAuthorityError(
+                "delegation authority references a missing delegate node"
+            ) from error
+        if (
+            replace(current_node, delegation_verifier_projection=None)
+            != authored_node
+        ):
+            continue
+        carried.append(projection)
+    return tuple(carried)
+
+
 def materialize_delegation_verifiers(
     authored_graph: DeploymentGraph,
     projections: tuple[DelegationVerifierProjection, ...],
@@ -313,6 +388,7 @@ def _text(descriptor: Mapping[str, object], key: str) -> str:
 
 
 __all__ = [
+    "carry_forward_compatible_delegation_verifiers",
     "DelegationAuthorityBinding",
     "DelegationAuthorityError",
     "DelegationVerifierProjection",

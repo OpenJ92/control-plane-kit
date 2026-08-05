@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import unittest
 
@@ -18,6 +18,7 @@ from control_plane_kit_core.planning import (
     compile_activity_plan,
 )
 from control_plane_kit_core.delegation_authority import (
+    carry_forward_compatible_delegation_verifiers,
     DelegationAuthorityBinding,
     DelegationAuthorityError,
     DelegationVerifierProjection,
@@ -272,6 +273,190 @@ class DelegationAuthorityProjectionTests(unittest.TestCase):
 
         self.assertIs(materialize_delegation_verifiers(graph, ()), graph)
         self.assertNotIn("delegation_authorities", DEFAULT_GRAPH_CODEC.encode(graph))
+
+    def test_compatible_projection_carries_exact_lifecycle_identity(self) -> None:
+        authored = self.authored_graph()
+        projection_b = self.projection(
+            "gateway-rotation-rotation-a-retirement-verifier",
+            self.public_key("key-b", _PUBLIC_KEY_B),
+        )
+        current = materialize_delegation_verifiers(authored, (projection_b,))
+        worker = Node(
+            node_id="worker",
+            block_family=BlockFamily.APPLICATION,
+            block_spec=BlockSpec("worker"),
+            kind="container-server",
+            runtime_id="docker",
+            sockets=BlockSockets(),
+        )
+        desired = replace(
+            authored.add_node(worker),
+            runtimes={
+                "docker": replace(
+                    authored.runtimes["docker"],
+                    children=("gateway", "worker"),
+                )
+            },
+        )
+        authored_descriptor = DEFAULT_GRAPH_CODEC.encode(desired)
+
+        carried = carry_forward_compatible_delegation_verifiers(desired, current)
+        realized = materialize_delegation_verifiers(desired, carried)
+
+        self.assertEqual(carried, (projection_b,))
+        self.assertEqual(
+            realized.node("gateway").delegation_verifier_projection,
+            projection_b,
+        )
+        self.assertIsNone(desired.node("gateway").delegation_verifier_projection)
+        self.assertEqual(DEFAULT_GRAPH_CODEC.encode(desired), authored_descriptor)
+        self.assertEqual(
+            DEFAULT_GRAPH_CODEC.decode(DEFAULT_GRAPH_CODEC.encode(realized)),
+            realized,
+        )
+
+    def test_removed_or_changed_binding_does_not_inherit_projection(self) -> None:
+        authored = self.authored_graph()
+        projection = self.projection(
+            "projection-a",
+            self.public_key("key-a", _PUBLIC_KEY_A),
+        )
+        current = materialize_delegation_verifiers(authored, (projection,))
+        removed = replace(authored, delegation_authorities=())
+        changed = replace(
+            authored,
+            delegation_authorities=(
+                DelegationAuthorityBinding(
+                    "gateway",
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    "another-issuer",
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            carry_forward_compatible_delegation_verifiers(removed, current),
+            (),
+        )
+        self.assertEqual(
+            carry_forward_compatible_delegation_verifiers(changed, current),
+            (),
+        )
+
+    def test_changed_delegate_node_truth_does_not_inherit_projection(self) -> None:
+        authored = self.authored_graph()
+        projection = self.projection(
+            "projection-a",
+            self.public_key("key-a", _PUBLIC_KEY_A),
+        )
+        current = materialize_delegation_verifiers(authored, (projection,))
+        changed_node = replace(
+            authored.node("gateway"),
+            metadata={"release": "changed"},
+        )
+        changed = authored.update_node(changed_node)
+
+        self.assertEqual(
+            carry_forward_compatible_delegation_verifiers(changed, current),
+            (),
+        )
+
+    def test_multiple_bindings_carry_only_exact_compatible_identity(self) -> None:
+        gateway_b = replace(
+            self.authored_graph().node("gateway"),
+            node_id="gateway-b",
+            block_spec=BlockSpec("gateway-b"),
+        )
+        authored = DeploymentGraph(
+            "two-gateways",
+            nodes={
+                "gateway": self.authored_graph().node("gateway"),
+                "gateway-b": gateway_b,
+            },
+            runtimes={
+                "docker": RuntimeRecord(
+                    "docker",
+                    RuntimeKind.DOCKER,
+                    children=("gateway", "gateway-b"),
+                )
+            },
+            delegation_authorities=(
+                self.binding(),
+                DelegationAuthorityBinding(
+                    "gateway-b",
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    "issuer-b",
+                ),
+            ),
+        )
+        projection_a = self.projection(
+            "projection-a",
+            self.public_key("key-a", _PUBLIC_KEY_A),
+        )
+        projection_b = DelegationVerifierProjection(
+            delegate_node_id="gateway-b",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="issuer-b",
+            audience="gateway:workspace-a:gateway-b",
+            projection_id="projection-b",
+            public_keys=(self.public_key("key-b", _PUBLIC_KEY_B),),
+        )
+        current = materialize_delegation_verifiers(
+            authored,
+            (projection_b, projection_a),
+        )
+        desired = replace(
+            authored,
+            delegation_authorities=(
+                self.binding(),
+                DelegationAuthorityBinding(
+                    "gateway-b",
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    "issuer-b-next",
+                ),
+            ),
+        )
+
+        carried = carry_forward_compatible_delegation_verifiers(desired, current)
+
+        self.assertEqual(carried, (projection_a,))
+
+    def test_authored_graph_must_not_contain_realized_projection(self) -> None:
+        authored = self.authored_graph()
+        projection = self.projection(
+            "projection-a",
+            self.public_key("key-a", _PUBLIC_KEY_A),
+        )
+        current = materialize_delegation_verifiers(authored, (projection,))
+
+        with self.assertRaisesRegex(
+            DelegationAuthorityError,
+            "authored graph must not contain delegation verifier projections",
+        ):
+            carry_forward_compatible_delegation_verifiers(current, current)
+
+    def test_malformed_current_projection_fails_closed(self) -> None:
+        authored = self.authored_graph()
+        mismatched = DelegationVerifierProjection(
+            delegate_node_id="gateway",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="another-issuer",
+            audience="gateway:workspace-a:gateway",
+            projection_id="projection-mismatched",
+            public_keys=(self.public_key("key-a", _PUBLIC_KEY_A),),
+        )
+        malformed = authored.update_node(
+            replace(
+                authored.node("gateway"),
+                delegation_verifier_projection=mismatched,
+            )
+        )
+
+        with self.assertRaisesRegex(
+            DelegationAuthorityError,
+            "current verifier projection does not match its authored binding",
+        ):
+            carry_forward_compatible_delegation_verifiers(authored, malformed)
 
     @staticmethod
     def binding() -> DelegationAuthorityBinding:
