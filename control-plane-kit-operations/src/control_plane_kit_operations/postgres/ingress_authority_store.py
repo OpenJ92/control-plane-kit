@@ -341,6 +341,29 @@ class IngressReservationStore:
             raise IngressAuthorityNotFound("hostname reservation was not found")
         return _row_to_cloudflare_reservation(row)
 
+    def require_live_cloudflare_for_ingress(
+        self,
+        workspace_id: str,
+        ingress_id: str,
+    ) -> CloudflareOwnedHostnameReservation:
+        row = self._connection.execute(
+            f"""
+            SELECT {_RESERVATION_COLUMNS}
+            FROM cpk_cloudflare_hostname_reservations
+            WHERE workspace_id = %s
+              AND ingress_id = %s
+              AND status <> 'released'
+            ORDER BY created_at, reservation_id
+            LIMIT 1
+            """,
+            (workspace_id, ingress_id),
+        ).fetchone()
+        if row is None:
+            raise IngressAuthorityNotFound(
+                "live hostname reservation was not found"
+            )
+        return _row_to_cloudflare_reservation(row)
+
     def list_cloudflare(
         self,
         workspace_id: str,
@@ -696,8 +719,11 @@ class IngressResourceStore:
         self,
         workspace_id: str,
         ingress_id: str,
+        *,
+        expected_epoch: int | None = None,
     ) -> CloudflareOwnedIngressResource:
         resource = self.require_active_cloudflare(workspace_id, ingress_id)
+        _require_expected_epoch(resource, expected_epoch)
         updated = replace(
             resource,
             status=OwnedIngressResourceStatus.REMOVING,
@@ -712,6 +738,7 @@ class IngressResourceStore:
         *,
         removed_at: str,
         removed_by_run_id: str,
+        expected_epoch: int | None = None,
     ) -> CloudflareOwnedIngressResource:
         resource = self._get_cloudflare_by_status(
             workspace_id,
@@ -723,6 +750,7 @@ class IngressResourceStore:
         )
         if resource is None:
             raise IngressAuthorityNotFound("removable owned ingress resource was not found")
+        _require_expected_epoch(resource, expected_epoch)
         updated = replace(
             resource,
             status=OwnedIngressResourceStatus.REMOVED,
@@ -736,10 +764,13 @@ class IngressResourceStore:
         self,
         workspace_id: str,
         ingress_id: str,
+        *,
+        expected_epoch: int | None = None,
     ) -> CloudflareOwnedIngressResource:
         resource = self._get_blocking_cloudflare(workspace_id, ingress_id)
         if resource is None:
             raise IngressAuthorityNotFound("owned ingress resource was not found")
+        _require_expected_epoch(resource, expected_epoch)
         updated = replace(
             resource,
             status=OwnedIngressResourceStatus.UNCERTAIN,
@@ -792,6 +823,23 @@ class IngressResourceStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_cloudflare_resource(row) for row in rows)
+
+    def require_latest_removed_cloudflare(
+        self,
+        workspace_id: str,
+        ingress_id: str,
+        reservation_id: str,
+    ) -> CloudflareOwnedIngressResource:
+        resource = self._get_cloudflare_by_status(
+            workspace_id,
+            ingress_id,
+            (OwnedIngressResourceStatus.REMOVED,),
+        )
+        if resource is None or resource.reservation_id != reservation_id:
+            raise IngressAuthorityNotFound(
+                "removed ingress realization for reservation was not found"
+            )
+        return resource
 
     def _get_blocking_cloudflare(
         self,
@@ -1168,6 +1216,22 @@ def _row_to_generated_ingress_secret_reference(
         source_activity_id=row[5],
         source_event_id=row[6],
     )
+
+
+def _require_expected_epoch(
+    resource: CloudflareOwnedIngressResource,
+    expected_epoch: int | None,
+) -> None:
+    if expected_epoch is None:
+        return
+    if type(expected_epoch) is not int or expected_epoch < 1:
+        raise OwnedIngressResourceConflict(
+            "expected ingress realization epoch must be positive"
+        )
+    if resource.epoch != expected_epoch:
+        raise OwnedIngressResourceConflict(
+            "ingress realization epoch changed"
+        )
 
 
 def _metadata_text(metadata: Mapping[str, object], name: str) -> str:
