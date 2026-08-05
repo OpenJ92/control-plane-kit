@@ -513,7 +513,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(len(outcome.observations), 1)
         self.assertIs(outcome.observations[0].status, ObservationStatus.VERIFIED)
 
-    def test_unready_public_ingress_fails_activity_and_keeps_bounded_observation(
+    def test_unready_public_ingress_records_bounded_resumable_progress(
         self,
     ) -> None:
         verifier = RecordingPublicIngressReadinessVerifier(
@@ -523,7 +523,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         adapter = IngressRealizationAdapter(
             self.unit_of_work,
             interpreters={},
-            clock=lambda: "2026-07-28T08:01:00Z",
+            clock=lambda: "2026-07-28T08:01:30Z",
             readiness_verifier=verifier,
         )
 
@@ -547,8 +547,29 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(outcome.kind.name, "FAILED")
-        self.assertEqual(outcome.failure.code, "ingress.readiness-unready")
+        self.assertEqual(outcome.kind.name, "LIMITED_PROGRESS")
+        self.assertIsNone(outcome.failure)
+        self.assertEqual(
+            outcome.evidence.descriptor(),
+            {
+                "deadline": "2026-07-28T08:06:00Z",
+                "ingress_id": "gateway-001",
+                "next_attempt_not_before": "2026-07-28T08:01:35Z",
+                "progress_kind": "public-ingress-convergence",
+                "public_ingress_observation": {
+                    "ingress_id": "gateway-001",
+                    "hostname": "cpk-gateway-001.openj92.dev",
+                    "url": "https://cpk-gateway-001.openj92.dev",
+                    "target": {
+                        "node_id": "gateway",
+                        "provider_socket": "control",
+                    },
+                    "observed_at": "2026-07-28T08:01:30Z",
+                    "status": "unready",
+                    "evidence": {"verification": "bounded"},
+                },
+            },
+        )
         self.assertEqual(len(outcome.observations), 1)
         self.assertIs(
             outcome.observations[0].status,
