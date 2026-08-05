@@ -478,7 +478,6 @@ class IngressRealizationAdapter:
             resource = unit_of_work.stores.ingress_resources.mark_removing(
                 context.request.identity.workspace_id,
                 ingress.ingress_id,
-                source_run_id=context.run.run_id,
             )
             unit_of_work.commit()
         try:
@@ -493,7 +492,6 @@ class IngressRealizationAdapter:
                 unit_of_work.stores.ingress_resources.mark_uncertain(
                     context.request.identity.workspace_id,
                     ingress.ingress_id,
-                    source_run_id=context.run.run_id,
                 )
                 unit_of_work.commit()
             return _uncertain("ingress.remove-uncertain", type(error).__name__)

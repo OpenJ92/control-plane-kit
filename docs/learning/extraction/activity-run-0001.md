@@ -7882,3 +7882,28 @@ calling the injected readiness verifier outside every UnitOfWork. The core gate
 passed 496 tests and the real-Postgres operations gate passed 430 tests. No
 Cloudflare API, Docker, DNS, HTTP, secret, or transaction behavior changed in
 this prerequisite.
+
+## #1422 immutable ingress allocation provenance
+
+The source-live ingress lifecycle passed refreshable public DNS readiness, then
+exposed a data-lineage defect after removing its first public overlay. Owned
+Cloudflare resources and generated tunnel-token references share the exact
+allocation run/activity/event tuple. The removal transition replaced only the
+resource's run id, producing a mixed tuple that no longer named any allocation
+event or generated-secret record.
+
+The owned-resource `source_*` tuple is now treated strictly as immutable
+allocation identity. REMOVING and UNCERTAIN transitions update only lifecycle
+status. Successful removal records its actor and time through the existing
+`removed_by_run_id` and `removed_at` fields. The ordinary activity journal
+continues to identify the run that attempted an uncertain teardown; allocation
+evidence is no longer overloaded as a general last-transition field.
+
+Real-Postgres coverage first failed exactly on removal, uncertainty, and
+generated-secret lookup. It now proves allocation provenance survives ACTIVE ->
+REMOVING -> REMOVED and REMOVING -> UNCERTAIN, and that removed epoch 1 plus
+active epoch 2 each remain joinable to their exact generated secret version.
+The complete operations gate passed 432 tests, package integrity, compileall,
+and installed import. No schema, core language, provider interpreter, external
+IO, secret material, or transaction boundary changed. Comprehensive external
+resource transition history and reconciliation remain owned by #1095.
