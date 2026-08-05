@@ -8,10 +8,23 @@ from typing import Any, Mapping, Protocol
 
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import FailureCategory
-from control_plane_kit_core.planning import AllocatePublicIngress, RemovePublicIngress
+from control_plane_kit_core.planning import (
+    AllocatePublicIngress,
+    RemovePublicIngress,
+    WaitForPublicIngressReady,
+)
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    ProbeKind,
+    ProbeOutcome,
+    RuntimeEndpointObservation,
+)
 from control_plane_kit_core.public_ingress import (
     NamedPublicIngress,
     PublicIngressLifecycle,
+    PublicIngressObservation,
+    PublicIngressObservationStatus,
 )
 from control_plane_kit_core.secrets import (
     SecretCustodyGrant,
@@ -22,6 +35,7 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import Protocol as SocketProtocol
+from control_plane_kit_core.verification import HttpCheck
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
@@ -37,7 +51,12 @@ from control_plane_kit_operations.ingress_authorities import (
     cloudflare_ingress_teardown_plan,
     record_generated_ingress_secret,
 )
-from control_plane_kit_operations.records import BoundedEvidence, FailureEvidence
+from control_plane_kit_operations.records import (
+    BoundedEvidence,
+    FailureEvidence,
+    ObservationRecord,
+    ObservationStatus,
+)
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
     SecretProviderRegistrationError,
@@ -92,6 +111,18 @@ class IngressProviderInterpreter(Protocol):
     ) -> None: ...
 
 
+class PublicIngressReadinessVerifier(Protocol):
+    """Observe one graph-derived public HTTP endpoint outside operations IO."""
+
+    def observe(
+        self,
+        *,
+        ingress: NamedPublicIngress,
+        check: HttpCheck,
+        endpoint: RuntimeEndpointObservation,
+    ) -> PublicIngressObservation: ...
+
+
 @dataclass(frozen=True)
 class IngressRealizationAdapter:
     """Activity adapter for named public ingress effects."""
@@ -100,6 +131,7 @@ class IngressRealizationAdapter:
     interpreters: Mapping[IngressAuthorityProviderKind, IngressProviderInterpreter]
     clock: Any
     secret_use_authorizer: SecretUseResolutionAuthorizer | None = None
+    readiness_verifier: PublicIngressReadinessVerifier | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.interpreters, Mapping):
@@ -128,6 +160,13 @@ class IngressRealizationAdapter:
             raise InvalidOperationCommand(
                 "secret use authorizer must expose authorize_resolution"
             )
+        if self.readiness_verifier is not None and not hasattr(
+            self.readiness_verifier,
+            "observe",
+        ):
+            raise InvalidOperationCommand(
+                "public ingress readiness verifier must expose observe"
+            )
 
     def execute(
         self,
@@ -136,6 +175,8 @@ class IngressRealizationAdapter:
         operation = context.activity.operation
         if isinstance(operation, AllocatePublicIngress):
             return self._allocate(context, operation)
+        if isinstance(operation, WaitForPublicIngressReady):
+            return self._wait_until_ready(context, operation)
         if isinstance(operation, RemovePublicIngress):
             return self._remove(context, operation)
         return ActivityExecutionOutcome.unsupported(
@@ -150,6 +191,87 @@ class IngressRealizationAdapter:
                     }
                 ),
             )
+        )
+
+    def _wait_until_ready(
+        self,
+        context: ActivityRealizationContext,
+        operation: WaitForPublicIngressReady,
+    ) -> ActivityExecutionOutcome:
+        if self.readiness_verifier is None:
+            return _unsupported(
+                context,
+                "ingress.readiness-verifier-missing",
+                "no public ingress readiness verifier is configured",
+            )
+        try:
+            graph = DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
+            ingress = _ingress_by_id(graph, operation.target.ingress_id)
+            check = _public_ingress_http_check(graph, ingress)
+            endpoint = RuntimeEndpointObservation(
+                subject_id=ingress.target.node_id,
+                socket_name=ingress.target.provider_socket,
+                graph_id=context.desired_graph.source_authored_graph_id,
+                protocol=SocketProtocol.HTTP,
+                context=EndpointContext.PUBLIC,
+                address=LiteralEndpointMaterial(
+                    f"https://{ingress.hostname}:443"
+                ),
+            )
+        except (KeyError, TypeError, ValueError, InvalidOperationCommand) as error:
+            return _unsupported(
+                context,
+                "ingress.readiness-contract-unsupported",
+                str(error),
+            )
+
+        try:
+            observation = self.readiness_verifier.observe(
+                ingress=ingress,
+                check=check,
+                endpoint=endpoint,
+            )
+            _require_matching_readiness_observation(observation, ingress)
+        except (TypeError, ValueError, InvalidOperationCommand):
+            return _unsupported(
+                context,
+                "ingress.readiness-result-unsupported",
+                "public ingress readiness evidence is invalid",
+            )
+        except Exception as error:  # noqa: BLE001 - observation failure is bounded.
+            return ActivityExecutionOutcome.failed(
+                FailureEvidence(
+                    FailureCategory.RETRYABLE,
+                    "ingress.readiness-failed",
+                    "public ingress readiness could not be observed",
+                    BoundedEvidence.from_mapping(
+                        {"exception_type": type(error).__name__}
+                    ),
+                )
+            )
+
+        record = _readiness_observation_record(context, observation)
+        evidence = BoundedEvidence.from_mapping(
+            {"public_ingress_observation": observation.descriptor()}
+        )
+        if observation.status is PublicIngressObservationStatus.READY:
+            return ActivityExecutionOutcome.succeeded(
+                evidence,
+                observations=(record,),
+            )
+        code = (
+            "ingress.readiness-unready"
+            if observation.status is PublicIngressObservationStatus.UNREADY
+            else "ingress.readiness-unknown"
+        )
+        return ActivityExecutionOutcome.failed(
+            FailureEvidence(
+                FailureCategory.RETRYABLE,
+                code,
+                "public ingress did not produce ready evidence",
+                evidence,
+            ),
+            observations=(record,),
         )
 
     def _allocate(
@@ -514,6 +636,79 @@ def _ingress_by_id(graph: DeploymentGraph, ingress_id: str) -> NamedPublicIngres
         if ingress.ingress_id == ingress_id:
             return ingress
     raise InvalidOperationCommand("public ingress is missing from pinned graph")
+
+
+def _public_ingress_http_check(
+    graph: DeploymentGraph,
+    ingress: NamedPublicIngress,
+) -> HttpCheck:
+    node = graph.node(ingress.target.node_id)
+    provider = node.sockets.provider(ingress.target.provider_socket)
+    if provider.protocol is not SocketProtocol.HTTP:
+        raise InvalidOperationCommand(
+            "public ingress readiness target must provide HTTP"
+        )
+    checks = tuple(
+        check
+        for check in node.block_spec.verification.checks
+        if isinstance(check, HttpCheck)
+        and check.provider_socket == ingress.target.provider_socket
+    )
+    if len(checks) != 1:
+        raise InvalidOperationCommand(
+            "public ingress readiness requires exactly one target HTTP check"
+        )
+    return checks[0]
+
+
+def _require_matching_readiness_observation(
+    observation: object,
+    ingress: NamedPublicIngress,
+) -> None:
+    if not isinstance(observation, PublicIngressObservation):
+        raise InvalidOperationCommand(
+            "public ingress readiness verifier returned untyped evidence"
+        )
+    if (
+        observation.ingress_id != ingress.ingress_id
+        or observation.hostname != ingress.hostname
+        or observation.url != f"https://{ingress.hostname}"
+        or observation.target != ingress.target
+    ):
+        raise InvalidOperationCommand(
+            "public ingress readiness evidence does not match pinned graph"
+        )
+
+
+def _readiness_observation_record(
+    context: ActivityRealizationContext,
+    observation: PublicIngressObservation,
+) -> ObservationRecord:
+    status_by_ingress_status = {
+        PublicIngressObservationStatus.READY: ObservationStatus.VERIFIED,
+        PublicIngressObservationStatus.UNREADY: ObservationStatus.VERIFICATION_FAILED,
+        PublicIngressObservationStatus.UNKNOWN: ObservationStatus.UNKNOWN,
+    }
+    outcome_by_ingress_status = {
+        PublicIngressObservationStatus.READY: ProbeOutcome.READY,
+        PublicIngressObservationStatus.UNREADY: ProbeOutcome.NOT_READY,
+        PublicIngressObservationStatus.UNKNOWN: ProbeOutcome.UNKNOWN,
+    }
+    return ObservationRecord(
+        observation_id=(
+            f"{context.intent_event.event_id}:public-ingress-readiness"
+        ),
+        workspace_id=context.request.identity.workspace_id,
+        subject_id=observation.ingress_id,
+        status=status_by_ingress_status[observation.status],
+        observed_at=observation.observed_at,
+        evidence=BoundedEvidence.from_mapping(
+            {"public_ingress_observation": observation.descriptor()}
+        ),
+        graph_id=context.desired_graph.source_authored_graph_id,
+        probe_kind=ProbeKind.READINESS,
+        probe_outcome=outcome_by_ingress_status[observation.status],
+    )
 
 
 def _origin_service_url(graph: DeploymentGraph, ingress: NamedPublicIngress) -> str:

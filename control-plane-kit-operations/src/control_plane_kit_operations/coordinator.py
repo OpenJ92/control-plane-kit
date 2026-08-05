@@ -22,6 +22,7 @@ from control_plane_kit_core.planning import (
     RemovePublicIngress,
     RemoveSocketConnection,
     SwitchSocketConnection,
+    WaitForPublicIngressReady,
 )
 from control_plane_kit_core.planning.saga import (
     ExecutionSchedule,
@@ -338,16 +339,43 @@ class ActivityExecutionOutcome:
         )
 
     @classmethod
-    def failed(cls, failure: FailureEvidence) -> "ActivityExecutionOutcome":
-        return cls(EffectResultKind.FAILED, BoundedEvidence(), failure)
+    def failed(
+        cls,
+        failure: FailureEvidence,
+        observations: tuple[ObservationRecord, ...] = (),
+    ) -> "ActivityExecutionOutcome":
+        return cls(
+            EffectResultKind.FAILED,
+            BoundedEvidence(),
+            failure,
+            observations,
+        )
 
     @classmethod
-    def unsupported(cls, failure: FailureEvidence) -> "ActivityExecutionOutcome":
-        return cls(EffectResultKind.UNSUPPORTED, BoundedEvidence(), failure)
+    def unsupported(
+        cls,
+        failure: FailureEvidence,
+        observations: tuple[ObservationRecord, ...] = (),
+    ) -> "ActivityExecutionOutcome":
+        return cls(
+            EffectResultKind.UNSUPPORTED,
+            BoundedEvidence(),
+            failure,
+            observations,
+        )
 
     @classmethod
-    def uncertain(cls, failure: FailureEvidence) -> "ActivityExecutionOutcome":
-        return cls(EffectResultKind.UNCERTAIN, BoundedEvidence(), failure)
+    def uncertain(
+        cls,
+        failure: FailureEvidence,
+        observations: tuple[ObservationRecord, ...] = (),
+    ) -> "ActivityExecutionOutcome":
+        return cls(
+            EffectResultKind.UNCERTAIN,
+            BoundedEvidence(),
+            failure,
+            observations,
+        )
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, EffectResultKind):
@@ -409,7 +437,11 @@ class ActivityExecutionDispatcher:
             )
         if isinstance(
             context.activity.operation,
-            (AllocatePublicIngress, RemovePublicIngress),
+            (
+                AllocatePublicIngress,
+                WaitForPublicIngressReady,
+                RemovePublicIngress,
+            ),
         ):
             if self.ingress is None:
                 return ActivityExecutionOutcome.unsupported(

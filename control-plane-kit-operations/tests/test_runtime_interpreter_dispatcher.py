@@ -24,6 +24,7 @@ from control_plane_kit_core.planning import (
     StartRuntime,
     StopNode,
     SwitchSocketConnection,
+    WaitForPublicIngressReady,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.products import (
@@ -192,6 +193,25 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         outcome = dispatcher.execute(context)
 
         self.assertIs(outcome, ingress_failure)
+        self.assertEqual(ingress.contexts, [context])
+        self.assertEqual(runtime.contexts, [])
+
+    def test_activity_dispatcher_routes_public_readiness_only_to_ingress(self) -> None:
+        ingress_outcome = ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping({"adapter": "ingress-readiness"})
+        )
+        ingress = RecordingActivityAdapter(ingress_outcome)
+        runtime = RecordingActivityAdapter(ActivityExecutionOutcome.succeeded())
+        dispatcher = ActivityExecutionDispatcher(runtime=runtime, ingress=ingress)
+        context = context_for(
+            WaitForPublicIngressReady(
+                PublicIngressActivityTarget("gateway-public")
+            )
+        )
+
+        outcome = dispatcher.execute(context)
+
+        self.assertIs(outcome, ingress_outcome)
         self.assertEqual(ingress.contexts, [context])
         self.assertEqual(runtime.contexts, [])
 

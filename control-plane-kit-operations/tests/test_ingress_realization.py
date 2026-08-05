@@ -21,11 +21,19 @@ from control_plane_kit_core.planning import (
     PlannedActivity,
     PublicIngressActivityTarget,
     RemovePublicIngress,
+    WaitForPublicIngressReady,
+)
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    RuntimeEndpointObservation,
 )
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     NamedPublicIngress,
     PublicIngressLifecycle,
+    PublicIngressObservation,
+    PublicIngressObservationStatus,
     PublicIngressTarget,
 )
 from control_plane_kit_core.secrets import (
@@ -45,6 +53,11 @@ from control_plane_kit_core.topology import (
     RuntimeRecord,
 )
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
+from control_plane_kit_core.verification import (
+    HttpCheck,
+    VerificationContract,
+    VerificationPolicy,
+)
 from control_plane_kit_operations.coordinator import ActivityRealizationContext
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
@@ -73,6 +86,7 @@ from control_plane_kit_operations.records import (
     GraphVersionRecord,
     RealizedGraphProjectionRecord,
     RetryIdentity,
+    ObservationStatus,
 )
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
@@ -245,6 +259,39 @@ class RecordingSecretUseAuthorizer:
         )
 
 
+class RecordingPublicIngressReadinessVerifier:
+    def __init__(
+        self,
+        tracker: TrackingUnitOfWorkFactory,
+        status: PublicIngressObservationStatus,
+    ) -> None:
+        self.tracker = tracker
+        self.status = status
+        self.active_counts: list[int] = []
+        self.calls: list[
+            tuple[NamedPublicIngress, HttpCheck, RuntimeEndpointObservation]
+        ] = []
+
+    def observe(
+        self,
+        *,
+        ingress: NamedPublicIngress,
+        check: HttpCheck,
+        endpoint: RuntimeEndpointObservation,
+    ) -> PublicIngressObservation:
+        self.active_counts.append(self.tracker.active)
+        self.calls.append((ingress, check, endpoint))
+        return PublicIngressObservation(
+            ingress_id=ingress.ingress_id,
+            hostname=ingress.hostname,
+            url=f"https://{ingress.hostname}",
+            target=ingress.target,
+            observed_at="2026-07-28T08:01:30Z",
+            status=self.status,
+            evidence={"verification": "bounded"},
+        )
+
+
 class IngressRealizationAdapterTests(unittest.TestCase):
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
@@ -397,6 +444,156 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(generated.provider_registration_id, "sprov-generated-ingress")
         self.assertEqual(generated.provider_version_id, "version-tunnel-token")
         self.assertEqual(generated.provider_version_number, 1)
+
+    def test_public_ingress_readiness_derives_exact_http_check_outside_transaction(
+        self,
+    ) -> None:
+        verifier = RecordingPublicIngressReadinessVerifier(
+            self.tracker,
+            PublicIngressObservationStatus.READY,
+        )
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={},
+            clock=lambda: "2026-07-28T08:01:00Z",
+            readiness_verifier=verifier,
+        )
+        graph = self.graph(
+            verification=VerificationContract(
+                (
+                    HttpCheck(
+                        check_id="gateway-ready",
+                        provider_socket="control",
+                        path="/health/ready",
+                        policy=VerificationPolicy(
+                            maximum_attempts=4,
+                            interval_seconds=0.25,
+                        ),
+                    ),
+                )
+            )
+        )
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="wait-gateway-public",
+                operation=WaitForPublicIngressReady(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                desired_graph=graph,
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(verifier.active_counts, [0])
+        self.assertEqual(len(verifier.calls), 1)
+        ingress, check, endpoint = verifier.calls[0]
+        self.assertEqual(ingress.ingress_id, "gateway-001")
+        self.assertEqual(check.check_id, "gateway-ready")
+        self.assertEqual(check.path, "/health/ready")
+        self.assertEqual(check.policy.maximum_attempts, 4)
+        self.assertEqual(endpoint.subject_id, "gateway")
+        self.assertEqual(endpoint.socket_name, "control")
+        self.assertEqual(endpoint.graph_id, "graph-desired")
+        self.assertIs(endpoint.context, EndpointContext.PUBLIC)
+        self.assertEqual(
+            endpoint.address,
+            LiteralEndpointMaterial(
+                "https://cpk-gateway-001.openj92.dev:443"
+            ),
+        )
+        self.assertEqual(len(outcome.observations), 1)
+        self.assertIs(outcome.observations[0].status, ObservationStatus.VERIFIED)
+
+    def test_unready_public_ingress_fails_activity_and_keeps_bounded_observation(
+        self,
+    ) -> None:
+        verifier = RecordingPublicIngressReadinessVerifier(
+            self.tracker,
+            PublicIngressObservationStatus.UNREADY,
+        )
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={},
+            clock=lambda: "2026-07-28T08:01:00Z",
+            readiness_verifier=verifier,
+        )
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="wait-gateway-public",
+                operation=WaitForPublicIngressReady(
+                    PublicIngressActivityTarget("gateway-001")
+                ),
+                desired_graph=self.graph(
+                    verification=VerificationContract(
+                        (
+                            HttpCheck(
+                                check_id="gateway-ready",
+                                provider_socket="control",
+                                path="/health/ready",
+                            ),
+                        )
+                    )
+                ),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "FAILED")
+        self.assertEqual(outcome.failure.code, "ingress.readiness-unready")
+        self.assertEqual(len(outcome.observations), 1)
+        self.assertIs(
+            outcome.observations[0].status,
+            ObservationStatus.VERIFICATION_FAILED,
+        )
+        self.assertNotIn("secret://", repr(outcome))
+
+    def test_public_ingress_readiness_requires_one_exact_target_http_check(self) -> None:
+        verifier = RecordingPublicIngressReadinessVerifier(
+            self.tracker,
+            PublicIngressObservationStatus.READY,
+        )
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={},
+            clock=lambda: "2026-07-28T08:01:00Z",
+            readiness_verifier=verifier,
+        )
+        checks = (
+            (),
+            (
+                HttpCheck(
+                    check_id="first",
+                    provider_socket="control",
+                    path="/health/live",
+                ),
+                HttpCheck(
+                    check_id="second",
+                    provider_socket="control",
+                    path="/health/ready",
+                ),
+            ),
+        )
+
+        for ordinal, values in enumerate(checks):
+            with self.subTest(count=len(values)):
+                outcome = adapter.execute(
+                    self.context(
+                        activity_id=f"wait-gateway-public-{ordinal}",
+                        operation=WaitForPublicIngressReady(
+                            PublicIngressActivityTarget("gateway-001")
+                        ),
+                        desired_graph=self.graph(
+                            verification=VerificationContract(values)
+                        ),
+                    )
+                )
+                self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+                self.assertEqual(
+                    outcome.failure.code,
+                    "ingress.readiness-contract-unsupported",
+                )
+        self.assertEqual(verifier.calls, [])
 
     def test_mismatched_custody_receipt_compensates_without_admission(self) -> None:
         interpreter = RecordingIngressInterpreter(self.tracker)
@@ -626,14 +823,18 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             )
         self.assertEqual(resource.status, OwnedIngressResourceStatus.UNCERTAIN)
 
-    def graph(self) -> DeploymentGraph:
+    def graph(
+        self,
+        *,
+        verification: VerificationContract = VerificationContract(),
+    ) -> DeploymentGraph:
         return DeploymentGraph(
             "ingress-test",
             nodes={
                 "gateway": Node(
                     node_id="gateway",
                     block_family=BlockFamily.PROXY,
-                    block_spec=BlockSpec("gateway"),
+                    block_spec=BlockSpec("gateway", verification=verification),
                     kind="container",
                     runtime_id="docker-a",
                     sockets=BlockSockets(
