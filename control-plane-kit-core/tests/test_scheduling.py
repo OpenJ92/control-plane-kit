@@ -10,6 +10,7 @@ from control_plane_kit_core.planning import (
     NodeTarget,
     PlannedActivity,
     StartNode,
+    WaitForPublicIngressReady,
     compile_activity_plan,
 )
 from control_plane_kit_core.planning.saga import (
@@ -22,7 +23,9 @@ from control_plane_kit_core.planning.saga import (
     derive_schedule,
 )
 from control_plane_kit_core.planning.scenarios import planning_scenarios
-from control_plane_kit_core.topology import diff_graphs, validate_graph
+from control_plane_kit_core.topology import DeploymentGraph, diff_graphs, validate_graph
+
+from tests.test_graph_codec import public_ingress_graph
 
 
 def activity(name: str, *predecessors: str) -> PlannedActivity:
@@ -303,6 +306,43 @@ class SchedulingSuccessorTests(unittest.TestCase):
 
 
 class SchedulingScenarioSuccessorTests(unittest.TestCase):
+    def test_public_ingress_plan_is_not_successful_before_readiness_succeeds(self) -> None:
+        desired = validate_graph(public_ingress_graph())
+        plan = compile_activity_plan(
+            diff_graphs(validate_graph(DeploymentGraph(desired.graph.name)), desired)
+        )
+        readiness = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, WaitForPublicIngressReady)
+        )
+        completed = tuple(
+            activity.activity_id.value
+            for activity in plan.activities
+            if activity is not readiness
+        )
+        statuses = {value: SagaStepStatus.SUCCEEDED for value in completed}
+
+        pending = derive_schedule(
+            plan,
+            evidence_for(plan, statuses, completion_order=completed),
+        )
+
+        self.assertEqual(self._ids(pending.ready), (readiness.activity_id.value,))
+        self.assertFalse(pending.successful)
+
+        failed = derive_schedule(
+            plan,
+            evidence_for(
+                plan,
+                {**statuses, readiness.activity_id.value: SagaStepStatus.FAILED},
+                completion_order=completed,
+                failed_steps=(readiness.activity_id.value,),
+            ),
+        )
+        self.assertEqual(self._ids(failed.failed), (readiness.activity_id.value,))
+        self.assertFalse(failed.successful)
+
     def test_every_planning_scenario_has_a_deterministic_initial_schedule(self) -> None:
         for scenario in planning_scenarios():
             with self.subTest(scenario=scenario.scenario_id):
@@ -337,6 +377,10 @@ class SchedulingScenarioSuccessorTests(unittest.TestCase):
                             BlockReason.PLAN_REVIEW_REQUIRED,
                         }),
                     )
+
+    @staticmethod
+    def _ids(values: tuple[PlannedActivity, ...]) -> tuple[str, ...]:
+        return tuple(value.activity_id.value for value in values)
 
 
 if __name__ == "__main__":

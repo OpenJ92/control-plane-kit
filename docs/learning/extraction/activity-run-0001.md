@@ -7818,3 +7818,23 @@ barrier-controlled race with projection publication. The race has one
 workspace-lock winner; the loser observes stale lineage and writes nothing. No
 external IO, provider call, private material, second transaction, process-local
 mutex, retry, or sleep was added.
+## Public ingress readiness is an activity, not harness timing
+
+The named-ingress live path exposed a state-ordering gap after allocation and
+connector health succeeded while the public hostname was not yet resolvable.
+Graph advancement could therefore precede externally observable endpoint
+readiness. The pure plan now distinguishes allocation from observation:
+
+```text
+target healthy/reconciled
+  -> allocate public ingress
+    -> connector start/reconcile
+      -> connector healthy
+        -> wait for public ingress ready
+```
+
+`WaitForPublicIngressReady` is provider-neutral, non-destructive, retry-safe,
+and requires no compensation. It is still a normal durable activity: missing or
+failed evidence prevents a successful schedule. Cloudflare DNS behavior,
+bounded retry policy, and network IO remain interpreter concerns rather than
+core compiler branches or harness sleeps.

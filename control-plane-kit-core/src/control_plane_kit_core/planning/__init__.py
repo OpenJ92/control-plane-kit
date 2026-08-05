@@ -39,6 +39,7 @@ from control_plane_kit_core.planning.activity_plan import (
     StopNode,
     StopRuntime,
     SwitchSocketConnection,
+    WaitForPublicIngressReady,
     WaitForHealthy,
     compensation_for_operation,
 )
@@ -274,6 +275,7 @@ __all__ = [
     "SwitchSocketConnection",
     "ScheduleEvidenceError",
     "UnknownActivityPlanVariant",
+    "WaitForPublicIngressReady",
     "WaitForHealthy",
     "chain",
     "compensation_for_operation",

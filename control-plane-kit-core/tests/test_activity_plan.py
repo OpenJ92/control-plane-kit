@@ -16,6 +16,7 @@ from control_plane_kit_core.planning import (
     NodeTarget,
     PlanViolationCode,
     PlannedActivity,
+    PublicIngressActivityTarget,
     ReconcileNode,
     ReconcileRuntime,
     RemoveNodeResource,
@@ -31,6 +32,7 @@ from control_plane_kit_core.planning import (
     StartRuntime,
     StopNode,
     SwitchSocketConnection,
+    WaitForPublicIngressReady,
     WaitForHealthy,
 )
 from control_plane_kit_core.topology import GraphSubject
@@ -159,6 +161,11 @@ class ActivityPlanTests(unittest.TestCase):
             (AddSocketConnection(SocketConnectionTarget("edge")), RiskLevel.LOW, ActivityImpact.NON_DESTRUCTIVE),
             (SwitchSocketConnection(SocketConnectionTarget("edge")), RiskLevel.LOW, ActivityImpact.NON_DESTRUCTIVE),
             (RemoveSocketConnection(SocketConnectionTarget("edge")), RiskLevel.LOW, ActivityImpact.NON_DESTRUCTIVE),
+            (
+                WaitForPublicIngressReady(PublicIngressActivityTarget("ingress")),
+                RiskLevel.LOW,
+                ActivityImpact.NON_DESTRUCTIVE,
+            ),
             (ReconcileNode(NodeTarget("node")), RiskLevel.LOW, ActivityImpact.NON_DESTRUCTIVE),
             (ReconcileRuntime(RuntimeTarget("runtime")), RiskLevel.LOW, ActivityImpact.NON_DESTRUCTIVE),
             (StartRuntime(RuntimeTarget("runtime")), RiskLevel.LOW, ActivityImpact.NON_DESTRUCTIVE),
@@ -189,6 +196,7 @@ class ActivityPlanTests(unittest.TestCase):
             AddSocketConnection(NodeTarget("node")),  # type: ignore[arg-type]
             SwitchSocketConnection(NodeTarget("node")),  # type: ignore[arg-type]
             RemoveSocketConnection(NodeTarget("node")),  # type: ignore[arg-type]
+            WaitForPublicIngressReady(NodeTarget("node")),  # type: ignore[arg-type]
             ReconcileNode(RuntimeTarget("runtime")),  # type: ignore[arg-type]
             ReconcileRuntime(NodeTarget("node")),  # type: ignore[arg-type]
             StartRuntime(NodeTarget("node")),  # type: ignore[arg-type]
