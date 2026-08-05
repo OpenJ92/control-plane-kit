@@ -24,6 +24,7 @@ from control_plane_kit_core.planning.activity_plan import (
     NonCompensatableReason,
     PlannedActivity,
     PublicIngressActivityTarget,
+    PublicIngressReservationTarget,
     ReconcileNode,
     ReconcileRuntime,
     ReleasePublicIngressReservation,
@@ -289,7 +290,7 @@ class ActivityPlanDescriptorCodec:
                 return RemovePublicIngress(_public_ingress_target(target))
             case "release-public-ingress-reservation":
                 return ReleasePublicIngressReservation(
-                    _public_ingress_target(target)
+                    _public_ingress_reservation_target(target)
                 )
             case "reconcile-node":
                 return ReconcileNode(_node_target(target))
@@ -337,6 +338,17 @@ def _targeted(kind: str, target: object) -> dict[str, object]:
             }
         case PublicIngressActivityTarget(ingress_id=ingress_id):
             value = {"kind": "public-ingress", "ingress_id": ingress_id}
+        case PublicIngressReservationTarget(
+            ingress_id=ingress_id,
+            reservation_id=reservation_id,
+            reservation_version=reservation_version,
+        ):
+            value = {
+                "kind": "public-ingress-reservation",
+                "ingress_id": ingress_id,
+                "reservation_id": reservation_id,
+                "reservation_version": reservation_version,
+            }
         case _:
             raise MalformedActivityPlanDescriptor("unknown typed activity target")
     return {"kind": kind, "target": value}
@@ -368,6 +380,17 @@ def _data_resource_target(value: Mapping[str, object]) -> DataResourceTarget:
 def _public_ingress_target(value: Mapping[str, object]) -> PublicIngressActivityTarget:
     _require_kind(value, "public-ingress")
     return PublicIngressActivityTarget(_text(value, "ingress_id"))
+
+
+def _public_ingress_reservation_target(
+    value: Mapping[str, object],
+) -> PublicIngressReservationTarget:
+    _require_kind(value, "public-ingress-reservation")
+    return PublicIngressReservationTarget(
+        _text(value, "ingress_id"),
+        _text(value, "reservation_id"),
+        _integer(value, "reservation_version"),
+    )
 
 
 def _require_kind(value: Mapping[str, object], expected: str) -> None:
@@ -435,6 +458,13 @@ def _list(value: object, name: str) -> list[object]:
 
 def _text(value: Mapping[str, object], key: str) -> str:
     return _primitive_text(value.get(key), key)
+
+
+def _integer(value: Mapping[str, object], key: str) -> int:
+    item = value.get(key)
+    if type(item) is not int:
+        raise MalformedActivityPlanDescriptor(f"{key} must be an integer")
+    return item
 
 
 def _primitive_text(value: object, name: str) -> str:

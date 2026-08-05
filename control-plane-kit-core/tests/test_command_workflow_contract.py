@@ -257,6 +257,16 @@ class CommandWorkflowContractTests(unittest.TestCase):
                     ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
                 ),
                 (
+                    "public-ingress-reservation.release-plan",
+                    OperatorCommandKind.REQUEST_PUBLIC_INGRESS_RESERVATION_RELEASE,
+                    OperatorCommandFamily.ACTIVITY_PLANNING,
+                    DeploymentProgramStage.PLAN,
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+                    ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
+                ),
+                (
                     "runtime-authority-delivery.register",
                     OperatorCommandKind.REGISTER_RUNTIME_AUTHORITY_DELIVERY,
                     OperatorCommandFamily.RUNTIME_AUTHORITY,
@@ -397,6 +407,12 @@ class CommandWorkflowContractTests(unittest.TestCase):
         self.assertIs(
             contract.command("activity-plan.request").payload_policy,
             CommandPayloadPolicy.PLAN_DESCRIPTOR_REFERENCE,
+        )
+        self.assertIs(
+            contract.command(
+                "public-ingress-reservation.release-plan"
+            ).payload_policy,
+            CommandPayloadPolicy.PUBLIC_INGRESS_RESERVATION_REFERENCE,
         )
         self.assertIs(
             contract.command("approval.request").payload_policy,

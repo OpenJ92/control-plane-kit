@@ -74,6 +74,21 @@ class PublicIngressActivityTarget:
 
 
 @dataclass(frozen=True)
+class PublicIngressReservationTarget:
+    """Exact provider-neutral identity of one durable hostname reservation."""
+
+    ingress_id: str
+    reservation_id: str
+    reservation_version: int
+
+    def __post_init__(self) -> None:
+        if not self.ingress_id.strip() or not self.reservation_id.strip():
+            raise ValueError("public ingress reservation identities must not be empty")
+        if type(self.reservation_version) is not int or self.reservation_version < 1:
+            raise ValueError("public ingress reservation version must be positive")
+
+
+@dataclass(frozen=True)
 class ChangeTarget:
     subject: DiffSubject
 
@@ -136,7 +151,7 @@ class RemovePublicIngress:
 class ReleasePublicIngressReservation:
     """Explicit final release of retained public hostname identity."""
 
-    target: PublicIngressActivityTarget
+    target: PublicIngressReservationTarget
 
 
 @dataclass(frozen=True)
@@ -377,7 +392,7 @@ def _require_typed_operation(operation: object) -> None:
             return
         case RemovePublicIngress(target=PublicIngressActivityTarget()):
             return
-        case ReleasePublicIngressReservation(target=PublicIngressActivityTarget()):
+        case ReleasePublicIngressReservation(target=PublicIngressReservationTarget()):
             return
         case ReconcileNode(target=NodeTarget()):
             return

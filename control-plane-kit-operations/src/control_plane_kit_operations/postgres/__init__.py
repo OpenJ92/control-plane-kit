@@ -28,6 +28,7 @@ from control_plane_kit_operations.postgres.image_pull_authority_store import (
 from control_plane_kit_operations.postgres.ingress_authority_store import (
     GeneratedIngressSecretReferenceStore,
     IngressAuthorityStore,
+    IngressReservationStore,
     IngressResourceStore,
 )
 from control_plane_kit_operations.postgres.observed_state import (
@@ -64,6 +65,7 @@ __all__ = [
     "ImagePullAuthorityStore",
     "GeneratedIngressSecretReferenceStore",
     "IngressAuthorityStore",
+    "IngressReservationStore",
     "IngressResourceStore",
     "PostgresObservedStateStore",
     "PostgresConnection",

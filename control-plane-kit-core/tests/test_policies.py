@@ -9,6 +9,7 @@ from control_plane_kit_core.planning import (
     DataResourceTarget,
     DestroyDataResource,
     PublicIngressActivityTarget,
+    PublicIngressReservationTarget,
     ReleasePublicIngressReservation,
     NodeTarget,
     PlannedActivity,
@@ -127,7 +128,11 @@ class PolicyDecisionTests(unittest.TestCase):
         self.assertEqual(
             policy.classify_operation(
                 ReleasePublicIngressReservation(
-                    PublicIngressActivityTarget("gateway-public")
+                    PublicIngressReservationTarget(
+                        "gateway-public",
+                        "reservation-gateway-public",
+                        1,
+                    )
                 )
             ).required_scope,
             PolicyScope.PLAN_APPROVE_DESTRUCTIVE,

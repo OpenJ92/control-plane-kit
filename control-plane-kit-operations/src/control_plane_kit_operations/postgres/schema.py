@@ -56,6 +56,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
 from control_plane_kit_operations.ingress_authorities import (
     GeneratedSecretPurpose,
     IngressAuthorityProviderKind,
+    OwnedHostnameReservationStatus,
     OwnedIngressResourceStatus,
     RegisteredIngressAuthorityStatus,
 )
@@ -788,10 +789,85 @@ CREATE INDEX IF NOT EXISTS cpk_secret_use_authorizations_reference_history
     authorization_id
   );
 
+CREATE TABLE IF NOT EXISTS cpk_cloudflare_hostname_reservations (
+  reservation_id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
+  ingress_id text NOT NULL,
+  authority_ref text NOT NULL,
+  provider_kind text NOT NULL,
+  dns_record_id text NOT NULL,
+  hostname text NOT NULL,
+  zone_id text NOT NULL,
+  lifecycle text NOT NULL,
+  status text NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  created_at text NOT NULL,
+  observed_at text NOT NULL,
+  source_run_id text NOT NULL,
+  source_activity_id text NOT NULL,
+  source_event_id text NOT NULL,
+  transitioned_at text,
+  transition_run_id text,
+  transition_activity_id text,
+  transition_event_id text,
+  released_at text,
+  released_by_run_id text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  CONSTRAINT cpk_cloudflare_hostname_reservations_id_check
+    CHECK (reservation_id ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_cloudflare_hostname_reservations_provider_kind_check
+    CHECK (provider_kind = 'cloudflare'),
+  CONSTRAINT cpk_cloudflare_hostname_reservations_lifecycle_check
+    CHECK (lifecycle = 'retained'),
+  CONSTRAINT cpk_cloudflare_hostname_reservations_status_check
+    CHECK (status IN ({{ owned_hostname_reservation_statuses | sql_values }})),
+  CONSTRAINT cpk_cloudflare_hostname_reservations_version_check
+    CHECK (version > 0),
+  CONSTRAINT cpk_cloudflare_hostname_reservations_authority_ref_check
+    CHECK (authority_ref ~ '^[a-z][a-z0-9._-]{0,127}$'),
+  CONSTRAINT cpk_cloudflare_hostname_reservations_transition_evidence_check
+    CHECK (
+      (transitioned_at IS NULL AND transition_run_id IS NULL
+       AND transition_activity_id IS NULL AND transition_event_id IS NULL)
+      OR
+      (transitioned_at IS NOT NULL AND transition_run_id IS NOT NULL
+       AND transition_activity_id IS NOT NULL AND transition_event_id IS NOT NULL)
+    ),
+  CONSTRAINT cpk_cloudflare_hostname_reservations_release_evidence_check
+    CHECK (
+      (status = 'released' AND released_at IS NOT NULL
+       AND released_by_run_id IS NOT NULL)
+      OR
+      (status <> 'released' AND released_at IS NULL
+       AND released_by_run_id IS NULL)
+    ),
+  CONSTRAINT cpk_cloudflare_hostname_reservations_metadata_shape_check
+    CHECK (jsonb_typeof(metadata) = 'object')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_cloudflare_hostname_reservations_live_ingress
+  ON cpk_cloudflare_hostname_reservations (workspace_id, ingress_id)
+  WHERE status <> 'released';
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_cloudflare_hostname_reservations_live_hostname
+  ON cpk_cloudflare_hostname_reservations (workspace_id, authority_ref, hostname)
+  WHERE status <> 'released';
+
+CREATE INDEX IF NOT EXISTS cpk_cloudflare_hostname_reservations_workspace
+  ON cpk_cloudflare_hostname_reservations (
+    workspace_id, observed_at DESC, ingress_id, reservation_id
+  );
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_cloudflare_hostname_reservations_resource_identity
+  ON cpk_cloudflare_hostname_reservations (
+    reservation_id, workspace_id, ingress_id
+  );
+
 CREATE TABLE IF NOT EXISTS cpk_cloudflare_ingress_resources (
   workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
   runtime_id text NOT NULL,
   ingress_id text NOT NULL,
+  reservation_id text,
   epoch integer NOT NULL DEFAULT 1,
   status text NOT NULL DEFAULT 'active',
   authority_ref text NOT NULL,
@@ -830,12 +906,20 @@ CREATE TABLE IF NOT EXISTS cpk_cloudflare_ingress_resources (
     CHECK (jsonb_typeof(metadata) = 'object')
 );
 
+ALTER TABLE cpk_cloudflare_ingress_resources
+  ADD COLUMN IF NOT EXISTS reservation_id text;
+
 CREATE INDEX IF NOT EXISTS cpk_cloudflare_ingress_resources_workspace
   ON cpk_cloudflare_ingress_resources (workspace_id, observed_at DESC, ingress_id, epoch);
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_cloudflare_ingress_resources_active_key
   ON cpk_cloudflare_ingress_resources (workspace_id, ingress_id)
   WHERE status IN ('allocating', 'active', 'removing');
+
+CREATE UNIQUE INDEX IF NOT EXISTS cpk_cloudflare_ingress_resources_active_reservation
+  ON cpk_cloudflare_ingress_resources (reservation_id)
+  WHERE reservation_id IS NOT NULL
+    AND status IN ('allocating', 'active', 'removing', 'uncertain', 'orphaned');
 
 CREATE TABLE IF NOT EXISTS cpk_generated_ingress_secret_references (
   workspace_id text NOT NULL REFERENCES cpk_workspaces(workspace_id),
@@ -1373,6 +1457,7 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     observation_freshnesses=tuple(ObservationFreshness),
     observation_statuses=tuple(ObservationStatus),
     public_ingress_lifecycles=tuple(PublicIngressLifecycle),
+    owned_hostname_reservation_statuses=tuple(OwnedHostnameReservationStatus),
     owned_ingress_resource_statuses=tuple(OwnedIngressResourceStatus),
     policy_scopes=tuple(PolicyScope),
     endpoint_contexts=tuple(EndpointContext),
@@ -1416,11 +1501,127 @@ def install_schema(connection: PostgresConnection) -> None:
     """Install the current operations schema on a caller-managed transaction."""
 
     connection.execute(POSTGRES_SCHEMA)
+    _upgrade_operation_action_kind_constraint(connection)
     _upgrade_approval_scope_constraints(connection)
     _upgrade_gateway_key_rotation_status_constraints(connection)
     _upgrade_gateway_key_rotation_retirement_constraint(connection)
+    _backfill_retained_hostname_reservations(connection)
+    _install_ingress_reservation_foreign_key(connection)
     _backfill_graph_lineage(connection)
     connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
+
+
+def _backfill_retained_hostname_reservations(
+    connection: PostgresConnection,
+) -> None:
+    """Materialize exact unambiguous legacy retained ownership without row loss."""
+
+    duplicate_ingress = connection.execute(
+        """
+        SELECT workspace_id, ingress_id
+        FROM cpk_cloudflare_ingress_resources
+        WHERE lifecycle = 'retained'
+          AND status <> 'removed'
+          AND reservation_id IS NULL
+        GROUP BY workspace_id, ingress_id
+        HAVING count(*) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    duplicate_hostname = connection.execute(
+        """
+        SELECT workspace_id, authority_ref, hostname
+        FROM cpk_cloudflare_ingress_resources
+        WHERE lifecycle = 'retained'
+          AND status <> 'removed'
+          AND reservation_id IS NULL
+        GROUP BY workspace_id, authority_ref, hostname
+        HAVING count(DISTINCT ingress_id) > 1
+        LIMIT 1
+        """
+    ).fetchone()
+    if duplicate_ingress is not None or duplicate_hostname is not None:
+        raise ValueError(
+            "ambiguous legacy retained ingress ownership requires operator reconciliation"
+        )
+
+    connection.execute(
+        """
+        INSERT INTO cpk_cloudflare_hostname_reservations (
+          reservation_id, workspace_id, ingress_id, authority_ref,
+          provider_kind, dns_record_id, hostname, zone_id, lifecycle, status,
+          version, created_at, observed_at, source_run_id, source_activity_id,
+          source_event_id
+        )
+        SELECT
+          'reservation-legacy-' || substr(
+            md5(workspace_id || ':' || ingress_id || ':' || dns_record_id),
+            1,
+            24
+          ),
+          workspace_id,
+          ingress_id,
+          authority_ref,
+          provider_kind,
+          dns_record_id,
+          hostname,
+          zone_id,
+          lifecycle,
+          CASE status WHEN 'active' THEN 'bound' ELSE 'uncertain' END,
+          1,
+          created_at,
+          observed_at,
+          source_run_id,
+          source_activity_id,
+          source_event_id
+        FROM cpk_cloudflare_ingress_resources
+        WHERE lifecycle = 'retained'
+          AND status <> 'removed'
+          AND reservation_id IS NULL
+        """
+    )
+    connection.execute(
+        """
+        UPDATE cpk_cloudflare_ingress_resources
+        SET reservation_id = 'reservation-legacy-' || substr(
+          md5(workspace_id || ':' || ingress_id || ':' || dns_record_id),
+          1,
+          24
+        )
+        WHERE lifecycle = 'retained'
+          AND status <> 'removed'
+          AND reservation_id IS NULL
+        """
+    )
+
+
+def _install_ingress_reservation_foreign_key(
+    connection: PostgresConnection,
+) -> None:
+    """Add the historical realization-to-reservation join after safe backfill."""
+
+    constraint = "cpk_cloudflare_ingress_resources_reservation_identity_fkey"
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = %s
+          AND conrelid = 'cpk_cloudflare_ingress_resources'::regclass
+        """,
+        (constraint,),
+    ).fetchone()
+    if row is not None:
+        return
+    connection.execute(
+        """
+        ALTER TABLE cpk_cloudflare_ingress_resources
+        ADD CONSTRAINT cpk_cloudflare_ingress_resources_reservation_identity_fkey
+        FOREIGN KEY (reservation_id, workspace_id, ingress_id)
+        REFERENCES cpk_cloudflare_hostname_reservations(
+          reservation_id, workspace_id, ingress_id
+        )
+        """
+    )
 
 
 def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
@@ -1456,6 +1657,33 @@ def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
             f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
             f"CHECK ({column} IN ({allowed}))"
         )
+
+
+def _upgrade_operation_action_kind_constraint(
+    connection: PostgresConnection,
+) -> None:
+    """Expand installed closed action kinds without rewriting action history."""
+
+    table = "cpk_operation_actions"
+    constraint = "cpk_operation_actions_type_check"
+    kinds = tuple(OperatorCommandKind) + tuple(LifecycleOperationKind)
+    row = connection.execute(
+        """
+        SELECT pg_get_constraintdef(oid)
+        FROM pg_constraint
+        WHERE conname = %s
+          AND conrelid = %s::regclass
+        """,
+        (constraint, table),
+    ).fetchone()
+    if row is not None and all(kind.value in row[0] for kind in kinds):
+        return
+    if row is not None:
+        connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
+    connection.execute(
+        f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
+        f"CHECK (action_type IN ({_sql_values(kinds)}))"
+    )
 
 
 def _upgrade_gateway_key_rotation_status_constraints(

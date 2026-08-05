@@ -13,6 +13,7 @@ from control_plane_kit_core.planning import (
     PlannedActivity,
     PlanViolationCode,
     PublicIngressActivityTarget,
+    PublicIngressReservationTarget,
     ReleasePublicIngressReservation,
     RiskLevel,
     compensation_for_operation,
@@ -122,7 +123,11 @@ class RetainedPublicIngressLanguageTests(unittest.TestCase):
 
     def test_explicit_reservation_release_is_closed_destructive_intent(self) -> None:
         operation = ReleasePublicIngressReservation(
-            PublicIngressActivityTarget("gateway-public")
+            PublicIngressReservationTarget(
+                "gateway-public",
+                "reservation-gateway-public",
+                1,
+            )
         )
         plan = ActivityPlan(
             (
@@ -142,8 +147,10 @@ class RetainedPublicIngressLanguageTests(unittest.TestCase):
             {
                 "kind": "release-public-ingress-reservation",
                 "target": {
-                    "kind": "public-ingress",
+                    "kind": "public-ingress-reservation",
                     "ingress_id": "gateway-public",
+                    "reservation_id": "reservation-gateway-public",
+                    "reservation_version": 1,
                 },
             },
         )
