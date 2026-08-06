@@ -27,7 +27,7 @@ class BackendSourceLockTests(unittest.TestCase):
 
         self.assertEqual(
             lock.server_products.commit,
-            "31c569b6e90d139ea658cccb1b19b8e84c4172c2",
+            "37cabc3243269e63750cc23b298706e8297b1ee3",
         )
         self.assertEqual(
             {spec.coordinate_key for spec in lock.upstreams},
