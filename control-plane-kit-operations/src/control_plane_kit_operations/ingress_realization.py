@@ -996,10 +996,10 @@ class IngressRealizationAdapter:
         try:
             result = interpreter.release_reservation(
                 authority=authority.authority,
-                reservation=_reservation_coordinates(reservation, removed_resource),
+                reservation=_reservation_coordinates(releasing, removed_resource),
                 secret_resolution_grant=grant,
             )
-            _require_released_reservation_observation(result, reservation)
+            _require_released_reservation_observation(result, releasing)
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
             uncertainty_recorded = self._mark_reservation_uncertain(
                 context,
