@@ -178,6 +178,20 @@ class GatewayKeyRotationApprovalTests(unittest.TestCase):
                     idempotency_key=IdempotencyKey("decide-rotation-approval"),
                 )
             )
+        with self.assertRaisesRegex(
+            ApprovalAuthorizationDenied,
+            "destructive approval requires a distinct principal",
+        ):
+            self.approvals.execute(
+                DecideApproval(
+                    session_id="generated-1",
+                    request_id=requested.request.request_id,
+                    actor_id="operator-a",
+                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,),
+                    decision=ApprovalDecisionKind.APPROVED,
+                    idempotency_key=IdempotencyKey("decide-rotation-approval"),
+                )
+            )
 
         decided = self.approvals.execute(
             DecideApproval(

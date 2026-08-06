@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+import control_plane_kit_core.policies as policies
 from control_plane_kit_core.planning import (
     ActivityId,
     ActivityImpact,
@@ -103,6 +104,57 @@ class PolicyDecisionTests(unittest.TestCase):
         self.assertTrue(
             policy.can_request_plan((PolicyScope.PLAN_REQUEST,)).allowed,
         )
+
+    def test_destructive_approval_requires_distinct_principal_by_default(self) -> None:
+        policy = ApprovalPolicy()
+
+        self_approval = policy.can_approve_plan(
+            (PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+            requested_by="operator-a",
+            decided_by="operator-a",
+            destructive=True,
+        )
+        distinct_approval = policy.can_approve_plan(
+            (PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+            requested_by="operator-a",
+            decided_by="manager-a",
+            destructive=True,
+        )
+
+        self.assertFalse(self_approval.allowed)
+        self.assertEqual(
+            self_approval.reason,
+            "destructive approval requires a distinct principal",
+        )
+        self.assertTrue(distinct_approval.allowed)
+
+    def test_local_policy_explicitly_allows_destructive_self_approval(self) -> None:
+        policy = ApprovalPolicy(
+            destructive_separation=(
+                policies.DestructiveApprovalSeparation.ALLOW_SELF
+            )
+        )
+
+        decision = policy.can_approve_plan(
+            (PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+            requested_by="operator-a",
+            decided_by="operator-a",
+            destructive=True,
+        )
+
+        self.assertTrue(decision.allowed)
+
+    def test_non_destructive_self_approval_is_explicitly_unchanged(self) -> None:
+        policy = ApprovalPolicy()
+
+        decision = policy.can_approve_plan(
+            (PolicyScope.PLAN_APPROVE,),
+            requested_by="operator-a",
+            decided_by="operator-a",
+            destructive=False,
+        )
+
+        self.assertTrue(decision.allowed)
 
     def test_destructive_activity_policy_classifies_consequential_actions(self) -> None:
         policy = DestructiveActivityPolicy()
