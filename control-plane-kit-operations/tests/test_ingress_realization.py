@@ -1492,6 +1492,70 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(missing_epoch.failure.code, "ingress.release-unsupported")
         self.assertEqual(interpreter.release_active_counts, [])
 
+    def test_release_rejects_foreign_truth_and_worker_before_io(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:05:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+        context = self.context(
+            activity_id="release-reservation",
+            operation=self.release_operation(),
+            base_graph=DeploymentGraph("empty"),
+            desired_graph=DeploymentGraph("empty"),
+        )
+
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET dns_record_id = 'dns-foreign' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        foreign_resource = adapter.execute(context)
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET dns_record_id = 'dns-001', zone_id = 'zone-foreign' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_hostname_reservations "
+            "SET zone_id = 'zone-foreign' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        foreign_authority = adapter.execute(context)
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET zone_id = 'zone-openj92' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_hostname_reservations "
+            "SET zone_id = 'zone-openj92' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        missing_worker_scope = adapter.execute(
+            self.context(
+                activity_id="release-reservation",
+                operation=self.release_operation(),
+                base_graph=DeploymentGraph("empty"),
+                desired_graph=DeploymentGraph("empty"),
+                worker_scopes=(PolicyScope.SECRET_PROVIDER_USE,),
+            )
+        )
+
+        for outcome in (
+            foreign_resource,
+            foreign_authority,
+            missing_worker_scope,
+        ):
+            self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+            self.assertEqual(outcome.failure.code, "ingress.release-unsupported")
+        self.assertEqual(interpreter.release_active_counts, [])
+
     def test_release_provider_error_is_redacted_and_uncertain(self) -> None:
         interpreter = RecordingIngressInterpreter(self.tracker)
         interpreter.fail_release = True
@@ -1862,6 +1926,10 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         operation: object | None = None,
         base_graph: DeploymentGraph | None = None,
         desired_graph: DeploymentGraph | None = None,
+        worker_scopes: tuple[PolicyScope, ...] = (
+            PolicyScope.EXECUTION_OPERATE,
+            PolicyScope.SECRET_PROVIDER_USE,
+        ),
     ) -> ActivityRealizationContext:
         graph = self.graph()
         operation = operation or AllocatePublicIngress(
@@ -1943,10 +2011,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             registered_products=(),
             authority=ExecutionWorkerAuthority(
                 "worker-a",
-                (
-                    PolicyScope.EXECUTION_OPERATE,
-                    PolicyScope.SECRET_PROVIDER_USE,
-                ),
+                worker_scopes,
             ),
             intent_event=ActivityEventRecord(
                 intent_event_id,
