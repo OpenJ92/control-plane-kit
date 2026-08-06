@@ -896,6 +896,12 @@ _OPERATOR_READ_PROJECTIONS = (
         "IngressAuthorityDetailReadResponse",
     ),
     (
+        "read.public-ingress-resources",
+        "read.public-ingress-resources",
+        "list_public_ingress_resources",
+        "PublicIngressResourceCollectionReadResponse",
+    ),
+    (
         "read.operator-graph",
         "read.operator-graph",
         "get_operator_graph",
@@ -1245,6 +1251,15 @@ _OPERATOR_COMMANDS = (
         ControlPlaneServiceRole.PLANNING,
         "PlanDeploymentRequest",
         "PlanDeploymentResponse",
+        ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+    ),
+    (
+        "public-ingress-reservation.release-plan",
+        "command.public-ingress-reservation.release-plan",
+        "plan_public_ingress_reservation_release",
+        ControlPlaneServiceRole.PLANNING,
+        "RequestPublicIngressReservationRelease",
+        "ActivityPlanningResult",
         ApprovalPolicy.SUBMITS_FOR_APPROVAL,
     ),
     (

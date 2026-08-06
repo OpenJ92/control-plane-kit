@@ -189,6 +189,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.public-ingress-resources",
+                    ReadProjectionKind.PUBLIC_INGRESS_RESOURCES,
+                    "PublicIngressResourceCollectionReadResponse",
+                    ReadProjectionPolicy.REDACTED_PUBLIC_INGRESS_RESOURCE,
+                    True,
+                    False,
+                ),
+                (
                     "read.runtime-authorities",
                     ReadProjectionKind.RUNTIME_AUTHORITIES,
                     "RuntimeAuthorityCollectionReadResponse",

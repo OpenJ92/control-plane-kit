@@ -14,6 +14,7 @@ from control_plane_kit_core.operations import (
     ServiceTransactionBoundary,
     StoreParticipation,
     UnitOfWorkBoundary,
+    canonical_operator_command_workflow_contract,
     canonical_operator_read_projection_set,
     operator_command_http_routes,
     operator_command_parity,
@@ -49,7 +50,7 @@ def _unit_of_work() -> UnitOfWorkBoundary:
                 external_effect_policy=(
                     ExternalEffectPolicy.AFTER_COMMIT
                     if role is ControlPlaneServiceRole.EXECUTION
-                    else ExternalEffectPolicy.NONE
+                    else ExternalEffectPolicy.FORBIDDEN
                 ),
                 uses_worker=role is ControlPlaneServiceRole.EXECUTION,
                 uses_runtime_authority=role is ControlPlaneServiceRole.EXECUTION,
@@ -80,10 +81,14 @@ class PublicIngressApplicationSurfaceContractTests(unittest.TestCase):
         projection = canonical_operator_read_projection_set().projection(
             "read.public-ingress-resources"
         )
-        binding = operator_read_projection_parity(
-            http,
-            McpStreamableHttpContract(),
-        ).projection("read.public-ingress-resources")
+        binding = next(
+            binding
+            for binding in operator_read_projection_parity(
+                http,
+                McpStreamableHttpContract(),
+            ).projections
+            if binding.operation_id == "read.public-ingress-resources"
+        )
         self.assertEqual(binding.http_route_id, route.route_id)
         self.assertEqual(binding.mcp_tool_name, "list_public_ingress_resources")
         self.assertEqual(binding.projection_schema, projection.response_schema)
@@ -103,15 +108,26 @@ class PublicIngressApplicationSurfaceContractTests(unittest.TestCase):
         self.assertIs(route.safety, HttpOperationSafety.COMMAND)
         self.assertEqual(
             route.request_schema.name,
-            "PlanPublicIngressReservationReleaseRequest",
+            "RequestPublicIngressReservationRelease",
         )
-        self.assertEqual(route.response_schema.name, "ActivityPlanningResponse")
+        self.assertEqual(route.response_schema.name, "ActivityPlanningResult")
 
-        binding = operator_command_parity(
-            http,
-            McpStreamableHttpContract(),
-            _unit_of_work(),
-        ).command("public-ingress-reservation.release-plan")
+        workflow = canonical_operator_command_workflow_contract().command(
+            "public-ingress-reservation.release-plan"
+        )
+        self.assertEqual(route.request_schema.name, workflow.request_schema)
+        self.assertEqual(route.response_schema.name, workflow.response_schema)
+
+        binding = next(
+            binding
+            for binding in operator_command_parity(
+                http,
+                McpStreamableHttpContract(),
+                _unit_of_work(),
+            ).commands
+            if binding.operation_id
+            == "public-ingress-reservation.release-plan"
+        )
         self.assertEqual(binding.http_route_id, route.route_id)
         self.assertEqual(
             binding.mcp_tool_name,

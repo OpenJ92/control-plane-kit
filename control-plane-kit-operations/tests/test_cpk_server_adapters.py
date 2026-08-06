@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import json
 import os
@@ -19,9 +19,17 @@ from control_plane_kit_core.identity import (
     PrincipalKind,
     WorkspaceGrant,
 )
-from control_plane_kit_core.planning import ActivityPlan
-from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.public_ingress import IngressAuthorityReference
+from control_plane_kit_core.planning import (
+    ActivityImpact,
+    ActivityPlan,
+    ReleasePublicIngressReservation,
+    RiskLevel,
+)
+from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
+from control_plane_kit_core.public_ingress import (
+    IngressAuthorityReference,
+    PublicIngressLifecycle,
+)
 from control_plane_kit_core.algebra import (
     BlockSockets,
     DeploymentTopology,
@@ -40,6 +48,7 @@ from control_plane_kit_core.products import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, compile_topology
 from control_plane_kit_core.types import Protocol
+import control_plane_kit_operations.ingress_authorities as ingress_authorities
 from control_plane_kit_operations.cpk_server import (
     _ROUTE_AUTHORIZATION_POLICIES,
     CpkServerAdmissionService,
@@ -70,6 +79,7 @@ from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
     DesiredGraphCommandService,
     PublicIngressReservationReleasePlanningConflict,
+    PublicIngressReservationReleasePlanningService,
     RequestPublicIngressReservationRelease,
     RequestActivityPlan,
 )
@@ -93,7 +103,11 @@ from control_plane_kit_operations.runtime_authorities import (
 from control_plane_kit_operations.secret_providers import (
     SecretProviderRegistrationService,
 )
-from control_plane_kit_operations.workflows import OperationCommandService
+from control_plane_kit_operations.workflows import (
+    IdempotencyKey,
+    OperationCommandService,
+    StartOperationSession,
+)
 from control_plane_kit_operations.workspaces import WorkspaceCommandService
 
 
@@ -910,22 +924,181 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             RecordingService(),
             ingress_reservation_releases=ConflictingReleasePlanningService(),
         )
-        with self.assertRaises(CpkServerApplicationError) as conflict:
-            conflict_service.handle(
-                RouteRequest(
-                    **{
-                        **request.__dict__,
-                        "principal": operator_principal(
-                            scopes=(PolicyScope.PLAN_REQUEST,)
-                        ),
-                    }
+        authorized = replace(
+            request,
+            principal=operator_principal(scopes=(PolicyScope.PLAN_REQUEST,)),
+        )
+        for surface in ("http", "mcp"):
+            with self.assertRaises(CpkServerApplicationError) as conflict:
+                conflict_service.handle(
+                    replace(authorized, surface=surface)
+                )
+            self.assertEqual(conflict.exception.status, 409)
+            self.assertEqual(
+                conflict.exception.message,
+                "exact reserved hostname truth changed",
+            )
+
+        with self.assertRaises(CpkServerApplicationError) as invalid:
+            service.handle(
+                replace(
+                    authorized,
+                    surface="mcp",
+                    payload={
+                        key: value
+                        for key, value in authorized.payload.items()
+                        if key != "expected_reservation_version"
+                    },
                 )
             )
-        self.assertEqual(conflict.exception.status, 409)
+        self.assertEqual(invalid.exception.status, 400)
         self.assertEqual(
-            conflict.exception.message,
-            "exact reserved hostname truth changed",
+            invalid.exception.message,
+            "expected_reservation_version must be a positive integer",
         )
+        self.assertEqual(recording.commands, [])
+
+    def test_composed_release_route_plans_destructive_work_without_releasing(self) -> None:
+        self.seed_workspace()
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.set_desired_graph(
+                "workspace-a",
+                "graph-current",
+            )
+            reservations = unit_of_work.stores.ingress_reservations
+            reservations.record_cloudflare(
+                ingress_authorities.CloudflareOwnedHostnameReservation(
+                    reservation_id="reservation-001",
+                    workspace_id="workspace-a",
+                    ingress_id="gateway-001",
+                    authority_ref=IngressAuthorityReference(
+                        "openj92-public-ingress"
+                    ),
+                    provider_kind=(
+                        ingress_authorities.IngressAuthorityProviderKind.CLOUDFLARE
+                    ),
+                    dns_record_id="dns-001",
+                    hostname="cpk-gateway-001.openj92.dev",
+                    zone_id="zone-openj92",
+                    lifecycle=PublicIngressLifecycle.RETAINED,
+                    status=ingress_authorities.OwnedHostnameReservationStatus.BOUND,
+                    created_at="2026-08-05T18:10:00Z",
+                    observed_at="2026-08-05T18:10:01Z",
+                    source_run_id="run-001",
+                    source_activity_id="allocate-public-ingress:001",
+                    source_event_id="event-001",
+                )
+            )
+            reserved = reservations.mark_reserved(
+                "workspace-a",
+                "reservation-001",
+                expected_version=1,
+                transitioned_at="2026-08-05T18:12:00Z",
+                source_run_id="run-remove",
+                source_activity_id="remove-public-ingress:001",
+                source_event_id="event-remove",
+            )
+            unit_of_work.commit()
+        OperationCommandService(
+            self.unit_of_work,
+            clock=lambda: "2026-08-05T18:16:00Z",
+            id_factory=self.ids("session-release", "action-start-release"),
+        ).execute(
+            StartOperationSession(
+                workspace_id="workspace-a",
+                actor_id="operator-a",
+                title="Release retained hostname",
+                idempotency_key=IdempotencyKey("start-release"),
+            )
+        )
+        application = CpkServerOperationsApplication(
+            cpk_server_services(
+                unit_of_work_factory=self.unit_of_work,
+                planning=RecordingService(),
+                ingress_reservation_releases=(
+                    PublicIngressReservationReleasePlanningService(
+                        self.unit_of_work,
+                        clock=lambda: "2026-08-05T18:20:00Z",
+                        id_factory=self.ids("plan-release", "action-release"),
+                    )
+                ),
+                approval=RecordingService(),
+                admission=RecordingService(),
+                lifecycle=RecordingService(),
+                execution=RecordingService(),
+            )
+        )
+
+        planned = application.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.public-ingress-reservation.release-plan",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "reservation_id": reserved.reservation_id,
+                },
+                payload={
+                    "session_id": "session-release",
+                    "ingress_id": "gateway-001",
+                    "expected_reservation_version": reserved.version,
+                    "expected_current_graph_id": workspace.current_graph_id,
+                    "expected_current_realized_projection_id": (
+                        workspace.current_realized_projection_id
+                    ),
+                    "expected_desired_graph_revision": (
+                        workspace.desired_graph_revision
+                    ),
+                    "idempotency_key": "release-reservation",
+                },
+                principal=operator_principal(scopes=(PolicyScope.PLAN_REQUEST,)),
+            )
+        )
+
+        self.assertTrue(planned["ready_for_execution"])
+        self.assertEqual(planned["activity_count"], 1)
+        with self.unit_of_work() as unit_of_work:
+            plan = unit_of_work.stores.activity_history.get_plan(
+                str(planned["plan_id"])
+            ).plan
+            retained = unit_of_work.stores.ingress_reservations.require_cloudflare(
+                "workspace-a",
+                "reservation-001",
+            )
+        activity = plan.activities[0]
+        self.assertIsInstance(activity.operation, ReleasePublicIngressReservation)
+        self.assertIs(activity.risk, RiskLevel.CRITICAL)
+        self.assertIs(activity.impact, ActivityImpact.DESTRUCTIVE)
+        self.assertIs(
+            ApprovalPolicy().requirement_for(plan).required_scope,
+            PolicyScope.PLAN_APPROVE_DESTRUCTIVE,
+        )
+        self.assertIs(
+            retained.status,
+            ingress_authorities.OwnedHostnameReservationStatus.RESERVED,
+        )
+        self.assertEqual(retained.version, reserved.version)
+
+        resource_reads = tuple(
+            application.handle(
+                RouteRequest(
+                    surface=surface,
+                    route_id="read.public-ingress-resources",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={},
+                    principal=operator_principal(
+                        scopes=(PolicyScope.INSTANCE_WORKSPACE_READ,)
+                    ),
+                )
+            )
+            for surface in ("http", "mcp")
+        )
+        self.assertEqual(resource_reads[0], resource_reads[1])
+        self.assertEqual(resource_reads[0]["items"][0]["status"], "reserved")
+        rendered = repr(resource_reads).lower()
+        for forbidden in ("cloudflare", "dns_record_id", "tunnel_id", "token"):
+            self.assertNotIn(forbidden, rendered)
 
     def test_approval_request_route_translates_payload_to_existing_command(self) -> None:
         recording = RecordingService()

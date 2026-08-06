@@ -35,6 +35,7 @@ class ReadProjectionKind(StrEnum):
     RUNTIME_AUTHORITY_DELIVERY_DETAIL = "runtime-authority-delivery-detail"
     INGRESS_AUTHORITIES = "ingress-authorities"
     INGRESS_AUTHORITY_DETAIL = "ingress-authority-detail"
+    PUBLIC_INGRESS_RESOURCES = "public-ingress-resources"
     SECRET_PROVIDERS = "secret-providers"
     SECRET_PROVIDER_DETAIL = "secret-provider-detail"
     SECRET_REFERENCES = "secret-references"
@@ -60,6 +61,7 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_RUNTIME_AUTHORITY = "redacted-runtime-authority"
     REDACTED_RUNTIME_AUTHORITY_DELIVERY = "redacted-runtime-authority-delivery"
     REDACTED_INGRESS_AUTHORITY = "redacted-ingress-authority"
+    REDACTED_PUBLIC_INGRESS_RESOURCE = "redacted-public-ingress-resource"
     REDACTED_SECRET_PROVIDER = "redacted-secret-provider"
     REDACTED_SECRET_REFERENCE = "redacted-secret-reference"
     REDACTED_DELEGATION_KEY = "redacted-delegation-key"
@@ -374,6 +376,12 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.INGRESS_AUTHORITY_DETAIL,
         "IngressAuthorityDetailReadResponse",
         ReadProjectionPolicy.REDACTED_INGRESS_AUTHORITY,
+    ),
+    _ProjectionDefinition(
+        "read.public-ingress-resources",
+        ReadProjectionKind.PUBLIC_INGRESS_RESOURCES,
+        "PublicIngressResourceCollectionReadResponse",
+        ReadProjectionPolicy.REDACTED_PUBLIC_INGRESS_RESOURCE,
     ),
     _ProjectionDefinition(
         "read.observed-state",

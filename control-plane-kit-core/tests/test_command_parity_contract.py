@@ -275,6 +275,14 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.NOT_REQUIRED,
                 ),
                 (
+                    "public-ingress-reservation.release-plan",
+                    "command.public-ingress-reservation.release-plan",
+                    "plan_public_ingress_reservation_release",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+                ),
+                (
                     "recovery.decide",
                     "command.recovery.decide",
                     "decide_recovery",

@@ -83,7 +83,7 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
     def test_security_parity_covers_read_and_command_operations(self) -> None:
         parity = _security_parity()
 
-        self.assertEqual(len(parity.operations), 65)
+        self.assertEqual(len(parity.operations), 67)
         command = parity.operation("deployment.execute")
         self.assertEqual(command.auth_scope, HttpAuthScope.EXECUTION_RUN)
         self.assertEqual(command.safety, HttpOperationSafety.DESTRUCTIVE)
@@ -168,6 +168,27 @@ class AuthorizationHistoryParityTests(unittest.TestCase):
         self.assertEqual(
             ingress_read.activity_history,
             ActivityHistoryPolicy.NOT_RECORDED,
+        )
+
+        retained_ingress_read = parity.operation("read.public-ingress-resources")
+        self.assertEqual(retained_ingress_read.auth_scope, HttpAuthScope.READ)
+        self.assertEqual(
+            retained_ingress_read.safety,
+            HttpOperationSafety.READ_ONLY,
+        )
+        self.assertEqual(
+            retained_ingress_read.activity_history,
+            ActivityHistoryPolicy.NOT_RECORDED,
+        )
+
+        release_plan = parity.operation(
+            "public-ingress-reservation.release-plan"
+        )
+        self.assertEqual(release_plan.auth_scope, HttpAuthScope.PLAN_WRITE)
+        self.assertEqual(release_plan.safety, HttpOperationSafety.COMMAND)
+        self.assertEqual(
+            release_plan.activity_history,
+            ActivityHistoryPolicy.RECORD_ACCEPTED_AND_REJECTED_COMMANDS,
         )
 
     def test_descriptor_is_closed_redacted_and_round_trips(self) -> None:
