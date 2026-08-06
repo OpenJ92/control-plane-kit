@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 import hashlib
+import json
 from typing import Any, Mapping, Protocol
 
 from control_plane_kit_core.operations.execution import EffectResultKind
@@ -1496,6 +1497,14 @@ def _readiness_observation_record(
     context: ActivityRealizationContext,
     observation: PublicIngressObservation,
 ) -> ObservationRecord:
+    descriptor = observation.descriptor()
+    observation_digest = hashlib.sha256(
+        json.dumps(
+            descriptor,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
     status_by_ingress_status = {
         PublicIngressObservationStatus.READY: ObservationStatus.VERIFIED,
         PublicIngressObservationStatus.UNREADY: ObservationStatus.VERIFICATION_FAILED,
@@ -1508,14 +1517,15 @@ def _readiness_observation_record(
     }
     return ObservationRecord(
         observation_id=(
-            f"{context.intent_event.event_id}:public-ingress-readiness"
+            f"{context.intent_event.event_id}:public-ingress-readiness:"
+            f"{observation_digest}"
         ),
         workspace_id=context.request.identity.workspace_id,
         subject_id=observation.ingress_id,
         status=status_by_ingress_status[observation.status],
         observed_at=observation.observed_at,
         evidence=BoundedEvidence.from_mapping(
-            {"public_ingress_observation": observation.descriptor()}
+            {"public_ingress_observation": descriptor}
         ),
         graph_id=context.desired_graph.source_authored_graph_id,
         probe_kind=ProbeKind.READINESS,

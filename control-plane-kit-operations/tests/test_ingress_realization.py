@@ -399,6 +399,7 @@ class RecordingPublicIngressReadinessVerifier:
     ) -> None:
         self.tracker = tracker
         self.status = status
+        self.observed_at = "2026-07-28T08:01:30Z"
         self.active_counts: list[int] = []
         self.attempt_timeouts: list[float] = []
         self.error: Exception | None = None
@@ -424,7 +425,7 @@ class RecordingPublicIngressReadinessVerifier:
             hostname=ingress.hostname,
             url=f"https://{ingress.hostname}",
             target=ingress.target,
-            observed_at="2026-07-28T08:01:30Z",
+            observed_at=self.observed_at,
             status=self.status,
             evidence={"verification": "bounded"},
         )
@@ -712,6 +713,59 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             ObservationStatus.VERIFICATION_FAILED,
         )
         self.assertNotIn("secret://", repr(outcome))
+
+    def test_readiness_retries_record_distinct_immutable_observations(self) -> None:
+        verifier = RecordingPublicIngressReadinessVerifier(
+            self.tracker,
+            PublicIngressObservationStatus.UNREADY,
+        )
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={},
+            clock=lambda: "2026-07-28T08:01:30Z",
+            readiness_verifier=verifier,
+        )
+        context = self.context(
+            activity_id="wait-gateway-public",
+            operation=WaitForPublicIngressReady(
+                PublicIngressActivityTarget("gateway-001")
+            ),
+            desired_graph=self.graph(
+                verification=VerificationContract(
+                    (
+                        HttpCheck(
+                            check_id="gateway-ready",
+                            provider_socket="control",
+                            path="/health/ready",
+                        ),
+                    )
+                )
+            ),
+        )
+
+        first = adapter.execute(context)
+        verifier.observed_at = "2026-07-28T08:01:31Z"
+        second = adapter.execute(context)
+        first_observation = first.observations[0]
+        second_observation = second.observations[0]
+
+        self.assertNotEqual(
+            first_observation.observation_id,
+            second_observation.observation_id,
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.observed_state.put(first_observation)
+            unit_of_work.stores.observed_state.put(second_observation)
+            unit_of_work.commit()
+        with self.unit_of_work() as unit_of_work:
+            latest = unit_of_work.stores.observed_state.latest(
+                "workspace-a",
+                "gateway-001",
+            )
+
+        self.assertIsNotNone(latest)
+        assert latest is not None
+        self.assertEqual(latest.observed_at, "2026-07-28T08:01:31Z")
 
     def test_public_ingress_readiness_binding_fails_closed_before_verifier_io(self) -> None:
         checks = (
