@@ -1504,7 +1504,7 @@ def _readiness_observation_record(
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
-    ).hexdigest()[:16]
+    ).hexdigest()
     status_by_ingress_status = {
         PublicIngressObservationStatus.READY: ObservationStatus.VERIFIED,
         PublicIngressObservationStatus.UNREADY: ObservationStatus.VERIFICATION_FAILED,
