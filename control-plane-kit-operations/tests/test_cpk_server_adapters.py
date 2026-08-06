@@ -69,6 +69,8 @@ from control_plane_kit_operations.ingress_authorities import (
 from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
     DesiredGraphCommandService,
+    PublicIngressReservationReleasePlanningConflict,
+    RequestPublicIngressReservationRelease,
     RequestActivityPlan,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
@@ -143,6 +145,13 @@ class RecordingService:
     def execute(self, command: object):
         self.commands.append(command)
         return DescriptorResult({"command_type": type(command).__name__})
+
+
+class ConflictingReleasePlanningService:
+    def execute(self, command: object):
+        raise PublicIngressReservationReleasePlanningConflict(
+            "exact reserved hostname truth changed"
+        )
 
 
 class DescriptorResult:
@@ -792,6 +801,131 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         )
         self.assertEqual(command.expected_desired_graph_revision, 7)
         self.assertEqual(command.idempotency_key.value, "plan-a")
+
+    def test_public_ingress_read_route_is_shared_by_http_and_mcp(self) -> None:
+        self.seed_workspace()
+        service = CpkServerReadService(self.unit_of_work)
+
+        results = tuple(
+            service.handle(
+                RouteRequest(
+                    surface=surface,
+                    route_id="read.public-ingress-resources",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={},
+                    principal=operator_principal(
+                        scopes=(PolicyScope.INSTANCE_WORKSPACE_READ,)
+                    ),
+                )
+            )
+            for surface in ("http", "mcp")
+        )
+
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(results[0], {"workspace_id": "workspace-a", "items": []})
+
+    def test_release_plan_route_translates_both_surfaces_to_one_command(self) -> None:
+        recording = RecordingService()
+        service = CpkServerPlanningService(
+            RecordingService(),
+            ingress_reservation_releases=recording,
+        )
+        payload = {
+            "session_id": "session-release",
+            "ingress_id": "gateway-001",
+            "expected_reservation_version": 2,
+            "expected_current_graph_id": "graph-empty",
+            "expected_current_realized_projection_id": "projection-empty",
+            "expected_desired_graph_revision": 4,
+            "idempotency_key": "release-reservation",
+            "actor_id": "forged-actor",
+        }
+
+        for surface in ("http", "mcp"):
+            result = service.handle(
+                RouteRequest(
+                    surface=surface,
+                    route_id="command.public-ingress-reservation.release-plan",
+                    service_role=ControlPlaneServiceRole.PLANNING,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "reservation_id": "reservation-001",
+                    },
+                    payload=payload,
+                    principal=operator_principal(
+                        subject_id="trusted-operator",
+                        scopes=(PolicyScope.PLAN_REQUEST,),
+                    ),
+                )
+            )
+            self.assertEqual(
+                result,
+                {"command_type": "RequestPublicIngressReservationRelease"},
+            )
+
+        self.assertEqual(recording.commands[0], recording.commands[1])
+        command = recording.commands[0]
+        self.assertIsInstance(command, RequestPublicIngressReservationRelease)
+        self.assertEqual(command.workspace_id, "workspace-a")
+        self.assertEqual(command.actor_id, "trusted-operator")
+        self.assertEqual(command.ingress_id, "gateway-001")
+        self.assertEqual(command.reservation_id, "reservation-001")
+        self.assertEqual(command.expected_reservation_version, 2)
+        self.assertEqual(command.expected_desired_graph_revision, 4)
+        self.assertEqual(command.idempotency_key.value, "release-reservation")
+
+    def test_release_plan_route_authorizes_and_maps_conflict_before_effects(self) -> None:
+        recording = RecordingService()
+        service = CpkServerPlanningService(
+            RecordingService(),
+            ingress_reservation_releases=recording,
+        )
+        request = RouteRequest(
+            surface="http",
+            route_id="command.public-ingress-reservation.release-plan",
+            service_role=ControlPlaneServiceRole.PLANNING,
+            path_parameters={
+                "workspace_id": "workspace-a",
+                "reservation_id": "reservation-001",
+            },
+            payload={
+                "session_id": "session-release",
+                "ingress_id": "gateway-001",
+                "expected_reservation_version": 2,
+                "expected_current_graph_id": "graph-empty",
+                "expected_current_realized_projection_id": "projection-empty",
+                "expected_desired_graph_revision": 4,
+                "idempotency_key": "release-reservation",
+            },
+            principal=operator_principal(scopes=(PolicyScope.PLAN_EXECUTE,)),
+        )
+
+        with self.assertRaises(CpkServerApplicationError) as denied:
+            service.handle(request)
+        self.assertEqual(denied.exception.status, 403)
+        self.assertEqual(recording.commands, [])
+
+        conflict_service = CpkServerPlanningService(
+            RecordingService(),
+            ingress_reservation_releases=ConflictingReleasePlanningService(),
+        )
+        with self.assertRaises(CpkServerApplicationError) as conflict:
+            conflict_service.handle(
+                RouteRequest(
+                    **{
+                        **request.__dict__,
+                        "principal": operator_principal(
+                            scopes=(PolicyScope.PLAN_REQUEST,)
+                        ),
+                    }
+                )
+            )
+        self.assertEqual(conflict.exception.status, 409)
+        self.assertEqual(
+            conflict.exception.message,
+            "exact reserved hostname truth changed",
+        )
 
     def test_approval_request_route_translates_payload_to_existing_command(self) -> None:
         recording = RecordingService()
