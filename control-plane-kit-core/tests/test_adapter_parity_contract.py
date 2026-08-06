@@ -144,6 +144,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "PlanDetailReadResponse",
                 ),
                 (
+                    "read.public-ingress-resources",
+                    "read.public-ingress-resources",
+                    "list_public_ingress_resources",
+                    "PublicIngressResourceCollectionReadResponse",
+                ),
+                (
                     "read.runtime-authorities",
                     "read.runtime-authorities",
                     "list_runtime_authorities",

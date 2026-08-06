@@ -394,6 +394,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "IngressAuthorityDetailReadResponse",
             ),
             (
+                "read.public-ingress-resources",
+                "/workspaces/{workspace_id}/public-ingress-resources",
+                "PublicIngressResourceCollectionReadResponse",
+            ),
+            (
                 "read.gateway-probe-timeline",
                 "/workspaces/{workspace_id}/gateway-probes",
                 "GatewayProbeTimelineReadResponse",
@@ -725,6 +730,16 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "PlanDeploymentRequest",
                 "PlanDeploymentResponse",
+            ),
+            (
+                "command.public-ingress-reservation.release-plan",
+                "/workspaces/{workspace_id}/public-ingress-reservations/"
+                "{reservation_id}/release-plan",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "RequestPublicIngressReservationRelease",
+                "ActivityPlanningResult",
             ),
             (
                 "command.approval.request",

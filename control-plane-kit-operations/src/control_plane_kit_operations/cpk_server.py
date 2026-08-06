@@ -102,8 +102,13 @@ from control_plane_kit_operations.lifecycle import (
 )
 from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
-    RequestActivityPlan,
     DesiredGraphCommandService,
+    PublicIngressReservationReleasePlanningConflict,
+    PublicIngressReservationReleasePlanningError,
+    PublicIngressReservationReleasePlanningIdempotencyConflict,
+    PublicIngressReservationReleasePlanningService,
+    RequestActivityPlan,
+    RequestPublicIngressReservationRelease,
     SetDesiredGraph,
 )
 from control_plane_kit_operations.products import (
@@ -145,6 +150,7 @@ from control_plane_kit_operations.workflows import (
     CancelOperationSession,
     CloseOperationSession,
     IdempotencyKey,
+    InvalidOperationCommand,
     OperationCommandService,
     RecordOperationAction,
     StartOperationSession,
@@ -262,6 +268,7 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.ingress-authority-detail": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.INGRESS_AUTHORITY_READ,)
     ),
+    "read.public-ingress-resources": _WORKSPACE_READ,
     "read.secret-providers": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.SECRET_PROVIDER_READ,)
     ),
@@ -363,6 +370,9 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "command.operation-session.record-action": _WORKSPACE_EDIT,
     "command.desired-graph.set": _WORKSPACE_EDIT,
     "command.deployment.plan": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.PLAN_REQUEST,)
+    ),
+    "command.public-ingress-reservation.release-plan": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.PLAN_REQUEST,)
     ),
     "command.approval.request": RouteAuthorizationPolicy(
@@ -485,6 +495,8 @@ class CpkServerReadService:
                     stores.runtime_authority_deliveries
                 ),
                 "ingress_authority_store": stores.ingress_authorities,
+                "ingress_reservation_store": stores.ingress_reservations,
+                "ingress_resource_store": stores.ingress_resources,
                 "secret_provider_store": stores.secret_providers,
                 "secret_reference_store": stores.secret_references,
                 "gateway_probe_store": stores.gateway_probes,
@@ -514,6 +526,9 @@ class CpkServerPlanningService:
         secret_providers: SecretProviderRegistrationService | None = None,
         delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
+        ingress_reservation_releases: (
+            PublicIngressReservationReleasePlanningService | None
+        ) = None,
         gateway_key_rotations: GatewayKeyRotationApplication | None = None,
     ) -> None:
         self._service = service
@@ -525,6 +540,7 @@ class CpkServerPlanningService:
         self._secret_providers = secret_providers
         self._delegation_signing_keys = delegation_signing_keys
         self._desired_graphs = desired_graphs
+        self._ingress_reservation_releases = ingress_reservation_releases
         self._gateway_key_rotations = gateway_key_rotations
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
@@ -842,6 +858,57 @@ class CpkServerPlanningService:
                     ),
                 )
             )
+            return result.descriptor()
+        if request.route_id == "command.public-ingress-reservation.release-plan":
+            if self._ingress_reservation_releases is None:
+                raise _service_not_configured(request)
+            payload = _arguments(request)
+            try:
+                result = self._ingress_reservation_releases.execute(
+                    RequestPublicIngressReservationRelease(
+                        session_id=_text(payload, "session_id"),
+                        workspace_id=_workspace_id(payload),
+                        actor_id=context.actor_id,
+                        ingress_id=_text(payload, "ingress_id"),
+                        reservation_id=_path_or_payload(
+                            payload,
+                            "reservation_id",
+                            "reservation_id",
+                        ),
+                        expected_reservation_version=_positive_int(
+                            payload,
+                            "expected_reservation_version",
+                            default=0,
+                        ),
+                        expected_current_graph_id=_text(
+                            payload,
+                            "expected_current_graph_id",
+                        ),
+                        expected_current_realized_projection_id=_text(
+                            payload,
+                            "expected_current_realized_projection_id",
+                        ),
+                        expected_desired_graph_revision=_nonnegative_integer(
+                            payload,
+                            "expected_desired_graph_revision",
+                        ),
+                        idempotency_key=IdempotencyKey(
+                            _text(payload, "idempotency_key")
+                        ),
+                    )
+                )
+            except (
+                PublicIngressReservationReleasePlanningConflict,
+                PublicIngressReservationReleasePlanningIdempotencyConflict,
+            ) as error:
+                raise CpkServerApplicationError(409, str(error)) from error
+            except (
+                InvalidOperationCommand,
+                PublicIngressReservationReleasePlanningError,
+                TypeError,
+                ValueError,
+            ) as error:
+                raise CpkServerApplicationError(400, str(error)) from error
             return result.descriptor()
         if request.route_id != "command.deployment.plan":
             raise _unsupported_route(request)
@@ -1428,6 +1495,9 @@ def cpk_server_services(
     secret_providers: SecretProviderRegistrationService | None = None,
     delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
+    ingress_reservation_releases: (
+        PublicIngressReservationReleasePlanningService | None
+    ) = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
     gateway_probes: GatewayProbeCommandService | None = None,
@@ -1454,6 +1524,7 @@ def cpk_server_services(
             secret_providers=secret_providers,
             delegation_signing_keys=delegation_signing_keys,
             desired_graphs=desired_graphs,
+            ingress_reservation_releases=ingress_reservation_releases,
             gateway_key_rotations=gateway_key_rotations,
         ),
         ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(
@@ -1567,6 +1638,8 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
                 _path_or_payload(args, "authority_ref", "authority_ref")
             ),
         )
+    if route_id == "read.public-ingress-resources":
+        return service.public_ingress_resources(_workspace_id(args))
     if route_id == "read.secret-providers":
         return service.secret_providers(_workspace_id(args))
     if route_id == "read.secret-provider-detail":
