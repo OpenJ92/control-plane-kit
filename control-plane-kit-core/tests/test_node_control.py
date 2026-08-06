@@ -138,6 +138,18 @@ class NodeControlContractTests(unittest.TestCase):
         self.assertEqual(variable.descriptor()["capability"], "node-controllable")
         self.assertEqual(request.canonical_digest().value.__len__(), 64)
 
+        read = NodeControlCommandRequest(
+            target=self.target(),
+            variable_name="routing",
+            operation=NodeControlOperation.READ_STATE,
+            request_id="request-read-1",
+            idempotency_key="routing-read-1",
+        )
+        self.assertEqual(
+            NodeControlCommandRequestCodec().decode(read.descriptor()),
+            read,
+        )
+
     def test_strict_codecs_reject_unknown_keys_kinds_and_codecs(self) -> None:
         descriptor = ControlPlaneVariableDescriptorCodec().encode(
             ControlPlaneVariableDescriptor(
@@ -162,6 +174,12 @@ class NodeControlContractTests(unittest.TestCase):
         with self.assertRaises(NodeControlContractError):
             NodeControlCommandRequestCodec().decode(
                 {**request, "command_codec": "arbitrary-http.v1"}
+            )
+
+        grant = DelegatedWorkloadNodeControlGrantCodec().encode(self.grant())
+        with self.assertRaises(NodeControlContractError):
+            DelegatedWorkloadNodeControlGrantCodec().decode(
+                {**grant, "signature": "compact-secret-material"}
             )
 
     def test_weighted_state_is_one_structurally_valid_snapshot(self) -> None:
@@ -202,6 +220,7 @@ class NodeControlContractTests(unittest.TestCase):
         unsafe = (
             lambda: ScalarControlState("https://private.internal"),
             lambda: ScalarControlState("token=secret"),
+            lambda: ScalarControlState("SG.secret-value"),
             lambda: MapControlState((("target", "127.0.0.1:8080"),)),
             lambda: MapControlState(tuple((f"target-{index}", index) for index in range(129))),
         )
@@ -242,6 +261,31 @@ class NodeControlContractTests(unittest.TestCase):
             now=150,
         )
         self.assertTrue(accepted.is_accepted)
+
+        changed_request = self.request(
+            payload=NodeControlPayload(
+                codec=ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1,
+                state=WeightedRoutingControlState(
+                    targets=("target-a", "target-b"),
+                    weights=(("target-a", 1.0), ("target-b", 2.0)),
+                ),
+            )
+        )
+        self.assertNotEqual(
+            changed_request.canonical_digest(),
+            request.canonical_digest(),
+        )
+        changed_result = verify_workload_node_control_grant(
+            grant,
+            changed_request,
+            expected_issuer="cpk-server",
+            expected_audience="workload:router:control",
+            now=150,
+        )
+        self.assertIs(
+            changed_result.code,
+            WorkloadNodeControlGrantVerificationCode.REQUEST_MISMATCH,
+        )
 
         cases = (
             (replace(grant, issuer="other-issuer"), WorkloadNodeControlGrantVerificationCode.ISSUER_MISMATCH),

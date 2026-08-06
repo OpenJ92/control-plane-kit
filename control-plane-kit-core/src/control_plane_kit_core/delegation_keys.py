@@ -17,6 +17,7 @@ class DelegationKeyPurpose(StrEnum):
     """Closed purposes for keys that delegate bounded control-plane authority."""
 
     GATEWAY_PROBE = "gateway-probe"
+    WORKLOAD_NODE_CONTROL = "workload-node-control"
 
 
 class DelegationKeyAlgorithm(StrEnum):
