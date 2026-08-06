@@ -11,14 +11,18 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import (
     ActivityId,
+    ActivityImpact,
     ActivityPlan,
     AllocatePublicIngress,
     PlannedActivity,
     NodeTarget,
     PublicIngressActivityTarget,
+    PublicIngressReservationTarget,
     ReconcileRuntime,
+    ReleasePublicIngressReservation,
     RemoveNodeResource,
     RuntimeTarget,
+    RiskLevel,
     SocketConnectionTarget,
     StartNode,
     StartRuntime,
@@ -206,6 +210,29 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         context = context_for(
             WaitForPublicIngressReady(
                 PublicIngressActivityTarget("gateway-public")
+            )
+        )
+
+        outcome = dispatcher.execute(context)
+
+        self.assertIs(outcome, ingress_outcome)
+        self.assertEqual(ingress.contexts, [context])
+        self.assertEqual(runtime.contexts, [])
+
+    def test_activity_dispatcher_routes_exact_reservation_release_to_ingress(
+        self,
+    ) -> None:
+        ingress_outcome = ActivityExecutionOutcome.succeeded()
+        ingress = RecordingActivityAdapter(ingress_outcome)
+        runtime = RecordingActivityAdapter(ActivityExecutionOutcome.succeeded())
+        dispatcher = ActivityExecutionDispatcher(runtime=runtime, ingress=ingress)
+        context = context_for(
+            ReleasePublicIngressReservation(
+                PublicIngressReservationTarget(
+                    "gateway-public",
+                    "reservation-public",
+                    3,
+                )
             )
         )
 
@@ -634,7 +661,17 @@ def context_for(
     secret_delivery: bool = False,
     worker_scopes: tuple[PolicyScope, ...] = (PolicyScope.EXECUTION_OPERATE,),
 ) -> ActivityRealizationContext:
-    activity = PlannedActivity(ActivityId("activity-a"), operation)
+    is_release = isinstance(operation, ReleasePublicIngressReservation)
+    activity = PlannedActivity(
+        ActivityId("activity-a"),
+        operation,
+        risk=RiskLevel.CRITICAL if is_release else RiskLevel.LOW,
+        impact=(
+            ActivityImpact.DESTRUCTIVE
+            if is_release
+            else ActivityImpact.NON_DESTRUCTIVE
+        ),
+    )
     plan = ActivityPlan((activity,))
     registered_product = _registered_product(secret_delivery=secret_delivery)
     return ActivityRealizationContext(

@@ -10,8 +10,11 @@ from typing import Any, Mapping, Protocol
 
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import FailureCategory
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.planning import (
     AllocatePublicIngress,
+    PublicIngressReservationTarget,
+    ReleasePublicIngressReservation,
     RemovePublicIngress,
     WaitForPublicIngressReady,
 )
@@ -51,6 +54,7 @@ from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityProviderKind,
     IngressAuthorityRegistrationError,
     OwnedHostnameReservationStatus,
+    RegisteredIngressAuthority,
     cloudflare_ingress_teardown_plan,
     record_generated_ingress_secret,
 )
@@ -213,6 +217,14 @@ class IngressProviderInterpreter(Protocol):
         secret_custody_grant: SecretCustodyGrant,
     ) -> RetainedIngressDeactivationResult: ...
 
+    def release_reservation(
+        self,
+        *,
+        authority: CloudflareZoneIngressAuthority,
+        reservation: IngressReservationCoordinates,
+        secret_resolution_grant: SecretResolutionGrant,
+    ) -> IngressReservationObservation: ...
+
 
 class PublicIngressReadinessVerifier(Protocol):
     """Observe one graph-derived public HTTP endpoint outside operations IO."""
@@ -283,6 +295,8 @@ class IngressRealizationAdapter:
             return self._wait_until_ready(context, operation)
         if isinstance(operation, RemovePublicIngress):
             return self._remove(context, operation)
+        if isinstance(operation, ReleasePublicIngressReservation):
+            return self._release(context, operation)
         return ActivityExecutionOutcome.unsupported(
             FailureEvidence(
                 FailureCategory.OPERATOR_REVIEW,
@@ -870,6 +884,176 @@ class IngressRealizationAdapter:
             BoundedEvidence.from_mapping(plan.descriptor())
         )
 
+    def _release(
+        self,
+        context: ActivityRealizationContext,
+        operation: ReleasePublicIngressReservation,
+    ) -> ActivityExecutionOutcome:
+        target = operation.target
+        workspace_id = context.request.identity.workspace_id
+        try:
+            _require_release_worker(context)
+            graph = DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor)
+            with self.unit_of_work_factory() as unit_of_work:
+                reservation = (
+                    unit_of_work.stores.ingress_reservations.require_cloudflare(
+                        workspace_id,
+                        target.reservation_id,
+                    )
+                )
+                _require_exact_releasable_reservation(reservation, target)
+                _require_reservation_absent_from_graph(graph, reservation)
+                try:
+                    unit_of_work.stores.ingress_resources.get_cloudflare(
+                        workspace_id,
+                        target.ingress_id,
+                    )
+                except IngressAuthorityNotFound:
+                    pass
+                else:
+                    raise InvalidOperationCommand(
+                        "hostname reservation cannot be released while a realization "
+                        "remains"
+                    )
+                removed_resource = (
+                    unit_of_work.stores.ingress_resources
+                    .require_latest_removed_cloudflare(
+                        workspace_id,
+                        target.ingress_id,
+                        target.reservation_id,
+                    )
+                )
+                _require_reservation_resource_agreement(
+                    reservation,
+                    removed_resource,
+                )
+                authority = (
+                    unit_of_work.stores.ingress_authorities
+                    .require_active_for_hostname(
+                        workspace_id,
+                        reservation.authority_ref,
+                        reservation.hostname,
+                    )
+                )
+                _require_reservation_authority_agreement(reservation, authority)
+            interpreter = self._interpreter(authority.provider_kind)
+            grant = self._authorize_api_token(context, authority.authority)
+            transitioned_at = self.clock()
+            _validate_fold_timestamp(transitioned_at)
+        except SecretProviderRegistrationError:
+            return _unsupported(
+                context,
+                "secret.use-not-authorized",
+                "ingress authority secret use was not authorized",
+            )
+        except (KeyError, ValueError, InvalidOperationCommand) as error:
+            return _unsupported(context, "ingress.release-unsupported", str(error))
+
+        try:
+            with self.unit_of_work_factory() as unit_of_work:
+                current = (
+                    unit_of_work.stores.ingress_reservations
+                    .require_cloudflare_for_update(
+                        workspace_id,
+                        target.reservation_id,
+                    )
+                )
+                _require_exact_releasable_reservation(current, target)
+                try:
+                    unit_of_work.stores.ingress_resources.get_cloudflare(
+                        workspace_id,
+                        target.ingress_id,
+                    )
+                except IngressAuthorityNotFound:
+                    pass
+                else:
+                    raise InvalidOperationCommand(
+                        "hostname reservation cannot be released while a realization "
+                        "remains"
+                    )
+                removed_resource = (
+                    unit_of_work.stores.ingress_resources
+                    .require_latest_removed_cloudflare(
+                        workspace_id,
+                        target.ingress_id,
+                        target.reservation_id,
+                    )
+                )
+                _require_reservation_resource_agreement(current, removed_resource)
+                releasing = unit_of_work.stores.ingress_reservations.mark_releasing(
+                    workspace_id,
+                    target.reservation_id,
+                    expected_version=target.reservation_version,
+                    transitioned_at=transitioned_at,
+                    source_run_id=context.run.run_id,
+                    source_activity_id=context.activity.activity_id.value,
+                    source_event_id=context.intent_event.event_id,
+                )
+                unit_of_work.commit()
+        except (KeyError, ValueError, InvalidOperationCommand) as error:
+            return _unsupported(context, "ingress.release-unsupported", str(error))
+
+        try:
+            result = interpreter.release_reservation(
+                authority=authority.authority,
+                reservation=_reservation_coordinates(releasing, removed_resource),
+                secret_resolution_grant=grant,
+            )
+            _require_released_reservation_observation(result, releasing)
+        except Exception as error:  # noqa: BLE001 - provider failures are bounded.
+            uncertainty_recorded = self._mark_reservation_uncertain(
+                context,
+                releasing,
+                transitioned_at=transitioned_at,
+            )
+            return _retained_uncertain(
+                "ingress.release-uncertain",
+                "retained ingress reservation release result is uncertain",
+                releasing,
+                exception_type=type(error).__name__,
+                uncertainty_recorded=uncertainty_recorded,
+            )
+
+        try:
+            with self.unit_of_work_factory() as unit_of_work:
+                released = unit_of_work.stores.ingress_reservations.mark_released(
+                    workspace_id,
+                    target.reservation_id,
+                    expected_version=releasing.version,
+                    transitioned_at=transitioned_at,
+                    source_run_id=context.run.run_id,
+                    source_activity_id=context.activity.activity_id.value,
+                    source_event_id=context.intent_event.event_id,
+                    released_by_run_id=context.run.run_id,
+                )
+                unit_of_work.commit()
+        except Exception as error:  # noqa: BLE001 - provider effect already occurred.
+            uncertainty_recorded = self._mark_reservation_uncertain(
+                context,
+                releasing,
+                transitioned_at=transitioned_at,
+            )
+            return _retained_uncertain(
+                "ingress.release-fold-uncertain",
+                "retained ingress reservation release could not be folded durably",
+                releasing,
+                exception_type=type(error).__name__,
+                uncertainty_recorded=uncertainty_recorded,
+            )
+
+        return ActivityExecutionOutcome.succeeded(
+            BoundedEvidence.from_mapping(
+                {
+                    "provider_kind": authority.provider_kind.value,
+                    "ingress_id": released.ingress_id,
+                    "reservation_id": released.reservation_id,
+                    "dns_record_id": released.dns_record_id,
+                    "hostname": released.hostname,
+                    "reservation_status": released.status.value,
+                }
+            )
+        )
+
     def _mark_reservation_uncertain(
         self,
         context: ActivityRealizationContext,
@@ -1088,6 +1272,63 @@ def _require_bound_reservation(
     _require_reservation_ingress_authority(reservation, ingress, authority)
 
 
+def _require_exact_releasable_reservation(
+    reservation: CloudflareOwnedHostnameReservation,
+    target: PublicIngressReservationTarget,
+) -> None:
+    if (
+        reservation.ingress_id != target.ingress_id
+        or reservation.reservation_id != target.reservation_id
+        or reservation.version != target.reservation_version
+        or reservation.status is not OwnedHostnameReservationStatus.RESERVED
+        or reservation.lifecycle is not PublicIngressLifecycle.RETAINED
+    ):
+        raise InvalidOperationCommand(
+            "exact retained hostname reservation is not releasable"
+        )
+
+
+def _require_release_worker(context: ActivityRealizationContext) -> None:
+    claim = context.request.claim
+    if (
+        PolicyScope.EXECUTION_OPERATE not in context.authority.scopes
+        or claim is None
+        or claim.worker_id != context.authority.worker_id
+    ):
+        raise InvalidOperationCommand(
+            "reservation release requires the admitted execution worker"
+        )
+
+
+def _require_reservation_absent_from_graph(
+    graph: DeploymentGraph,
+    reservation: CloudflareOwnedHostnameReservation,
+) -> None:
+    if any(
+        ingress.ingress_id == reservation.ingress_id
+        or ingress.hostname == reservation.hostname
+        for ingress in graph.public_ingresses
+    ):
+        raise InvalidOperationCommand(
+            "hostname reservation remains visible in accepted graph truth"
+        )
+
+
+def _require_reservation_authority_agreement(
+    reservation: CloudflareOwnedHostnameReservation,
+    authority: RegisteredIngressAuthority,
+) -> None:
+    if (
+        authority.workspace_id != reservation.workspace_id
+        or authority.authority_ref != reservation.authority_ref
+        or authority.provider_kind is not reservation.provider_kind
+        or authority.authority.zone_id != reservation.zone_id
+    ):
+        raise InvalidOperationCommand(
+            "retained hostname reservation disagrees with active authority"
+        )
+
+
 def _require_reservation_ingress_authority(
     reservation: CloudflareOwnedHostnameReservation,
     ingress: NamedPublicIngress,
@@ -1172,6 +1413,25 @@ def _require_retained_deactivation(
     ):
         raise InvalidOperationCommand(
             "retained deactivation result contradicts exact durable truth"
+        )
+
+
+def _require_released_reservation_observation(
+    result: object,
+    reservation: CloudflareOwnedHostnameReservation,
+) -> None:
+    if not isinstance(result, IngressReservationObservation):
+        raise InvalidOperationCommand(
+            "reservation release result must be operations-owned evidence"
+        )
+    if (
+        result.dns_record_id != reservation.dns_record_id
+        or result.hostname != reservation.hostname
+        or result.presence is not IngressResourcePresence.ABSENT
+        or result.tunnel_id is not None
+    ):
+        raise InvalidOperationCommand(
+            "reservation release result contradicts exact durable truth"
         )
 
 

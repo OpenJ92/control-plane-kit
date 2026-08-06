@@ -18,11 +18,15 @@ from control_plane_kit_core.operations.lifecycle import (
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.planning import (
     ActivityId,
+    ActivityImpact,
     ActivityPlan,
     AllocatePublicIngress,
     PlannedActivity,
     PublicIngressActivityTarget,
+    PublicIngressReservationTarget,
+    ReleasePublicIngressReservation,
     RemovePublicIngress,
+    RiskLevel,
     WaitForPublicIngressReady,
 )
 from control_plane_kit_core.probe_intents import (
@@ -176,16 +180,21 @@ class RecordingIngressInterpreter:
         self.deactivate_active_counts: list[int] = []
         self.deactivate_reservations: list[object] = []
         self.deactivate_resources: list[IngressOwnedResourceCoordinates] = []
+        self.release_active_counts: list[int] = []
+        self.release_reservations: list[object] = []
         self.fail_teardown = False
         self.fail_rebind = False
         self.fail_deactivate = False
         self.contradict_deactivation = False
         self.contradict_rebind = False
+        self.fail_release = False
+        self.contradict_release = False
         self.return_mismatched_custody_receipt = False
         self.return_invalid_coordinates = False
         self.on_create: Callable[[], None] | None = None
         self.on_rebind: Callable[[], None] | None = None
         self.on_deactivate: Callable[[], None] | None = None
+        self.on_release: Callable[[], None] | None = None
 
     def create(
         self,
@@ -316,6 +325,36 @@ class RecordingIngressInterpreter:
                     if self.contradict_deactivation
                     else presence.ABSENT
                 ),
+            ),
+        )
+
+    def release_reservation(
+        self,
+        *,
+        authority: CloudflareZoneIngressAuthority,
+        reservation: object,
+        secret_resolution_grant: SecretResolutionGrant,
+    ) -> object:
+        del authority, secret_resolution_grant
+        self.release_active_counts.append(self.tracker.active)
+        self.release_reservations.append(reservation)
+        if self.on_release is not None:
+            self.on_release()
+        if self.fail_release:
+            raise RuntimeError("Bearer must-not-survive")
+        presence = ingress_realization.IngressResourcePresence
+        return ingress_realization.IngressReservationObservation(
+            dns_record_id=reservation.dns_record_id,
+            hostname=reservation.hostname,
+            presence=(
+                presence.PRESENT
+                if self.contradict_release
+                else presence.ABSENT
+            ),
+            tunnel_id=(
+                reservation.expected_tunnel_id
+                if self.contradict_release
+                else None
             ),
         )
 
@@ -1333,6 +1372,250 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(removal.kind.name, "SUCCEEDED")
         self.assertEqual(self.tracker.entered, entered_before)
 
+    def test_exact_reservation_release_commits_released_after_absence(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:05:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+        context = self.context(
+            activity_id="release-reservation",
+            run_id="run-release",
+            intent_event_id="event-release",
+            operation=self.release_operation(),
+            base_graph=DeploymentGraph("empty"),
+            desired_graph=DeploymentGraph("empty"),
+        )
+
+        outcome = adapter.execute(context)
+        replay = adapter.execute(context)
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(replay.kind.name, "UNSUPPORTED")
+        self.assertEqual(interpreter.release_active_counts, [0])
+        coordinates = interpreter.release_reservations[0]
+        self.assertEqual(coordinates.dns_record_id, "dns-001")
+        self.assertEqual(coordinates.hostname, "cpk-gateway-001.openj92.dev")
+        self.assertEqual(coordinates.expected_tunnel_id, "tunnel-001")
+        with self.unit_of_work() as unit_of_work:
+            reservation = unit_of_work.stores.ingress_reservations.require_cloudflare(
+                "workspace-a", "reservation-001"
+            )
+        self.assertIs(
+            reservation.status,
+            OwnedHostnameReservationStatus.RELEASED,
+        )
+        self.assertEqual(reservation.released_by_run_id, "run-release")
+
+    def test_release_rejects_wrong_version_and_active_graph_before_io(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:05:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        wrong_version = adapter.execute(
+            self.context(
+                activity_id="release-reservation",
+                operation=self.release_operation(version=1),
+                base_graph=DeploymentGraph("empty"),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+        graph_present = adapter.execute(
+            self.context(
+                activity_id="release-reservation",
+                operation=self.release_operation(),
+                base_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+                desired_graph=self.graph(lifecycle=PublicIngressLifecycle.RETAINED),
+            )
+        )
+
+        self.assertEqual(wrong_version.kind.name, "UNSUPPORTED")
+        self.assertEqual(graph_present.kind.name, "UNSUPPORTED")
+        self.assertEqual(wrong_version.failure.code, "ingress.release-unsupported")
+        self.assertEqual(graph_present.failure.code, "ingress.release-unsupported")
+        self.assertEqual(interpreter.release_active_counts, [])
+
+    def test_release_rejects_blocking_realization_and_missing_epoch(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:05:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.stores.ingress_resources.record_cloudflare(
+                self.cloudflare_resource(
+                    lifecycle=PublicIngressLifecycle.RETAINED,
+                    reservation_id="reservation-001",
+                )
+            )
+            unit_of_work.commit()
+
+        blocking = adapter.execute(
+            self.context(
+                activity_id="release-reservation",
+                operation=self.release_operation(),
+                base_graph=DeploymentGraph("empty"),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+        self.connection.execute(
+            "DELETE FROM cpk_cloudflare_ingress_resources "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        missing_epoch = adapter.execute(
+            self.context(
+                activity_id="release-reservation",
+                operation=self.release_operation(),
+                base_graph=DeploymentGraph("empty"),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(blocking.kind.name, "UNSUPPORTED")
+        self.assertEqual(missing_epoch.kind.name, "UNSUPPORTED")
+        self.assertEqual(blocking.failure.code, "ingress.release-unsupported")
+        self.assertEqual(missing_epoch.failure.code, "ingress.release-unsupported")
+        self.assertEqual(interpreter.release_active_counts, [])
+
+    def test_release_rejects_foreign_truth_and_worker_before_io(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:05:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+        context = self.context(
+            activity_id="release-reservation",
+            operation=self.release_operation(),
+            base_graph=DeploymentGraph("empty"),
+            desired_graph=DeploymentGraph("empty"),
+        )
+
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET dns_record_id = 'dns-foreign' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        foreign_resource = adapter.execute(context)
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET dns_record_id = 'dns-001', zone_id = 'zone-foreign' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_hostname_reservations "
+            "SET zone_id = 'zone-foreign' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        foreign_authority = adapter.execute(context)
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET zone_id = 'zone-openj92' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_hostname_reservations "
+            "SET zone_id = 'zone-openj92' "
+            "WHERE workspace_id = 'workspace-a'"
+        )
+        missing_worker_scope = adapter.execute(
+            self.context(
+                activity_id="release-reservation",
+                operation=self.release_operation(),
+                base_graph=DeploymentGraph("empty"),
+                desired_graph=DeploymentGraph("empty"),
+                worker_scopes=(PolicyScope.SECRET_PROVIDER_USE,),
+            )
+        )
+
+        for outcome in (
+            foreign_resource,
+            foreign_authority,
+            missing_worker_scope,
+        ):
+            self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+            self.assertEqual(outcome.failure.code, "ingress.release-unsupported")
+        self.assertEqual(interpreter.release_active_counts, [])
+
+    def test_release_provider_error_is_redacted_and_uncertain(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        interpreter.fail_release = True
+        outcome = self.release_with(interpreter)
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertNotIn("must-not-survive", repr(outcome))
+        self.assert_release_reservation_uncertain()
+
+    def test_release_present_result_is_uncertain(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        interpreter.contradict_release = True
+        outcome = self.release_with(interpreter)
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assert_release_reservation_uncertain()
+
+    def test_release_fold_race_remains_uncertain(self) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:05:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        def race_release() -> None:
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.ingress_reservations.mark_uncertain(
+                    "workspace-a",
+                    "reservation-001",
+                    expected_version=3,
+                    transitioned_at="2026-07-28T08:04:59Z",
+                    source_run_id="run-race",
+                    source_activity_id="race",
+                    source_event_id="event-race",
+                )
+                unit_of_work.commit()
+
+        interpreter.on_release = race_release
+        outcome = adapter.execute(
+            self.context(
+                activity_id="release-reservation",
+                run_id="run-release",
+                intent_event_id="event-release",
+                operation=self.release_operation(),
+                base_graph=DeploymentGraph("empty"),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(
+            outcome.failure.code,
+            "ingress.release-fold-uncertain",
+        )
+
     def test_remove_public_ingress_marks_resource_removed_around_provider_io(
         self,
     ) -> None:
@@ -1587,6 +1870,53 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             source_event_id="event-off",
         )
 
+    def release_operation(
+        self,
+        *,
+        version: int = 2,
+    ) -> ReleasePublicIngressReservation:
+        return ReleasePublicIngressReservation(
+            PublicIngressReservationTarget(
+                ingress_id="gateway-001",
+                reservation_id="reservation-001",
+                reservation_version=version,
+            )
+        )
+
+    def release_with(
+        self,
+        interpreter: RecordingIngressInterpreter,
+    ):
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T08:05:00Z",
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_reserved_ingress(unit_of_work)
+            unit_of_work.commit()
+        return adapter.execute(
+            self.context(
+                activity_id="release-reservation",
+                run_id="run-release",
+                intent_event_id="event-release",
+                operation=self.release_operation(),
+                base_graph=DeploymentGraph("empty"),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+    def assert_release_reservation_uncertain(self) -> None:
+        with self.unit_of_work() as unit_of_work:
+            reservation = unit_of_work.stores.ingress_reservations.require_cloudflare(
+                "workspace-a", "reservation-001"
+            )
+        self.assertIs(
+            reservation.status,
+            OwnedHostnameReservationStatus.UNCERTAIN,
+        )
+
     def context(
         self,
         *,
@@ -1596,6 +1926,10 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         operation: object | None = None,
         base_graph: DeploymentGraph | None = None,
         desired_graph: DeploymentGraph | None = None,
+        worker_scopes: tuple[PolicyScope, ...] = (
+            PolicyScope.EXECUTION_OPERATE,
+            PolicyScope.SECRET_PROVIDER_USE,
+        ),
     ) -> ActivityRealizationContext:
         graph = self.graph()
         operation = operation or AllocatePublicIngress(
@@ -1604,6 +1938,16 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         activity = PlannedActivity(
             ActivityId(activity_id),
             operation,
+            risk=(
+                RiskLevel.CRITICAL
+                if isinstance(operation, ReleasePublicIngressReservation)
+                else RiskLevel.LOW
+            ),
+            impact=(
+                ActivityImpact.DESTRUCTIVE
+                if isinstance(operation, ReleasePublicIngressReservation)
+                else ActivityImpact.NON_DESTRUCTIVE
+            ),
         )
         return ActivityRealizationContext(
             activity=activity,
@@ -1667,10 +2011,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
             registered_products=(),
             authority=ExecutionWorkerAuthority(
                 "worker-a",
-                (
-                    PolicyScope.EXECUTION_OPERATE,
-                    PolicyScope.SECRET_PROVIDER_USE,
-                ),
+                worker_scopes,
             ),
             intent_event=ActivityEventRecord(
                 intent_event_id,

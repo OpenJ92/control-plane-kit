@@ -20,6 +20,7 @@ from control_plane_kit_core.planning import (
     AddSocketConnection,
     AllocatePublicIngress,
     PlannedActivity,
+    ReleasePublicIngressReservation,
     RemovePublicIngress,
     RemoveSocketConnection,
     SwitchSocketConnection,
@@ -523,6 +524,7 @@ class ActivityExecutionDispatcher:
                 AllocatePublicIngress,
                 WaitForPublicIngressReady,
                 RemovePublicIngress,
+                ReleasePublicIngressReservation,
             ),
         ):
             if self.ingress is None:
