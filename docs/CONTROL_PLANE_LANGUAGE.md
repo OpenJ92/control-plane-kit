@@ -1200,6 +1200,48 @@ laws:
   return existing evidence without redispatch, while changed intent conflicts.
   No Postgres transaction spans signing, gateway transport, or target IO.
 
+### Authenticated Workload Node Control
+
+meaning:
+  Planned AUTH.NODE-CONTROL language for invoking one declared workload control
+  surface through a gateway relay and a workload-local SDK verifier. It is
+  frozen architecturally by `control-plane-kit-core/docs/NODE_CONTROL_TOPOLOGY.md`
+  before #1148 introduces executable pure contracts.
+
+owned by:
+  `control-plane-kit-core` will own pure provider-neutral command, grant,
+  descriptor, and result contracts. `control-plane-kit-operations` owns
+  authorization, durable intent, replay/evidence, and result folding. The
+  separately installable `control-plane-kit-server-sdk` owns workload verifier,
+  dispatch, `ControlPlaneVariable[State, Command, Result]`, and optional
+  FastAPI route accrual.
+
+durable:
+  Commands and results may become durable operations evidence. SDK process-local
+  state is not durable. Durable adopters such as service discovery own their own
+  UnitOfWork, command ledger, revisions, and restart replay.
+
+may contain secrets:
+  No. Operator bearer credentials, compact grants, signatures, private keys,
+  secret values, private endpoint details, and unbounded payloads are excluded
+  from graph truth, descriptors, grants, commands, results, events,
+  observations, read models, logs, route responses, and issue evidence.
+
+interpreted by:
+  cpk-server operations services issue bounded intent, cpk-local-gateway relays
+  only after transit authority, and a workload SDK verifies end-to-end workload
+  authority before one `ControlPlaneVariable` transition.
+
+laws:
+  Canonical newly published workload SDK routes use `/__control`; existing
+  `/__deploy` control-route descriptors remain bounded legacy compatibility
+  until a focused migration changes them. Gateway transit authority and
+  workload end-to-end authority have distinct audiences, command identities,
+  verifier responsibilities, and replay scopes. Variables may activate, drain,
+  weight, or select only graph-declared identities; they must not create graph
+  edges, accept caller URLs, expose arbitrary object reflection, or introduce a
+  second handler/plugin mechanism.
+
 ## Planning Language
 
 ### DeploymentTransition
