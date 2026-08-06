@@ -21,6 +21,7 @@ EXPECTED_MODULES = {
     "gateway_delegation",
     "identity",
     "lifecycle",
+    "node_control",
     "operations.__init__",
     "operations.commands",
     "operations.execution",

@@ -1203,13 +1203,14 @@ laws:
 ### Authenticated Workload Node Control
 
 meaning:
-  Planned AUTH.NODE-CONTROL language for invoking one declared workload control
-  surface through a gateway relay and a workload-local SDK verifier. It is
-  frozen architecturally by `control-plane-kit-core/docs/NODE_CONTROL_TOPOLOGY.md`
-  before #1148 introduces executable pure contracts.
+  AUTH.NODE-CONTROL language for invoking one declared workload control surface
+  through a gateway relay and a workload-local SDK verifier. The architectural
+  boundary is frozen by `control-plane-kit-core/docs/NODE_CONTROL_TOPOLOGY.md`;
+  executable pure contracts live in
+  `control-plane-kit-core/src/control_plane_kit_core/node_control.py`.
 
 owned by:
-  `control-plane-kit-core` will own pure provider-neutral command, grant,
+  `control-plane-kit-core` owns pure provider-neutral command, grant,
   descriptor, and result contracts. `control-plane-kit-operations` owns
   authorization, durable intent, replay/evidence, and result folding. The
   separately installable `control-plane-kit-server-sdk` owns workload verifier,
@@ -1241,6 +1242,20 @@ laws:
   weight, or select only graph-declared identities; they must not create graph
   edges, accept caller URLs, expose arbitrary object reflection, or introduce a
   second handler/plugin mechanism.
+
+public contract shape:
+  `NodeControlCommandRequest` binds one workspace, graph revision, node,
+  provider socket, variable, closed operation, request id, idempotency key,
+  command codec, transition precondition, and bounded typed payload.
+  `DelegatedWorkloadNodeControlGrant` binds that canonical request digest under
+  a distinct `workload-node-control` key purpose; gateway probe grants are a
+  different type and are rejected at this boundary.
+  `ControlPlaneVariableDescriptor` names one scalar, map, or atomic
+  weighted-routing state codec, its matching replacement command codec, its
+  result codec, and the canonical `node-control` route/capability pair. Strict
+  codecs reject unknown keys and kinds. Results expose only bounded state and
+  closed evidence codes, never provider errors, signatures, credentials,
+  endpoints, or secret values.
 
 ## Planning Language
 

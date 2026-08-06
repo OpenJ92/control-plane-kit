@@ -35,6 +35,7 @@ class CapabilityName(StrEnum):
     LOAD_MUTABLE = "load-mutable"
     DISCOVERY_READABLE = "discovery-readable"
     DISCOVERY_MUTABLE = "discovery-mutable"
+    NODE_CONTROLLABLE = "node-controllable"
 
 
 @dataclass(frozen=True)
@@ -175,6 +176,12 @@ DISCOVERY_MUTABLE = Capability(
     description="Node accepts authenticated service registration lifecycle commands.",
     route_set=ControlRouteSetName.DISCOVERY,
 )
+NODE_CONTROLLABLE = Capability(
+    name=CapabilityName.NODE_CONTROLLABLE,
+    label="Node control",
+    description="Node exposes typed authenticated workload control variables.",
+    route_set=ControlRouteSetName.NODE_CONTROL,
+)
 
 CAPABILITIES = (
     HEALTH_CHECKABLE,
@@ -196,6 +203,7 @@ CAPABILITIES = (
     LOAD_MUTABLE,
     DISCOVERY_READABLE,
     DISCOVERY_MUTABLE,
+    NODE_CONTROLLABLE,
 )
 CAPABILITY_BY_NAME = {capability.name: capability for capability in CAPABILITIES}
 
