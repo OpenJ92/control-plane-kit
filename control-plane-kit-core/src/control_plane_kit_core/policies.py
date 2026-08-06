@@ -58,6 +58,13 @@ class PolicyScope(StrEnum):
     GATEWAY_PROBE_USE = "gateway-probe:use"
 
 
+class DestructiveApprovalSeparation(StrEnum):
+    """Closed requester/decider policy for destructive approval subjects."""
+
+    ALLOW_SELF = "allow-self"
+    REQUIRE_DISTINCT_PRINCIPAL = "require-distinct-principal"
+
+
 @dataclass(frozen=True, order=True)
 class PolicyDecision:
     """A bounded policy result with no effect authority."""
@@ -156,8 +163,23 @@ class ApprovalRequirement:
         }
 
 
+@dataclass(frozen=True)
 class ApprovalPolicy:
     """Checks request and approval authority for canonical activity plans."""
+
+    destructive_separation: DestructiveApprovalSeparation = (
+        DestructiveApprovalSeparation.REQUIRE_DISTINCT_PRINCIPAL
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.destructive_separation,
+            DestructiveApprovalSeparation,
+        ):
+            raise TypeError(
+                "destructive approval separation must be "
+                "DestructiveApprovalSeparation"
+            )
 
     def can_request_plan(
         self,
@@ -169,6 +191,8 @@ class ApprovalPolicy:
         self,
         actor_scopes: Iterable[PolicyScope],
         *,
+        requested_by: str,
+        decided_by: str,
         destructive: bool = False,
     ) -> PolicyDecision:
         required = (
@@ -176,7 +200,15 @@ class ApprovalPolicy:
             if destructive
             else PolicyScope.PLAN_APPROVE
         )
-        return _require_scope(actor_scopes, required)
+        authority = _require_scope(actor_scopes, required)
+        if not authority.allowed:
+            return authority
+        separation = self._destructive_separation_decision(
+            requested_by=requested_by,
+            decided_by=decided_by,
+            destructive=destructive,
+        )
+        return authority if separation.allowed else separation
 
     def can_request_gateway_key_rotation(
         self,
@@ -189,13 +221,44 @@ class ApprovalPolicy:
     def can_approve_gateway_key_rotation(
         self,
         actor_scopes: Iterable[PolicyScope],
+        *,
+        requested_by: str,
+        decided_by: str,
     ) -> PolicyDecision:
         """Keep rotation review authority distinct from rotation execution."""
 
-        return _require_scope(
+        authority = _require_scope(
             actor_scopes,
             PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,
         )
+        if not authority.allowed:
+            return authority
+        separation = self._destructive_separation_decision(
+            requested_by=requested_by,
+            decided_by=decided_by,
+            destructive=True,
+        )
+        return authority if separation.allowed else separation
+
+    def _destructive_separation_decision(
+        self,
+        *,
+        requested_by: str,
+        decided_by: str,
+        destructive: bool,
+    ) -> PolicyDecision:
+        _principal_id(requested_by, "approval requester")
+        _principal_id(decided_by, "approval decider")
+        if (
+            destructive
+            and self.destructive_separation
+            is DestructiveApprovalSeparation.REQUIRE_DISTINCT_PRINCIPAL
+            and requested_by == decided_by
+        ):
+            return PolicyDecision.deny(
+                "destructive approval requires a distinct principal"
+            )
+        return PolicyDecision.allow("approval separation policy is satisfied")
 
     def requirement_for(self, plan: ActivityPlan) -> ApprovalRequirement:
         """Derive immutable approval evidence from canonical plan data."""
@@ -381,6 +444,12 @@ def _require_scope(
         f"scope {required.value!r} is missing",
         required_scope=required,
     )
+
+
+def _principal_id(value: str, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise TypeError(f"{field_name} must be a nonempty string")
+    return value
 
 
 def _activity_type_for_operation(operation: ActivityOperation) -> str:
