@@ -59,9 +59,15 @@ class PolicyDecisionTests(unittest.TestCase):
     def test_approval_policy_requires_stronger_scope_for_destructive_plans(self) -> None:
         policy = ApprovalPolicy()
 
-        ordinary = policy.can_approve_plan((PolicyScope.PLAN_APPROVE,))
+        ordinary = policy.can_approve_plan(
+            (PolicyScope.PLAN_APPROVE,),
+            requested_by="operator-a",
+            decided_by="manager-a",
+        )
         destructive = policy.can_approve_plan(
             (PolicyScope.PLAN_APPROVE,),
+            requested_by="operator-a",
+            decided_by="manager-a",
             destructive=True,
         )
 
@@ -156,6 +162,21 @@ class PolicyDecisionTests(unittest.TestCase):
 
         self.assertTrue(decision.allowed)
 
+    def test_approval_separation_rejects_open_values_and_blank_identities(self) -> None:
+        with self.assertRaises(TypeError):
+            ApprovalPolicy(
+                destructive_separation="allow-self"  # type: ignore[arg-type]
+            )
+
+        policy = ApprovalPolicy()
+        with self.assertRaises(TypeError):
+            policy.can_approve_plan(
+                (PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+                requested_by="",
+                decided_by="manager-a",
+                destructive=True,
+            )
+
     def test_destructive_activity_policy_classifies_consequential_actions(self) -> None:
         policy = DestructiveActivityPolicy()
 
@@ -200,7 +221,11 @@ class PolicyDecisionTests(unittest.TestCase):
         policy = ApprovalPolicy()
 
         with self.assertRaises(TypeError):
-            policy.can_approve_plan(("plan:approve",))  # type: ignore[arg-type]
+            policy.can_approve_plan(
+                ("plan:approve",),  # type: ignore[arg-type]
+                requested_by="operator-a",
+                decided_by="manager-a",
+            )
 
 
 if __name__ == "__main__":

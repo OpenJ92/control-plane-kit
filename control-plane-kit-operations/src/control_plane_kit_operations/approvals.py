@@ -480,11 +480,15 @@ class ApprovalCommandService:
                 raise ApprovalStateConflict("approval request already has a decision")
             if isinstance(request.subject, GatewayKeyRotationApprovalSubject):
                 authority = self._policy.can_approve_gateway_key_rotation(
-                    command.actor_scopes
+                    command.actor_scopes,
+                    requested_by=request.requested_by,
+                    decided_by=command.actor_id,
                 )
             else:
                 authority = self._policy.can_approve_plan(
                     command.actor_scopes,
+                    requested_by=request.requested_by,
+                    decided_by=command.actor_id,
                     destructive=request.destructive,
                 )
             if not authority.allowed:
