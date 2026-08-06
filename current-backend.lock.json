@@ -4,7 +4,7 @@
     "name": "control-plane-kit-servers",
     "identity": "OpenJ92/control-plane-kit-servers",
     "url": "https://github.com/OpenJ92/control-plane-kit-servers.git",
-    "commit": "43e9f359ca828c83fe4994ed1b62e1be54277ddd",
+    "commit": "31c569b6e90d139ea658cccb1b19b8e84c4172c2",
     "coordinates_path": "coordinates/server-products.json"
   },
   "upstreams": [
