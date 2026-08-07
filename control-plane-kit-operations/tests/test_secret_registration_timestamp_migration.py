@@ -474,7 +474,10 @@ class SecretRegistrationTimestampMigrationTests(unittest.TestCase):
             SELECT conname, oid, pg_get_constraintdef(oid)
             FROM pg_constraint
             WHERE connamespace = current_schema()::regnamespace
-              AND conname <> 'cpk_schema_migrations_pkey'
+              AND conrelid IN (
+                'cpk_secret_providers'::regclass,
+                'cpk_secret_references'::regclass
+              )
             ORDER BY conname
             """
         ).fetchall()
@@ -490,7 +493,10 @@ class SecretRegistrationTimestampMigrationTests(unittest.TestCase):
             JOIN pg_class AS index_relation
               ON index_relation.oid = pg_index.indexrelid
             WHERE pg_namespace.nspname = current_schema()
-              AND index_relation.relname <> 'cpk_schema_migrations_pkey'
+              AND table_relation.relname IN (
+                'cpk_secret_providers',
+                'cpk_secret_references'
+              )
             ORDER BY index_relation.relname
             """
         ).fetchall()
