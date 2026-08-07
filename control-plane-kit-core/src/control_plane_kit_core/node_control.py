@@ -7,9 +7,10 @@ state, dispatch commands, acquire locks, or mutate workload state.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 import hashlib
+import ipaddress
 import math
 import re
 from typing import Mapping
@@ -32,20 +33,32 @@ _MAX_SAFE_INTEGER = 2**53 - 1
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
-_HOST_PORT = re.compile(r"^[^/:\s]+:\d{1,5}$")
-_IPV4 = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
-_SECRET_MARKERS = (
-    "authorization:",
-    "bearer ",
-    "credential=",
-    "password=",
-    "private key",
-    "secret=",
-    "signature=",
-    "sg.",
-    "sk-",
-    "token=",
+_ASCII_PERCENT_ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
+_AUTHORIZATION_ENVELOPE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_-])(?:"
+    r"authorization[ \t]*:[ \t]*[A-Za-z][A-Za-z0-9._+-]*[ \t]+"
+    r"|bearer[ \t]+"
+    r")[^\s,;]+"
 )
+_CREDENTIAL_ASSIGNMENT = re.compile(
+    r"(?i)(?<![A-Za-z0-9_-])"
+    r"(?:credential|password|secret|signature|token)"
+    r"[ \t]*=[ \t]*[^\s,;]+"
+)
+_PRIVATE_KEY_ARMOR = re.compile(
+    r"(?i)-----begin(?: [A-Za-z0-9]+)* private key-----"
+)
+_COMPACT_TOKEN = re.compile(
+    r"(?i)(?<![A-Za-z0-9])(?:sk-|sg\.)[A-Za-z0-9][A-Za-z0-9._-]*"
+)
+_SCHEME_ENDPOINT = re.compile(r"(?i)[A-Za-z][A-Za-z0-9+.-]*://[^\s/]")
+_PROTOCOL_RELATIVE_ENDPOINT = re.compile(r"(?:^|[\s(\"'=])//[^\s/]")
+_HOST_PORT_ENDPOINT = re.compile(
+    r"(?<![A-Za-z0-9._:\[\]-])"
+    r"(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9][A-Za-z0-9.-]*):(\d{1,5})"
+    r"(?![A-Za-z0-9])"
+)
+_ENDPOINT_TOKEN_SPLIT = re.compile(r"[\s,;(){}<>\"']+")
 
 _TARGET_KEYS = frozenset(
     {"workspace_id", "graph_revision", "node_id", "provider_socket_name"}
@@ -220,7 +233,7 @@ class NodeControlGraphReference:
     """Producer-attested graph role; syntax alone does not prove graph membership."""
 
     role: NodeControlGraphReferenceRole
-    value: str
+    value: str = field(repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.role, NodeControlGraphReferenceRole):
@@ -285,7 +298,7 @@ class ControlPlaneTransitionPrecondition:
 class ScalarControlState:
     """One bounded public scalar state value."""
 
-    value: str | int | float | bool | None
+    value: str | int | float | bool | None = field(repr=False)
 
     def __post_init__(self) -> None:
         _validate_scalar(self.value, "scalar state")
@@ -298,7 +311,9 @@ class ScalarControlState:
 class MapControlState:
     """One immutable bounded map of public scalar state values."""
 
-    entries: tuple[tuple[str, str | int | float | bool | None], ...]
+    entries: tuple[tuple[str, str | int | float | bool | None], ...] = field(
+        repr=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.entries, tuple):
@@ -313,7 +328,7 @@ class MapControlState:
                 )
             key, value = entry
             _validate_identifier(key, "map state key")
-            _validate_scalar(value, f"map state value for {key}")
+            _validate_scalar(value, "map state value")
             normalized.append((key, value))
         keys = tuple(key for key, _ in normalized)
         if len(set(keys)) != len(keys):
@@ -457,8 +472,8 @@ class NodeControlCommandRequest:
     target: NodeControlTarget
     variable_name: NodeControlGraphReference
     operation: NodeControlOperation
-    request_id: str
-    idempotency_key: str
+    request_id: str = field(repr=False)
+    idempotency_key: str = field(repr=False)
     command_codec: ControlPlaneCommandCodec | None = None
     precondition: ControlPlaneTransitionPrecondition | None = None
     payload: NodeControlPayload | None = None
@@ -595,20 +610,20 @@ class NodeControlCommandRequestCodec:
 class DelegatedWorkloadNodeControlGrant:
     """Unsigned exact end-to-end authority for one workload request."""
 
-    issuer: str
-    key_id: str
-    audience: str
+    issuer: str = field(repr=False)
+    key_id: str = field(repr=False)
+    audience: str = field(repr=False)
     target: NodeControlTarget
     variable_name: NodeControlGraphReference
     operation: NodeControlOperation
     command_codec: ControlPlaneCommandCodec | None
-    request_id: str
-    idempotency_key: str
+    request_id: str = field(repr=False)
+    idempotency_key: str = field(repr=False)
     request_digest: NodeControlRequestDigest
     issued_at: int
     not_before: int
     expires_at: int
-    jti: str
+    jti: str = field(repr=False)
 
     def __post_init__(self) -> None:
         _validate_reference(self.issuer, "workload grant issuer")
@@ -873,7 +888,7 @@ class NodeControlEvidence:
 class NodeControlReadStateSucceeded:
     """Successful read with one versioned state value and no evidence."""
 
-    request_id: str
+    request_id: str = field(repr=False)
     state_codec: ControlPlaneStateCodec
     version: int
     state: ControlStateValue
@@ -920,7 +935,7 @@ class NodeControlReadStateSucceeded:
 class NodeControlTransitionSucceeded:
     """Successful transition with one version and applied/no-change evidence."""
 
-    request_id: str
+    request_id: str = field(repr=False)
     version: int
     evidence: NodeControlEvidence
 
@@ -967,7 +982,7 @@ class NodeControlTransitionSucceeded:
 class NodeControlRejected:
     """Rejected read or transition with one operation-compatible reason."""
 
-    request_id: str
+    request_id: str = field(repr=False)
     operation: NodeControlOperation
     evidence: NodeControlEvidence
 
@@ -1008,7 +1023,7 @@ class NodeControlRejected:
 class NodeControlFailed:
     """Failed read or transition with fixed internal-failure evidence."""
 
-    request_id: str
+    request_id: str = field(repr=False)
     operation: NodeControlOperation
 
     def __post_init__(self) -> None:
@@ -1223,7 +1238,7 @@ class ControlPlaneVariableDescriptor:
     kind: ControlPlaneVariableKind
     state_codec: ControlPlaneStateCodec
     operation_contracts: tuple[ControlPlaneVariableOperationContract, ...]
-    description: str | None = None
+    description: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         _validate_graph_reference(
@@ -1572,7 +1587,7 @@ def _validate_identifier(value: object, name: str) -> None:
         or not _IDENTIFIER.fullmatch(value)
     ):
         raise NodeControlContractError(f"{name} must be a bounded identifier")
-    _reject_secret_or_endpoint(value, name)
+    _reject_prohibited_public_material(value, name)
 
 
 def _validate_reference(value: object, name: str) -> None:
@@ -1582,7 +1597,7 @@ def _validate_reference(value: object, name: str) -> None:
         or not _REFERENCE.fullmatch(value)
     ):
         raise NodeControlContractError(f"{name} must be a bounded reference")
-    _reject_secret_or_endpoint(value, name)
+    _reject_prohibited_public_material(value, name)
 
 
 def _validate_public_text(value: object, name: str, *, max_length: int) -> None:
@@ -1593,7 +1608,7 @@ def _validate_public_text(value: object, name: str, *, max_length: int) -> None:
         or "\x00" in value
     ):
         raise NodeControlContractError(f"{name} must be bounded public text")
-    _reject_secret_or_endpoint(value, name)
+    _reject_prohibited_public_material(value, name)
 
 
 def _validate_scalar(value: object, name: str) -> None:
@@ -1629,18 +1644,73 @@ def _validate_epoch(value: object, name: str) -> None:
         )
 
 
-def _reject_secret_or_endpoint(value: str, name: str) -> None:
-    lowered = value.lower()
-    if any(marker in lowered for marker in _SECRET_MARKERS):
-        raise NodeControlContractError(f"{name} contains secret-shaped text")
+def _reject_prohibited_public_material(value: str, name: str) -> None:
+    projections = (value, _ascii_percent_projection(value))
+    if any(_contains_credential_envelope(candidate) for candidate in projections):
+        raise NodeControlContractError(
+            f"{name} violates credential-envelope public-material law"
+        )
+    if any(_contains_endpoint_envelope(candidate) for candidate in projections):
+        raise NodeControlContractError(
+            f"{name} violates endpoint-envelope public-material law"
+        )
+
+
+def _ascii_percent_projection(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        decoded = int(match.group(1), 16)
+        return chr(decoded) if decoded <= 0x7F else match.group(0)
+
+    return _ASCII_PERCENT_ESCAPE.sub(replace, value)
+
+
+def _contains_credential_envelope(value: str) -> bool:
+    return any(
+        pattern.search(value) is not None
+        for pattern in (
+            _AUTHORIZATION_ENVELOPE,
+            _CREDENTIAL_ASSIGNMENT,
+            _PRIVATE_KEY_ARMOR,
+            _COMPACT_TOKEN,
+        )
+    )
+
+
+def _contains_endpoint_envelope(value: str) -> bool:
     if (
-        "://" in value
-        or value.startswith("//")
-        or _HOST_PORT.fullmatch(value)
-        or _IPV4.fullmatch(value)
-        or lowered == "localhost"
+        _SCHEME_ENDPOINT.search(value) is not None
+        or _PROTOCOL_RELATIVE_ENDPOINT.search(value) is not None
     ):
-        raise NodeControlContractError(f"{name} contains endpoint-shaped text")
+        return True
+    for match in _HOST_PORT_ENDPOINT.finditer(value):
+        if 1 <= int(match.group(2)) <= 65_535:
+            return True
+    for token in _ENDPOINT_TOKEN_SPLIT.split(value):
+        atom = token.strip("[]").rstrip(".")
+        if not atom:
+            continue
+        if _is_localhost_endpoint(atom):
+            return True
+        try:
+            ipaddress.ip_address(atom)
+        except ValueError:
+            continue
+        return True
+    return False
+
+
+def _is_localhost_endpoint(atom: str) -> bool:
+    lowered = atom.lower().rstrip(".")
+    if ":" in lowered:
+        host, separator, port = lowered.rpartition(":")
+        if (
+            not separator
+            or not port.isdigit()
+            or not 1 <= int(port) <= 65_535
+        ):
+            return False
+        lowered = host.rstrip(".")
+    return lowered == "localhost" or lowered.endswith(".localhost")
 
 
 def _validate_descriptor_size(descriptor: object, name: str) -> None:
@@ -1651,11 +1721,12 @@ def _validate_descriptor_size(descriptor: object, name: str) -> None:
 
 def _canonical_bytes(descriptor: object, name: str) -> bytes:
     try:
-        return rfc8785.dumps(descriptor)
-    except rfc8785.CanonicalizationError as error:
-        raise NodeControlContractError(
-            f"{name} is outside the canonical JSON domain"
-        ) from error
+        encoded = rfc8785.dumps(descriptor)
+    except rfc8785.CanonicalizationError:
+        pass
+    else:
+        return encoded
+    raise NodeControlContractError(f"{name} is outside the canonical JSON domain")
 
 
 def _is_negative_zero(value: float) -> bool:
@@ -1678,13 +1749,9 @@ def _require_keys(
     unknown = set(mapping) - expected
     missing = expected - set(mapping)
     if unknown:
-        raise NodeControlContractError(
-            f"{name} has unknown keys: {sorted(unknown)}"
-        )
+        raise NodeControlContractError(f"{name} has unknown fields")
     if missing:
-        raise NodeControlContractError(
-            f"{name} is missing keys: {sorted(missing)}"
-        )
+        raise NodeControlContractError(f"{name} is missing required fields")
 
 
 def _text(mapping: Mapping[str, object], key: str) -> str:
@@ -1705,9 +1772,12 @@ def _enum(enum_type: type[StrEnum], value: object, name: str) -> StrEnum:
     if not isinstance(value, str):
         raise NodeControlContractError(f"{name} must be text")
     try:
-        return enum_type(value)
-    except ValueError as error:
-        raise NodeControlContractError(f"{name} is unknown") from error
+        member = enum_type(value)
+    except ValueError:
+        pass
+    else:
+        return member
+    raise NodeControlContractError(f"{name} is unknown")
 
 
 def _optional_enum(

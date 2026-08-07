@@ -204,6 +204,20 @@ Rejected extension shapes:
 - gateway-owned graph truth;
 - caller URLs or endpoints inside variable state.
 
+## Public Material And Provenance
+
+Node-control open strings remain language-neutral JSON strings. Core enforces
+their field bounds plus the exact credential and endpoint envelopes frozen by
+`NODE_CONTROL_PUBLIC_MATERIAL.md`; it does not claim to discover arbitrary
+secrets or graph provenance from bytes. Semantic publicness is an authenticated
+producer obligation, and graph membership is verified by the admitted-graph
+join at the consuming boundary.
+
+Accepted open material is present in canonical descriptors because the wire
+must carry it. Python object representations omit it, and rejected values,
+producer map keys, attacker-controlled unknown fields, and underlying parser
+exceptions are not copied into contract errors.
+
 ## Behavioral Law Cards
 
 | Law id | Classification | Observable law | Negative cases | Future owner |
@@ -214,7 +228,7 @@ Rejected extension shapes:
 | node-control.graph-declared-authority | strengthened | commands address only graph-declared node, socket, variable, command, and target identities. | caller URLs, arbitrary endpoints, graph-edge insertion | #1148, #1096 |
 | node-control.one-variable-protocol | strengthened | one `ControlPlaneVariable[State, Command, Result]` protocol covers atomic and durable implementations. | second handler/plugin system, reflection, free-form mutation | #1148, #1149 |
 | node-control.replay | strengthened | same idempotency key plus same command converges; changed command conflicts. | replay with changed intent, cross-restart claim for process-local memory | #1148, #1149, #1153 |
-| node-control.bounds-redaction | strengthened | descriptors, grants, commands, results, logs, and readbacks are bounded and secret-free. | raw bearer, compact grant, signature, private key, token, private endpoint, unbounded body | #1148 through #1157 |
+| node-control.bounds-redaction | strengthened | descriptors, grants, commands, results, logs, and readbacks are bounded producer-attested public material with exact credential/endpoint exclusions and redacted diagnostics. | raw bearer, compact grant, signature, private key, token, private endpoint, unbounded body, attacker-controlled error/repr echo | #1148 through #1157 |
 | node-control.atomic-publication | strengthened | process-local transition validates before publication and exposes old or new complete state only. | partial target/weight snapshot, NaN probability, unknown target | #1149, #1155, #1156 |
 | node-control.durable-variable | strengthened | durable discovery remains domain-owned and transactional while implementing the same protocol. | SDK memory mirror replaces registry truth | #1152, #1153, #1154 |
 | node-control.ordinary-route-isolation | isomorphic/strengthened | CPK control auth does not protect ordinary app/data routes. | application route unexpectedly requires CPK grant | #1150 |

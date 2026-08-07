@@ -9,7 +9,11 @@
     "private key rotation",
     "authorization policy",
     "sketch-target",
-    "sg-routing"
+    "sg-routing",
+    "router.internal:0",
+    "router.internal:65536",
+    "router.internal:8080suffix",
+    "localhost:70000"
   ],
   "rejected": [
     {"law": "credential-envelope", "value": "Authorization: Bearer abc123"},
@@ -29,13 +33,16 @@
     {"law": "endpoint-envelope", "value": "https://router.internal/control"},
     {"law": "endpoint-envelope", "value": "custom+tcp://router.internal"},
     {"law": "endpoint-envelope", "value": "//router.internal/control"},
+    {"law": "endpoint-envelope", "value": "router.internal:1"},
     {"law": "endpoint-envelope", "value": "router.internal:8080"},
+    {"law": "endpoint-envelope", "value": "router.internal:65535"},
     {"law": "endpoint-envelope", "value": "[2001:db8::1]:443"},
     {"law": "endpoint-envelope", "value": "192.0.2.10"},
     {"law": "endpoint-envelope", "value": "2001:db8::1"},
     {"law": "endpoint-envelope", "value": "localhost"},
     {"law": "endpoint-envelope", "value": "LOCALHOST."},
     {"law": "endpoint-envelope", "value": "api.localhost"},
+    {"law": "endpoint-envelope", "value": "localhost:443"},
     {"law": "endpoint-envelope", "value": "api.localhost:8443"},
     {"law": "endpoint-envelope", "value": "https%3A%2F%2Frouter.internal"},
     {"law": "endpoint-envelope", "value": "router.internal%3A8080"}

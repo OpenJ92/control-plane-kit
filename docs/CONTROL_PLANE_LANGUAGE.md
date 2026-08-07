@@ -1223,10 +1223,14 @@ durable:
   UnitOfWork, command ledger, revisions, and restart replay.
 
 may contain secrets:
-  No. Operator bearer credentials, compact grants, signatures, private keys,
-  secret values, private endpoint details, and unbounded payloads are excluded
-  from graph truth, descriptors, grants, commands, results, events,
-  observations, read models, logs, route responses, and issue evidence.
+  No. This is a producer contract: core enforces bounded syntax and the exact
+  credential/endpoint envelopes in
+  `control-plane-kit-core/docs/NODE_CONTROL_PUBLIC_MATERIAL.md`; it cannot prove
+  arbitrary text is semantically public. Operator bearer credentials, compact
+  grants, signatures, private keys, secret values, private endpoint details,
+  and unbounded payloads remain forbidden from graph truth, descriptors,
+  grants, commands, results, events, observations, read models, logs, route
+  responses, and issue evidence.
 
 interpreted by:
   cpk-server operations services issue bounded intent, cpk-local-gateway relays
@@ -1253,6 +1257,12 @@ public contract shape:
   Resolved endpoint and secret material objects cannot substitute for graph
   references. A bare DNS-looking string remains semantically ambiguous until
   that producer-owned graph join rather than being guessed from bytes.
+  Other open text and scalar material follows
+  `cpk.node-control.public-material.v1`: exact lexical exclusions are applied
+  literally and after one ASCII percent projection, while semantic publicness
+  remains producer-attested. Python object representations and contract errors
+  omit open/rejected material; canonical descriptors retain admitted public
+  values required by the language-neutral wire.
 
   `NodeControlCommandRequest` binds one workspace, graph revision, node,
   provider socket, variable, closed operation, request id, idempotency key,
