@@ -167,6 +167,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
 
     def test_retained_v1_canonical_values_migrate_without_identity_loss(self) -> None:
         self.connection.execute(postgres.POSTGRES_SCHEMA)
+        self.connection.execute("SET TIME ZONE 'America/New_York'")
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -279,6 +280,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
 
     def test_owned_stores_round_trip_strings_microseconds_and_nulls(self) -> None:
         postgres.install_postgres_schema(self.connection)
+        self.connection.execute("SET TIME ZONE 'Asia/Tokyo'")
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
