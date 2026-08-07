@@ -75,6 +75,10 @@ from control_plane_kit_operations.postgres.migrations import (
     SchemaMigrationError,
     SchemaMigrationRegistry,
 )
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 
 
 class PostgresConnection(Protocol):
@@ -1717,12 +1721,13 @@ def _backfill_graph_lineage(connection: PostgresConnection) -> None:
             version=row[2],
             graph_descriptor=row[3],
             created_by=row[4],
-            created_at=row[5],
+            created_at=decode_postgres_timestamp(row[5]),
             metadata=row[6],
         )
         projection = RealizedGraphProjectionRecord.identity_for_authored(
             authored_record=authored
         )
+        encoded_created_at = encode_postgres_timestamp(projection.created_at)
         connection.execute(
             """
             INSERT INTO cpk_realized_graph_projections
@@ -1741,7 +1746,7 @@ def _backfill_graph_lineage(connection: PostgresConnection) -> None:
                 projection.projection_digest,
                 Jsonb(projection.graph_descriptor),
                 projection.created_by,
-                projection.created_at,
+                encoded_created_at,
             ),
         )
     connection.execute(
