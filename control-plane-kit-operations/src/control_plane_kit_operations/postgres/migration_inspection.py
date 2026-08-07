@@ -30,15 +30,16 @@ _POSTGRES_SCHEMA_MIGRATION_LEDGER_CONTRACT = (
 _MAX_MIGRATION_NAME_BYTES = 128
 _MIGRATION_CHECKSUM_BYTES = 64
 _COORDINATION_TEMPORAL_CONTRACT = (
-    ("cpk_activity_events", "occurred_at", "timestamp with time zone", "NO", True),
-    ("cpk_activity_plans", "created_at", "timestamp with time zone", "NO", True),
-    ("cpk_activity_runs", "created_at", "timestamp with time zone", "NO", True),
-    ("cpk_activity_runs", "settled_at", "timestamp with time zone", "YES", True),
-    ("cpk_activity_runs", "started_at", "timestamp with time zone", "YES", True),
+    ("cpk_activity_events", "occurred_at", "timestamp with time zone", 6, "NO", True),
+    ("cpk_activity_plans", "created_at", "timestamp with time zone", 6, "NO", True),
+    ("cpk_activity_runs", "created_at", "timestamp with time zone", 6, "NO", True),
+    ("cpk_activity_runs", "settled_at", "timestamp with time zone", 6, "YES", True),
+    ("cpk_activity_runs", "started_at", "timestamp with time zone", 6, "YES", True),
     (
         "cpk_approval_decisions",
         "decided_at",
         "timestamp with time zone",
+        6,
         "NO",
         True,
     ),
@@ -46,6 +47,7 @@ _COORDINATION_TEMPORAL_CONTRACT = (
         "cpk_approval_requests",
         "requested_at",
         "timestamp with time zone",
+        6,
         "NO",
         True,
     ),
@@ -53,6 +55,7 @@ _COORDINATION_TEMPORAL_CONTRACT = (
         "cpk_execution_requests",
         "claimed_at",
         "timestamp with time zone",
+        6,
         "YES",
         True,
     ),
@@ -60,6 +63,7 @@ _COORDINATION_TEMPORAL_CONTRACT = (
         "cpk_execution_requests",
         "lease_expires_at",
         "timestamp with time zone",
+        6,
         "YES",
         True,
     ),
@@ -67,14 +71,16 @@ _COORDINATION_TEMPORAL_CONTRACT = (
         "cpk_execution_requests",
         "requested_at",
         "timestamp with time zone",
+        6,
         "NO",
         True,
     ),
-    ("cpk_observations", "observed_at", "timestamp with time zone", "NO", True),
+    ("cpk_observations", "observed_at", "timestamp with time zone", 6, "NO", True),
     (
         "cpk_operation_actions",
         "created_at",
         "timestamp with time zone",
+        6,
         "NO",
         True,
     ),
@@ -82,6 +88,7 @@ _COORDINATION_TEMPORAL_CONTRACT = (
         "cpk_operation_sessions",
         "closed_at",
         "timestamp with time zone",
+        6,
         "YES",
         True,
     ),
@@ -89,6 +96,7 @@ _COORDINATION_TEMPORAL_CONTRACT = (
         "cpk_operation_sessions",
         "created_at",
         "timestamp with time zone",
+        6,
         "NO",
         True,
     ),
@@ -730,11 +738,11 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
 
 def _read_coordination_temporal_contract(
     connection: PostgresConnection,
-) -> tuple[tuple[str, str, str, str, bool], ...]:
+) -> tuple[tuple[str, str, str, int, str, bool], ...]:
     rows = _read_rows(
         connection,
         """
-        SELECT table_name, column_name, data_type, is_nullable,
+        SELECT table_name, column_name, data_type, datetime_precision, is_nullable,
                column_default IS NULL
         FROM information_schema.columns
         WHERE table_schema = current_schema()
