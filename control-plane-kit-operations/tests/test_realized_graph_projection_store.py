@@ -109,6 +109,27 @@ class RealizedGraphProjectionStoreTests(unittest.TestCase):
                 )
             unit_of_work.commit()
 
+    def test_projection_store_rejects_noncanonical_timestamp_before_write(self) -> None:
+        authored = self.authored_graph()
+        graph = self.realized(authored, "projection-a", "key-a", _PUBLIC_KEY_A)
+
+        with self.unit_of_work() as unit_of_work:
+            self.seed_authored(unit_of_work, authored)
+            with self.assertRaisesRegex(
+                ValueError,
+                "^postgres timestamp must be canonical UTC text$",
+            ):
+                unit_of_work.stores.realized_graphs.save(
+                    self.record(
+                        "realized-invalid-time",
+                        "rotation-invalid-time",
+                        graph,
+                        created_at="not-a-timestamp",
+                    )
+                )
+
+        self.assertEqual(self._row_count("cpk_realized_graph_projections"), 0)
+
     def test_cross_workspace_source_fails_closed(self) -> None:
         authored = self.authored_graph()
         graph_a = self.realized(authored, "projection-a", "key-a", _PUBLIC_KEY_A)
@@ -192,6 +213,8 @@ class RealizedGraphProjectionStoreTests(unittest.TestCase):
         projection_id: str,
         projection_key: str,
         graph: DeploymentGraph,
+        *,
+        created_at: str = "2026-08-01T20:00:00.000001Z",
     ) -> RealizedGraphProjectionRecord:
         return RealizedGraphProjectionRecord.from_graph(
             projection_id=projection_id,
@@ -201,7 +224,7 @@ class RealizedGraphProjectionStoreTests(unittest.TestCase):
             projection_key=projection_key,
             graph=graph,
             created_by="operator-a",
-            created_at="2026-08-01T20:00:00Z",
+            created_at=created_at,
         )
 
     @staticmethod
