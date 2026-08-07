@@ -138,6 +138,17 @@ class NodeControlCanonicalization(StrEnum):
     JCS_RFC8785_V1 = "jcs-rfc8785.v1"
 
 
+class NodeControlGraphReferenceRole(StrEnum):
+    """Closed semantic roles for graph-bound node-control references."""
+
+    WORKSPACE = "workspace"
+    GRAPH_REVISION = "graph-revision"
+    NODE = "node"
+    PROVIDER_SOCKET = "provider-socket"
+    VARIABLE = "variable"
+    TARGET = "target"
+
+
 class ControlPlaneVariableKind(StrEnum):
     """Closed first-adopter state shapes exposed by control-plane variables."""
 
@@ -205,29 +216,55 @@ class WorkloadNodeControlGrantVerificationCode(StrEnum):
 
 
 @dataclass(frozen=True, order=True)
+class NodeControlGraphReference:
+    """Producer-attested graph role; syntax alone does not prove graph membership."""
+
+    role: NodeControlGraphReferenceRole
+    value: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.role, NodeControlGraphReferenceRole):
+            raise NodeControlContractError("node-control graph reference role is unknown")
+        _validate_identifier(self.value, "node-control graph reference")
+
+
+@dataclass(frozen=True, order=True)
 class NodeControlTarget:
     """Graph-bound workload control destination without an endpoint value."""
 
-    workspace_id: str
-    graph_revision: str
-    node_id: str
-    provider_socket_name: str
+    workspace_id: NodeControlGraphReference
+    graph_revision: NodeControlGraphReference
+    node_id: NodeControlGraphReference
+    provider_socket_name: NodeControlGraphReference
 
     def __post_init__(self) -> None:
-        _validate_identifier(self.workspace_id, "target workspace_id")
-        _validate_identifier(self.graph_revision, "target graph_revision")
-        _validate_identifier(self.node_id, "target node_id")
-        _validate_identifier(
+        _validate_graph_reference(
+            self.workspace_id,
+            NodeControlGraphReferenceRole.WORKSPACE,
+            "target workspace_id",
+        )
+        _validate_graph_reference(
+            self.graph_revision,
+            NodeControlGraphReferenceRole.GRAPH_REVISION,
+            "target graph_revision",
+        )
+        _validate_graph_reference(
+            self.node_id,
+            NodeControlGraphReferenceRole.NODE,
+            "target node_id",
+        )
+        _validate_graph_reference(
             self.provider_socket_name,
+            NodeControlGraphReferenceRole.PROVIDER_SOCKET,
             "target provider_socket_name",
         )
 
     def descriptor(self) -> dict[str, str]:
         return {
-            "workspace_id": self.workspace_id,
-            "graph_revision": self.graph_revision,
-            "node_id": self.node_id,
-            "provider_socket_name": self.provider_socket_name,
+            "workspace_id": self.workspace_id.value,
+            "graph_revision": self.graph_revision.value,
+            "node_id": self.node_id.value,
+            "provider_socket_name": self.provider_socket_name.value,
         }
 
 
@@ -294,8 +331,8 @@ class MapControlState:
 class WeightedRoutingControlState:
     """One atomic graph-target set and corresponding finite weight snapshot."""
 
-    targets: tuple[str, ...]
-    weights: tuple[tuple[str, float], ...]
+    targets: tuple[NodeControlGraphReference, ...]
+    weights: tuple[tuple[NodeControlGraphReference, float], ...]
 
     def __post_init__(self) -> None:
         if not isinstance(self.targets, tuple) or not self.targets:
@@ -307,7 +344,11 @@ class WeightedRoutingControlState:
                 "weighted routing state has too many targets"
             )
         for target in self.targets:
-            _validate_identifier(target, "weighted routing target")
+            _validate_graph_reference(
+                target,
+                NodeControlGraphReferenceRole.TARGET,
+                "weighted routing target",
+            )
         if len(set(self.targets)) != len(self.targets):
             raise NodeControlContractError(
                 "weighted routing targets must be unique"
@@ -316,14 +357,18 @@ class WeightedRoutingControlState:
             raise NodeControlContractError(
                 "weighted routing weights must be a tuple"
             )
-        normalized_weights: list[tuple[str, float]] = []
+        normalized_weights: list[tuple[NodeControlGraphReference, float]] = []
         for entry in self.weights:
             if not isinstance(entry, tuple) or len(entry) != 2:
                 raise NodeControlContractError(
                     "weighted routing weights must be target/weight tuples"
                 )
             target, weight = entry
-            _validate_identifier(target, "weighted routing weight target")
+            _validate_graph_reference(
+                target,
+                NodeControlGraphReferenceRole.TARGET,
+                "weighted routing weight target",
+            )
             if type(weight) is int:
                 if weight < 0 or abs(weight) > _MAX_SAFE_INTEGER:
                     raise NodeControlContractError(
@@ -363,8 +408,8 @@ class WeightedRoutingControlState:
     def descriptor(self) -> dict[str, object]:
         return {
             "kind": ControlPlaneVariableKind.WEIGHTED_ROUTING.value,
-            "targets": list(self.targets),
-            "weights": dict(self.weights),
+            "targets": [target.value for target in self.targets],
+            "weights": {target.value: weight for target, weight in self.weights},
         }
 
 
@@ -410,7 +455,7 @@ class NodeControlCommandRequest:
     """One exact semantic read or state-transition request."""
 
     target: NodeControlTarget
-    variable_name: str
+    variable_name: NodeControlGraphReference
     operation: NodeControlOperation
     request_id: str
     idempotency_key: str
@@ -426,7 +471,11 @@ class NodeControlCommandRequest:
             raise NodeControlContractError(
                 "node-control request target must be NodeControlTarget"
             )
-        _validate_identifier(self.variable_name, "node-control variable_name")
+        _validate_graph_reference(
+            self.variable_name,
+            NodeControlGraphReferenceRole.VARIABLE,
+            "node-control variable_name",
+        )
         if not isinstance(self.operation, NodeControlOperation):
             raise NodeControlContractError("node-control operation is unknown")
         _validate_identifier(self.request_id, "node-control request_id")
@@ -463,7 +512,7 @@ class NodeControlCommandRequest:
     def descriptor(self) -> dict[str, object]:
         return {
             "target": self.target.descriptor(),
-            "variable_name": self.variable_name,
+            "variable_name": self.variable_name.value,
             "operation": self.operation.value,
             "request_id": self.request_id,
             "idempotency_key": self.idempotency_key,
@@ -523,7 +572,11 @@ class NodeControlCommandRequestCodec:
         payload = None if raw_payload is None else _decode_payload(raw_payload)
         return NodeControlCommandRequest(
             target=target,
-            variable_name=_text(mapping, "variable_name"),
+            variable_name=_decode_graph_reference(
+                mapping,
+                "variable_name",
+                NodeControlGraphReferenceRole.VARIABLE,
+            ),
             operation=operation,
             request_id=_text(mapping, "request_id"),
             idempotency_key=_text(mapping, "idempotency_key"),
@@ -546,7 +599,7 @@ class DelegatedWorkloadNodeControlGrant:
     key_id: str
     audience: str
     target: NodeControlTarget
-    variable_name: str
+    variable_name: NodeControlGraphReference
     operation: NodeControlOperation
     command_codec: ControlPlaneCommandCodec | None
     request_id: str
@@ -565,7 +618,11 @@ class DelegatedWorkloadNodeControlGrant:
             raise NodeControlContractError(
                 "workload grant target must be NodeControlTarget"
             )
-        _validate_identifier(self.variable_name, "workload grant variable_name")
+        _validate_graph_reference(
+            self.variable_name,
+            NodeControlGraphReferenceRole.VARIABLE,
+            "workload grant variable_name",
+        )
         if not isinstance(self.operation, NodeControlOperation):
             raise NodeControlContractError("workload grant operation is unknown")
         if self.operation is NodeControlOperation.READ_STATE:
@@ -615,7 +672,7 @@ class DelegatedWorkloadNodeControlGrant:
             "key_id": self.key_id,
             "audience": self.audience,
             "target": self.target.descriptor(),
-            "variable_name": self.variable_name,
+            "variable_name": self.variable_name.value,
             "operation": self.operation.value,
             "command_codec": (
                 self.command_codec.value if self.command_codec is not None else None
@@ -658,7 +715,11 @@ class DelegatedWorkloadNodeControlGrantCodec:
             key_id=_text(mapping, "key_id"),
             audience=_text(mapping, "audience"),
             target=_decode_target(mapping.get("target")),
-            variable_name=_text(mapping, "variable_name"),
+            variable_name=_decode_graph_reference(
+                mapping,
+                "variable_name",
+                NodeControlGraphReferenceRole.VARIABLE,
+            ),
             operation=_enum(
                 NodeControlOperation,
                 mapping.get("operation"),
@@ -1158,14 +1219,18 @@ class ControlPlaneVariableOperationContract:
 class ControlPlaneVariableDescriptor:
     """Closed public contract for one typed workload control variable."""
 
-    variable_name: str
+    variable_name: NodeControlGraphReference
     kind: ControlPlaneVariableKind
     state_codec: ControlPlaneStateCodec
     operation_contracts: tuple[ControlPlaneVariableOperationContract, ...]
     description: str | None = None
 
     def __post_init__(self) -> None:
-        _validate_identifier(self.variable_name, "control-plane variable_name")
+        _validate_graph_reference(
+            self.variable_name,
+            NodeControlGraphReferenceRole.VARIABLE,
+            "control-plane variable_name",
+        )
         if not isinstance(self.kind, ControlPlaneVariableKind):
             raise NodeControlContractError("control-plane variable kind is unknown")
         if not isinstance(self.state_codec, ControlPlaneStateCodec):
@@ -1227,7 +1292,7 @@ class ControlPlaneVariableDescriptor:
 
     def descriptor(self) -> dict[str, object]:
         return {
-            "variable_name": self.variable_name,
+            "variable_name": self.variable_name.value,
             "kind": self.kind.value,
             "state_codec": self.state_codec.value,
             "operation_contracts": [
@@ -1311,7 +1376,11 @@ class ControlPlaneVariableDescriptorCodec:
                 )
             )
         return ControlPlaneVariableDescriptor(
-            variable_name=_text(mapping, "variable_name"),
+            variable_name=_decode_graph_reference(
+                mapping,
+                "variable_name",
+                NodeControlGraphReferenceRole.VARIABLE,
+            ),
             kind=_enum(
                 ControlPlaneVariableKind,
                 mapping.get("kind"),
@@ -1385,10 +1454,26 @@ def _decode_target(value: object) -> NodeControlTarget:
     mapping = _mapping(value, "node-control target")
     _require_keys(mapping, _TARGET_KEYS, "node-control target")
     return NodeControlTarget(
-        workspace_id=_text(mapping, "workspace_id"),
-        graph_revision=_text(mapping, "graph_revision"),
-        node_id=_text(mapping, "node_id"),
-        provider_socket_name=_text(mapping, "provider_socket_name"),
+        workspace_id=_decode_graph_reference(
+            mapping,
+            "workspace_id",
+            NodeControlGraphReferenceRole.WORKSPACE,
+        ),
+        graph_revision=_decode_graph_reference(
+            mapping,
+            "graph_revision",
+            NodeControlGraphReferenceRole.GRAPH_REVISION,
+        ),
+        node_id=_decode_graph_reference(
+            mapping,
+            "node_id",
+            NodeControlGraphReferenceRole.NODE,
+        ),
+        provider_socket_name=_decode_graph_reference(
+            mapping,
+            "provider_socket_name",
+            NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+        ),
     )
 
 
@@ -1446,9 +1531,38 @@ def _decode_state(value: object) -> ControlStateValue:
         "weighted routing control weights",
     )
     return WeightedRoutingControlState(
-        targets=tuple(raw_targets),
-        weights=tuple(raw_weights.items()),
+        targets=tuple(
+            NodeControlGraphReference(NodeControlGraphReferenceRole.TARGET, target)
+            for target in raw_targets
+        ),
+        weights=tuple(
+            (
+                NodeControlGraphReference(
+                    NodeControlGraphReferenceRole.TARGET,
+                    target,
+                ),
+                weight,
+            )
+            for target, weight in raw_weights.items()
+        ),
     )
+
+
+def _decode_graph_reference(
+    mapping: Mapping[str, object],
+    key: str,
+    role: NodeControlGraphReferenceRole,
+) -> NodeControlGraphReference:
+    return NodeControlGraphReference(role, _text(mapping, key))
+
+
+def _validate_graph_reference(
+    value: object,
+    role: NodeControlGraphReferenceRole,
+    name: str,
+) -> None:
+    if not isinstance(value, NodeControlGraphReference) or value.role is not role:
+        raise NodeControlContractError(f"{name} must be a nominal {role.value} reference")
 
 
 def _validate_identifier(value: object, name: str) -> None:
@@ -1626,6 +1740,8 @@ __all__ = [
     "NodeControlEvidence",
     "NodeControlEvidenceCode",
     "NodeControlFailed",
+    "NodeControlGraphReference",
+    "NodeControlGraphReferenceRole",
     "NodeControlOperation",
     "NodeControlPayload",
     "NodeControlReadStateSucceeded",

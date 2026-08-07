@@ -1244,6 +1244,16 @@ laws:
   second handler/plugin mechanism.
 
 public contract shape:
+  `NodeControlGraphReference` gives workspace, graph revision, node, provider
+  socket, variable, and weighted target identities one closed nominal role.
+  The wire retains ordinary strings whose role comes from the enclosing field;
+  codec construction proves bounded role syntax, not graph membership. An
+  authenticated producer must derive those references from the admitted graph,
+  and the SDK/operations boundary verifies that provenance before dispatch.
+  Resolved endpoint and secret material objects cannot substitute for graph
+  references. A bare DNS-looking string remains semantically ambiguous until
+  that producer-owned graph join rather than being guessed from bytes.
+
   `NodeControlCommandRequest` binds one workspace, graph revision, node,
   provider socket, variable, closed operation, request id, idempotency key,
   command codec, transition precondition, and bounded typed payload. The

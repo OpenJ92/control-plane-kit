@@ -296,8 +296,9 @@ class NodeControlGraphReferenceTests(unittest.TestCase):
         target = self.target(node_id=reference)
 
         self.assertEqual(target.descriptor()["node_id"], "router.internal")
-        self.assertIn("producer-attested", reference_type.__doc__ or "")
-        self.assertIn("does not prove graph membership", reference_type.__doc__ or "")
+        contract = (reference_type.__doc__ or "").lower()
+        self.assertIn("producer-attested", contract)
+        self.assertIn("does not prove graph membership", contract)
         with self.assertRaises(NodeControlContractError):
             self.target(node_id=LiteralEndpointMaterial("router.internal"))
 
