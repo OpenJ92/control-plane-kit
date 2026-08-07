@@ -18,6 +18,13 @@ from control_plane_kit_operations.postgres.migrations import (
     SchemaMigrationPlan,
     SchemaMigrationRegistry,
 )
+from control_plane_kit_operations.postgres.migration_inspection import (
+    POSTGRES_SCHEMA_MIGRATION_LEDGER_COLUMNS,
+    POSTGRES_SCHEMA_MIGRATION_LEDGER_TABLE,
+    POSTGRES_SCHEMA_V1_TABLE_COLUMNS,
+    inspect_postgres_schema,
+    verify_postgres_schema,
+)
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
@@ -67,6 +74,9 @@ from control_plane_kit_operations.postgres.unit_of_work import (
 __all__ = [
     "POSTGRES_SCHEMA",
     "POSTGRES_SCHEMA_MIGRATIONS",
+    "POSTGRES_SCHEMA_MIGRATION_LEDGER_COLUMNS",
+    "POSTGRES_SCHEMA_MIGRATION_LEDGER_TABLE",
+    "POSTGRES_SCHEMA_V1_TABLE_COLUMNS",
     "POSTGRES_SCHEMA_V1_SHA256",
     "AppliedSchemaMigration",
     "PostgresActivityHistoryStore",
@@ -104,4 +114,6 @@ __all__ = [
     "TransactionalPostgresConnection",
     "UnitOfWorkStateError",
     "install_schema",
+    "inspect_postgres_schema",
+    "verify_postgres_schema",
 ]

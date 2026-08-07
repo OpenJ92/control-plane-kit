@@ -148,6 +148,24 @@ authenticated HTTP or MCP request
 HTTP and MCP must enforce the same operation identity, scopes, approval policy,
 idempotency policy, bounded errors, and transaction behavior.
 
+## Schema Migration Inspection
+
+The Postgres package freezes the accepted V1 table/column structure and reads
+database catalogs into the same migration values used by pure planning:
+
+```text
+bounded Postgres catalog + ledger reads
+  -> ObservedSchemaState
+    -> SchemaMigrationRegistry.plan(...)
+```
+
+`inspect_postgres_schema()` recognizes only an empty schema, the exact
+unversioned V1 baseline, or canonical versioned ledger history.
+`verify_postgres_schema()` additionally requires exact current structure and no
+pending migration action. Both functions are read-only. Ledger creation,
+locking, transaction ownership, and migration application remain a separate
+interpreter boundary.
+
 ## Package Map
 
 Important modules include:
