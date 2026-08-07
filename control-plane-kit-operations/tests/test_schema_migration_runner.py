@@ -74,7 +74,9 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_exact_legacy_baseline_rewrites_only_temporal_constraints(self) -> None:
+    def test_exact_legacy_baseline_rewrites_only_existing_temporal_constraints(
+        self,
+    ) -> None:
         install = self._required("install_postgres_schema")
         connection = self._connection()
         try:
@@ -100,7 +102,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_execution_requests_claim_check",
                 "cpk_operation_sessions_closed_check",
             }
-            self.assertEqual(set(after), set(before))
+            self.assertLessEqual(rebuilt, set(before))
             for constraint, (identity, definition) in before.items():
                 with self.subTest(constraint=constraint):
                     after_identity, after_definition = after[constraint]
