@@ -239,7 +239,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
         self.connection.execute(
             """
             ALTER TABLE cpk_workspaces
-              DROP CONSTRAINT cpk_workspaces_current_lineage_check
+              DROP CONSTRAINT IF EXISTS cpk_workspaces_current_lineage_check
             """
         )
         self.connection.execute(
