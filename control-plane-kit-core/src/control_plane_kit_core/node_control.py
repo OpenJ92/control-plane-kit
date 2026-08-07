@@ -309,9 +309,9 @@ class WeightedRoutingControlState:
             target, weight = entry
             _validate_identifier(target, "weighted routing weight target")
             if type(weight) is int:
-                if abs(weight) > _MAX_SAFE_INTEGER:
+                if weight < 0 or abs(weight) > _MAX_SAFE_INTEGER:
                     raise NodeControlContractError(
-                        "weighted routing weight integer is out of bounds"
+                        "weighted routing weight integer is negative or out of bounds"
                     )
             elif type(weight) is float:
                 if (
