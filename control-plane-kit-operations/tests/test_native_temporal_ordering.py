@@ -231,17 +231,28 @@ class NativeTemporalOrderingTests(unittest.TestCase):
                     freshness=ObservationFreshness.FRESH,
                 )
             )
+        latest = observed.latest("workspace-a", "runtime-a")
         self.assertEqual(
-            observed.latest("workspace-a", "runtime-a").observation_id,
-            "observation-later-z",
+            (latest.observation_id, latest.observed_at),
+            ("observation-later-z", _LATER),
         )
         self.assertEqual(
-            [record.observation_id for record in observed.latest_for_workspace("workspace-a")],
-            ["observation-later-z"],
+            [
+                (record.observation_id, record.observed_at)
+                for record in observed.latest_for_workspace("workspace-a")
+            ],
+            [("observation-later-z", _LATER)],
         )
         self.assertEqual(
-            [record.observation_id for record in observed.history("workspace-a", "runtime-a")],
-            ["observation-earlier", "observation-later-a", "observation-later-z"],
+            [
+                (record.observation_id, record.observed_at)
+                for record in observed.history("workspace-a", "runtime-a")
+            ],
+            [
+                ("observation-earlier", _EARLIER),
+                ("observation-later-a", _LATER),
+                ("observation-later-z", _LATER),
+            ],
         )
         self.assertNotIn(
             ".000000Z",

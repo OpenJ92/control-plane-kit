@@ -167,9 +167,9 @@ may use a native temporal type internally, and chronological queries must order
 that native instant rather than its rendered text.
 
 The public codec remains responsible for returning the canonical text form.
-When two rows represent the same instant, every query must name a stable
-identity tie-breaker. Textual representation order must not be described or
-tested as chronological order.
+When two rows represent the same instant, chronology-dependent selectors that
+require a total order must name a stable identity tie-breaker. Textual
+representation order must not be described or tested as chronological order.
 
 ## Consequences
 
