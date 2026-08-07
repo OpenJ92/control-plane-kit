@@ -29,6 +29,70 @@ _POSTGRES_SCHEMA_MIGRATION_LEDGER_CONTRACT = (
 )
 _MAX_MIGRATION_NAME_BYTES = 128
 _MIGRATION_CHECKSUM_BYTES = 64
+_COORDINATION_TEMPORAL_CONTRACT = (
+    ("cpk_activity_events", "occurred_at", "timestamp with time zone", "NO", True),
+    ("cpk_activity_plans", "created_at", "timestamp with time zone", "NO", True),
+    ("cpk_activity_runs", "created_at", "timestamp with time zone", "NO", True),
+    ("cpk_activity_runs", "settled_at", "timestamp with time zone", "YES", True),
+    ("cpk_activity_runs", "started_at", "timestamp with time zone", "YES", True),
+    (
+        "cpk_approval_decisions",
+        "decided_at",
+        "timestamp with time zone",
+        "NO",
+        True,
+    ),
+    (
+        "cpk_approval_requests",
+        "requested_at",
+        "timestamp with time zone",
+        "NO",
+        True,
+    ),
+    (
+        "cpk_execution_requests",
+        "claimed_at",
+        "timestamp with time zone",
+        "YES",
+        True,
+    ),
+    (
+        "cpk_execution_requests",
+        "lease_expires_at",
+        "timestamp with time zone",
+        "YES",
+        True,
+    ),
+    (
+        "cpk_execution_requests",
+        "requested_at",
+        "timestamp with time zone",
+        "NO",
+        True,
+    ),
+    ("cpk_observations", "observed_at", "timestamp with time zone", "NO", True),
+    (
+        "cpk_operation_actions",
+        "created_at",
+        "timestamp with time zone",
+        "NO",
+        True,
+    ),
+    (
+        "cpk_operation_sessions",
+        "closed_at",
+        "timestamp with time zone",
+        "YES",
+        True,
+    ),
+    (
+        "cpk_operation_sessions",
+        "created_at",
+        "timestamp with time zone",
+        "NO",
+        True,
+    ),
+)
 
 # This explicit projection is verified against the checksum-pinned V1 artifact.
 POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
@@ -657,7 +721,48 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         raise SchemaMigrationError("schema migration ledger contract is not current")
     if POSTGRES_SCHEMA_MIGRATIONS.plan(observed).actions:
         raise SchemaMigrationError("database schema has pending migrations")
+    if _read_coordination_temporal_contract(connection) != (
+        _COORDINATION_TEMPORAL_CONTRACT
+    ):
+        raise SchemaMigrationError("coordination temporal schema is not current")
     return observed
+
+
+def _read_coordination_temporal_contract(
+    connection: PostgresConnection,
+) -> tuple[tuple[str, str, str, str, bool], ...]:
+    rows = _read_rows(
+        connection,
+        """
+        SELECT table_name, column_name, data_type, is_nullable,
+               column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND (table_name, column_name) IN (
+            ('cpk_activity_events', 'occurred_at'),
+            ('cpk_activity_plans', 'created_at'),
+            ('cpk_activity_runs', 'created_at'),
+            ('cpk_activity_runs', 'settled_at'),
+            ('cpk_activity_runs', 'started_at'),
+            ('cpk_approval_decisions', 'decided_at'),
+            ('cpk_approval_requests', 'requested_at'),
+            ('cpk_execution_requests', 'claimed_at'),
+            ('cpk_execution_requests', 'lease_expires_at'),
+            ('cpk_execution_requests', 'requested_at'),
+            ('cpk_observations', 'observed_at'),
+            ('cpk_operation_actions', 'created_at'),
+            ('cpk_operation_sessions', 'closed_at'),
+            ('cpk_operation_sessions', 'created_at')
+          )
+        ORDER BY table_name, column_name
+        LIMIT %s
+        """,
+        (len(_COORDINATION_TEMPORAL_CONTRACT) + 1,),
+        "coordination temporal schema read failed",
+    )
+    if len(rows) != len(_COORDINATION_TEMPORAL_CONTRACT):
+        raise SchemaMigrationError("coordination temporal schema is not current")
+    return tuple(rows)
 
 
 def _is_accepted_current_manifest(

@@ -12,6 +12,10 @@ from control_plane_kit_core.probe_intents import (
     ProbeOutcome,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.records import (
     BoundedEvidence,
     ObservationFreshness,
@@ -44,7 +48,7 @@ class PostgresObservedStateStore:
                 record.workspace_id,
                 record.subject_id,
                 record.status.value,
-                record.observed_at,
+                encode_postgres_timestamp(record.observed_at),
                 Jsonb(record.evidence.descriptor()),
                 record.freshness.value,
                 record.graph_id,
@@ -112,7 +116,7 @@ def _observation_record(row: tuple[Any, ...]) -> ObservationRecord:
         workspace_id=row[1],
         subject_id=row[2],
         status=ObservationStatus(row[3]),
-        observed_at=row[4],
+        observed_at=decode_postgres_timestamp(row[4]),
         evidence=BoundedEvidence.from_mapping(row[5]),
         freshness=ObservationFreshness(row[6]),
         graph_id=row[7],
