@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from enum import StrEnum
 from typing import Any, Protocol
 
@@ -80,6 +81,15 @@ class PostgresConnection(Protocol):
     """Small connection protocol satisfied by psycopg connections."""
 
     def execute(self, query: str, params: tuple[object, ...] = ()) -> Any: ...
+
+
+class MigrationPostgresConnection(PostgresConnection, Protocol):
+    """Postgres capabilities required by the migration interpreter."""
+
+    @property
+    def autocommit(self) -> bool: ...
+
+    def transaction(self) -> AbstractContextManager[object]: ...
 
 
 class _OperationsSessionStatus(StrEnum):
@@ -1410,15 +1420,14 @@ if _POSTGRES_SCHEMA_V1.checksum_sha256 != POSTGRES_SCHEMA_V1_SHA256:
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry((_POSTGRES_SCHEMA_V1,))
 
 
-def install_schema(connection: PostgresConnection) -> None:
-    """Install the current operations schema on a caller-managed transaction."""
+def install_schema(connection: MigrationPostgresConnection) -> None:
+    """Install through the canonical caller-aware migration interpreter."""
 
-    connection.execute(POSTGRES_SCHEMA)
-    _upgrade_approval_scope_constraints(connection)
-    _upgrade_gateway_key_rotation_status_constraints(connection)
-    _upgrade_gateway_key_rotation_retirement_constraint(connection)
-    _backfill_graph_lineage(connection)
-    connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
+    from control_plane_kit_operations.postgres.migration_runner import (
+        install_postgres_schema,
+    )
+
+    install_postgres_schema(connection)
 
 
 def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
