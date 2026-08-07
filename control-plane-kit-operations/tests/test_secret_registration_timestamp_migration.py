@@ -142,9 +142,9 @@ class SecretRegistrationTimestampMigrationTests(unittest.TestCase):
 
     def test_calendar_invalid_value_has_bounded_v4_category(self) -> None:
         self._install_v3_baseline()
-        self._seed_retained_rows(
-            ("2026-02-30T06:00:00Z", None, _CANONICAL, None)
-        )
+        invalid = "2026-02-30T06:00:00Z"
+        retained = (invalid, None, _CANONICAL, None)
+        self._seed_retained_rows(retained)
         before_objects = self._application_objects()
 
         with self.assertRaises(postgres.SchemaMigrationError) as raised:
@@ -154,9 +154,18 @@ class SecretRegistrationTimestampMigrationTests(unittest.TestCase):
             str(raised.exception),
             "secret registration timestamps are not canonical UTC",
         )
+        self.assertLessEqual(len(str(raised.exception)), 256)
+        self.assertNotIn(invalid, str(raised.exception))
         self.assertIsNone(raised.exception.__context__)
+        self.assertIsNone(raised.exception.__cause__)
         self.assertEqual(self._ledger(), _V3_HISTORY)
+        self.assertEqual(self._retained_values(), retained)
         self.assertEqual(self._application_objects(), before_objects)
+        for table, column in _TEMPORAL_IDENTITIES:
+            self.assertEqual(
+                self._column_contract(table, column),
+                ("text", None, "NO" if column == "admitted_at" else "YES", True),
+            )
 
     def test_success_rebuilds_only_exact_dependent_objects(self) -> None:
         self._install_v3_baseline()
