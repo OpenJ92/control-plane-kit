@@ -6,8 +6,10 @@ import unittest
 import uuid
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 import control_plane_kit_operations.postgres as postgres
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 
 
 _TEMPORAL_COLUMNS = (
@@ -137,6 +139,42 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
 
         with self.assertRaises(postgres.SchemaMigrationError):
             postgres.verify_postgres_schema(self.connection)
+
+    def test_reinstall_backfills_graph_lineage_through_temporal_codec(self) -> None:
+        postgres.install_postgres_schema(self.connection)
+        created_at = datetime(2026, 8, 7, 6, 0, 0, 1, tzinfo=timezone.utc)
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces
+              (workspace_id, name, lifecycle, current_graph_id)
+            VALUES ('workspace-a', 'Workspace A', 'created', 'graph-a')
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_graph_versions
+              (graph_id, workspace_id, version, graph_descriptor, created_by,
+               created_at)
+            VALUES ('graph-a', 'workspace-a', 1, %s, 'operator-a', %s)
+            """,
+            (
+                Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("graph-a"))),
+                created_at,
+            ),
+        )
+
+        postgres.install_postgres_schema(self.connection)
+
+        self.assertEqual(
+            self.connection.execute(
+                """
+                SELECT created_at
+                FROM cpk_realized_graph_projections
+                WHERE source_authored_graph_id = 'graph-a'
+                """
+            ).fetchone(),
+            (created_at,),
+        )
 
     def _install_v2_baseline(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS

@@ -145,20 +145,29 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
         self.connection.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
         self.connection.close()
 
-    def test_registry_appends_exact_coordination_timestamp_v2(self) -> None:
+    def test_registry_preserves_exact_coordination_timestamp_v2_prefix(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 2)
         self.assertEqual(
-            tuple((migration.version, migration.name) for migration in registry.migrations),
+            tuple(
+                (migration.version, migration.name)
+                for migration in registry.migrations[:2]
+            ),
             ((1, "operations-baseline"), (2, "coordination-timestamps")),
         )
         self.assertEqual(postgres.POSTGRES_SCHEMA_V1_SHA256, registry.migrations[0].checksum_sha256)
 
-    def test_fresh_install_has_exact_v2_history_and_temporal_contract(self) -> None:
+    def test_fresh_install_preserves_v2_temporal_contract(self) -> None:
         postgres.install_postgres_schema(self.connection)
 
-        self.assertEqual(self._ledger(), [(1, "operations-baseline"), (2, "coordination-timestamps")])
+        self.assertEqual(
+            self._ledger(),
+            [
+                (1, "operations-baseline"),
+                (2, "coordination-timestamps"),
+                (3, "graph-product-authority-timestamps"),
+            ],
+        )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
         self.assertIs(
             postgres.verify_postgres_schema(self.connection).kind,
@@ -183,7 +192,14 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
 
         postgres.install_postgres_schema(self.connection)
 
-        self.assertEqual(self._ledger(), [(1, "operations-baseline"), (2, "coordination-timestamps")])
+        self.assertEqual(
+            self._ledger(),
+            [
+                (1, "operations-baseline"),
+                (2, "coordination-timestamps"),
+                (3, "graph-product-authority-timestamps"),
+            ],
+        )
         self.assertEqual(
             self.connection.execute(
                 """
