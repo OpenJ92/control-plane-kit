@@ -32,20 +32,20 @@ from control_plane_kit_core.operations.lifecycle import (
 
 
 _TEMPORAL_COLUMNS = (
-    ("cpk_activity_events", "occurred_at", "NO"),
-    ("cpk_activity_plans", "created_at", "NO"),
-    ("cpk_activity_runs", "created_at", "NO"),
-    ("cpk_activity_runs", "settled_at", "YES"),
-    ("cpk_activity_runs", "started_at", "YES"),
-    ("cpk_approval_decisions", "decided_at", "NO"),
-    ("cpk_approval_requests", "requested_at", "NO"),
-    ("cpk_execution_requests", "claimed_at", "YES"),
-    ("cpk_execution_requests", "lease_expires_at", "YES"),
-    ("cpk_execution_requests", "requested_at", "NO"),
-    ("cpk_observations", "observed_at", "NO"),
-    ("cpk_operation_actions", "created_at", "NO"),
-    ("cpk_operation_sessions", "closed_at", "YES"),
-    ("cpk_operation_sessions", "created_at", "NO"),
+    ("cpk_activity_events", "occurred_at", "NO", 6),
+    ("cpk_activity_plans", "created_at", "NO", 6),
+    ("cpk_activity_runs", "created_at", "NO", 6),
+    ("cpk_activity_runs", "settled_at", "YES", 6),
+    ("cpk_activity_runs", "started_at", "YES", 6),
+    ("cpk_approval_decisions", "decided_at", "NO", 6),
+    ("cpk_approval_requests", "requested_at", "NO", 6),
+    ("cpk_execution_requests", "claimed_at", "YES", 6),
+    ("cpk_execution_requests", "lease_expires_at", "YES", 6),
+    ("cpk_execution_requests", "requested_at", "NO", 6),
+    ("cpk_observations", "observed_at", "NO", 6),
+    ("cpk_operation_actions", "created_at", "NO", 6),
+    ("cpk_operation_sessions", "closed_at", "YES", 6),
+    ("cpk_operation_sessions", "created_at", "NO", 6),
 )
 
 
@@ -278,6 +278,19 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
         with self.assertRaises(postgres.SchemaMigrationError):
             postgres.verify_postgres_schema(self.connection)
 
+    def test_current_verifier_rejects_owned_temporal_precision_drift(self) -> None:
+        postgres.install_postgres_schema(self.connection)
+        self.connection.execute(
+            """
+            ALTER TABLE cpk_observations
+              ALTER COLUMN observed_at TYPE timestamptz(5)
+                USING observed_at::timestamptz(5)
+            """
+        )
+
+        with self.assertRaises(postgres.SchemaMigrationError):
+            postgres.verify_postgres_schema(self.connection)
+
     def test_owned_stores_round_trip_strings_microseconds_and_nulls(self) -> None:
         postgres.install_postgres_schema(self.connection)
         self.connection.execute("SET TIME ZONE 'Asia/Tokyo'")
@@ -387,11 +400,11 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
             ).fetchall()
         }
 
-    def _temporal_contract(self) -> tuple[tuple[str, str, str], ...]:
+    def _temporal_contract(self) -> tuple[tuple[str, str, str, int], ...]:
         return tuple(
             self.connection.execute(
                 """
-                SELECT table_name, column_name, is_nullable
+                SELECT table_name, column_name, is_nullable, datetime_precision
                 FROM information_schema.columns
                 WHERE table_schema = current_schema()
                   AND data_type = 'timestamp with time zone'
