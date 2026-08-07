@@ -91,13 +91,15 @@ _EVIDENCE_KEYS = frozenset({"code"})
 _RESULT_KEYS = frozenset(
     {"request_id", "status", "codec", "version", "payload", "evidence"}
 )
+_VARIABLE_OPERATION_KEYS = frozenset(
+    {"operation", "command_codec", "result_codec"}
+)
 _VARIABLE_KEYS = frozenset(
     {
         "variable_name",
         "kind",
         "state_codec",
-        "command_codec",
-        "result_codec",
+        "operation_contracts",
         "route_set",
         "capability",
         "description",
@@ -903,14 +905,65 @@ class NodeControlResultCodec:
 
 
 @dataclass(frozen=True, order=True)
+class ControlPlaneVariableOperationContract:
+    """Codec contract for one closed operation on a control-plane variable."""
+
+    operation: NodeControlOperation
+    command_codec: ControlPlaneCommandCodec | None
+    result_codec: ControlPlaneResultCodec
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.operation, NodeControlOperation):
+            raise NodeControlContractError(
+                "control-plane variable operation is unknown"
+            )
+        if self.command_codec is not None and not isinstance(
+            self.command_codec,
+            ControlPlaneCommandCodec,
+        ):
+            raise NodeControlContractError(
+                "control-plane variable command codec is unknown"
+            )
+        if not isinstance(self.result_codec, ControlPlaneResultCodec):
+            raise NodeControlContractError(
+                "control-plane variable result codec is unknown"
+            )
+        if self.operation is NodeControlOperation.READ_STATE:
+            if self.command_codec is not None:
+                raise NodeControlContractError(
+                    "read-state operation cannot declare a command codec"
+                )
+            if self.result_codec is not ControlPlaneResultCodec.STATE_V1:
+                raise NodeControlContractError(
+                    "read-state operation requires the state result codec"
+                )
+        elif self.command_codec is None:
+            raise NodeControlContractError(
+                "apply-command operation requires a command codec"
+            )
+        elif self.result_codec is not ControlPlaneResultCodec.TRANSITION_V1:
+            raise NodeControlContractError(
+                "apply-command operation requires the transition result codec"
+            )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "operation": self.operation.value,
+            "command_codec": (
+                None if self.command_codec is None else self.command_codec.value
+            ),
+            "result_codec": self.result_codec.value,
+        }
+
+
+@dataclass(frozen=True, order=True)
 class ControlPlaneVariableDescriptor:
     """Closed public contract for one typed workload control variable."""
 
     variable_name: str
     kind: ControlPlaneVariableKind
     state_codec: ControlPlaneStateCodec
-    command_codec: ControlPlaneCommandCodec
-    result_codec: ControlPlaneResultCodec
+    operation_contracts: tuple[ControlPlaneVariableOperationContract, ...]
     description: str | None = None
 
     def __post_init__(self) -> None:
@@ -919,12 +972,30 @@ class ControlPlaneVariableDescriptor:
             raise NodeControlContractError("control-plane variable kind is unknown")
         if not isinstance(self.state_codec, ControlPlaneStateCodec):
             raise NodeControlContractError("control-plane state codec is unknown")
-        if not isinstance(self.command_codec, ControlPlaneCommandCodec):
-            raise NodeControlContractError("control-plane command codec is unknown")
-        if not isinstance(self.result_codec, ControlPlaneResultCodec):
-            raise NodeControlContractError("control-plane result codec is unknown")
+        if not isinstance(self.operation_contracts, tuple):
+            raise NodeControlContractError(
+                "control-plane operation contracts must be a tuple"
+            )
+        if any(
+            not isinstance(contract, ControlPlaneVariableOperationContract)
+            for contract in self.operation_contracts
+        ):
+            raise NodeControlContractError(
+                "control-plane operation contract is malformed"
+            )
+        operations = tuple(
+            contract.operation for contract in self.operation_contracts
+        )
+        if operations != (
+            NodeControlOperation.READ_STATE,
+            NodeControlOperation.APPLY_COMMAND,
+        ):
+            raise NodeControlContractError(
+                "control-plane operation contracts must be total and canonical"
+            )
         expected = _VARIABLE_CODECS[self.kind]
-        if (self.state_codec, self.command_codec) != expected:
+        apply_contract = self.operation_contracts[1]
+        if (self.state_codec, apply_contract.command_codec) != expected:
             raise NodeControlContractError(
                 "control-plane variable kind and codecs do not match"
             )
@@ -943,13 +1014,27 @@ class ControlPlaneVariableDescriptor:
     def capability(self) -> CapabilityName:
         return CapabilityName.NODE_CONTROLLABLE
 
+    def contract_for(
+        self,
+        operation: NodeControlOperation,
+    ) -> ControlPlaneVariableOperationContract:
+        if not isinstance(operation, NodeControlOperation):
+            raise NodeControlContractError("node-control operation is unknown")
+        for contract in self.operation_contracts:
+            if contract.operation is operation:
+                return contract
+        raise NodeControlContractError(
+            "control-plane variable does not declare the operation"
+        )
+
     def descriptor(self) -> dict[str, object]:
         return {
             "variable_name": self.variable_name,
             "kind": self.kind.value,
             "state_codec": self.state_codec.value,
-            "command_codec": self.command_codec.value,
-            "result_codec": self.result_codec.value,
+            "operation_contracts": [
+                contract.descriptor() for contract in self.operation_contracts
+            ],
             "route_set": self.route_set.value,
             "capability": self.capability.value,
             "description": self.description,
@@ -989,6 +1074,44 @@ class ControlPlaneVariableDescriptorCodec:
             raise NodeControlContractError(
                 "control-plane variable description must be text or null"
             )
+        raw_contracts = mapping.get("operation_contracts")
+        if not isinstance(raw_contracts, list):
+            raise NodeControlContractError(
+                "control-plane operation_contracts must be a list"
+            )
+        operation_contracts = []
+        for value in raw_contracts:
+            contract = _mapping(value, "control-plane variable operation contract")
+            _require_keys(
+                contract,
+                _VARIABLE_OPERATION_KEYS,
+                "control-plane variable operation contract",
+            )
+            raw_command_codec = contract.get("command_codec")
+            command_codec = (
+                None
+                if raw_command_codec is None
+                else _enum(
+                    ControlPlaneCommandCodec,
+                    raw_command_codec,
+                    "control-plane variable command codec",
+                )
+            )
+            operation_contracts.append(
+                ControlPlaneVariableOperationContract(
+                    operation=_enum(
+                        NodeControlOperation,
+                        contract.get("operation"),
+                        "control-plane variable operation",
+                    ),
+                    command_codec=command_codec,
+                    result_codec=_enum(
+                        ControlPlaneResultCodec,
+                        contract.get("result_codec"),
+                        "control-plane variable result codec",
+                    ),
+                )
+            )
         return ControlPlaneVariableDescriptor(
             variable_name=_text(mapping, "variable_name"),
             kind=_enum(
@@ -1001,16 +1124,7 @@ class ControlPlaneVariableDescriptorCodec:
                 mapping.get("state_codec"),
                 "control-plane state codec",
             ),
-            command_codec=_enum(
-                ControlPlaneCommandCodec,
-                mapping.get("command_codec"),
-                "control-plane command codec",
-            ),
-            result_codec=_enum(
-                ControlPlaneResultCodec,
-                mapping.get("result_codec"),
-                "control-plane result codec",
-            ),
+            operation_contracts=tuple(operation_contracts),
             description=raw_description,
         )
 

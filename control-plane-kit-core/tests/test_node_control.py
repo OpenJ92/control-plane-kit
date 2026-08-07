@@ -23,6 +23,7 @@ from control_plane_kit_core.node_control import (
     ControlPlaneVariableDescriptor,
     ControlPlaneVariableDescriptorCodec,
     ControlPlaneVariableKind,
+    ControlPlaneVariableOperationContract,
     DelegatedWorkloadNodeControlGrant,
     DelegatedWorkloadNodeControlGrantCodec,
     MapControlState,
@@ -110,8 +111,20 @@ class NodeControlContractTests(unittest.TestCase):
             variable_name="routing",
             kind=ControlPlaneVariableKind.WEIGHTED_ROUTING,
             state_codec=ControlPlaneStateCodec.WEIGHTED_ROUTING_V1,
-            command_codec=ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1,
-            result_codec=ControlPlaneResultCodec.TRANSITION_V1,
+            operation_contracts=(
+                ControlPlaneVariableOperationContract(
+                    operation=NodeControlOperation.READ_STATE,
+                    command_codec=None,
+                    result_codec=ControlPlaneResultCodec.STATE_V1,
+                ),
+                ControlPlaneVariableOperationContract(
+                    operation=NodeControlOperation.APPLY_COMMAND,
+                    command_codec=(
+                        ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1
+                    ),
+                    result_codec=ControlPlaneResultCodec.TRANSITION_V1,
+                ),
+            ),
             description="Atomic graph target weights.",
         )
         request = self.request()
@@ -156,13 +169,32 @@ class NodeControlContractTests(unittest.TestCase):
                 variable_name="routing",
                 kind=ControlPlaneVariableKind.WEIGHTED_ROUTING,
                 state_codec=ControlPlaneStateCodec.WEIGHTED_ROUTING_V1,
-                command_codec=ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1,
-                result_codec=ControlPlaneResultCodec.TRANSITION_V1,
+                operation_contracts=(
+                    ControlPlaneVariableOperationContract(
+                        operation=NodeControlOperation.READ_STATE,
+                        command_codec=None,
+                        result_codec=ControlPlaneResultCodec.STATE_V1,
+                    ),
+                    ControlPlaneVariableOperationContract(
+                        operation=NodeControlOperation.APPLY_COMMAND,
+                        command_codec=(
+                            ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1
+                        ),
+                        result_codec=ControlPlaneResultCodec.TRANSITION_V1,
+                    ),
+                ),
             )
         )
+        invalid_command_contracts = [
+            descriptor["operation_contracts"][0],
+            {
+                **descriptor["operation_contracts"][1],
+                "command_codec": "unknown",
+            },
+        ]
         cases = (
             {**descriptor, "kind": "unknown"},
-            {**descriptor, "command_codec": "unknown"},
+            {**descriptor, "operation_contracts": invalid_command_contracts},
             {**descriptor, "credential": "secret"},
         )
         for value in cases:

@@ -150,6 +150,16 @@ class NodeControlOperationContractTests(unittest.TestCase):
                 "command_codec": ControlPlaneCommandCodec.REPLACE_SCALAR_V1,
                 "result_codec": ControlPlaneResultCodec.STATE_V1,
             },
+            {
+                "operation": NodeControlOperation.APPLY_COMMAND,
+                "command_codec": "control.replace-scalar.v1",
+                "result_codec": ControlPlaneResultCodec.TRANSITION_V1,
+            },
+            {
+                "operation": NodeControlOperation.APPLY_COMMAND,
+                "command_codec": ControlPlaneCommandCodec.REPLACE_SCALAR_V1,
+                "result_codec": "control.transition.v1",
+            },
         )
         for values in invalid:
             with self.subTest(values=values):
@@ -259,6 +269,13 @@ class NodeControlOperationContractTests(unittest.TestCase):
                 "operation_contracts": [
                     contracts[0],
                     {**contracts[1], "command_codec": "arbitrary-http.v1"},
+                ],
+            },
+            {
+                **descriptor,
+                "operation_contracts": [
+                    contracts[0],
+                    {**contracts[1], "result_codec": "arbitrary-result.v1"},
                 ],
             },
             legacy,
