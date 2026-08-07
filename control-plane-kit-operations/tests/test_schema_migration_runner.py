@@ -4,6 +4,7 @@ import inspect
 import os
 import threading
 import time
+import typing
 import unittest
 import uuid
 
@@ -46,6 +47,10 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             )
             self.assertEqual(tuple(inspect.signature(preview).parameters), ("connection",))
             self.assertEqual(tuple(inspect.signature(install).parameters), ("connection",))
+            self.assertIs(
+                typing.get_type_hints(postgres.install_schema)["connection"],
+                postgres.MigrationPostgresConnection,
+            )
             with self.assertRaises(TypeError):
                 install(connection, plan)
         finally:
