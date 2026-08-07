@@ -57,6 +57,27 @@ The Postgres store bundle owns operational records for:
 
 Stores expose persistence operations but never commit independently.
 
+## Schema Migration Language
+
+Operations owns a small migration language for its own Postgres schema:
+
+```text
+SchemaMigrationRegistry x ObservedSchemaState
+  -> SchemaMigrationPlan
+    -> Postgres interpreter
+```
+
+A migration has a positive version, stable name, exact SQL content, and a
+SHA-256 checksum over those exact UTF-8 SQL bytes. Applied history must be an
+exact registry prefix. Empty, recognized current-baseline, and versioned stores
+therefore produce inspectable `apply` or `record-baseline` actions before any
+database mutation occurs.
+
+This language is deliberately package-local. It evolves CPK's durable
+operations tables; it does not plan or perform migrations for applications
+deployed by CPK. Application owners remain responsible for making their data
+compatible before directing CPK to switch access.
+
 ## Transaction Law
 
 ```text
