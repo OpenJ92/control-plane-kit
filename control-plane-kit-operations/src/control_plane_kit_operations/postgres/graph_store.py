@@ -10,6 +10,10 @@ from psycopg.types.json import Jsonb
 from control_plane_kit_core.topology import GraphDescriptorError
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.records import (
     GraphVersionRecord,
     RealizedGraphProjectionKind,
@@ -274,6 +278,7 @@ class PostgresGraphTopologyStore:
         self._connection = connection
 
     def save(self, record: GraphVersionRecord) -> GraphVersionRecord:
+        encoded_created_at = encode_postgres_timestamp(record.created_at)
         self._connection.execute(
             """
             INSERT INTO cpk_graph_versions
@@ -286,7 +291,7 @@ class PostgresGraphTopologyStore:
                 record.version,
                 Jsonb(record.graph_descriptor),
                 record.created_by,
-                record.created_at,
+                encoded_created_at,
                 Jsonb(record.metadata),
             ),
         )
@@ -341,6 +346,7 @@ class PostgresRealizedGraphProjectionStore:
         self,
         record: RealizedGraphProjectionRecord,
     ) -> RealizedGraphProjectionRecord:
+        encoded_created_at = encode_postgres_timestamp(record.created_at)
         source = self._connection.execute(
             """
             SELECT workspace_id
@@ -374,7 +380,7 @@ class PostgresRealizedGraphProjectionStore:
                 record.projection_digest,
                 Jsonb(record.graph_descriptor),
                 record.created_by,
-                record.created_at,
+                encoded_created_at,
             ),
         ).fetchone()
         if inserted is not None:
@@ -495,7 +501,7 @@ def _graph_record(row: tuple[Any, ...]) -> GraphVersionRecord:
         version=row[2],
         graph_descriptor=row[3],
         created_by=row[4],
-        created_at=row[5],
+        created_at=decode_postgres_timestamp(row[5]),
         metadata=row[6],
     )
 
@@ -512,5 +518,5 @@ def _realized_graph_projection_record(
         projection_digest=row[5],
         graph_descriptor=row[6],
         created_by=row[7],
-        created_at=row[8],
+        created_at=decode_postgres_timestamp(row[8]),
     )

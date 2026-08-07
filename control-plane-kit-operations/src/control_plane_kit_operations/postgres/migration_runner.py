@@ -38,6 +38,10 @@ SELECT pg_advisory_xact_lock(
   hashtextextended(current_database() || chr(31) || current_schema(), 0)
 )
 """
+_TEMPORAL_MIGRATION_FAILURES = {
+    2: "coordination timestamps are not canonical UTC",
+    3: "graph, product, and authority timestamps are not canonical UTC",
+}
 
 
 def plan_postgres_schema_install(
@@ -111,14 +115,15 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
     except SchemaMigrationError:
         raise
     except Exception as error:
+        temporal_failure = _TEMPORAL_MIGRATION_FAILURES.get(active_migration_version)
         failure = (
-            "coordination timestamps are not canonical UTC"
-            if active_migration_version == 2
+            temporal_failure
+            if temporal_failure is not None
             and getattr(error, "sqlstate", None) in {"P1110", "22007", "22008"}
             else "schema migration application failed"
         )
     if failure is not None:
-        if failure == "coordination timestamps are not canonical UTC":
+        if failure in _TEMPORAL_MIGRATION_FAILURES.values():
             raise SchemaMigrationError(failure)
         raise SchemaMigrationError("schema migration application failed")
 

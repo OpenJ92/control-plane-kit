@@ -29,6 +29,10 @@ from control_plane_kit_operations.ingress_authorities import (
     RegisteredIngressAuthorityStatus,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 
 
 _BLOCKING_INGRESS_RESOURCE_STATUSES = (
@@ -62,6 +66,7 @@ class IngressAuthorityStore:
             admitted_by=admitted_by,
             admitted_at=admitted_at,
         )
+        encoded_admitted_at = encode_postgres_timestamp(candidate.admitted_at)
         existing = self._get_active_by_ref(workspace_id, authority_ref)
         if existing is not None:
             if existing.authority == candidate.authority:
@@ -96,7 +101,7 @@ class IngressAuthorityStore:
                 Jsonb(_credential_references(candidate)),
                 candidate.authority.allowed_hostname_pattern,
                 candidate.admitted_by,
-                candidate.admitted_at,
+                encoded_admitted_at,
                 candidate.status.value,
             ),
         )
@@ -675,7 +680,7 @@ def _row_to_authority(row: tuple[Any, ...]) -> RegisteredIngressAuthority:
         authority_ref=IngressAuthorityReference(row[2]),
         authority=CloudflareZoneIngressAuthorityCodec().decode(row[3]),
         admitted_by=row[4],
-        admitted_at=row[5],
+        admitted_at=decode_postgres_timestamp(row[5]),
         status=RegisteredIngressAuthorityStatus(row[6]),
         metadata=row[7],
     )

@@ -101,6 +101,57 @@ _COORDINATION_TEMPORAL_CONTRACT = (
         True,
     ),
 )
+_GRAPH_PRODUCT_AUTHORITY_TEMPORAL_CONTRACT = (
+    ("cpk_graph_versions", "created_at", "timestamp with time zone", 6, "NO", True),
+    (
+        "cpk_image_pull_authorities",
+        "admitted_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_ingress_authorities",
+        "admitted_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "created_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_registered_products",
+        "imported_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_runtime_authorities",
+        "admitted_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_runtime_authority_deliveries",
+        "admitted_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+)
 
 # This explicit projection is verified against the checksum-pinned V1 artifact.
 POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
@@ -733,6 +784,12 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         _COORDINATION_TEMPORAL_CONTRACT
     ):
         raise SchemaMigrationError("coordination temporal schema is not current")
+    if _read_graph_product_authority_temporal_contract(connection) != (
+        _GRAPH_PRODUCT_AUTHORITY_TEMPORAL_CONTRACT
+    ):
+        raise SchemaMigrationError(
+            "graph, product, and authority temporal schema is not current"
+        )
     return observed
 
 
@@ -770,6 +827,38 @@ def _read_coordination_temporal_contract(
     )
     if len(rows) != len(_COORDINATION_TEMPORAL_CONTRACT):
         raise SchemaMigrationError("coordination temporal schema is not current")
+    return tuple(rows)
+
+
+def _read_graph_product_authority_temporal_contract(
+    connection: PostgresConnection,
+) -> tuple[tuple[str, str, str, int, str, bool], ...]:
+    rows = _read_rows(
+        connection,
+        """
+        SELECT table_name, column_name, data_type, datetime_precision, is_nullable,
+               column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND (table_name, column_name) IN (
+            ('cpk_graph_versions', 'created_at'),
+            ('cpk_image_pull_authorities', 'admitted_at'),
+            ('cpk_ingress_authorities', 'admitted_at'),
+            ('cpk_realized_graph_projections', 'created_at'),
+            ('cpk_registered_products', 'imported_at'),
+            ('cpk_runtime_authorities', 'admitted_at'),
+            ('cpk_runtime_authority_deliveries', 'admitted_at')
+          )
+        ORDER BY table_name, column_name
+        LIMIT %s
+        """,
+        (len(_GRAPH_PRODUCT_AUTHORITY_TEMPORAL_CONTRACT) + 1,),
+        "graph, product, and authority temporal schema read failed",
+    )
+    if len(rows) != len(_GRAPH_PRODUCT_AUTHORITY_TEMPORAL_CONTRACT):
+        raise SchemaMigrationError(
+            "graph, product, and authority temporal schema is not current"
+        )
     return tuple(rows)
 
 

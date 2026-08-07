@@ -1465,6 +1465,51 @@ ALTER TABLE cpk_observations
   ALTER COLUMN observed_at TYPE timestamptz USING observed_at::timestamptz;
 """
 
+_POSTGRES_SCHEMA_V3_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT created_at AS value FROM cpk_graph_versions
+      UNION ALL SELECT admitted_at FROM cpk_image_pull_authorities
+      UNION ALL SELECT admitted_at FROM cpk_ingress_authorities
+      UNION ALL SELECT created_at FROM cpk_realized_graph_projections
+      UNION ALL SELECT imported_at FROM cpk_registered_products
+      UNION ALL SELECT admitted_at FROM cpk_runtime_authorities
+      UNION ALL SELECT admitted_at FROM cpk_runtime_authority_deliveries
+    ) AS retained
+    WHERE CASE
+      WHEN octet_length(value) > 27 THEN TRUE
+      WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+        THEN TRUE
+      WHEN value ~ '[.]000000Z$' THEN TRUE
+      ELSE FALSE
+    END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'graph, product, and authority timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_graph_versions
+  ALTER COLUMN created_at TYPE timestamptz(6) USING created_at::timestamptz(6);
+ALTER TABLE cpk_image_pull_authorities
+  ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
+ALTER TABLE cpk_ingress_authorities
+  ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
+ALTER TABLE cpk_realized_graph_projections
+  ALTER COLUMN created_at TYPE timestamptz(6) USING created_at::timestamptz(6);
+ALTER TABLE cpk_registered_products
+  ALTER COLUMN imported_at TYPE timestamptz(6) USING imported_at::timestamptz(6);
+ALTER TABLE cpk_runtime_authorities
+  ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
+ALTER TABLE cpk_runtime_authority_deliveries
+  ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1493,8 +1538,23 @@ if _POSTGRES_SCHEMA_V2.checksum_sha256 != _POSTGRES_SCHEMA_V2_SHA256:
         f"expected {_POSTGRES_SCHEMA_V2_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V2.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V3 = SchemaMigration(
+    version=3,
+    name="graph-product-authority-timestamps",
+    sql=_POSTGRES_SCHEMA_V3_SQL,
+)
+_POSTGRES_SCHEMA_V3_SHA256 = (
+    "1f4cf8704affd90ab2ceb17d2a00a62a91e265d2c8c1f49a77c9a6e446cdbdfa"
+)
+if _POSTGRES_SCHEMA_V3.checksum_sha256 != _POSTGRES_SCHEMA_V3_SHA256:
+    raise SchemaMigrationError(
+        "graph, product, and authority timestamp V3 content differs from its pinned "
+        "checksum: "
+        f"expected {_POSTGRES_SCHEMA_V3_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V3.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
-    (_POSTGRES_SCHEMA_V1, _POSTGRES_SCHEMA_V2)
+    (_POSTGRES_SCHEMA_V1, _POSTGRES_SCHEMA_V2, _POSTGRES_SCHEMA_V3)
 )
 
 
