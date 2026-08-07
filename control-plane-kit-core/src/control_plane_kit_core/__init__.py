@@ -180,6 +180,7 @@ from control_plane_kit_core.node_control import (
     ControlPlaneVariableDescriptor,
     ControlPlaneVariableDescriptorCodec,
     ControlPlaneVariableKind,
+    ControlPlaneVariableOperationContract,
     DelegatedWorkloadNodeControlGrant,
     DelegatedWorkloadNodeControlGrantCodec,
     MapControlState,

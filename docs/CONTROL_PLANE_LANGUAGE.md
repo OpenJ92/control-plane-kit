@@ -1254,11 +1254,32 @@ public contract shape:
   a distinct `workload-node-control` key purpose; gateway probe grants are a
   different type and are rejected at this boundary.
   `ControlPlaneVariableDescriptor` names one scalar, map, or atomic
-  weighted-routing state codec, its matching replacement command codec, its
-  result codec, and the canonical `node-control` route/capability pair. Strict
-  codecs reject unknown keys and kinds. Results expose only bounded state and
-  closed evidence codes, never provider errors, signatures, credentials,
-  endpoints, or secret values.
+  weighted-routing state codec and an exact operation index. `read-state` has
+  no command codec and returns `control.state.v1`; `apply-command` names the
+  kind's matching replacement codec and returns `control.transition.v1`.
+  Descriptors declare both entries once in canonical order and retain the
+  canonical `node-control` route/capability pair. Strict codecs reject legacy
+  flat command/result fields, unknown keys and kinds, partial indexes, and
+  reordered entries. Results expose only bounded state and closed evidence
+  codes, never provider errors, signatures, credentials, endpoints, or secret
+  values.
+
+  ```json
+  {
+    "operation_contracts": [
+      {
+        "operation": "read-state",
+        "command_codec": null,
+        "result_codec": "control.state.v1"
+      },
+      {
+        "operation": "apply-command",
+        "command_codec": "control.replace-weighted-routing.v1",
+        "result_codec": "control.transition.v1"
+      }
+    ]
+  }
+  ```
 
 ## Planning Language
 
