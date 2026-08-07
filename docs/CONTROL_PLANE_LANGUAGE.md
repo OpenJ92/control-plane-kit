@@ -1246,7 +1246,10 @@ laws:
 public contract shape:
   `NodeControlCommandRequest` binds one workspace, graph revision, node,
   provider socket, variable, closed operation, request id, idempotency key,
-  command codec, transition precondition, and bounded typed payload.
+  command codec, transition precondition, and bounded typed payload. The
+  request declares `jcs-rfc8785.v1`; its RFC 8785 UTF-8 canonical bytes and
+  SHA-256 digest are frozen by the language-neutral vectors in
+  `control-plane-kit-core/docs/NODE_CONTROL_CANONICAL_WIRE.md`.
   `DelegatedWorkloadNodeControlGrant` binds that canonical request digest under
   a distinct `workload-node-control` key purpose; gateway probe grants are a
   different type and are rejected at this boundary.

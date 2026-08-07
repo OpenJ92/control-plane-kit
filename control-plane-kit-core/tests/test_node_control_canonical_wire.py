@@ -153,7 +153,10 @@ class NodeControlCanonicalWireTests(unittest.TestCase):
                 )
                 self.assertIsInstance(request.canonical_bytes(), bytes)
 
-        self.assertEqual(self.weighted_state(MAX_SAFE_INTEGER).weights[0][1], float(MAX_SAFE_INTEGER))
+        self.assertEqual(
+            self.weighted_state(MAX_SAFE_INTEGER).weights[0][1],
+            float(MAX_SAFE_INTEGER),
+        )
 
     def test_core_declares_exact_canonicalizer_dependency(self) -> None:
         project = tomllib.loads(

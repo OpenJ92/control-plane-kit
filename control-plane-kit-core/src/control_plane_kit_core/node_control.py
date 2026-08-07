@@ -10,10 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
-import json
 import math
 import re
 from typing import Mapping
+
+import rfc8785
 
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.control_routes import ControlRouteSetName
@@ -62,6 +63,7 @@ _REQUEST_KEYS = frozenset(
         "operation",
         "request_id",
         "idempotency_key",
+        "canonicalization",
         "command_codec",
         "precondition",
         "payload",
@@ -112,6 +114,12 @@ class NodeControlOperation(StrEnum):
 
     READ_STATE = "read-state"
     APPLY_COMMAND = "apply-command"
+
+
+class NodeControlCanonicalization(StrEnum):
+    """Closed canonical request encodings reproducible across SDK languages."""
+
+    JCS_RFC8785_V1 = "jcs-rfc8785.v1"
 
 
 class ControlPlaneVariableKind(StrEnum):
@@ -300,11 +308,22 @@ class WeightedRoutingControlState:
                 )
             target, weight = entry
             _validate_identifier(target, "weighted routing weight target")
-            if (
-                type(weight) not in (int, float)
-                or not math.isfinite(weight)
-                or weight < 0
-            ):
+            if type(weight) is int:
+                if abs(weight) > _MAX_SAFE_INTEGER:
+                    raise NodeControlContractError(
+                        "weighted routing weight integer is out of bounds"
+                    )
+            elif type(weight) is float:
+                if (
+                    not math.isfinite(weight)
+                    or weight < 0
+                    or _is_negative_zero(weight)
+                ):
+                    raise NodeControlContractError(
+                        "weighted routing weights must be finite, nonnegative, "
+                        "and not negative zero"
+                    )
+            else:
                 raise NodeControlContractError(
                     "weighted routing weights must be finite and nonnegative"
                 )
@@ -382,6 +401,9 @@ class NodeControlCommandRequest:
     command_codec: ControlPlaneCommandCodec | None = None
     precondition: ControlPlaneTransitionPrecondition | None = None
     payload: NodeControlPayload | None = None
+    canonicalization: NodeControlCanonicalization = (
+        NodeControlCanonicalization.JCS_RFC8785_V1
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, NodeControlTarget):
@@ -396,6 +418,10 @@ class NodeControlCommandRequest:
             self.idempotency_key,
             "node-control idempotency_key",
         )
+        if not isinstance(self.canonicalization, NodeControlCanonicalization):
+            raise NodeControlContractError(
+                "node-control canonicalization is unknown"
+            )
         if self.operation is NodeControlOperation.READ_STATE:
             if any(
                 value is not None
@@ -425,6 +451,7 @@ class NodeControlCommandRequest:
             "operation": self.operation.value,
             "request_id": self.request_id,
             "idempotency_key": self.idempotency_key,
+            "canonicalization": self.canonicalization.value,
             "command_codec": (
                 self.command_codec.value if self.command_codec is not None else None
             ),
@@ -436,8 +463,14 @@ class NodeControlCommandRequest:
             "payload": self.payload.descriptor() if self.payload is not None else None,
         }
 
+    def canonical_bytes(self) -> bytes:
+        """Return RFC 8785 UTF-8 bytes bound by the workload grant."""
+        return _canonical_bytes(self.descriptor(), "node-control request")
+
     def canonical_digest(self) -> NodeControlRequestDigest:
-        return NodeControlRequestDigest(_canonical_digest(self.descriptor()))
+        return NodeControlRequestDigest(
+            hashlib.sha256(self.canonical_bytes()).hexdigest()
+        )
 
 
 class NodeControlCommandRequestCodec:
@@ -478,6 +511,11 @@ class NodeControlCommandRequestCodec:
             operation=operation,
             request_id=_text(mapping, "request_id"),
             idempotency_key=_text(mapping, "idempotency_key"),
+            canonicalization=_enum(
+                NodeControlCanonicalization,
+                mapping.get("canonicalization"),
+                "node-control canonicalization",
+            ),
             command_codec=command_codec,
             precondition=precondition,
             payload=payload,
@@ -1107,8 +1145,10 @@ def _validate_scalar(value: object, name: str) -> None:
             raise NodeControlContractError(f"{name} integer is out of bounds")
         return
     if type(value) is float:
-        if not math.isfinite(value):
-            raise NodeControlContractError(f"{name} number must be finite")
+        if not math.isfinite(value) or _is_negative_zero(value):
+            raise NodeControlContractError(
+                f"{name} number must be finite and not negative zero"
+            )
         return
     if isinstance(value, str):
         _validate_identifier(value, name)
@@ -1124,9 +1164,9 @@ def _validate_version(value: object, name: str) -> None:
 
 
 def _validate_epoch(value: object, name: str) -> None:
-    if type(value) is not int or value < 0:
+    if type(value) is not int or value < 0 or value > _MAX_SAFE_INTEGER:
         raise NodeControlContractError(
-            f"{name} must be a nonnegative integer epoch second"
+            f"{name} must be a bounded nonnegative integer epoch second"
         )
 
 
@@ -1145,24 +1185,22 @@ def _reject_secret_or_endpoint(value: str, name: str) -> None:
 
 
 def _validate_descriptor_size(descriptor: object, name: str) -> None:
-    encoded = json.dumps(
-        descriptor,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    ).encode("ascii")
+    encoded = _canonical_bytes(descriptor, name)
     if len(encoded) > MAX_NODE_CONTROL_PAYLOAD_BYTES:
         raise NodeControlContractError(f"{name} exceeds the public size bound")
 
 
-def _canonical_digest(descriptor: object) -> str:
-    content = json.dumps(
-        descriptor,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    ).encode("ascii")
-    return hashlib.sha256(content).hexdigest()
+def _canonical_bytes(descriptor: object, name: str) -> bytes:
+    try:
+        return rfc8785.dumps(descriptor)
+    except rfc8785.CanonicalizationError as error:
+        raise NodeControlContractError(
+            f"{name} is outside the canonical JSON domain"
+        ) from error
+
+
+def _is_negative_zero(value: float) -> bool:
+    return value == 0.0 and math.copysign(1.0, value) < 0
 
 
 def _mapping(value: object, name: str) -> Mapping[str, object]:
@@ -1236,6 +1274,7 @@ __all__ = [
     "MAX_NODE_CONTROL_STATE_ITEMS",
     "MAX_WORKLOAD_NODE_CONTROL_GRANT_LIFETIME_SECONDS",
     "MapControlState",
+    "NodeControlCanonicalization",
     "NodeControlCommandRequest",
     "NodeControlCommandRequestCodec",
     "NodeControlContractError",
