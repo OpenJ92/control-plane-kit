@@ -21,6 +21,12 @@ _TEMPORAL_COLUMNS = (
     ("cpk_runtime_authorities", "admitted_at", "NO", 6),
     ("cpk_runtime_authority_deliveries", "admitted_at", "NO", 6),
 )
+_TEMPORAL_IDENTITIES = tuple(
+    (table, column) for table, column, _, _ in _TEMPORAL_COLUMNS
+)
+_V2_HISTORY = [(1, "operations-baseline"), (2, "coordination-timestamps")]
+_CANONICAL_RETAINED_TIMESTAMP = "2026-08-07T06:00:00Z"
+_NONCANONICAL_OFFSET_TIMESTAMP = "2026-08-07T02:00:00-04:00"
 
 
 class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
@@ -97,7 +103,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
         self.assertIsNone(raised.exception.__context__)
         self.assertEqual(
             self._ledger(),
-            [(1, "operations-baseline"), (2, "coordination-timestamps")],
+            _V2_HISTORY,
         )
         self.assertEqual(
             self.connection.execute(
@@ -109,6 +115,43 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
             self._column_type("cpk_graph_versions", "created_at"),
             ("text", None),
         )
+
+    def test_each_retained_column_participates_in_canonical_preflight(self) -> None:
+        for index, identity in enumerate(_TEMPORAL_IDENTITIES):
+            with self.subTest(identity=identity):
+                case_schema = f"{self.schema}_{index}"
+                self.connection.execute(f'CREATE SCHEMA "{case_schema}"')
+                self.connection.execute(f'SET search_path TO "{case_schema}"')
+                try:
+                    self._install_v2_baseline()
+                    timestamps = [_CANONICAL_RETAINED_TIMESTAMP] * 7
+                    timestamps[index] = _NONCANONICAL_OFFSET_TIMESTAMP
+                    self._seed_retained_rows(tuple(timestamps))
+
+                    with self.assertRaises(postgres.SchemaMigrationError) as raised:
+                        postgres.install_postgres_schema(self.connection)
+
+                    self.assertEqual(
+                        str(raised.exception),
+                        "graph, product, and authority timestamps "
+                        "are not canonical UTC",
+                    )
+                    self.assertLessEqual(len(str(raised.exception)), 256)
+                    self.assertNotIn(
+                        _NONCANONICAL_OFFSET_TIMESTAMP,
+                        str(raised.exception),
+                    )
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertEqual(self._ledger(), _V2_HISTORY)
+                    self.assertEqual(self._retained_values(), tuple(timestamps))
+                    for table, column in _TEMPORAL_IDENTITIES:
+                        self.assertEqual(
+                            self._column_contract(table, column),
+                            ("text", None, "NO", True),
+                        )
+                finally:
+                    self.connection.execute(f'SET search_path TO "{self.schema}"')
+                    self.connection.execute(f'DROP SCHEMA "{case_schema}" CASCADE')
 
     def test_retained_calendar_invalid_value_has_bounded_v3_category(self) -> None:
         self._install_v2_baseline()
@@ -124,21 +167,52 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
         self.assertIsNone(raised.exception.__context__)
         self.assertEqual(
             self._ledger(),
-            [(1, "operations-baseline"), (2, "coordination-timestamps")],
+            _V2_HISTORY,
         )
 
-    def test_current_verifier_rejects_owned_temporal_precision_drift(self) -> None:
-        postgres.install_postgres_schema(self.connection)
-        self.connection.execute(
-            """
-            ALTER TABLE cpk_graph_versions
-              ALTER COLUMN created_at TYPE timestamptz(5)
-                USING created_at::timestamptz(5)
-            """
-        )
+    def test_current_verifier_rejects_every_owned_temporal_fact_drift(self) -> None:
+        for identity_index, (table, column) in enumerate(_TEMPORAL_IDENTITIES):
+            mutations = (
+                ("type", f"TYPE text USING {column}::text"),
+                (
+                    "precision",
+                    f"TYPE timestamptz(5) USING {column}::timestamptz(5)",
+                ),
+                ("nullability", "DROP NOT NULL"),
+                ("default", "SET DEFAULT clock_timestamp()"),
+            )
+            for fact_index, (fact, mutation) in enumerate(mutations):
+                with self.subTest(identity=(table, column), fact=fact):
+                    case_schema = (
+                        f"{self.schema}_{identity_index}_{fact_index}"
+                    )
+                    self.connection.execute(f'CREATE SCHEMA "{case_schema}"')
+                    self.connection.execute(f'SET search_path TO "{case_schema}"')
+                    try:
+                        postgres.install_postgres_schema(self.connection)
+                        self.connection.execute(
+                            f"ALTER TABLE {table} ALTER COLUMN {column} {mutation}"
+                        )
 
-        with self.assertRaises(postgres.SchemaMigrationError):
-            postgres.verify_postgres_schema(self.connection)
+                        with self.assertRaises(
+                            postgres.SchemaMigrationError
+                        ) as raised:
+                            postgres.verify_postgres_schema(self.connection)
+
+                        self.assertEqual(
+                            str(raised.exception),
+                            "graph, product, and authority temporal schema "
+                            "is not current",
+                        )
+                        self.assertLessEqual(len(str(raised.exception)), 256)
+                        self.assertIsNone(raised.exception.__context__)
+                    finally:
+                        self.connection.execute(
+                            f'SET search_path TO "{self.schema}"'
+                        )
+                        self.connection.execute(
+                            f'DROP SCHEMA "{case_schema}" CASCADE'
+                        )
 
     def test_reinstall_backfills_graph_lineage_through_temporal_codec(self) -> None:
         postgres.install_postgres_schema(self.connection)
@@ -146,8 +220,8 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces
-              (workspace_id, name, lifecycle, current_graph_id)
-            VALUES ('workspace-a', 'Workspace A', 'created', 'graph-a')
+              (workspace_id, name, lifecycle)
+            VALUES ('workspace-a', 'Workspace A', 'created')
             """
         )
         self.connection.execute(
@@ -161,6 +235,19 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("graph-a"))),
                 created_at,
             ),
+        )
+        self.connection.execute(
+            """
+            ALTER TABLE cpk_workspaces
+              DROP CONSTRAINT cpk_workspaces_current_lineage_check
+            """
+        )
+        self.connection.execute(
+            """
+            UPDATE cpk_workspaces
+            SET current_graph_id = 'graph-a'
+            WHERE workspace_id = 'workspace-a'
+            """
         )
 
         postgres.install_postgres_schema(self.connection)
@@ -199,7 +286,12 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 (migration.version, migration.name, migration.checksum_sha256),
             )
 
-    def _seed_retained_rows(self, timestamp: str) -> None:
+    def _seed_retained_rows(
+        self,
+        timestamps: str | tuple[str, ...],
+    ) -> None:
+        values = (timestamps,) * 7 if isinstance(timestamps, str) else timestamps
+        self.assertEqual(len(values), 7)
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -212,6 +304,23 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
               (graph_id, workspace_id, version, graph_descriptor, created_by,
                created_at)
             VALUES ('graph-a', 'workspace-a', 1, '{}'::jsonb, 'operator-a', %s)
+            """,
+            """
+            INSERT INTO cpk_image_pull_authorities
+              (authority_id, workspace_id, authority, registry, repository,
+               credential_reference, admitted_by, admitted_at, status)
+            VALUES ('image-a', 'workspace-a', '{}'::jsonb, 'ghcr.io', NULL,
+                    'secret://local/workspace-a/image', 'operator-a', %s,
+                    'active')
+            """,
+            """
+            INSERT INTO cpk_ingress_authorities
+              (registration_id, workspace_id, authority_ref, provider_kind,
+               authority, credential_references, allowed_hostname_pattern,
+               admitted_by, admitted_at, status)
+            VALUES ('ingress-a', 'workspace-a', 'ingress-a', 'cloudflare',
+                    '{}'::jsonb, '{}'::jsonb, '*.example.test', 'operator-a',
+                    %s, 'active')
             """,
             """
             INSERT INTO cpk_realized_graph_projections
@@ -230,14 +339,6 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                     '{}'::jsonb, '{}', '{}'::jsonb, 'operator-a', %s, 'active')
             """,
             """
-            INSERT INTO cpk_image_pull_authorities
-              (authority_id, workspace_id, authority, registry, repository,
-               credential_reference, admitted_by, admitted_at, status)
-            VALUES ('image-a', 'workspace-a', '{}'::jsonb, 'ghcr.io', NULL,
-                    'secret://local/workspace-a/image', 'operator-a', %s,
-                    'active')
-            """,
-            """
             INSERT INTO cpk_runtime_authorities
               (registration_id, workspace_id, authority_ref, runtime_kind,
                authority_kind, authority, credential_references, admitted_by,
@@ -254,17 +355,8 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                     'local-docker-socket-mount', '{}'::jsonb, '[]'::jsonb,
                     'operator-a', %s, 'active')
             """,
-            """
-            INSERT INTO cpk_ingress_authorities
-              (registration_id, workspace_id, authority_ref, provider_kind,
-               authority, credential_references, allowed_hostname_pattern,
-               admitted_by, admitted_at, status)
-            VALUES ('ingress-a', 'workspace-a', 'ingress-a', 'cloudflare',
-                    '{}'::jsonb, '{}'::jsonb, '*.example.test', 'operator-a',
-                    %s, 'active')
-            """,
         )
-        for statement in statements:
+        for statement, timestamp in zip(statements, values, strict=True):
             self.connection.execute(statement, (timestamp,))
 
     def _retained_values(self) -> tuple[object, ...]:
@@ -312,6 +404,23 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
         return self.connection.execute(
             """
             SELECT data_type, datetime_precision
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = %s
+              AND column_name = %s
+            """,
+            (table, column),
+        ).fetchone()
+
+    def _column_contract(
+        self,
+        table: str,
+        column: str,
+    ) -> tuple[str, int | None, str, bool]:
+        return self.connection.execute(
+            """
+            SELECT data_type, datetime_precision, is_nullable,
+                   column_default IS NULL
             FROM information_schema.columns
             WHERE table_schema = current_schema()
               AND table_name = %s
