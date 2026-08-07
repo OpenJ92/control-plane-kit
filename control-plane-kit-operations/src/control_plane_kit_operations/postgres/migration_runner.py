@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
-from typing import Protocol
-
 from control_plane_kit_operations.postgres.migration_inspection import (
     inspect_postgres_schema,
     verify_postgres_schema,
@@ -18,6 +15,7 @@ from control_plane_kit_operations.postgres.migrations import (
 from control_plane_kit_operations.postgres.schema import (
     POSTGRES_SCHEMA,
     POSTGRES_SCHEMA_MIGRATIONS,
+    MigrationPostgresConnection,
     PostgresConnection,
     _GRAPH_LINEAGE_CONSTRAINTS,
     _backfill_graph_lineage,
@@ -25,15 +23,6 @@ from control_plane_kit_operations.postgres.schema import (
     _upgrade_gateway_key_rotation_retirement_constraint,
     _upgrade_gateway_key_rotation_status_constraints,
 )
-
-
-class MigrationPostgresConnection(PostgresConnection, Protocol):
-    """Postgres capabilities required by the migration interpreter."""
-
-    @property
-    def autocommit(self) -> bool: ...
-
-    def transaction(self) -> AbstractContextManager[object]: ...
 
 
 _CREATE_LEDGER = """
