@@ -460,7 +460,8 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             INSERT INTO cpk_graph_versions
               (graph_id, workspace_id, version, graph_descriptor, created_by,
                created_at)
-            VALUES ('graph-a', 'workspace-a', 1, %s, 'operator', 'graph-at');
+            VALUES ('graph-a', 'workspace-a', 1, %s, 'operator',
+                    '2026-08-07T05:59:00Z');
             """,
             (Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("current"))),),
         )
