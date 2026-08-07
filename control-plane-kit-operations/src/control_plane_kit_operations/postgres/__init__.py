@@ -25,6 +25,11 @@ from control_plane_kit_operations.postgres.migration_inspection import (
     inspect_postgres_schema,
     verify_postgres_schema,
 )
+from control_plane_kit_operations.postgres.migration_runner import (
+    MigrationPostgresConnection,
+    install_postgres_schema,
+    plan_postgres_schema_install,
+)
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
@@ -88,6 +93,7 @@ __all__ = [
     "GatewayProbeStore",
     "GatewayKeyRotationStore",
     "ImagePullAuthorityStore",
+    "MigrationPostgresConnection",
     "GeneratedIngressSecretReferenceStore",
     "IngressAuthorityStore",
     "IngressResourceStore",
@@ -114,6 +120,8 @@ __all__ = [
     "TransactionalPostgresConnection",
     "UnitOfWorkStateError",
     "install_schema",
+    "install_postgres_schema",
     "inspect_postgres_schema",
+    "plan_postgres_schema_install",
     "verify_postgres_schema",
 ]

@@ -1411,14 +1411,13 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry((_POSTGRES_SCHEMA_V1,))
 
 
 def install_schema(connection: PostgresConnection) -> None:
-    """Install the current operations schema on a caller-managed transaction."""
+    """Install through the canonical caller-aware migration interpreter."""
 
-    connection.execute(POSTGRES_SCHEMA)
-    _upgrade_approval_scope_constraints(connection)
-    _upgrade_gateway_key_rotation_status_constraints(connection)
-    _upgrade_gateway_key_rotation_retirement_constraint(connection)
-    _backfill_graph_lineage(connection)
-    connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
+    from control_plane_kit_operations.postgres.migration_runner import (
+        install_postgres_schema,
+    )
+
+    install_postgres_schema(connection)
 
 
 def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:

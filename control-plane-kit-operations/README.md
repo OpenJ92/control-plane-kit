@@ -162,9 +162,20 @@ bounded Postgres catalog + ledger reads
 `inspect_postgres_schema()` recognizes only an empty schema, the exact
 unversioned V1 baseline, or canonical versioned ledger history.
 `verify_postgres_schema()` additionally requires exact current structure and no
-pending migration action. Both functions are read-only. Ledger creation,
-locking, transaction ownership, and migration application remain a separate
-interpreter boundary.
+pending migration action. Both functions are read-only.
+
+`plan_postgres_schema_install()` exposes the canonical preview. The mutation
+interpreter then re-inspects and re-plans under one transaction-scoped advisory
+lock. Autocommit connections receive one interpreter-owned transaction;
+non-autocommit connections retain caller commit and rollback authority. Only
+package-owned registry actions may execute, and migration SQL, ledger identity,
+the closed historical V1 compatibility reconciliation, and final verification
+share that transaction. `install_schema()` delegates to this interpreter.
+
+Compatibility admits only canonical V1 column order or the exact append orders
+produced by named historical `ADD COLUMN` repairs. It does not treat arbitrary
+column permutations as current structure. #1110 owns replacing these temporary
+repairs with later explicit migrations.
 
 ## Package Map
 

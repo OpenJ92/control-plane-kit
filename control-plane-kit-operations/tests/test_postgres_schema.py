@@ -5,7 +5,7 @@ import unittest
 import uuid
 
 import psycopg
-from psycopg.errors import CheckViolation, UndefinedColumn
+from psycopg.errors import CheckViolation
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
@@ -14,7 +14,11 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationStatus,
 )
-from control_plane_kit_operations.postgres import POSTGRES_SCHEMA, install_schema
+from control_plane_kit_operations.postgres import (
+    POSTGRES_SCHEMA,
+    SchemaMigrationError,
+    install_schema,
+)
 
 
 class PostgresSchemaFoundationTests(unittest.TestCase):
@@ -51,10 +55,12 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
         )
         self.connection.autocommit = False
         try:
-            with self.assertRaises(UndefinedColumn):
+            with self.assertRaises(SchemaMigrationError):
                 install_schema(self.connection)
             self.connection.rollback()
         finally:
+            if self.connection.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+                self.connection.rollback()
             self.connection.autocommit = True
 
         self.assertEqual(self._table_names(), {"cpk_activity_runs"})

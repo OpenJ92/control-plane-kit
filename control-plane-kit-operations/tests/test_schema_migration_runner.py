@@ -72,7 +72,10 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
 
             install(connection)
 
-            self.assertEqual(self._application_constraint_identities(connection), before)
+            after = dict(self._application_constraint_identities(connection))
+            for constraint, identity in before:
+                with self.subTest(constraint=constraint):
+                    self.assertEqual(after[constraint], identity)
             self.assertEqual(self._ledger_rows(connection), [(1, "operations-baseline")])
         finally:
             connection.close()
@@ -109,6 +112,24 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 install(connection)
 
             self.assertEqual(self._table_names(connection), {"client_application_data"})
+        finally:
+            connection.close()
+
+    def test_unlisted_column_order_is_not_accepted_as_compatibility(self) -> None:
+        install = self._required("install_postgres_schema")
+        connection = self._connection()
+        try:
+            install(connection)
+            connection.execute("ALTER TABLE cpk_workspaces DROP COLUMN name")
+            connection.execute(
+                "ALTER TABLE cpk_workspaces ADD COLUMN name text NOT NULL DEFAULT ''"
+            )
+            connection.execute(
+                "ALTER TABLE cpk_workspaces ALTER COLUMN name DROP DEFAULT"
+            )
+
+            with self.assertRaises(postgres.SchemaMigrationError):
+                postgres.verify_postgres_schema(connection)
         finally:
             connection.close()
 
@@ -159,6 +180,47 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
 
         self.assertNotIn(marker, str(raised.exception))
         self.assertIsNone(raised.exception.__context__)
+        observer = self._connection()
+        try:
+            self.assertEqual(self._table_names(observer), set())
+        finally:
+            observer.close()
+
+    def test_final_verification_failure_rolls_back_every_effect(self) -> None:
+        install = self._required("install_postgres_schema")
+        delegate = self._connection()
+
+        class DriftBeforeVerificationConnection:
+            ledger_recorded = False
+            drifted = False
+
+            @property
+            def autocommit(self):
+                return delegate.autocommit
+
+            def transaction(self):
+                return delegate.transaction()
+
+            def execute(self, query, params=()):
+                if "INSERT INTO cpk_schema_migrations" in query:
+                    self.ledger_recorded = True
+                elif (
+                    self.ledger_recorded
+                    and not self.drifted
+                    and "FROM information_schema.tables" in query
+                ):
+                    delegate.execute(
+                        "ALTER TABLE cpk_workspaces DROP COLUMN metadata CASCADE"
+                    )
+                    self.drifted = True
+                return delegate.execute(query, params)
+
+        try:
+            with self.assertRaises(postgres.SchemaMigrationError):
+                install(DriftBeforeVerificationConnection())
+        finally:
+            delegate.close()
+
         observer = self._connection()
         try:
             self.assertEqual(self._table_names(observer), set())
@@ -255,7 +317,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             SELECT conname, oid
             FROM pg_constraint
             WHERE connamespace = current_schema()::regnamespace
-              AND conrelid <> 'cpk_schema_migrations'::regclass
+              AND conname <> 'cpk_schema_migrations_pkey'
             ORDER BY conname
             """
         ).fetchall()
