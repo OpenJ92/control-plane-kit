@@ -24,6 +24,9 @@ class PostgresSchemaMigrationInspectionTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.connection.execute("SET search_path TO public")
+        self.connection.execute(
+            f'DROP SCHEMA IF EXISTS "{self.schema}_backing" CASCADE'
+        )
         self.connection.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
         self.connection.close()
 
@@ -106,6 +109,7 @@ class PostgresSchemaMigrationInspectionTests(unittest.TestCase):
             ("partial", "CREATE TABLE cpk_workspaces (workspace_id text)"),
             ("similarly-prefixed", "CREATE TABLE cpk_workspace_shadow (id text)"),
             ("unrelated", "CREATE TABLE client_application_data (id text)"),
+            ("zero-column", "CREATE TABLE zero_column_table ()"),
         )
         for label, sql in arrangements:
             with self.subTest(label=label):
@@ -126,6 +130,29 @@ class PostgresSchemaMigrationInspectionTests(unittest.TestCase):
         with self.assertRaises(error_type):
             inspect(self.connection)
         self.assertEqual(self._table_column_manifest(), before)
+
+    def test_lookalike_view_cannot_satisfy_the_v1_table_manifest(self) -> None:
+        inspect = self._required("inspect_postgres_schema")
+        error_type = self._required("SchemaMigrationError")
+        backing_schema = f"{self.schema}_backing"
+        self.connection.execute(postgres.POSTGRES_SCHEMA)
+        self.connection.execute(f'CREATE SCHEMA "{backing_schema}"')
+        self.connection.execute(
+            f'ALTER TABLE cpk_workspaces SET SCHEMA "{backing_schema}"'
+        )
+        self.connection.execute(
+            f"""
+            CREATE VIEW cpk_workspaces AS
+            SELECT * FROM "{backing_schema}".cpk_workspaces
+            """
+        )
+
+        with self.assertRaises(error_type):
+            inspect(self.connection)
+
+        self.assertNotIn("cpk_schema_migrations", self._table_names())
+        self.connection.execute("DROP VIEW cpk_workspaces")
+        self.connection.execute(f'DROP SCHEMA "{backing_schema}" CASCADE')
 
     def test_malformed_or_empty_ledger_contract_fails_closed(self) -> None:
         inspect = self._required("inspect_postgres_schema")
