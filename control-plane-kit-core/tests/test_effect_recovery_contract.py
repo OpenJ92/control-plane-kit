@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+import control_plane_kit_core as core
 import control_plane_kit_core.operations as operations
 from control_plane_kit_core.operations.recovery import (
     EffectAttemptFence,
@@ -15,6 +16,12 @@ from control_plane_kit_core.operations.recovery import (
     InvalidEffectRecoveryContract,
     fold_effect_attempt,
 )
+
+
+REQUEST_FINGERPRINT = "a" * 64
+OUTCOME_FINGERPRINT = "b" * 64
+UNCERTAIN_FINGERPRINT = "c" * 64
+RECOVERY_FINGERPRINT = "d" * 64
 
 
 class EffectRecoveryContractTests(unittest.TestCase):
@@ -33,7 +40,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
         return EffectAttemptTransition(
             kind=EffectAttemptTransitionKind.STARTED,
             identity=identity or self.identity(),
-            request_fingerprint="request-sha256",
+            request_fingerprint=REQUEST_FINGERPRINT,
             prior_attempt=prior_attempt,
         )
 
@@ -48,7 +55,8 @@ class EffectRecoveryContractTests(unittest.TestCase):
             decision_id="decision-1",
             attempt_identity=self.identity(),
             resolution=resolution,
-            evidence_fingerprint="evidence-sha256",
+            uncertain_fingerprint=UNCERTAIN_FINGERPRINT,
+            evidence_fingerprint=RECOVERY_FINGERPRINT,
         )
 
     def test_public_operational_contract_exports_are_complete(self) -> None:
@@ -66,6 +74,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 self.assertTrue(hasattr(operations, name))
+                self.assertTrue(hasattr(core, name))
 
     def test_identity_and_fence_are_bounded_and_positive(self) -> None:
         invalid_factories = (
@@ -119,12 +128,12 @@ class EffectRecoveryContractTests(unittest.TestCase):
                     EffectAttemptTransition(
                         kind=kind,
                         identity=self.identity(),
-                        outcome_fingerprint="outcome-sha256",
+                        outcome_fingerprint=OUTCOME_FINGERPRINT,
                     ),
                     fence=self.fence(),
                 )
                 self.assertEqual(state.status, expected)
-                self.assertEqual(state.outcome_fingerprint, "outcome-sha256")
+                self.assertEqual(state.outcome_fingerprint, OUTCOME_FINGERPRINT)
 
     def test_uncertainty_cannot_be_resolved_by_ordinary_result(self) -> None:
         uncertain = fold_effect_attempt(
@@ -132,7 +141,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
             EffectAttemptTransition(
                 kind=EffectAttemptTransitionKind.UNCERTAIN,
                 identity=self.identity(),
-                outcome_fingerprint="uncertain-sha256",
+                outcome_fingerprint=UNCERTAIN_FINGERPRINT,
             ),
             fence=self.fence(),
         )
@@ -147,7 +156,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
                         EffectAttemptTransition(
                             kind=kind,
                             identity=self.identity(),
-                            outcome_fingerprint="late-result-sha256",
+                            outcome_fingerprint=OUTCOME_FINGERPRINT,
                         ),
                         fence=self.fence(),
                     )
@@ -158,7 +167,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
             EffectAttemptTransition(
                 kind=EffectAttemptTransitionKind.UNCERTAIN,
                 identity=self.identity(),
-                outcome_fingerprint="uncertain-sha256",
+                outcome_fingerprint=UNCERTAIN_FINGERPRINT,
             ),
             fence=self.fence(),
         )
@@ -168,21 +177,56 @@ class EffectRecoveryContractTests(unittest.TestCase):
         ):
             with self.subTest(resolution=resolution):
                 decision = self.decision(resolution)
+                transition = EffectAttemptTransition(
+                    kind=EffectAttemptTransitionKind.RECONCILED,
+                    identity=self.identity(),
+                    recovery_decision=decision,
+                )
                 reconciled = fold_effect_attempt(
                     uncertain,
-                    EffectAttemptTransition(
-                        kind=EffectAttemptTransitionKind.RECONCILED,
-                        identity=self.identity(),
-                        recovery_decision=decision,
-                    ),
+                    transition,
                     fence=self.fence(),
                 )
                 self.assertEqual(reconciled.status, expected)
                 self.assertEqual(reconciled.recovery_decision, decision)
                 self.assertEqual(
+                    reconciled.recovery_decision.uncertain_fingerprint,
+                    UNCERTAIN_FINGERPRINT,
+                )
+                self.assertEqual(
                     reconciled.outcome_fingerprint,
                     decision.evidence_fingerprint,
                 )
+                self.assertIs(
+                    fold_effect_attempt(
+                        reconciled,
+                        transition,
+                        fence=self.fence(),
+                    ),
+                    reconciled,
+                )
+                self.assertEqual(
+                    EffectAttemptState.from_descriptor(reconciled.descriptor()),
+                    reconciled,
+                )
+
+        mismatched = EffectRecoveryDecision(
+            decision_id="decision-2",
+            attempt_identity=self.identity(),
+            resolution=EffectRecoveryResolution.SUCCEEDED,
+            uncertain_fingerprint="e" * 64,
+            evidence_fingerprint=RECOVERY_FINGERPRINT,
+        )
+        with self.assertRaises(InvalidEffectRecoveryContract):
+            fold_effect_attempt(
+                uncertain,
+                EffectAttemptTransition(
+                    kind=EffectAttemptTransitionKind.RECONCILED,
+                    identity=self.identity(),
+                    recovery_decision=mismatched,
+                ),
+                fence=self.fence(),
+            )
 
     def test_abandonment_requires_uncertainty_and_explicit_decision(self) -> None:
         uncertain = fold_effect_attempt(
@@ -190,7 +234,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
             EffectAttemptTransition(
                 kind=EffectAttemptTransitionKind.UNCERTAIN,
                 identity=self.identity(),
-                outcome_fingerprint="uncertain-sha256",
+                outcome_fingerprint=UNCERTAIN_FINGERPRINT,
             ),
             fence=self.fence(),
         )
@@ -223,7 +267,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
         transition = EffectAttemptTransition(
             kind=EffectAttemptTransitionKind.SUCCEEDED,
             identity=self.identity(),
-            outcome_fingerprint="outcome-sha256",
+            outcome_fingerprint=OUTCOME_FINGERPRINT,
         )
         for fence in (
             EffectAttemptFence("worker-1", 2),
@@ -237,7 +281,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
         transition = EffectAttemptTransition(
             kind=EffectAttemptTransitionKind.SUCCEEDED,
             identity=self.identity(),
-            outcome_fingerprint="outcome-sha256",
+            outcome_fingerprint=OUTCOME_FINGERPRINT,
         )
         settled = fold_effect_attempt(
             self.started_state(), transition, fence=self.fence()
@@ -253,7 +297,7 @@ class EffectRecoveryContractTests(unittest.TestCase):
             EffectAttemptTransition(
                 kind=EffectAttemptTransitionKind.SUCCEEDED,
                 identity=self.identity(),
-                outcome_fingerprint="outcome-sha256",
+                outcome_fingerprint=OUTCOME_FINGERPRINT,
             ),
             fence=self.fence(),
         )
@@ -261,12 +305,12 @@ class EffectRecoveryContractTests(unittest.TestCase):
             EffectAttemptTransition(
                 kind=EffectAttemptTransitionKind.SUCCEEDED,
                 identity=self.identity(),
-                outcome_fingerprint="different-sha256",
+                outcome_fingerprint="e" * 64,
             ),
             EffectAttemptTransition(
                 kind=EffectAttemptTransitionKind.FAILED,
                 identity=self.identity(),
-                outcome_fingerprint="outcome-sha256",
+                outcome_fingerprint=OUTCOME_FINGERPRINT,
             ),
         ):
             with self.subTest(transition=transition):
@@ -293,19 +337,51 @@ class EffectRecoveryContractTests(unittest.TestCase):
         with self.assertRaises(InvalidEffectRecoveryContract):
             EffectAttemptState.from_descriptor(descriptor)
 
-    def test_fingerprints_and_decision_ids_are_bounded_public_material(self) -> None:
-        with self.assertRaises(InvalidEffectRecoveryContract):
-            EffectAttemptTransition(
+    def test_transition_shapes_reject_contradictory_material(self) -> None:
+        invalid_factories = (
+            lambda: EffectAttemptTransition(
                 kind=EffectAttemptTransitionKind.STARTED,
                 identity=self.identity(),
-                request_fingerprint="x" * 257,
-            )
+                request_fingerprint=REQUEST_FINGERPRINT,
+                outcome_fingerprint=OUTCOME_FINGERPRINT,
+            ),
+            lambda: EffectAttemptTransition(
+                kind=EffectAttemptTransitionKind.SUCCEEDED,
+                identity=self.identity(),
+            ),
+            lambda: EffectAttemptTransition(
+                kind=EffectAttemptTransitionKind.RECONCILED,
+                identity=self.identity(),
+            ),
+            lambda: EffectAttemptTransition(
+                kind=EffectAttemptTransitionKind.ABANDONED,
+                identity=self.identity(),
+                recovery_decision=self.decision(
+                    EffectRecoveryResolution.SUCCEEDED
+                ),
+            ),
+        )
+        for factory in invalid_factories:
+            with self.subTest(factory=factory):
+                with self.assertRaises(InvalidEffectRecoveryContract):
+                    factory()
+
+    def test_fingerprints_and_decision_ids_are_bounded_public_material(self) -> None:
+        for fingerprint in ("raw-secret-token", "x" * 63, "X" * 64, "x" * 257):
+            with self.subTest(fingerprint=fingerprint):
+                with self.assertRaises(InvalidEffectRecoveryContract):
+                    EffectAttemptTransition(
+                        kind=EffectAttemptTransitionKind.STARTED,
+                        identity=self.identity(),
+                        request_fingerprint=fingerprint,
+                    )
         with self.assertRaises(InvalidEffectRecoveryContract):
             EffectRecoveryDecision(
                 decision_id="d" * 257,
                 attempt_identity=self.identity(),
                 resolution=EffectRecoveryResolution.SUCCEEDED,
-                evidence_fingerprint="evidence-sha256",
+                uncertain_fingerprint=UNCERTAIN_FINGERPRINT,
+                evidence_fingerprint=RECOVERY_FINGERPRINT,
             )
 
 

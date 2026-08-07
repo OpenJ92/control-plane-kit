@@ -1653,6 +1653,49 @@ laws:
   Result folding must not erase historical evidence. Failure and uncertainty
   remain visible.
 
+### EffectAttemptState
+
+meaning:
+  Pure durable-coordination contract for one possible performance of an
+  external effect. Its identity is `(run_id, activity_id, attempt)` and its
+  active ownership fence is `(worker_id, generation)`.
+
+owned by:
+  The pure contract is exported by `control-plane-kit-core.operations`.
+  `control-plane-kit-operations` owns persistence and transactional enforcement.
+
+durable:
+  Yes, when #1105 provides the operations-store projection. The pure value does
+  not itself perform persistence.
+
+may contain secrets:
+  No. Request, result, and recovery evidence are lowercase SHA-256 fingerprints,
+  not raw requests, provider results, credentials, addresses, or exception text.
+
+interpreted by:
+  Operations lease/fence stores, the execution coordinator, recovery services,
+  and operator projections.
+
+laws:
+  The closed attempt states are `started`, `succeeded`, `failed`, `unsupported`,
+  `uncertain`, and `abandoned`. A stale or foreign fence cannot fold a result.
+  An exact duplicate terminal fold is idempotent; an incompatible duplicate is
+  rejected. Uncertainty is neither success nor failure and can become success,
+  failure, or abandonment only through an explicit `EffectRecoveryDecision`
+  that retains the exact attempt identity, the uncertainty fingerprint being
+  resolved, and the public reconciliation evidence fingerprint.
+
+  Retry creates a new positive attempt number and names the immediately prior
+  attempt; it never rewrites the previous attempt. `ActivityEvent` remains the
+  canonical append-only operational history. `EffectAttemptState` is the current
+  coordination/fence projection, not a second journal.
+
+  The persistence transaction introduced by #1105 must validate the active
+  lease and fence under row lock, fold the attempt state, and append its bounded
+  lifecycle event atomically. External interpreter IO never occurs inside that
+  Postgres transaction. Fence takeover and lease-expiry authority belong to that
+  operations transaction, not to the pure fold.
+
 ### RuntimeInterpreterDispatcher
 
 meaning:
