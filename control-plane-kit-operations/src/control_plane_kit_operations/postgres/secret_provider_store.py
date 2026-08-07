@@ -13,6 +13,10 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.secret_providers import (
     AuthorizedSecretUse,
     RegisteredSecretProvider,
@@ -41,6 +45,7 @@ class SecretProviderStore:
             raise SecretProviderRegistrationConflict(
                 "new provider registration must be active"
             )
+        encoded_admitted_at = encode_postgres_timestamp(candidate.admitted_at)
         _lock_transaction_key(
             self._connection,
             (
@@ -118,7 +123,7 @@ class SecretProviderStore:
                 ),
                 Jsonb([intent.value for intent in candidate.allowed_intents]),
                 candidate.admitted_by,
-                candidate.admitted_at,
+                encoded_admitted_at,
                 candidate.status.value,
                 candidate.supersedes_registration_id,
                 Jsonb(dict(candidate.metadata)),
@@ -210,6 +215,7 @@ class SecretProviderStore:
         revoked_by: str,
         revoked_at: str,
     ) -> RegisteredSecretProvider:
+        encoded_revoked_at = encode_postgres_timestamp(revoked_at)
         active = self._get_active_or_none(
             workspace_id,
             provider_id,
@@ -232,7 +238,12 @@ class SecretProviderStore:
               AND registration_id = %s
               AND status = 'active'
             """,
-            (revoked_by, revoked_at, workspace_id, active.registration_id),
+            (
+                revoked_by,
+                encoded_revoked_at,
+                workspace_id,
+                active.registration_id,
+            ),
         )
         return self.get_by_registration(workspace_id, active.registration_id)
 
@@ -322,6 +333,7 @@ class SecretReferenceStore:
             raise SecretProviderRegistrationConflict(
                 "new secret reference registration must be active"
             )
+        encoded_admitted_at = encode_postgres_timestamp(candidate.admitted_at)
         _lock_transaction_key(
             self._connection,
             (
@@ -383,7 +395,7 @@ class SecretReferenceStore:
                 candidate.provider_registration_id,
                 Jsonb([intent.value for intent in candidate.allowed_intents]),
                 candidate.admitted_by,
-                candidate.admitted_at,
+                encoded_admitted_at,
                 candidate.status.value,
                 candidate.supersedes_registration_id,
                 Jsonb(dict(candidate.metadata)),
@@ -457,6 +469,7 @@ class SecretReferenceStore:
         revoked_by: str,
         revoked_at: str,
     ) -> RegisteredSecretReference:
+        encoded_revoked_at = encode_postgres_timestamp(revoked_at)
         current = self._get_by_registration_or_none(
             workspace_id,
             registration_id,
@@ -482,7 +495,7 @@ class SecretReferenceStore:
               AND registration_id = %s
               AND status = 'active'
             """,
-            (revoked_by, revoked_at, workspace_id, registration_id),
+            (revoked_by, encoded_revoked_at, workspace_id, registration_id),
         )
         return self.get_by_registration(workspace_id, registration_id)
 
@@ -735,11 +748,11 @@ def _row_to_provider(row: tuple[Any, ...]) -> RegisteredSecretProvider:
         ),
         allowed_intents=tuple(SecretUseIntent(value) for value in row[8]),
         admitted_by=row[9],
-        admitted_at=row[10],
+        admitted_at=decode_postgres_timestamp(row[10]),
         status=RegisteredSecretProviderStatus(row[11]),
         supersedes_registration_id=row[12],
         revoked_by=row[13],
-        revoked_at=row[14],
+        revoked_at=_decode_optional_timestamp(row[14]),
         metadata=row[15],
     )
 
@@ -752,11 +765,11 @@ def _row_to_reference(row: tuple[Any, ...]) -> RegisteredSecretReference:
         provider_registration_id=row[3],
         allowed_intents=tuple(SecretUseIntent(value) for value in row[4]),
         admitted_by=row[5],
-        admitted_at=row[6],
+        admitted_at=decode_postgres_timestamp(row[6]),
         status=RegisteredSecretReferenceStatus(row[7]),
         supersedes_registration_id=row[8],
         revoked_by=row[9],
-        revoked_at=row[10],
+        revoked_at=_decode_optional_timestamp(row[10]),
         metadata=row[11],
     )
 
@@ -780,3 +793,7 @@ def _row_to_authorized_use(row: tuple[Any, ...]) -> AuthorizedSecretUse:
         effect_id=row[14],
         probe_id=row[15],
     )
+
+
+def _decode_optional_timestamp(value: object) -> str | None:
+    return None if value is None else decode_postgres_timestamp(value)

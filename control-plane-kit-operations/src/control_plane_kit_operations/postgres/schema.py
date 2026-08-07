@@ -1514,6 +1514,45 @@ ALTER TABLE cpk_runtime_authority_deliveries
   ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
 """
 
+_POSTGRES_SCHEMA_V4_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT admitted_at AS value FROM cpk_secret_providers
+      UNION ALL SELECT revoked_at FROM cpk_secret_providers
+      UNION ALL SELECT admitted_at FROM cpk_secret_references
+      UNION ALL SELECT revoked_at FROM cpk_secret_references
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'secret registration timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_secret_providers
+  ALTER COLUMN admitted_at TYPE timestamptz(6)
+    USING admitted_at::timestamptz(6),
+  ALTER COLUMN revoked_at TYPE timestamptz(6)
+    USING revoked_at::timestamptz(6);
+ALTER TABLE cpk_secret_references
+  ALTER COLUMN admitted_at TYPE timestamptz(6)
+    USING admitted_at::timestamptz(6),
+  ALTER COLUMN revoked_at TYPE timestamptz(6)
+    USING revoked_at::timestamptz(6);
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1557,8 +1596,27 @@ if _POSTGRES_SCHEMA_V3.checksum_sha256 != _POSTGRES_SCHEMA_V3_SHA256:
         f"expected {_POSTGRES_SCHEMA_V3_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V3.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V4 = SchemaMigration(
+    version=4,
+    name="secret-registration-timestamps",
+    sql=_POSTGRES_SCHEMA_V4_SQL,
+)
+_POSTGRES_SCHEMA_V4_SHA256 = (
+    "523fb7528d544ce9214181b9886adb5d96130341561c44613f038caee42b99c1"
+)
+if _POSTGRES_SCHEMA_V4.checksum_sha256 != _POSTGRES_SCHEMA_V4_SHA256:
+    raise SchemaMigrationError(
+        "secret registration timestamp V4 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V4_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V4.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
-    (_POSTGRES_SCHEMA_V1, _POSTGRES_SCHEMA_V2, _POSTGRES_SCHEMA_V3)
+    (
+        _POSTGRES_SCHEMA_V1,
+        _POSTGRES_SCHEMA_V2,
+        _POSTGRES_SCHEMA_V3,
+        _POSTGRES_SCHEMA_V4,
+    )
 )
 
 

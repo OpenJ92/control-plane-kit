@@ -17,6 +17,7 @@ _CURRENT_HISTORY = [
     (1, "operations-baseline"),
     (2, "coordination-timestamps"),
     (3, "graph-product-authority-timestamps"),
+    (4, "secret-registration-timestamps"),
 ]
 
 
@@ -51,6 +52,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
@@ -121,6 +123,8 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_activity_runs_started_check",
                 "cpk_execution_requests_claim_check",
                 "cpk_operation_sessions_closed_check",
+                "cpk_secret_providers_revocation_evidence_check",
+                "cpk_secret_references_revocation_evidence_check",
             }
             self.assertLessEqual(rebuilt, set(before))
             for constraint, (identity, definition) in before.items():
@@ -131,7 +135,11 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                         self.assertNotEqual(after_identity, identity)
                     else:
                         self.assertEqual(after_identity, identity)
-            rebuilt_indexes = {"cpk_observations_latest_subject"}
+            rebuilt_indexes = {
+                "cpk_observations_latest_subject",
+                "cpk_secret_providers_history",
+                "cpk_secret_references_history",
+            }
             self.assertLessEqual(rebuilt_indexes, set(before_indexes))
             for index, (identity, definition) in before_indexes.items():
                 with self.subTest(index=index):

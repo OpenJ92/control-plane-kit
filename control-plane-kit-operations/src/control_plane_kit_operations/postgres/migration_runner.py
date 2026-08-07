@@ -41,6 +41,7 @@ SELECT pg_advisory_xact_lock(
 _TEMPORAL_MIGRATION_FAILURES = {
     2: "coordination timestamps are not canonical UTC",
     3: "graph, product, and authority timestamps are not canonical UTC",
+    4: "secret registration timestamps are not canonical UTC",
 }
 
 

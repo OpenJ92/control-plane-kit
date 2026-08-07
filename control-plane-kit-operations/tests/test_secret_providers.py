@@ -17,6 +17,10 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres.secret_provider_store import (
+    SecretProviderStore,
+    SecretReferenceStore,
+)
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
     AuthorizedSecretUse,
@@ -36,6 +40,15 @@ from control_plane_kit_operations.secret_providers import (
     SecretUseAuthorizationConflict,
     SecretUseAuthorizationService,
 )
+
+
+class _FailOnAccessConnection:
+    def __init__(self) -> None:
+        self.accesses = 0
+
+    def execute(self, query: str, params: tuple[object, ...] = ()):
+        self.accesses += 1
+        raise AssertionError("database access occurred before timestamp validation")
 
 
 class SecretProviderStoreTests(unittest.TestCase):
@@ -249,6 +262,207 @@ class SecretProviderStoreTests(unittest.TestCase):
                 registered.registration_id,
             )
         self.assertEqual(detail.status, RegisteredSecretProviderStatus.REVOKED)
+
+    def test_registration_and_revocation_timestamps_validate_before_database_access(
+        self,
+    ) -> None:
+        invalid = "2026-07-30T08:00:00-04:00"
+        operations = (
+            lambda connection: SecretProviderStore(connection).register(
+                self.provider_command(admitted_at=invalid).candidate()
+            ),
+            lambda connection: SecretReferenceStore(connection).register(
+                self.reference_command("provider-a", admitted_at=invalid).candidate()
+            ),
+            lambda connection: SecretProviderStore(connection).revoke_active(
+                "workspace-a",
+                SecretProviderId("workspace-secrets"),
+                revoked_by="operator-a",
+                revoked_at=invalid,
+            ),
+            lambda connection: SecretReferenceStore(connection).revoke(
+                "workspace-a",
+                "reference-a",
+                revoked_by="operator-a",
+                revoked_at=invalid,
+            ),
+        )
+
+        for operation in operations:
+            with self.subTest(operation=operation):
+                connection = _FailOnAccessConnection()
+                with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+                    operation(connection)
+                self.assertEqual(connection.accesses, 0)
+
+    def test_valid_microsecond_timestamps_round_trip_under_non_utc_session(
+        self,
+    ) -> None:
+        self.connection.execute("SET TIME ZONE 'Asia/Tokyo'")
+        providers = SecretProviderStore(self.connection)
+        references = SecretReferenceStore(self.connection)
+        provider = providers.register(
+            self.provider_command(
+                admitted_at="2026-07-30T12:00:00.000001Z"
+            ).candidate()
+        )
+        reference = references.register(
+            self.reference_command(
+                provider.registration_id,
+                admitted_at="2026-07-30T12:01:00.000002Z",
+            ).candidate()
+        )
+
+        revoked_reference = references.revoke(
+            "workspace-a",
+            reference.registration_id,
+            revoked_by="operator-a",
+            revoked_at="2026-07-30T12:02:00.000003Z",
+        )
+        revoked_provider = providers.revoke_active(
+            "workspace-a",
+            provider.provider_id,
+            revoked_by="operator-a",
+            revoked_at="2026-07-30T12:03:00.000004Z",
+        )
+
+        self.assertEqual(provider.admitted_at, "2026-07-30T12:00:00.000001Z")
+        self.assertEqual(reference.admitted_at, "2026-07-30T12:01:00.000002Z")
+        self.assertEqual(
+            revoked_reference.revoked_at,
+            "2026-07-30T12:02:00.000003Z",
+        )
+        self.assertEqual(
+            revoked_provider.revoked_at,
+            "2026-07-30T12:03:00.000004Z",
+        )
+
+    def test_malformed_duplicate_registration_cannot_bypass_timestamp_validation(
+        self,
+    ) -> None:
+        service = self.service()
+        provider = service.register_provider(self.provider_command())
+        reference = service.register_reference(
+            self.reference_command(provider.registration_id)
+        )
+
+        malformed = (
+            lambda stores: stores.secret_providers.register(
+                replace(provider, admitted_at="not-a-timestamp")
+            ),
+            lambda stores: stores.secret_references.register(
+                replace(reference, admitted_at="not-a-timestamp")
+            ),
+        )
+        for operation in malformed:
+            with self.subTest(operation=operation):
+                with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+                    with self.unit_of_work() as unit_of_work:
+                        operation(unit_of_work.stores)
+
+    def test_invalid_provider_replacement_cannot_supersede_active_truth(self) -> None:
+        service = self.service()
+        original = service.register_provider(self.provider_command())
+
+        with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+            service.register_provider(
+                self.provider_command(
+                    display_name="Replacement secrets",
+                    admitted_at="not-a-timestamp",
+                    supersedes_registration_id=original.registration_id,
+                )
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            active = unit_of_work.stores.secret_providers.get_active(
+                "workspace-a",
+                SecretProviderId("workspace-secrets"),
+            )
+            history = unit_of_work.stores.secret_providers.list_history(
+                "workspace-a",
+                SecretProviderId("workspace-secrets"),
+            )
+        self.assertEqual(active, original)
+        self.assertEqual(history, (original,))
+
+    def test_invalid_reference_replacement_cannot_supersede_active_truth(self) -> None:
+        service = self.service()
+        provider = service.register_provider(self.provider_command())
+        original = service.register_reference(
+            self.reference_command(provider.registration_id)
+        )
+
+        with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+            service.register_reference(
+                self.reference_command(
+                    provider.registration_id,
+                    admitted_at="not-a-timestamp",
+                    supersedes_registration_id=original.registration_id,
+                )
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            active = unit_of_work.stores.secret_references.get_active(
+                "workspace-a",
+                original.reference,
+            )
+            history = unit_of_work.stores.secret_references.list_history(
+                "workspace-a",
+                original.reference,
+            )
+        self.assertEqual(active, original)
+        self.assertEqual(history, (original,))
+
+    def test_invalid_provider_revocation_preserves_lifecycle_evidence(self) -> None:
+        service = self.service()
+        original = service.register_provider(self.provider_command())
+
+        with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+            service.revoke_provider(
+                RevokeSecretProviderCommand(
+                    workspace_id="workspace-a",
+                    provider_id=original.provider_id,
+                    revoked_by="operator-a",
+                    revoked_at="not-a-timestamp",
+                    actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+                )
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            stored = unit_of_work.stores.secret_providers.get_by_registration(
+                "workspace-a",
+                original.registration_id,
+            )
+        self.assertEqual(stored.status, RegisteredSecretProviderStatus.ACTIVE)
+        self.assertIsNone(stored.revoked_by)
+        self.assertIsNone(stored.revoked_at)
+
+    def test_invalid_reference_revocation_preserves_lifecycle_evidence(self) -> None:
+        service = self.service()
+        provider = service.register_provider(self.provider_command())
+        original = service.register_reference(
+            self.reference_command(provider.registration_id)
+        )
+
+        with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+            service.revoke_reference(
+                RevokeSecretReferenceCommand(
+                    workspace_id="workspace-a",
+                    registration_id=original.registration_id,
+                    revoked_by="operator-a",
+                    revoked_at="not-a-timestamp",
+                    actor_scopes=(PolicyScope.SECRET_PROVIDER_REVOKE,),
+                )
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            stored = unit_of_work.stores.secret_references.get_by_registration(
+                "workspace-a",
+                original.registration_id,
+            )
+        self.assertEqual(stored.status, RegisteredSecretReferenceStatus.ACTIVE)
+        self.assertIsNone(stored.revoked_by)
+        self.assertIsNone(stored.revoked_at)
 
     def test_reference_requires_active_same_workspace_provider_prefix_and_intent(
         self,
