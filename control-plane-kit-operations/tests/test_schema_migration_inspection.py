@@ -190,6 +190,53 @@ class PostgresSchemaMigrationInspectionTests(unittest.TestCase):
         with self.assertRaises(error_type):
             inspect(self.connection)
 
+    def test_ledger_requires_exact_primary_key_and_applied_at_default(self) -> None:
+        inspect = self._required("inspect_postgres_schema")
+        error_type = self._required("SchemaMigrationError")
+        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[0]
+        ledger_definitions = (
+            """
+            CREATE TABLE cpk_schema_migrations (
+              version integer NOT NULL,
+              name text NOT NULL,
+              checksum_sha256 text NOT NULL,
+              applied_at timestamptz NOT NULL DEFAULT clock_timestamp()
+            )
+            """,
+            """
+            CREATE TABLE cpk_schema_migrations (
+              version integer NOT NULL PRIMARY KEY,
+              name text NOT NULL,
+              checksum_sha256 text NOT NULL,
+              applied_at timestamptz NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE cpk_schema_migrations (
+              version integer NOT NULL PRIMARY KEY,
+              name text NOT NULL,
+              checksum_sha256 text NOT NULL,
+              applied_at timestamptz NOT NULL DEFAULT now()
+            )
+            """,
+        )
+        for definition in ledger_definitions:
+            with self.subTest(definition=definition):
+                self._reset_schema()
+                self.connection.execute(postgres.POSTGRES_SCHEMA)
+                self.connection.execute(definition)
+                self.connection.execute(
+                    """
+                    INSERT INTO cpk_schema_migrations
+                      (version, name, checksum_sha256, applied_at)
+                    VALUES (%s, %s, %s, clock_timestamp())
+                    """,
+                    (migration.version, migration.name, migration.checksum_sha256),
+                )
+
+                with self.assertRaises(error_type):
+                    inspect(self.connection)
+
     def test_drifted_gapped_and_newer_ledger_rows_fail_closed(self) -> None:
         inspect = self._required("inspect_postgres_schema")
         error_type = self._required("SchemaMigrationError")
@@ -289,6 +336,60 @@ class PostgresSchemaMigrationInspectionTests(unittest.TestCase):
         self.assertNotIn(marker, message)
         self.assertNotIn("secret_value", message)
         self.assertNotIn(self.database_url, message)
+
+    def test_ledger_identity_projection_is_bounded_before_driver_fetch(self) -> None:
+        inspect = self._required("inspect_postgres_schema")
+        error_type = self._required("SchemaMigrationError")
+        marker = "private-ledger-material-" + ("x" * 4096)
+        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[0]
+        self.connection.execute(postgres.POSTGRES_SCHEMA)
+        self._create_ledger()
+        self.connection.execute(
+            """
+            INSERT INTO cpk_schema_migrations
+              (version, name, checksum_sha256)
+            VALUES (%s, %s, %s)
+            """,
+            (migration.version, marker, marker),
+        )
+
+        class RecordingConnection:
+            def __init__(self, connection):
+                self.connection = connection
+                self.ledger_query = ""
+
+            def execute(self, query, params=None):
+                if "FROM cpk_schema_migrations" in query:
+                    self.ledger_query = query
+                return self.connection.execute(query, params)
+
+        recording = RecordingConnection(self.connection)
+        with self.assertRaises(error_type) as raised:
+            inspect(recording)
+
+        normalized_query = " ".join(recording.ledger_query.lower().split())
+        self.assertIn("octet_length(name)", normalized_query)
+        self.assertIn("octet_length(checksum_sha256)", normalized_query)
+        self.assertNotIn(marker, str(raised.exception))
+
+    def test_driver_failures_are_categorical_bounded_and_context_suppressed(
+        self,
+    ) -> None:
+        inspect = self._required("inspect_postgres_schema")
+        error_type = self._required("SchemaMigrationError")
+        marker = "private-driver-address-and-credential-material"
+
+        class FailingConnection:
+            def execute(self, _query, _params=None):
+                raise RuntimeError(marker)
+
+        with self.assertRaises(error_type) as raised:
+            inspect(FailingConnection())
+
+        message = str(raised.exception)
+        self.assertLessEqual(len(message), 256)
+        self.assertNotIn(marker, message)
+        self.assertTrue(raised.exception.__suppress_context__)
 
     def test_inspection_contract_is_exported_only_from_postgres_package(self) -> None:
         for name in (
