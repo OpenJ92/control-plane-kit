@@ -33,6 +33,7 @@ EXPECTED_MODULES = {
     "operations.persistence",
     "operations.process",
     "operations.projections",
+    "operations.recovery",
     "operations.services",
     "operations.transactions",
     "planning.__init__",
