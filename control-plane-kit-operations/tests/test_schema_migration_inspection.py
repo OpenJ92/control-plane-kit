@@ -389,7 +389,7 @@ class PostgresSchemaMigrationInspectionTests(unittest.TestCase):
         message = str(raised.exception)
         self.assertLessEqual(len(message), 256)
         self.assertNotIn(marker, message)
-        self.assertTrue(raised.exception.__suppress_context__)
+        self.assertIsNone(raised.exception.__context__)
 
     def test_inspection_contract_is_exported_only_from_postgres_package(self) -> None:
         for name in (

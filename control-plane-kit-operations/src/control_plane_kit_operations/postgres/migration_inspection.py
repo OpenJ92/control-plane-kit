@@ -22,11 +22,13 @@ POSTGRES_SCHEMA_MIGRATION_LEDGER_COLUMNS = (
     "applied_at",
 )
 _POSTGRES_SCHEMA_MIGRATION_LEDGER_CONTRACT = (
-    ("version", "integer", "NO"),
-    ("name", "text", "NO"),
-    ("checksum_sha256", "text", "NO"),
-    ("applied_at", "timestamp with time zone", "NO"),
+    ("version", "integer", "NO", True),
+    ("name", "text", "NO", True),
+    ("checksum_sha256", "text", "NO", True),
+    ("applied_at", "timestamp with time zone", "NO", True),
 )
+_MAX_MIGRATION_NAME_BYTES = 128
+_MIGRATION_CHECKSUM_BYTES = 64
 
 # This explicit projection is verified against the checksum-pinned V1 artifact.
 POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
@@ -530,7 +532,9 @@ _MAX_CATALOG_COLUMNS = (
 def inspect_postgres_schema(connection: PostgresConnection) -> ObservedSchemaState:
     """Read and validate the current schema without performing mutation."""
 
-    application_manifest, ledger_contract = _read_catalog(connection)
+    application_manifest, ledger_contract, ledger_primary_key = _read_catalog(
+        connection
+    )
     if ledger_contract is None:
         if not application_manifest:
             return ObservedSchemaState(kind=ObservedSchemaKind.EMPTY)
@@ -538,20 +542,32 @@ def inspect_postgres_schema(connection: PostgresConnection) -> ObservedSchemaSta
             return ObservedSchemaState(kind=ObservedSchemaKind.CURRENT_BASELINE)
         raise SchemaMigrationError("database schema manifest is not accepted")
 
-    if ledger_contract != _POSTGRES_SCHEMA_MIGRATION_LEDGER_CONTRACT:
+    if (
+        ledger_contract != _POSTGRES_SCHEMA_MIGRATION_LEDGER_CONTRACT
+        or ledger_primary_key is not True
+    ):
         raise SchemaMigrationError("schema migration ledger contract is not accepted")
     if frozenset(table for table, _ in application_manifest) != _V1_TABLE_NAMES:
         raise SchemaMigrationError("versioned database table manifest is not accepted")
 
-    rows = connection.execute(
+    rows = _read_rows(
+        connection,
         """
-        SELECT version, name, checksum_sha256
+        SELECT version,
+               CASE WHEN octet_length(name) <= %s THEN name ELSE NULL END,
+               CASE WHEN octet_length(checksum_sha256) <= %s
+                    THEN checksum_sha256 ELSE NULL END
         FROM cpk_schema_migrations
-        ORDER BY version, name, checksum_sha256
+        ORDER BY version
         LIMIT %s
         """,
-        (POSTGRES_SCHEMA_MIGRATIONS.target_version + 1,),
-    ).fetchall()
+        (
+            _MAX_MIGRATION_NAME_BYTES,
+            _MIGRATION_CHECKSUM_BYTES,
+            POSTGRES_SCHEMA_MIGRATIONS.target_version + 1,
+        ),
+        "schema migration ledger read failed",
+    )
     if not rows:
         raise SchemaMigrationError("schema migration ledger must not be empty")
     try:
@@ -583,10 +599,15 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
     observed = inspect_postgres_schema(connection)
     if observed.kind is not ObservedSchemaKind.VERSIONED:
         raise SchemaMigrationError("database schema is not versioned")
-    application_manifest, ledger_contract = _read_catalog(connection)
+    application_manifest, ledger_contract, ledger_primary_key = _read_catalog(
+        connection
+    )
     if application_manifest != POSTGRES_SCHEMA_V1_TABLE_COLUMNS:
         raise SchemaMigrationError("database schema manifest is not current")
-    if ledger_contract != _POSTGRES_SCHEMA_MIGRATION_LEDGER_CONTRACT:
+    if (
+        ledger_contract != _POSTGRES_SCHEMA_MIGRATION_LEDGER_CONTRACT
+        or ledger_primary_key is not True
+    ):
         raise SchemaMigrationError("schema migration ledger contract is not current")
     if POSTGRES_SCHEMA_MIGRATIONS.plan(observed).actions:
         raise SchemaMigrationError("database schema has pending migrations")
@@ -597,9 +618,11 @@ def _read_catalog(
     connection: PostgresConnection,
 ) -> tuple[
     tuple[tuple[str, tuple[str, ...]], ...],
-    tuple[tuple[str, str, str], ...] | None,
+    tuple[tuple[str, str, str, bool], ...] | None,
+    bool | None,
 ]:
-    table_rows = connection.execute(
+    table_rows = _read_rows(
+        connection,
         """
         SELECT table_name, table_type
         FROM information_schema.tables
@@ -608,17 +631,24 @@ def _read_catalog(
         LIMIT %s
         """,
         (_MAX_CATALOG_TABLES,),
-    ).fetchall()
+        "database schema catalog read failed",
+    )
     if len(table_rows) == _MAX_CATALOG_TABLES:
         raise SchemaMigrationError("database schema catalog exceeds inspection bound")
     for _table, table_type in table_rows:
         if table_type != "BASE TABLE":
             raise SchemaMigrationError("database schema objects are not accepted")
 
-    rows = connection.execute(
+    rows = _read_rows(
+        connection,
         """
         SELECT columns.table_name, columns.column_name, columns.data_type,
-               columns.is_nullable
+               columns.is_nullable,
+               CASE
+                 WHEN columns.column_name = 'applied_at'
+                   THEN columns.column_default = 'clock_timestamp()'
+                 ELSE columns.column_default IS NULL
+               END AS default_is_accepted
         FROM information_schema.columns AS columns
         JOIN information_schema.tables AS tables
           ON tables.table_schema = columns.table_schema
@@ -628,7 +658,8 @@ def _read_catalog(
         LIMIT %s
         """,
         (_MAX_CATALOG_COLUMNS,),
-    ).fetchall()
+        "database schema catalog read failed",
+    )
     if len(rows) == _MAX_CATALOG_COLUMNS:
         raise SchemaMigrationError("database schema catalog exceeds inspection bound")
 
@@ -640,13 +671,69 @@ def _read_catalog(
         for table, _ in table_rows
         if table != POSTGRES_SCHEMA_MIGRATION_LEDGER_TABLE
     }
-    ledger_contract: list[tuple[str, str, str]] = []
-    for table, column, data_type, is_nullable in rows:
+    ledger_contract: list[tuple[str, str, str, bool]] = []
+    for table, column, data_type, is_nullable, default_is_accepted in rows:
         if table == POSTGRES_SCHEMA_MIGRATION_LEDGER_TABLE:
-            ledger_contract.append((column, data_type, is_nullable))
+            ledger_contract.append(
+                (column, data_type, is_nullable, default_is_accepted)
+            )
         else:
             application_columns.setdefault(table, []).append(column)
     application_manifest = tuple(
         (table, tuple(columns)) for table, columns in application_columns.items()
     )
-    return application_manifest, tuple(ledger_contract) if ledger_seen else None
+    ledger_primary_key = None
+    if ledger_seen:
+        primary_key_rows = _read_rows(
+            connection,
+            """
+            SELECT COUNT(*) = 1
+               AND COALESCE(
+                     BOOL_AND(
+                       key_columns.column_name = 'version'
+                       AND key_columns.ordinal_position = 1
+                     ),
+                     FALSE
+                   )
+            FROM information_schema.table_constraints AS constraints
+            JOIN information_schema.key_column_usage AS key_columns
+              ON key_columns.constraint_schema = constraints.constraint_schema
+             AND key_columns.constraint_name = constraints.constraint_name
+             AND key_columns.table_schema = constraints.table_schema
+             AND key_columns.table_name = constraints.table_name
+            WHERE constraints.table_schema = current_schema()
+              AND constraints.table_name = %s
+              AND constraints.constraint_type = 'PRIMARY KEY'
+            """,
+            (POSTGRES_SCHEMA_MIGRATION_LEDGER_TABLE,),
+            "database schema catalog read failed",
+        )
+        if (
+            len(primary_key_rows) != 1
+            or len(primary_key_rows[0]) != 1
+            or type(primary_key_rows[0][0]) is not bool
+        ):
+            raise SchemaMigrationError(
+                "schema migration ledger primary key is not accepted"
+            )
+        ledger_primary_key = primary_key_rows[0][0]
+    return (
+        application_manifest,
+        tuple(ledger_contract) if ledger_seen else None,
+        ledger_primary_key,
+    )
+
+
+def _read_rows(
+    connection: PostgresConnection,
+    query: str,
+    parameters: tuple[object, ...],
+    failure_message: str,
+) -> list[tuple[object, ...]]:
+    try:
+        rows = connection.execute(query, parameters).fetchall()
+    except Exception:
+        rows = None
+    if rows is None:
+        raise SchemaMigrationError(failure_message)
+    return rows
