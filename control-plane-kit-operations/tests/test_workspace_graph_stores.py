@@ -116,7 +116,7 @@ class WorkspaceGraphStoreTests(unittest.TestCase):
                 version=1,
                 graph=graph,
                 created_by="operator-a",
-                created_at="2026-07-22T10:00:00Z",
+                created_at="2026-07-22T10:00:00.000001Z",
             )
             second_record = GraphVersionRecord.from_graph(
                 graph_id="graph-2",
@@ -134,10 +134,33 @@ class WorkspaceGraphStoreTests(unittest.TestCase):
             restored = unit_of_work.stores.graphs.get("graph-1")
             latest = unit_of_work.stores.graphs.latest_for_workspace("workspace-a")
             self.assertEqual(latest, second_record)
+            self.assertEqual(restored, first_record)
             self.assertEqual(
                 GraphDescriptorCodec().decode(restored.graph_descriptor),
                 graph,
             )
+
+    def test_graph_store_rejects_noncanonical_timestamp_before_write(self) -> None:
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.workspaces.create(
+                WorkspaceRecord(workspace_id="workspace-a", name="Demo")
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "^postgres timestamp must be canonical UTC text$",
+            ):
+                unit_of_work.stores.graphs.save(
+                    GraphVersionRecord.from_graph(
+                        graph_id="graph-invalid-time",
+                        workspace_id="workspace-a",
+                        version=1,
+                        graph=DeploymentGraph("invalid-time"),
+                        created_by="operator-a",
+                        created_at="not-a-timestamp",
+                    )
+                )
+
+        self.assertEqual(self._row_count("cpk_graph_versions"), 0)
 
     def test_next_version_and_compare_and_set_are_workspace_scoped(self) -> None:
         with self.unit_of_work() as unit_of_work:

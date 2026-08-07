@@ -440,7 +440,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
                 authority_ref=IngressAuthorityReference("openj92-public-ingress"),
                 authority=self.cloudflare_authority(),
                 admitted_by="operator-a",
-                admitted_at="2026-07-27T22:50:00Z",
+                admitted_at="2026-07-27T22:50:00.000001Z",
                 actor_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,),
             )
         )
@@ -454,6 +454,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             registered.provider_kind,
             IngressAuthorityProviderKind.CLOUDFLARE,
         )
+        self.assertEqual(registered.admitted_at, "2026-07-27T22:50:00.000001Z")
         self.assertEqual(registered.status, RegisteredIngressAuthorityStatus.ACTIVE)
         with self.unit_of_work() as unit_of_work:
             self.assertEqual(
@@ -492,6 +493,33 @@ class IngressAuthorityStoreTests(unittest.TestCase):
                     actor_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,),
                 )
             )
+
+    def test_ingress_authority_rejects_noncanonical_timestamp_before_lookup_or_write(
+        self,
+    ) -> None:
+        service = IngressAuthorityRegistrationService(self.unit_of_work)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "^postgres timestamp must be canonical UTC text$",
+        ):
+            service.register(
+                RegisterIngressAuthorityCommand(
+                    workspace_id="workspace-a",
+                    authority_ref=IngressAuthorityReference("invalid-time-ingress"),
+                    authority=self.cloudflare_authority(),
+                    admitted_by="operator-a",
+                    admitted_at="not-a-timestamp",
+                    actor_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,),
+                )
+            )
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_ingress_authorities"
+            ).fetchone()[0],
+            0,
+        )
 
     def test_revoked_ingress_authority_is_not_selectable_but_remains_inspectable(
         self,

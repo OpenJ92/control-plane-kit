@@ -95,13 +95,14 @@ class RegisteredProductStoreTests(unittest.TestCase):
                 descriptor_document=document,
                 source=InlineDescriptorSource(),
                 imported_by="operator-a",
-                imported_at="2026-07-22T10:00:00Z",
+                imported_at="2026-07-22T10:00:00.000001Z",
             )
         )
 
         self.assertEqual(registered.workspace_id, "workspace-a")
         self.assertEqual(registered.reference.identity, document.product.identity)
         self.assertEqual(registered.reference.descriptor_sha256.value, document.content_digest)
+        self.assertEqual(registered.imported_at, "2026-07-22T10:00:00.000001Z")
         self.assertEqual(registered.status, RegisteredProductStatus.ACTIVE)
         self.assertEqual(self._row_count(), 1)
 
@@ -163,6 +164,30 @@ class RegisteredProductStoreTests(unittest.TestCase):
             )
         self.assertEqual(self._row_count(), 1)
 
+    def test_product_store_rejects_noncanonical_timestamp_before_lookup_or_write(
+        self,
+    ) -> None:
+        service = ProductRegistrationService(self.unit_of_work)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "^postgres timestamp must be canonical UTC text$",
+        ):
+            service.import_descriptor(
+                ImportProductDescriptorCommand(
+                    workspace_id="workspace-a",
+                    descriptor_document=self.document(
+                        "invalid-time-product",
+                        image_digit="7",
+                    ),
+                    source=InlineDescriptorSource(),
+                    imported_by="operator-a",
+                    imported_at="not-a-timestamp",
+                )
+            )
+
+        self.assertEqual(self._row_count(), 0)
+
     def test_store_writes_roll_back_when_service_does_not_commit(self) -> None:
         document = self.document("hello-server", image_digit="5")
 
@@ -212,12 +237,13 @@ class RegisteredProductStoreTests(unittest.TestCase):
                 workspace_id="workspace-a",
                 authority=authority,
                 admitted_by="operator-a",
-                admitted_at="2026-07-22T12:00:00Z",
+                admitted_at="2026-07-22T12:00:00.000001Z",
             )
         )
 
         self.assertEqual(registered.workspace_id, "workspace-a")
         self.assertEqual(registered.authority, authority)
+        self.assertEqual(registered.admitted_at, "2026-07-22T12:00:00.000001Z")
         self.assertEqual(registered.status, RegisteredImagePullAuthorityStatus.ACTIVE)
         with self.unit_of_work() as unit_of_work:
             self.assertEqual(
@@ -282,6 +308,31 @@ class RegisteredProductStoreTests(unittest.TestCase):
                 registered.authority_id,
             )
             self.assertEqual(revoked.status, RegisteredImagePullAuthorityStatus.REVOKED)
+
+    def test_image_pull_store_rejects_noncanonical_timestamp_before_lookup_or_write(
+        self,
+    ) -> None:
+        service = ImagePullAuthorityRegistrationService(self.unit_of_work)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "^postgres timestamp must be canonical UTC text$",
+        ):
+            service.register(
+                RegisterImagePullAuthorityCommand(
+                    workspace_id="workspace-a",
+                    authority=self.pull_authority("openj92/invalid-time"),
+                    admitted_by="operator-a",
+                    admitted_at="not-a-timestamp",
+                )
+            )
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_image_pull_authorities"
+            ).fetchone()[0],
+            0,
+        )
 
     def test_authority_store_writes_roll_back_when_service_does_not_commit(self) -> None:
         with self.unit_of_work() as unit_of_work:

@@ -14,6 +14,10 @@ from control_plane_kit_core.products import (
     ProductReferenceCodec,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.products import (
     DescriptorSourceCodec,
     DescriptorSourceEvidence,
@@ -46,6 +50,7 @@ class RegisteredProductStore:
             imported_by=imported_by,
             imported_at=imported_at,
         )
+        encoded_imported_at = encode_postgres_timestamp(candidate.imported_at)
         existing = self._get_by_digest(
             workspace_id,
             candidate.reference.descriptor_sha256.value,
@@ -88,7 +93,7 @@ class RegisteredProductStore:
                 candidate.descriptor_document.content.decode("utf-8"),
                 Jsonb(DescriptorSourceCodec().encode(candidate.source)),
                 candidate.imported_by,
-                candidate.imported_at,
+                encoded_imported_at,
                 candidate.status.value,
             ),
         )
@@ -220,7 +225,7 @@ def _row_to_registered(row: tuple[Any, ...]) -> RegisteredProduct:
         descriptor_document=document,
         source=DescriptorSourceCodec().decode(row[5]),
         imported_by=row[6],
-        imported_at=row[7],
+        imported_at=decode_postgres_timestamp(row[7]),
         status=RegisteredProductStatus(row[8]),
         metadata=row[9],
     )

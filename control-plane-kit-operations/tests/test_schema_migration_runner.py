@@ -13,6 +13,13 @@ import psycopg
 import control_plane_kit_operations.postgres as postgres
 
 
+_CURRENT_HISTORY = [
+    (1, "operations-baseline"),
+    (2, "coordination-timestamps"),
+    (3, "graph-product-authority-timestamps"),
+]
+
+
 class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
@@ -46,6 +53,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 (
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
+                    postgres.SchemaMigrationActionKind.APPLY,
                 ),
             )
             self.assertEqual(tuple(inspect.signature(preview).parameters), ("connection",))
@@ -69,7 +77,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertIs(observed.kind, postgres.ObservedSchemaKind.VERSIONED)
             self.assertEqual(
                 self._ledger_rows(connection),
-                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+                _CURRENT_HISTORY,
             )
         finally:
             connection.close()
@@ -135,7 +143,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                         self.assertEqual(after_identity, identity)
             self.assertEqual(
                 self._ledger_rows(connection),
-                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+                _CURRENT_HISTORY,
             )
         finally:
             connection.close()
@@ -316,7 +324,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(failures, [])
             self.assertEqual(
                 self._ledger_rows(second),
-                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+                _CURRENT_HISTORY,
             )
         finally:
             if not first.closed:
