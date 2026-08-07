@@ -112,6 +112,9 @@ class NodeControlCanonicalWireTests(unittest.TestCase):
                     factory()
 
     def test_unsafe_integers_fail_closed_without_runtime_overflow(self) -> None:
+        with self.assertRaises(NodeControlContractError):
+            self.weighted_state(-1)
+
         for value in (MAX_SAFE_INTEGER + 1, 10**400):
             with self.subTest(boundary="scalar", value=value):
                 with self.assertRaises(NodeControlContractError):
