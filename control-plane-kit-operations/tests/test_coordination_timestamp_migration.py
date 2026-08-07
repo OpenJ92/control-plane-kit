@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 import importlib
 import os
 import unittest
@@ -76,6 +76,7 @@ class PostgresTimestampCodecTests(unittest.TestCase):
             "2026-02-30T06:00:00Z",
             marker,
             marker + ("x" * 4096),
+            "\ud800",
         )
 
         for value in invalid:
@@ -89,6 +90,10 @@ class PostgresTimestampCodecTests(unittest.TestCase):
         temporal = self._temporal()
         eastern = timezone(timedelta(hours=-5))
 
+        class BrokenTimezone(tzinfo):
+            def utcoffset(self, _value):
+                raise RuntimeError("private-timestamp-material")
+
         self.assertEqual(
             temporal.decode_postgres_timestamp(
                 datetime(2026, 8, 7, 1, tzinfo=eastern)
@@ -101,10 +106,18 @@ class PostgresTimestampCodecTests(unittest.TestCase):
             ),
             "2026-08-07T06:00:00.000001Z",
         )
-        for value in (None, "2026-08-07T06:00:00Z", datetime(2026, 8, 7, 6)):
+        invalid = (
+            None,
+            "2026-08-07T06:00:00Z",
+            datetime(2026, 8, 7, 6),
+            datetime(2026, 8, 7, 6, tzinfo=BrokenTimezone()),
+        )
+        for value in invalid:
             with self.subTest(value_type=type(value).__name__):
-                with self.assertRaises(ValueError):
+                with self.assertRaises(ValueError) as raised:
                     temporal.decode_postgres_timestamp(value)
+                self.assertNotIn("private-timestamp-material", str(raised.exception))
+                self.assertIsNone(raised.exception.__context__)
 
     def _temporal(self):
         try:
@@ -221,6 +234,35 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 """
             ).fetchone(),
             ("text",),
+        )
+
+    def test_retained_calendar_invalid_value_has_bounded_category(self) -> None:
+        self.connection.execute(postgres.POSTGRES_SCHEMA)
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-a', 'Workspace A', 'created');
+            INSERT INTO cpk_operation_sessions
+              (session_id, workspace_id, actor_id, title, status, created_at)
+            VALUES ('session-a', 'workspace-a', 'operator-a', 'Open', 'open',
+                    '2026-02-30T06:00:00Z');
+            """
+        )
+
+        with self.assertRaises(postgres.SchemaMigrationError) as raised:
+            postgres.install_postgres_schema(self.connection)
+
+        self.assertEqual(
+            str(raised.exception),
+            "coordination timestamps are not canonical UTC",
+        )
+        self.assertIsNone(raised.exception.__context__)
+        self.assertNotIn("cpk_schema_migrations", self._table_names())
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT created_at FROM cpk_operation_sessions"
+            ).fetchone(),
+            ("2026-02-30T06:00:00Z",),
         )
 
     def test_current_verifier_rejects_owned_temporal_type_drift(self) -> None:

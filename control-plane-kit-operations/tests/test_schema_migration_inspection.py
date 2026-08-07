@@ -296,21 +296,12 @@ class PostgresSchemaMigrationInspectionTests(unittest.TestCase):
         inspect = self._required("inspect_postgres_schema")
         observed_kind = self._required("ObservedSchemaKind")
         error_type = self._required("SchemaMigrationError")
-        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[0]
         self.connection.execute(postgres.POSTGRES_SCHEMA)
 
         with self.assertRaises(error_type):
             verify(self.connection)
 
-        self._create_ledger()
-        self.connection.execute(
-            """
-            INSERT INTO cpk_schema_migrations
-              (version, name, checksum_sha256)
-            VALUES (%s, %s, %s)
-            """,
-            (migration.version, migration.name, migration.checksum_sha256),
-        )
+        postgres.install_postgres_schema(self.connection)
         verified = verify(self.connection)
         self.assertIs(verified.kind, observed_kind.VERSIONED)
 

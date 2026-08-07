@@ -13,6 +13,9 @@ import control_plane_kit_operations.postgres as postgres
 _V1_SCHEMA_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
+_V2_SCHEMA_SHA256 = (
+    "95c7782cf66875a3f70c6354b86054ec4ca86f45dca7d2ccb4d971920162c329"
+)
 
 
 class SchemaMigrationLanguageTests(unittest.TestCase):
@@ -315,13 +318,16 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         pinned_checksum = self._required("POSTGRES_SCHEMA_V1_SHA256")
 
         self.assertEqual(pinned_checksum, _V1_SCHEMA_SHA256)
-        self.assertEqual(registry.target_version, 1)
-        self.assertEqual(len(registry.migrations), 1)
+        self.assertEqual(registry.target_version, 2)
+        self.assertEqual(len(registry.migrations), 2)
         baseline = registry.migrations[0]
         self.assertEqual(baseline.version, 1)
         self.assertEqual(baseline.name, "operations-baseline")
         self.assertEqual(baseline.sql, postgres.POSTGRES_SCHEMA)
         self.assertEqual(baseline.checksum_sha256, _V1_SCHEMA_SHA256)
+        self.assertEqual(registry.migrations[1].version, 2)
+        self.assertEqual(registry.migrations[1].name, "coordination-timestamps")
+        self.assertEqual(registry.migrations[1].checksum_sha256, _V2_SCHEMA_SHA256)
         for name in (
             "AppliedSchemaMigration",
             "ObservedSchemaKind",

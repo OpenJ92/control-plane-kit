@@ -43,7 +43,10 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertIs(plan.observed.kind, postgres.ObservedSchemaKind.EMPTY)
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
-                (postgres.SchemaMigrationActionKind.APPLY,),
+                (
+                    postgres.SchemaMigrationActionKind.APPLY,
+                    postgres.SchemaMigrationActionKind.APPLY,
+                ),
             )
             self.assertEqual(tuple(inspect.signature(preview).parameters), ("connection",))
             self.assertEqual(tuple(inspect.signature(install).parameters), ("connection",))
@@ -64,24 +67,52 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
 
             observed = postgres.verify_postgres_schema(connection)
             self.assertIs(observed.kind, postgres.ObservedSchemaKind.VERSIONED)
-            self.assertEqual(self._ledger_rows(connection), [(1, "operations-baseline")])
+            self.assertEqual(
+                self._ledger_rows(connection),
+                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+            )
         finally:
             connection.close()
 
-    def test_exact_legacy_baseline_records_without_rewriting_constraints(self) -> None:
+    def test_exact_legacy_baseline_rewrites_only_temporal_constraints(self) -> None:
         install = self._required("install_postgres_schema")
         connection = self._connection()
         try:
             connection.execute(postgres.POSTGRES_SCHEMA)
-            before = self._application_constraint_identities(connection)
+            before = {
+                name: (identity, definition)
+                for name, identity, definition in self._application_constraint_identities(
+                    connection
+                )
+            }
 
             install(connection)
 
-            after = dict(self._application_constraint_identities(connection))
-            for constraint, identity in before:
+            after = {
+                name: (identity, definition)
+                for name, identity, definition in self._application_constraint_identities(
+                    connection
+                )
+            }
+            rebuilt = {
+                "cpk_activity_runs_settlement_check",
+                "cpk_activity_runs_started_check",
+                "cpk_execution_requests_claim_check",
+                "cpk_operation_sessions_closed_check",
+            }
+            self.assertEqual(set(after), set(before))
+            for constraint, (identity, definition) in before.items():
                 with self.subTest(constraint=constraint):
-                    self.assertEqual(after[constraint], identity)
-            self.assertEqual(self._ledger_rows(connection), [(1, "operations-baseline")])
+                    after_identity, after_definition = after[constraint]
+                    self.assertEqual(after_definition, definition)
+                    if constraint in rebuilt:
+                        self.assertNotEqual(after_identity, identity)
+                    else:
+                        self.assertEqual(after_identity, identity)
+            self.assertEqual(
+                self._ledger_rows(connection),
+                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+            )
         finally:
             connection.close()
 
@@ -259,7 +290,10 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             thread.join(timeout=10)
             self.assertFalse(thread.is_alive())
             self.assertEqual(failures, [])
-            self.assertEqual(self._ledger_rows(second), [(1, "operations-baseline")])
+            self.assertEqual(
+                self._ledger_rows(second),
+                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+            )
         finally:
             if not first.closed:
                 first.rollback()
@@ -319,7 +353,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
     def _application_constraint_identities(self, connection):
         return connection.execute(
             """
-            SELECT conname, oid
+            SELECT conname, oid, pg_get_constraintdef(oid)
             FROM pg_constraint
             WHERE connamespace = current_schema()::regnamespace
               AND conname <> 'cpk_schema_migrations_pkey'
