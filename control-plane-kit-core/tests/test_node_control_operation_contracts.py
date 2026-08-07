@@ -10,6 +10,8 @@ from control_plane_kit_core.node_control import (
     ControlPlaneVariableDescriptorCodec,
     ControlPlaneVariableKind,
     NodeControlContractError,
+    NodeControlGraphReference,
+    NodeControlGraphReferenceRole,
     NodeControlOperation,
 )
 
@@ -55,7 +57,10 @@ class NodeControlOperationContractTests(unittest.TestCase):
         operation_contracts=None,
     ) -> ControlPlaneVariableDescriptor:
         return ControlPlaneVariableDescriptor(
-            variable_name="routing",
+            variable_name=NodeControlGraphReference(
+                NodeControlGraphReferenceRole.VARIABLE,
+                "routing",
+            ),
             kind=kind,
             state_codec=state_codec,
             operation_contracts=(

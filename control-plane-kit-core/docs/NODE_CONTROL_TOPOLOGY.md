@@ -138,6 +138,37 @@ Both grants bind issuer, key id, workspace, request identity, issued time,
 expiry, and command identity. They must not share authority meaning merely
 because they use the same signing algorithm or secret-provider custody.
 
+## Graph Reference Provenance
+
+Node-control graph authority uses one nominal reference family:
+
+```text
+NodeControlGraphReferenceRole
+  = workspace
+  | graph-revision
+  | node
+  | provider-socket
+  | variable
+  | target
+
+NodeControlGraphReference
+  = role x bounded identifier
+```
+
+The JSON wire retains ordinary strings because the enclosing field determines
+the role. The Python value prevents a node, socket, variable, or weighted target
+from being substituted for another role during direct composition. Endpoint or
+secret material objects are not graph references.
+
+The nominal value does not prove graph membership. A strict codec proves the
+field role, bounded syntax, and exact descriptor shape only. The authenticated
+producer must derive the reference from the admitted workspace/revision graph,
+and the later SDK/operations boundary must verify that provenance before
+dispatch. A DNS-looking string is ambiguous bytes: core neither certifies it as
+graph truth nor guesses that it is an endpoint. Adding a self-attested
+`provenance` wire tag would not strengthen authority and would change the
+grant-bound canonical request bytes, so no such tag is published.
+
 ## ControlPlaneVariable Extension Model
 
 There is one public extension model:

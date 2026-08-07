@@ -33,6 +33,8 @@ from control_plane_kit_core.node_control import (
     NodeControlEvidence,
     NodeControlEvidenceCode,
     NodeControlFailed,
+    NodeControlGraphReference,
+    NodeControlGraphReferenceRole,
     NodeControlOperation,
     NodeControlPayload,
     NodeControlRejected,
@@ -49,20 +51,38 @@ from control_plane_kit_core.runtime_effects import GatewayTargetId
 
 
 class NodeControlContractTests(unittest.TestCase):
+    def reference(
+        self,
+        role: NodeControlGraphReferenceRole,
+        value: str,
+    ) -> NodeControlGraphReference:
+        return NodeControlGraphReference(role, value)
+
     def target(self, **changes: object) -> NodeControlTarget:
         values = {
-            "workspace_id": "workspace-1",
-            "graph_revision": "revision-7",
-            "node_id": "router",
-            "provider_socket_name": "control",
+            "workspace_id": self.reference(
+                NodeControlGraphReferenceRole.WORKSPACE,
+                "workspace-1",
+            ),
+            "graph_revision": self.reference(
+                NodeControlGraphReferenceRole.GRAPH_REVISION,
+                "revision-7",
+            ),
+            "node_id": self.reference(NodeControlGraphReferenceRole.NODE, "router"),
+            "provider_socket_name": self.reference(
+                NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                "control",
+            ),
         }
         values.update(changes)
         return NodeControlTarget(**values)
 
     def weighted_state(self) -> WeightedRoutingControlState:
+        target_a = self.reference(NodeControlGraphReferenceRole.TARGET, "target-a")
+        target_b = self.reference(NodeControlGraphReferenceRole.TARGET, "target-b")
         return WeightedRoutingControlState(
-            targets=("target-a", "target-b"),
-            weights=(("target-a", 2.0), ("target-b", 1.0)),
+            targets=(target_a, target_b),
+            weights=((target_a, 2.0), (target_b, 1.0)),
         )
 
     def variable(
@@ -71,7 +91,10 @@ class NodeControlContractTests(unittest.TestCase):
         description: str | None = None,
     ) -> ControlPlaneVariableDescriptor:
         return ControlPlaneVariableDescriptor(
-            variable_name="routing",
+            variable_name=self.reference(
+                NodeControlGraphReferenceRole.VARIABLE,
+                "routing",
+            ),
             kind=ControlPlaneVariableKind.WEIGHTED_ROUTING,
             state_codec=ControlPlaneStateCodec.WEIGHTED_ROUTING_V1,
             operation_contracts=(
@@ -94,7 +117,10 @@ class NodeControlContractTests(unittest.TestCase):
     def request(self, **changes: object) -> NodeControlCommandRequest:
         values = {
             "target": self.target(),
-            "variable_name": "routing",
+            "variable_name": self.reference(
+                NodeControlGraphReferenceRole.VARIABLE,
+                "routing",
+            ),
             "operation": NodeControlOperation.APPLY_COMMAND,
             "request_id": "request-1",
             "idempotency_key": "routing-change-1",
@@ -160,7 +186,10 @@ class NodeControlContractTests(unittest.TestCase):
 
         read = NodeControlCommandRequest(
             target=self.target(),
-            variable_name="routing",
+            variable_name=self.reference(
+                NodeControlGraphReferenceRole.VARIABLE,
+                "routing",
+            ),
             operation=NodeControlOperation.READ_STATE,
             request_id="request-read-1",
             idempotency_key="routing-read-1",
@@ -213,13 +242,15 @@ class NodeControlContractTests(unittest.TestCase):
                 "weights": {"target-a": 2.0, "target-b": 1.0},
             },
         )
+        target_a = self.reference(NodeControlGraphReferenceRole.TARGET, "target-a")
+        target_b = self.reference(NodeControlGraphReferenceRole.TARGET, "target-b")
         invalid = (
-            (("target-a", "target-b"), (("target-a", 1.0),)),
-            (("target-a", "target-a"), (("target-a", 1.0),)),
-            (("target-a",), (("target-a", -1.0),)),
-            (("target-a",), (("target-a", 0.0),)),
-            (("target-a",), (("target-a", math.inf),)),
-            (("target-a",), (("target-a", math.nan),)),
+            ((target_a, target_b), ((target_a, 1.0),)),
+            ((target_a, target_a), ((target_a, 1.0),)),
+            ((target_a,), ((target_a, -1.0),)),
+            ((target_a,), ((target_a, 0.0),)),
+            ((target_a,), ((target_a, math.inf),)),
+            ((target_a,), ((target_a, math.nan),)),
         )
         for targets, weights in invalid:
             with self.subTest(targets=targets, weights=weights):
@@ -252,24 +283,46 @@ class NodeControlContractTests(unittest.TestCase):
 
     def test_graph_and_replay_identities_are_bounded_references(self) -> None:
         invalid_targets = (
-            {"node_id": "https://private.internal"},
-            {"provider_socket_name": "127.0.0.1:8080"},
-            {"workspace_id": "token=secret"},
-            {"graph_revision": ""},
+            (
+                "node_id",
+                NodeControlGraphReferenceRole.NODE,
+                "https://private.internal",
+            ),
+            (
+                "provider_socket_name",
+                NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                "127.0.0.1:8080",
+            ),
+            (
+                "workspace_id",
+                NodeControlGraphReferenceRole.WORKSPACE,
+                "token=secret",
+            ),
+            (
+                "graph_revision",
+                NodeControlGraphReferenceRole.GRAPH_REVISION,
+                "",
+            ),
         )
-        for changes in invalid_targets:
-            with self.subTest(changes=changes):
+        for field, role, value in invalid_targets:
+            with self.subTest(field=field, value=value):
                 with self.assertRaises(NodeControlContractError):
-                    self.target(**changes)
+                    self.target(**{field: self.reference(role, value)})
 
         for changes in (
             {"request_id": "contains spaces"},
             {"idempotency_key": "authorization: bearer secret"},
-            {"variable_name": "https://variable"},
         ):
             with self.subTest(changes=changes):
                 with self.assertRaises(NodeControlContractError):
                     self.request(**changes)
+        with self.assertRaises(NodeControlContractError):
+            self.request(
+                variable_name=self.reference(
+                    NodeControlGraphReferenceRole.VARIABLE,
+                    "https://variable",
+                )
+            )
 
     def test_grant_binding_is_exact_and_secret_free(self) -> None:
         request = self.request()
@@ -287,8 +340,32 @@ class NodeControlContractTests(unittest.TestCase):
             payload=NodeControlPayload(
                 codec=ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1,
                 state=WeightedRoutingControlState(
-                    targets=("target-a", "target-b"),
-                    weights=(("target-a", 1.0), ("target-b", 2.0)),
+                    targets=(
+                        self.reference(
+                            NodeControlGraphReferenceRole.TARGET,
+                            "target-a",
+                        ),
+                        self.reference(
+                            NodeControlGraphReferenceRole.TARGET,
+                            "target-b",
+                        ),
+                    ),
+                    weights=(
+                        (
+                            self.reference(
+                                NodeControlGraphReferenceRole.TARGET,
+                                "target-a",
+                            ),
+                            1.0,
+                        ),
+                        (
+                            self.reference(
+                                NodeControlGraphReferenceRole.TARGET,
+                                "target-b",
+                            ),
+                            2.0,
+                        ),
+                    ),
                 ),
             )
         )
@@ -311,11 +388,11 @@ class NodeControlContractTests(unittest.TestCase):
         cases = (
             (replace(grant, issuer="other-issuer"), WorkloadNodeControlGrantVerificationCode.ISSUER_MISMATCH),
             (replace(grant, audience="other-audience"), WorkloadNodeControlGrantVerificationCode.AUDIENCE_MISMATCH),
-            (replace(grant, target=self.target(workspace_id="workspace-2")), WorkloadNodeControlGrantVerificationCode.WORKSPACE_MISMATCH),
-            (replace(grant, target=self.target(graph_revision="revision-8")), WorkloadNodeControlGrantVerificationCode.REVISION_MISMATCH),
-            (replace(grant, target=self.target(node_id="other-node")), WorkloadNodeControlGrantVerificationCode.NODE_MISMATCH),
-            (replace(grant, target=self.target(provider_socket_name="other-socket")), WorkloadNodeControlGrantVerificationCode.SOCKET_MISMATCH),
-            (replace(grant, variable_name="other-variable"), WorkloadNodeControlGrantVerificationCode.VARIABLE_MISMATCH),
+            (replace(grant, target=self.target(workspace_id=self.reference(NodeControlGraphReferenceRole.WORKSPACE, "workspace-2"))), WorkloadNodeControlGrantVerificationCode.WORKSPACE_MISMATCH),
+            (replace(grant, target=self.target(graph_revision=self.reference(NodeControlGraphReferenceRole.GRAPH_REVISION, "revision-8"))), WorkloadNodeControlGrantVerificationCode.REVISION_MISMATCH),
+            (replace(grant, target=self.target(node_id=self.reference(NodeControlGraphReferenceRole.NODE, "other-node"))), WorkloadNodeControlGrantVerificationCode.NODE_MISMATCH),
+            (replace(grant, target=self.target(provider_socket_name=self.reference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, "other-socket"))), WorkloadNodeControlGrantVerificationCode.SOCKET_MISMATCH),
+            (replace(grant, variable_name=self.reference(NodeControlGraphReferenceRole.VARIABLE, "other-variable")), WorkloadNodeControlGrantVerificationCode.VARIABLE_MISMATCH),
             (replace(grant, operation=NodeControlOperation.READ_STATE, command_codec=None), WorkloadNodeControlGrantVerificationCode.COMMAND_MISMATCH),
             (replace(grant, request_id="request-2"), WorkloadNodeControlGrantVerificationCode.REQUEST_MISMATCH),
         )

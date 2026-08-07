@@ -14,6 +14,8 @@ from control_plane_kit_core.node_control import (
     NodeControlContractError,
     NodeControlEvidence,
     NodeControlEvidenceCode,
+    NodeControlGraphReference,
+    NodeControlGraphReferenceRole,
     NodeControlOperation,
     NodeControlResultCodec,
     NodeControlResultStatus,
@@ -41,7 +43,10 @@ class NodeControlResultVariantTests(unittest.TestCase):
         command_codec: ControlPlaneCommandCodec,
     ) -> ControlPlaneVariableDescriptor:
         return ControlPlaneVariableDescriptor(
-            variable_name=f"{kind.value}-variable",
+            variable_name=NodeControlGraphReference(
+                NodeControlGraphReferenceRole.VARIABLE,
+                f"{kind.value}-variable",
+            ),
             kind=kind,
             state_codec=state_codec,
             operation_contracts=(
@@ -83,8 +88,32 @@ class NodeControlResultVariantTests(unittest.TestCase):
                     ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1,
                 ),
                 WeightedRoutingControlState(
-                    targets=("target-a", "target-b"),
-                    weights=(("target-a", 2.0), ("target-b", 1.0)),
+                    targets=(
+                        NodeControlGraphReference(
+                            NodeControlGraphReferenceRole.TARGET,
+                            "target-a",
+                        ),
+                        NodeControlGraphReference(
+                            NodeControlGraphReferenceRole.TARGET,
+                            "target-b",
+                        ),
+                    ),
+                    weights=(
+                        (
+                            NodeControlGraphReference(
+                                NodeControlGraphReferenceRole.TARGET,
+                                "target-a",
+                            ),
+                            2.0,
+                        ),
+                        (
+                            NodeControlGraphReference(
+                                NodeControlGraphReferenceRole.TARGET,
+                                "target-b",
+                            ),
+                            1.0,
+                        ),
+                    ),
                 ),
             ),
         )

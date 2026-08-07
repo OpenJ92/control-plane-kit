@@ -13,6 +13,8 @@ from control_plane_kit_core.node_control import (
     NodeControlCommandRequest,
     NodeControlCommandRequestCodec,
     NodeControlContractError,
+    NodeControlGraphReference,
+    NodeControlGraphReferenceRole,
     NodeControlOperation,
     NodeControlPayload,
     NodeControlTarget,
@@ -26,18 +28,37 @@ MAX_SAFE_INTEGER = 2**53 - 1
 
 
 class NodeControlCanonicalWireTests(unittest.TestCase):
+    def reference(
+        self,
+        role: NodeControlGraphReferenceRole,
+        value: str,
+    ) -> NodeControlGraphReference:
+        return NodeControlGraphReference(role, value)
+
     def target(self) -> NodeControlTarget:
         return NodeControlTarget(
-            workspace_id="workspace-1",
-            graph_revision="revision-7",
-            node_id="router",
-            provider_socket_name="control",
+            workspace_id=self.reference(
+                NodeControlGraphReferenceRole.WORKSPACE,
+                "workspace-1",
+            ),
+            graph_revision=self.reference(
+                NodeControlGraphReferenceRole.GRAPH_REVISION,
+                "revision-7",
+            ),
+            node_id=self.reference(NodeControlGraphReferenceRole.NODE, "router"),
+            provider_socket_name=self.reference(
+                NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                "control",
+            ),
         )
 
     def scalar_request(self, value: int | float) -> NodeControlCommandRequest:
         return NodeControlCommandRequest(
             target=self.target(),
-            variable_name="limit",
+            variable_name=self.reference(
+                NodeControlGraphReferenceRole.VARIABLE,
+                "limit",
+            ),
             operation=NodeControlOperation.APPLY_COMMAND,
             request_id="request-scalar-1",
             idempotency_key="limit-change-1",
@@ -50,9 +71,11 @@ class NodeControlCanonicalWireTests(unittest.TestCase):
         )
 
     def weighted_state(self, weight: int | float) -> WeightedRoutingControlState:
+        target_a = self.reference(NodeControlGraphReferenceRole.TARGET, "target-a")
+        target_b = self.reference(NodeControlGraphReferenceRole.TARGET, "target-b")
         return WeightedRoutingControlState(
-            targets=("target-a", "target-b"),
-            weights=(("target-a", weight), ("target-b", 1.0)),
+            targets=(target_a, target_b),
+            weights=((target_a, weight), (target_b, 1.0)),
         )
 
     def fixture(self) -> dict[str, object]:
