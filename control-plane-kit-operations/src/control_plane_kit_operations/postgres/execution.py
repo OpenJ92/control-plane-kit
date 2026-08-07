@@ -12,6 +12,10 @@ from control_plane_kit_core.operations.lifecycle import (
     FailureCategory,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityRunRecord,
@@ -50,14 +54,18 @@ class PostgresExecutionStore:
                 record.identity.plan_id,
                 record.status.value,
                 record.requested_by,
-                record.requested_at,
+                encode_postgres_timestamp(record.requested_at),
                 record.approval_request_id,
                 record.approval_decision_id,
                 record.idempotency.key,
                 record.idempotency.intent_fingerprint,
                 None if claim is None else claim.worker_id,
-                None if claim is None else claim.claimed_at,
-                None if claim is None else claim.lease_expires_at,
+                None
+                if claim is None
+                else encode_postgres_timestamp(claim.claimed_at),
+                None
+                if claim is None
+                else encode_postgres_timestamp(claim.lease_expires_at),
             ),
         )
         return record
@@ -115,6 +123,8 @@ class PostgresExecutionStore:
         claimed_at: str,
         lease_expires_at: str,
     ) -> ExecutionRequestRecord | None:
+        encoded_claimed_at = encode_postgres_timestamp(claimed_at)
+        encoded_lease_expires_at = encode_postgres_timestamp(lease_expires_at)
         row = self._connection.execute(
             """
             SELECT request_id, workspace_id, session_id, plan_id, status,
@@ -147,7 +157,12 @@ class PostgresExecutionStore:
                       approval_decision_id, idempotency_key, intent_fingerprint,
                       claim_worker_id, claimed_at, lease_expires_at
             """,
-            (worker_id, claimed_at, lease_expires_at, request_id),
+            (
+                worker_id,
+                encoded_claimed_at,
+                encoded_lease_expires_at,
+                request_id,
+            ),
         ).fetchone()
         return None if updated is None else _execution_request(updated)
 
@@ -166,9 +181,9 @@ class PostgresExecutionStore:
                 record.retry.attempt,
                 record.retry.prior_run_id,
                 record.status.value,
-                record.created_at,
-                record.started_at,
-                record.settled_at,
+                encode_postgres_timestamp(record.created_at),
+                _encode_optional_timestamp(record.started_at),
+                _encode_optional_timestamp(record.settled_at),
                 _json(record.metadata.descriptor()),
             ),
         )
@@ -212,6 +227,8 @@ class PostgresExecutionStore:
         started_at: str | None = None,
         settled_at: str | None = None,
     ) -> ActivityRunRecord | None:
+        encoded_started_at = _encode_optional_timestamp(started_at)
+        encoded_settled_at = _encode_optional_timestamp(settled_at)
         row = self._connection.execute(
             """
             UPDATE cpk_activity_runs
@@ -226,8 +243,8 @@ class PostgresExecutionStore:
             """,
             (
                 replacement.value,
-                started_at,
-                settled_at,
+                encoded_started_at,
+                encoded_settled_at,
                 run_id,
                 expected.value,
             ),
@@ -285,7 +302,7 @@ class PostgresExecutionStore:
                 record.run_id,
                 record.ordinal,
                 record.kind.value,
-                record.occurred_at,
+                encode_postgres_timestamp(record.occurred_at),
                 _json(payload),
             ),
         )
@@ -340,8 +357,8 @@ def _execution_request(row: tuple[Any, ...]) -> ExecutionRequestRecord:
         if row[11] is None
         else ClaimIdentity(
             worker_id=row[11],
-            claimed_at=row[12],
-            lease_expires_at=row[13],
+            claimed_at=decode_postgres_timestamp(row[12]),
+            lease_expires_at=decode_postgres_timestamp(row[13]),
         )
     )
     return ExecutionRequestRecord(
@@ -353,7 +370,7 @@ def _execution_request(row: tuple[Any, ...]) -> ExecutionRequestRecord:
         ),
         status=ExecutionRequestStatus(row[4]),
         requested_by=row[5],
-        requested_at=row[6],
+        requested_at=decode_postgres_timestamp(row[6]),
         approval_request_id=row[7],
         approval_decision_id=row[8],
         idempotency=ExecutionIdempotency(
@@ -371,9 +388,9 @@ def _activity_run(row: tuple[Any, ...]) -> ActivityRunRecord:
         admission=AdmittedRun(row[2]),
         retry=RetryIdentity(row[3], row[4]),
         status=ActivityRunStatus(row[5]),
-        created_at=row[6],
-        started_at=row[7],
-        settled_at=row[8],
+        created_at=decode_postgres_timestamp(row[6]),
+        started_at=_decode_optional_timestamp(row[7]),
+        settled_at=_decode_optional_timestamp(row[8]),
         metadata=BoundedEvidence.from_mapping(row[9]),
     )
 
@@ -390,7 +407,7 @@ def _activity_event(row: tuple[Any, ...]) -> ActivityEventRecord:
         run_id=row[1],
         ordinal=row[2],
         kind=ActivityEventKind(row[3]),
-        occurred_at=row[4],
+        occurred_at=decode_postgres_timestamp(row[4]),
         activity_id=payload.get("activity_id"),
         evidence=BoundedEvidence.from_mapping(payload.get("evidence", {})),
         failure=_failure_evidence(payload.get("failure")),
@@ -412,3 +429,11 @@ def _failure_evidence(value: object) -> FailureEvidence | None:
 
 def _json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def _encode_optional_timestamp(value: str | None) -> object:
+    return None if value is None else encode_postgres_timestamp(value)
+
+
+def _decode_optional_timestamp(value: object) -> str | None:
+    return None if value is None else decode_postgres_timestamp(value)

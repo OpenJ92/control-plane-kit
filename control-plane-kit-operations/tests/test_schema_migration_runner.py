@@ -43,7 +43,10 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertIs(plan.observed.kind, postgres.ObservedSchemaKind.EMPTY)
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
-                (postgres.SchemaMigrationActionKind.APPLY,),
+                (
+                    postgres.SchemaMigrationActionKind.APPLY,
+                    postgres.SchemaMigrationActionKind.APPLY,
+                ),
             )
             self.assertEqual(tuple(inspect.signature(preview).parameters), ("connection",))
             self.assertEqual(tuple(inspect.signature(install).parameters), ("connection",))
@@ -64,24 +67,76 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
 
             observed = postgres.verify_postgres_schema(connection)
             self.assertIs(observed.kind, postgres.ObservedSchemaKind.VERSIONED)
-            self.assertEqual(self._ledger_rows(connection), [(1, "operations-baseline")])
+            self.assertEqual(
+                self._ledger_rows(connection),
+                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+            )
         finally:
             connection.close()
 
-    def test_exact_legacy_baseline_records_without_rewriting_constraints(self) -> None:
+    def test_exact_legacy_baseline_rewrites_only_existing_temporal_constraints(
+        self,
+    ) -> None:
         install = self._required("install_postgres_schema")
         connection = self._connection()
         try:
             connection.execute(postgres.POSTGRES_SCHEMA)
-            before = self._application_constraint_identities(connection)
+            before = {
+                name: (identity, definition)
+                for name, identity, definition in self._application_constraint_identities(
+                    connection
+                )
+            }
+            before_indexes = {
+                name: (identity, definition)
+                for name, identity, definition in self._application_index_identities(
+                    connection
+                )
+            }
 
             install(connection)
 
-            after = dict(self._application_constraint_identities(connection))
-            for constraint, identity in before:
+            after = {
+                name: (identity, definition)
+                for name, identity, definition in self._application_constraint_identities(
+                    connection
+                )
+            }
+            after_indexes = {
+                name: (identity, definition)
+                for name, identity, definition in self._application_index_identities(
+                    connection
+                )
+            }
+            rebuilt = {
+                "cpk_activity_runs_settlement_check",
+                "cpk_activity_runs_started_check",
+                "cpk_execution_requests_claim_check",
+                "cpk_operation_sessions_closed_check",
+            }
+            self.assertLessEqual(rebuilt, set(before))
+            for constraint, (identity, definition) in before.items():
                 with self.subTest(constraint=constraint):
-                    self.assertEqual(after[constraint], identity)
-            self.assertEqual(self._ledger_rows(connection), [(1, "operations-baseline")])
+                    after_identity, after_definition = after[constraint]
+                    self.assertEqual(after_definition, definition)
+                    if constraint in rebuilt:
+                        self.assertNotEqual(after_identity, identity)
+                    else:
+                        self.assertEqual(after_identity, identity)
+            rebuilt_indexes = {"cpk_observations_latest_subject"}
+            self.assertLessEqual(rebuilt_indexes, set(before_indexes))
+            for index, (identity, definition) in before_indexes.items():
+                with self.subTest(index=index):
+                    after_identity, after_definition = after_indexes[index]
+                    self.assertEqual(after_definition, definition)
+                    if index in rebuilt_indexes:
+                        self.assertNotEqual(after_identity, identity)
+                    else:
+                        self.assertEqual(after_identity, identity)
+            self.assertEqual(
+                self._ledger_rows(connection),
+                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+            )
         finally:
             connection.close()
 
@@ -259,7 +314,10 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             thread.join(timeout=10)
             self.assertFalse(thread.is_alive())
             self.assertEqual(failures, [])
-            self.assertEqual(self._ledger_rows(second), [(1, "operations-baseline")])
+            self.assertEqual(
+                self._ledger_rows(second),
+                [(1, "operations-baseline"), (2, "coordination-timestamps")],
+            )
         finally:
             if not first.closed:
                 first.rollback()
@@ -319,11 +377,29 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
     def _application_constraint_identities(self, connection):
         return connection.execute(
             """
-            SELECT conname, oid
+            SELECT conname, oid, pg_get_constraintdef(oid)
             FROM pg_constraint
             WHERE connamespace = current_schema()::regnamespace
               AND conname <> 'cpk_schema_migrations_pkey'
             ORDER BY conname
+            """
+        ).fetchall()
+
+    def _application_index_identities(self, connection):
+        return connection.execute(
+            """
+            SELECT index_relation.relname, index_relation.oid,
+                   pg_get_indexdef(index_relation.oid)
+            FROM pg_index
+            JOIN pg_class AS table_relation
+              ON table_relation.oid = pg_index.indrelid
+            JOIN pg_namespace
+              ON pg_namespace.oid = table_relation.relnamespace
+            JOIN pg_class AS index_relation
+              ON index_relation.oid = pg_index.indexrelid
+            WHERE pg_namespace.nspname = current_schema()
+              AND index_relation.relname <> 'cpk_schema_migrations_pkey'
+            ORDER BY index_relation.relname
             """
         ).fetchall()
 

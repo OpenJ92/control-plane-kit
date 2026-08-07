@@ -75,7 +75,8 @@ def install_postgres_schema(connection: MigrationPostgresConnection) -> None:
 
 
 def _install_under_transaction(connection: PostgresConnection) -> None:
-    failed = False
+    failure = None
+    active_migration_version = None
     try:
         connection.execute(_LOCK)
         observed = inspect_postgres_schema(connection)
@@ -84,7 +85,9 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
             connection.execute(_CREATE_LEDGER)
         for action in plan.actions:
             if action.kind is SchemaMigrationActionKind.APPLY:
+                active_migration_version = action.migration.version
                 connection.execute(action.migration.sql)
+                active_migration_version = None
             connection.execute(
                 """
                 INSERT INTO cpk_schema_migrations
@@ -107,9 +110,16 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
         verify_postgres_schema(connection)
     except SchemaMigrationError:
         raise
-    except Exception:
-        failed = True
-    if failed:
+    except Exception as error:
+        failure = (
+            "coordination timestamps are not canonical UTC"
+            if active_migration_version == 2
+            and getattr(error, "sqlstate", None) in {"P1110", "22007", "22008"}
+            else "schema migration application failed"
+        )
+    if failure is not None:
+        if failure == "coordination timestamps are not canonical UTC":
+            raise SchemaMigrationError(failure)
         raise SchemaMigrationError("schema migration application failed")
 
 

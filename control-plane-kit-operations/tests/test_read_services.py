@@ -297,19 +297,16 @@ class InstanceReadServiceTests(unittest.TestCase):
         self.assertEqual(expired["observations"][0]["freshness"], "stale")
         self.assertEqual(expired["observations"][0]["stale_reason"], "expired")
 
-    def test_malformed_timestamp_fails_closed_without_mutating_record(self) -> None:
+    def test_malformed_timestamp_is_rejected_before_persistence(self) -> None:
         self.seed_graphs()
         record = observation("obs-malformed", observed_at="not-a-timestamp")
         with self.unit_of_work() as unit_of_work:
-            unit_of_work.stores.observed_state.put(record)
-            unit_of_work.commit()
+            with self.assertRaisesRegex(ValueError, "canonical UTC"):
+                unit_of_work.stores.observed_state.put(record)
 
         model = self.service().observed_state("workspace-a").descriptor()
 
-        self.assertEqual(
-            model["observations"][0]["stale_reason"],
-            "malformed-timestamp",
-        )
+        self.assertEqual(model["observations"], [])
         self.assertEqual(record.observed_at, "not-a-timestamp")
         self.assertIs(record.freshness, ObservationFreshness.FRESH)
 

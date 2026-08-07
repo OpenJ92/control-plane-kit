@@ -1403,6 +1403,68 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     workspace_lifecycles=tuple(WorkspaceLifecycle),
 )
 
+_POSTGRES_SCHEMA_V2_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT created_at AS value FROM cpk_operation_sessions
+      UNION ALL SELECT closed_at FROM cpk_operation_sessions
+      UNION ALL SELECT created_at FROM cpk_operation_actions
+      UNION ALL SELECT created_at FROM cpk_activity_plans
+      UNION ALL SELECT requested_at FROM cpk_approval_requests
+      UNION ALL SELECT decided_at FROM cpk_approval_decisions
+      UNION ALL SELECT requested_at FROM cpk_execution_requests
+      UNION ALL SELECT claimed_at FROM cpk_execution_requests
+      UNION ALL SELECT lease_expires_at FROM cpk_execution_requests
+      UNION ALL SELECT created_at FROM cpk_activity_runs
+      UNION ALL SELECT started_at FROM cpk_activity_runs
+      UNION ALL SELECT settled_at FROM cpk_activity_runs
+      UNION ALL SELECT occurred_at FROM cpk_activity_events
+      UNION ALL SELECT observed_at FROM cpk_observations
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'coordination timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_operation_sessions
+  ALTER COLUMN created_at TYPE timestamptz USING created_at::timestamptz,
+  ALTER COLUMN closed_at TYPE timestamptz USING closed_at::timestamptz;
+ALTER TABLE cpk_operation_actions
+  ALTER COLUMN created_at TYPE timestamptz USING created_at::timestamptz;
+ALTER TABLE cpk_activity_plans
+  ALTER COLUMN created_at TYPE timestamptz USING created_at::timestamptz;
+ALTER TABLE cpk_approval_requests
+  ALTER COLUMN requested_at TYPE timestamptz USING requested_at::timestamptz;
+ALTER TABLE cpk_approval_decisions
+  ALTER COLUMN decided_at TYPE timestamptz USING decided_at::timestamptz;
+ALTER TABLE cpk_execution_requests
+  ALTER COLUMN requested_at TYPE timestamptz USING requested_at::timestamptz,
+  ALTER COLUMN claimed_at TYPE timestamptz USING claimed_at::timestamptz,
+  ALTER COLUMN lease_expires_at TYPE timestamptz USING lease_expires_at::timestamptz;
+ALTER TABLE cpk_activity_runs
+  ALTER COLUMN created_at TYPE timestamptz USING created_at::timestamptz,
+  ALTER COLUMN started_at TYPE timestamptz USING started_at::timestamptz,
+  ALTER COLUMN settled_at TYPE timestamptz USING settled_at::timestamptz;
+ALTER TABLE cpk_activity_events
+  ALTER COLUMN occurred_at TYPE timestamptz USING occurred_at::timestamptz;
+ALTER TABLE cpk_observations
+  ALTER COLUMN observed_at TYPE timestamptz USING observed_at::timestamptz;
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1417,7 +1479,23 @@ if _POSTGRES_SCHEMA_V1.checksum_sha256 != POSTGRES_SCHEMA_V1_SHA256:
         f"expected {POSTGRES_SCHEMA_V1_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V1.checksum_sha256}"
     )
-POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry((_POSTGRES_SCHEMA_V1,))
+_POSTGRES_SCHEMA_V2 = SchemaMigration(
+    version=2,
+    name="coordination-timestamps",
+    sql=_POSTGRES_SCHEMA_V2_SQL,
+)
+_POSTGRES_SCHEMA_V2_SHA256 = (
+    "95c7782cf66875a3f70c6354b86054ec4ca86f45dca7d2ccb4d971920162c329"
+)
+if _POSTGRES_SCHEMA_V2.checksum_sha256 != _POSTGRES_SCHEMA_V2_SHA256:
+    raise SchemaMigrationError(
+        "coordination timestamp V2 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V2_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V2.checksum_sha256}"
+    )
+POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
+    (_POSTGRES_SCHEMA_V1, _POSTGRES_SCHEMA_V2)
+)
 
 
 def install_schema(connection: MigrationPostgresConnection) -> None:

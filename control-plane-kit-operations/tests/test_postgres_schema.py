@@ -363,7 +363,8 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                         """
                         INSERT INTO cpk_activity_events
                           (event_id, run_id, ordinal, event_type, occurred_at, payload)
-                        VALUES (%s, 'run-a', 20, %s, 'invalid-at', %s)
+                        VALUES (%s, 'run-a', 20, %s,
+                                '2026-08-07T06:30:00Z', %s)
                         """,
                         (event_id, event_type, Jsonb(payload)),
                     )
@@ -394,7 +395,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                         '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
                         encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
                         'operator',
-                        'approval-request-at', 'plan:invented', 'low', false)
+                        '2026-08-07T06:31:00Z', 'plan:invented', 'low', false)
                 """
             )
         with self.assertRaises(CheckViolation):
@@ -408,7 +409,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                         '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
                         encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
                         'operator',
-                        'approval-request-at', 'plan:approve', 'invented', false)
+                        '2026-08-07T06:31:00Z', 'plan:approve', 'invented', false)
                 """
             )
         with self.assertRaises(CheckViolation):
@@ -417,7 +418,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 INSERT INTO cpk_approval_decisions
                   (decision_id, request_id, actor_id, decision, scope, decided_at)
                 VALUES ('bad-decision-scope', 'approval-request-a', 'manager',
-                        'approved', 'plan:invented', 'approval-at')
+                        'approved', 'plan:invented', '2026-08-07T06:32:00Z')
                 """
             )
         with self.assertRaises(CheckViolation):
@@ -427,7 +428,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                   (action_id, session_id, ordinal, action_type, actor_id,
                    created_at)
                 VALUES ('bad-action-type', 'session-a', 1, 'invented',
-                        'operator', 'action-at')
+                        'operator', '2026-08-07T06:33:00Z')
                 """
             )
         self.connection.execute(
@@ -436,7 +437,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
               (action_id, session_id, ordinal, action_type, actor_id,
                created_at)
             VALUES ('admit-action', 'session-a', 1, 'admit-execution',
-                    'operator', 'action-at')
+                    'operator', '2026-08-07T06:33:00Z')
             """
         )
 
@@ -468,12 +469,12 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator', 'Deploy', 'open',
-                    'session-at');
+                    '2026-08-07T06:00:00Z');
             INSERT INTO cpk_activity_plans
               (plan_id, session_id, base_graph_id, desired_graph_id, status,
                created_at, payload)
             VALUES ('plan-a', 'session-a', 'graph-a', 'graph-a', 'planned',
-                    'plan-at', '{}'::jsonb);
+                    '2026-08-07T06:01:00Z', '{}'::jsonb);
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, subject_kind, subject_payload,
                review_digest, requested_by, requested_at,
@@ -482,22 +483,23 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                     '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
                     encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
                     'operator',
-                    'approval-request-at', 'plan:approve', 'low', false);
+                    '2026-08-07T06:02:00Z', 'plan:approve', 'low', false);
             INSERT INTO cpk_approval_decisions
               (decision_id, request_id, actor_id, decision, scope, decided_at)
             VALUES ('approval-decision-a', 'approval-request-a', 'manager',
-                    'approved', 'plan:approve', 'approval-at');
+                    'approved', 'plan:approve', '2026-08-07T06:03:00Z');
             INSERT INTO cpk_execution_requests
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
                approval_decision_id, idempotency_key, intent_fingerprint)
             VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
-                    'operator', 'execution-at', 'approval-request-a',
+                    'operator', '2026-08-07T06:04:00Z', 'approval-request-a',
                     'approval-decision-a', 'execute-a', 'fingerprint-a');
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, status, created_at,
                metadata)
-            VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed', 'run-at',
+            VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed',
+                    '2026-08-07T06:05:00Z',
                     '{}'::jsonb);
             """
         )
@@ -507,13 +509,14 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 INSERT INTO cpk_activity_events
                   (event_id, run_id, ordinal, event_type, occurred_at, payload)
                 VALUES
-                  ('event-opened', 'run-a', 1, 'run_opened', 'opened-at',
+                  ('event-opened', 'run-a', 1, 'run_opened',
+                   '2026-08-07T06:06:00Z',
                    '{"activity_id": null, "recovery": null}'::jsonb),
                   ('event-step-started', 'run-a', 2, 'step_started',
-                   'step-at',
+                   '2026-08-07T06:07:00Z',
                    '{"activity_id": "start-api", "recovery": null}'::jsonb),
                   ('event-recovery', 'run-a', 3, 'recovery_decision_recorded',
-                   'recovery-at',
+                   '2026-08-07T06:08:00Z',
                    '{"activity_id": null, "recovery": {"decision_id": "decision-a"}}'::jsonb);
                 """
             )

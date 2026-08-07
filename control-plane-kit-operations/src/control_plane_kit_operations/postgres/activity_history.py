@@ -17,6 +17,10 @@ from control_plane_kit_core.planning import DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.records import (
     ActivityPlanRecord,
     ActivityPlanStatus,
@@ -49,8 +53,8 @@ class PostgresActivityHistoryStore:
                 record.actor_id,
                 record.title,
                 record.status.value,
-                record.created_at,
-                record.closed_at,
+                encode_postgres_timestamp(record.created_at),
+                _encode_optional_timestamp(record.closed_at),
                 Jsonb(record.metadata),
                 record.idempotency_key,
                 record.intent_fingerprint,
@@ -149,6 +153,7 @@ class PostgresActivityHistoryStore:
             OperationSessionStatus.CANCELLED,
         }:
             raise ValueError("operation sessions may transition only to terminal")
+        encoded_closed_at = encode_postgres_timestamp(closed_at)
         row = self._connection.execute(
             """
             UPDATE cpk_operation_sessions
@@ -157,7 +162,7 @@ class PostgresActivityHistoryStore:
             RETURNING session_id, workspace_id, actor_id, title, status, created_at,
                       closed_at, metadata, idempotency_key, intent_fingerprint
             """,
-            (replacement.value, closed_at, session_id),
+            (replacement.value, encoded_closed_at, session_id),
         ).fetchone()
         return None if row is None else _session_record(row)
 
@@ -176,7 +181,7 @@ class PostgresActivityHistoryStore:
                 record.action_type.value,
                 record.actor_id,
                 Jsonb(record.payload),
-                record.created_at,
+                encode_postgres_timestamp(record.created_at),
                 record.idempotency_key,
                 record.intent_fingerprint,
             ),
@@ -247,7 +252,7 @@ class PostgresActivityHistoryStore:
                 record.desired_realized_projection_id,
                 record.desired_graph_revision,
                 record.status.value,
-                record.created_at,
+                encode_postgres_timestamp(record.created_at),
                 Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)),
             ),
         )
@@ -304,7 +309,7 @@ class PostgresActivityHistoryStore:
                 Jsonb(record.subject.descriptor()),
                 record.subject.review_digest,
                 record.requested_by,
-                record.requested_at,
+                encode_postgres_timestamp(record.requested_at),
                 record.required_scope.value,
                 record.max_risk.value,
                 record.destructive,
@@ -401,7 +406,7 @@ class PostgresActivityHistoryStore:
                 record.actor_id,
                 record.decision.value,
                 record.scope.value,
-                record.decided_at,
+                encode_postgres_timestamp(record.decided_at),
                 record.comment,
                 record.idempotency_key,
                 record.intent_fingerprint,
@@ -448,8 +453,8 @@ def _session_record(row: tuple[Any, ...]) -> OperationSessionRecord:
         actor_id=row[2],
         title=row[3],
         status=OperationSessionStatus(row[4]),
-        created_at=row[5],
-        closed_at=row[6],
+        created_at=decode_postgres_timestamp(row[5]),
+        closed_at=_decode_optional_timestamp(row[6]),
         metadata=row[7],
         idempotency_key=row[8],
         intent_fingerprint=row[9],
@@ -464,7 +469,7 @@ def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
         action_type=_action_kind(row[3]),
         actor_id=row[4],
         payload=row[5],
-        created_at=row[6],
+        created_at=decode_postgres_timestamp(row[6]),
         idempotency_key=row[7],
         intent_fingerprint=row[8],
     )
@@ -480,7 +485,7 @@ def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
         desired_realized_projection_id=row[5],
         desired_graph_revision=row[6],
         status=ActivityPlanStatus(row[7]),
-        created_at=row[8],
+        created_at=decode_postgres_timestamp(row[8]),
         plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[9]),
     )
 
@@ -500,7 +505,7 @@ def _approval_request_record(row: tuple[Any, ...]) -> ApprovalRequestRecord:
         session_id=row[1],
         subject=subject,
         requested_by=row[7],
-        requested_at=row[8],
+        requested_at=decode_postgres_timestamp(row[8]),
         required_scope=PolicyScope(row[9]),
         max_risk=RiskLevel(row[10]),
         destructive=row[11],
@@ -523,7 +528,7 @@ def _approval_decision_record(row: tuple[Any, ...]) -> ApprovalDecisionRecord:
         actor_id=row[2],
         decision=ApprovalDecisionKind(row[3]),
         scope=PolicyScope(row[4]),
-        decided_at=row[5],
+        decided_at=decode_postgres_timestamp(row[5]),
         comment=row[6],
         idempotency_key=row[7],
         intent_fingerprint=row[8],
@@ -535,3 +540,11 @@ def _action_kind(value: str) -> OperatorCommandKind | LifecycleOperationKind:
         return OperatorCommandKind(value)
     except ValueError:
         return LifecycleOperationKind(value)
+
+
+def _encode_optional_timestamp(value: str | None) -> object:
+    return None if value is None else encode_postgres_timestamp(value)
+
+
+def _decode_optional_timestamp(value: object) -> str | None:
+    return None if value is None else decode_postgres_timestamp(value)
