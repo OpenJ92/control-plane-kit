@@ -160,6 +160,17 @@ Valid answers include:
 
 Silence is not acceptable.
 
+### 8. Temporal Representation And Chronology Are Distinct Laws
+
+Canonical UTC text is the public representation of a timestamp. Durable stores
+may use a native temporal type internally, and chronological queries must order
+that native instant rather than its rendered text.
+
+The public codec remains responsible for returning the canonical text form.
+When two rows represent the same instant, chronology-dependent selectors that
+require a total order must name a stable identity tie-breaker. Textual
+representation order must not be described or tested as chronological order.
+
 ## Consequences
 
 - Data-affecting PRs must include an explicit decision log section for data
@@ -194,4 +205,3 @@ Before merging a data-affecting PR, answer:
 - What happens under concurrent use?
 - What secrets or sensitive values are intentionally redacted?
 - What durable event or audit record remains?
-
