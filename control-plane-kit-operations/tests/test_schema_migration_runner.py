@@ -17,6 +17,7 @@ _CURRENT_HISTORY = [
     (1, "operations-baseline"),
     (2, "coordination-timestamps"),
     (3, "graph-product-authority-timestamps"),
+    (4, "secret-registration-timestamps"),
 ]
 
 
@@ -51,6 +52,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,

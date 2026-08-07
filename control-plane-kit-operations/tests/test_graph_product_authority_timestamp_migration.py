@@ -49,9 +49,11 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_graph_product_authority_v3(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 3)
         self.assertEqual(
-            tuple((migration.version, migration.name) for migration in registry.migrations),
+            tuple(
+                (migration.version, migration.name)
+                for migration in registry.migrations[:3]
+            ),
             (
                 (1, "operations-baseline"),
                 (2, "coordination-timestamps"),
@@ -72,6 +74,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 (1, "operations-baseline"),
                 (2, "coordination-timestamps"),
                 (3, "graph-product-authority-timestamps"),
+                (4, "secret-registration-timestamps"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
