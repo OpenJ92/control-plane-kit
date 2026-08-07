@@ -1,0 +1,43 @@
+{
+  "schema": "cpk.node-control.public-material.v1",
+  "projection": "literal-and-one-pass-ascii-percent",
+  "accepted": [
+    "router.internal",
+    "secret-agent",
+    "bearer-capacity",
+    "token-count",
+    "private key rotation",
+    "authorization policy",
+    "sketch-target",
+    "sg-routing"
+  ],
+  "rejected": [
+    {"law": "credential-envelope", "value": "Authorization: Bearer abc123"},
+    {"law": "credential-envelope", "value": "authorization \t: \tBasic abc123"},
+    {"law": "credential-envelope", "value": "Bearer abc123"},
+    {"law": "credential-envelope", "value": "credential = abc123"},
+    {"law": "credential-envelope", "value": "PASSWORD=abc123"},
+    {"law": "credential-envelope", "value": "secret\t=\tabc123"},
+    {"law": "credential-envelope", "value": "signature=abc123"},
+    {"law": "credential-envelope", "value": "token=abc123"},
+    {"law": "credential-envelope", "value": "-----BEGIN PRIVATE KEY-----"},
+    {"law": "credential-envelope", "value": "-----begin encrypted private key-----"},
+    {"law": "credential-envelope", "value": "sk-abc12345"},
+    {"law": "credential-envelope", "value": "SG.abc12345"},
+    {"law": "credential-envelope", "value": "%41uthorization%3A%20Bearer%20abc123"},
+    {"law": "credential-envelope", "value": "token%3Dabc123"},
+    {"law": "endpoint-envelope", "value": "https://router.internal/control"},
+    {"law": "endpoint-envelope", "value": "custom+tcp://router.internal"},
+    {"law": "endpoint-envelope", "value": "//router.internal/control"},
+    {"law": "endpoint-envelope", "value": "router.internal:8080"},
+    {"law": "endpoint-envelope", "value": "[2001:db8::1]:443"},
+    {"law": "endpoint-envelope", "value": "192.0.2.10"},
+    {"law": "endpoint-envelope", "value": "2001:db8::1"},
+    {"law": "endpoint-envelope", "value": "localhost"},
+    {"law": "endpoint-envelope", "value": "LOCALHOST."},
+    {"law": "endpoint-envelope", "value": "api.localhost"},
+    {"law": "endpoint-envelope", "value": "api.localhost:8443"},
+    {"law": "endpoint-envelope", "value": "https%3A%2F%2Frouter.internal"},
+    {"law": "endpoint-envelope", "value": "router.internal%3A8080"}
+  ]
+}
