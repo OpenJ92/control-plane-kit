@@ -22,7 +22,7 @@ from control_plane_kit_core.control_routes import ControlRouteSetName
 
 MAX_NODE_CONTROL_STATE_ITEMS = 128
 MAX_NODE_CONTROL_PAYLOAD_BYTES = 16_384
-MAX_NODE_CONTROL_EVIDENCE_ITEMS = 32
+MAX_NODE_CONTROL_EVIDENCE_ITEMS = 1
 MAX_WORKLOAD_NODE_CONTROL_GRANT_LIFETIME_SECONDS = 300
 
 _MAX_IDENTIFIER = 128
@@ -88,8 +88,22 @@ _GRANT_KEYS = frozenset(
     }
 )
 _EVIDENCE_KEYS = frozenset({"code"})
-_RESULT_KEYS = frozenset(
-    {"request_id", "status", "codec", "version", "payload", "evidence"}
+_READ_STATE_SUCCEEDED_RESULT_KEYS = frozenset(
+    {
+        "request_id",
+        "operation",
+        "status",
+        "codec",
+        "state_codec",
+        "version",
+        "state",
+    }
+)
+_TRANSITION_SUCCEEDED_RESULT_KEYS = frozenset(
+    {"request_id", "operation", "status", "codec", "version", "evidence"}
+)
+_NON_SUCCESS_RESULT_KEYS = frozenset(
+    {"request_id", "operation", "status", "codec", "evidence"}
 )
 _VARIABLE_OPERATION_KEYS = frozenset(
     {"operation", "command_codec", "result_codec"}
@@ -795,113 +809,297 @@ class NodeControlEvidence:
 
 
 @dataclass(frozen=True, order=True)
-class NodeControlResult:
-    """Bounded success/failure result with optional public state and evidence."""
+class NodeControlReadStateSucceeded:
+    """Successful read with one versioned state value and no evidence."""
 
     request_id: str
-    status: NodeControlResultStatus
-    codec: ControlPlaneResultCodec
+    state_codec: ControlPlaneStateCodec
     version: int
-    payload: ControlStateValue | None
-    evidence: tuple[NodeControlEvidence, ...] = ()
+    state: ControlStateValue
 
     def __post_init__(self) -> None:
         _validate_identifier(self.request_id, "node-control result request_id")
-        if not isinstance(self.status, NodeControlResultStatus):
-            raise NodeControlContractError("node-control result status is unknown")
-        if not isinstance(self.codec, ControlPlaneResultCodec):
-            raise NodeControlContractError("node-control result codec is unknown")
+        if not isinstance(self.state_codec, ControlPlaneStateCodec):
+            raise NodeControlContractError(
+                "node-control read result state codec is unknown"
+            )
         _validate_version(self.version, "node-control result version")
-        if self.payload is not None and not isinstance(
-            self.payload,
-            (ScalarControlState, MapControlState, WeightedRoutingControlState),
-        ):
+        expected_state_type = _STATE_CODEC_TYPES[self.state_codec]
+        if not isinstance(self.state, expected_state_type):
             raise NodeControlContractError(
-                "node-control result payload must be bounded state"
-            )
-        if self.codec is ControlPlaneResultCodec.STATE_V1:
-            if self.status is NodeControlResultStatus.SUCCEEDED and self.payload is None:
-                raise NodeControlContractError(
-                    "successful state result requires state payload"
-                )
-        elif self.payload is not None:
-            raise NodeControlContractError(
-                "transition result must not carry state payload"
-            )
-        if not isinstance(self.evidence, tuple):
-            raise NodeControlContractError("node-control result evidence must be a tuple")
-        if len(self.evidence) > MAX_NODE_CONTROL_EVIDENCE_ITEMS:
-            raise NodeControlContractError(
-                "node-control result has too many evidence items"
-            )
-        if not all(isinstance(item, NodeControlEvidence) for item in self.evidence):
-            raise NodeControlContractError(
-                "node-control result evidence must be NodeControlEvidence values"
-            )
-        if self.status is not NodeControlResultStatus.SUCCEEDED and not self.evidence:
-            raise NodeControlContractError(
-                "rejected or failed node-control result requires evidence"
+                "node-control read result state does not match state codec"
             )
         _validate_descriptor_size(self.descriptor(), "node-control result")
+
+    @property
+    def operation(self) -> NodeControlOperation:
+        return NodeControlOperation.READ_STATE
+
+    @property
+    def status(self) -> NodeControlResultStatus:
+        return NodeControlResultStatus.SUCCEEDED
+
+    @property
+    def codec(self) -> ControlPlaneResultCodec:
+        return ControlPlaneResultCodec.STATE_V1
 
     def descriptor(self) -> dict[str, object]:
         return {
             "request_id": self.request_id,
+            "operation": self.operation.value,
             "status": self.status.value,
             "codec": self.codec.value,
+            "state_codec": self.state_codec.value,
             "version": self.version,
-            "payload": self.payload.descriptor() if self.payload is not None else None,
-            "evidence": [item.descriptor() for item in self.evidence],
+            "state": self.state.descriptor(),
         }
 
 
+@dataclass(frozen=True, order=True)
+class NodeControlTransitionSucceeded:
+    """Successful transition with one version and applied/no-change evidence."""
+
+    request_id: str
+    version: int
+    evidence: NodeControlEvidence
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.request_id, "node-control result request_id")
+        _validate_version(self.version, "node-control result version")
+        if not isinstance(self.evidence, NodeControlEvidence):
+            raise NodeControlContractError(
+                "node-control transition evidence must be NodeControlEvidence"
+            )
+        if self.evidence.code not in (
+            NodeControlEvidenceCode.APPLIED,
+            NodeControlEvidenceCode.NO_CHANGE,
+        ):
+            raise NodeControlContractError(
+                "successful transition evidence is contradictory"
+            )
+        _validate_descriptor_size(self.descriptor(), "node-control result")
+
+    @property
+    def operation(self) -> NodeControlOperation:
+        return NodeControlOperation.APPLY_COMMAND
+
+    @property
+    def status(self) -> NodeControlResultStatus:
+        return NodeControlResultStatus.SUCCEEDED
+
+    @property
+    def codec(self) -> ControlPlaneResultCodec:
+        return ControlPlaneResultCodec.TRANSITION_V1
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "request_id": self.request_id,
+            "operation": self.operation.value,
+            "status": self.status.value,
+            "codec": self.codec.value,
+            "version": self.version,
+            "evidence": self.evidence.descriptor(),
+        }
+
+
+@dataclass(frozen=True, order=True)
+class NodeControlRejected:
+    """Rejected read or transition with one operation-compatible reason."""
+
+    request_id: str
+    operation: NodeControlOperation
+    evidence: NodeControlEvidence
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.request_id, "node-control result request_id")
+        if not isinstance(self.operation, NodeControlOperation):
+            raise NodeControlContractError("node-control result operation is unknown")
+        if not isinstance(self.evidence, NodeControlEvidence):
+            raise NodeControlContractError(
+                "node-control rejection evidence must be NodeControlEvidence"
+            )
+        allowed = _REJECTION_EVIDENCE_CODES[self.operation]
+        if self.evidence.code not in allowed:
+            raise NodeControlContractError(
+                "node-control rejection evidence is contradictory"
+            )
+        _validate_descriptor_size(self.descriptor(), "node-control result")
+
+    @property
+    def status(self) -> NodeControlResultStatus:
+        return NodeControlResultStatus.REJECTED
+
+    @property
+    def codec(self) -> ControlPlaneResultCodec:
+        return _RESULT_CODECS[self.operation]
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "request_id": self.request_id,
+            "operation": self.operation.value,
+            "status": self.status.value,
+            "codec": self.codec.value,
+            "evidence": self.evidence.descriptor(),
+        }
+
+
+@dataclass(frozen=True, order=True)
+class NodeControlFailed:
+    """Failed read or transition with fixed internal-failure evidence."""
+
+    request_id: str
+    operation: NodeControlOperation
+
+    def __post_init__(self) -> None:
+        _validate_identifier(self.request_id, "node-control result request_id")
+        if not isinstance(self.operation, NodeControlOperation):
+            raise NodeControlContractError("node-control result operation is unknown")
+        _validate_descriptor_size(self.descriptor(), "node-control result")
+
+    @property
+    def status(self) -> NodeControlResultStatus:
+        return NodeControlResultStatus.FAILED
+
+    @property
+    def codec(self) -> ControlPlaneResultCodec:
+        return _RESULT_CODECS[self.operation]
+
+    @property
+    def evidence(self) -> NodeControlEvidence:
+        return NodeControlEvidence(NodeControlEvidenceCode.INTERNAL_FAILURE)
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "request_id": self.request_id,
+            "operation": self.operation.value,
+            "status": self.status.value,
+            "codec": self.codec.value,
+            "evidence": self.evidence.descriptor(),
+        }
+
+
+NodeControlResult = (
+    NodeControlReadStateSucceeded
+    | NodeControlTransitionSucceeded
+    | NodeControlRejected
+    | NodeControlFailed
+)
+_NODE_CONTROL_RESULT_TYPES = (
+    NodeControlReadStateSucceeded,
+    NodeControlTransitionSucceeded,
+    NodeControlRejected,
+    NodeControlFailed,
+)
+
+
 class NodeControlResultCodec:
-    """Strict codec for bounded node-control outcomes."""
+    """Strict codec for outcomes of one declared control-plane variable."""
+
+    def __init__(self, variable: ControlPlaneVariableDescriptor) -> None:
+        if not isinstance(variable, ControlPlaneVariableDescriptor):
+            raise NodeControlContractError(
+                "result codec requires ControlPlaneVariableDescriptor"
+            )
+        self._variable = variable
 
     def encode(self, result: NodeControlResult) -> dict[str, object]:
-        if not isinstance(result, NodeControlResult):
+        if not isinstance(result, _NODE_CONTROL_RESULT_TYPES):
             raise NodeControlContractError("encode requires NodeControlResult")
+        self._validate_variable_contract(result)
         return result.descriptor()
 
     def decode(self, descriptor: Mapping[str, object]) -> NodeControlResult:
         mapping = _mapping(descriptor, "node-control result")
-        _require_keys(mapping, _RESULT_KEYS, "node-control result")
-        raw_payload = mapping.get("payload")
-        payload = None if raw_payload is None else _decode_state(raw_payload)
-        raw_evidence = mapping.get("evidence")
-        if not isinstance(raw_evidence, list):
-            raise NodeControlContractError(
-                "node-control result evidence must be a list"
-            )
-        evidence: list[NodeControlEvidence] = []
-        for raw_item in raw_evidence:
-            item = _mapping(raw_item, "node-control evidence")
-            _require_keys(item, _EVIDENCE_KEYS, "node-control evidence")
-            evidence.append(
-                NodeControlEvidence(
-                    _enum(
-                        NodeControlEvidenceCode,
-                        item.get("code"),
-                        "node-control evidence code",
-                    )
-                )
-            )
-        return NodeControlResult(
-            request_id=_text(mapping, "request_id"),
-            status=_enum(
-                NodeControlResultStatus,
-                mapping.get("status"),
-                "node-control result status",
-            ),
-            codec=_enum(
-                ControlPlaneResultCodec,
-                mapping.get("codec"),
-                "node-control result codec",
-            ),
-            version=_integer(mapping, "version"),
-            payload=payload,
-            evidence=tuple(evidence),
+        operation = _enum(
+            NodeControlOperation,
+            mapping.get("operation"),
+            "node-control result operation",
         )
+        status = _enum(
+            NodeControlResultStatus,
+            mapping.get("status"),
+            "node-control result status",
+        )
+        codec = _enum(
+            ControlPlaneResultCodec,
+            mapping.get("codec"),
+            "node-control result codec",
+        )
+        expected_codec = self._variable.contract_for(operation).result_codec
+        if codec is not expected_codec:
+            raise NodeControlContractError(
+                "node-control result codec does not match variable operation"
+            )
+        if status is NodeControlResultStatus.SUCCEEDED:
+            if operation is NodeControlOperation.READ_STATE:
+                _require_keys(
+                    mapping,
+                    _READ_STATE_SUCCEEDED_RESULT_KEYS,
+                    "node-control read success",
+                )
+                result: NodeControlResult = NodeControlReadStateSucceeded(
+                    request_id=_text(mapping, "request_id"),
+                    state_codec=_enum(
+                        ControlPlaneStateCodec,
+                        mapping.get("state_codec"),
+                        "node-control result state codec",
+                    ),
+                    version=_integer(mapping, "version"),
+                    state=_decode_state(mapping.get("state")),
+                )
+            else:
+                _require_keys(
+                    mapping,
+                    _TRANSITION_SUCCEEDED_RESULT_KEYS,
+                    "node-control transition success",
+                )
+                result = NodeControlTransitionSucceeded(
+                    request_id=_text(mapping, "request_id"),
+                    version=_integer(mapping, "version"),
+                    evidence=_decode_result_evidence(mapping.get("evidence")),
+                )
+        elif status is NodeControlResultStatus.REJECTED:
+            _require_keys(
+                mapping,
+                _NON_SUCCESS_RESULT_KEYS,
+                "node-control rejection",
+            )
+            result = NodeControlRejected(
+                request_id=_text(mapping, "request_id"),
+                operation=operation,
+                evidence=_decode_result_evidence(mapping.get("evidence")),
+            )
+        else:
+            _require_keys(
+                mapping,
+                _NON_SUCCESS_RESULT_KEYS,
+                "node-control failure",
+            )
+            evidence = _decode_result_evidence(mapping.get("evidence"))
+            if evidence.code is not NodeControlEvidenceCode.INTERNAL_FAILURE:
+                raise NodeControlContractError(
+                    "node-control failure evidence is contradictory"
+                )
+            result = NodeControlFailed(
+                request_id=_text(mapping, "request_id"),
+                operation=operation,
+            )
+        self._validate_variable_contract(result)
+        return result
+
+    def _validate_variable_contract(self, result: NodeControlResult) -> None:
+        expected_codec = self._variable.contract_for(result.operation).result_codec
+        if result.codec is not expected_codec:
+            raise NodeControlContractError(
+                "node-control result codec does not match variable operation"
+            )
+        if (
+            isinstance(result, NodeControlReadStateSucceeded)
+            and result.state_codec is not self._variable.state_codec
+        ):
+            raise NodeControlContractError(
+                "node-control read state codec does not match variable"
+            )
 
 
 @dataclass(frozen=True, order=True)
@@ -1129,6 +1327,27 @@ class ControlPlaneVariableDescriptorCodec:
         )
 
 
+_STATE_CODEC_TYPES = {
+    ControlPlaneStateCodec.SCALAR_V1: ScalarControlState,
+    ControlPlaneStateCodec.MAP_V1: MapControlState,
+    ControlPlaneStateCodec.WEIGHTED_ROUTING_V1: WeightedRoutingControlState,
+}
+_RESULT_CODECS = {
+    NodeControlOperation.READ_STATE: ControlPlaneResultCodec.STATE_V1,
+    NodeControlOperation.APPLY_COMMAND: ControlPlaneResultCodec.TRANSITION_V1,
+}
+_REJECTION_EVIDENCE_CODES = {
+    NodeControlOperation.READ_STATE: frozenset(
+        {NodeControlEvidenceCode.NOT_AUTHORIZED}
+    ),
+    NodeControlOperation.APPLY_COMMAND: frozenset(
+        {
+            NodeControlEvidenceCode.PRECONDITION_FAILED,
+            NodeControlEvidenceCode.INVALID_COMMAND,
+            NodeControlEvidenceCode.NOT_AUTHORIZED,
+        }
+    ),
+}
 _COMMAND_STATE_TYPES = {
     ControlPlaneCommandCodec.REPLACE_SCALAR_V1: ScalarControlState,
     ControlPlaneCommandCodec.REPLACE_MAP_V1: MapControlState,
@@ -1148,6 +1367,18 @@ _VARIABLE_CODECS = {
         ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1,
     ),
 }
+
+
+def _decode_result_evidence(value: object) -> NodeControlEvidence:
+    mapping = _mapping(value, "node-control evidence")
+    _require_keys(mapping, _EVIDENCE_KEYS, "node-control evidence")
+    return NodeControlEvidence(
+        _enum(
+            NodeControlEvidenceCode,
+            mapping.get("code"),
+            "node-control evidence code",
+        )
+    )
 
 
 def _decode_target(value: object) -> NodeControlTarget:
@@ -1394,13 +1625,17 @@ __all__ = [
     "NodeControlContractError",
     "NodeControlEvidence",
     "NodeControlEvidenceCode",
+    "NodeControlFailed",
     "NodeControlOperation",
     "NodeControlPayload",
+    "NodeControlReadStateSucceeded",
+    "NodeControlRejected",
     "NodeControlRequestDigest",
     "NodeControlResult",
     "NodeControlResultCodec",
     "NodeControlResultStatus",
     "NodeControlTarget",
+    "NodeControlTransitionSucceeded",
     "ScalarControlState",
     "WeightedRoutingControlState",
     "WorkloadNodeControlGrantVerificationCode",
