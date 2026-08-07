@@ -1281,6 +1281,38 @@ public contract shape:
   }
   ```
 
+  Results are a closed nominal sum rather than one optional-field record.
+  Successful reads carry one versioned state whose state codec matches the
+  variable. Successful transitions carry one version and exactly `applied` or
+  `no-change` evidence. Rejected and failed results carry one closed evidence
+  code but no state or version; read and apply have separate rejection laws,
+  and failure is always `internal-failure`. `NodeControlResultCodec` is bound to
+  the selected variable descriptor and rejects legacy, cross-variant, and
+  variable-mismatched material.
+
+  ```json
+  {
+    "request_id": "request-read-1",
+    "operation": "read-state",
+    "status": "succeeded",
+    "codec": "control.state.v1",
+    "state_codec": "control.scalar.v1",
+    "version": 4,
+    "state": {"kind": "scalar", "value": "target-a"}
+  }
+  ```
+
+  ```json
+  {
+    "request_id": "request-apply-1",
+    "operation": "apply-command",
+    "status": "succeeded",
+    "codec": "control.transition.v1",
+    "version": 5,
+    "evidence": {"code": "applied"}
+  }
+  ```
+
 ## Planning Language
 
 ### DeploymentTransition

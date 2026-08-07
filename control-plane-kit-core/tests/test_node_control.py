@@ -32,13 +32,14 @@ from control_plane_kit_core.node_control import (
     NodeControlContractError,
     NodeControlEvidence,
     NodeControlEvidenceCode,
+    NodeControlFailed,
     NodeControlOperation,
     NodeControlPayload,
+    NodeControlRejected,
     NodeControlRequestDigest,
-    NodeControlResult,
     NodeControlResultCodec,
-    NodeControlResultStatus,
     NodeControlTarget,
+    NodeControlTransitionSucceeded,
     ScalarControlState,
     WeightedRoutingControlState,
     WorkloadNodeControlGrantVerificationCode,
@@ -62,6 +63,32 @@ class NodeControlContractTests(unittest.TestCase):
         return WeightedRoutingControlState(
             targets=("target-a", "target-b"),
             weights=(("target-a", 2.0), ("target-b", 1.0)),
+        )
+
+    def variable(
+        self,
+        *,
+        description: str | None = None,
+    ) -> ControlPlaneVariableDescriptor:
+        return ControlPlaneVariableDescriptor(
+            variable_name="routing",
+            kind=ControlPlaneVariableKind.WEIGHTED_ROUTING,
+            state_codec=ControlPlaneStateCodec.WEIGHTED_ROUTING_V1,
+            operation_contracts=(
+                ControlPlaneVariableOperationContract(
+                    operation=NodeControlOperation.READ_STATE,
+                    command_codec=None,
+                    result_codec=ControlPlaneResultCodec.STATE_V1,
+                ),
+                ControlPlaneVariableOperationContract(
+                    operation=NodeControlOperation.APPLY_COMMAND,
+                    command_codec=(
+                        ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1
+                    ),
+                    result_codec=ControlPlaneResultCodec.TRANSITION_V1,
+                ),
+            ),
+            description=description,
         )
 
     def request(self, **changes: object) -> NodeControlCommandRequest:
@@ -107,42 +134,22 @@ class NodeControlContractTests(unittest.TestCase):
         return DelegatedWorkloadNodeControlGrant(**values)
 
     def test_exact_contract_codecs_round_trip(self) -> None:
-        variable = ControlPlaneVariableDescriptor(
-            variable_name="routing",
-            kind=ControlPlaneVariableKind.WEIGHTED_ROUTING,
-            state_codec=ControlPlaneStateCodec.WEIGHTED_ROUTING_V1,
-            operation_contracts=(
-                ControlPlaneVariableOperationContract(
-                    operation=NodeControlOperation.READ_STATE,
-                    command_codec=None,
-                    result_codec=ControlPlaneResultCodec.STATE_V1,
-                ),
-                ControlPlaneVariableOperationContract(
-                    operation=NodeControlOperation.APPLY_COMMAND,
-                    command_codec=(
-                        ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1
-                    ),
-                    result_codec=ControlPlaneResultCodec.TRANSITION_V1,
-                ),
-            ),
+        variable = self.variable(
             description="Atomic graph target weights.",
         )
         request = self.request()
         grant = self.grant(request)
-        result = NodeControlResult(
+        result = NodeControlTransitionSucceeded(
             request_id=request.request_id,
-            status=NodeControlResultStatus.SUCCEEDED,
-            codec=ControlPlaneResultCodec.TRANSITION_V1,
             version=5,
-            payload=None,
-            evidence=(NodeControlEvidence(NodeControlEvidenceCode.APPLIED),),
+            evidence=NodeControlEvidence(NodeControlEvidenceCode.APPLIED),
         )
 
         for codec, value in (
             (ControlPlaneVariableDescriptorCodec(), variable),
             (NodeControlCommandRequestCodec(), request),
             (DelegatedWorkloadNodeControlGrantCodec(), grant),
-            (NodeControlResultCodec(), result),
+            (NodeControlResultCodec(variable), result),
         ):
             with self.subTest(codec=type(codec).__name__):
                 self.assertEqual(codec.decode(codec.encode(value)), value)
@@ -165,25 +172,7 @@ class NodeControlContractTests(unittest.TestCase):
 
     def test_strict_codecs_reject_unknown_keys_kinds_and_codecs(self) -> None:
         descriptor = ControlPlaneVariableDescriptorCodec().encode(
-            ControlPlaneVariableDescriptor(
-                variable_name="routing",
-                kind=ControlPlaneVariableKind.WEIGHTED_ROUTING,
-                state_codec=ControlPlaneStateCodec.WEIGHTED_ROUTING_V1,
-                operation_contracts=(
-                    ControlPlaneVariableOperationContract(
-                        operation=NodeControlOperation.READ_STATE,
-                        command_codec=None,
-                        result_codec=ControlPlaneResultCodec.STATE_V1,
-                    ),
-                    ControlPlaneVariableOperationContract(
-                        operation=NodeControlOperation.APPLY_COMMAND,
-                        command_codec=(
-                            ControlPlaneCommandCodec.REPLACE_WEIGHTED_ROUTING_V1
-                        ),
-                        result_codec=ControlPlaneResultCodec.TRANSITION_V1,
-                    ),
-                ),
-            )
+            self.variable()
         )
         invalid_command_contracts = [
             descriptor["operation_contracts"][0],
@@ -394,38 +383,22 @@ class NodeControlContractTests(unittest.TestCase):
         )
 
     def test_result_evidence_is_closed_bounded_and_redacted(self) -> None:
-        failure = NodeControlResult(
+        failure = NodeControlFailed(
             request_id="request-1",
-            status=NodeControlResultStatus.FAILED,
-            codec=ControlPlaneResultCodec.TRANSITION_V1,
-            version=4,
-            payload=None,
-            evidence=(NodeControlEvidence(NodeControlEvidenceCode.INTERNAL_FAILURE),),
+            operation=NodeControlOperation.APPLY_COMMAND,
         )
-        encoded = NodeControlResultCodec().encode(failure)
-        self.assertEqual(encoded["evidence"], [{"code": "internal-failure"}])
+        encoded = NodeControlResultCodec(self.variable()).encode(failure)
+        self.assertEqual(encoded["evidence"], {"code": "internal-failure"})
         self.assertNotIn("message", str(encoded))
+        self.assertNotIn("version", encoded)
+        self.assertNotIn("state", encoded)
+        self.assertNotIn("payload", encoded)
 
         with self.assertRaises(NodeControlContractError):
-            NodeControlResult(
+            NodeControlRejected(
                 request_id="request-1",
-                status=NodeControlResultStatus.FAILED,
-                codec=ControlPlaneResultCodec.TRANSITION_V1,
-                version=4,
-                payload=None,
-                evidence=(),
-            )
-        with self.assertRaises(NodeControlContractError):
-            NodeControlResult(
-                request_id="request-1",
-                status=NodeControlResultStatus.REJECTED,
-                codec=ControlPlaneResultCodec.TRANSITION_V1,
-                version=4,
-                payload=None,
-                evidence=tuple(
-                    NodeControlEvidence(NodeControlEvidenceCode.INVALID_COMMAND)
-                    for _ in range(33)
-                ),
+                operation=NodeControlOperation.APPLY_COMMAND,
+                evidence=NodeControlEvidence(NodeControlEvidenceCode.APPLIED),
             )
 
     def test_route_capability_key_purpose_and_root_exports_are_linked(self) -> None:

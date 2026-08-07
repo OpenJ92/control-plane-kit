@@ -428,6 +428,14 @@ class NodeControlResultVariantTests(unittest.TestCase):
                 {**descriptors[0], "operation": "unknown"},
                 {**descriptors[0], "status": "unknown"},
                 {**descriptors[0], "codec": "unknown"},
+                {
+                    **descriptors[0],
+                    "codec": ControlPlaneResultCodec.TRANSITION_V1.value,
+                },
+                {
+                    **descriptors[1],
+                    "codec": ControlPlaneResultCodec.STATE_V1.value,
+                },
                 {**descriptors[0], "state_codec": "unknown"},
                 {
                     **descriptors[1],
@@ -459,7 +467,7 @@ class NodeControlResultVariantTests(unittest.TestCase):
         result_types = self.result_types()
         for result_type in result_types:
             self.assertIs(getattr(core, result_type.__name__, None), result_type)
-        self.assertEqual(core.MAX_NODE_CONTROL_EVIDENCE_ITEMS, 1)
+        self.assertEqual(node_control.MAX_NODE_CONTROL_EVIDENCE_ITEMS, 1)
         self.assertIsNotNone(getattr(node_control, "NodeControlResult", None))
 
 
