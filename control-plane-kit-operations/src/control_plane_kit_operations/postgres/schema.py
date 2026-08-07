@@ -69,6 +69,11 @@ from control_plane_kit_operations.secret_providers import (
     RegisteredSecretReferenceStatus,
     SecretProviderKind,
 )
+from control_plane_kit_operations.postgres.migrations import (
+    SchemaMigration,
+    SchemaMigrationError,
+    SchemaMigrationRegistry,
+)
 
 
 class PostgresConnection(Protocol):
@@ -117,6 +122,8 @@ _RUN_EVENT_KINDS = tuple(
 
 
 def _sql_values(values: tuple[StrEnum, ...] | frozenset[StrEnum]) -> str:
+    if isinstance(values, frozenset):
+        values = tuple(sorted(values, key=lambda value: value.value))
     return ", ".join(f"'{value.value}'" for value in values)
 
 
@@ -1385,6 +1392,22 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     started_run_statuses=_STARTED_RUN_STATUSES,
     workspace_lifecycles=tuple(WorkspaceLifecycle),
 )
+
+POSTGRES_SCHEMA_V1_SHA256 = (
+    "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
+)
+_POSTGRES_SCHEMA_V1 = SchemaMigration(
+    version=1,
+    name="operations-baseline",
+    sql=POSTGRES_SCHEMA,
+)
+if _POSTGRES_SCHEMA_V1.checksum_sha256 != POSTGRES_SCHEMA_V1_SHA256:
+    raise SchemaMigrationError(
+        "operations baseline V1 content differs from its pinned checksum: "
+        f"expected {POSTGRES_SCHEMA_V1_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V1.checksum_sha256}"
+    )
+POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry((_POSTGRES_SCHEMA_V1,))
 
 
 def install_schema(connection: PostgresConnection) -> None:

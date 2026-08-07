@@ -2,8 +2,21 @@
 
 from control_plane_kit_operations.postgres.schema import (
     POSTGRES_SCHEMA,
+    POSTGRES_SCHEMA_MIGRATIONS,
+    POSTGRES_SCHEMA_V1_SHA256,
     PostgresConnection,
     install_schema,
+)
+from control_plane_kit_operations.postgres.migrations import (
+    AppliedSchemaMigration,
+    ObservedSchemaKind,
+    ObservedSchemaState,
+    SchemaMigration,
+    SchemaMigrationAction,
+    SchemaMigrationActionKind,
+    SchemaMigrationError,
+    SchemaMigrationPlan,
+    SchemaMigrationRegistry,
 )
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
@@ -53,6 +66,9 @@ from control_plane_kit_operations.postgres.unit_of_work import (
 
 __all__ = [
     "POSTGRES_SCHEMA",
+    "POSTGRES_SCHEMA_MIGRATIONS",
+    "POSTGRES_SCHEMA_V1_SHA256",
+    "AppliedSchemaMigration",
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
     "DelegationSigningKeyStore",
@@ -77,6 +93,14 @@ __all__ = [
     "SecretProviderStore",
     "SecretReferenceStore",
     "SecretUseAuthorizationStore",
+    "ObservedSchemaKind",
+    "ObservedSchemaState",
+    "SchemaMigration",
+    "SchemaMigrationAction",
+    "SchemaMigrationActionKind",
+    "SchemaMigrationError",
+    "SchemaMigrationPlan",
+    "SchemaMigrationRegistry",
     "TransactionalPostgresConnection",
     "UnitOfWorkStateError",
     "install_schema",
