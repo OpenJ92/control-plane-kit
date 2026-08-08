@@ -1553,6 +1553,44 @@ ALTER TABLE cpk_secret_references
     USING revoked_at::timestamptz(6);
 """
 
+_POSTGRES_SCHEMA_V5_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT admitted_at AS value FROM cpk_delegation_signing_keys
+      UNION ALL SELECT activated_at FROM cpk_delegation_signing_keys
+      UNION ALL SELECT retired_at FROM cpk_delegation_signing_keys
+      UNION ALL SELECT revoked_at FROM cpk_delegation_signing_keys
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'delegation signing-key timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_delegation_signing_keys
+  ALTER COLUMN admitted_at TYPE timestamptz(6)
+    USING admitted_at::timestamptz(6),
+  ALTER COLUMN activated_at TYPE timestamptz(6)
+    USING activated_at::timestamptz(6),
+  ALTER COLUMN retired_at TYPE timestamptz(6)
+    USING retired_at::timestamptz(6),
+  ALTER COLUMN revoked_at TYPE timestamptz(6)
+    USING revoked_at::timestamptz(6);
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1610,12 +1648,28 @@ if _POSTGRES_SCHEMA_V4.checksum_sha256 != _POSTGRES_SCHEMA_V4_SHA256:
         f"expected {_POSTGRES_SCHEMA_V4_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V4.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V5 = SchemaMigration(
+    version=5,
+    name="delegation-signing-key-timestamps",
+    sql=_POSTGRES_SCHEMA_V5_SQL,
+)
+_POSTGRES_SCHEMA_V5_SHA256 = (
+    "c2dbe9c058c97a7c365804c2d0760af2a740352c3a3a9fc9b4fc88503fc2a203"
+)
+if _POSTGRES_SCHEMA_V5.checksum_sha256 != _POSTGRES_SCHEMA_V5_SHA256:
+    raise SchemaMigrationError(
+        "delegation signing-key timestamp V5 content differs from its pinned "
+        "checksum: "
+        f"expected {_POSTGRES_SCHEMA_V5_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V5.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
         _POSTGRES_SCHEMA_V2,
         _POSTGRES_SCHEMA_V3,
         _POSTGRES_SCHEMA_V4,
+        _POSTGRES_SCHEMA_V5,
     )
 )
 

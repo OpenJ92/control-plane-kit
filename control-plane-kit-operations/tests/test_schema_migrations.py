@@ -22,6 +22,9 @@ _V3_SCHEMA_SHA256 = (
 _V4_SCHEMA_SHA256 = (
     "523fb7528d544ce9214181b9886adb5d96130341561c44613f038caee42b99c1"
 )
+_V5_SCHEMA_SHA256 = (
+    "c2dbe9c058c97a7c365804c2d0760af2a740352c3a3a9fc9b4fc88503fc2a203"
+)
 
 
 class SchemaMigrationLanguageTests(unittest.TestCase):
@@ -324,8 +327,8 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         pinned_checksum = self._required("POSTGRES_SCHEMA_V1_SHA256")
 
         self.assertEqual(pinned_checksum, _V1_SCHEMA_SHA256)
-        self.assertEqual(registry.target_version, 4)
-        self.assertEqual(len(registry.migrations), 4)
+        self.assertEqual(registry.target_version, 5)
+        self.assertEqual(len(registry.migrations), 5)
         baseline = registry.migrations[0]
         self.assertEqual(baseline.version, 1)
         self.assertEqual(baseline.name, "operations-baseline")
@@ -346,6 +349,12 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
             "secret-registration-timestamps",
         )
         self.assertEqual(registry.migrations[3].checksum_sha256, _V4_SCHEMA_SHA256)
+        self.assertEqual(registry.migrations[4].version, 5)
+        self.assertEqual(
+            registry.migrations[4].name,
+            "delegation-signing-key-timestamps",
+        )
+        self.assertEqual(registry.migrations[4].checksum_sha256, _V5_SCHEMA_SHA256)
         for name in (
             "AppliedSchemaMigration",
             "ObservedSchemaKind",

@@ -186,6 +186,40 @@ _SECRET_REGISTRATION_TEMPORAL_CONTRACT = (
         True,
     ),
 )
+_DELEGATION_SIGNING_KEY_TEMPORAL_CONTRACT = (
+    (
+        "cpk_delegation_signing_keys",
+        "activated_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+    (
+        "cpk_delegation_signing_keys",
+        "admitted_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_delegation_signing_keys",
+        "retired_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+    (
+        "cpk_delegation_signing_keys",
+        "revoked_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+)
 
 # This explicit projection is verified against the checksum-pinned V1 artifact.
 POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
@@ -830,6 +864,12 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         raise SchemaMigrationError(
             "secret registration temporal schema is not current"
         )
+    if _read_delegation_signing_key_temporal_contract(connection) != (
+        _DELEGATION_SIGNING_KEY_TEMPORAL_CONTRACT
+    ):
+        raise SchemaMigrationError(
+            "delegation signing-key temporal schema is not current"
+        )
     return observed
 
 
@@ -927,6 +967,33 @@ def _read_secret_registration_temporal_contract(
     if len(rows) != len(_SECRET_REGISTRATION_TEMPORAL_CONTRACT):
         raise SchemaMigrationError(
             "secret registration temporal schema is not current"
+        )
+    return tuple(rows)
+
+
+def _read_delegation_signing_key_temporal_contract(
+    connection: PostgresConnection,
+) -> tuple[tuple[str, str, str, int, str, bool], ...]:
+    rows = _read_rows(
+        connection,
+        """
+        SELECT table_name, column_name, data_type, datetime_precision, is_nullable,
+               column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'cpk_delegation_signing_keys'
+          AND column_name IN (
+            'admitted_at', 'activated_at', 'retired_at', 'revoked_at'
+          )
+        ORDER BY table_name, column_name
+        LIMIT %s
+        """,
+        (len(_DELEGATION_SIGNING_KEY_TEMPORAL_CONTRACT) + 1,),
+        "delegation signing-key temporal schema read failed",
+    )
+    if len(rows) != len(_DELEGATION_SIGNING_KEY_TEMPORAL_CONTRACT):
+        raise SchemaMigrationError(
+            "delegation signing-key temporal schema is not current"
         )
     return tuple(rows)
 
