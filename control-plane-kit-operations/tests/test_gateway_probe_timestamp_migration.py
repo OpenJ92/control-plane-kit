@@ -31,8 +31,11 @@ _CANONICAL_SECONDS = "2026-08-08T12:00:00Z"
 _CANONICAL_MICROS = "2026-08-08T12:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-08T08:00:00-04:00"
 _V6_SCHEMA_SHA256 = "ae60d9014fdc65167daa7750417fb9f3b59ebc6a2a98903d74cde21e09d473cb"
-_EXPECTED_REBUILT_OBJECTS = {
+_EXPECTED_CURRENT_REBUILT_OBJECTS = {
     ("constraint", "cpk_gateway_probe_completion_check"),
+    ("constraint", "cpk_gateway_key_rotations_activation_check"),
+    ("constraint", "cpk_gateway_key_rotations_retirement_check"),
+    ("constraint", "cpk_gateway_key_rotation_deployments_acceptance_check"),
 }
 
 
@@ -165,7 +168,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
             "calendar",
         )
 
-    def test_success_rebuilds_only_completion_constraint(self) -> None:
+    def test_success_rebuilds_only_current_temporal_constraints(self) -> None:
         self._install_v5_baseline()
         self._seed_foundation()
         self._insert_attempt(
@@ -188,7 +191,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
                 self.assertEqual(after_definition, before_definition)
                 if after_oid != before_oid:
                     changed.add(identity)
-        self.assertEqual(changed, _EXPECTED_REBUILT_OBJECTS)
+        self.assertEqual(changed, _EXPECTED_CURRENT_REBUILT_OBJECTS)
         self.assertEqual(
             after[("index", "cpk_gateway_probe_workspace_timeline")],
             before[("index", "cpk_gateway_probe_workspace_timeline")],
