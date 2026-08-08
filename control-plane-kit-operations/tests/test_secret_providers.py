@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import concurrent.futures
 from dataclasses import replace
+from datetime import datetime, timezone
 import os
 import time
 import unittest
@@ -701,6 +702,17 @@ class SecretProviderStoreTests(unittest.TestCase):
             replace(command, requested_at="2026-07-30T12:30:00Z")
         )
         self.assertEqual(replay, authorized)
+        self.assertEqual(
+            self.connection.execute(
+                """
+                SELECT requested_at
+                FROM cpk_secret_use_authorizations
+                WHERE authorization_id = %s
+                """,
+                (authorized.authorization_id,),
+            ).fetchone(),
+            (datetime(2026, 7, 30, 12, 2, tzinfo=timezone.utc),),
+        )
 
         grant = self.authorization_service().authorize_resolution(
             replace(command, requested_at="2026-07-30T12:31:00Z")

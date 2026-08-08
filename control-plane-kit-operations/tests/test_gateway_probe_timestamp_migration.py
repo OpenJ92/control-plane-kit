@@ -25,6 +25,7 @@ _CURRENT_HISTORY = [
     *_V6_HISTORY,
     (7, "gateway-key-rotation-timestamps"),
     (8, "ingress-evidence-timestamps"),
+    (9, "secret-use-authorization-timestamps"),
 ]
 _TEMPORAL_COLUMNS = (
     ("requested_at", "timestamp with time zone", 6, "NO", True),
@@ -42,6 +43,7 @@ _EXPECTED_CURRENT_REBUILT_OBJECTS = {
     ("constraint", "cpk_gateway_key_rotations_retirement_check"),
     ("constraint", "cpk_gateway_key_rotation_deployments_acceptance_check"),
     ("index", "cpk_cloudflare_ingress_resources_workspace"),
+    ("index", "cpk_secret_use_authorizations_reference_history"),
 }
 
 
@@ -65,7 +67,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_probe_v6(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 8)
+        self.assertEqual(registry.target_version, 9)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations],
             _CURRENT_HISTORY,
