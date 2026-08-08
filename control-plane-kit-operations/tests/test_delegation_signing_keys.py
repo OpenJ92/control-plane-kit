@@ -428,6 +428,8 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
         service = self.service()
         service.register(self.command())
         service.register(self.command(key_id="gateway-b"))
+        service.register(self.command(key_id="gateway-c"))
+        service.register(self.command(key_id="gateway-d"))
         service.activate(
             self.activate("gateway-a", activated_at="2026-08-01T12:05:00.000002Z")
         )
@@ -449,6 +451,22 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
                 datetime(2026, 8, 1, 12, 5, 0, 2, tzinfo=timezone.utc),
             ),
         )
+        self.connection.execute(
+            """
+            UPDATE cpk_delegation_signing_keys
+            SET status = 'retired', retired_by = 'operator-a', retired_at = %s
+            WHERE key_id = 'gateway-c'
+            """,
+            (datetime(2026, 8, 1, 12, 10, 0, 3, tzinfo=timezone.utc),),
+        )
+        self.connection.execute(
+            """
+            UPDATE cpk_delegation_signing_keys
+            SET status = 'revoked', revoked_by = 'operator-a', revoked_at = %s
+            WHERE key_id = 'gateway-d'
+            """,
+            (datetime(2026, 8, 1, 12, 15, 0, 4, tzinfo=timezone.utc),),
+        )
         self.connection.execute("SET TIME ZONE 'Asia/Tokyo'")
         store = DelegationSigningKeyStore(self.connection)
 
@@ -457,6 +475,18 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
             DelegationKeyPurpose.GATEWAY_PROBE,
             "cpk-server",
             "gateway-b",
+        )
+        retired = store.get(
+            "workspace-a",
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            "cpk-server",
+            "gateway-c",
+        )
+        revoked = store.get(
+            "workspace-a",
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            "cpk-server",
+            "gateway-d",
         )
         active = store.require_active(
             "workspace-a",
@@ -478,6 +508,24 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
             self._times(key_b),
             ("2026-08-01T12:00:00.000001Z", None, None, None),
         )
+        self.assertEqual(
+            self._times(retired),
+            (
+                "2026-08-01T12:00:00.000001Z",
+                None,
+                "2026-08-01T12:10:00.000003Z",
+                None,
+            ),
+        )
+        self.assertEqual(
+            self._times(revoked),
+            (
+                "2026-08-01T12:00:00.000001Z",
+                None,
+                None,
+                "2026-08-01T12:15:00.000004Z",
+            ),
+        )
         for selected in (active, unambiguous):
             self.assertEqual(
                 self._times(selected),
@@ -496,6 +544,18 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
                 None,
             ),
             "gateway-b": ("2026-08-01T12:00:00.000001Z", None, None, None),
+            "gateway-c": (
+                "2026-08-01T12:00:00.000001Z",
+                None,
+                "2026-08-01T12:10:00.000003Z",
+                None,
+            ),
+            "gateway-d": (
+                "2026-08-01T12:00:00.000001Z",
+                None,
+                None,
+                "2026-08-01T12:15:00.000004Z",
+            ),
         }
         self.assertEqual(
             {item.key_id: self._times(item) for item in workspace},
@@ -503,7 +563,7 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
         )
         self.assertEqual(
             {item.key_id: self._times(item) for item in verification},
-            expected,
+            {key_id: expected[key_id] for key_id in ("gateway-a", "gateway-b")},
         )
 
     def command(

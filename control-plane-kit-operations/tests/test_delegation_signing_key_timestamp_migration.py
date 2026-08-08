@@ -135,22 +135,31 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
                     self.connection.execute(f'DROP SCHEMA "{case_schema}" CASCADE')
 
     def test_calendar_invalid_value_rolls_back_rows_schema_objects_and_ledger(self) -> None:
-        self._install_v4_baseline()
         invalid = "2026-02-30T06:00:00Z"
-        retained = self._seed_one_for_column("admitted_at", invalid)
-        before_objects = self._application_objects()
+        for index, column in enumerate(_TEMPORAL_IDENTITIES):
+            with self.subTest(column=column):
+                case_schema = f"{self.schema}_calendar_{index}"
+                self.connection.execute(f'CREATE SCHEMA "{case_schema}"')
+                self.connection.execute(f'SET search_path TO "{case_schema}"')
+                try:
+                    self._install_v4_baseline()
+                    retained = self._seed_one_for_column(column, invalid)
+                    before_objects = self._application_objects()
 
-        with self.assertRaises(postgres.SchemaMigrationError) as raised:
-            postgres.install_postgres_schema(self.connection)
+                    with self.assertRaises(postgres.SchemaMigrationError) as raised:
+                        postgres.install_postgres_schema(self.connection)
 
-        self._assert_bounded_failure(raised.exception)
-        self.assertNotIn(invalid, str(raised.exception))
-        self.assertIsNone(raised.exception.__cause__)
-        self.assertIsNone(raised.exception.__context__)
-        self.assertEqual(self._ledger(), _V4_HISTORY)
-        self.assertEqual(self._retained_matrix(), retained)
-        self.assertEqual(self._application_objects(), before_objects)
-        self._assert_v4_text_contract()
+                    self._assert_bounded_failure(raised.exception)
+                    self.assertNotIn(invalid, str(raised.exception))
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertEqual(self._ledger(), _V4_HISTORY)
+                    self.assertEqual(self._retained_matrix(), retained)
+                    self.assertEqual(self._application_objects(), before_objects)
+                    self._assert_v4_text_contract()
+                finally:
+                    self.connection.execute(f'SET search_path TO "{self.schema}"')
+                    self.connection.execute(f'DROP SCHEMA "{case_schema}" CASCADE')
 
     def test_success_rebuilds_only_three_evidence_constraints(self) -> None:
         self._install_v4_baseline()
