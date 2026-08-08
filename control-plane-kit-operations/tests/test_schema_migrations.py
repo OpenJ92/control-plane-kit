@@ -327,8 +327,8 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         pinned_checksum = self._required("POSTGRES_SCHEMA_V1_SHA256")
 
         self.assertEqual(pinned_checksum, _V1_SCHEMA_SHA256)
-        self.assertEqual(registry.target_version, 6)
-        self.assertEqual(len(registry.migrations), 6)
+        self.assertEqual(registry.target_version, 7)
+        self.assertEqual(len(registry.migrations), 7)
         baseline = registry.migrations[0]
         self.assertEqual(baseline.version, 1)
         self.assertEqual(baseline.name, "operations-baseline")
@@ -357,6 +357,11 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         self.assertEqual(registry.migrations[4].checksum_sha256, _V5_SCHEMA_SHA256)
         self.assertEqual(registry.migrations[5].version, 6)
         self.assertEqual(registry.migrations[5].name, "gateway-probe-timestamps")
+        self.assertEqual(registry.migrations[6].version, 7)
+        self.assertEqual(
+            registry.migrations[6].name,
+            "gateway-key-rotation-timestamps",
+        )
         for name in (
             "AppliedSchemaMigration",
             "ObservedSchemaKind",
