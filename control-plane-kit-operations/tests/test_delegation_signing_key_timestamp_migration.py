@@ -24,6 +24,7 @@ _V4_HISTORY = [
     (4, "secret-registration-timestamps"),
 ]
 _V5_HISTORY = [*_V4_HISTORY, (5, "delegation-signing-key-timestamps")]
+_CURRENT_HISTORY = [*_V5_HISTORY, (6, "gateway-probe-timestamps")]
 _CANONICAL = "2026-08-07T06:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-07T02:00:00-04:00"
 _EXPECTED_REBUILT_OBJECTS = {
@@ -53,9 +54,9 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_delegation_signing_key_v5(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 5)
+        self.assertEqual(registry.target_version, 6)
         self.assertEqual(
-            [(migration.version, migration.name) for migration in registry.migrations],
+            [(migration.version, migration.name) for migration in registry.migrations[:5]],
             _V5_HISTORY,
         )
         self.assertEqual(
@@ -66,7 +67,7 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
     def test_fresh_install_has_exact_v5_temporal_contract(self) -> None:
         postgres.install_postgres_schema(self.connection)
 
-        self.assertEqual(self._ledger(), _V5_HISTORY)
+        self.assertEqual(self._ledger(), _CURRENT_HISTORY)
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
         self.assertIs(
             postgres.verify_postgres_schema(self.connection).kind,
@@ -228,7 +229,7 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(
             [(version, name) for version, name, _checksum, _applied_at in before_ledger],
-            _V5_HISTORY,
+            _CURRENT_HISTORY,
         )
         before_objects = self._application_objects()
 

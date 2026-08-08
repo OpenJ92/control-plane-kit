@@ -19,6 +19,7 @@ _CURRENT_HISTORY = [
     (3, "graph-product-authority-timestamps"),
     (4, "secret-registration-timestamps"),
     (5, "delegation-signing-key-timestamps"),
+    (6, "gateway-probe-timestamps"),
 ]
 
 

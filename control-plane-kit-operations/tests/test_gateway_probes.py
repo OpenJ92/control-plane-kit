@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import ast
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 import unittest
 
 import psycopg
@@ -65,6 +68,7 @@ from control_plane_kit_core.topology import (
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_operations.cpk_server import CpkServerGatewayProbeService
 from control_plane_kit_operations.gateway_probes import (
+    GatewayProbeAttempt,
     GatewayProbeAttemptStatus,
     GatewayProbeAuthorizationDenied,
     GatewayProbeCommandService,
@@ -78,6 +82,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
     delegation_signing_key_registration_id_for,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.records import BoundedEvidence, GraphVersionRecord, WorkspaceRecord
 from control_plane_kit_operations.secret_providers import (
@@ -201,6 +206,41 @@ class GeneratedIds:
     def __call__(self) -> str:
         self.value += 1
         return f"gateway-probe-id-{self.value}"
+
+
+def probe_attempt(
+    *,
+    probe_id: str = "probe-direct",
+    request_id: str = "request-direct",
+    status: GatewayProbeAttemptStatus = GatewayProbeAttemptStatus.INTENDED,
+    requested_at: str = "2027-01-15T08:00:00Z",
+    completed_at: str | None = None,
+    result_code: str | None = None,
+) -> GatewayProbeAttempt:
+    return GatewayProbeAttempt(
+        probe_id=probe_id,
+        workspace_id="workspace-a",
+        request_id=request_id,
+        actor_id="operator-a",
+        current_graph_id="graph-current",
+        gateway_node_id="gateway",
+        gateway_runtime_id="docker-a",
+        access_path=GatewayProbeAccessPath.RUNTIME_PRIVATE,
+        probe_kind=GatewayProbeCommandKind.HTTP_STATUS,
+        target_id="hello.http",
+        request_digest="1" * 64,
+        issuer="cpk-test",
+        key_id="gateway-test-key",
+        audience="gateway:workspace-a:gateway",
+        grant_jti=f"grant-{probe_id}",
+        issued_at=1_800_000_000,
+        expires_at=1_800_000_060,
+        status=status,
+        requested_at=requested_at,
+        intent_fingerprint="2" * 64,
+        completed_at=completed_at,
+        result_code=result_code,
+    )
 
 
 class GatewayProbeCommandServiceTests(unittest.TestCase):
@@ -375,6 +415,202 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                     access_path=GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS,
                 )
             )
+
+    def test_direct_store_timestamps_validate_before_connection_access(self) -> None:
+        invalid = "2027-02-30T08:00:00Z"
+
+        class FailOnAccessConnection:
+            def __init__(self) -> None:
+                self.accesses = 0
+
+            def execute(self, *_args: object, **_kwargs: object) -> object:
+                self.accesses += 1
+                raise AssertionError("database access occurred before timestamp validation")
+
+        cases = (
+            (
+                "add-requested-at",
+                lambda store: store.add(
+                    probe_attempt(requested_at=invalid)
+                ),
+            ),
+            (
+                "add-completed-at",
+                lambda store: store.add(
+                    probe_attempt(
+                        status=GatewayProbeAttemptStatus.FAILED,
+                        completed_at=invalid,
+                        result_code="probe-failed",
+                    )
+                ),
+            ),
+            (
+                "complete-completed-at",
+                lambda store: store.complete(
+                    "probe-direct",
+                    status=GatewayProbeAttemptStatus.FAILED,
+                    completed_at=invalid,
+                    result_code="probe-failed",
+                    evidence=BoundedEvidence(),
+                ),
+            ),
+        )
+        for identity, operation in cases:
+            with self.subTest(identity=identity):
+                connection = FailOnAccessConnection()
+                with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+                    operation(GatewayProbeStore(connection))
+                self.assertEqual(connection.accesses, 0)
+
+    def test_terminal_completion_replay_does_not_bypass_timestamp_admission(
+        self,
+    ) -> None:
+        settled = self.service.execute(self.command()).attempt
+        invalid = "2027-02-30T08:00:00Z"
+
+        with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+            GatewayProbeStore(self.connection).complete(
+                settled.probe_id,
+                status=GatewayProbeAttemptStatus.FAILED,
+                completed_at=invalid,
+                result_code="different-result",
+                evidence=BoundedEvidence(),
+            )
+
+        self.assertEqual(
+            GatewayProbeStore(self.connection).get(settled.probe_id),
+            settled,
+        )
+
+    def test_malformed_trusted_clock_fails_before_intent_and_dispatch(self) -> None:
+        dispatcher = RecordingDispatcher(self.tracker)
+        service = GatewayProbeCommandService(
+            self.tracker,
+            dispatcher=dispatcher,
+            secret_use_authorizer=self.secret_use_authorizer,
+            epoch_clock=lambda: 1_800_000_000,
+            clock=lambda: "2027-02-30T08:00:00Z",
+            id_factory=GeneratedIds(),
+        )
+        before = self.connection.execute(
+            "SELECT COUNT(*) FROM cpk_gateway_probe_attempts"
+        ).fetchone()[0]
+
+        with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+            service.execute(self.command())
+
+        after = self.connection.execute(
+            "SELECT COUNT(*) FROM cpk_gateway_probe_attempts"
+        ).fetchone()[0]
+        self.assertEqual(after, before)
+        self.assertEqual(dispatcher.requests, [])
+
+    def test_request_replay_does_not_consult_either_clock_or_create_identity(
+        self,
+    ) -> None:
+        original = self.service.execute(self.command())
+        dispatcher = RecordingDispatcher(self.tracker)
+
+        def unexpected() -> object:
+            raise AssertionError("request replay consulted a clock or id factory")
+
+        replay_service = GatewayProbeCommandService(
+            self.tracker,
+            dispatcher=dispatcher,
+            secret_use_authorizer=self.secret_use_authorizer,
+            epoch_clock=unexpected,
+            clock=unexpected,
+            id_factory=unexpected,
+        )
+
+        replay = replay_service.execute(self.command())
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.attempt, original.attempt)
+        self.assertEqual(dispatcher.requests, [])
+
+    def test_all_row_selectors_decode_seconds_microseconds_and_null_in_utc(
+        self,
+    ) -> None:
+        settled = self.service.execute(self.command()).attempt
+        store = GatewayProbeStore(self.connection)
+        intended = store.add(
+            probe_attempt(
+                probe_id="probe-intended",
+                request_id="request-intended",
+            )
+        )
+        seconds = datetime(2027, 1, 15, 8, 0, tzinfo=timezone.utc)
+        micros = datetime(2027, 1, 15, 8, 0, 0, 1, tzinfo=timezone.utc)
+        self.connection.execute(
+            """
+            UPDATE cpk_gateway_probe_attempts
+            SET requested_at = CASE probe_id WHEN %s THEN %s ELSE %s END,
+                completed_at = CASE probe_id WHEN %s THEN %s ELSE NULL END
+            WHERE probe_id IN (%s, %s)
+            """,
+            (
+                settled.probe_id,
+                seconds,
+                micros,
+                settled.probe_id,
+                micros,
+                settled.probe_id,
+                intended.probe_id,
+            ),
+        )
+        self.connection.execute("SET TIME ZONE 'Asia/Tokyo'")
+
+        by_id = store.get(settled.probe_id)
+        by_request = store.get_by_request_id("workspace-a", intended.request_id)
+        listed = store.list_for_workspace("workspace-a")
+
+        self.assertEqual(by_id.requested_at, "2027-01-15T08:00:00Z")
+        self.assertEqual(by_id.completed_at, "2027-01-15T08:00:00.000001Z")
+        self.assertIsNotNone(by_request)
+        self.assertEqual(by_request.requested_at, "2027-01-15T08:00:00.000001Z")
+        self.assertIsNone(by_request.completed_at)
+        self.assertEqual(
+            {
+                (item.probe_id, item.requested_at, item.completed_at)
+                for item in listed
+            },
+            {
+                (
+                    settled.probe_id,
+                    "2027-01-15T08:00:00Z",
+                    "2027-01-15T08:00:00.000001Z",
+                ),
+                (
+                    intended.probe_id,
+                    "2027-01-15T08:00:00.000001Z",
+                    None,
+                ),
+            },
+        )
+
+    def test_gateway_probe_service_has_no_postgres_import_edge(self) -> None:
+        source_path = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "control_plane_kit_operations"
+            / "gateway_probes.py"
+        )
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        imported_modules = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module is not None:
+                imported_modules.add(node.module)
+            elif isinstance(node, ast.Import):
+                imported_modules.update(alias.name for alias in node.names)
+
+        self.assertFalse(
+            any(
+                module == "control_plane_kit_operations.postgres"
+                or module.startswith("control_plane_kit_operations.postgres.")
+                for module in imported_modules
+            )
+        )
 
     def test_authority_and_current_graph_checks_reject_before_dispatch(self) -> None:
         with self.assertRaises(GatewayProbeAuthorizationDenied):
