@@ -16,6 +16,10 @@ from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import SecretReference
 
+from control_plane_kit_operations._temporal import (
+    validate_canonical_utc_timestamp,
+)
+
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 _TERMINAL = frozenset()
@@ -503,6 +507,7 @@ class GatewayKeyRotationService:
         if not isinstance(command, RequestGatewayKeyRotation):
             raise TypeError("command must be RequestGatewayKeyRotation")
         _scope(command.actor_scopes)
+        validate_canonical_utc_timestamp(command.requested_at)
         candidate = _candidate(command)
         with self._unit_of_work_factory() as uow:
             store = uow.stores.gateway_key_rotations
@@ -548,6 +553,7 @@ class GatewayKeyRotationService:
         if not isinstance(command, AdvanceGatewayKeyRotation):
             raise TypeError("command must be AdvanceGatewayKeyRotation")
         _scope(command.actor_scopes)
+        _validate_advance_timestamps(command)
         fingerprint = _transition_fingerprint(command)
         with self._unit_of_work_factory() as uow:
             store = uow.stores.gateway_key_rotations
@@ -591,6 +597,23 @@ class GatewayKeyRotationService:
             values = uow.stores.gateway_key_rotations.transitions(rotation_id)
             uow.commit()
             return values
+
+
+def _validate_advance_timestamps(command: AdvanceGatewayKeyRotation) -> None:
+    validate_canonical_utc_timestamp(command.advanced_at)
+    for value in (
+        command.new_key_activated_at,
+        command.old_key_retired_at,
+        command.old_secret_revoked_at,
+    ):
+        if value is not None:
+            validate_canonical_utc_timestamp(value)
+    if command.deployment is not None:
+        validate_canonical_utc_timestamp(command.deployment.prepared_at)
+        if command.deployment.accepted_at is not None:
+            validate_canonical_utc_timestamp(command.deployment.accepted_at)
+    if command.revocation is not None:
+        validate_canonical_utc_timestamp(command.revocation.prepared_at)
 
 
 def _candidate(command: RequestGatewayKeyRotation) -> GatewayKeyRotation:

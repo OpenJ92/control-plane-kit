@@ -162,8 +162,11 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
                     self._without_temporal(table, after_row),
                     self._without_temporal(table, before_row),
                 )
-        requested = after["cpk_gateway_key_rotations"][0]
-        completed = after["cpk_gateway_key_rotations"][1]
+        rotations = {
+            row[0]: row for row in after["cpk_gateway_key_rotations"]
+        }
+        requested = rotations["rotation-requested"]
+        completed = rotations["rotation-completed"]
         seconds = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
         micros = datetime(2026, 8, 8, 12, 0, 0, 1, tzinfo=timezone.utc)
         self.assertEqual(

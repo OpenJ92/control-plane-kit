@@ -1623,6 +1623,65 @@ ALTER TABLE cpk_gateway_probe_attempts
     USING completed_at::timestamptz(6);
 """
 
+_POSTGRES_SCHEMA_V7_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT requested_at AS value FROM cpk_gateway_key_rotations
+      UNION ALL SELECT new_key_activated_at FROM cpk_gateway_key_rotations
+      UNION ALL SELECT old_key_retired_at FROM cpk_gateway_key_rotations
+      UNION ALL SELECT old_secret_revoked_at FROM cpk_gateway_key_rotations
+      UNION ALL SELECT updated_at FROM cpk_gateway_key_rotations
+      UNION ALL SELECT prepared_at FROM cpk_gateway_key_rotation_revocations
+      UNION ALL SELECT advanced_at FROM cpk_gateway_key_rotation_transitions
+      UNION ALL SELECT prepared_at FROM cpk_gateway_key_rotation_deployments
+      UNION ALL SELECT accepted_at FROM cpk_gateway_key_rotation_deployments
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_gateway_key_rotations
+  ALTER COLUMN requested_at TYPE timestamptz(6)
+    USING requested_at::timestamptz(6),
+  ALTER COLUMN new_key_activated_at TYPE timestamptz(6)
+    USING new_key_activated_at::timestamptz(6),
+  ALTER COLUMN old_key_retired_at TYPE timestamptz(6)
+    USING old_key_retired_at::timestamptz(6),
+  ALTER COLUMN old_secret_revoked_at TYPE timestamptz(6)
+    USING old_secret_revoked_at::timestamptz(6),
+  ALTER COLUMN updated_at TYPE timestamptz(6)
+    USING updated_at::timestamptz(6);
+
+ALTER TABLE cpk_gateway_key_rotation_revocations
+  ALTER COLUMN prepared_at TYPE timestamptz(6)
+    USING prepared_at::timestamptz(6);
+
+ALTER TABLE cpk_gateway_key_rotation_transitions
+  ALTER COLUMN advanced_at TYPE timestamptz(6)
+    USING advanced_at::timestamptz(6);
+
+ALTER TABLE cpk_gateway_key_rotation_deployments
+  ALTER COLUMN prepared_at TYPE timestamptz(6)
+    USING prepared_at::timestamptz(6),
+  ALTER COLUMN accepted_at TYPE timestamptz(6)
+    USING accepted_at::timestamptz(6);
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1709,6 +1768,20 @@ if _POSTGRES_SCHEMA_V6.checksum_sha256 != _POSTGRES_SCHEMA_V6_SHA256:
         f"expected {_POSTGRES_SCHEMA_V6_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V6.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V7 = SchemaMigration(
+    version=7,
+    name="gateway-key-rotation-timestamps",
+    sql=_POSTGRES_SCHEMA_V7_SQL,
+)
+_POSTGRES_SCHEMA_V7_SHA256 = (
+    "65c0309b51e82e4ad313f113cd5df266f61e6c8b98aa5d5ff7194b53b6e5a775"
+)
+if _POSTGRES_SCHEMA_V7.checksum_sha256 != _POSTGRES_SCHEMA_V7_SHA256:
+    raise SchemaMigrationError(
+        "gateway key rotation timestamp V7 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V7_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V7.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -1717,6 +1790,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V4,
         _POSTGRES_SCHEMA_V5,
         _POSTGRES_SCHEMA_V6,
+        _POSTGRES_SCHEMA_V7,
     )
 )
 

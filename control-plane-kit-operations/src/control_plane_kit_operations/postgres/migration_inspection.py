@@ -238,6 +238,80 @@ _GATEWAY_PROBE_TEMPORAL_CONTRACT = (
         True,
     ),
 )
+_GATEWAY_KEY_ROTATION_TEMPORAL_CONTRACT = (
+    (
+        "cpk_gateway_key_rotation_deployments",
+        "accepted_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotation_deployments",
+        "prepared_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotation_revocations",
+        "prepared_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotation_transitions",
+        "advanced_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotations",
+        "new_key_activated_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotations",
+        "old_key_retired_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotations",
+        "old_secret_revoked_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotations",
+        "requested_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotations",
+        "updated_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+)
 
 # This explicit projection is verified against the checksum-pinned V1 artifact.
 POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
@@ -892,6 +966,12 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         _GATEWAY_PROBE_TEMPORAL_CONTRACT
     ):
         raise SchemaMigrationError("gateway probe temporal schema is not current")
+    if _read_gateway_key_rotation_temporal_contract(connection) != (
+        _GATEWAY_KEY_ROTATION_TEMPORAL_CONTRACT
+    ):
+        raise SchemaMigrationError(
+            "gateway key rotation temporal schema is not current"
+        )
     return observed
 
 
@@ -1040,6 +1120,40 @@ def _read_gateway_probe_temporal_contract(
     )
     if len(rows) != len(_GATEWAY_PROBE_TEMPORAL_CONTRACT):
         raise SchemaMigrationError("gateway probe temporal schema is not current")
+    return tuple(rows)
+
+
+def _read_gateway_key_rotation_temporal_contract(
+    connection: PostgresConnection,
+) -> tuple[tuple[str, str, str, int, str, bool], ...]:
+    rows = _read_rows(
+        connection,
+        """
+        SELECT table_name, column_name, data_type, datetime_precision, is_nullable,
+               column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND (table_name, column_name) IN (
+            ('cpk_gateway_key_rotation_deployments', 'accepted_at'),
+            ('cpk_gateway_key_rotation_deployments', 'prepared_at'),
+            ('cpk_gateway_key_rotation_revocations', 'prepared_at'),
+            ('cpk_gateway_key_rotation_transitions', 'advanced_at'),
+            ('cpk_gateway_key_rotations', 'new_key_activated_at'),
+            ('cpk_gateway_key_rotations', 'old_key_retired_at'),
+            ('cpk_gateway_key_rotations', 'old_secret_revoked_at'),
+            ('cpk_gateway_key_rotations', 'requested_at'),
+            ('cpk_gateway_key_rotations', 'updated_at')
+          )
+        ORDER BY table_name, column_name
+        LIMIT %s
+        """,
+        (len(_GATEWAY_KEY_ROTATION_TEMPORAL_CONTRACT) + 1,),
+        "gateway key rotation temporal schema read failed",
+    )
+    if len(rows) != len(_GATEWAY_KEY_ROTATION_TEMPORAL_CONTRACT):
+        raise SchemaMigrationError(
+            "gateway key rotation temporal schema is not current"
+        )
     return tuple(rows)
 
 

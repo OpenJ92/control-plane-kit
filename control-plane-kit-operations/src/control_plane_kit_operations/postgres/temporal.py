@@ -3,42 +3,24 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import re
 
-
-_CANONICAL_UTC = re.compile(
-    r"^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])"
-    r"T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
-    r"(?:[.][0-9]{6})?Z$"
+from control_plane_kit_operations._temporal import (
+    validate_canonical_utc_timestamp,
 )
-_MAX_TIMESTAMP_BYTES = 27
 
 
 def encode_postgres_timestamp(value: object) -> datetime:
     """Encode exact canonical UTC text for psycopg."""
 
-    if not isinstance(value, str):
-        raise ValueError("postgres timestamp must be canonical UTC text")
     failed = False
     try:
-        encoded = value.encode("utf-8")
-    except UnicodeEncodeError:
+        canonical = validate_canonical_utc_timestamp(value)
+    except ValueError:
         failed = True
-        encoded = b""
-    if failed or len(encoded) > _MAX_TIMESTAMP_BYTES:
+        canonical = ""
+    if failed:
         raise ValueError("postgres timestamp must be canonical UTC text")
-    if _CANONICAL_UTC.fullmatch(value) is None:
-        raise ValueError("postgres timestamp must be canonical UTC text")
-
-    failed = False
-    try:
-        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
-    except (OverflowError, ValueError):
-        failed = True
-        parsed = None
-    if failed or parsed is None or _render_utc(parsed) != value:
-        raise ValueError("postgres timestamp must be canonical UTC text")
-    return parsed
+    return datetime.fromisoformat(canonical[:-1] + "+00:00")
 
 
 def decode_postgres_timestamp(value: object) -> str:
