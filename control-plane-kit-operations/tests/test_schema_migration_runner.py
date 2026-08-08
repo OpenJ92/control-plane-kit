@@ -18,6 +18,7 @@ _CURRENT_HISTORY = [
     (2, "coordination-timestamps"),
     (3, "graph-product-authority-timestamps"),
     (4, "secret-registration-timestamps"),
+    (5, "delegation-signing-key-timestamps"),
 ]
 
 
@@ -52,6 +53,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
@@ -123,6 +125,9 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_activity_runs_started_check",
                 "cpk_execution_requests_claim_check",
                 "cpk_operation_sessions_closed_check",
+                "cpk_delegation_signing_keys_activation_evidence_check",
+                "cpk_delegation_signing_keys_retirement_evidence_check",
+                "cpk_delegation_signing_keys_revocation_evidence_check",
                 "cpk_secret_providers_revocation_evidence_check",
                 "cpk_secret_references_revocation_evidence_check",
             }
