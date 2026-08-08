@@ -44,6 +44,7 @@ _TEMPORAL_MIGRATION_FAILURES = {
     4: "secret registration timestamps are not canonical UTC",
     5: "delegation signing-key timestamps are not canonical UTC",
     6: "gateway probe timestamps are not canonical UTC",
+    7: "gateway key rotation timestamps are not canonical UTC",
 }
 
 

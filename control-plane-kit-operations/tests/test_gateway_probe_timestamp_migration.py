@@ -21,6 +21,7 @@ _V5_HISTORY = [
     (5, "delegation-signing-key-timestamps"),
 ]
 _V6_HISTORY = [*_V5_HISTORY, (6, "gateway-probe-timestamps")]
+_CURRENT_HISTORY = [*_V6_HISTORY, (7, "gateway-key-rotation-timestamps")]
 _TEMPORAL_COLUMNS = (
     ("requested_at", "timestamp with time zone", 6, "NO", True),
     ("completed_at", "timestamp with time zone", 6, "YES", True),
@@ -30,8 +31,11 @@ _CANONICAL_SECONDS = "2026-08-08T12:00:00Z"
 _CANONICAL_MICROS = "2026-08-08T12:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-08T08:00:00-04:00"
 _V6_SCHEMA_SHA256 = "ae60d9014fdc65167daa7750417fb9f3b59ebc6a2a98903d74cde21e09d473cb"
-_EXPECTED_REBUILT_OBJECTS = {
+_EXPECTED_CURRENT_REBUILT_OBJECTS = {
     ("constraint", "cpk_gateway_probe_completion_check"),
+    ("constraint", "cpk_gateway_key_rotations_activation_check"),
+    ("constraint", "cpk_gateway_key_rotations_retirement_check"),
+    ("constraint", "cpk_gateway_key_rotation_deployments_acceptance_check"),
 }
 
 
@@ -55,10 +59,10 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_probe_v6(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 6)
+        self.assertEqual(registry.target_version, 7)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations],
-            _V6_HISTORY,
+            _CURRENT_HISTORY,
         )
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations[:5]],
@@ -101,7 +105,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
     def test_fresh_install_has_exact_v6_temporal_contract(self) -> None:
         postgres.install_postgres_schema(self.connection)
 
-        self.assertEqual(self._ledger(), _V6_HISTORY)
+        self.assertEqual(self._ledger(), _CURRENT_HISTORY)
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
         self.assertIs(
             postgres.verify_postgres_schema(self.connection).kind,
@@ -164,7 +168,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
             "calendar",
         )
 
-    def test_success_rebuilds_only_completion_constraint(self) -> None:
+    def test_success_rebuilds_only_current_temporal_constraints(self) -> None:
         self._install_v5_baseline()
         self._seed_foundation()
         self._insert_attempt(
@@ -187,7 +191,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
                 self.assertEqual(after_definition, before_definition)
                 if after_oid != before_oid:
                     changed.add(identity)
-        self.assertEqual(changed, _EXPECTED_REBUILT_OBJECTS)
+        self.assertEqual(changed, _EXPECTED_CURRENT_REBUILT_OBJECTS)
         self.assertEqual(
             after[("index", "cpk_gateway_probe_workspace_timeline")],
             before[("index", "cpk_gateway_probe_workspace_timeline")],
@@ -239,7 +243,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(
             [(version, name) for version, name, _checksum, _applied_at in before_ledger],
-            _V6_HISTORY,
+            _CURRENT_HISTORY,
         )
         before_objects = self._application_objects()
 

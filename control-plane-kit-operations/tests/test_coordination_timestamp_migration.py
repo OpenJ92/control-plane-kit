@@ -169,6 +169,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 (4, "secret-registration-timestamps"),
                 (5, "delegation-signing-key-timestamps"),
                 (6, "gateway-probe-timestamps"),
+                (7, "gateway-key-rotation-timestamps"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
@@ -204,6 +205,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 (4, "secret-registration-timestamps"),
                 (5, "delegation-signing-key-timestamps"),
                 (6, "gateway-probe-timestamps"),
+                (7, "gateway-key-rotation-timestamps"),
             ],
         )
         self.assertEqual(

@@ -16,6 +16,10 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationTransition,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 
 
 _COLUMNS = """rotation_id, workspace_id, gateway_node_id, purpose, issuer,
@@ -38,9 +42,10 @@ class GatewayKeyRotationStore:
             (f"gateway-key-rotation:{workspace_id}:{gateway_node_id}:{purpose.value}:{issuer}",))
 
     def add(self, value: GatewayKeyRotation) -> GatewayKeyRotation:
+        values = _values(value)
         self._connection.execute(
             f"""INSERT INTO cpk_gateway_key_rotations ({_COLUMNS})
-            VALUES ({', '.join(['%s'] * 30)})""", _values(value))
+            VALUES ({', '.join(['%s'] * 30)})""", values)
         return value
 
     def get(self, rotation_id: str) -> GatewayKeyRotation:
@@ -71,6 +76,30 @@ class GatewayKeyRotationStore:
         return None if row is None else self._row(row)
 
     def compare_and_set(self, current, replacement):
+        activated_at = _encode_optional_timestamp(replacement.new_key_activated_at)
+        retired_at = _encode_optional_timestamp(replacement.old_key_retired_at)
+        revoked_at = _encode_optional_timestamp(replacement.old_secret_revoked_at)
+        updated_at = _encode_optional_timestamp(replacement.updated_at)
+        checkpoints = tuple(
+            (
+                checkpoint,
+                encode_postgres_timestamp(checkpoint.prepared_at),
+                _encode_optional_timestamp(checkpoint.accepted_at),
+            )
+            for checkpoint in (
+                replacement.overlap_deployment,
+                replacement.retirement_deployment,
+            )
+            if checkpoint is not None
+        )
+        revocation = (
+            None
+            if replacement.revocation is None
+            else (
+                replacement.revocation,
+                encode_postgres_timestamp(replacement.revocation.prepared_at),
+            )
+        )
         row = self._connection.execute(
             f"""UPDATE cpk_gateway_key_rotations SET
             status=%s, version=%s, approval_request_id=%s,
@@ -87,19 +116,23 @@ class GatewayKeyRotationStore:
              replacement.generation_provider_registration_id,
              replacement.generation_action_digest, replacement.new_key_id,
              replacement.new_secret_version_id,
-             replacement.new_secret_version_number, replacement.new_key_activated_at,
-             replacement.drain_deadline_epoch, replacement.old_key_retired_at,
-             replacement.old_secret_revoked_at, replacement.failure_code,
-             replacement.updated_by, replacement.updated_at, current.rotation_id,
+             replacement.new_secret_version_number, activated_at,
+             replacement.drain_deadline_epoch, retired_at,
+             revoked_at, replacement.failure_code,
+             replacement.updated_by, updated_at, current.rotation_id,
              current.status.value, current.version)).fetchone()
         if row is None:
             return None
-        for checkpoint in (replacement.overlap_deployment,
-                           replacement.retirement_deployment):
-            if checkpoint is not None:
-                self._put_checkpoint(replacement.rotation_id, checkpoint)
-        if replacement.revocation is not None:
-            self._put_revocation(replacement.rotation_id, replacement.revocation)
+        for checkpoint, prepared_at, accepted_at in checkpoints:
+            self._put_checkpoint(
+                replacement.rotation_id,
+                checkpoint,
+                prepared_at,
+                accepted_at,
+            )
+        if revocation is not None:
+            value, prepared_at = revocation
+            self._put_revocation(replacement.rotation_id, value, prepared_at)
         return self.get(replacement.rotation_id)
 
     def transition_for_id(self, rotation_id, transition_id):
@@ -113,6 +146,7 @@ class GatewayKeyRotationStore:
         return None if row is None else _transition_row(row)
 
     def add_transition(self, value):
+        advanced_at = encode_postgres_timestamp(value.advanced_at)
         self._connection.execute("""
             INSERT INTO cpk_gateway_key_rotation_transitions
               (rotation_id,transition_id,from_status,to_status,from_version,
@@ -121,7 +155,7 @@ class GatewayKeyRotationStore:
             """, (value.rotation_id, value.transition_id, value.from_status.value,
                     value.to_status.value, value.from_version, value.to_version,
                     value.transition_fingerprint, value.advanced_by,
-                    value.advanced_at, value.failure_code))
+                    advanced_at, value.failure_code))
         return value
 
     def transitions(self, rotation_id):
@@ -149,20 +183,24 @@ class GatewayKeyRotationStore:
             new_secret_reference=SecretReference(row[6]),
             key_generation_correlation=row[7],
             maximum_grant_lifetime_seconds=row[8], clock_skew_seconds=row[9],
-            correlation_id=row[10], requested_by=row[11], requested_at=row[12],
+            correlation_id=row[10], requested_by=row[11],
+            requested_at=decode_postgres_timestamp(row[12]),
             intent_fingerprint=row[13], status=GatewayKeyRotationStatus(row[14]),
             version=row[15], approval_request_id=row[16], approval_decision_id=row[17],
             generation_provider_registration_id=row[18],
             generation_action_digest=row[19], new_key_id=row[20],
             new_secret_version_id=row[21], new_secret_version_number=row[22],
             overlap_deployment=checkpoints.get(GatewayKeyRotationDeploymentPhase.OVERLAP),
-            new_key_activated_at=row[23], drain_deadline_epoch=row[24],
+            new_key_activated_at=_decode_optional_timestamp(row[23]),
+            drain_deadline_epoch=row[24],
             retirement_deployment=checkpoints.get(GatewayKeyRotationDeploymentPhase.RETIREMENT),
             revocation=revocation,
-            old_key_retired_at=row[25], old_secret_revoked_at=row[26],
-            failure_code=row[27], updated_by=row[28], updated_at=row[29])
+            old_key_retired_at=_decode_optional_timestamp(row[25]),
+            old_secret_revoked_at=_decode_optional_timestamp(row[26]),
+            failure_code=row[27], updated_by=row[28],
+            updated_at=_decode_optional_timestamp(row[29]))
 
-    def _put_checkpoint(self, rotation_id, value):
+    def _put_checkpoint(self, rotation_id, value, prepared_at, accepted_at):
         row = self._connection.execute("""
             INSERT INTO cpk_gateway_key_rotation_deployments AS current
               (rotation_id, phase, status, session_id, plan_id,
@@ -198,13 +236,13 @@ class GatewayKeyRotationStore:
                     value.base_realized_projection_id,
                     value.desired_authored_graph_id,
                     value.desired_realized_projection_id, value.desired_revision,
-                    value.prepared_at, value.accepted_current_graph_id,
-                    value.accepted_current_projection_id, value.accepted_at)).fetchone()
+                    prepared_at, value.accepted_current_graph_id,
+                    value.accepted_current_projection_id, accepted_at)).fetchone()
         if row is None:
             raise GatewayKeyRotationConflict(
                 "deployment checkpoint identity changed concurrently")
 
-    def _put_revocation(self, rotation_id, value):
+    def _put_revocation(self, rotation_id, value, prepared_at):
         row = self._connection.execute("""
             INSERT INTO cpk_gateway_key_rotation_revocations AS current
               (rotation_id, provider_registration_id, secret_reference,
@@ -231,7 +269,7 @@ class GatewayKeyRotationStore:
                 value.revocation_id,
                 value.correlation_id,
                 value.action_digest,
-                value.prepared_at,
+                prepared_at,
             )).fetchone()
         if row is None:
             raise GatewayKeyRotationConflict(
@@ -256,7 +294,7 @@ class GatewayKeyRotationStore:
             revocation_id=row[4],
             correlation_id=row[5],
             action_digest=row[6],
-            prepared_at=row[7],
+            prepared_at=decode_postgres_timestamp(row[7]),
         )
 
     def _checkpoints(self, rotation_id):
@@ -276,8 +314,10 @@ class GatewayKeyRotationStore:
             execution_request_id=row[6], run_id=row[7], base_authored_graph_id=row[8],
             base_realized_projection_id=row[9], desired_authored_graph_id=row[10],
             desired_realized_projection_id=row[11], desired_revision=row[12],
-            prepared_at=row[13], accepted_current_graph_id=row[14],
-            accepted_current_projection_id=row[15], accepted_at=row[16]) for row in rows)
+            prepared_at=decode_postgres_timestamp(row[13]),
+            accepted_current_graph_id=row[14],
+            accepted_current_projection_id=row[15],
+            accepted_at=_decode_optional_timestamp(row[16])) for row in rows)
 
 
 def _values(value):
@@ -285,13 +325,18 @@ def _values(value):
             value.issuer,value.old_key_id,value.new_secret_reference.reference_id,
             value.key_generation_correlation,value.maximum_grant_lifetime_seconds,
             value.clock_skew_seconds,value.correlation_id,value.requested_by,
-            value.requested_at,value.intent_fingerprint,value.status.value,value.version,
+            encode_postgres_timestamp(value.requested_at),value.intent_fingerprint,
+            value.status.value,value.version,
             value.approval_request_id,value.approval_decision_id,
             value.generation_provider_registration_id,value.generation_action_digest,
             value.new_key_id,
             value.new_secret_version_id,value.new_secret_version_number,
-            value.new_key_activated_at,value.drain_deadline_epoch,value.old_key_retired_at,
-            value.old_secret_revoked_at,value.failure_code,value.updated_by,value.updated_at)
+            _encode_optional_timestamp(value.new_key_activated_at),
+            value.drain_deadline_epoch,
+            _encode_optional_timestamp(value.old_key_retired_at),
+            _encode_optional_timestamp(value.old_secret_revoked_at),
+            value.failure_code,value.updated_by,
+            _encode_optional_timestamp(value.updated_at))
 
 
 def _transition_row(row):
@@ -300,4 +345,13 @@ def _transition_row(row):
         from_status=GatewayKeyRotationStatus(row[2]),
         to_status=GatewayKeyRotationStatus(row[3]),
         from_version=row[4], to_version=row[5], transition_fingerprint=row[6],
-        advanced_by=row[7], advanced_at=row[8], failure_code=row[9])
+        advanced_by=row[7], advanced_at=decode_postgres_timestamp(row[8]),
+        failure_code=row[9])
+
+
+def _encode_optional_timestamp(value):
+    return None if value is None else encode_postgres_timestamp(value)
+
+
+def _decode_optional_timestamp(value):
+    return None if value is None else decode_postgres_timestamp(value)

@@ -20,6 +20,7 @@ _CURRENT_HISTORY = [
     (4, "secret-registration-timestamps"),
     (5, "delegation-signing-key-timestamps"),
     (6, "gateway-probe-timestamps"),
+    (7, "gateway-key-rotation-timestamps"),
 ]
 
 
@@ -54,6 +55,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
@@ -126,6 +128,9 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_activity_runs_settlement_check",
                 "cpk_activity_runs_started_check",
                 "cpk_execution_requests_claim_check",
+                "cpk_gateway_key_rotation_deployments_acceptance_check",
+                "cpk_gateway_key_rotations_activation_check",
+                "cpk_gateway_key_rotations_retirement_check",
                 "cpk_gateway_probe_completion_check",
                 "cpk_operation_sessions_closed_check",
                 "cpk_delegation_signing_keys_activation_evidence_check",
