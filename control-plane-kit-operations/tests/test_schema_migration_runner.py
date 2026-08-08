@@ -59,6 +59,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
+                    postgres.SchemaMigrationActionKind.APPLY,
                 ),
             )
             self.assertEqual(tuple(inspect.signature(preview).parameters), ("connection",))
@@ -125,6 +126,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_activity_runs_settlement_check",
                 "cpk_activity_runs_started_check",
                 "cpk_execution_requests_claim_check",
+                "cpk_gateway_probe_completion_check",
                 "cpk_operation_sessions_closed_check",
                 "cpk_delegation_signing_keys_activation_evidence_check",
                 "cpk_delegation_signing_keys_retirement_evidence_check",
