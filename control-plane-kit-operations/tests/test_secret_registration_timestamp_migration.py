@@ -36,12 +36,10 @@ _CURRENT_HISTORY = [
 _CANONICAL = "2026-08-07T06:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-07T02:00:00-04:00"
 _EXPECTED_REBUILT_OBJECTS = {
-    ("constraint", "cpk_cloudflare_ingress_resources_removed_evidence_check"),
     ("constraint", "cpk_secret_providers_revocation_evidence_check"),
     ("constraint", "cpk_secret_references_revocation_evidence_check"),
     ("index", "cpk_secret_providers_history"),
     ("index", "cpk_secret_references_history"),
-    ("index", "cpk_cloudflare_ingress_resources_workspace"),
 }
 
 

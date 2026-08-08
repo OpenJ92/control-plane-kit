@@ -27,6 +27,7 @@ _V6_HISTORY = [
     (6, "gateway-probe-timestamps"),
 ]
 _V7_HISTORY = [*_V6_HISTORY, (7, "gateway-key-rotation-timestamps")]
+_CURRENT_HISTORY = [*_V7_HISTORY, (8, "ingress-evidence-timestamps")]
 _TEMPORAL_COLUMNS = (
     ("cpk_gateway_key_rotation_deployments", "accepted_at", "YES"),
     ("cpk_gateway_key_rotation_deployments", "prepared_at", "NO"),
@@ -120,7 +121,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_fresh_install_has_exact_v7_temporal_contract(self) -> None:
         postgres.install_postgres_schema(self.connection)
 
-        self.assertEqual(self._ledger(), _V7_HISTORY)
+        self.assertEqual(self._ledger(), _CURRENT_HISTORY)
         self.assertEqual(self._temporal_contract(), _TEMPORAL_CONTRACT)
         self.assertIs(
             postgres.verify_postgres_schema(self.connection).kind,

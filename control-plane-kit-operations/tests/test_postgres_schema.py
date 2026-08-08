@@ -302,7 +302,10 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
         }
         self.assertEqual(columns["epoch"], ("integer", "NO"))
         self.assertEqual(columns["status"], ("text", "NO"))
-        self.assertEqual(columns["removed_at"], ("text", "YES"))
+        self.assertEqual(
+            columns["removed_at"],
+            ("timestamp with time zone", "YES"),
+        )
         self.assertEqual(columns["removed_by_run_id"], ("text", "YES"))
 
         primary_key_columns = self.connection.execute(
