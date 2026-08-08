@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 from datetime import datetime, timezone
+import inspect
 import os
 import unittest
 import uuid
@@ -8,6 +10,7 @@ import uuid
 import psycopg
 
 import control_plane_kit_operations.postgres as postgres
+import control_plane_kit_operations.postgres.schema as schema_module
 
 
 _V5_HISTORY = [
@@ -26,6 +29,7 @@ _TEMPORAL_IDENTITIES = tuple(value[0] for value in _TEMPORAL_COLUMNS)
 _CANONICAL_SECONDS = "2026-08-08T12:00:00Z"
 _CANONICAL_MICROS = "2026-08-08T12:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-08T08:00:00-04:00"
+_V6_SCHEMA_SHA256 = "ae60d9014fdc65167daa7750417fb9f3b59ebc6a2a98903d74cde21e09d473cb"
 _EXPECTED_REBUILT_OBJECTS = {
     ("constraint", "cpk_gateway_probe_completion_check"),
 }
@@ -60,6 +64,39 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
             [(migration.version, migration.name) for migration in registry.migrations[:5]],
             _V5_HISTORY,
         )
+        self.assertEqual(registry.migrations[5].checksum_sha256, _V6_SCHEMA_SHA256)
+        self.assertEqual(
+            getattr(schema_module, "_POSTGRES_SCHEMA_V6_SHA256", None),
+            _V6_SCHEMA_SHA256,
+        )
+        tree = ast.parse(inspect.getsource(schema_module))
+        guards = (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.If) and isinstance(node.test, ast.Compare)
+        )
+        self.assertTrue(
+            any(
+                isinstance(node.test.left, ast.Attribute)
+                and isinstance(node.test.left.value, ast.Name)
+                and node.test.left.value.id == "_POSTGRES_SCHEMA_V6"
+                and node.test.left.attr == "checksum_sha256"
+                and len(node.test.ops) == 1
+                and isinstance(node.test.ops[0], ast.NotEq)
+                and len(node.test.comparators) == 1
+                and isinstance(node.test.comparators[0], ast.Name)
+                and node.test.comparators[0].id == "_POSTGRES_SCHEMA_V6_SHA256"
+                and any(
+                    isinstance(statement, ast.Raise)
+                    and isinstance(statement.exc, ast.Call)
+                    and isinstance(statement.exc.func, ast.Name)
+                    and statement.exc.func.id == "SchemaMigrationError"
+                    for statement in node.body
+                )
+                for node in guards
+            ),
+            "V6 must fail import when its SQL differs from the pinned checksum",
+        )
 
     def test_fresh_install_has_exact_v6_temporal_contract(self) -> None:
         postgres.install_postgres_schema(self.connection)
@@ -89,20 +126,33 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
                 completed_at=completed_at,
                 result_code=result_code,
             )
+        before = self._retained_rows()
 
         postgres.install_postgres_schema(self.connection)
 
         seconds = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
         micros = datetime(2026, 8, 8, 12, 0, 0, 1, tzinfo=timezone.utc)
-        self.assertEqual(
-            self._retained_rows(),
-            (
-                ("probe-0", "intended", seconds, None, None),
-                ("probe-1", "succeeded", micros, seconds, "probe-succeeded"),
-                ("probe-2", "rejected", seconds, micros, "probe-rejected"),
-                ("probe-3", "failed", micros, micros, "probe-failed"),
-            ),
+        expected_times = (
+            (seconds, None),
+            (micros, seconds),
+            (seconds, micros),
+            (micros, micros),
         )
+        after = self._retained_rows()
+        self.assertEqual(len(after), len(before))
+        for before_row, after_row, (requested_at, completed_at) in zip(
+            before,
+            after,
+            expected_times,
+            strict=True,
+        ):
+            with self.subTest(probe_id=before_row[0]):
+                self.assertEqual(
+                    self._without_temporal_facts(after_row),
+                    self._without_temporal_facts(before_row),
+                )
+                self.assertEqual(after_row[18], requested_at)
+                self.assertEqual(after_row[20], completed_at)
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
 
     def test_each_retained_column_has_independent_atomic_lexical_preflight(self) -> None:
@@ -276,6 +326,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
                 """,
                 (migration.version, migration.name, migration.checksum_sha256),
             )
+        self.connection.execute(schema_module._GRAPH_LINEAGE_CONSTRAINTS)
 
     def _seed_foundation(self) -> None:
         self.connection.execute(
@@ -317,7 +368,8 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
               %s, 'workspace-a', %s, 'operator-a', 'graph-current',
               'gateway-a', 'runtime-a', 'runtime-private', 'http-status',
               'hello.http', %s, 'cpk-test', 'key-a', 'gateway:workspace-a:gateway-a',
-              %s, 1800000000, 1800000060, %s, %s, %s, %s, %s, '{}'::jsonb
+              %s, 1800000000, 1800000060, %s, %s, %s, %s, %s,
+              jsonb_build_object('probe_evidence', %s::text)
             )
             """,
             (
@@ -330,6 +382,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
                 f"{index + 11:064x}",
                 completed_at,
                 result_code,
+                f"retained-{index}",
             ),
         )
 
@@ -342,12 +395,20 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
         return tuple(
             self.connection.execute(
                 """
-                SELECT probe_id, status, requested_at, completed_at, result_code
+                SELECT probe_id, workspace_id, request_id, actor_id, current_graph_id,
+                       gateway_node_id, gateway_runtime_id, access_path, probe_kind,
+                       target_id, request_digest, issuer, key_id, audience, grant_jti,
+                       issued_at, expires_at, status, requested_at,
+                       intent_fingerprint, completed_at, result_code, evidence
                 FROM cpk_gateway_probe_attempts
                 ORDER BY probe_id
                 """
             ).fetchall()
         )
+
+    @staticmethod
+    def _without_temporal_facts(row: tuple[object, ...]) -> tuple[object, ...]:
+        return row[:18] + row[19:20] + row[21:]
 
     def _temporal_contract(self) -> tuple[tuple[object, ...], ...]:
         return tuple(
@@ -393,7 +454,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
             SELECT conname, oid, pg_get_constraintdef(oid)
             FROM pg_constraint
             WHERE connamespace = current_schema()::regnamespace
-              AND conrelid = 'cpk_gateway_probe_attempts'::regclass
+              AND conname <> 'cpk_schema_migrations_pkey'
             ORDER BY conname
             """
         ).fetchall()
@@ -409,7 +470,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
             JOIN pg_class AS index_relation
               ON index_relation.oid = pg_index.indexrelid
             WHERE pg_namespace.nspname = current_schema()
-              AND table_relation.relname = 'cpk_gateway_probe_attempts'
+              AND index_relation.relname <> 'cpk_schema_migrations_pkey'
             ORDER BY index_relation.relname
             """
         ).fetchall()
