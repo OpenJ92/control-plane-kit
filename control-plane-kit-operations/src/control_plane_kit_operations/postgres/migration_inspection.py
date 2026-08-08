@@ -312,6 +312,40 @@ _GATEWAY_KEY_ROTATION_TEMPORAL_CONTRACT = (
         True,
     ),
 )
+_INGRESS_EVIDENCE_TEMPORAL_CONTRACT = (
+    (
+        "cpk_cloudflare_ingress_resources",
+        "created_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_cloudflare_ingress_resources",
+        "observed_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+    (
+        "cpk_cloudflare_ingress_resources",
+        "removed_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+    (
+        "cpk_generated_ingress_secret_references",
+        "recorded_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+)
 
 # This explicit projection is verified against the checksum-pinned V1 artifact.
 POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
@@ -972,6 +1006,12 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         raise SchemaMigrationError(
             "gateway key rotation temporal schema is not current"
         )
+    if _read_ingress_evidence_temporal_contract(connection) != (
+        _INGRESS_EVIDENCE_TEMPORAL_CONTRACT
+    ):
+        raise SchemaMigrationError(
+            "ingress evidence temporal schema is not current"
+        )
     return observed
 
 
@@ -1153,6 +1193,35 @@ def _read_gateway_key_rotation_temporal_contract(
     if len(rows) != len(_GATEWAY_KEY_ROTATION_TEMPORAL_CONTRACT):
         raise SchemaMigrationError(
             "gateway key rotation temporal schema is not current"
+        )
+    return tuple(rows)
+
+
+def _read_ingress_evidence_temporal_contract(
+    connection: PostgresConnection,
+) -> tuple[tuple[str, str, str, int, str, bool], ...]:
+    rows = _read_rows(
+        connection,
+        """
+        SELECT table_name, column_name, data_type, datetime_precision, is_nullable,
+               column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND (table_name, column_name) IN (
+            ('cpk_cloudflare_ingress_resources', 'created_at'),
+            ('cpk_cloudflare_ingress_resources', 'observed_at'),
+            ('cpk_cloudflare_ingress_resources', 'removed_at'),
+            ('cpk_generated_ingress_secret_references', 'recorded_at')
+          )
+        ORDER BY table_name, column_name
+        LIMIT %s
+        """,
+        (len(_INGRESS_EVIDENCE_TEMPORAL_CONTRACT) + 1,),
+        "ingress evidence temporal schema read failed",
+    )
+    if len(rows) != len(_INGRESS_EVIDENCE_TEMPORAL_CONTRACT):
+        raise SchemaMigrationError(
+            "ingress evidence temporal schema is not current"
         )
     return tuple(rows)
 

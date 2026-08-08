@@ -46,9 +46,11 @@ _SECONDS = "2026-08-08T12:00:00Z"
 _MICROS = "2026-08-08T12:00:00.000001Z"
 _V7_SCHEMA_SHA256 = "65c0309b51e82e4ad313f113cd5df266f61e6c8b98aa5d5ff7194b53b6e5a775"
 _EXPECTED_REBUILT_OBJECTS = {
+    ("constraint", "cpk_cloudflare_ingress_resources_removed_evidence_check"),
     ("constraint", "cpk_gateway_key_rotations_activation_check"),
     ("constraint", "cpk_gateway_key_rotations_retirement_check"),
     ("constraint", "cpk_gateway_key_rotation_deployments_acceptance_check"),
+    ("index", "cpk_cloudflare_ingress_resources_workspace"),
 }
 
 
@@ -72,9 +74,9 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_key_rotation_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 7)
+        self.assertEqual(registry.target_version, 8)
         self.assertEqual(
-            [(value.version, value.name) for value in registry.migrations],
+            [(value.version, value.name) for value in registry.migrations[:7]],
             _V7_HISTORY,
         )
         self.assertEqual(

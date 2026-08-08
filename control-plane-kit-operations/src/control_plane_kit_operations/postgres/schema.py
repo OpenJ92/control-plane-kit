@@ -1682,6 +1682,46 @@ ALTER TABLE cpk_gateway_key_rotation_deployments
     USING accepted_at::timestamptz(6);
 """
 
+_POSTGRES_SCHEMA_V8_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT created_at AS value FROM cpk_cloudflare_ingress_resources
+      UNION ALL SELECT observed_at FROM cpk_cloudflare_ingress_resources
+      UNION ALL SELECT removed_at FROM cpk_cloudflare_ingress_resources
+      UNION ALL SELECT recorded_at FROM cpk_generated_ingress_secret_references
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'ingress evidence timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_cloudflare_ingress_resources
+  ALTER COLUMN created_at TYPE timestamptz(6)
+    USING created_at::timestamptz(6),
+  ALTER COLUMN observed_at TYPE timestamptz(6)
+    USING observed_at::timestamptz(6),
+  ALTER COLUMN removed_at TYPE timestamptz(6)
+    USING removed_at::timestamptz(6);
+
+ALTER TABLE cpk_generated_ingress_secret_references
+  ALTER COLUMN recorded_at TYPE timestamptz(6)
+    USING recorded_at::timestamptz(6);
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1782,6 +1822,20 @@ if _POSTGRES_SCHEMA_V7.checksum_sha256 != _POSTGRES_SCHEMA_V7_SHA256:
         f"expected {_POSTGRES_SCHEMA_V7_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V7.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V8 = SchemaMigration(
+    version=8,
+    name="ingress-evidence-timestamps",
+    sql=_POSTGRES_SCHEMA_V8_SQL,
+)
+_POSTGRES_SCHEMA_V8_SHA256 = (
+    "3e7cb7c70c64511d76be9406588d2edc24fa3c9a62d95fd42d7a84fb3946069c"
+)
+if _POSTGRES_SCHEMA_V8.checksum_sha256 != _POSTGRES_SCHEMA_V8_SHA256:
+    raise SchemaMigrationError(
+        "ingress evidence timestamp V8 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V8_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V8.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -1791,6 +1845,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V5,
         _POSTGRES_SCHEMA_V6,
         _POSTGRES_SCHEMA_V7,
+        _POSTGRES_SCHEMA_V8,
     )
 )
 

@@ -28,13 +28,16 @@ _CURRENT_HISTORY = [
     *_V5_HISTORY,
     (6, "gateway-probe-timestamps"),
     (7, "gateway-key-rotation-timestamps"),
+    (8, "ingress-evidence-timestamps"),
 ]
 _CANONICAL = "2026-08-07T06:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-07T02:00:00-04:00"
 _EXPECTED_REBUILT_OBJECTS = {
+    ("constraint", "cpk_cloudflare_ingress_resources_removed_evidence_check"),
     ("constraint", "cpk_delegation_signing_keys_activation_evidence_check"),
     ("constraint", "cpk_delegation_signing_keys_retirement_evidence_check"),
     ("constraint", "cpk_delegation_signing_keys_revocation_evidence_check"),
+    ("index", "cpk_cloudflare_ingress_resources_workspace"),
 }
 
 
@@ -58,7 +61,7 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_delegation_signing_key_v5(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 7)
+        self.assertEqual(registry.target_version, 8)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations[:5]],
             _V5_HISTORY,

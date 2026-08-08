@@ -83,6 +83,7 @@ _EXPECTED_REBUILT = {
     ("constraint", "cpk_cloudflare_ingress_resources_removed_evidence_check"),
     ("index", "cpk_cloudflare_ingress_resources_workspace"),
 }
+_V8_SHA256 = "3e7cb7c70c64511d76be9406588d2edc24fa3c9a62d95fd42d7a84fb3946069c"
 
 
 class _NoAccessConnection:
@@ -124,7 +125,7 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
             [(item.version, item.name) for item in registry.migrations[:7]],
             _V7_HISTORY,
         )
-        self.assertRegex(registry.migrations[7].checksum_sha256, r"^[0-9a-f]{64}$")
+        self.assertEqual(registry.migrations[7].checksum_sha256, _V8_SHA256)
         self.assertEqual(
             registry.migrations[7].checksum_sha256,
             getattr(schema_module, "_POSTGRES_SCHEMA_V8_SHA256", None),
