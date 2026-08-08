@@ -26,7 +26,11 @@ _V3_HISTORY = [
     (3, "graph-product-authority-timestamps"),
 ]
 _V4_HISTORY = [*_V3_HISTORY, (4, "secret-registration-timestamps")]
-_CURRENT_HISTORY = [*_V4_HISTORY, (5, "delegation-signing-key-timestamps")]
+_CURRENT_HISTORY = [
+    *_V4_HISTORY,
+    (5, "delegation-signing-key-timestamps"),
+    (6, "gateway-probe-timestamps"),
+]
 _CANONICAL = "2026-08-07T06:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-07T02:00:00-04:00"
 _EXPECTED_REBUILT_OBJECTS = {
@@ -57,7 +61,7 @@ class SecretRegistrationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_secret_registration_v4(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 5)
+        self.assertEqual(registry.target_version, 6)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations[:4]],
             _V4_HISTORY,

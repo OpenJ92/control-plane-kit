@@ -76,6 +76,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 (3, "graph-product-authority-timestamps"),
                 (4, "secret-registration-timestamps"),
                 (5, "delegation-signing-key-timestamps"),
+                (6, "gateway-probe-timestamps"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)

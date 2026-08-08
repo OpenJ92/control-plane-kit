@@ -1591,6 +1591,38 @@ ALTER TABLE cpk_delegation_signing_keys
     USING revoked_at::timestamptz(6);
 """
 
+_POSTGRES_SCHEMA_V6_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT requested_at AS value FROM cpk_gateway_probe_attempts
+      UNION ALL SELECT completed_at FROM cpk_gateway_probe_attempts
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway probe timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_gateway_probe_attempts
+  ALTER COLUMN requested_at TYPE timestamptz(6)
+    USING requested_at::timestamptz(6),
+  ALTER COLUMN completed_at TYPE timestamptz(6)
+    USING completed_at::timestamptz(6);
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1663,6 +1695,20 @@ if _POSTGRES_SCHEMA_V5.checksum_sha256 != _POSTGRES_SCHEMA_V5_SHA256:
         f"expected {_POSTGRES_SCHEMA_V5_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V5.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V6 = SchemaMigration(
+    version=6,
+    name="gateway-probe-timestamps",
+    sql=_POSTGRES_SCHEMA_V6_SQL,
+)
+_POSTGRES_SCHEMA_V6_SHA256 = (
+    "ae60d9014fdc65167daa7750417fb9f3b59ebc6a2a98903d74cde21e09d473cb"
+)
+if _POSTGRES_SCHEMA_V6.checksum_sha256 != _POSTGRES_SCHEMA_V6_SHA256:
+    raise SchemaMigrationError(
+        "gateway probe timestamp V6 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V6_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V6.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -1670,6 +1716,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V3,
         _POSTGRES_SCHEMA_V4,
         _POSTGRES_SCHEMA_V5,
+        _POSTGRES_SCHEMA_V6,
     )
 )
 

@@ -16,6 +16,10 @@ from control_plane_kit_operations.gateway_probes import (
     GatewayProbeConflict,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.records import BoundedEvidence
 
 
@@ -32,6 +36,12 @@ class GatewayProbeStore:
         )
 
     def add(self, record: GatewayProbeAttempt) -> GatewayProbeAttempt:
+        requested_at = encode_postgres_timestamp(record.requested_at)
+        completed_at = (
+            None
+            if record.completed_at is None
+            else encode_postgres_timestamp(record.completed_at)
+        )
         self._connection.execute(
             """
             INSERT INTO cpk_gateway_probe_attempts (
@@ -46,7 +56,11 @@ class GatewayProbeStore:
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """,
-            _record_values(record),
+            _record_values(
+                record,
+                requested_at=requested_at,
+                completed_at=completed_at,
+            ),
         )
         return record
 
@@ -110,6 +124,7 @@ class GatewayProbeStore:
     ) -> GatewayProbeAttempt:
         if status is GatewayProbeAttemptStatus.INTENDED:
             raise GatewayProbeConflict("gateway probe completion must be terminal")
+        encoded_completed_at = encode_postgres_timestamp(completed_at)
         row = self._connection.execute(
             f"{_SELECT} WHERE probe_id = %s FOR UPDATE",
             (probe_id,),
@@ -128,7 +143,7 @@ class GatewayProbeStore:
             """,
             (
                 status.value,
-                completed_at,
+                encoded_completed_at,
                 result_code,
                 Jsonb(evidence.descriptor()),
                 probe_id,
@@ -148,7 +163,12 @@ requested_at, intent_fingerprint, completed_at, result_code, evidence
 _SELECT = f"SELECT {_COLUMNS} FROM cpk_gateway_probe_attempts"
 
 
-def _record_values(record: GatewayProbeAttempt) -> tuple[object, ...]:
+def _record_values(
+    record: GatewayProbeAttempt,
+    *,
+    requested_at: object,
+    completed_at: object | None,
+) -> tuple[object, ...]:
     return (
         record.probe_id,
         record.workspace_id,
@@ -168,9 +188,9 @@ def _record_values(record: GatewayProbeAttempt) -> tuple[object, ...]:
         record.issued_at,
         record.expires_at,
         record.status.value,
-        record.requested_at,
+        requested_at,
         record.intent_fingerprint,
-        record.completed_at,
+        completed_at,
         record.result_code,
         Jsonb(record.evidence.descriptor()),
     )
@@ -196,9 +216,11 @@ def _row_to_attempt(row: tuple[Any, ...]) -> GatewayProbeAttempt:
         issued_at=row[15],
         expires_at=row[16],
         status=GatewayProbeAttemptStatus(row[17]),
-        requested_at=row[18],
+        requested_at=decode_postgres_timestamp(row[18]),
         intent_fingerprint=row[19],
-        completed_at=row[20],
+        completed_at=(
+            None if row[20] is None else decode_postgres_timestamp(row[20])
+        ),
         result_code=row[21],
         evidence=BoundedEvidence.from_mapping(row[22]),
     )
