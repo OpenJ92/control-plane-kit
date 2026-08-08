@@ -598,10 +598,17 @@ class IngressRealizationAdapterTests(unittest.TestCase):
     ) -> None:
         interpreter = RecordingIngressInterpreter(self.tracker)
         interpreter.fail_teardown = True
+        clock_calls = 0
+
+        def forbidden_clock() -> str:
+            nonlocal clock_calls
+            clock_calls += 1
+            raise AssertionError("removal clock must follow successful teardown")
+
         adapter = IngressRealizationAdapter(
             self.unit_of_work,
             interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
-            clock=lambda: "2026-07-28T08:02:00Z",
+            clock=forbidden_clock,
             secret_use_authorizer=self.authorizer,
         )
         with self.unit_of_work() as unit_of_work:
@@ -618,6 +625,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         )
 
         self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(clock_calls, 0)
         self.assertEqual(interpreter.teardown_active_counts, [0])
         with self.unit_of_work() as unit_of_work:
             resource = unit_of_work.stores.ingress_resources.get_cloudflare(
@@ -625,6 +633,75 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 "gateway-001",
             )
         self.assertEqual(resource.status, OwnedIngressResourceStatus.UNCERTAIN)
+
+    def test_remove_public_ingress_malformed_post_teardown_clock_is_uncertain(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        clock_entry_counts: list[int] = []
+
+        def malformed_clock() -> str:
+            clock_entry_counts.append(self.tracker.entered)
+            return "not-a-timestamp"
+
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=malformed_clock,
+            secret_use_authorizer=self.authorizer,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.record_existing_ingress(unit_of_work)
+            unit_of_work.commit()
+
+        outcome = adapter.execute(
+            self.context(
+                activity_id="remove-gateway",
+                operation=RemovePublicIngress(PublicIngressActivityTarget("gateway-001")),
+                base_graph=self.graph(),
+                desired_graph=DeploymentGraph("empty"),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNCERTAIN")
+        self.assertEqual(outcome.failure.code, "ingress.remove-uncertain")
+        self.assertEqual(clock_entry_counts, [self.tracker.entered])
+        self.assertEqual(interpreter.teardown_active_counts, [0])
+        with self.unit_of_work() as unit_of_work:
+            resource = unit_of_work.stores.ingress_resources.get_cloudflare(
+                "workspace-a",
+                "gateway-001",
+            )
+        self.assertEqual(resource.status, OwnedIngressResourceStatus.REMOVING)
+        self.assertIsNone(resource.removed_at)
+        self.assertIsNone(resource.removed_by_run_id)
+        rendered = repr(outcome.failure)
+        for excluded in (
+            "not-a-timestamp",
+            "cpk-gateway-001.openj92.dev",
+            "tunnel-001",
+            "dns-001",
+            "secret://",
+        ):
+            self.assertNotIn(excluded, rendered)
+
+    def test_allocate_public_ingress_rejects_noncanonical_clock_before_provider(
+        self,
+    ) -> None:
+        interpreter = RecordingIngressInterpreter(self.tracker)
+        adapter = IngressRealizationAdapter(
+            self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: interpreter},
+            clock=lambda: "2026-07-28T04:01:00-04:00",
+            secret_use_authorizer=self.authorizer,
+        )
+
+        outcome = adapter.execute(self.context())
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        self.assertEqual(outcome.failure.code, "ingress.allocate-unsupported")
+        self.assertEqual(interpreter.create_active_counts, [])
+        self.assertEqual(interpreter.create_allocation_names, [])
 
     def graph(self) -> DeploymentGraph:
         return DeploymentGraph(

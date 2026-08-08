@@ -27,6 +27,7 @@ _V6_HISTORY = [
     (6, "gateway-probe-timestamps"),
 ]
 _V7_HISTORY = [*_V6_HISTORY, (7, "gateway-key-rotation-timestamps")]
+_CURRENT_HISTORY = [*_V7_HISTORY, (8, "ingress-evidence-timestamps")]
 _TEMPORAL_COLUMNS = (
     ("cpk_gateway_key_rotation_deployments", "accepted_at", "YES"),
     ("cpk_gateway_key_rotation_deployments", "prepared_at", "NO"),
@@ -46,9 +47,11 @@ _SECONDS = "2026-08-08T12:00:00Z"
 _MICROS = "2026-08-08T12:00:00.000001Z"
 _V7_SCHEMA_SHA256 = "65c0309b51e82e4ad313f113cd5df266f61e6c8b98aa5d5ff7194b53b6e5a775"
 _EXPECTED_REBUILT_OBJECTS = {
+    ("constraint", "cpk_cloudflare_ingress_resources_removed_evidence_check"),
     ("constraint", "cpk_gateway_key_rotations_activation_check"),
     ("constraint", "cpk_gateway_key_rotations_retirement_check"),
     ("constraint", "cpk_gateway_key_rotation_deployments_acceptance_check"),
+    ("index", "cpk_cloudflare_ingress_resources_workspace"),
 }
 
 
@@ -72,9 +75,9 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_key_rotation_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 7)
+        self.assertEqual(registry.target_version, 8)
         self.assertEqual(
-            [(value.version, value.name) for value in registry.migrations],
+            [(value.version, value.name) for value in registry.migrations[:7]],
             _V7_HISTORY,
         )
         self.assertEqual(
@@ -118,7 +121,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_fresh_install_has_exact_v7_temporal_contract(self) -> None:
         postgres.install_postgres_schema(self.connection)
 
-        self.assertEqual(self._ledger(), _V7_HISTORY)
+        self.assertEqual(self._ledger(), _CURRENT_HISTORY)
         self.assertEqual(self._temporal_contract(), _TEMPORAL_CONTRACT)
         self.assertIs(
             postgres.verify_postgres_schema(self.connection).kind,

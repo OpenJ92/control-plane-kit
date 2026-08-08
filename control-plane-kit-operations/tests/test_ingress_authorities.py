@@ -151,7 +151,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         resource = self.cloudflare_resource(
             epoch=2,
             status=OwnedIngressResourceStatus.REMOVED,
-            removed_at="removed-at",
+            removed_at="2026-07-28T08:02:00Z",
             removed_by_run_id="run-002",
         )
 
@@ -159,7 +159,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertEqual(descriptor["epoch"], 2)
         self.assertEqual(descriptor["status"], "removed")
         self.assertEqual(descriptor["lifecycle"], "ephemeral")
-        self.assertEqual(descriptor["removed_at"], "removed-at")
+        self.assertEqual(descriptor["removed_at"], "2026-07-28T08:02:00Z")
         self.assertEqual(descriptor["removed_by_run_id"], "run-002")
 
         with self.assertRaisesRegex(
@@ -173,7 +173,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         ):
             self.cloudflare_resource(
                 status=OwnedIngressResourceStatus.ACTIVE,
-                removed_at="removed-at",
+                removed_at="2026-07-28T08:02:00Z",
                 removed_by_run_id="run-002",
             )
 
@@ -683,7 +683,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             removed = unit_of_work.stores.ingress_resources.mark_removed(
                 "workspace-a",
                 "gateway-001",
-                removed_at="removed-at",
+                removed_at="2026-07-28T08:02:00Z",
                 removed_by_run_id="run-002",
             )
             reallocated = unit_of_work.stores.ingress_resources.record_cloudflare(
@@ -768,7 +768,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             removed = unit_of_work.stores.ingress_resources.mark_removed(
                 "workspace-a",
                 "gateway-001",
-                removed_at="removed-at",
+                removed_at="2026-07-28T08:02:00Z",
                 removed_by_run_id="run-003",
             )
             unit_of_work.commit()

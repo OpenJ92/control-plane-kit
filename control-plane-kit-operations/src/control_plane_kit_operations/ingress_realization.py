@@ -22,6 +22,9 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import Protocol as SocketProtocol
+from control_plane_kit_operations._temporal import (
+    validate_canonical_utc_timestamp,
+)
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
@@ -186,16 +189,6 @@ class IngressRealizationAdapter:
                 context,
                 authority.authority,
             )
-            recorded_at = self.clock()
-            _validate_fold_timestamp(recorded_at)
-            allocation = interpreter.create(
-                ingress,
-                authority=authority.authority,
-                allocation_name=_allocation_name(context, ingress),
-                origin_service_url=origin_service_url,
-                secret_resolution_grant=grant,
-                secret_custody_grant=custody_grant,
-            )
         except SecretProviderRegistrationError:
             return _unsupported(
                 context,
@@ -207,6 +200,29 @@ class IngressRealizationAdapter:
                 context,
                 "secret.resolution-authorizer-invalid",
                 "ingress secret authorization could not be established",
+            )
+        except Exception as error:  # noqa: BLE001 - provider failures are bounded.
+            return _uncertain("ingress.allocate-uncertain", type(error).__name__)
+
+        try:
+            recorded_at = validate_canonical_utc_timestamp(self.clock())
+        except ValueError:
+            return _unsupported(
+                context,
+                "ingress.allocate-unsupported",
+                "ingress allocation timestamp is not canonical UTC",
+            )
+        except Exception as error:  # noqa: BLE001 - clock failures are bounded.
+            return _uncertain("ingress.allocate-uncertain", type(error).__name__)
+
+        try:
+            allocation = interpreter.create(
+                ingress,
+                authority=authority.authority,
+                allocation_name=_allocation_name(context, ingress),
+                origin_service_url=origin_service_url,
+                secret_resolution_grant=grant,
+                secret_custody_grant=custody_grant,
             )
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
             return _uncertain("ingress.allocate-uncertain", type(error).__name__)
@@ -375,11 +391,15 @@ class IngressRealizationAdapter:
                 )
                 unit_of_work.commit()
             return _uncertain("ingress.remove-uncertain", type(error).__name__)
+        try:
+            removed_at = validate_canonical_utc_timestamp(self.clock())
+        except Exception as error:  # noqa: BLE001 - evidence failures are bounded.
+            return _uncertain("ingress.remove-uncertain", type(error).__name__)
         with self.unit_of_work_factory() as unit_of_work:
             unit_of_work.stores.ingress_resources.mark_removed(
                 context.request.identity.workspace_id,
                 ingress.ingress_id,
-                removed_at=self.clock(),
+                removed_at=removed_at,
                 removed_by_run_id=context.run.run_id,
             )
             unit_of_work.commit()
@@ -610,18 +630,6 @@ def _uncertain(code: str, exception_type: str) -> ActivityExecutionOutcome:
             BoundedEvidence.from_mapping({"exception_type": exception_type}),
         )
     )
-
-
-def _validate_fold_timestamp(value: object) -> None:
-    if (
-        not isinstance(value, str)
-        or not value
-        or len(value) > 512
-        or any(ord(character) < 32 for character in value)
-    ):
-        raise InvalidOperationCommand(
-            "ingress allocation fold timestamp must be nonempty and bounded"
-        )
 
 
 def _failed_after_compensation(exception_type: str) -> ActivityExecutionOutcome:
