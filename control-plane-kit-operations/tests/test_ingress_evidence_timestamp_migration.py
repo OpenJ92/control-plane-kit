@@ -341,6 +341,17 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
                 replace(resource, created_at=_SECONDS, observed_at="not-a-timestamp")
             )
         with self.assertRaisesRegex(ValueError, "canonical UTC"):
+            resource_store.record_cloudflare(
+                replace(
+                    resource,
+                    created_at=_SECONDS,
+                    observed_at=_MICROS,
+                    status=OwnedIngressResourceStatus.REMOVED,
+                    removed_at="not-a-timestamp",
+                    removed_by_run_id="run-removed",
+                )
+            )
+        with self.assertRaisesRegex(ValueError, "canonical UTC"):
             resource_store.mark_removed(
                 "workspace-a",
                 "ingress-a",
