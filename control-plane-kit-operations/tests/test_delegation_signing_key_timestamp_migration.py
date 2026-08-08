@@ -37,7 +37,6 @@ _EXPECTED_REBUILT_OBJECTS = {
     ("constraint", "cpk_delegation_signing_keys_activation_evidence_check"),
     ("constraint", "cpk_delegation_signing_keys_retirement_evidence_check"),
     ("constraint", "cpk_delegation_signing_keys_revocation_evidence_check"),
-    ("index", "cpk_secret_use_authorizations_reference_history"),
 }
 
 

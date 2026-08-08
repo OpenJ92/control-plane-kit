@@ -41,7 +41,6 @@ _EXPECTED_REBUILT_OBJECTS = {
     ("constraint", "cpk_secret_references_revocation_evidence_check"),
     ("index", "cpk_secret_providers_history"),
     ("index", "cpk_secret_references_history"),
-    ("index", "cpk_secret_use_authorizations_reference_history"),
 }
 
 

@@ -346,6 +346,16 @@ _INGRESS_EVIDENCE_TEMPORAL_CONTRACT = (
         True,
     ),
 )
+_SECRET_USE_AUTHORIZATION_TEMPORAL_CONTRACT = (
+    (
+        "cpk_secret_use_authorizations",
+        "requested_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+)
 
 # This explicit projection is verified against the checksum-pinned V1 artifact.
 POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
@@ -1012,6 +1022,12 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         raise SchemaMigrationError(
             "ingress evidence temporal schema is not current"
         )
+    if _read_secret_use_authorization_temporal_contract(connection) != (
+        _SECRET_USE_AUTHORIZATION_TEMPORAL_CONTRACT
+    ):
+        raise SchemaMigrationError(
+            "secret-use authorization temporal schema is not current"
+        )
     return observed
 
 
@@ -1222,6 +1238,31 @@ def _read_ingress_evidence_temporal_contract(
     if len(rows) != len(_INGRESS_EVIDENCE_TEMPORAL_CONTRACT):
         raise SchemaMigrationError(
             "ingress evidence temporal schema is not current"
+        )
+    return tuple(rows)
+
+
+def _read_secret_use_authorization_temporal_contract(
+    connection: PostgresConnection,
+) -> tuple[tuple[str, str, str, int, str, bool], ...]:
+    rows = _read_rows(
+        connection,
+        """
+        SELECT table_name, column_name, data_type, datetime_precision, is_nullable,
+               column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'cpk_secret_use_authorizations'
+          AND column_name = 'requested_at'
+        ORDER BY table_name, column_name
+        LIMIT %s
+        """,
+        (len(_SECRET_USE_AUTHORIZATION_TEMPORAL_CONTRACT) + 1,),
+        "secret-use authorization temporal schema read failed",
+    )
+    if len(rows) != len(_SECRET_USE_AUTHORIZATION_TEMPORAL_CONTRACT):
+        raise SchemaMigrationError(
+            "secret-use authorization temporal schema is not current"
         )
     return tuple(rows)
 
