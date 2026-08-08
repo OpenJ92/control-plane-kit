@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 import os
 import unittest
 
@@ -19,11 +20,15 @@ from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyConflict,
     DelegationSigningKeyRegistrationService,
     RegisterDelegationSigningKeyCommand,
+    RegisteredDelegationSigningKey,
     RegisteredDelegationSigningKeyStatus,
     RetireDelegationSigningKeyCommand,
     RevokeDelegationSigningKeyCommand,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres.delegation_signing_key_store import (
+    DelegationSigningKeyStore,
+)
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
@@ -243,6 +248,264 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
                 )
             )
 
+    def test_all_store_mutations_reject_malformed_time_before_connection_access(self) -> None:
+        invalid = "2026-02-30T12:00:00Z"
+
+        class FailOnAccessConnection:
+            def __init__(self) -> None:
+                self.accessed = False
+
+            def execute(self, *_args: object, **_kwargs: object) -> object:
+                self.accessed = True
+                raise AssertionError("connection access must not occur")
+
+        calls = (
+            (
+                "register",
+                lambda store: store.register(
+                    replace(self.command().candidate(), admitted_at=invalid)
+                ),
+            ),
+            (
+                "activate",
+                lambda store: store.activate(
+                    "workspace-a",
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    "cpk-server",
+                    "gateway-a",
+                    activated_by="operator-a",
+                    activated_at=invalid,
+                ),
+            ),
+            (
+                "retire",
+                lambda store: store.retire(
+                    "workspace-a",
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    "cpk-server",
+                    "gateway-a",
+                    retired_by="operator-a",
+                    retired_at=invalid,
+                ),
+            ),
+            (
+                "revoke",
+                lambda store: store.revoke(
+                    "workspace-a",
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    "cpk-server",
+                    "gateway-a",
+                    revoked_by="operator-a",
+                    revoked_at=invalid,
+                ),
+            ),
+        )
+        for identity, call in calls:
+            with self.subTest(identity=identity):
+                connection = FailOnAccessConnection()
+                store = DelegationSigningKeyStore(connection)
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "postgres timestamp must be canonical UTC text",
+                ) as raised:
+                    call(store)
+                self.assertIsNone(raised.exception.__context__)
+                self.assertIsNone(raised.exception.__cause__)
+                self.assertFalse(connection.accessed)
+
+    def test_malformed_duplicate_and_lifecycle_replays_validate_time(self) -> None:
+        service = self.service()
+        invalid = "2026-02-30T12:00:00Z"
+        service.register(self.command())
+        with self.assertRaises(ValueError):
+            service.register(replace(self.command(), admitted_at=invalid))
+
+        service.activate(self.activate("gateway-a"))
+        with self.assertRaises(ValueError):
+            service.activate(replace(self.activate("gateway-a"), activated_at=invalid))
+
+        service.register(self.command(key_id="gateway-b"))
+        retire = RetireDelegationSigningKeyCommand(
+            workspace_id="workspace-a",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="cpk-server",
+            key_id="gateway-b",
+            retired_by="operator-a",
+            retired_at="2026-08-01T12:20:00Z",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_RETIRE,),
+        )
+        service.retire(retire)
+        with self.assertRaises(ValueError):
+            service.retire(replace(retire, retired_at=invalid))
+
+        service.register(self.command(key_id="gateway-c"))
+        revoke = RevokeDelegationSigningKeyCommand(
+            workspace_id="workspace-a",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="cpk-server",
+            key_id="gateway-c",
+            revoked_by="operator-a",
+            revoked_at="2026-08-01T12:21:00Z",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_REVOKE,),
+        )
+        service.revoke(revoke)
+        with self.assertRaises(ValueError):
+            service.revoke(replace(revoke, revoked_at=invalid))
+
+    def test_invalid_activation_cannot_demote_the_current_active_signer(self) -> None:
+        service = self.service()
+        service.register(self.command())
+        service.register(self.command(key_id="gateway-b"))
+        service.activate(self.activate("gateway-a"))
+
+        with self.assertRaises(ValueError):
+            service.activate(
+                self.activate("gateway-b", activated_at="2026-02-30T12:00:00Z")
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            values = unit_of_work.stores.delegation_signing_keys.list_workspace(
+                "workspace-a"
+            )
+        self.assertEqual(
+            {value.key_id: value.status for value in values},
+            {
+                "gateway-a": RegisteredDelegationSigningKeyStatus.ACTIVE,
+                "gateway-b": RegisteredDelegationSigningKeyStatus.VERIFY_ONLY,
+            },
+        )
+
+    def test_invalid_retirement_and_revocation_preserve_complete_evidence(self) -> None:
+        service = self.service()
+        registered = service.register(self.command())
+
+        with self.assertRaises(ValueError):
+            service.retire(
+                RetireDelegationSigningKeyCommand(
+                    workspace_id="workspace-a",
+                    purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+                    issuer="cpk-server",
+                    key_id="gateway-a",
+                    retired_by="operator-a",
+                    retired_at="2026-02-30T12:00:00Z",
+                    actor_scopes=(PolicyScope.DELEGATION_KEY_RETIRE,),
+                )
+            )
+        with self.unit_of_work() as unit_of_work:
+            after_retirement = unit_of_work.stores.delegation_signing_keys.get(
+                "workspace-a",
+                DelegationKeyPurpose.GATEWAY_PROBE,
+                "cpk-server",
+                "gateway-a",
+            )
+        self.assertEqual(after_retirement, registered)
+
+        active = service.activate(self.activate("gateway-a"))
+        with self.assertRaises(ValueError):
+            service.revoke(
+                RevokeDelegationSigningKeyCommand(
+                    workspace_id="workspace-a",
+                    purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+                    issuer="cpk-server",
+                    key_id="gateway-a",
+                    revoked_by="operator-a",
+                    revoked_at="2026-02-30T12:00:00Z",
+                    actor_scopes=(PolicyScope.DELEGATION_KEY_REVOKE,),
+                )
+            )
+        with self.unit_of_work() as unit_of_work:
+            after_revocation = unit_of_work.stores.delegation_signing_keys.get(
+                "workspace-a",
+                DelegationKeyPurpose.GATEWAY_PROBE,
+                "cpk-server",
+                "gateway-a",
+            )
+        self.assertEqual(after_revocation, active)
+
+    def test_every_row_selector_decodes_seconds_microseconds_and_nulls_in_utc(
+        self,
+    ) -> None:
+        service = self.service()
+        service.register(self.command())
+        service.register(self.command(key_id="gateway-b"))
+        service.activate(
+            self.activate("gateway-a", activated_at="2026-08-01T12:05:00.000002Z")
+        )
+        self.connection.execute(
+            """
+            UPDATE cpk_delegation_signing_keys
+            SET admitted_at = CASE key_id
+                  WHEN 'gateway-a' THEN %s
+                  ELSE %s
+                END,
+                activated_at = CASE key_id
+                  WHEN 'gateway-a' THEN %s
+                  ELSE NULL
+                END
+            """,
+            (
+                datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc),
+                datetime(2026, 8, 1, 12, 0, 0, 1, tzinfo=timezone.utc),
+                datetime(2026, 8, 1, 12, 5, 0, 2, tzinfo=timezone.utc),
+            ),
+        )
+        self.connection.execute("SET TIME ZONE 'Asia/Tokyo'")
+        store = DelegationSigningKeyStore(self.connection)
+
+        key_b = store.get(
+            "workspace-a",
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            "cpk-server",
+            "gateway-b",
+        )
+        active = store.require_active(
+            "workspace-a",
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            "cpk-server",
+        )
+        unambiguous = store.require_unambiguous_active(
+            "workspace-a",
+            DelegationKeyPurpose.GATEWAY_PROBE,
+        )
+        workspace = store.list_workspace("workspace-a")
+        verification = store.list_for_verification(
+            "workspace-a",
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            "cpk-server",
+        )
+
+        self.assertEqual(
+            self._times(key_b),
+            ("2026-08-01T12:00:00.000001Z", None, None, None),
+        )
+        for selected in (active, unambiguous):
+            self.assertEqual(
+                self._times(selected),
+                (
+                    "2026-08-01T12:00:00Z",
+                    "2026-08-01T12:05:00.000002Z",
+                    None,
+                    None,
+                ),
+            )
+        expected = {
+            "gateway-a": (
+                "2026-08-01T12:00:00Z",
+                "2026-08-01T12:05:00.000002Z",
+                None,
+                None,
+            ),
+            "gateway-b": ("2026-08-01T12:00:00.000001Z", None, None, None),
+        }
+        self.assertEqual(
+            {item.key_id: self._times(item) for item in workspace},
+            expected,
+        )
+        self.assertEqual(
+            {item.key_id: self._times(item) for item in verification},
+            expected,
+        )
+
     def command(
         self,
         *,
@@ -281,6 +544,15 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
             activated_by="operator-a",
             activated_at=activated_at,
             actor_scopes=(PolicyScope.DELEGATION_KEY_ACTIVATE,),
+        )
+
+    @staticmethod
+    def _times(value: RegisteredDelegationSigningKey) -> tuple[str | None, ...]:
+        return (
+            value.admitted_at,
+            value.activated_at,
+            value.retired_at,
+            value.revoked_at,
         )
 
     def _admit_reference(self, workspace_id: str, reference: str) -> None:
