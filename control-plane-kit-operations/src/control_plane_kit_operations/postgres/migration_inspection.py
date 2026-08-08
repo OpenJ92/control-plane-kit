@@ -220,6 +220,24 @@ _DELEGATION_SIGNING_KEY_TEMPORAL_CONTRACT = (
         True,
     ),
 )
+_GATEWAY_PROBE_TEMPORAL_CONTRACT = (
+    (
+        "cpk_gateway_probe_attempts",
+        "completed_at",
+        "timestamp with time zone",
+        6,
+        "YES",
+        True,
+    ),
+    (
+        "cpk_gateway_probe_attempts",
+        "requested_at",
+        "timestamp with time zone",
+        6,
+        "NO",
+        True,
+    ),
+)
 
 # This explicit projection is verified against the checksum-pinned V1 artifact.
 POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
@@ -870,6 +888,10 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         raise SchemaMigrationError(
             "delegation signing-key temporal schema is not current"
         )
+    if _read_gateway_probe_temporal_contract(connection) != (
+        _GATEWAY_PROBE_TEMPORAL_CONTRACT
+    ):
+        raise SchemaMigrationError("gateway probe temporal schema is not current")
     return observed
 
 
@@ -995,6 +1017,29 @@ def _read_delegation_signing_key_temporal_contract(
         raise SchemaMigrationError(
             "delegation signing-key temporal schema is not current"
         )
+    return tuple(rows)
+
+
+def _read_gateway_probe_temporal_contract(
+    connection: PostgresConnection,
+) -> tuple[tuple[str, str, str, int, str, bool], ...]:
+    rows = _read_rows(
+        connection,
+        """
+        SELECT table_name, column_name, data_type, datetime_precision, is_nullable,
+               column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'cpk_gateway_probe_attempts'
+          AND column_name IN ('completed_at', 'requested_at')
+        ORDER BY table_name, column_name
+        LIMIT %s
+        """,
+        (len(_GATEWAY_PROBE_TEMPORAL_CONTRACT) + 1,),
+        "gateway probe temporal schema read failed",
+    )
+    if len(rows) != len(_GATEWAY_PROBE_TEMPORAL_CONTRACT):
+        raise SchemaMigrationError("gateway probe temporal schema is not current")
     return tuple(rows)
 
 
