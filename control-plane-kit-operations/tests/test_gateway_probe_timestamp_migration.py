@@ -28,6 +28,7 @@ _CURRENT_HISTORY = [
     (9, "secret-use-authorization-timestamps"),
     (10, "product-descriptor-content"),
     (11, "gateway-probe-access-path"),
+    (12, "gateway-key-rotation-generation-evidence"),
 ]
 _TEMPORAL_COLUMNS = (
     ("requested_at", "timestamp with time zone", 6, "NO", True),
@@ -72,7 +73,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_probe_v6(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 11)
+        self.assertEqual(registry.target_version, 12)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations],
             _CURRENT_HISTORY,

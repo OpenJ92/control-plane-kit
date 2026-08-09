@@ -25,6 +25,7 @@ _V10_HISTORY = (
     (10, "product-descriptor-content"),
 )
 _V11_IDENTITY = (11, "gateway-probe-access-path")
+_V12_IDENTITY = (12, "gateway-key-rotation-generation-evidence")
 _ACCESS_PATH_COLUMN = ("text", "NO", "'runtime-private'::text")
 _ACCESS_PATH_CONSTRAINT = (
     "cpk_gateway_probe_attempts",
@@ -57,12 +58,12 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_three_sql_step_v11_program(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 11)
+        self.assertEqual(registry.target_version, 12)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V10_HISTORY, _V11_IDENTITY),
+            (*_V10_HISTORY, _V11_IDENTITY, _V12_IDENTITY),
         )
-        migration = registry.migrations[-1]
+        migration = registry.migrations[10]
         self.assertIsNone(migration.sql)
         self.assertEqual(len(migration.steps), 3)
         self.assertTrue(
@@ -308,7 +309,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
                 "DROP CONSTRAINT cpk_gateway_probe_access_path_check"
             )
 
-            migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[-1]
+            migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[10]
             self.assertEqual((migration.version, migration.name), _V11_IDENTITY)
             migration_runner._apply_schema_migration(connection, migration)
 
@@ -412,7 +413,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
 
     def test_each_sql_phase_failure_rolls_back_absent_history(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
-        migration = registry.migrations[-1]
+        migration = registry.migrations[10]
         self.assertEqual((migration.version, migration.name), _V11_IDENTITY)
         for phase, step in enumerate(migration.steps):
             with self.subTest(phase=phase):

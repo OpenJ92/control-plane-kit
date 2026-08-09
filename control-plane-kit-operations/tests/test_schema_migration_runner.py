@@ -27,6 +27,7 @@ _CURRENT_HISTORY = [
     (9, "secret-use-authorization-timestamps"),
     (10, "product-descriptor-content"),
     (11, "gateway-probe-access-path"),
+    (12, "gateway-key-rotation-generation-evidence"),
 ]
 
 
@@ -319,7 +320,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 schema_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,
             )
-            self.assertEqual(production_registry.target_version, 11)
+            self.assertEqual(production_registry.target_version, 12)
             self.assertIs(
                 runner_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,

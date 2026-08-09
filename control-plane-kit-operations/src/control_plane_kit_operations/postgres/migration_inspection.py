@@ -53,6 +53,37 @@ _GATEWAY_PROBE_ACCESS_PATH_CONSTRAINT_DEFINITION = (
     "CHECK ((access_path = ANY (ARRAY['runtime-private'::text, "
     "'named-public-ingress'::text])))"
 )
+_GATEWAY_KEY_ROTATION_GENERATION_EVIDENCE_COLUMNS = (
+    ("generation_action_digest", "text", "YES", True),
+    ("generation_provider_registration_id", "text", "YES", True),
+)
+_GATEWAY_KEY_ROTATION_GENERATION_EVIDENCE_CONSTRAINTS = (
+    (
+        "cpk_gateway_key_rotations_generation_checkpoint_check",
+        "c",
+        True,
+        True,
+    ),
+    ("cpk_gateway_key_rotations_generation_digest_check", "c", True, True),
+    ("cpk_gateway_key_rotations_generation_provider_check", "c", True, True),
+)
+_GATEWAY_KEY_ROTATION_GENERATION_CHECKPOINT_DEFINITION = (
+    "CHECK (((generation_provider_registration_id IS NULL) = "
+    "(generation_action_digest IS NULL)))"
+)
+_GATEWAY_KEY_ROTATION_GENERATION_DIGEST_DEFINITION = (
+    "CHECK (((generation_action_digest IS NULL) OR "
+    "(generation_action_digest ~ '^[0-9a-f]{64}$'::text)))"
+)
+_GATEWAY_KEY_ROTATION_GENERATION_PROVIDER_DEFINITION = (
+    'CHECK (((generation_provider_registration_id IS NULL) OR '
+    "(((octet_length(generation_provider_registration_id) >= 1) AND "
+    "(octet_length(generation_provider_registration_id) <= 200)) AND "
+    '((generation_provider_registration_id COLLATE "C") ~ '
+    "'^[A-Za-z0-9]'::text) AND "
+    '((generation_provider_registration_id COLLATE "C") !~ '
+    "'[^A-Za-z0-9._:-]'::text))))"
+)
 _COORDINATION_TEMPORAL_CONTRACT = (
     ("cpk_activity_events", "occurred_at", "timestamp with time zone", 6, "NO", True),
     ("cpk_activity_plans", "created_at", "timestamp with time zone", 6, "NO", True),
@@ -1012,6 +1043,8 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         _verify_product_descriptor_content_contract(connection)
     if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 11:
         _verify_gateway_probe_access_path_contract(connection)
+    if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 12:
+        _verify_gateway_key_rotation_generation_evidence_contract(connection)
     if _read_coordination_temporal_contract(connection) != (
         _COORDINATION_TEMPORAL_CONTRACT
     ):
@@ -1151,6 +1184,75 @@ def _verify_gateway_probe_access_path_contract(
     if constraint_rows != [_GATEWAY_PROBE_ACCESS_PATH_CONSTRAINT]:
         raise SchemaMigrationError(
             "gateway probe access path schema is not current"
+        )
+
+
+def _verify_gateway_key_rotation_generation_evidence_contract(
+    connection: PostgresConnection,
+) -> None:
+    column_rows = _read_rows(
+        connection,
+        """
+        SELECT column_name, data_type, is_nullable, column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'cpk_gateway_key_rotations'
+          AND column_name IN (
+            'generation_provider_registration_id',
+            'generation_action_digest'
+          )
+        ORDER BY column_name
+        LIMIT 3
+        """,
+        (),
+        "gateway key rotation generation evidence schema read failed",
+    )
+    if column_rows != list(_GATEWAY_KEY_ROTATION_GENERATION_EVIDENCE_COLUMNS):
+        raise SchemaMigrationError(
+            "gateway key rotation generation evidence schema is not current"
+        )
+    constraint_rows = _read_rows(
+        connection,
+        """
+        SELECT constraints.conname,
+               constraints.contype::text,
+               constraints.convalidated,
+               CASE constraints.conname
+                 WHEN 'cpk_gateway_key_rotations_generation_checkpoint_check'
+                   THEN pg_get_constraintdef(constraints.oid, false) = %s
+                 WHEN 'cpk_gateway_key_rotations_generation_digest_check'
+                   THEN pg_get_constraintdef(constraints.oid, false) = %s
+                 WHEN 'cpk_gateway_key_rotations_generation_provider_check'
+                   THEN pg_get_constraintdef(constraints.oid, false) = %s
+                 ELSE false
+               END
+        FROM pg_constraint AS constraints
+        JOIN pg_class AS relation
+          ON relation.oid = constraints.conrelid
+        JOIN pg_namespace AS namespace
+          ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = current_schema()
+          AND relation.relname = 'cpk_gateway_key_rotations'
+          AND constraints.conname IN (
+            'cpk_gateway_key_rotations_generation_checkpoint_check',
+            'cpk_gateway_key_rotations_generation_digest_check',
+            'cpk_gateway_key_rotations_generation_provider_check'
+          )
+        ORDER BY constraints.conname, constraints.oid
+        LIMIT 4
+        """,
+        (
+            _GATEWAY_KEY_ROTATION_GENERATION_CHECKPOINT_DEFINITION,
+            _GATEWAY_KEY_ROTATION_GENERATION_DIGEST_DEFINITION,
+            _GATEWAY_KEY_ROTATION_GENERATION_PROVIDER_DEFINITION,
+        ),
+        "gateway key rotation generation evidence schema read failed",
+    )
+    if constraint_rows != list(
+        _GATEWAY_KEY_ROTATION_GENERATION_EVIDENCE_CONSTRAINTS
+    ):
+        raise SchemaMigrationError(
+            "gateway key rotation generation evidence schema is not current"
         )
 
 
