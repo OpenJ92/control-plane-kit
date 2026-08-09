@@ -42,8 +42,8 @@ SELECT octet_length(registration_id) BETWEEN 1 AND %s,
             WHEN octet_length(descriptor_content) BETWEEN 1 AND %s
             THEN descriptor_content ELSE NULL END
 FROM cpk_registered_products
-WHERE registration_id COLLATE "C" > %s COLLATE "C"
-ORDER BY registration_id COLLATE "C"
+WHERE registration_id > %s
+ORDER BY registration_id
 LIMIT %s
 FOR UPDATE
 """
