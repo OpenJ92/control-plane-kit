@@ -1722,6 +1722,32 @@ ALTER TABLE cpk_generated_ingress_secret_references
     USING recorded_at::timestamptz(6);
 """
 
+_POSTGRES_SCHEMA_V9_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_secret_use_authorizations
+    WHERE CASE
+      WHEN octet_length(requested_at) > 27 THEN TRUE
+      WHEN requested_at !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+        THEN TRUE
+      WHEN requested_at ~ '[.]000000Z$' THEN TRUE
+      ELSE FALSE
+    END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'secret-use authorization timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_secret_use_authorizations
+  ALTER COLUMN requested_at TYPE timestamptz(6)
+    USING requested_at::timestamptz(6);
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1836,6 +1862,21 @@ if _POSTGRES_SCHEMA_V8.checksum_sha256 != _POSTGRES_SCHEMA_V8_SHA256:
         f"expected {_POSTGRES_SCHEMA_V8_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V8.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V9 = SchemaMigration(
+    version=9,
+    name="secret-use-authorization-timestamps",
+    sql=_POSTGRES_SCHEMA_V9_SQL,
+)
+_POSTGRES_SCHEMA_V9_SHA256 = (
+    "51e322bc4c578bef768cd516b63fd0018cfeb658bd4b9bfd6eed118666d50adb"
+)
+if _POSTGRES_SCHEMA_V9.checksum_sha256 != _POSTGRES_SCHEMA_V9_SHA256:
+    raise SchemaMigrationError(
+        "secret-use authorization timestamp V9 content differs from its pinned "
+        "checksum: "
+        f"expected {_POSTGRES_SCHEMA_V9_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V9.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -1846,6 +1887,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V6,
         _POSTGRES_SCHEMA_V7,
         _POSTGRES_SCHEMA_V8,
+        _POSTGRES_SCHEMA_V9,
     )
 )
 

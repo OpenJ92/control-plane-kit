@@ -22,6 +22,7 @@ _CURRENT_HISTORY = [
     (6, "gateway-probe-timestamps"),
     (7, "gateway-key-rotation-timestamps"),
     (8, "ingress-evidence-timestamps"),
+    (9, "secret-use-authorization-timestamps"),
 ]
 
 
@@ -56,6 +57,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
@@ -156,6 +158,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_observations_latest_subject",
                 "cpk_secret_providers_history",
                 "cpk_secret_references_history",
+                "cpk_secret_use_authorizations_reference_history",
             }
             self.assertLessEqual(rebuilt_indexes, set(before_indexes))
             for index, (identity, definition) in before_indexes.items():

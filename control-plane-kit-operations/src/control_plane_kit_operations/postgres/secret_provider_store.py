@@ -584,6 +584,7 @@ class SecretUseAuthorizationStore:
     def add(self, authorized: AuthorizedSecretUse) -> None:
         if not isinstance(authorized, AuthorizedSecretUse):
             raise TypeError("secret use store requires AuthorizedSecretUse")
+        encoded_requested_at = encode_postgres_timestamp(authorized.requested_at)
         self._connection.execute(
             """
             INSERT INTO cpk_secret_use_authorizations (
@@ -618,7 +619,7 @@ class SecretUseAuthorizationStore:
                 authorized.intent.value,
                 authorized.actor_subject,
                 authorized.correlation_id,
-                authorized.requested_at,
+                encoded_requested_at,
                 authorized.intent_fingerprint,
                 authorized.operation_id,
                 authorized.session_id,
@@ -784,7 +785,7 @@ def _row_to_authorized_use(row: tuple[Any, ...]) -> AuthorizedSecretUse:
         intent=SecretUseIntent(row[5]),
         actor_subject=row[6],
         correlation_id=row[7],
-        requested_at=row[8],
+        requested_at=decode_postgres_timestamp(row[8]),
         intent_fingerprint=row[9],
         operation_id=row[10],
         session_id=row[11],

@@ -40,6 +40,7 @@ _V7_HISTORY = [
     (7, "gateway-key-rotation-timestamps"),
 ]
 _V8_HISTORY = [*_V7_HISTORY, (8, "ingress-evidence-timestamps")]
+_CURRENT_HISTORY = [*_V8_HISTORY, (9, "secret-use-authorization-timestamps")]
 _TEMPORAL_COLUMNS = (
     (
         "cpk_cloudflare_ingress_resources",
@@ -82,6 +83,7 @@ _OFFSET = "2026-08-08T08:00:00-04:00"
 _EXPECTED_REBUILT = {
     ("constraint", "cpk_cloudflare_ingress_resources_removed_evidence_check"),
     ("index", "cpk_cloudflare_ingress_resources_workspace"),
+    ("index", "cpk_secret_use_authorizations_reference_history"),
 }
 _V8_SHA256 = "3e7cb7c70c64511d76be9406588d2edc24fa3c9a62d95fd42d7a84fb3946069c"
 
@@ -116,10 +118,10 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_checksum_guarded_v8_after_immutable_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 8)
+        self.assertEqual(registry.target_version, 9)
         self.assertEqual(
             [(item.version, item.name) for item in registry.migrations],
-            _V8_HISTORY,
+            _CURRENT_HISTORY,
         )
         self.assertEqual(
             [(item.version, item.name) for item in registry.migrations[:7]],
@@ -148,7 +150,7 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
     def test_fresh_install_has_exact_v8_temporal_contract(self) -> None:
         postgres.install_postgres_schema(self.connection)
 
-        self.assertEqual(self._ledger(), _V8_HISTORY)
+        self.assertEqual(self._ledger(), _CURRENT_HISTORY)
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
         self.assertIs(
             postgres.verify_postgres_schema(self.connection).kind,

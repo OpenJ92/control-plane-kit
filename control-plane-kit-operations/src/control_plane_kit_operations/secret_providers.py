@@ -21,6 +21,9 @@ from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
     SecretUseIntent,
 )
+from control_plane_kit_operations._temporal import (
+    validate_canonical_utc_timestamp,
+)
 
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
@@ -606,6 +609,7 @@ class SecretUseAuthorizationService:
     def authorize(self, command: AuthorizeSecretUse) -> AuthorizedSecretUse:
         _require_command(command, AuthorizeSecretUse)
         _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+        validate_canonical_utc_timestamp(command.requested_at)
         with self._unit_of_work_factory() as unit_of_work:
             authorized, _ = _authorize_secret_use(
                 unit_of_work,
@@ -622,6 +626,7 @@ class SecretUseAuthorizationService:
 
         _require_command(command, AuthorizeSecretUse)
         _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+        validate_canonical_utc_timestamp(command.requested_at)
         with self._unit_of_work_factory() as unit_of_work:
             authorized, provider = _authorize_secret_use(
                 unit_of_work,

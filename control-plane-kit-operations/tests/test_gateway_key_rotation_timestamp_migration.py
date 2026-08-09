@@ -27,7 +27,11 @@ _V6_HISTORY = [
     (6, "gateway-probe-timestamps"),
 ]
 _V7_HISTORY = [*_V6_HISTORY, (7, "gateway-key-rotation-timestamps")]
-_CURRENT_HISTORY = [*_V7_HISTORY, (8, "ingress-evidence-timestamps")]
+_CURRENT_HISTORY = [
+    *_V7_HISTORY,
+    (8, "ingress-evidence-timestamps"),
+    (9, "secret-use-authorization-timestamps"),
+]
 _TEMPORAL_COLUMNS = (
     ("cpk_gateway_key_rotation_deployments", "accepted_at", "YES"),
     ("cpk_gateway_key_rotation_deployments", "prepared_at", "NO"),
@@ -52,6 +56,7 @@ _EXPECTED_REBUILT_OBJECTS = {
     ("constraint", "cpk_gateway_key_rotations_retirement_check"),
     ("constraint", "cpk_gateway_key_rotation_deployments_acceptance_check"),
     ("index", "cpk_cloudflare_ingress_resources_workspace"),
+    ("index", "cpk_secret_use_authorizations_reference_history"),
 }
 
 
@@ -75,7 +80,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_key_rotation_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 8)
+        self.assertEqual(registry.target_version, 9)
         self.assertEqual(
             [(value.version, value.name) for value in registry.migrations[:7]],
             _V7_HISTORY,
