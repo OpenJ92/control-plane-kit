@@ -9,11 +9,15 @@ from control_plane_kit_operations.postgres.migration_inspection import (
 from control_plane_kit_operations.postgres.migrations import (
     DeterministicBackfillStep,
     ObservedSchemaKind,
+    SchemaBackfillKind,
     SchemaMigration,
     SchemaMigrationActionKind,
     SchemaMigrationError,
     SchemaMigrationPlan,
     SqlMigrationStep,
+)
+from control_plane_kit_operations.postgres.product_descriptor_backfill import (
+    backfill_product_descriptor_content_v1,
 )
 from control_plane_kit_operations.postgres.schema import (
     POSTGRES_SCHEMA,
@@ -145,7 +149,13 @@ def _apply_schema_migration(
         if type(step) is SqlMigrationStep:
             connection.execute(step.sql)
         elif type(step) is DeterministicBackfillStep:
-            raise SchemaMigrationError("schema migration backfill is not supported")
+            if (
+                step.kind is SchemaBackfillKind.PRODUCT_DESCRIPTOR_CONTENT
+                and step.algorithm_version == 1
+            ):
+                backfill_product_descriptor_content_v1(connection)
+            else:
+                raise SchemaMigrationError("schema migration backfill is not supported")
         else:
             raise SchemaMigrationError("schema migration step is not supported")
 

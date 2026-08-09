@@ -103,7 +103,7 @@ class ProductDescriptorCodecTests(unittest.TestCase):
             image=product.image,
             runtime_contract=product.runtime_contract,
             display_name=product.display_name,
-            description="quote:\" slash:\\ bmp:\u00e9 non-bmp:\U0001f4a9",
+            description="quote:\" slash:\\ del:\x7f bmp:\u00e9 non-bmp:\U0001f4a9",
         )
         document = ProductDescriptorCodec().encode_document(escaped_product)
         mapping = self._reverse_mappings(

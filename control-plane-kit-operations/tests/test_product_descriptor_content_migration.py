@@ -24,6 +24,7 @@ from control_plane_kit_core.types import Protocol
 import control_plane_kit_operations.postgres as postgres
 from control_plane_kit_operations.postgres import migration_inspection
 from control_plane_kit_operations.postgres import migration_runner
+from control_plane_kit_operations.postgres import product_descriptor_backfill
 from control_plane_kit_operations.postgres import schema as schema_module
 
 
@@ -55,6 +56,9 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.admin.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
+        self.admin.execute(
+            f'DROP SCHEMA IF EXISTS "{self.schema}_other" CASCADE'
+        )
         self.admin.close()
 
     def test_v10_backfills_historical_rows_in_batches_and_is_idempotent(self) -> None:
@@ -148,6 +152,10 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                 "UPDATE cpk_registered_products SET registration_id = %s",
                 ("x" * 2049,),
             )),
+            ("registration-semantic-bound", lambda connection: connection.execute(
+                "UPDATE cpk_registered_products SET registration_id = %s",
+                ("x" * 513,),
+            )),
             ("document-transport-bound", lambda connection: connection.execute(
                 "UPDATE cpk_registered_products SET descriptor_document = %s",
                 (Jsonb({"padding": "x" * 524_289}),),
@@ -234,6 +242,53 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                 finally:
                     connection.close()
 
+    def test_backfill_query_bounds_every_value_before_driver_fetch(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v9(connection)
+            self._insert_product(
+                connection,
+                registration_id="rprod-query-law",
+                document=self._document(1),
+            )
+            recording = _RecordingConnection(connection)
+
+            product_descriptor_backfill.backfill_product_descriptor_content_v1(
+                recording
+            )
+
+            normalized = " ".join(recording.backfill_query.lower().split())
+            for expression in (
+                "octet_length(registration_id)",
+                "octet_length(descriptor_sha256)",
+                "octet_length(descriptor_document::text)",
+                "octet_length(product_reference::text)",
+                "octet_length(descriptor_content)",
+                "order by registration_id collate \"c\"",
+                "limit %s for update",
+            ):
+                with self.subTest(expression=expression):
+                    self.assertIn(expression, normalized)
+            self.assertEqual(
+                recording.backfill_parameters,
+                (
+                    2_048,
+                    2_048,
+                    64,
+                    64,
+                    524_288,
+                    524_288,
+                    524_288,
+                    524_288,
+                    262_144,
+                    262_144,
+                    "",
+                    64,
+                ),
+            )
+        finally:
+            connection.close()
+
     def test_final_verifier_rejects_column_and_digest_constraint_drift(self) -> None:
         mutations = (
             "ALTER TABLE cpk_registered_products "
@@ -277,12 +332,29 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
 
                 caller = self._connection(autocommit=False)
                 writer = self._connection(application_name=f"cpk-v10-writer-{outcome}")
+                reader = self._connection()
                 writer_started = threading.Event()
                 writer_finished = threading.Event()
                 failures: list[BaseException] = []
                 thread = None
                 try:
                     postgres.install_postgres_schema(caller)
+                    reader.execute("SET lock_timeout TO '250ms'")
+                    with self.assertRaises(psycopg.errors.LockNotAvailable):
+                        reader.execute("SELECT count(*) FROM cpk_registered_products")
+                    other_schema = f"{self.schema}_other"
+                    self.admin.execute(f'CREATE SCHEMA "{other_schema}"')
+                    self.admin.execute(
+                        f'CREATE TABLE "{other_schema}".cpk_registered_products '
+                        "(registration_id text PRIMARY KEY)"
+                    )
+                    self.assertEqual(
+                        self.admin.execute(
+                            f'SELECT count(*) FROM "{other_schema}".'
+                            "cpk_registered_products"
+                        ).fetchone()[0],
+                        0,
+                    )
                     document = self._document(2)
 
                     def write_after_migration() -> None:
@@ -323,6 +395,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                         caller.close()
                     if thread is None or not thread.is_alive():
                         writer.close()
+                    reader.close()
                     self.assertFalse(thread is not None and thread.is_alive())
 
                 observer = self._connection()
@@ -341,6 +414,112 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                     )
                 finally:
                     observer.close()
+
+    def test_writer_cannot_enter_behind_a_paused_keyset_cursor(self) -> None:
+        setup = self._connection()
+        try:
+            self._prepare_v9(setup)
+            for index in range(65):
+                self._insert_product(
+                    setup,
+                    registration_id=f"rprod-{index:03d}",
+                    document=self._document(index),
+                )
+        finally:
+            setup.close()
+
+        migration_connection = self._connection(
+            application_name="cpk-v10-paused-migration"
+        )
+        writer = self._connection(application_name="cpk-v10-behind-cursor-writer")
+        paused = _PausingBackfillConnection(migration_connection)
+        migration_finished = threading.Event()
+        writer_finished = threading.Event()
+        failures: list[BaseException] = []
+        migration_thread = None
+        writer_thread = None
+        try:
+            def migrate() -> None:
+                try:
+                    postgres.install_postgres_schema(paused)
+                except BaseException as error:
+                    failures.append(error)
+                finally:
+                    migration_finished.set()
+
+            migration_thread = threading.Thread(target=migrate)
+            migration_thread.start()
+            self.assertTrue(paused.first_batch.wait(timeout=10))
+
+            document = self._document(99)
+
+            def write_behind_cursor() -> None:
+                try:
+                    self._insert_product(
+                        writer,
+                        registration_id="rprod-000a",
+                        document=document,
+                        descriptor_content=document.content.decode("utf-8"),
+                    )
+                except BaseException as error:
+                    failures.append(error)
+                finally:
+                    writer_finished.set()
+
+            writer_thread = threading.Thread(target=write_behind_cursor)
+            writer_thread.start()
+            self._wait_for_table_lock("cpk-v10-behind-cursor-writer")
+            self.assertFalse(writer_finished.is_set())
+            self.assertFalse(migration_finished.is_set())
+
+            paused.release.set()
+            self.assertTrue(migration_finished.wait(timeout=15))
+            self.assertTrue(writer_finished.wait(timeout=15))
+            migration_thread.join(timeout=1)
+            writer_thread.join(timeout=1)
+            self.assertFalse(migration_thread.is_alive())
+            self.assertFalse(writer_thread.is_alive())
+            self.assertEqual(failures, [])
+        finally:
+            paused.release.set()
+            if migration_thread is not None and migration_thread.is_alive():
+                migration_connection.cancel()
+                migration_thread.join(timeout=15)
+            if writer_thread is not None and writer_thread.is_alive():
+                writer.cancel()
+                writer_thread.join(timeout=15)
+            migration_alive = (
+                migration_thread is not None and migration_thread.is_alive()
+            )
+            writer_alive = writer_thread is not None and writer_thread.is_alive()
+            if not migration_alive:
+                migration_connection.close()
+            if not writer_alive:
+                writer.close()
+            self.assertFalse(migration_alive)
+            self.assertFalse(writer_alive)
+
+        observer = self._connection()
+        try:
+            self.assertEqual(
+                self._history(observer)[-1],
+                (10, "product-descriptor-content"),
+            )
+            self.assertEqual(
+                observer.execute(
+                    "SELECT count(*) FROM cpk_registered_products "
+                    "WHERE descriptor_content IS NULL"
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                observer.execute(
+                    "SELECT count(*) FROM cpk_registered_products"
+                ).fetchone()[0],
+                66,
+            )
+        finally:
+            observer.close()
 
     def _prepare_v9(self, connection) -> None:
         production = schema_module.POSTGRES_SCHEMA_MIGRATIONS
@@ -515,6 +694,9 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
 
     def _reset_schema(self) -> None:
         self.admin.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
+        self.admin.execute(
+            f'DROP SCHEMA IF EXISTS "{self.schema}_other" CASCADE'
+        )
         self.admin.execute(f'CREATE SCHEMA "{self.schema}"')
 
 
@@ -538,7 +720,83 @@ class _FailingPhaseConnection:
             self._phase == "final" and is_final
         ):
             raise RuntimeError(self._marker)
-        return self._connection.execute(query, params)
+        if params:
+            return self._connection.execute(query, params)
+        return self._connection.execute(query)
+
+
+class _RecordingConnection:
+    def __init__(self, connection) -> None:
+        self._connection = connection
+        self.backfill_query = ""
+        self.backfill_parameters = ()
+
+    @property
+    def autocommit(self):
+        return self._connection.autocommit
+
+    def transaction(self):
+        return self._connection.transaction()
+
+    def execute(self, query, params=()):
+        if (
+            not self.backfill_query
+            and "FOR UPDATE" in query
+            and "FROM cpk_registered_products" in query
+        ):
+            self.backfill_query = query
+            self.backfill_parameters = params
+        if params:
+            return self._connection.execute(query, params)
+        return self._connection.execute(query)
+
+
+class _PausingBackfillConnection:
+    def __init__(self, connection) -> None:
+        self._connection = connection
+        self.first_batch = threading.Event()
+        self.release = threading.Event()
+        self._paused = False
+
+    @property
+    def autocommit(self):
+        return self._connection.autocommit
+
+    def transaction(self):
+        return self._connection.transaction()
+
+    def execute(self, query, params=()):
+        cursor = (
+            self._connection.execute(query, params)
+            if params
+            else self._connection.execute(query)
+        )
+        if (
+            not self._paused
+            and "FOR UPDATE" in query
+            and "FROM cpk_registered_products" in query
+        ):
+            self._paused = True
+            return _PausingCursor(cursor, self.first_batch, self.release)
+        return cursor
+
+
+class _PausingCursor:
+    def __init__(self, cursor, first_batch, release) -> None:
+        self._cursor = cursor
+        self._first_batch = first_batch
+        self._release = release
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if len(rows) == 64:
+            self._first_batch.set()
+            if not self._release.wait(timeout=15):
+                raise RuntimeError("paused backfill was not released")
+        return rows
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
 
 
 if __name__ == "__main__":
