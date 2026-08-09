@@ -37,6 +37,7 @@ _CURRENT_HISTORY = [
     (11, "gateway-probe-access-path"),
     (12, "gateway-key-rotation-generation-evidence"),
     (13, "gateway-key-rotation-status-contracts"),
+    (14, "gateway-key-rotation-retirement-evidence"),
 ]
 _CANONICAL = "2026-08-07T06:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-07T02:00:00-04:00"
@@ -68,7 +69,7 @@ class SecretRegistrationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_secret_registration_v4(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 13)
+        self.assertEqual(registry.target_version, 14)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations[:4]],
             _V4_HISTORY,
