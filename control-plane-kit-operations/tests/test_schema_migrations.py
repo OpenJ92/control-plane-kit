@@ -105,6 +105,16 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         backfill_step_type = self._required("DeterministicBackfillStep")
         error_type = self._required("SchemaMigrationError")
 
+        class HostileSql(str):
+            def strip(self, *args, **kwargs):
+                raise RuntimeError("private hostile SQL")
+
+            def __contains__(self, item):
+                raise RuntimeError("private hostile SQL")
+
+            def encode(self, *args, **kwargs):
+                raise RuntimeError("private hostile SQL")
+
         invalid_sql = (None, b"SELECT 1", "", "  \n", "private\x00sql", "\ud800")
         for sql in invalid_sql:
             with self.subTest(
@@ -117,6 +127,18 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
                 self.assertNotIn("SELECT", str(raised.exception))
                 self.assertIsNone(raised.exception.__context__)
                 self.assertIsNone(raised.exception.__cause__)
+
+        for construct in (
+            lambda sql: sql_step_type(sql),
+            lambda sql: migration_type(10, "hostile-sql", sql),
+        ):
+            with self.subTest(construct=construct):
+                value = construct(HostileSql("SELECT 'private hostile SQL'"))
+                self.assertEqual(
+                    value.checksum_sha256,
+                    sha256(b"SELECT 'private hostile SQL'").hexdigest(),
+                )
+                self.assertNotIn("private hostile SQL", repr(value))
 
         for values in (
             {"kind": "product-descriptor-content", "algorithm_version": 1},

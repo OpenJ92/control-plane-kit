@@ -276,27 +276,41 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
 
         try:
             install(connection)
-            program_registry = self._program_registry(first_sql, second_sql)
-            runner_module.POSTGRES_SCHEMA_MIGRATIONS = program_registry
-            try:
-                with self.assertRaises(postgres.SchemaMigrationError) as raised:
-                    install(RecordingConnection())
-            finally:
-                runner_module.POSTGRES_SCHEMA_MIGRATIONS = original_runner_registry
+            for algorithm_version in (1, 2):
+                with self.subTest(algorithm_version=algorithm_version):
+                    executed.clear()
+                    program_registry = self._program_registry(
+                        first_sql,
+                        second_sql,
+                        algorithm_version=algorithm_version,
+                    )
+                    runner_module.POSTGRES_SCHEMA_MIGRATIONS = program_registry
+                    try:
+                        with self.assertRaises(
+                            postgres.SchemaMigrationError
+                        ) as raised:
+                            install(RecordingConnection())
+                    finally:
+                        runner_module.POSTGRES_SCHEMA_MIGRATIONS = (
+                            original_runner_registry
+                        )
 
-            self.assertEqual(executed, [first_sql, second_sql])
-            self.assertEqual(
-                str(raised.exception),
-                "schema migration backfill is not supported",
-            )
-            self.assertIsNone(raised.exception.__context__)
-            self.assertIsNone(raised.exception.__cause__)
-            self.assertIsNone(
-                connection.execute(
-                    "SELECT to_regclass('cpk_test_program_order')"
-                ).fetchone()[0]
-            )
-            self.assertEqual(self._ledger_rows(connection), _CURRENT_HISTORY)
+                    self.assertEqual(executed, [first_sql, second_sql])
+                    self.assertEqual(
+                        str(raised.exception),
+                        "schema migration backfill is not supported",
+                    )
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertIsNone(
+                        connection.execute(
+                            "SELECT to_regclass('cpk_test_program_order')"
+                        ).fetchone()[0]
+                    )
+                    self.assertEqual(
+                        self._ledger_rows(connection),
+                        _CURRENT_HISTORY,
+                    )
             self.assertIs(
                 schema_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,
@@ -326,6 +340,8 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
         second_failures: list[BaseException] = []
         thread = None
         try:
+            second.execute("SET lock_timeout TO '5s'")
+            second.execute("SET statement_timeout TO '10s'")
             caller.execute("CREATE TABLE cpk_caller_owned_after_failure (id integer)")
             runner_module.POSTGRES_SCHEMA_MIGRATIONS = self._program_registry(
                 "CREATE TABLE cpk_test_program_savepoint (position integer)",
@@ -367,11 +383,18 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             runner_module.POSTGRES_SCHEMA_MIGRATIONS = original_runner_registry
             if thread is not None and thread.is_alive():
                 caller.rollback()
-                thread.join(timeout=10)
+                second.cancel()
+                thread.join(timeout=15)
             if not caller.closed:
                 caller.rollback()
                 caller.close()
-            second.close()
+            thread_is_alive = thread is not None and thread.is_alive()
+            if not thread_is_alive:
+                second.close()
+            self.assertFalse(
+                thread_is_alive,
+                "lock observer remained alive after database timeout and cancellation",
+            )
 
         observer = self._connection()
         try:
@@ -539,7 +562,13 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             time.sleep(0.01)
         self.fail("second installer did not wait on the advisory lock")
 
-    def _program_registry(self, first_sql: str, second_sql: str):
+    def _program_registry(
+        self,
+        first_sql: str,
+        second_sql: str,
+        *,
+        algorithm_version: int = 1,
+    ):
         production = schema_module.POSTGRES_SCHEMA_MIGRATIONS
         program = postgres.SchemaMigration(
             version=10,
@@ -549,7 +578,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 postgres.SqlMigrationStep(second_sql),
                 postgres.DeterministicBackfillStep(
                     postgres.SchemaBackfillKind.PRODUCT_DESCRIPTOR_CONTENT,
-                    1,
+                    algorithm_version,
                 ),
             ),
         )
