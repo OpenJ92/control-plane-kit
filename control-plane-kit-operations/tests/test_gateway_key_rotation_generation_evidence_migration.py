@@ -85,8 +85,11 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
                 "LOCK TABLE cpk_gateway_key_rotations IN ACCESS EXCLUSIVE MODE;"
             )
         )
-        self.assertGreaterEqual(migration.steps[0].sql.count('COLLATE "C"'), 2)
-        self.assertGreaterEqual(migration.steps[2].sql.count('COLLATE "C"'), 2)
+        self.assertIn(
+            "count(DISTINCT constraints.conname)", migration.steps[0].sql
+        )
+        self.assertGreaterEqual(migration.steps[0].sql.count('COLLATE "C"'), 3)
+        self.assertGreaterEqual(migration.steps[2].sql.count('COLLATE "C"'), 3)
         self.assertNotIn(_VALID_PROVIDER, repr(migration))
         pinned = getattr(schema_module, "_POSTGRES_SCHEMA_V12_SHA256", None)
         self.assertEqual(pinned, migration.checksum_sha256)
@@ -146,22 +149,24 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
             )
             before_rows = self._rows_with_generation(connection)
             before_constraints = self._target_constraint_identities(connection)
-            before_pair_digest = {
-                name: value
-                for name, value in before_constraints.items()
-                if name in (_CHECKPOINT_CONSTRAINT, _DIGEST_CONSTRAINT)
-            }
+            before_checkpoint = before_constraints[_CHECKPOINT_CONSTRAINT]
+            before_digest = before_constraints[_DIGEST_CONSTRAINT]
 
             postgres.install_postgres_schema(connection)
 
             self.assertEqual(self._rows_with_generation(connection), before_rows)
             after = self._target_constraint_identities(connection)
-            self.assertEqual(
-                {name: after[name] for name in before_pair_digest},
-                before_pair_digest,
-            )
+            self.assertEqual(after[_CHECKPOINT_CONSTRAINT], before_checkpoint)
+            self.assertNotEqual(after[_DIGEST_CONSTRAINT][0], before_digest[0])
+            self.assertNotEqual(after[_DIGEST_CONSTRAINT][1], before_digest[1])
+            self.assertEqual(after[_DIGEST_CONSTRAINT][1].count('COLLATE "C"'), 1)
             self.assertIn(_PROVIDER_CONSTRAINT, after)
             self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            before_repeat = self._complete_snapshot(connection)
+
+            postgres.install_postgres_schema(connection)
+
+            self.assertEqual(self._complete_snapshot(connection), before_repeat)
         finally:
             connection.close()
 
@@ -325,7 +330,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_provider_identifier_vectors_match_public_and_postgres_admission(
+    def test_provider_and_digest_vectors_match_public_and_postgres_admission(
         self,
     ) -> None:
         accepted = ("a", "A" + ("z" * 199))
@@ -345,6 +350,22 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
             with self.subTest(surface="python-rejected", provider_length=len(provider)):
                 with self.assertRaises(GatewayKeyRotationError):
                     self._rotation_value(provider)
+
+        accepted_digests = ("0" * 64, "0123456789abcdef" * 4)
+        rejected_digests = (
+            "A" * 64,
+            "g" * 64,
+            "0" * 63,
+            ("0" * 63) + "０",
+            ("0" * 32) + "\n" + ("0" * 31),
+        )
+        for digest in accepted_digests:
+            with self.subTest(surface="python-digest-accepted"):
+                self._rotation_value(_VALID_PROVIDER, digest=digest)
+        for digest in rejected_digests:
+            with self.subTest(surface="python-digest-rejected"):
+                with self.assertRaises(GatewayKeyRotationError):
+                    self._rotation_value(_VALID_PROVIDER, digest=digest)
 
         connection = self._connection()
         try:
@@ -368,9 +389,30 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
                             provider=provider,
                             digest=_VALID_DIGEST,
                         )
+            digest_start = len(accepted) + len(rejected)
+            for index, digest in enumerate(accepted_digests, start=digest_start):
+                with self.subTest(surface="postgres-digest-accepted", index=index):
+                    self._insert_rotation(
+                        connection,
+                        index=index,
+                        provider=_VALID_PROVIDER,
+                        digest=digest,
+                    )
+            for index, digest in enumerate(
+                rejected_digests,
+                start=digest_start + len(accepted_digests),
+            ):
+                with self.subTest(surface="postgres-digest-rejected", index=index):
+                    with self.assertRaises(psycopg.errors.CheckViolation):
+                        self._insert_rotation(
+                            connection,
+                            index=index,
+                            provider=_VALID_PROVIDER,
+                            digest=digest,
+                        )
             migration = self._v12()
-            self.assertGreaterEqual(migration.steps[0].sql.count('COLLATE "C"'), 2)
-            self.assertGreaterEqual(migration.steps[2].sql.count('COLLATE "C"'), 2)
+            self.assertGreaterEqual(migration.steps[0].sql.count('COLLATE "C"'), 3)
+            self.assertGreaterEqual(migration.steps[2].sql.count('COLLATE "C"'), 3)
         finally:
             connection.close()
 
@@ -488,11 +530,14 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
         exact = ScriptedConnection(valid_columns, valid_constraints)
         verifier(exact)
         column_query, constraint_query = (query for query, _ in exact.queries)
+        constraint_params = exact.queries[1][1]
         self.assertIn("LIMIT 3", column_query)
         self.assertIn("column_default IS NULL", column_query)
         self.assertIn("LIMIT 4", constraint_query)
         self.assertIn("pg_get_constraintdef", constraint_query)
         self.assertNotIn("namespace.nspname,", constraint_query)
+        self.assertEqual(len(constraint_params), 3)
+        self.assertEqual(constraint_params[1].count('COLLATE "C"'), 1)
 
         for label, columns, constraints in (
             ("duplicate-column", [*valid_columns, valid_columns[0]], valid_constraints),
@@ -601,7 +646,9 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _rotation_value(provider: str) -> GatewayKeyRotation:
+    def _rotation_value(
+        provider: str, *, digest: str = _VALID_DIGEST
+    ) -> GatewayKeyRotation:
         return GatewayKeyRotation(
             rotation_id="rotation-value",
             workspace_id="workspace-a",
@@ -620,7 +667,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
             requested_at="2026-08-09T12:00:00Z",
             intent_fingerprint="a" * 64,
             generation_provider_registration_id=provider,
-            generation_action_digest=_VALID_DIGEST,
+            generation_action_digest=digest,
         )
 
     def _drop_generation_contract(self, connection) -> None:
