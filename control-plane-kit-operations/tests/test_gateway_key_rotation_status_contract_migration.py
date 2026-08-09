@@ -168,8 +168,19 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
         for status in _CURRENT_STATUSES:
             self.assertIn(f"'{status}'", preflight)
         self.assertNotIn("private-status-material", repr(migration))
+        self.assertEqual(
+            tuple(step.checksum_sha256 for step in migration.steps),
+            (
+                "5b7d232b158667a02990a9f218f2e5bd09123909790390f7abfa31e648375cc7",
+                "2504b7f90f9203a5960b39114e10915123fb2e184dec87007cbf60589ec453aa",
+                "a1d6c1e856c8e1fb321dfae7fbfa5275dbc131605ea88ae02c8c8ede6b0c15db",
+            ),
+        )
         pinned = getattr(schema_module, "_POSTGRES_SCHEMA_V13_SHA256", None)
-        self.assertRegex(pinned, r"^[0-9a-f]{64}$")
+        self.assertEqual(
+            pinned,
+            "101b76750e72d449928d9d236e05ada77708be667b30a9f490092b124d82c319",
+        )
         self.assertEqual(pinned, migration.checksum_sha256)
         self.assertFalse(
             hasattr(schema_module, "_upgrade_gateway_key_rotation_status_constraints")
@@ -272,6 +283,24 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
             ),
             ("unvalidated", "CHECK ({column} IS NOT NULL) NOT VALID"),
             ("wrong-type", "UNIQUE ({column})"),
+            (
+                "reordered",
+                "CHECK ({column} IN ("
+                + ", ".join(f"'{status}'" for status in reversed(_CURRENT_STATUSES))
+                + "))",
+            ),
+            (
+                "superset",
+                "CHECK ({column} IN ("
+                + ", ".join(f"'{status}'" for status in _CURRENT_STATUSES)
+                + ", 'unlisted'))",
+            ),
+            (
+                "logically-altered",
+                "CHECK ({column} IS NOT NULL AND {column} IN ("
+                + ", ".join(f"'{status}'" for status in _CURRENT_STATUSES)
+                + "))",
+            ),
         )
         for label, definition in cases:
             with self.subTest(label=label):
@@ -415,6 +444,91 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
                     self.assertEqual(self._complete_snapshot(connection), before)
                 finally:
                     connection.close()
+
+    def test_current_literals_are_enforced_by_all_three_postgres_constraints(
+        self,
+    ) -> None:
+        connection = self._connection()
+        try:
+            postgres.install_postgres_schema(connection)
+            self.assertEqual(self._history(connection)[-1][:2], _V13_IDENTITY)
+            connection.execute(
+                """
+                INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+                VALUES ('workspace-a', 'Workspace A', 'created')
+                """
+            )
+            connection.execute(
+                f"""
+                INSERT INTO {_ROTATIONS} (
+                  rotation_id, workspace_id, gateway_node_id, purpose, issuer,
+                  old_key_id, new_secret_reference, key_generation_correlation,
+                  maximum_grant_lifetime_seconds, clock_skew_seconds,
+                  correlation_id, requested_by, requested_at, intent_fingerprint,
+                  status, version
+                ) VALUES (
+                  'rotation-a', 'workspace-a', 'gateway-a', %s, 'cpk-server',
+                  'gateway-key-a',
+                  'secret://workspace-secrets/keys/gateway-key-b',
+                  'generate-gateway-key-b', 120, 10, 'rotation-a', 'operator-a',
+                  '2026-08-09T12:00:00Z', %s, 'requested', 1
+                )
+                """,
+                (DelegationKeyPurpose.GATEWAY_PROBE.value, "a" * 64),
+            )
+            connection.execute(
+                f"""
+                INSERT INTO {_TRANSITIONS} (
+                  rotation_id, transition_id, from_status, to_status,
+                  from_version, to_version, transition_fingerprint,
+                  advanced_by, advanced_at
+                ) VALUES (
+                  'rotation-a', 'transition-a', 'requested', 'awaiting-approval',
+                  1, 2, %s, 'operator-a', '2026-08-09T12:01:00Z'
+                )
+                """,
+                ("b" * 64,),
+            )
+
+            for status in _CURRENT_STATUSES:
+                with self.subTest(table=_ROTATIONS, status=status):
+                    failure_code = (
+                        "bounded-failure" if status in {"blocked", "rejected"} else None
+                    )
+                    connection.execute(
+                        f"UPDATE {_ROTATIONS} SET status = %s, failure_code = %s",
+                        (status, failure_code),
+                    )
+                with self.subTest(table=_TRANSITIONS, status=status):
+                    connection.execute(
+                        f"UPDATE {_TRANSITIONS} "
+                        "SET from_status = %s, to_status = %s",
+                        (status, status),
+                    )
+
+            for table, column, mutation in (
+                (
+                    _ROTATIONS,
+                    "status",
+                    f"UPDATE {_ROTATIONS} SET status = 'unlisted', "
+                    "failure_code = NULL",
+                ),
+                (
+                    _TRANSITIONS,
+                    "from_status",
+                    f"UPDATE {_TRANSITIONS} SET from_status = 'unlisted'",
+                ),
+                (
+                    _TRANSITIONS,
+                    "to_status",
+                    f"UPDATE {_TRANSITIONS} SET to_status = 'unlisted'",
+                ),
+            ):
+                with self.subTest(table=table, column=column, status="unlisted"):
+                    with self.assertRaises(psycopg.errors.CheckViolation):
+                        connection.execute(mutation)
+        finally:
+            connection.close()
 
     def test_each_sql_phase_failure_rolls_back_exact_v12_truth(self) -> None:
         migration = self._v13()

@@ -2091,6 +2091,370 @@ END
 $cpk$;
 """
 
+_POSTGRES_SCHEMA_V13_INITIAL_STATUSES = (
+    "requested",
+    "awaiting-approval",
+    "approved",
+    "key-generated",
+    "overlap-deploying",
+    "overlap-ready",
+    "new-key-active",
+    "draining-old-grants",
+    "retirement-deploying",
+    "completed",
+    "blocked",
+    "rejected",
+)
+_POSTGRES_SCHEMA_V13_GENERATION_STATUSES = (
+    "requested",
+    "awaiting-approval",
+    "approved",
+    "generation-prepared",
+    "key-generated",
+    "overlap-deploying",
+    "overlap-ready",
+    "new-key-active",
+    "draining-old-grants",
+    "retirement-deploying",
+    "completed",
+    "blocked",
+    "rejected",
+)
+_POSTGRES_SCHEMA_V13_RETIREMENT_READY_STATUSES = (
+    "requested",
+    "awaiting-approval",
+    "approved",
+    "generation-prepared",
+    "key-generated",
+    "overlap-deploying",
+    "overlap-ready",
+    "new-key-active",
+    "draining-old-grants",
+    "retirement-deploying",
+    "retirement-ready",
+    "completed",
+    "blocked",
+    "rejected",
+)
+_POSTGRES_SCHEMA_V13_CURRENT_STATUSES = (
+    "requested",
+    "awaiting-approval",
+    "approved",
+    "generation-prepared",
+    "key-generated",
+    "overlap-deploying",
+    "overlap-ready",
+    "new-key-active",
+    "draining-old-grants",
+    "retirement-deploying",
+    "retirement-ready",
+    "old-key-retired",
+    "revocation-prepared",
+    "completed",
+    "blocked",
+    "rejected",
+)
+_POSTGRES_SCHEMA_V13_SHIPPED_STATUSES = (
+    _POSTGRES_SCHEMA_V13_INITIAL_STATUSES,
+    _POSTGRES_SCHEMA_V13_GENERATION_STATUSES,
+    _POSTGRES_SCHEMA_V13_RETIREMENT_READY_STATUSES,
+    _POSTGRES_SCHEMA_V13_CURRENT_STATUSES,
+)
+
+
+def _postgres_status_values(values: tuple[str, ...], *, cast: bool = False) -> str:
+    suffix = "::text" if cast else ""
+    return ", ".join(f"'{value}'{suffix}" for value in values)
+
+
+def _postgres_status_definition(column: str, values: tuple[str, ...]) -> str:
+    return (
+        f"CHECK (({column} = ANY (ARRAY["
+        f"{_postgres_status_values(values, cast=True)}])))"
+    )
+
+
+def _postgres_text_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL = _postgres_status_values(
+    _POSTGRES_SCHEMA_V13_CURRENT_STATUSES
+)
+_POSTGRES_SCHEMA_V13_ROTATION_DEFINITIONS = tuple(
+    _postgres_status_definition("status", statuses)
+    for statuses in _POSTGRES_SCHEMA_V13_SHIPPED_STATUSES
+)
+_POSTGRES_SCHEMA_V13_FROM_DEFINITIONS = tuple(
+    _postgres_status_definition("from_status", statuses)
+    for statuses in _POSTGRES_SCHEMA_V13_SHIPPED_STATUSES
+)
+_POSTGRES_SCHEMA_V13_TO_DEFINITIONS = tuple(
+    _postgres_status_definition("to_status", statuses)
+    for statuses in _POSTGRES_SCHEMA_V13_SHIPPED_STATUSES
+)
+
+
+def _postgres_definition_array(values: tuple[str, ...]) -> str:
+    return ", ".join(_postgres_text_literal(value) for value in values)
+
+
+_POSTGRES_SCHEMA_V13_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_gateway_key_rotations IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_gateway_key_rotation_transitions IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_name_count bigint;
+  constraint_contract_is_accepted boolean;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotations
+    WHERE status NOT IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL})
+  ) OR EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotation_transitions
+    WHERE from_status NOT IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL})
+  ) OR EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotation_transitions
+    WHERE to_status NOT IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL})
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  END IF;
+
+  WITH accepted(relation_name, constraint_name, definitions) AS (
+    VALUES
+      (
+        'cpk_gateway_key_rotations',
+        'cpk_gateway_key_rotations_status_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V13_ROTATION_DEFINITIONS)}]
+      ),
+      (
+        'cpk_gateway_key_rotation_transitions',
+        'cpk_gateway_key_rotation_transitions_from_status_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V13_FROM_DEFINITIONS)}]
+      ),
+      (
+        'cpk_gateway_key_rotation_transitions',
+        'cpk_gateway_key_rotation_transitions_to_status_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V13_TO_DEFINITIONS)}]
+      )
+  )
+  SELECT count(*),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false)
+                   = ANY(accepted.definitions)
+           ),
+           false
+         )
+    INTO constraint_count, constraint_name_count,
+         constraint_contract_is_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  JOIN accepted
+    ON accepted.relation_name = relation.relname
+   AND accepted.constraint_name = constraints.conname
+  WHERE namespace.nspname = current_schema();
+
+  IF constraint_count > 3
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0
+        AND constraint_contract_is_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V13_ROTATION_SQL = f"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_historical boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V13_ROTATION_DEFINITIONS[-1])}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) = ANY(ARRAY[
+               {_postgres_definition_array(_POSTGRES_SCHEMA_V13_ROTATION_DEFINITIONS[:-1])}
+             ])
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_historical
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotations'
+    AND constraints.conname = 'cpk_gateway_key_rotations_status_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_status_check
+      CHECK (status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE
+        AND constraint_is_historical IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  ELSIF constraint_is_historical IS TRUE THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      DROP CONSTRAINT cpk_gateway_key_rotations_status_check,
+      ADD CONSTRAINT cpk_gateway_key_rotations_status_check
+      CHECK (status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V13_TRANSITIONS_SQL = f"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_historical boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V13_FROM_DEFINITIONS[-1])}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) = ANY(ARRAY[
+               {_postgres_definition_array(_POSTGRES_SCHEMA_V13_FROM_DEFINITIONS[:-1])}
+             ])
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_historical
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotation_transitions'
+    AND constraints.conname =
+      'cpk_gateway_key_rotation_transitions_from_status_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_key_rotation_transitions
+      ADD CONSTRAINT cpk_gateway_key_rotation_transitions_from_status_check
+      CHECK (from_status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE
+        AND constraint_is_historical IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  ELSIF constraint_is_historical IS TRUE THEN
+    ALTER TABLE cpk_gateway_key_rotation_transitions
+      DROP CONSTRAINT cpk_gateway_key_rotation_transitions_from_status_check,
+      ADD CONSTRAINT cpk_gateway_key_rotation_transitions_from_status_check
+      CHECK (from_status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  END IF;
+END
+$cpk$;
+
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_historical boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V13_TO_DEFINITIONS[-1])}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) = ANY(ARRAY[
+               {_postgres_definition_array(_POSTGRES_SCHEMA_V13_TO_DEFINITIONS[:-1])}
+             ])
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_historical
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotation_transitions'
+    AND constraints.conname =
+      'cpk_gateway_key_rotation_transitions_to_status_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_key_rotation_transitions
+      ADD CONSTRAINT cpk_gateway_key_rotation_transitions_to_status_check
+      CHECK (to_status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE
+        AND constraint_is_historical IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  ELSIF constraint_is_historical IS TRUE THEN
+    ALTER TABLE cpk_gateway_key_rotation_transitions
+      DROP CONSTRAINT cpk_gateway_key_rotation_transitions_to_status_check,
+      ADD CONSTRAINT cpk_gateway_key_rotation_transitions_to_status_check
+      CHECK (to_status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  END IF;
+END
+$cpk$;
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -2277,6 +2641,24 @@ if _POSTGRES_SCHEMA_V12.checksum_sha256 != _POSTGRES_SCHEMA_V12_SHA256:
         f"checksum: expected {_POSTGRES_SCHEMA_V12_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V12.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V13 = SchemaMigration(
+    version=13,
+    name="gateway-key-rotation-status-contracts",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V13_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V13_ROTATION_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V13_TRANSITIONS_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V13_SHA256 = (
+    "101b76750e72d449928d9d236e05ada77708be667b30a9f490092b124d82c319"
+)
+if _POSTGRES_SCHEMA_V13.checksum_sha256 != _POSTGRES_SCHEMA_V13_SHA256:
+    raise SchemaMigrationError(
+        "gateway key rotation status contracts V13 differ from their pinned "
+        f"checksum: expected {_POSTGRES_SCHEMA_V13_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V13.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -2291,6 +2673,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V10,
         _POSTGRES_SCHEMA_V11,
         _POSTGRES_SCHEMA_V12,
+        _POSTGRES_SCHEMA_V13,
     )
 )
 
@@ -2332,48 +2715,6 @@ def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
             (constraint, table),
         ).fetchone()
         if row is None or required in row[0]:
-            continue
-        connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
-        connection.execute(
-            f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
-            f"CHECK ({column} IN ({allowed}))"
-        )
-
-
-def _upgrade_gateway_key_rotation_status_constraints(
-    connection: PostgresConnection,
-) -> None:
-    """Expand installed closed rotation-state checks without row loss."""
-
-    statuses = tuple(GatewayKeyRotationStatus)
-    allowed = _sql_values(statuses)
-    for table, column, constraint in (
-        (
-            "cpk_gateway_key_rotations",
-            "status",
-            "cpk_gateway_key_rotations_status_check",
-        ),
-        (
-            "cpk_gateway_key_rotation_transitions",
-            "from_status",
-            "cpk_gateway_key_rotation_transitions_from_status_check",
-        ),
-        (
-            "cpk_gateway_key_rotation_transitions",
-            "to_status",
-            "cpk_gateway_key_rotation_transitions_to_status_check",
-        ),
-    ):
-        row = connection.execute(
-            """
-            SELECT pg_get_constraintdef(oid)
-            FROM pg_constraint
-            WHERE conname = %s
-              AND conrelid = %s::regclass
-            """,
-            (constraint, table),
-        ).fetchone()
-        if row is None or all(status.value in row[0] for status in statuses):
             continue
         connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
         connection.execute(

@@ -28,7 +28,6 @@ from control_plane_kit_operations.postgres.schema import (
     _backfill_graph_lineage,
     _upgrade_approval_scope_constraints,
     _upgrade_gateway_key_rotation_retirement_constraint,
-    _upgrade_gateway_key_rotation_status_constraints,
 )
 
 
@@ -82,6 +81,10 @@ _CATEGORICAL_MIGRATION_FAILURES = {
     11: ("gateway probe access path is not accepted", frozenset({"P1110"})),
     12: (
         "gateway key rotation generation evidence is not accepted",
+        frozenset({"P1110"}),
+    ),
+    13: (
+        "gateway key rotation status contract is not accepted",
         frozenset({"P1110"}),
     ),
 }
@@ -147,7 +150,6 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
         if observed.kind is not ObservedSchemaKind.EMPTY:
             connection.execute(POSTGRES_SCHEMA)
         _upgrade_approval_scope_constraints(connection)
-        _upgrade_gateway_key_rotation_status_constraints(connection)
         _upgrade_gateway_key_rotation_retirement_constraint(connection)
         _backfill_graph_lineage(connection)
         connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
