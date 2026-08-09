@@ -267,9 +267,17 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
                         )
                         with self.assertRaises(postgres.SchemaMigrationError) as raised:
                             postgres.verify_postgres_schema(self.connection)
+                        expected_category = (
+                            "gateway key rotation retirement evidence schema "
+                            "is not current"
+                            if table == "cpk_gateway_key_rotations"
+                            and column
+                            in {"old_key_retired_at", "old_secret_revoked_at"}
+                            else "gateway key rotation temporal schema is not current"
+                        )
                         self.assertEqual(
                             str(raised.exception),
-                            "gateway key rotation temporal schema is not current",
+                            expected_category,
                         )
                         self.assertLessEqual(len(str(raised.exception)), 256)
                         self.assertIsNone(raised.exception.__context__)

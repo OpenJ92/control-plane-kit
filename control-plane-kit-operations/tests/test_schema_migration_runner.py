@@ -77,6 +77,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
+                    postgres.SchemaMigrationActionKind.APPLY,
                 ),
             )
             self.assertEqual(tuple(inspect.signature(preview).parameters), ("connection",))
