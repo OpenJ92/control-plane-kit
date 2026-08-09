@@ -308,9 +308,20 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
                 "DROP CONSTRAINT cpk_gateway_probe_access_path_check"
             )
 
+            migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[-1]
+            self.assertEqual((migration.version, migration.name), _V11_IDENTITY)
+            migration_runner._apply_schema_migration(connection, migration)
+
+            self.assertEqual(self._constraint_contract(connection), _ACCESS_PATH_CONSTRAINT)
+            self.assertEqual(
+                tuple(row[:2] for row in self._history(connection)),
+                _V10_HISTORY,
+            )
+
             postgres.install_postgres_schema(connection)
 
             self.assertEqual(self._constraint_contract(connection), _ACCESS_PATH_CONSTRAINT)
+            self.assertEqual(self._history(connection)[-1][:2], _V11_IDENTITY)
         finally:
             connection.close()
 
@@ -510,9 +521,26 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
                 "ALTER COLUMN access_path DROP DEFAULT",
             ),
             (
+                "wrong-type",
+                "ALTER TABLE cpk_gateway_probe_attempts "
+                "DROP CONSTRAINT cpk_gateway_probe_access_path_check; "
+                "ALTER TABLE cpk_gateway_probe_attempts "
+                "ALTER COLUMN access_path DROP DEFAULT; "
+                "ALTER TABLE cpk_gateway_probe_attempts "
+                "ALTER COLUMN access_path TYPE varchar(64)",
+            ),
+            (
                 "constraint-missing",
                 "ALTER TABLE cpk_gateway_probe_attempts "
                 "DROP CONSTRAINT cpk_gateway_probe_access_path_check",
+            ),
+            (
+                "constraint-definition",
+                "ALTER TABLE cpk_gateway_probe_attempts "
+                "DROP CONSTRAINT cpk_gateway_probe_access_path_check; "
+                "ALTER TABLE cpk_gateway_probe_attempts ADD CONSTRAINT "
+                "cpk_gateway_probe_access_path_check "
+                "CHECK (access_path = 'runtime-private')",
             ),
             (
                 "constraint-unvalidated",
