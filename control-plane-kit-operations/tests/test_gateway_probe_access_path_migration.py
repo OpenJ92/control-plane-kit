@@ -26,6 +26,7 @@ _V10_HISTORY = (
 )
 _V11_IDENTITY = (11, "gateway-probe-access-path")
 _V12_IDENTITY = (12, "gateway-key-rotation-generation-evidence")
+_V13_IDENTITY = (13, "gateway-key-rotation-status-contracts")
 _ACCESS_PATH_COLUMN = ("text", "NO", "'runtime-private'::text")
 _ACCESS_PATH_CONSTRAINT = (
     "cpk_gateway_probe_attempts",
@@ -58,10 +59,10 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_three_sql_step_v11_program(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 12)
+        self.assertEqual(registry.target_version, 13)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V10_HISTORY, _V11_IDENTITY, _V12_IDENTITY),
+            (*_V10_HISTORY, _V11_IDENTITY, _V12_IDENTITY, _V13_IDENTITY),
         )
         migration = registry.migrations[10]
         self.assertIsNone(migration.sql)
@@ -114,7 +115,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(self._unrelated_objects(connection), before_objects)
-            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V13_IDENTITY)
             self.assertEqual(self._column_contract(connection), _ACCESS_PATH_COLUMN)
             self.assertEqual(self._constraint_contract(connection), _ACCESS_PATH_CONSTRAINT)
             self.assertEqual(self._column_order(connection)[-1], "access_path")
@@ -168,7 +169,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
                 before_constraint,
             )
             self.assertEqual(self._unrelated_objects(connection), before_objects)
-            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V13_IDENTITY)
         finally:
             connection.close()
 
@@ -322,7 +323,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
             postgres.install_postgres_schema(connection)
 
             self.assertEqual(self._constraint_contract(connection), _ACCESS_PATH_CONSTRAINT)
-            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V13_IDENTITY)
         finally:
             connection.close()
 

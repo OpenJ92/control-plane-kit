@@ -189,7 +189,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
         install_schema(self.connection)
         self.assertEqual(self._constraint_identities(), after_upgrade)
 
-    def test_install_expands_stale_rotation_status_checks_without_row_loss(
+    def test_install_rejects_post_v13_status_drift_without_row_loss_or_repair(
         self,
     ) -> None:
         install_schema(self.connection)
@@ -247,41 +247,31 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 f"CHECK ({column} IN ({old_values}))"
             )
 
-        install_schema(self.connection)
-        after_upgrade = self._constraint_identities()
-        self.connection.execute(
-            """
-            UPDATE cpk_gateway_key_rotations
-            SET status = 'generation-prepared', version = 2,
-                generation_provider_registration_id = 'provider-registration-a',
-                generation_action_digest = %s
-            WHERE rotation_id = 'rotation-a'
-            """,
-            ("b" * 64,),
-        )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_gateway_key_rotation_transitions (
-              rotation_id, transition_id, from_status, to_status,
-              from_version, to_version, transition_fingerprint,
-              advanced_by, advanced_at
-            ) VALUES (
-              'rotation-a', 'prepare-generation', 'approved',
-              'generation-prepared', 1, 2, %s, 'operator-a',
-              '2026-08-02T00:00:01Z'
-            )
-            """,
-            ("c" * 64,),
-        )
-        self.assertEqual(
-            self.connection.execute(
-                "SELECT status FROM cpk_gateway_key_rotations"
-            ).fetchall(),
-            [(GatewayKeyRotationStatus.GENERATION_PREPARED.value,)],
-        )
+        before_rejection = self._constraint_identities()
+        for _ in range(2):
+            with self.assertRaises(SchemaMigrationError) as raised:
+                install_schema(self.connection)
 
-        install_schema(self.connection)
-        self.assertEqual(self._constraint_identities(), after_upgrade)
+            self.assertEqual(
+                str(raised.exception),
+                "gateway key rotation status schema is not current",
+            )
+            self.assertIsNone(raised.exception.__context__)
+            self.assertIsNone(raised.exception.__cause__)
+            self.assertEqual(self._constraint_identities(), before_rejection)
+            self.assertEqual(
+                self.connection.execute(
+                    "SELECT rotation_id, status, version "
+                    "FROM cpk_gateway_key_rotations"
+                ).fetchall(),
+                [("rotation-a", GatewayKeyRotationStatus.APPROVED.value, 1)],
+            )
+            self.assertEqual(
+                self.connection.execute(
+                    "SELECT count(*) FROM cpk_gateway_key_rotation_transitions"
+                ).fetchone(),
+                (0,),
+            )
 
     def test_cloudflare_owned_ingress_resources_are_epoch_history_records(
         self,
