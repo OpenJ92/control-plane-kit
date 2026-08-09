@@ -1776,6 +1776,112 @@ ALTER TABLE cpk_registered_products
   );
 """
 
+_POSTGRES_SCHEMA_V11_PREPARE_SQL = r"""
+LOCK TABLE cpk_gateway_probe_attempts IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  column_contract_is_exact boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             data_type = 'text'
+             AND is_nullable = 'NO'
+             AND column_default = '''runtime-private''::text'
+           ),
+           false
+         )
+    INTO column_count, column_contract_is_exact
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_gateway_probe_attempts'
+    AND column_name = 'access_path';
+
+  IF column_count = 0 THEN
+    ALTER TABLE cpk_gateway_probe_attempts
+      ADD COLUMN access_path text;
+  ELSIF column_count <> 1
+    OR column_contract_is_exact IS NOT TRUE
+    OR EXISTS (
+      SELECT 1
+      FROM cpk_gateway_probe_attempts
+      WHERE access_path IS NULL
+    )
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway probe access path is not accepted';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V11_BACKFILL_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_gateway_probe_attempts
+    WHERE access_path IS NOT NULL
+      AND access_path NOT IN ('runtime-private', 'named-public-ingress')
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway probe access path is not accepted';
+  END IF;
+END
+$cpk$;
+
+UPDATE cpk_gateway_probe_attempts
+SET access_path = 'runtime-private'
+WHERE access_path IS NULL;
+"""
+
+_POSTGRES_SCHEMA_V11_FINAL_SQL = r"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_contract_is_exact boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               'CHECK ((access_path = ANY (ARRAY[''runtime-private''::text, ''named-public-ingress''::text])))'
+           ),
+           false
+         )
+    INTO constraint_count, constraint_contract_is_exact
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = constraints.connamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_probe_attempts'
+    AND constraints.conname = 'cpk_gateway_probe_access_path_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_probe_attempts
+      ADD CONSTRAINT cpk_gateway_probe_access_path_check
+      CHECK (access_path IN ('runtime-private', 'named-public-ingress'));
+  ELSIF constraint_count <> 1 OR constraint_contract_is_exact IS NOT TRUE THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway probe access path is not accepted';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_gateway_probe_attempts
+  ALTER COLUMN access_path SET DEFAULT 'runtime-private',
+  ALTER COLUMN access_path SET NOT NULL;
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1926,6 +2032,24 @@ if _POSTGRES_SCHEMA_V10.checksum_sha256 != _POSTGRES_SCHEMA_V10_SHA256:
         f"expected {_POSTGRES_SCHEMA_V10_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V10.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V11 = SchemaMigration(
+    version=11,
+    name="gateway-probe-access-path",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V11_PREPARE_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V11_BACKFILL_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V11_FINAL_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V11_SHA256 = (
+    "8cda9a35e7cd8733708e09f96ee897ec30b142841f3baed80c7c279894dc42c8"
+)
+if _POSTGRES_SCHEMA_V11.checksum_sha256 != _POSTGRES_SCHEMA_V11_SHA256:
+    raise SchemaMigrationError(
+        "gateway probe access path V11 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V11_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V11.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -1938,6 +2062,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V8,
         _POSTGRES_SCHEMA_V9,
         _POSTGRES_SCHEMA_V10,
+        _POSTGRES_SCHEMA_V11,
     )
 )
 

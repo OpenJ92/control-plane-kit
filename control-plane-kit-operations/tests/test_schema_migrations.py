@@ -517,8 +517,8 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         pinned_checksum = self._required("POSTGRES_SCHEMA_V1_SHA256")
 
         self.assertEqual(pinned_checksum, _V1_SCHEMA_SHA256)
-        self.assertEqual(registry.target_version, 10)
-        self.assertEqual(len(registry.migrations), 10)
+        self.assertEqual(registry.target_version, 11)
+        self.assertEqual(len(registry.migrations), 11)
         baseline = registry.migrations[0]
         self.assertEqual(baseline.version, 1)
         self.assertEqual(baseline.name, "operations-baseline")
@@ -588,6 +588,14 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
             final.sql,
         )
         self.assertIn("sha256(convert_to(descriptor_content, 'UTF8'))", final.sql)
+        access_path = registry.migrations[10]
+        self.assertEqual(access_path.version, 11)
+        self.assertEqual(access_path.name, "gateway-probe-access-path")
+        self.assertIsNone(access_path.sql)
+        self.assertEqual(len(access_path.steps), 3)
+        self.assertTrue(
+            all(type(step) is postgres.SqlMigrationStep for step in access_path.steps)
+        )
         for name in (
             "AppliedSchemaMigration",
             "DeterministicBackfillStep",

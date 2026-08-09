@@ -92,6 +92,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 (8, "ingress-evidence-timestamps"),
                 (9, "secret-use-authorization-timestamps"),
                 (10, "product-descriptor-content"),
+                (11, "gateway-probe-access-path"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)

@@ -110,7 +110,10 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                 ).fetchone()[0],
                 table_oid,
             )
-            self.assertEqual(self._history(connection)[-1], (10, "product-descriptor-content"))
+            self.assertEqual(
+                self._history(connection)[-1],
+                (11, "gateway-probe-access-path"),
+            )
             self._assert_current_contract(connection)
             before = connection.execute(
                 "SELECT * FROM cpk_registered_products ORDER BY registration_id"
@@ -466,7 +469,11 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                 observer = self._connection()
                 try:
                     expected_history = (
-                        (*_V9_HISTORY, (10, "product-descriptor-content"))
+                        (
+                            *_V9_HISTORY,
+                            (10, "product-descriptor-content"),
+                            (11, "gateway-probe-access-path"),
+                        )
                         if outcome == "commit"
                         else _V9_HISTORY
                     )
@@ -568,7 +575,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
         try:
             self.assertEqual(
                 self._history(observer)[-1],
-                (10, "product-descriptor-content"),
+                (11, "gateway-probe-access-path"),
             )
             self.assertEqual(
                 observer.execute(
