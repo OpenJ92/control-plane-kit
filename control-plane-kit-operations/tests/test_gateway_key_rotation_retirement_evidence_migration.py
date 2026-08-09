@@ -356,6 +356,8 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
                     self.assertEqual(
                         str(raised.exception), "schema migration application failed"
                     )
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertIsNone(raised.exception.__cause__)
                     self.assertEqual(
                         submitted_v13, [0, 1, 2] if predecessor == 12 else []
                     )
@@ -437,6 +439,13 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
             with self.subTest(constraint=label):
                 with self.assertRaises(postgres.SchemaMigrationError):
                     verifier(ScriptedConnection([list(_COLUMN_CONTRACT), constraints]))
+
+        for missing_index in range(2):
+            with self.subTest(missing_column=missing_index):
+                columns = list(_COLUMN_CONTRACT)
+                columns.pop(missing_index)
+                with self.assertRaises(postgres.SchemaMigrationError):
+                    verifier(ScriptedConnection([columns, [valid_constraint]]))
 
         for row_index in range(2):
             for fact_index, bad in (
