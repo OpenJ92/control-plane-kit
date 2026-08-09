@@ -264,11 +264,13 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                 "octet_length(descriptor_document::text)",
                 "octet_length(product_reference::text)",
                 "octet_length(descriptor_content)",
-                "order by registration_id collate \"c\"",
+                "where registration_id > %s",
+                "order by registration_id",
                 "limit %s for update",
             ):
                 with self.subTest(expression=expression):
                     self.assertIn(expression, normalized)
+            self.assertNotIn("collate", normalized)
             self.assertEqual(
                 recording.backfill_parameters,
                 (
@@ -286,6 +288,15 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                     64,
                 ),
             )
+            connection.execute("SET enable_seqscan TO off")
+            plan = connection.execute(
+                "EXPLAIN (FORMAT JSON) " + recording.backfill_query,
+                recording.backfill_parameters,
+            ).fetchone()[0][0]["Plan"]
+            self.assertIn(
+                "cpk_registered_products_pkey",
+                self._plan_index_names(plan),
+            )
         finally:
             connection.close()
 
@@ -300,6 +311,23 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
             "ALTER TABLE cpk_registered_products ADD CONSTRAINT "
             "cpk_registered_products_content_digest_check "
             "CHECK (descriptor_sha256 = descriptor_sha256) NOT VALID",
+            "ALTER TABLE cpk_registered_products DROP CONSTRAINT "
+            "cpk_registered_products_content_digest_check; "
+            "ALTER TABLE cpk_registered_products ADD CONSTRAINT "
+            "cpk_registered_products_content_digest_check "
+            "UNIQUE (descriptor_content)",
+            "ALTER TABLE cpk_registered_products DROP CONSTRAINT "
+            "cpk_registered_products_content_digest_check; "
+            "ALTER TABLE cpk_registered_products ADD CONSTRAINT "
+            "cpk_registered_products_content_digest_check "
+            "CHECK (descriptor_sha256 = encode(sha256("
+            "convert_to(descriptor_sha256, 'UTF8')), 'hex'))",
+            "ALTER TABLE cpk_registered_products DROP CONSTRAINT "
+            "cpk_registered_products_content_digest_check; "
+            "ALTER TABLE cpk_registered_products ADD CONSTRAINT "
+            "cpk_registered_products_content_digest_check "
+            "CHECK (descriptor_sha256 = encode(sha256("
+            "convert_to(descriptor_content, 'LATIN1')), 'hex'))",
         )
         for mutation in mutations:
             with self.subTest(mutation=mutation[:48]):
@@ -314,6 +342,43 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                         postgres.verify_postgres_schema(connection)
                 finally:
                     connection.close()
+
+    def test_final_verifier_ignores_constraints_outside_the_target_relation(self) -> None:
+        connection = self._connection()
+        try:
+            postgres.install_postgres_schema(connection)
+            connection.execute(
+                "ALTER TABLE cpk_workspaces ADD CONSTRAINT "
+                "cpk_registered_products_content_digest_check "
+                "CHECK (workspace_id = workspace_id)"
+            )
+            connection.execute(
+                "ALTER TABLE cpk_registered_products ADD CONSTRAINT "
+                "cpk_registered_products_content_digest_check_shadow "
+                "CHECK (descriptor_sha256 = descriptor_sha256)"
+            )
+            other_schema = f"{self.schema}_other"
+            self.admin.execute(f'CREATE SCHEMA "{other_schema}"')
+            self.admin.execute(
+                f'CREATE TABLE "{other_schema}".unrelated_product_contract '
+                "(descriptor_sha256 text, descriptor_content text)"
+            )
+            self.admin.execute(
+                f'ALTER TABLE "{other_schema}".unrelated_product_contract '
+                "ADD CONSTRAINT cpk_registered_products_content_digest_check "
+                "CHECK (descriptor_sha256 = descriptor_sha256)"
+            )
+
+            postgres.verify_postgres_schema(connection)
+
+            connection.execute(
+                "ALTER TABLE cpk_registered_products DROP CONSTRAINT "
+                "cpk_registered_products_content_digest_check"
+            )
+            with self.assertRaises(postgres.SchemaMigrationError):
+                postgres.verify_postgres_schema(connection)
+        finally:
+            connection.close()
 
     def test_access_exclusive_lock_lives_until_caller_transaction_end(self) -> None:
         for outcome in ("commit", "rollback"):
@@ -676,6 +741,18 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                 "SELECT version, name FROM cpk_schema_migrations ORDER BY version"
             ).fetchall()
         )
+
+    def _plan_index_names(self, plan: dict[str, object]) -> set[str]:
+        names = set()
+        index_name = plan.get("Index Name")
+        if isinstance(index_name, str):
+            names.add(index_name)
+        children = plan.get("Plans", [])
+        if isinstance(children, list):
+            for child in children:
+                if isinstance(child, dict):
+                    names.update(self._plan_index_names(child))
+        return names
 
     def _connection(
         self,
