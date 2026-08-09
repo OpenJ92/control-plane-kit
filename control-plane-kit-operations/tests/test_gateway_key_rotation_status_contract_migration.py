@@ -33,6 +33,8 @@ _V12_HISTORY = (
 )
 _V13_IDENTITY = (13, "gateway-key-rotation-status-contracts")
 _CATEGORICAL_ERROR = "gateway key rotation status contract is not accepted"
+_GENERATION_PROVIDER = "provider.registration:a-1"
+_GENERATION_DIGEST = "c" * 64
 _ROTATIONS = "cpk_gateway_key_rotations"
 _TRANSITIONS = "cpk_gateway_key_rotation_transitions"
 _ROTATION_CONSTRAINT = "cpk_gateway_key_rotations_status_check"
@@ -161,6 +163,17 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
         self.assertLess(preflight.index(rotation_lock), preflight.index(transition_lock))
         self.assertIn("count(DISTINCT constraints.conname)", preflight)
         self.assertIn("pg_get_constraintdef", preflight)
+        self.assertNotIn("ALTER TABLE", preflight)
+        self.assertRegex(
+            preflight,
+            r"IF constraint_count > 3\s+"
+            r"OR constraint_count <> constraint_name_count\s+"
+            r"OR [\s\S]*?THEN\s+"
+            r"RAISE EXCEPTION USING\s+"
+            r"ERRCODE = 'P1110',\s+"
+            r"MESSAGE = 'gateway key rotation status contract is not accepted';\s+"
+            r"END IF;",
+        )
         self.assertNotRegex(
             preflight,
             r"SELECT\s+(?:[^;]*\.)?(?:status|from_status|to_status)\s+FROM",
@@ -316,7 +329,8 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
                         definition.format(column="from_status"),
                     )
                     before = self._complete_snapshot(connection)
-                    executed: list[str] = []
+                    v13_steps = tuple(step.sql for step in self._v13().steps)
+                    submitted_v13_steps: list[int] = []
 
                     class RecordingConnection:
                         @property
@@ -327,23 +341,15 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
                             return connection.transaction()
 
                         def execute(self, query, params=None):
-                            normalized = re.sub(r"\s+", " ", query).strip()
-                            if normalized.startswith("ALTER TABLE") and any(
-                                name in normalized
-                                for name in (
-                                    _ROTATION_CONSTRAINT,
-                                    _FROM_CONSTRAINT,
-                                    _TO_CONSTRAINT,
-                                )
-                            ):
-                                executed.append(normalized)
+                            if query in v13_steps:
+                                submitted_v13_steps.append(v13_steps.index(query))
                             return connection.execute(query, params)
 
                     with self.assertRaises(postgres.SchemaMigrationError) as raised:
                         postgres.install_postgres_schema(RecordingConnection())
 
                     self._assert_bounded_status_error(raised.exception)
-                    self.assertEqual(executed, [])
+                    self.assertEqual(submitted_v13_steps, [0])
                     self.assertEqual(self._complete_snapshot(connection), before)
                     self.assertEqual(
                         tuple(row[:2] for row in self._history(connection)),
@@ -748,16 +754,22 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
               old_key_id, new_secret_reference, key_generation_correlation,
               maximum_grant_lifetime_seconds, clock_skew_seconds,
               correlation_id, requested_by, requested_at, intent_fingerprint,
-              status, version
+              status, version, generation_provider_registration_id,
+              generation_action_digest
             ) VALUES (
               'rotation-a', 'workspace-a', 'gateway-a', %s, 'cpk-server',
               'gateway-key-a',
               'secret://workspace-secrets/keys/gateway-key-b',
               'generate-gateway-key-b', 120, 10, 'rotation-a', 'operator-a',
-              '2026-08-09T12:00:00Z', %s, 'requested', 1
+              '2026-08-09T12:00:00Z', %s, 'requested', 1, %s, %s
             )
             """,
-            (DelegationKeyPurpose.GATEWAY_PROBE.value, "a" * 64),
+            (
+                DelegationKeyPurpose.GATEWAY_PROBE.value,
+                "a" * 64,
+                _GENERATION_PROVIDER,
+                _GENERATION_DIGEST,
+            ),
         )
         connection.execute(
             f"""
@@ -820,7 +832,9 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
     def _owned_rows(connection) -> tuple[tuple[object, ...], ...]:
         rotations = tuple(
             connection.execute(
-                f"SELECT ctid::text, rotation_id, status, version FROM {_ROTATIONS} "
+                f"SELECT ctid::text, rotation_id, status, version, "
+                f"generation_provider_registration_id, generation_action_digest "
+                f"FROM {_ROTATIONS} "
                 "ORDER BY rotation_id"
             ).fetchall()
         )
