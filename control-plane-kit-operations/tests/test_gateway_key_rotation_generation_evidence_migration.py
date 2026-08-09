@@ -92,8 +92,19 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
         self.assertGreaterEqual(migration.steps[2].sql.count('COLLATE "C"'), 3)
         self.assertNotIn(_VALID_PROVIDER, repr(migration))
         pinned = getattr(schema_module, "_POSTGRES_SCHEMA_V12_SHA256", None)
+        self.assertEqual(
+            tuple(step.checksum_sha256 for step in migration.steps),
+            (
+                "d8b453218fc3ca4401e0fd5bd44705d4396f046fdbe6ff3d939abb69a4b85b27",
+                "159f7d0a78123bcc3c122141f77ef4365880048623083da2aefc41ffdabfb6e9",
+                "6d3d9dc0381b81799d123a2384ed8c826ea70c486469a4d5a7a35659af905b75",
+            ),
+        )
+        self.assertEqual(
+            pinned,
+            "a9d5c552480172e7415def95df8a5ae44b03cd7023710ef13c975de90923732a",
+        )
         self.assertEqual(pinned, migration.checksum_sha256)
-        self.assertRegex(pinned, r"^[0-9a-f]{64}$")
 
     def test_absent_columns_preserve_rows_and_unknown_generation_truth(self) -> None:
         connection = self._connection()
@@ -162,6 +173,51 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
             self.assertEqual(after[_DIGEST_CONSTRAINT][1].count('COLLATE "C"'), 1)
             self.assertIn(_PROVIDER_CONSTRAINT, after)
             self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            before_repeat = self._complete_snapshot(connection)
+
+            postgres.install_postgres_schema(connection)
+
+            self.assertEqual(self._complete_snapshot(connection), before_repeat)
+        finally:
+            connection.close()
+
+    def test_pending_v11_with_canonical_digest_preserves_canonical_identity(
+        self,
+    ) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v11(connection)
+            self._seed_workspace(connection)
+            self._insert_rotation(connection, index=1)
+            self._insert_rotation(
+                connection,
+                index=2,
+                provider=_VALID_PROVIDER,
+                digest=_VALID_DIGEST,
+            )
+            connection.execute(
+                f"""
+                ALTER TABLE {_TABLE}
+                  DROP CONSTRAINT {_DIGEST_CONSTRAINT},
+                  ADD CONSTRAINT {_DIGEST_CONSTRAINT}
+                  CHECK ({_DIGEST_COLUMN} IS NULL
+                    OR ({_DIGEST_COLUMN} COLLATE "C") ~ '^[0-9a-f]{{64}}$')
+                """
+            )
+            before_rows = self._rows_with_generation(connection)
+            before_constraints = self._target_constraint_identities(connection)
+            before_checkpoint = before_constraints[_CHECKPOINT_CONSTRAINT]
+            before_digest = before_constraints[_DIGEST_CONSTRAINT]
+            self.assertNotIn(_PROVIDER_CONSTRAINT, before_constraints)
+
+            postgres.install_postgres_schema(connection)
+
+            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            self.assertEqual(self._rows_with_generation(connection), before_rows)
+            after = self._target_constraint_identities(connection)
+            self.assertEqual(after[_CHECKPOINT_CONSTRAINT], before_checkpoint)
+            self.assertEqual(after[_DIGEST_CONSTRAINT], before_digest)
+            self.assertIn(_PROVIDER_CONSTRAINT, after)
             before_repeat = self._complete_snapshot(connection)
 
             postgres.install_postgres_schema(connection)
