@@ -56,6 +56,196 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             migration.name = "changed"
 
+    def test_program_migration_is_explicit_frozen_algebra(self) -> None:
+        migration_type = self._required("SchemaMigration")
+        sql_step_type = self._required("SqlMigrationStep")
+        backfill_kind = self._required("SchemaBackfillKind")
+        backfill_step_type = self._required("DeterministicBackfillStep")
+
+        first = sql_step_type("SELECT 'private-first-sql';\n")
+        backfill = backfill_step_type(
+            kind=backfill_kind.PRODUCT_DESCRIPTOR_CONTENT,
+            algorithm_version=1,
+        )
+        second = sql_step_type("SELECT 'private-second-sql';\n")
+        migration = migration_type(
+            version=10,
+            name="product-descriptor-content",
+            steps=(first, backfill, second),
+        )
+
+        self.assertIsNone(migration.sql)
+        self.assertEqual(migration.steps, (first, backfill, second))
+        self.assertEqual(
+            first.checksum_sha256,
+            sha256(b"SELECT 'private-first-sql';\n").hexdigest(),
+        )
+        self.assertEqual(backfill.kind, backfill_kind.PRODUCT_DESCRIPTOR_CONTENT)
+        self.assertEqual(backfill.algorithm_version, 1)
+        for value in (first, migration):
+            with self.subTest(value=type(value).__name__):
+                self.assertNotIn("private-first-sql", repr(value))
+                self.assertNotIn("private-second-sql", repr(value))
+        with self.assertRaises(FrozenInstanceError):
+            first.sql = "changed"
+        with self.assertRaises(FrozenInstanceError):
+            backfill.algorithm_version = 2
+        with self.assertRaises(FrozenInstanceError):
+            migration.steps = ()
+
+        legacy = migration_type(1, "baseline", "SELECT 1")
+        self.assertEqual(legacy.sql, "SELECT 1")
+        self.assertIsNone(legacy.steps)
+        self.assertEqual(legacy.checksum_sha256, sha256(b"SELECT 1").hexdigest())
+
+    def test_program_migration_rejects_incoherent_values_without_echo(self) -> None:
+        migration_type = self._required("SchemaMigration")
+        sql_step_type = self._required("SqlMigrationStep")
+        backfill_kind = self._required("SchemaBackfillKind")
+        backfill_step_type = self._required("DeterministicBackfillStep")
+        error_type = self._required("SchemaMigrationError")
+
+        class HostileSql(str):
+            def strip(self, *args, **kwargs):
+                raise RuntimeError("private hostile SQL")
+
+            def __contains__(self, item):
+                raise RuntimeError("private hostile SQL")
+
+            def encode(self, *args, **kwargs):
+                raise RuntimeError("private hostile SQL")
+
+        invalid_sql = (None, b"SELECT 1", "", "  \n", "private\x00sql", "\ud800")
+        for sql in invalid_sql:
+            with self.subTest(
+                sql_type=type(sql).__name__,
+                sql_length=len(sql) if hasattr(sql, "__len__") else None,
+            ):
+                with self.assertRaises(error_type) as raised:
+                    sql_step_type(sql)
+                self.assertNotIn("private", str(raised.exception))
+                self.assertNotIn("SELECT", str(raised.exception))
+                self.assertIsNone(raised.exception.__context__)
+                self.assertIsNone(raised.exception.__cause__)
+
+        for construct in (
+            lambda sql: sql_step_type(sql),
+            lambda sql: migration_type(10, "hostile-sql", sql),
+        ):
+            with self.subTest(construct=construct):
+                value = construct(HostileSql("SELECT 'private hostile SQL'"))
+                self.assertEqual(
+                    value.checksum_sha256,
+                    sha256(b"SELECT 'private hostile SQL'").hexdigest(),
+                )
+                self.assertNotIn("private hostile SQL", repr(value))
+
+        for values in (
+            {"kind": "product-descriptor-content", "algorithm_version": 1},
+            {
+                "kind": backfill_kind.PRODUCT_DESCRIPTOR_CONTENT,
+                "algorithm_version": 0,
+            },
+            {
+                "kind": backfill_kind.PRODUCT_DESCRIPTOR_CONTENT,
+                "algorithm_version": -1,
+            },
+            {
+                "kind": backfill_kind.PRODUCT_DESCRIPTOR_CONTENT,
+                "algorithm_version": True,
+            },
+            {
+                "kind": backfill_kind.PRODUCT_DESCRIPTOR_CONTENT,
+                "algorithm_version": 1.0,
+            },
+        ):
+            with self.subTest(values=values):
+                with self.assertRaises(error_type):
+                    backfill_step_type(**values)
+
+        sql_step = sql_step_type("SELECT 1")
+        invalid_migrations = (
+            {"version": 10, "name": "program"},
+            {
+                "version": 10,
+                "name": "program",
+                "sql": "SELECT 1",
+                "steps": (sql_step,),
+            },
+            {"version": 10, "name": "program", "steps": ()},
+            {"version": 10, "name": "program", "steps": [sql_step]},
+            {"version": 10, "name": "program", "steps": ("SELECT 1",)},
+            {"version": 10, "name": "program", "steps": (lambda: None,)},
+        )
+        for values in invalid_migrations:
+            with self.subTest(values=tuple(values)):
+                with self.assertRaises(error_type):
+                    migration_type(**values)
+
+    def test_program_checksum_has_a_frozen_structural_domain(self) -> None:
+        migration_type = self._required("SchemaMigration")
+        sql_step_type = self._required("SqlMigrationStep")
+        backfill_kind = self._required("SchemaBackfillKind")
+        backfill_step_type = self._required("DeterministicBackfillStep")
+
+        first = sql_step_type("SELECT 1;\n")
+        backfill_v1 = backfill_step_type(
+            kind=backfill_kind.PRODUCT_DESCRIPTOR_CONTENT,
+            algorithm_version=1,
+        )
+        second = sql_step_type("SELECT 2;\n")
+
+        def migration_for(*steps):
+            return migration_type(version=10, name="program", steps=steps)
+
+        golden = migration_for(first, backfill_v1, second)
+        self.assertEqual(
+            golden.checksum_sha256,
+            "197bbb3e42e588212398fb49124dcab8a16e0e1241c3ec2b877eae5515abb590",
+        )
+        variants = (
+            migration_for(second, backfill_v1, first),
+            migration_for(sql_step_type("SELECT 1;"), backfill_v1, second),
+            migration_for(
+                first,
+                backfill_step_type(
+                    kind=backfill_kind.PRODUCT_DESCRIPTOR_CONTENT,
+                    algorithm_version=2,
+                ),
+                second,
+            ),
+            migration_for(first, second),
+        )
+        for variant in variants:
+            with self.subTest(variant=variant.steps):
+                self.assertNotEqual(variant.checksum_sha256, golden.checksum_sha256)
+
+    def test_program_checksum_is_hash_seed_independent(self) -> None:
+        command = (
+            "from control_plane_kit_operations.postgres import ("
+            "DeterministicBackfillStep, SchemaBackfillKind, SchemaMigration, "
+            "SqlMigrationStep); "
+            "print(SchemaMigration(version=10, name='program', steps=("
+            "SqlMigrationStep('SELECT 1;\\n'), "
+            "DeterministicBackfillStep("
+            "SchemaBackfillKind.PRODUCT_DESCRIPTOR_CONTENT, 1), "
+            "SqlMigrationStep('SELECT 2;\\n'))).checksum_sha256)"
+        )
+
+        for seed in ("1", "2", "8675309"):
+            with self.subTest(seed=seed):
+                result = subprocess.run(
+                    [sys.executable, "-c", command],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    env={**os.environ, "PYTHONHASHSEED": seed},
+                )
+                self.assertEqual(
+                    result.stdout.strip(),
+                    "197bbb3e42e588212398fb49124dcab8a16e0e1241c3ec2b877eae5515abb590",
+                )
+
     def test_migration_and_applied_identity_reject_malformed_values(self) -> None:
         migration_type = self._required("SchemaMigration")
         applied_type = self._required("AppliedSchemaMigration")
@@ -374,14 +564,17 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         )
         for name in (
             "AppliedSchemaMigration",
+            "DeterministicBackfillStep",
             "ObservedSchemaKind",
             "ObservedSchemaState",
+            "SchemaBackfillKind",
             "SchemaMigration",
             "SchemaMigrationAction",
             "SchemaMigrationActionKind",
             "SchemaMigrationError",
             "SchemaMigrationPlan",
             "SchemaMigrationRegistry",
+            "SqlMigrationStep",
         ):
             with self.subTest(name=name):
                 self.assertIsNotNone(self._required(name))

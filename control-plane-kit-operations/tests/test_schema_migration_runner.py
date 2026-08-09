@@ -11,6 +11,8 @@ import uuid
 import psycopg
 
 import control_plane_kit_operations.postgres as postgres
+from control_plane_kit_operations.postgres import migration_runner as runner_module
+from control_plane_kit_operations.postgres import schema as schema_module
 
 
 _CURRENT_HISTORY = [
@@ -250,6 +252,174 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
         finally:
             observer.close()
 
+    def test_unsupported_program_rolls_back_ordered_sql_before_ledger(self) -> None:
+        install = self._required("install_postgres_schema")
+        connection = self._connection()
+        production_registry = schema_module.POSTGRES_SCHEMA_MIGRATIONS
+        original_runner_registry = runner_module.POSTGRES_SCHEMA_MIGRATIONS
+        first_sql = "CREATE TABLE cpk_test_program_order (position integer)"
+        second_sql = "INSERT INTO cpk_test_program_order (position) VALUES (1)"
+        executed: list[str] = []
+
+        class RecordingConnection:
+            @property
+            def autocommit(self):
+                return connection.autocommit
+
+            def transaction(self):
+                return connection.transaction()
+
+            def execute(self, query, params=()):
+                if query in {first_sql, second_sql}:
+                    executed.append(query)
+                return connection.execute(query, params)
+
+        try:
+            install(connection)
+            for algorithm_version in (1, 2):
+                with self.subTest(algorithm_version=algorithm_version):
+                    executed.clear()
+                    program_registry = self._program_registry(
+                        first_sql,
+                        second_sql,
+                        algorithm_version=algorithm_version,
+                    )
+                    runner_module.POSTGRES_SCHEMA_MIGRATIONS = program_registry
+                    try:
+                        with self.assertRaises(
+                            postgres.SchemaMigrationError
+                        ) as raised:
+                            install(RecordingConnection())
+                    finally:
+                        runner_module.POSTGRES_SCHEMA_MIGRATIONS = (
+                            original_runner_registry
+                        )
+
+                    self.assertEqual(executed, [first_sql, second_sql])
+                    self.assertEqual(
+                        str(raised.exception),
+                        "schema migration backfill is not supported",
+                    )
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertIsNone(
+                        connection.execute(
+                            "SELECT to_regclass('cpk_test_program_order')"
+                        ).fetchone()[0]
+                    )
+                    self.assertEqual(
+                        self._ledger_rows(connection),
+                        _CURRENT_HISTORY,
+                    )
+            self.assertIs(
+                schema_module.POSTGRES_SCHEMA_MIGRATIONS,
+                production_registry,
+            )
+            self.assertEqual(production_registry.target_version, 9)
+            self.assertIs(
+                runner_module.POSTGRES_SCHEMA_MIGRATIONS,
+                production_registry,
+            )
+        finally:
+            runner_module.POSTGRES_SCHEMA_MIGRATIONS = original_runner_registry
+            connection.close()
+
+    def test_failed_program_savepoint_preserves_outer_work_and_releases_lock(self) -> None:
+        install = self._required("install_postgres_schema")
+        setup = self._connection()
+        try:
+            install(setup)
+        finally:
+            setup.close()
+
+        caller = self._connection(autocommit=False)
+        second = self._connection(application_name="cpk-program-lock-observer")
+        production_registry = schema_module.POSTGRES_SCHEMA_MIGRATIONS
+        original_runner_registry = runner_module.POSTGRES_SCHEMA_MIGRATIONS
+        second_finished = threading.Event()
+        second_failures: list[BaseException] = []
+        thread = None
+        try:
+            second.execute("SET lock_timeout TO '5s'")
+            second.execute("SET statement_timeout TO '10s'")
+            caller.execute("CREATE TABLE cpk_caller_owned_after_failure (id integer)")
+            runner_module.POSTGRES_SCHEMA_MIGRATIONS = self._program_registry(
+                "CREATE TABLE cpk_test_program_savepoint (position integer)",
+                "INSERT INTO cpk_test_program_savepoint (position) VALUES (1)",
+            )
+            try:
+                with self.assertRaises(postgres.SchemaMigrationError):
+                    install(caller)
+            finally:
+                runner_module.POSTGRES_SCHEMA_MIGRATIONS = original_runner_registry
+
+            self.assertIsNone(
+                caller.execute(
+                    "SELECT to_regclass('cpk_test_program_savepoint')"
+                ).fetchone()[0]
+            )
+            self.assertEqual(self._ledger_rows(caller), _CURRENT_HISTORY)
+
+            def run_second() -> None:
+                try:
+                    install(second)
+                except BaseException as error:
+                    second_failures.append(error)
+                finally:
+                    second_finished.set()
+
+            thread = threading.Thread(target=run_second)
+            thread.start()
+            self.assertTrue(
+                second_finished.wait(timeout=10),
+                "failed migration savepoint retained the advisory lock",
+            )
+            thread.join(timeout=1)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(second_failures, [])
+
+            caller.commit()
+        finally:
+            runner_module.POSTGRES_SCHEMA_MIGRATIONS = original_runner_registry
+            if thread is not None and thread.is_alive():
+                caller.rollback()
+                second.cancel()
+                thread.join(timeout=15)
+            if not caller.closed:
+                caller.rollback()
+                caller.close()
+            thread_is_alive = thread is not None and thread.is_alive()
+            if not thread_is_alive:
+                second.close()
+            self.assertFalse(
+                thread_is_alive,
+                "lock observer remained alive after database timeout and cancellation",
+            )
+
+        observer = self._connection()
+        try:
+            self.assertIsNotNone(
+                observer.execute(
+                    "SELECT to_regclass('cpk_caller_owned_after_failure')"
+                ).fetchone()[0]
+            )
+            self.assertIsNone(
+                observer.execute(
+                    "SELECT to_regclass('cpk_test_program_savepoint')"
+                ).fetchone()[0]
+            )
+            self.assertEqual(self._ledger_rows(observer), _CURRENT_HISTORY)
+            self.assertIs(
+                schema_module.POSTGRES_SCHEMA_MIGRATIONS,
+                production_registry,
+            )
+            self.assertIs(
+                runner_module.POSTGRES_SCHEMA_MIGRATIONS,
+                production_registry,
+            )
+        finally:
+            observer.close()
+
     def test_injected_ledger_failure_rolls_back_and_discards_provider_error(self) -> None:
         install = self._required("install_postgres_schema")
         marker = "private-database-address-and-credential-material"
@@ -391,6 +561,28 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 return
             time.sleep(0.01)
         self.fail("second installer did not wait on the advisory lock")
+
+    def _program_registry(
+        self,
+        first_sql: str,
+        second_sql: str,
+        *,
+        algorithm_version: int = 1,
+    ):
+        production = schema_module.POSTGRES_SCHEMA_MIGRATIONS
+        program = postgres.SchemaMigration(
+            version=10,
+            name="test-program",
+            steps=(
+                postgres.SqlMigrationStep(first_sql),
+                postgres.SqlMigrationStep(second_sql),
+                postgres.DeterministicBackfillStep(
+                    postgres.SchemaBackfillKind.PRODUCT_DESCRIPTOR_CONTENT,
+                    algorithm_version,
+                ),
+            ),
+        )
+        return postgres.SchemaMigrationRegistry((*production.migrations, program))
 
     def _table_names(self, connection) -> set[str]:
         return {

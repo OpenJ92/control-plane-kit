@@ -88,7 +88,13 @@ class PostgresConnection(Protocol):
 
 
 class MigrationPostgresConnection(PostgresConnection, Protocol):
-    """Postgres capabilities required by the migration interpreter."""
+    """Postgres capabilities required by the migration interpreter.
+
+    ``transaction()`` must open a top-level transaction when none exists and a
+    nested savepoint when the caller already owns a transaction. Exceptions
+    roll back that innermost scope and escape; the caller retains authority to
+    commit or roll back its outer transaction.
+    """
 
     @property
     def autocommit(self) -> bool: ...
