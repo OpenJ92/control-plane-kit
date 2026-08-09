@@ -517,8 +517,8 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
         pinned_checksum = self._required("POSTGRES_SCHEMA_V1_SHA256")
 
         self.assertEqual(pinned_checksum, _V1_SCHEMA_SHA256)
-        self.assertEqual(registry.target_version, 9)
-        self.assertEqual(len(registry.migrations), 9)
+        self.assertEqual(registry.target_version, 10)
+        self.assertEqual(len(registry.migrations), 10)
         baseline = registry.migrations[0]
         self.assertEqual(baseline.version, 1)
         self.assertEqual(baseline.name, "operations-baseline")
@@ -562,6 +562,32 @@ class SchemaMigrationLanguageTests(unittest.TestCase):
             registry.migrations[8].name,
             "secret-use-authorization-timestamps",
         )
+        product_content = registry.migrations[9]
+        self.assertEqual(product_content.version, 10)
+        self.assertEqual(product_content.name, "product-descriptor-content")
+        self.assertIsNone(product_content.sql)
+        self.assertEqual(len(product_content.steps), 3)
+        first, backfill, final = product_content.steps
+        self.assertIs(type(first), postgres.SqlMigrationStep)
+        self.assertIs(type(backfill), postgres.DeterministicBackfillStep)
+        self.assertIs(type(final), postgres.SqlMigrationStep)
+        self.assertTrue(
+            first.sql.lstrip().startswith(
+                "LOCK TABLE cpk_registered_products IN ACCESS EXCLUSIVE MODE;"
+            )
+        )
+        self.assertIn("ADD COLUMN IF NOT EXISTS descriptor_content text", first.sql)
+        self.assertIs(
+            backfill.kind,
+            postgres.SchemaBackfillKind.PRODUCT_DESCRIPTOR_CONTENT,
+        )
+        self.assertEqual(backfill.algorithm_version, 1)
+        self.assertIn("ALTER COLUMN descriptor_content SET NOT NULL", final.sql)
+        self.assertIn(
+            "cpk_registered_products_content_digest_check",
+            final.sql,
+        )
+        self.assertIn("sha256(convert_to(descriptor_content, 'UTF8'))", final.sql)
         for name in (
             "AppliedSchemaMigration",
             "DeterministicBackfillStep",

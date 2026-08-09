@@ -25,6 +25,7 @@ _CURRENT_HISTORY = [
     (7, "gateway-key-rotation-timestamps"),
     (8, "ingress-evidence-timestamps"),
     (9, "secret-use-authorization-timestamps"),
+    (10, "product-descriptor-content"),
 ]
 
 
