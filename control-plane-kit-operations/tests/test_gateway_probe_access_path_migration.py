@@ -114,7 +114,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(self._unrelated_objects(connection), before_objects)
-            self.assertEqual(self._history(connection)[-1][:2], _V11_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
             self.assertEqual(self._column_contract(connection), _ACCESS_PATH_COLUMN)
             self.assertEqual(self._constraint_contract(connection), _ACCESS_PATH_CONSTRAINT)
             self.assertEqual(self._column_order(connection)[-1], "access_path")
@@ -168,7 +168,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
                 before_constraint,
             )
             self.assertEqual(self._unrelated_objects(connection), before_objects)
-            self.assertEqual(self._history(connection)[-1][:2], _V11_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
         finally:
             connection.close()
 
@@ -322,7 +322,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
             postgres.install_postgres_schema(connection)
 
             self.assertEqual(self._constraint_contract(connection), _ACCESS_PATH_CONSTRAINT)
-            self.assertEqual(self._history(connection)[-1][:2], _V11_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
         finally:
             connection.close()
 

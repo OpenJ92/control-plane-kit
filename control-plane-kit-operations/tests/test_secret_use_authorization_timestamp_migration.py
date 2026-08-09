@@ -56,8 +56,9 @@ _COLUMN = (
     True,
 )
 _REBUILT = {("index", "cpk_secret_use_authorizations_reference_history")}
-_V10_ADDED_OBJECTS = {
+_CURRENT_ADDED_OBJECTS = {
     ("constraint", "cpk_registered_products_content_digest_check"),
+    ("constraint", "cpk_gateway_key_rotations_generation_provider_check"),
 }
 
 
@@ -212,7 +213,7 @@ class SecretUseAuthorizationTimestampMigrationTests(unittest.TestCase):
         postgres.install_postgres_schema(self.connection)
 
         after = self._application_objects()
-        self.assertEqual(set(after), set(before) | _V10_ADDED_OBJECTS)
+        self.assertEqual(set(after), set(before) | _CURRENT_ADDED_OBJECTS)
         changed = set()
         for identity, (before_oid, before_definition) in before.items():
             after_oid, after_definition = after[identity]
