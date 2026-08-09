@@ -376,8 +376,9 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
                 _FROM_CONSTRAINT,
                 "CHECK (from_status IS NOT NULL)",
             )
-            before_rotation = self._target_identities(connection)[_ROTATION_CONSTRAINT]
-            executed = []
+            before = self._complete_snapshot(connection)
+            v13_steps = tuple(step.sql for step in self._v13().steps)
+            submitted_v13_steps: list[int] = []
 
             class MixedRecordingConnection:
                 @property
@@ -388,25 +389,19 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
                     return connection.transaction()
 
                 def execute(self, query, params=None):
-                    normalized = re.sub(r"\s+", " ", query).strip()
-                    if normalized.startswith("ALTER TABLE") and any(
-                        name in normalized
-                        for name in (
-                            _ROTATION_CONSTRAINT,
-                            _FROM_CONSTRAINT,
-                            _TO_CONSTRAINT,
-                        )
-                    ):
-                        executed.append(normalized)
+                    if query in v13_steps:
+                        submitted_v13_steps.append(v13_steps.index(query))
                     return connection.execute(query, params)
 
-            with self.assertRaises(postgres.SchemaMigrationError):
+            with self.assertRaises(postgres.SchemaMigrationError) as raised:
                 postgres.install_postgres_schema(MixedRecordingConnection())
 
-            self.assertEqual(executed, [])
+            self._assert_bounded_status_error(raised.exception)
+            self.assertEqual(submitted_v13_steps, [0])
+            self.assertEqual(self._complete_snapshot(connection), before)
             self.assertEqual(
-                self._target_identities(connection)[_ROTATION_CONSTRAINT],
-                before_rotation,
+                tuple(row[:2] for row in self._history(connection)),
+                _V12_HISTORY,
             )
         finally:
             connection.close()
