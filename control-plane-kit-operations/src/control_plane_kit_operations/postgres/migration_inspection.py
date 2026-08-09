@@ -128,6 +128,20 @@ _GATEWAY_KEY_ROTATION_TO_STATUS_DEFINITION = (
     "'old-key-retired'::text, 'revocation-prepared'::text, "
     "'completed'::text, 'blocked'::text, 'rejected'::text])))"
 )
+_GATEWAY_KEY_ROTATION_RETIREMENT_EVIDENCE_COLUMNS = (
+    ("old_key_retired_at", "timestamp with time zone", 6, "YES", True),
+    ("old_secret_revoked_at", "timestamp with time zone", 6, "YES", True),
+)
+_GATEWAY_KEY_ROTATION_RETIREMENT_CONSTRAINT = (
+    "cpk_gateway_key_rotations_retirement_check",
+    "c",
+    True,
+    True,
+)
+_GATEWAY_KEY_ROTATION_RETIREMENT_DEFINITION = (
+    "CHECK (((old_secret_revoked_at IS NULL) OR "
+    "(old_key_retired_at IS NOT NULL)))"
+)
 _COORDINATION_TEMPORAL_CONTRACT = (
     ("cpk_activity_events", "occurred_at", "timestamp with time zone", 6, "NO", True),
     ("cpk_activity_plans", "created_at", "timestamp with time zone", 6, "NO", True),
@@ -1091,6 +1105,8 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         _verify_gateway_key_rotation_generation_evidence_contract(connection)
     if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 13:
         _verify_gateway_key_rotation_status_contracts(connection)
+    if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 14:
+        _verify_gateway_key_rotation_retirement_evidence_contract(connection)
     if _read_coordination_temporal_contract(connection) != (
         _COORDINATION_TEMPORAL_CONTRACT
     ):
@@ -1350,6 +1366,54 @@ def _verify_gateway_key_rotation_status_contracts(
     if constraint_rows != list(_GATEWAY_KEY_ROTATION_STATUS_CONSTRAINTS):
         raise SchemaMigrationError(
             "gateway key rotation status schema is not current"
+        )
+
+
+def _verify_gateway_key_rotation_retirement_evidence_contract(
+    connection: PostgresConnection,
+) -> None:
+    column_rows = _read_rows(
+        connection,
+        """
+        SELECT column_name, data_type, datetime_precision, is_nullable,
+               column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'cpk_gateway_key_rotations'
+          AND column_name IN ('old_key_retired_at', 'old_secret_revoked_at')
+        ORDER BY column_name
+        LIMIT 3
+        """,
+        (),
+        "gateway key rotation retirement evidence schema read failed",
+    )
+    if column_rows != list(_GATEWAY_KEY_ROTATION_RETIREMENT_EVIDENCE_COLUMNS):
+        raise SchemaMigrationError(
+            "gateway key rotation retirement evidence schema is not current"
+        )
+
+    constraint_rows = _read_rows(
+        connection,
+        """
+        SELECT constraints.conname, constraints.contype::text,
+               constraints.convalidated,
+               pg_get_constraintdef(constraints.oid, false) = %s
+        FROM pg_constraint AS constraints
+        JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = current_schema()
+          AND relation.relname = 'cpk_gateway_key_rotations'
+          AND constraints.conname =
+            'cpk_gateway_key_rotations_retirement_check'
+        ORDER BY constraints.conname, constraints.oid
+        LIMIT 2
+        """,
+        (_GATEWAY_KEY_ROTATION_RETIREMENT_DEFINITION,),
+        "gateway key rotation retirement evidence schema read failed",
+    )
+    if constraint_rows != [_GATEWAY_KEY_ROTATION_RETIREMENT_CONSTRAINT]:
+        raise SchemaMigrationError(
+            "gateway key rotation retirement evidence schema is not current"
         )
 
 

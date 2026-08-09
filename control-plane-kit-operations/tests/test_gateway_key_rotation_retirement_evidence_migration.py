@@ -102,6 +102,19 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
         self.assertFalse(
             hasattr(schema_module, "_upgrade_gateway_key_rotation_retirement_constraint")
         )
+        self.assertEqual(
+            tuple(step.checksum_sha256 for step in migration.steps),
+            (
+                "41490a76f354e4e24f10705a84cbbb6822852c105d04ad7b060195c8f9e29d96",
+                "3c56c82ee3b752ad19117b0d8f56425dd3922f325bc4fb1e224ba2923b16bd81",
+            ),
+        )
+        pinned = getattr(schema_module, "_POSTGRES_SCHEMA_V14_SHA256", None)
+        self.assertEqual(
+            pinned,
+            "3cb2bade92c299c0d397f9d3462c526d768233fc064df51d6db9b43c3089ea90",
+        )
+        self.assertEqual(pinned, migration.checksum_sha256)
 
     def test_all_four_row_shapes_are_admitted_or_rejected_without_rewrite(self) -> None:
         self._v14()

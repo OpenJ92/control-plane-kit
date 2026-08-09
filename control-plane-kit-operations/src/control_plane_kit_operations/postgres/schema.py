@@ -2455,6 +2455,147 @@ END
 $cpk$;
 """
 
+_POSTGRES_SCHEMA_V14_LEGACY_DEFINITION = (
+    "CHECK (((old_key_retired_at IS NULL) = "
+    "(old_secret_revoked_at IS NULL)))"
+)
+_POSTGRES_SCHEMA_V14_CURRENT_DEFINITION = (
+    "CHECK (((old_secret_revoked_at IS NULL) OR "
+    "(old_key_retired_at IS NOT NULL)))"
+)
+_POSTGRES_SCHEMA_V14_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_gateway_key_rotations IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  column_contract_is_accepted boolean;
+  constraint_count bigint;
+  constraint_name_count bigint;
+  constraint_contract_is_accepted boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             data_type = 'timestamp with time zone'
+             AND datetime_precision = 6
+             AND is_nullable = 'YES'
+             AND column_default IS NULL
+           ),
+           false
+         )
+    INTO column_count, column_contract_is_accepted
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_gateway_key_rotations'
+    AND column_name IN ('old_key_retired_at', 'old_secret_revoked_at');
+
+  IF column_count <> 2 OR column_contract_is_accepted IS NOT TRUE THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation retirement evidence is not accepted';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotations
+    WHERE old_secret_revoked_at IS NOT NULL
+      AND old_key_retired_at IS NULL
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation retirement evidence is not accepted';
+  END IF;
+
+  SELECT count(*),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) = ANY(ARRAY[
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V14_LEGACY_DEFINITION)},
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V14_CURRENT_DEFINITION)}
+             ])
+           ),
+           false
+         )
+    INTO constraint_count, constraint_name_count,
+         constraint_contract_is_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotations'
+    AND constraints.conname = 'cpk_gateway_key_rotations_retirement_check';
+
+  IF constraint_count > 1
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0
+        AND constraint_contract_is_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation retirement evidence is not accepted';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V14_CONVERGE_SQL = f"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_legacy boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V14_CURRENT_DEFINITION)}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V14_LEGACY_DEFINITION)}
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_legacy
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotations'
+    AND constraints.conname = 'cpk_gateway_key_rotations_retirement_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_retirement_check
+      CHECK (old_secret_revoked_at IS NULL OR old_key_retired_at IS NOT NULL);
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE AND constraint_is_legacy IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation retirement evidence is not accepted';
+  ELSIF constraint_is_legacy IS TRUE THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      DROP CONSTRAINT cpk_gateway_key_rotations_retirement_check,
+      ADD CONSTRAINT cpk_gateway_key_rotations_retirement_check
+      CHECK (old_secret_revoked_at IS NULL OR old_key_retired_at IS NOT NULL);
+  END IF;
+END
+$cpk$;
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -2659,6 +2800,23 @@ if _POSTGRES_SCHEMA_V13.checksum_sha256 != _POSTGRES_SCHEMA_V13_SHA256:
         f"checksum: expected {_POSTGRES_SCHEMA_V13_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V13.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V14 = SchemaMigration(
+    version=14,
+    name="gateway-key-rotation-retirement-evidence",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V14_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V14_CONVERGE_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V14_SHA256 = (
+    "3cb2bade92c299c0d397f9d3462c526d768233fc064df51d6db9b43c3089ea90"
+)
+if _POSTGRES_SCHEMA_V14.checksum_sha256 != _POSTGRES_SCHEMA_V14_SHA256:
+    raise SchemaMigrationError(
+        "gateway key rotation retirement evidence V14 differs from its pinned "
+        f"checksum: expected {_POSTGRES_SCHEMA_V14_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V14.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -2674,6 +2832,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V11,
         _POSTGRES_SCHEMA_V12,
         _POSTGRES_SCHEMA_V13,
+        _POSTGRES_SCHEMA_V14,
     )
 )
 
@@ -2721,36 +2880,6 @@ def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
             f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
             f"CHECK ({column} IN ({allowed}))"
         )
-
-
-def _upgrade_gateway_key_rotation_retirement_constraint(
-    connection: PostgresConnection,
-) -> None:
-    """Allow public retirement to precede exact private-version revocation."""
-
-    table = "cpk_gateway_key_rotations"
-    constraint = "cpk_gateway_key_rotations_retirement_check"
-    row = connection.execute(
-        """
-        SELECT pg_get_constraintdef(oid)
-        FROM pg_constraint
-        WHERE conname = %s
-          AND conrelid = %s::regclass
-        """,
-        (constraint, table),
-    ).fetchone()
-    definition = "" if row is None else row[0].lower()
-    if (
-        "old_secret_revoked_at is null" in definition
-        and "old_key_retired_at is not null" in definition
-    ):
-        return
-    connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
-    connection.execute(
-        f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
-        "CHECK (old_secret_revoked_at IS NULL "
-        "OR old_key_retired_at IS NOT NULL)"
-    )
 
 
 def _backfill_graph_lineage(connection: PostgresConnection) -> None:
