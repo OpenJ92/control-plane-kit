@@ -142,6 +142,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_execution_requests_claim_check",
                 "cpk_gateway_key_rotation_deployments_acceptance_check",
                 "cpk_gateway_key_rotations_activation_check",
+                "cpk_gateway_key_rotations_generation_digest_check",
                 "cpk_gateway_key_rotations_retirement_check",
                 "cpk_gateway_probe_completion_check",
                 "cpk_cloudflare_ingress_resources_removed_evidence_check",
@@ -156,7 +157,17 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             for constraint, (identity, definition) in before.items():
                 with self.subTest(constraint=constraint):
                     after_identity, after_definition = after[constraint]
-                    self.assertEqual(after_definition, definition)
+                    if constraint == (
+                        "cpk_gateway_key_rotations_generation_digest_check"
+                    ):
+                        self.assertEqual(
+                            after_definition,
+                            "CHECK (((generation_action_digest IS NULL) OR "
+                            '((generation_action_digest COLLATE "C") ~ '
+                            "'^[0-9a-f]{64}$'::text)))",
+                        )
+                    else:
+                        self.assertEqual(after_definition, definition)
                     if constraint in rebuilt:
                         self.assertNotEqual(after_identity, identity)
                     else:

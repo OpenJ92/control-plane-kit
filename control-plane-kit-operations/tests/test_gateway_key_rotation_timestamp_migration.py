@@ -58,9 +58,19 @@ _EXPECTED_REBUILT_OBJECTS = {
     ("constraint", "cpk_gateway_key_rotations_activation_check"),
     ("constraint", "cpk_gateway_key_rotations_retirement_check"),
     ("constraint", "cpk_gateway_key_rotation_deployments_acceptance_check"),
+    ("constraint", "cpk_gateway_key_rotations_generation_digest_check"),
     ("index", "cpk_cloudflare_ingress_resources_workspace"),
     ("index", "cpk_secret_use_authorizations_reference_history"),
 }
+_CANONICAL_DIGEST_CONSTRAINT = (
+    "constraint",
+    "cpk_gateway_key_rotations_generation_digest_check",
+)
+_CANONICAL_DIGEST_DEFINITION = (
+    "CHECK (((generation_action_digest IS NULL) OR "
+    '((generation_action_digest COLLATE "C") ~ '
+    "'^[0-9a-f]{64}$'::text)))"
+)
 _CURRENT_ADDED_OBJECTS = {
     ("constraint", "cpk_registered_products_content_digest_check"),
     ("constraint", "cpk_gateway_key_rotations_generation_provider_check"),
@@ -227,7 +237,10 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
         for identity, (before_oid, before_definition) in before.items():
             after_oid, after_definition = after[identity]
             with self.subTest(identity=identity):
-                self.assertEqual(after_definition, before_definition)
+                if identity == _CANONICAL_DIGEST_CONSTRAINT:
+                    self.assertEqual(after_definition, _CANONICAL_DIGEST_DEFINITION)
+                else:
+                    self.assertEqual(after_definition, before_definition)
                 if after_oid != before_oid:
                     changed.add(identity)
         self.assertEqual(changed, _EXPECTED_REBUILT_OBJECTS)
