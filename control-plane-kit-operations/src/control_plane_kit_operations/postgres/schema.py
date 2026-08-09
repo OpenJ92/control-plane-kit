@@ -1890,6 +1890,7 @@ DECLARE
   column_count bigint;
   column_contract_is_exact boolean;
   constraint_count bigint;
+  constraint_name_count bigint;
   constraint_contract_is_exact boolean;
 BEGIN
   SELECT count(*),
@@ -1933,7 +1934,7 @@ BEGIN
       )
       OR (
         generation_action_digest IS NOT NULL
-        AND generation_action_digest !~ '^[0-9a-f]{64}$'
+        AND (generation_action_digest COLLATE "C") !~ '^[0-9a-f]{64}$'
       )
   ) THEN
     RAISE EXCEPTION USING
@@ -1942,6 +1943,7 @@ BEGIN
   END IF;
 
   SELECT count(*),
+         count(DISTINCT constraints.conname),
          COALESCE(
            bool_and(
              constraints.contype = 'c'
@@ -1954,14 +1956,16 @@ BEGIN
                  THEN pg_get_constraintdef(constraints.oid, false) =
                    'CHECK (((generation_provider_registration_id IS NULL) OR (((octet_length(generation_provider_registration_id) >= 1) AND (octet_length(generation_provider_registration_id) <= 200)) AND ((generation_provider_registration_id COLLATE "C") ~ ''^[A-Za-z0-9]''::text) AND ((generation_provider_registration_id COLLATE "C") !~ ''[^A-Za-z0-9._:-]''::text))))'
                WHEN 'cpk_gateway_key_rotations_generation_digest_check'
-                 THEN pg_get_constraintdef(constraints.oid, false) =
-                   'CHECK (((generation_action_digest IS NULL) OR (generation_action_digest ~ ''^[0-9a-f]{64}$''::text)))'
+                 THEN pg_get_constraintdef(constraints.oid, false) IN (
+                   'CHECK (((generation_action_digest IS NULL) OR (generation_action_digest ~ ''^[0-9a-f]{64}$''::text)))',
+                   'CHECK (((generation_action_digest IS NULL) OR ((generation_action_digest COLLATE "C") ~ ''^[0-9a-f]{64}$''::text)))'
+                 )
                ELSE false
              END
            ),
            false
          )
-    INTO constraint_count, constraint_contract_is_exact
+    INTO constraint_count, constraint_name_count, constraint_contract_is_exact
   FROM pg_constraint AS constraints
   JOIN pg_class AS relation
     ON relation.oid = constraints.conrelid
@@ -1976,6 +1980,7 @@ BEGIN
     );
 
   IF constraint_count > 3
+    OR constraint_count <> constraint_name_count
     OR (constraint_count > 0 AND constraint_contract_is_exact IS NOT TRUE)
   THEN
     RAISE EXCEPTION USING
@@ -2063,7 +2068,24 @@ BEGIN
     ALTER TABLE cpk_gateway_key_rotations
       ADD CONSTRAINT cpk_gateway_key_rotations_generation_digest_check
       CHECK (generation_action_digest IS NULL
-        OR generation_action_digest ~ '^[0-9a-f]{64}$');
+        OR (generation_action_digest COLLATE "C") ~ '^[0-9a-f]{64}$');
+  ELSIF EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_digest_check'
+      AND pg_get_constraintdef(constraints.oid, false) =
+        'CHECK (((generation_action_digest IS NULL) OR (generation_action_digest ~ ''^[0-9a-f]{64}$''::text)))'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      DROP CONSTRAINT cpk_gateway_key_rotations_generation_digest_check,
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_digest_check
+      CHECK (generation_action_digest IS NULL
+        OR (generation_action_digest COLLATE "C") ~ '^[0-9a-f]{64}$');
   END IF;
 END
 $cpk$;
@@ -2247,7 +2269,7 @@ _POSTGRES_SCHEMA_V12 = SchemaMigration(
     ),
 )
 _POSTGRES_SCHEMA_V12_SHA256 = (
-    "e2e8505a317c63d1e3a1d15c36dcc90c25f33a2fe87fc4f92da9f496c5fc41f4"
+    "a9d5c552480172e7415def95df8a5ae44b03cd7023710ef13c975de90923732a"
 )
 if _POSTGRES_SCHEMA_V12.checksum_sha256 != _POSTGRES_SCHEMA_V12_SHA256:
     raise SchemaMigrationError(

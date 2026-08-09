@@ -73,7 +73,8 @@ _GATEWAY_KEY_ROTATION_GENERATION_CHECKPOINT_DEFINITION = (
 )
 _GATEWAY_KEY_ROTATION_GENERATION_DIGEST_DEFINITION = (
     "CHECK (((generation_action_digest IS NULL) OR "
-    "(generation_action_digest ~ '^[0-9a-f]{64}$'::text)))"
+    '((generation_action_digest COLLATE "C") ~ '
+    "'^[0-9a-f]{64}$'::text)))"
 )
 _GATEWAY_KEY_ROTATION_GENERATION_PROVIDER_DEFINITION = (
     'CHECK (((generation_provider_registration_id IS NULL) OR '
