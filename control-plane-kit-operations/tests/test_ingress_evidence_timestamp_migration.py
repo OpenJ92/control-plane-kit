@@ -47,6 +47,7 @@ _CURRENT_HISTORY = [
     (11, "gateway-probe-access-path"),
     (12, "gateway-key-rotation-generation-evidence"),
     (13, "gateway-key-rotation-status-contracts"),
+    (14, "gateway-key-rotation-retirement-evidence"),
 ]
 _TEMPORAL_COLUMNS = (
     (
@@ -139,7 +140,7 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_checksum_guarded_v8_after_immutable_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 13)
+        self.assertEqual(registry.target_version, 14)
         self.assertEqual(
             [(item.version, item.name) for item in registry.migrations],
             _CURRENT_HISTORY,

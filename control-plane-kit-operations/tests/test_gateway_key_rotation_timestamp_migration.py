@@ -35,6 +35,7 @@ _CURRENT_HISTORY = [
     (11, "gateway-probe-access-path"),
     (12, "gateway-key-rotation-generation-evidence"),
     (13, "gateway-key-rotation-status-contracts"),
+    (14, "gateway-key-rotation-retirement-evidence"),
 ]
 _TEMPORAL_COLUMNS = (
     ("cpk_gateway_key_rotation_deployments", "accepted_at", "YES"),
@@ -98,7 +99,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_key_rotation_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 13)
+        self.assertEqual(registry.target_version, 14)
         self.assertEqual(
             [(value.version, value.name) for value in registry.migrations[:7]],
             _V7_HISTORY,
@@ -266,9 +267,17 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
                         )
                         with self.assertRaises(postgres.SchemaMigrationError) as raised:
                             postgres.verify_postgres_schema(self.connection)
+                        expected_category = (
+                            "gateway key rotation retirement evidence schema "
+                            "is not current"
+                            if table == "cpk_gateway_key_rotations"
+                            and column
+                            in {"old_key_retired_at", "old_secret_revoked_at"}
+                            else "gateway key rotation temporal schema is not current"
+                        )
                         self.assertEqual(
                             str(raised.exception),
-                            "gateway key rotation temporal schema is not current",
+                            expected_category,
                         )
                         self.assertLessEqual(len(str(raised.exception)), 256)
                         self.assertIsNone(raised.exception.__context__)
