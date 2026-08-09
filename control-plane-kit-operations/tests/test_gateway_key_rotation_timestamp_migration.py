@@ -31,6 +31,7 @@ _CURRENT_HISTORY = [
     *_V7_HISTORY,
     (8, "ingress-evidence-timestamps"),
     (9, "secret-use-authorization-timestamps"),
+    (10, "product-descriptor-content"),
 ]
 _TEMPORAL_COLUMNS = (
     ("cpk_gateway_key_rotation_deployments", "accepted_at", "YES"),
@@ -58,6 +59,9 @@ _EXPECTED_REBUILT_OBJECTS = {
     ("index", "cpk_cloudflare_ingress_resources_workspace"),
     ("index", "cpk_secret_use_authorizations_reference_history"),
 }
+_V10_ADDED_OBJECTS = {
+    ("constraint", "cpk_registered_products_content_digest_check"),
+}
 
 
 class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
@@ -80,7 +84,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_key_rotation_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 9)
+        self.assertEqual(registry.target_version, 10)
         self.assertEqual(
             [(value.version, value.name) for value in registry.migrations[:7]],
             _V7_HISTORY,
@@ -215,7 +219,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
         postgres.install_postgres_schema(self.connection)
 
         after = self._application_objects()
-        self.assertEqual(set(after), set(before))
+        self.assertEqual(set(after), set(before) | _V10_ADDED_OBJECTS)
         changed = set()
         for identity, (before_oid, before_definition) in before.items():
             after_oid, after_definition = after[identity]

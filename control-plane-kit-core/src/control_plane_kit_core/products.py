@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 import hashlib
 import json
+import math
 from pathlib import PurePosixPath
 import re
 
@@ -79,6 +80,7 @@ _PRODUCT_DOCUMENT_SCHEMA = "control-plane-kit.product"
 _PRODUCT_DOCUMENT_MEDIA_TYPE = "application/vnd.cpk.product+json"
 _PRODUCT_DOCUMENT_FILENAME = "product.cpk.json"
 _MAX_PRODUCT_DOCUMENT_BYTES = 262_144
+_MAX_PRODUCT_MAPPING_DEPTH = 64
 _SOCKETS_DESCRIPTOR_KEYS = frozenset({"requirements", "providers"})
 _LEGACY_REQUIREMENT_DESCRIPTOR_KEYS = frozenset(
     {"protocol", "env_bindings", "required", "binding"}
@@ -795,11 +797,12 @@ class ProductDescriptorCodec:
         self,
         document: bytes | str | Mapping[str, object],
     ) -> ProductDescriptorDocument:
+        source_canonical: bytes | None = None
         if isinstance(document, bytes):
             self._validate_size(document)
             mapping = self._json_mapping(document)
-            canonical = self._canonical_bytes(mapping)
-            if document != canonical:
+            source_canonical = self._canonical_bytes(mapping)
+            if document != source_canonical:
                 raise ProductDescriptorError("product descriptor JSON is not canonical")
         elif isinstance(document, str):
             try:
@@ -808,23 +811,52 @@ class ProductDescriptorCodec:
                 raise ProductDescriptorError("product descriptor text is not UTF-8") from error
             self._validate_size(content)
             mapping = self._json_mapping(content)
-            canonical = self._canonical_bytes(mapping)
-            if content != canonical:
+            source_canonical = self._canonical_bytes(mapping)
+            if content != source_canonical:
                 raise ProductDescriptorError("product descriptor JSON is not canonical")
         elif isinstance(document, Mapping):
-            mapping = document
-            canonical = self._canonical_bytes(mapping)
-            self._validate_size(canonical)
+            mapping = self._bounded_mapping_snapshot(document)
         else:
             raise ProductDescriptorError(
                 "product descriptor must be bytes, text, or mapping"
             )
 
         product = self._product_from_mapping(mapping)
-        expected = self._canonical_bytes(self._document_mapping(product))
-        if canonical != expected:
+        canonical = self._canonical_bytes(self._document_mapping(product))
+        self._validate_size(canonical)
+        if source_canonical is not None and source_canonical != canonical:
             raise ProductDescriptorError("product descriptor JSON is not canonical")
         return ProductDescriptorDocument(product=product, content=canonical)
+
+    def _bounded_mapping_snapshot(
+        self,
+        mapping: Mapping[str, object],
+    ) -> dict[str, object]:
+        failed = False
+        snapshot = None
+        encoded_size = None
+        try:
+            snapshot, encoded_size = _bounded_json_snapshot(
+                mapping,
+                remaining=self.max_bytes,
+                depth=0,
+                active=set(),
+                members=[0],
+                member_limit=self.max_bytes,
+            )
+            if type(snapshot) is not dict:
+                failed = True
+            else:
+                encoded = self._canonical_bytes(snapshot)
+                if len(encoded) != encoded_size:
+                    failed = True
+        except Exception:
+            failed = True
+        if failed:
+            raise ProductDescriptorError(
+                "product descriptor mapping is not JSON shaped or exceeds its bound"
+            )
+        return snapshot
 
     def _document_mapping(
         self,
@@ -872,6 +904,159 @@ class ProductDescriptorCodec:
     def _validate_size(self, content: bytes) -> None:
         if not content or len(content) > self.max_bytes:
             raise ProductDescriptorError("product descriptor is empty or exceeds its bound")
+
+
+def _bounded_json_snapshot(
+    value: object,
+    *,
+    remaining: int,
+    depth: int,
+    active: set[int],
+    members: list[int],
+    member_limit: int,
+) -> tuple[object, int]:
+    if remaining < 1 or depth > _MAX_PRODUCT_MAPPING_DEPTH:
+        raise ValueError("JSON budget exceeded")
+    value_type = type(value)
+    if value is None:
+        return None, _require_json_width(4, remaining)
+    if value_type is bool:
+        return value, _require_json_width(4 if value else 5, remaining)
+    if value_type is str:
+        return value, _require_json_width(_json_string_width(value), remaining)
+    if value_type is int:
+        magnitude_bits = value.bit_length()
+        decimal_upper_bound = (
+            1 if magnitude_bits == 0 else (magnitude_bits * 30_103) // 100_000 + 1
+        )
+        if value < 0:
+            decimal_upper_bound += 1
+        if decimal_upper_bound > member_limit:
+            raise ValueError("integer exceeds JSON budget")
+        return value, _require_json_width(len(str(value)), remaining)
+    if value_type is float:
+        if not math.isfinite(value):
+            raise ValueError("non-finite JSON number")
+        return value, _require_json_width(len(repr(value)), remaining)
+    if isinstance(value, Mapping):
+        return _bounded_json_mapping(
+            value,
+            remaining=remaining,
+            depth=depth,
+            active=active,
+            members=members,
+            member_limit=member_limit,
+        )
+    if value_type in (list, tuple):
+        return _bounded_json_sequence(
+            value,
+            remaining=remaining,
+            depth=depth,
+            active=active,
+            members=members,
+            member_limit=member_limit,
+        )
+    raise ValueError("unsupported JSON value")
+
+
+def _bounded_json_mapping(
+    value: Mapping[object, object],
+    *,
+    remaining: int,
+    depth: int,
+    active: set[int],
+    members: list[int],
+    member_limit: int,
+) -> tuple[dict[str, object], int]:
+    identity = id(value)
+    if identity in active or remaining < 2:
+        raise ValueError("cyclic or oversized JSON mapping")
+    active.add(identity)
+    snapshot: dict[str, object] = {}
+    used = 2
+    try:
+        for key in value:
+            members[0] += 1
+            if members[0] > member_limit or type(key) is not str or key in snapshot:
+                raise ValueError("JSON mapping is not accepted")
+            separator_width = 1 if snapshot else 0
+            key_width = _json_string_width(key) + 1
+            available = remaining - used - separator_width - key_width
+            if available < 1:
+                raise ValueError("JSON mapping exceeds its budget")
+            child, child_width = _bounded_json_snapshot(
+                value[key],
+                remaining=available,
+                depth=depth + 1,
+                active=active,
+                members=members,
+                member_limit=member_limit,
+            )
+            snapshot[key] = child
+            used += separator_width + key_width + child_width
+    finally:
+        active.remove(identity)
+    return snapshot, _require_json_width(used, remaining)
+
+
+def _bounded_json_sequence(
+    value: list[object] | tuple[object, ...],
+    *,
+    remaining: int,
+    depth: int,
+    active: set[int],
+    members: list[int],
+    member_limit: int,
+) -> tuple[list[object], int]:
+    identity = id(value)
+    if identity in active or remaining < 2:
+        raise ValueError("cyclic or oversized JSON sequence")
+    active.add(identity)
+    snapshot: list[object] = []
+    used = 2
+    try:
+        for item in value:
+            members[0] += 1
+            if members[0] > member_limit:
+                raise ValueError("JSON sequence exceeds its member budget")
+            separator_width = 1 if snapshot else 0
+            available = remaining - used - separator_width
+            if available < 1:
+                raise ValueError("JSON sequence exceeds its budget")
+            child, child_width = _bounded_json_snapshot(
+                item,
+                remaining=available,
+                depth=depth + 1,
+                active=active,
+                members=members,
+                member_limit=member_limit,
+            )
+            snapshot.append(child)
+            used += separator_width + child_width
+    finally:
+        active.remove(identity)
+    return snapshot, _require_json_width(used, remaining)
+
+
+def _json_string_width(value: str) -> int:
+    width = 2
+    for character in value:
+        codepoint = ord(character)
+        if character in {'"', "\\", "\b", "\f", "\n", "\r", "\t"}:
+            width += 2
+        elif codepoint < 0x20 or 0x7E < codepoint <= 0xFFFF:
+            width += 6
+        elif codepoint > 0xFFFF:
+            width += 12
+        else:
+            width += 1
+    return width
+
+
+def _require_json_width(width: int, remaining: int) -> int:
+    if width > remaining:
+        raise ValueError("JSON value exceeds its budget")
+    return width
 
 
 @dataclass(frozen=True)

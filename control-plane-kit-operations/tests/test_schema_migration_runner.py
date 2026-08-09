@@ -25,6 +25,7 @@ _CURRENT_HISTORY = [
     (7, "gateway-key-rotation-timestamps"),
     (8, "ingress-evidence-timestamps"),
     (9, "secret-use-authorization-timestamps"),
+    (10, "product-descriptor-content"),
 ]
 
 
@@ -59,6 +60,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
@@ -276,7 +278,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
 
         try:
             install(connection)
-            for algorithm_version in (1, 2):
+            for algorithm_version in (2,):
                 with self.subTest(algorithm_version=algorithm_version):
                     executed.clear()
                     program_registry = self._program_registry(
@@ -315,7 +317,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 schema_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,
             )
-            self.assertEqual(production_registry.target_version, 9)
+            self.assertEqual(production_registry.target_version, 10)
             self.assertIs(
                 runner_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,
@@ -346,6 +348,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             runner_module.POSTGRES_SCHEMA_MIGRATIONS = self._program_registry(
                 "CREATE TABLE cpk_test_program_savepoint (position integer)",
                 "INSERT INTO cpk_test_program_savepoint (position) VALUES (1)",
+                algorithm_version=2,
             )
             try:
                 with self.assertRaises(postgres.SchemaMigrationError):
@@ -571,7 +574,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
     ):
         production = schema_module.POSTGRES_SCHEMA_MIGRATIONS
         program = postgres.SchemaMigration(
-            version=10,
+            version=production.target_version + 1,
             name="test-program",
             steps=(
                 postgres.SqlMigrationStep(first_sql),

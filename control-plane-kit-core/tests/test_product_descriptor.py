@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
 import hashlib
 import json
 import unittest
@@ -72,6 +73,93 @@ class ProductDescriptorCodecTests(unittest.TestCase):
             document,
         )
 
+    def test_mapping_input_is_semantic_and_normalizes_deep_order(self) -> None:
+        document = ProductDescriptorCodec().encode_document(self.product())
+        mapping = self._reverse_mappings(
+            json.loads(document.content.decode("utf-8"))
+        )
+        encoded = json.dumps(
+            mapping,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        )
+
+        self.assertNotEqual(encoded.encode("utf-8"), document.content)
+        self.assertEqual(
+            ProductDescriptorCodec(max_bytes=len(document.content)).decode_document(
+                mapping
+            ),
+            document,
+        )
+        for source in (encoded, encoded.encode("utf-8")):
+            with self.subTest(source_type=type(source).__name__):
+                with self.assertRaisesRegex(ProductDescriptorError, "canonical"):
+                    ProductDescriptorCodec().decode_document(source)
+
+    def test_mapping_bound_accounts_for_exact_ascii_escape_expansion(self) -> None:
+        product = self.product()
+        escaped_product = ContainerServerProduct(
+            identity=product.identity,
+            image=product.image,
+            runtime_contract=product.runtime_contract,
+            display_name=product.display_name,
+            description="quote:\" slash:\\ del:\x7f bmp:\u00e9 non-bmp:\U0001f4a9",
+        )
+        document = ProductDescriptorCodec().encode_document(escaped_product)
+        mapping = self._reverse_mappings(
+            json.loads(document.content.decode("utf-8"))
+        )
+
+        self.assertEqual(
+            ProductDescriptorCodec(max_bytes=len(document.content)).decode_document(
+                mapping
+            ),
+            document,
+        )
+        with self.assertRaises(ProductDescriptorError) as raised:
+            ProductDescriptorCodec(
+                max_bytes=len(document.content) - 1
+            ).decode_document(mapping)
+        self.assertLessEqual(len(str(raised.exception)), 128)
+        self.assertIsNone(raised.exception.__context__)
+        self.assertIsNone(raised.exception.__cause__)
+
+    def test_mapping_admission_snapshots_once_and_rejects_hostile_shape(self) -> None:
+        document = ProductDescriptorCodec().encode_document(self.product())
+        ordinary = json.loads(document.content.decode("utf-8"))
+        one_shot = _OneShotMapping(ordinary)
+
+        self.assertEqual(
+            ProductDescriptorCodec().decode_document(one_shot),
+            document,
+        )
+        self.assertEqual(one_shot.iterations, 1)
+
+        cyclic: dict[str, object] = {}
+        cyclic["cycle"] = cyclic
+        nested: object = None
+        for _ in range(66):
+            nested = [nested]
+        marker = "private-hostile-product-material"
+        hostile_values = (
+            cyclic,
+            {"too-deep": nested},
+            {"too-many": [None] * 300},
+            {"huge-negative-integer": -(1 << 1_000_000)},
+            {"not-finite": float("inf")},
+            {"subclass": _HostileText(marker)},
+            _DuplicateKeyMapping(),
+            _FailingMapping(marker),
+        )
+        for candidate in hostile_values:
+            with self.subTest(candidate_type=type(candidate).__name__):
+                with self.assertRaises(ProductDescriptorError) as raised:
+                    ProductDescriptorCodec(max_bytes=256).decode_document(candidate)
+                self.assertLessEqual(len(str(raised.exception)), 128)
+                self.assertNotIn(marker, str(raised.exception))
+                self.assertIsNone(raised.exception.__context__)
+                self.assertIsNone(raised.exception.__cause__)
+
     def test_rejects_unknown_schema_keys_and_product_escape_hatches(self) -> None:
         codec = ProductDescriptorCodec()
         document = codec.encode_document(self.product())
@@ -117,6 +205,64 @@ class ProductDescriptorCodecTests(unittest.TestCase):
         replaced["product"] = {"kind": "lambda-container"}
         with self.assertRaisesRegex(ProductDescriptorError, "malformed"):
             codec.decode_document(replaced)
+
+    def _reverse_mappings(self, value):
+        if isinstance(value, dict):
+            return {
+                key: self._reverse_mappings(value[key])
+                for key in reversed(tuple(value))
+            }
+        if isinstance(value, list):
+            return [self._reverse_mappings(item) for item in value]
+        return value
+
+
+class _OneShotMapping(Mapping[str, object]):
+    def __init__(self, values: dict[str, object]) -> None:
+        self._values = values
+        self.iterations = 0
+
+    def __getitem__(self, key: str) -> object:
+        return self._values[key]
+
+    def __iter__(self) -> Iterator[str]:
+        self.iterations += 1
+        if self.iterations > 1:
+            raise RuntimeError("mapping was traversed more than once")
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+
+class _DuplicateKeyMapping(Mapping[str, object]):
+    def __getitem__(self, key: str) -> object:
+        return "control-plane-kit.product"
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(("schema", "schema"))
+
+    def __len__(self) -> int:
+        return 2
+
+
+class _FailingMapping(Mapping[str, object]):
+    def __init__(self, marker: str) -> None:
+        self._marker = marker
+
+    def __getitem__(self, key: str) -> object:
+        raise RuntimeError(self._marker)
+
+    def __iter__(self) -> Iterator[str]:
+        raise RuntimeError(self._marker)
+
+    def __len__(self) -> int:
+        raise RuntimeError(self._marker)
+
+
+class _HostileText(str):
+    def __str__(self) -> str:
+        raise RuntimeError(super().__str__())
 
 
 if __name__ == "__main__":

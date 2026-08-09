@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import os
 import unittest
 import uuid
@@ -9,7 +10,17 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 import control_plane_kit_operations.postgres as postgres
+from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
+from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    OciImageReference,
+    ProductDescriptorCodec,
+    ProductIdentity,
+    ProductReference,
+    ProductRuntimeContract,
+)
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
+from control_plane_kit_core.types import Protocol
 
 
 _TEMPORAL_COLUMNS = (
@@ -80,6 +91,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 (7, "gateway-key-rotation-timestamps"),
                 (8, "ingress-evidence-timestamps"),
                 (9, "secret-use-authorization-timestamps"),
+                (10, "product-descriptor-content"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
@@ -306,6 +318,25 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
             VALUES ('workspace-a', 'Workspace A', 'created')
             """
         )
+        product_document = ProductDescriptorCodec().encode_document(
+            ContainerServerProduct(
+                identity=ProductIdentity("cpk-tests", "retained-server", 1),
+                image=OciImageReference(
+                    "ghcr.io",
+                    "openj92/control-plane-kit-tests/retained-server",
+                    "sha256:" + "a" * 64,
+                    tag="v1",
+                ),
+                runtime_contract=ProductRuntimeContract(
+                    sockets=BlockSockets(
+                        providers=(ProviderSocket("http", Protocol.HTTP),)
+                    )
+                ),
+                display_name="Retained server",
+                description="Historical product timestamp fixture.",
+            )
+        )
+        product_reference = ProductReference.from_document(product_document)
         statements = (
             """
             INSERT INTO cpk_graph_versions
@@ -343,8 +374,8 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
               (registration_id, workspace_id, product_reference,
                descriptor_sha256, descriptor_document, descriptor_content,
                source, imported_by, imported_at, status)
-            VALUES ('product-a', 'workspace-a', '{}'::jsonb, repeat('b', 64),
-                    '{}'::jsonb, '{}', '{}'::jsonb, 'operator-a', %s, 'active')
+            VALUES ('product-a', 'workspace-a', %s, %s, %s, %s,
+                    '{}'::jsonb, 'operator-a', %s, 'active')
             """,
             """
             INSERT INTO cpk_runtime_authorities
@@ -364,8 +395,27 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                     'operator-a', %s, 'active')
             """,
         )
-        for statement, timestamp in zip(statements, values, strict=True):
-            self.connection.execute(statement, (timestamp,))
+        parameters = (
+            (values[0],),
+            (values[1],),
+            (values[2],),
+            (values[3],),
+            (
+                Jsonb(product_reference.descriptor()),
+                product_document.content_digest,
+                Jsonb(json.loads(product_document.content.decode("utf-8"))),
+                product_document.content.decode("utf-8"),
+                values[4],
+            ),
+            (values[5],),
+            (values[6],),
+        )
+        for statement, statement_parameters in zip(
+            statements,
+            parameters,
+            strict=True,
+        ):
+            self.connection.execute(statement, statement_parameters)
 
     def _retained_values(self) -> tuple[object, ...]:
         statements = (

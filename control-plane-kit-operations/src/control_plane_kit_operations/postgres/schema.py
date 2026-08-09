@@ -71,9 +71,12 @@ from control_plane_kit_operations.secret_providers import (
     SecretProviderKind,
 )
 from control_plane_kit_operations.postgres.migrations import (
+    DeterministicBackfillStep,
+    SchemaBackfillKind,
     SchemaMigration,
     SchemaMigrationError,
     SchemaMigrationRegistry,
+    SqlMigrationStep,
 )
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
@@ -1754,6 +1757,25 @@ ALTER TABLE cpk_secret_use_authorizations
     USING requested_at::timestamptz(6);
 """
 
+_POSTGRES_SCHEMA_V10_PREPARE_SQL = r"""
+LOCK TABLE cpk_registered_products IN ACCESS EXCLUSIVE MODE;
+
+ALTER TABLE cpk_registered_products
+  ADD COLUMN IF NOT EXISTS descriptor_content text;
+"""
+
+_POSTGRES_SCHEMA_V10_FINAL_SQL = r"""
+ALTER TABLE cpk_registered_products
+  ALTER COLUMN descriptor_content SET NOT NULL;
+
+ALTER TABLE cpk_registered_products
+  ADD CONSTRAINT cpk_registered_products_content_digest_check
+  CHECK (
+    descriptor_sha256 =
+      encode(sha256(convert_to(descriptor_content, 'UTF8')), 'hex')
+  );
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -1883,6 +1905,27 @@ if _POSTGRES_SCHEMA_V9.checksum_sha256 != _POSTGRES_SCHEMA_V9_SHA256:
         f"expected {_POSTGRES_SCHEMA_V9_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V9.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V10 = SchemaMigration(
+    version=10,
+    name="product-descriptor-content",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V10_PREPARE_SQL),
+        DeterministicBackfillStep(
+            SchemaBackfillKind.PRODUCT_DESCRIPTOR_CONTENT,
+            1,
+        ),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V10_FINAL_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V10_SHA256 = (
+    "279a103c28d13b4b68cab0433fa3001d6ea8a88195d99f911bc79cbb3bd24ccd"
+)
+if _POSTGRES_SCHEMA_V10.checksum_sha256 != _POSTGRES_SCHEMA_V10_SHA256:
+    raise SchemaMigrationError(
+        "product descriptor content V10 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V10_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V10.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -1894,6 +1937,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V7,
         _POSTGRES_SCHEMA_V8,
         _POSTGRES_SCHEMA_V9,
+        _POSTGRES_SCHEMA_V10,
     )
 )
 
