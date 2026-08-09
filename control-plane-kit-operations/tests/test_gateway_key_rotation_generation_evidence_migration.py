@@ -88,6 +88,9 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
         self.assertIn(
             "count(DISTINCT constraints.conname)", migration.steps[0].sql
         )
+        self.assertIn(
+            "constraint_count <> constraint_name_count", migration.steps[0].sql
+        )
         self.assertGreaterEqual(migration.steps[0].sql.count('COLLATE "C"'), 3)
         self.assertGreaterEqual(migration.steps[2].sql.count('COLLATE "C"'), 3)
         self.assertNotIn(_VALID_PROVIDER, repr(migration))
@@ -146,7 +149,9 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_exact_present_truth_and_constraint_identities_are_preserved(self) -> None:
+    def test_exact_present_truth_preserves_checkpoint_and_replaces_legacy_digest(
+        self,
+    ) -> None:
         connection = self._connection()
         try:
             self._prepare_v11(connection)
