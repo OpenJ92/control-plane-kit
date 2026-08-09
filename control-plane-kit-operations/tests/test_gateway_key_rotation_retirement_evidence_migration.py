@@ -47,6 +47,14 @@ _COLUMN_CONTRACT = (
 )
 _RETIRED = "2026-08-09T12:02:00.000001Z"
 _REVOKED = "2026-08-09T12:01:00Z"
+_INITIAL_STATUS_DEFINITION = (
+    "CHECK ((status = ANY (ARRAY['requested'::text, "
+    "'awaiting-approval'::text, 'approved'::text, 'key-generated'::text, "
+    "'overlap-deploying'::text, 'overlap-ready'::text, "
+    "'new-key-active'::text, 'draining-old-grants'::text, "
+    "'retirement-deploying'::text, 'completed'::text, 'blocked'::text, "
+    "'rejected'::text])))"
+)
 
 
 class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
@@ -95,6 +103,12 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
         self.assertIn("column_default IS NULL", preflight)
         self.assertIn("count(DISTINCT constraints.conname)", preflight)
         self.assertIn(_CATEGORICAL_ERROR, preflight)
+        self.assertRegex(
+            preflight,
+            r"IF constraint_count > 1[\s\S]*?THEN\s+"
+            r"RAISE EXCEPTION USING\s+ERRCODE = 'P1110',\s+"
+            r"MESSAGE = 'gateway key rotation retirement evidence is not accepted';",
+        )
         self.assertNotRegex(
             preflight,
             r"SELECT\s+(?:[^;]*\.)?(?:old_key_retired_at|old_secret_revoked_at)\s+FROM",
@@ -147,9 +161,7 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
                         self.assertEqual(self._definition(connection), _CURRENT_DEFINITION)
                         self.assertEqual(self._history(connection)[-1][:2], _V14_IDENTITY)
                     else:
-                        with self.assertRaises(postgres.SchemaMigrationError) as raised:
-                            postgres.install_postgres_schema(connection)
-                        self._assert_bounded_error(raised.exception)
+                        self._assert_preflight_rejection(connection)
                         self.assertEqual(self._snapshot(connection), before)
                 finally:
                     connection.close()
@@ -262,41 +274,95 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
 
     def test_each_v14_phase_failure_and_composed_suffix_roll_back_exactly(self) -> None:
         self._v14()
+        for phase in (0, 1):
+            with self.subTest(predecessor=13, phase=phase):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare(13, connection)
+                    self._seed_row(connection)
+                    self._replace_constraint(connection, _LEGACY_DEFINITION)
+                    before = self._snapshot(connection)
+                    step = self._v14().steps[phase].sql
+
+                    class FailingConnection:
+                        @property
+                        def autocommit(self):
+                            return connection.autocommit
+
+                        def transaction(self):
+                            return connection.transaction()
+
+                        def execute(self, query, params=None):
+                            if query == step:
+                                raise RuntimeError("private driver material")
+                            return connection.execute(query, params)
+
+                    with self.assertRaises(postgres.SchemaMigrationError) as raised:
+                        postgres.install_postgres_schema(FailingConnection())
+                    self.assertEqual(
+                        str(raised.exception), "schema migration application failed"
+                    )
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertEqual(self._snapshot(connection), before)
+                finally:
+                    connection.close()
+
         for predecessor in (12, 13):
-            for phase in (0, 1):
-                with self.subTest(predecessor=predecessor, phase=phase):
-                    self._reset_schema()
-                    connection = self._connection()
-                    try:
-                        self._prepare(predecessor, connection)
-                        self._seed_row(connection)
-                        self._replace_constraint(connection, _LEGACY_DEFINITION)
-                        before = self._snapshot(connection)
-                        step = self._v14().steps[phase].sql
-
-                        class FailingConnection:
-                            @property
-                            def autocommit(self):
-                                return connection.autocommit
-
-                            def transaction(self):
-                                return connection.transaction()
-
-                            def execute(self, query, params=None):
-                                if query == step:
-                                    raise RuntimeError("private driver material")
-                                return connection.execute(query, params)
-
-                        with self.assertRaises(postgres.SchemaMigrationError) as raised:
-                            postgres.install_postgres_schema(FailingConnection())
-                        self.assertEqual(
-                            str(raised.exception), "schema migration application failed"
+            with self.subTest(post_convergence_predecessor=predecessor):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare(predecessor, connection)
+                    self._seed_row(connection)
+                    if predecessor == 12:
+                        self._replace_status_constraint(
+                            connection, _INITIAL_STATUS_DEFINITION
                         )
-                        self.assertIsNone(raised.exception.__context__)
-                        self.assertIsNone(raised.exception.__cause__)
-                        self.assertEqual(self._snapshot(connection), before)
-                    finally:
-                        connection.close()
+                    self._replace_constraint(connection, _LEGACY_DEFINITION)
+                    before = self._snapshot(connection)
+                    v13_steps = tuple(
+                        step.sql
+                        for step in postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[12].steps
+                    )
+                    v14_steps = tuple(step.sql for step in self._v14().steps)
+                    submitted_v13 = []
+                    submitted_v14 = []
+
+                    class PostConvergenceFailure:
+                        @property
+                        def autocommit(self):
+                            return connection.autocommit
+
+                        def transaction(self):
+                            return connection.transaction()
+
+                        def execute(self, query, params=None):
+                            if query in v13_steps:
+                                submitted_v13.append(v13_steps.index(query))
+                            if query in v14_steps:
+                                submitted_v14.append(v14_steps.index(query))
+                            if (
+                                "INSERT INTO cpk_schema_migrations" in query
+                                and params is not None
+                                and params[0] == 14
+                            ):
+                                raise RuntimeError("private post-convergence material")
+                            return connection.execute(query, params)
+
+                    with self.assertRaises(postgres.SchemaMigrationError) as raised:
+                        postgres.install_postgres_schema(PostConvergenceFailure())
+                    self.assertEqual(
+                        str(raised.exception), "schema migration application failed"
+                    )
+                    self.assertEqual(
+                        submitted_v13, [0, 1, 2] if predecessor == 12 else []
+                    )
+                    self.assertEqual(submitted_v14, [0, 1])
+                    self.assertEqual(self._snapshot(connection), before)
+                finally:
+                    connection.close()
 
     def test_rotation_lock_and_caller_rollback_cover_v14(self) -> None:
         self._v14()
@@ -359,14 +425,35 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
         self.assertNotIn("SELECT pg_get_constraintdef", exact.queries[1][0])
         self.assertEqual(exact.queries[1][1], (_CURRENT_DEFINITION,))
 
-        for scripts in (
-            [list(_COLUMN_CONTRACT[:-1]), [(_CONSTRAINT, "c", True, True)]],
-            [list(_COLUMN_CONTRACT), []],
-            [list(_COLUMN_CONTRACT), [(_CONSTRAINT, "c", False, True)]],
-            [list(_COLUMN_CONTRACT), [(_CONSTRAINT, "c", True, False)]],
-        ):
-            with self.assertRaises(postgres.SchemaMigrationError):
-                verifier(ScriptedConnection(scripts))
+        valid_constraint = (_CONSTRAINT, "c", True, True)
+        constraint_cases = (
+            ("missing", []),
+            ("duplicate", [valid_constraint, valid_constraint]),
+            ("wrong-type", [(_CONSTRAINT, "u", True, True)]),
+            ("unvalidated", [(_CONSTRAINT, "c", False, True)]),
+            ("wrong-definition", [(_CONSTRAINT, "c", True, False)]),
+        )
+        for label, constraints in constraint_cases:
+            with self.subTest(constraint=label):
+                with self.assertRaises(postgres.SchemaMigrationError):
+                    verifier(ScriptedConnection([list(_COLUMN_CONTRACT), constraints]))
+
+        for row_index in range(2):
+            for fact_index, bad in (
+                (1, "text"),
+                (2, 5),
+                (3, "NO"),
+                (4, False),
+            ):
+                with self.subTest(column=row_index, fact=fact_index):
+                    columns = [list(row) for row in _COLUMN_CONTRACT]
+                    columns[row_index][fact_index] = bad
+                    with self.assertRaises(postgres.SchemaMigrationError):
+                        verifier(
+                            ScriptedConnection(
+                                [[tuple(row) for row in columns], [valid_constraint]]
+                            )
+                        )
 
         connection = self._connection()
         try:
@@ -463,6 +550,14 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
             f"ALTER TABLE {_TABLE} ADD CONSTRAINT {_CONSTRAINT} {definition}"
         )
 
+    @staticmethod
+    def _replace_status_constraint(connection, definition: str) -> None:
+        constraint = "cpk_gateway_key_rotations_status_check"
+        connection.execute(f"ALTER TABLE {_TABLE} DROP CONSTRAINT {constraint}")
+        connection.execute(
+            f"ALTER TABLE {_TABLE} ADD CONSTRAINT {constraint} {definition}"
+        )
+
     def _connection(self, *, autocommit: bool = True):
         connection = psycopg.connect(self.database_url, autocommit=autocommit)
         connection.execute(f'SET search_path TO "{self.schema}"')
@@ -535,10 +630,11 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
         )
 
     def _snapshot(self, connection):
-        constraints = tuple(
+        objects = tuple(
             connection.execute(
                 """
-                SELECT relation.relname, constraints.conname, constraints.oid,
+                SELECT relation.relname, 'constraint', constraints.conname,
+                       constraints.oid,
                        pg_get_constraintdef(constraints.oid, false)
                 FROM pg_constraint AS constraints
                 JOIN pg_class AS relation ON relation.oid = constraints.conrelid
@@ -548,11 +644,27 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
                     'cpk_gateway_key_rotations',
                     'cpk_gateway_key_rotation_transitions'
                   )
-                ORDER BY relation.relname, constraints.conname, constraints.oid
+                UNION ALL
+                SELECT relation.relname, 'index', indexes.relname, indexes.oid,
+                       pg_get_indexdef(indexes.oid)
+                FROM pg_class AS indexes
+                JOIN pg_index AS index_contract
+                  ON index_contract.indexrelid = indexes.oid
+                JOIN pg_class AS relation
+                  ON relation.oid = index_contract.indrelid
+                JOIN pg_namespace AS namespace
+                  ON namespace.oid = indexes.relnamespace
+                WHERE namespace.nspname = current_schema()
+                  AND relation.relname IN (
+                    'cpk_gateway_key_rotations',
+                    'cpk_gateway_key_rotation_transitions'
+                  )
+                  AND indexes.relkind = 'i'
+                ORDER BY 1, 2, 3, 4
                 """
             ).fetchall()
         )
-        return self._history(connection), self._row_evidence(connection), constraints
+        return self._history(connection), self._row_evidence(connection), objects
 
     @staticmethod
     def _assert_bounded_error(error: Exception) -> None:
