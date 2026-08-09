@@ -89,7 +89,15 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
             "count(DISTINCT constraints.conname)", migration.steps[0].sql
         )
         self.assertIn(
-            "constraint_count <> constraint_name_count", migration.steps[0].sql
+            """IF constraint_count > 3
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0 AND constraint_contract_is_exact IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation generation evidence is not accepted';
+  END IF;""",
+            migration.steps[0].sql,
         )
         self.assertGreaterEqual(migration.steps[0].sql.count('COLLATE "C"'), 3)
         self.assertGreaterEqual(migration.steps[2].sql.count('COLLATE "C"'), 3)
