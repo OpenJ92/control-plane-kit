@@ -7,10 +7,13 @@ from control_plane_kit_operations.postgres.migration_inspection import (
     verify_postgres_schema,
 )
 from control_plane_kit_operations.postgres.migrations import (
+    DeterministicBackfillStep,
     ObservedSchemaKind,
+    SchemaMigration,
     SchemaMigrationActionKind,
     SchemaMigrationError,
     SchemaMigrationPlan,
+    SqlMigrationStep,
 )
 from control_plane_kit_operations.postgres.schema import (
     POSTGRES_SCHEMA,
@@ -69,19 +72,16 @@ def install_postgres_schema(connection: MigrationPostgresConnection) -> None:
     if type(autocommit) is not bool:
         raise SchemaMigrationError("migration connection contract is not accepted")
 
-    if autocommit:
-        failed = False
-        try:
-            with connection.transaction():
-                _install_under_transaction(connection)
-        except SchemaMigrationError:
-            raise
-        except Exception:
-            failed = True
-        if failed:
-            raise SchemaMigrationError("schema migration transaction failed")
-    else:
-        _install_under_transaction(connection)
+    failed = False
+    try:
+        with connection.transaction():
+            _install_under_transaction(connection)
+    except SchemaMigrationError:
+        raise
+    except Exception:
+        failed = True
+    if failed:
+        raise SchemaMigrationError("schema migration transaction failed")
 
 
 def _install_under_transaction(connection: PostgresConnection) -> None:
@@ -96,7 +96,7 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
         for action in plan.actions:
             if action.kind is SchemaMigrationActionKind.APPLY:
                 active_migration_version = action.migration.version
-                connection.execute(action.migration.sql)
+                _apply_schema_migration(connection, action.migration)
                 active_migration_version = None
             connection.execute(
                 """
@@ -132,6 +132,22 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
         if failure in _TEMPORAL_MIGRATION_FAILURES.values():
             raise SchemaMigrationError(failure)
         raise SchemaMigrationError("schema migration application failed")
+
+
+def _apply_schema_migration(
+    connection: PostgresConnection,
+    migration: SchemaMigration,
+) -> None:
+    if migration.steps is None:
+        connection.execute(migration.sql)
+        return
+    for step in migration.steps:
+        if type(step) is SqlMigrationStep:
+            connection.execute(step.sql)
+        elif type(step) is DeterministicBackfillStep:
+            raise SchemaMigrationError("schema migration backfill is not supported")
+        else:
+            raise SchemaMigrationError("schema migration step is not supported")
 
 
 __all__ = [

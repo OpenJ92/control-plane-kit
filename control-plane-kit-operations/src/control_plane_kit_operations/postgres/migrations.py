@@ -5,11 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
+import json
 import re
 
 
 _MIGRATION_NAME = re.compile(r"^[a-z][a-z0-9-]{0,127}$")
 _LOWERCASE_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_PROGRAM_CHECKSUM_DOMAIN = "control-plane-kit.operations.schema-migration-program"
+_PROGRAM_CHECKSUM_FORMAT_VERSION = 1
 
 
 class SchemaMigrationError(ValueError):
@@ -17,25 +20,62 @@ class SchemaMigrationError(ValueError):
 
 
 @dataclass(frozen=True)
+class SqlMigrationStep:
+    """One immutable SQL effect inside a migration program."""
+
+    sql: str = field(repr=False)
+    checksum_sha256: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        content = _validated_sql_content(self.sql, subject="migration step sql")
+        object.__setattr__(self, "checksum_sha256", sha256(content).hexdigest())
+
+
+class SchemaBackfillKind(StrEnum):
+    """Closed deterministic backfill vocabulary understood by migrations."""
+
+    PRODUCT_DESCRIPTOR_CONTENT = "product-descriptor-content"
+
+
+@dataclass(frozen=True)
+class DeterministicBackfillStep:
+    """Versioned identity of one deterministic application backfill."""
+
+    kind: SchemaBackfillKind
+    algorithm_version: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, SchemaBackfillKind):
+            raise SchemaMigrationError("backfill kind must be closed")
+        if type(self.algorithm_version) is not int or self.algorithm_version < 1:
+            raise SchemaMigrationError(
+                "backfill algorithm version must be a positive integer"
+            )
+
+
+@dataclass(frozen=True)
 class SchemaMigration:
-    """One immutable migration of the CPK operations schema."""
+    """One immutable SQL or ordered-program migration of the CPK schema."""
 
     version: int
     name: str
-    sql: str = field(repr=False)
+    sql: str | None = field(default=None, repr=False)
+    steps: tuple[SqlMigrationStep | DeterministicBackfillStep, ...] | None = None
     checksum_sha256: str = field(init=False)
 
     def __post_init__(self) -> None:
         _validate_version(self.version)
         _validate_name(self.name)
-        if not isinstance(self.sql, str) or not self.sql.strip():
-            raise SchemaMigrationError("migration sql must be nonempty text")
-        if "\x00" in self.sql:
-            raise SchemaMigrationError("migration sql must not contain NUL")
-        try:
-            content = self.sql.encode("utf-8")
-        except UnicodeEncodeError as error:
-            raise SchemaMigrationError("migration sql must be valid UTF-8") from error
+        has_sql = self.sql is not None
+        has_steps = self.steps is not None
+        if has_sql == has_steps:
+            raise SchemaMigrationError(
+                "migration requires exactly one of sql or ordered steps"
+            )
+        if has_sql:
+            content = _validated_sql_content(self.sql, subject="migration sql")
+        else:
+            content = _program_checksum_content(self.steps)
         object.__setattr__(self, "checksum_sha256", sha256(content).hexdigest())
 
 
@@ -280,3 +320,59 @@ def _validate_name(value: object) -> None:
         raise SchemaMigrationError(
             "migration name must be a bounded lowercase slug"
         )
+
+
+def _validated_sql_content(value: object, *, subject: str) -> bytes:
+    if not isinstance(value, str) or not value.strip():
+        raise SchemaMigrationError(f"{subject} must be nonempty text")
+    if "\x00" in value:
+        raise SchemaMigrationError(f"{subject} must not contain NUL")
+    content = None
+    try:
+        content = value.encode("utf-8")
+    except UnicodeEncodeError:
+        pass
+    if content is None:
+        raise SchemaMigrationError(f"{subject} must be valid UTF-8")
+    return content
+
+
+def _program_checksum_content(
+    steps: object,
+) -> bytes:
+    if not isinstance(steps, tuple) or not steps:
+        raise SchemaMigrationError(
+            "migration program steps must be a nonempty tuple"
+        )
+    descriptors: list[dict[str, object]] = []
+    for step in steps:
+        if type(step) is SqlMigrationStep:
+            descriptors.append(
+                {
+                    "kind": "sql",
+                    "sha256": step.checksum_sha256,
+                }
+            )
+        elif type(step) is DeterministicBackfillStep:
+            descriptors.append(
+                {
+                    "algorithm_version": step.algorithm_version,
+                    "backfill_kind": step.kind.value,
+                    "kind": "deterministic-backfill",
+                }
+            )
+        else:
+            raise SchemaMigrationError(
+                "migration program contains an unsupported step value"
+            )
+    descriptor = {
+        "domain": _PROGRAM_CHECKSUM_DOMAIN,
+        "format_version": _PROGRAM_CHECKSUM_FORMAT_VERSION,
+        "steps": descriptors,
+    }
+    return json.dumps(
+        descriptor,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
