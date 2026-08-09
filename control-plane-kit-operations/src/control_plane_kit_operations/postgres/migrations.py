@@ -323,13 +323,13 @@ def _validate_name(value: object) -> None:
 
 
 def _validated_sql_content(value: object, *, subject: str) -> bytes:
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str) or not str.strip(value):
         raise SchemaMigrationError(f"{subject} must be nonempty text")
-    if "\x00" in value:
+    if str.__contains__(value, "\x00"):
         raise SchemaMigrationError(f"{subject} must not contain NUL")
     content = None
     try:
-        content = value.encode("utf-8")
+        content = str.encode(value, "utf-8")
     except UnicodeEncodeError:
         pass
     if content is None:
