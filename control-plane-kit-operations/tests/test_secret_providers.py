@@ -733,6 +733,17 @@ class SecretProviderStoreTests(unittest.TestCase):
                 SecretUseIntent.POSTGRES_PASSWORD,
             )
         )
+        self.assertEqual(
+            self.connection.execute(
+                """
+                SELECT requested_at
+                FROM cpk_secret_use_authorizations
+                WHERE authorization_id = %s
+                """,
+                (authorized.authorization_id,),
+            ).fetchone(),
+            (datetime(2026, 7, 30, 12, 2, tzinfo=timezone.utc),),
+        )
         self.assertNotIn("resolved-value", repr(grant.descriptor()).lower())
 
     def test_use_permission_is_independent_and_conflicting_replay_fails(self) -> None:

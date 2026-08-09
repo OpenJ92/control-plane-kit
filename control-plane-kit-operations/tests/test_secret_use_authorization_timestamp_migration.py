@@ -21,6 +21,7 @@ from control_plane_kit_operations.postgres.secret_provider_store import (
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
     AuthorizedSecretUse,
+    SecretProviderAuthorizationDenied,
     SecretUseAuthorizationService,
 )
 
@@ -271,6 +272,26 @@ class SecretUseAuthorizationTimestampMigrationTests(unittest.TestCase):
                     ):
                         if forbidden:
                             self.assertNotIn(forbidden, str(raised.exception))
+
+    def test_scope_admission_precedes_time_admission_for_both_entrypoints(self) -> None:
+        command = replace(
+            self._command(requested_at="not-a-timestamp"),
+            actor_scopes=(PolicyScope.PLAN_REQUEST,),
+        )
+        for entrypoint in ("authorize", "authorize_resolution"):
+            with self.subTest(entrypoint=entrypoint):
+                factory = _CountingUnitOfWorkFactory()
+                service = SecretUseAuthorizationService(factory)
+
+                with self.assertRaises(SecretProviderAuthorizationDenied) as raised:
+                    getattr(service, entrypoint)(command)
+
+                self.assertEqual(factory.calls, 0)
+                self.assertEqual(
+                    str(raised.exception),
+                    "secret provider operation requires secret-provider:use",
+                )
+                self.assertNotIn(command.requested_at, str(raised.exception))
 
     def test_direct_add_admits_time_before_connection_access(self) -> None:
         connection = _NoAccessConnection()
