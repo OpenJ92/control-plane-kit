@@ -112,7 +112,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
             )
             self.assertEqual(
                 self._history(connection)[-1],
-                (12, "gateway-key-rotation-generation-evidence"),
+                (13, "gateway-key-rotation-status-contracts"),
             )
             self._assert_current_contract(connection)
             before = connection.execute(
@@ -474,6 +474,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                             (10, "product-descriptor-content"),
                             (11, "gateway-probe-access-path"),
                             (12, "gateway-key-rotation-generation-evidence"),
+                            (13, "gateway-key-rotation-status-contracts"),
                         )
                         if outcome == "commit"
                         else _V9_HISTORY
@@ -576,7 +577,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
         try:
             self.assertEqual(
                 self._history(observer)[-1],
-                (12, "gateway-key-rotation-generation-evidence"),
+                (13, "gateway-key-rotation-status-contracts"),
             )
             self.assertEqual(
                 observer.execute(

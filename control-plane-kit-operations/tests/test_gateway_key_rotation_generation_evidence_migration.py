@@ -33,6 +33,7 @@ _V11_HISTORY = (
     (11, "gateway-probe-access-path"),
 )
 _V12_IDENTITY = (12, "gateway-key-rotation-generation-evidence")
+_V13_IDENTITY = (13, "gateway-key-rotation-status-contracts")
 _CATEGORICAL_ERROR = "gateway key rotation generation evidence is not accepted"
 _TABLE = "cpk_gateway_key_rotations"
 _PROVIDER_COLUMN = "generation_provider_registration_id"
@@ -69,12 +70,12 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_three_sql_step_v12_program(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 12)
+        self.assertEqual(registry.target_version, 13)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V11_HISTORY, _V12_IDENTITY),
+            (*_V11_HISTORY, _V12_IDENTITY, _V13_IDENTITY),
         )
-        migration = registry.migrations[-1]
+        migration = registry.migrations[11]
         self.assertIsNone(migration.sql)
         self.assertEqual(len(migration.steps), 3)
         self.assertTrue(
@@ -130,7 +131,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
 
             postgres.install_postgres_schema(connection)
 
-            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V13_IDENTITY)
             self.assertEqual(self._rows_without_generation(connection), before_rows)
             self.assertEqual(
                 connection.execute(
@@ -185,7 +186,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
             self.assertNotEqual(after[_DIGEST_CONSTRAINT][1], before_digest[1])
             self.assertEqual(after[_DIGEST_CONSTRAINT][1].count('COLLATE "C"'), 1)
             self.assertIn(_PROVIDER_CONSTRAINT, after)
-            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V13_IDENTITY)
             before_repeat = self._complete_snapshot(connection)
 
             postgres.install_postgres_schema(connection)
@@ -225,7 +226,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
 
             postgres.install_postgres_schema(connection)
 
-            self.assertEqual(self._history(connection)[-1][:2], _V12_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _V13_IDENTITY)
             self.assertEqual(self._rows_with_generation(connection), before_rows)
             after = self._target_constraint_identities(connection)
             self.assertEqual(after[_CHECKPOINT_CONSTRAINT], before_checkpoint)
@@ -541,7 +542,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
         observer = self._connection()
         try:
             postgres.install_postgres_schema(caller)
-            self.assertEqual(self._history(caller)[-1][:2], _V12_IDENTITY)
+            self.assertEqual(self._history(caller)[-1][:2], _V13_IDENTITY)
             observer.execute("SET lock_timeout TO '250ms'")
 
             with self.assertRaises(psycopg.errors.LockNotAvailable):
@@ -957,7 +958,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
 
     @staticmethod
     def _v12():
-        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[-1]
+        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[11]
         if (migration.version, migration.name) != _V12_IDENTITY:
             raise AssertionError("V12 generation-evidence migration is missing")
         return migration

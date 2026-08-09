@@ -94,6 +94,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 (10, "product-descriptor-content"),
                 (11, "gateway-probe-access-path"),
                 (12, "gateway-key-rotation-generation-evidence"),
+                (13, "gateway-key-rotation-status-contracts"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
