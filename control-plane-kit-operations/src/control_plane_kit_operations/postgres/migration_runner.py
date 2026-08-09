@@ -45,15 +45,41 @@ SELECT pg_advisory_xact_lock(
   hashtextextended(current_database() || chr(31) || current_schema(), 0)
 )
 """
-_TEMPORAL_MIGRATION_FAILURES = {
-    2: "coordination timestamps are not canonical UTC",
-    3: "graph, product, and authority timestamps are not canonical UTC",
-    4: "secret registration timestamps are not canonical UTC",
-    5: "delegation signing-key timestamps are not canonical UTC",
-    6: "gateway probe timestamps are not canonical UTC",
-    7: "gateway key rotation timestamps are not canonical UTC",
-    8: "ingress evidence timestamps are not canonical UTC",
-    9: "secret-use authorization timestamps are not canonical UTC",
+_TEMPORAL_MIGRATION_SQLSTATES = frozenset({"P1110", "22007", "22008"})
+_CATEGORICAL_MIGRATION_FAILURES = {
+    2: (
+        "coordination timestamps are not canonical UTC",
+        _TEMPORAL_MIGRATION_SQLSTATES,
+    ),
+    3: (
+        "graph, product, and authority timestamps are not canonical UTC",
+        _TEMPORAL_MIGRATION_SQLSTATES,
+    ),
+    4: (
+        "secret registration timestamps are not canonical UTC",
+        _TEMPORAL_MIGRATION_SQLSTATES,
+    ),
+    5: (
+        "delegation signing-key timestamps are not canonical UTC",
+        _TEMPORAL_MIGRATION_SQLSTATES,
+    ),
+    6: (
+        "gateway probe timestamps are not canonical UTC",
+        _TEMPORAL_MIGRATION_SQLSTATES,
+    ),
+    7: (
+        "gateway key rotation timestamps are not canonical UTC",
+        _TEMPORAL_MIGRATION_SQLSTATES,
+    ),
+    8: (
+        "ingress evidence timestamps are not canonical UTC",
+        _TEMPORAL_MIGRATION_SQLSTATES,
+    ),
+    9: (
+        "secret-use authorization timestamps are not canonical UTC",
+        _TEMPORAL_MIGRATION_SQLSTATES,
+    ),
+    11: ("gateway probe access path is not accepted", frozenset({"P1110"})),
 }
 
 
@@ -125,15 +151,19 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
     except SchemaMigrationError:
         raise
     except Exception as error:
-        temporal_failure = _TEMPORAL_MIGRATION_FAILURES.get(active_migration_version)
+        categorical_failure = _CATEGORICAL_MIGRATION_FAILURES.get(
+            active_migration_version
+        )
         failure = (
-            temporal_failure
-            if temporal_failure is not None
-            and getattr(error, "sqlstate", None) in {"P1110", "22007", "22008"}
+            categorical_failure[0]
+            if categorical_failure is not None
+            and getattr(error, "sqlstate", None) in categorical_failure[1]
             else "schema migration application failed"
         )
     if failure is not None:
-        if failure in _TEMPORAL_MIGRATION_FAILURES.values():
+        if failure in tuple(
+            message for message, _sqlstates in _CATEGORICAL_MIGRATION_FAILURES.values()
+        ):
             raise SchemaMigrationError(failure)
         raise SchemaMigrationError("schema migration application failed")
 

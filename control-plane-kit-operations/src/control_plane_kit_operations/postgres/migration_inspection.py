@@ -41,6 +41,18 @@ _PRODUCT_DESCRIPTOR_CONTENT_CONSTRAINT_DEFINITION = (
     "CHECK ((descriptor_sha256 = encode(sha256(convert_to(descriptor_content, "
     "'UTF8'::name)), 'hex'::text)))"
 )
+_GATEWAY_PROBE_ACCESS_PATH_COLUMN_CONTRACT = ("text", "NO", True)
+_GATEWAY_PROBE_ACCESS_PATH_CONSTRAINT = (
+    "cpk_gateway_probe_attempts",
+    "cpk_gateway_probe_access_path_check",
+    "c",
+    True,
+    True,
+)
+_GATEWAY_PROBE_ACCESS_PATH_CONSTRAINT_DEFINITION = (
+    "CHECK ((access_path = ANY (ARRAY['runtime-private'::text, "
+    "'named-public-ingress'::text])))"
+)
 _COORDINATION_TEMPORAL_CONTRACT = (
     ("cpk_activity_events", "occurred_at", "timestamp with time zone", 6, "NO", True),
     ("cpk_activity_plans", "created_at", "timestamp with time zone", 6, "NO", True),
@@ -998,6 +1010,8 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         raise SchemaMigrationError("database schema has pending migrations")
     if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 10:
         _verify_product_descriptor_content_contract(connection)
+    if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 11:
+        _verify_gateway_probe_access_path_contract(connection)
     if _read_coordination_temporal_contract(connection) != (
         _COORDINATION_TEMPORAL_CONTRACT
     ):
@@ -1088,6 +1102,56 @@ def _verify_product_descriptor_content_contract(
     )
     if constraint_rows != [_PRODUCT_DESCRIPTOR_CONTENT_CONSTRAINT]:
         raise SchemaMigrationError("product descriptor content schema is not current")
+
+
+def _verify_gateway_probe_access_path_contract(
+    connection: PostgresConnection,
+) -> None:
+    column_rows = _read_rows(
+        connection,
+        """
+        SELECT data_type,
+               is_nullable,
+               column_default = %s
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'cpk_gateway_probe_attempts'
+          AND column_name = 'access_path'
+        LIMIT 2
+        """,
+        ("'runtime-private'::text",),
+        "gateway probe access path schema read failed",
+    )
+    if column_rows != [_GATEWAY_PROBE_ACCESS_PATH_COLUMN_CONTRACT]:
+        raise SchemaMigrationError(
+            "gateway probe access path schema is not current"
+        )
+    constraint_rows = _read_rows(
+        connection,
+        """
+        SELECT relation.relname,
+               constraints.conname,
+               constraints.contype::text,
+               constraints.convalidated,
+               pg_get_constraintdef(constraints.oid, false) = %s
+        FROM pg_constraint AS constraints
+        JOIN pg_class AS relation
+          ON relation.oid = constraints.conrelid
+        JOIN pg_namespace AS namespace
+          ON namespace.oid = constraints.connamespace
+        WHERE namespace.nspname = current_schema()
+          AND relation.relname = 'cpk_gateway_probe_attempts'
+          AND constraints.conname = 'cpk_gateway_probe_access_path_check'
+        ORDER BY relation.relname, constraints.oid
+        LIMIT 2
+        """,
+        (_GATEWAY_PROBE_ACCESS_PATH_CONSTRAINT_DEFINITION,),
+        "gateway probe access path schema read failed",
+    )
+    if constraint_rows != [_GATEWAY_PROBE_ACCESS_PATH_CONSTRAINT]:
+        raise SchemaMigrationError(
+            "gateway probe access path schema is not current"
+        )
 
 
 def _read_coordination_temporal_contract(
