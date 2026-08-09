@@ -80,6 +80,10 @@ _CATEGORICAL_MIGRATION_FAILURES = {
         _TEMPORAL_MIGRATION_SQLSTATES,
     ),
     11: ("gateway probe access path is not accepted", frozenset({"P1110"})),
+    12: (
+        "gateway key rotation generation evidence is not accepted",
+        frozenset({"P1110"}),
+    ),
 }
 
 

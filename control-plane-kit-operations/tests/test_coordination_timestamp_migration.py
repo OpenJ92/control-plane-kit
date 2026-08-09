@@ -174,6 +174,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 (9, "secret-use-authorization-timestamps"),
                 (10, "product-descriptor-content"),
                 (11, "gateway-probe-access-path"),
+                (12, "gateway-key-rotation-generation-evidence"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
@@ -214,6 +215,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 (9, "secret-use-authorization-timestamps"),
                 (10, "product-descriptor-content"),
                 (11, "gateway-probe-access-path"),
+                (12, "gateway-key-rotation-generation-evidence"),
             ],
         )
         self.assertEqual(

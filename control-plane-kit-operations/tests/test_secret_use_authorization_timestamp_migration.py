@@ -41,6 +41,7 @@ _CURRENT_HISTORY = [
     *_V9_HISTORY,
     (10, "product-descriptor-content"),
     (11, "gateway-probe-access-path"),
+    (12, "gateway-key-rotation-generation-evidence"),
 ]
 _V9_SHA256 = "51e322bc4c578bef768cd516b63fd0018cfeb658bd4b9bfd6eed118666d50adb"
 _SECONDS = "2026-08-08T12:00:00Z"
@@ -54,9 +55,22 @@ _COLUMN = (
     "NO",
     True,
 )
-_REBUILT = {("index", "cpk_secret_use_authorizations_reference_history")}
-_V10_ADDED_OBJECTS = {
+_REBUILT = {
+    ("constraint", "cpk_gateway_key_rotations_generation_digest_check"),
+    ("index", "cpk_secret_use_authorizations_reference_history"),
+}
+_CANONICAL_DIGEST_CONSTRAINT = (
+    "constraint",
+    "cpk_gateway_key_rotations_generation_digest_check",
+)
+_CANONICAL_DIGEST_DEFINITION = (
+    "CHECK (((generation_action_digest IS NULL) OR "
+    '((generation_action_digest COLLATE "C") ~ '
+    "'^[0-9a-f]{64}$'::text)))"
+)
+_CURRENT_ADDED_OBJECTS = {
     ("constraint", "cpk_registered_products_content_digest_check"),
+    ("constraint", "cpk_gateway_key_rotations_generation_provider_check"),
 }
 
 
@@ -99,7 +113,7 @@ class SecretUseAuthorizationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_checksum_guarded_v9_after_immutable_v8(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 11)
+        self.assertEqual(registry.target_version, 12)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations],
             _CURRENT_HISTORY,
@@ -211,11 +225,14 @@ class SecretUseAuthorizationTimestampMigrationTests(unittest.TestCase):
         postgres.install_postgres_schema(self.connection)
 
         after = self._application_objects()
-        self.assertEqual(set(after), set(before) | _V10_ADDED_OBJECTS)
+        self.assertEqual(set(after), set(before) | _CURRENT_ADDED_OBJECTS)
         changed = set()
         for identity, (before_oid, before_definition) in before.items():
             after_oid, after_definition = after[identity]
-            self.assertEqual(after_definition, before_definition)
+            if identity == _CANONICAL_DIGEST_CONSTRAINT:
+                self.assertEqual(after_definition, _CANONICAL_DIGEST_DEFINITION)
+            else:
+                self.assertEqual(after_definition, before_definition)
             if after_oid != before_oid:
                 changed.add(identity)
         self.assertEqual(changed, _REBUILT)

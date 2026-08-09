@@ -1882,6 +1882,215 @@ ALTER TABLE cpk_gateway_probe_attempts
   ALTER COLUMN access_path SET NOT NULL;
 """
 
+_POSTGRES_SCHEMA_V12_PREFLIGHT_SQL = r"""
+LOCK TABLE cpk_gateway_key_rotations IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  column_contract_is_exact boolean;
+  constraint_count bigint;
+  constraint_name_count bigint;
+  constraint_contract_is_exact boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             data_type = 'text'
+             AND is_nullable = 'YES'
+             AND column_default IS NULL
+           ),
+           false
+         )
+    INTO column_count, column_contract_is_exact
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_gateway_key_rotations'
+    AND column_name IN (
+      'generation_provider_registration_id',
+      'generation_action_digest'
+    );
+
+  IF column_count = 0 THEN
+    NULL;
+  ELSIF column_count <> 2 OR column_contract_is_exact IS NOT TRUE THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation generation evidence is not accepted';
+  ELSIF EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotations
+    WHERE (generation_provider_registration_id IS NULL)
+            <> (generation_action_digest IS NULL)
+      OR (
+        generation_provider_registration_id IS NOT NULL
+        AND NOT (
+          octet_length(generation_provider_registration_id) BETWEEN 1 AND 200
+          AND (generation_provider_registration_id COLLATE "C")
+                ~ '^[A-Za-z0-9]'
+          AND (generation_provider_registration_id COLLATE "C")
+                !~ '[^A-Za-z0-9._:-]'
+        )
+      )
+      OR (
+        generation_action_digest IS NOT NULL
+        AND (generation_action_digest COLLATE "C") !~ '^[0-9a-f]{64}$'
+      )
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation generation evidence is not accepted';
+  END IF;
+
+  SELECT count(*),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND CASE constraints.conname
+               WHEN 'cpk_gateway_key_rotations_generation_checkpoint_check'
+                 THEN pg_get_constraintdef(constraints.oid, false) =
+                   'CHECK (((generation_provider_registration_id IS NULL) = (generation_action_digest IS NULL)))'
+               WHEN 'cpk_gateway_key_rotations_generation_provider_check'
+                 THEN pg_get_constraintdef(constraints.oid, false) =
+                   'CHECK (((generation_provider_registration_id IS NULL) OR (((octet_length(generation_provider_registration_id) >= 1) AND (octet_length(generation_provider_registration_id) <= 200)) AND ((generation_provider_registration_id COLLATE "C") ~ ''^[A-Za-z0-9]''::text) AND ((generation_provider_registration_id COLLATE "C") !~ ''[^A-Za-z0-9._:-]''::text))))'
+               WHEN 'cpk_gateway_key_rotations_generation_digest_check'
+                 THEN pg_get_constraintdef(constraints.oid, false) IN (
+                   'CHECK (((generation_action_digest IS NULL) OR (generation_action_digest ~ ''^[0-9a-f]{64}$''::text)))',
+                   'CHECK (((generation_action_digest IS NULL) OR ((generation_action_digest COLLATE "C") ~ ''^[0-9a-f]{64}$''::text)))'
+                 )
+               ELSE false
+             END
+           ),
+           false
+         )
+    INTO constraint_count, constraint_name_count, constraint_contract_is_exact
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotations'
+    AND constraints.conname IN (
+      'cpk_gateway_key_rotations_generation_checkpoint_check',
+      'cpk_gateway_key_rotations_generation_provider_check',
+      'cpk_gateway_key_rotations_generation_digest_check'
+    );
+
+  IF constraint_count > 3
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0 AND constraint_contract_is_exact IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation generation evidence is not accepted';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V12_COLUMNS_SQL = r"""
+DO $cpk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'cpk_gateway_key_rotations'
+      AND column_name IN (
+        'generation_provider_registration_id',
+        'generation_action_digest'
+      )
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD COLUMN generation_provider_registration_id text,
+      ADD COLUMN generation_action_digest text;
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V12_CONSTRAINTS_SQL = r"""
+DO $cpk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_checkpoint_check'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_checkpoint_check
+      CHECK ((generation_provider_registration_id IS NULL)
+        = (generation_action_digest IS NULL));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_provider_check'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_provider_check
+      CHECK (
+        generation_provider_registration_id IS NULL
+        OR (
+          octet_length(generation_provider_registration_id) BETWEEN 1 AND 200
+          AND (generation_provider_registration_id COLLATE "C")
+                ~ '^[A-Za-z0-9]'
+          AND (generation_provider_registration_id COLLATE "C")
+                !~ '[^A-Za-z0-9._:-]'
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_digest_check'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_digest_check
+      CHECK (generation_action_digest IS NULL
+        OR (generation_action_digest COLLATE "C") ~ '^[0-9a-f]{64}$');
+  ELSIF EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_digest_check'
+      AND pg_get_constraintdef(constraints.oid, false) =
+        'CHECK (((generation_action_digest IS NULL) OR (generation_action_digest ~ ''^[0-9a-f]{64}$''::text)))'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      DROP CONSTRAINT cpk_gateway_key_rotations_generation_digest_check,
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_digest_check
+      CHECK (generation_action_digest IS NULL
+        OR (generation_action_digest COLLATE "C") ~ '^[0-9a-f]{64}$');
+  END IF;
+END
+$cpk$;
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -2050,6 +2259,24 @@ if _POSTGRES_SCHEMA_V11.checksum_sha256 != _POSTGRES_SCHEMA_V11_SHA256:
         f"expected {_POSTGRES_SCHEMA_V11_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V11.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V12 = SchemaMigration(
+    version=12,
+    name="gateway-key-rotation-generation-evidence",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V12_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V12_COLUMNS_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V12_CONSTRAINTS_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V12_SHA256 = (
+    "a9d5c552480172e7415def95df8a5ae44b03cd7023710ef13c975de90923732a"
+)
+if _POSTGRES_SCHEMA_V12.checksum_sha256 != _POSTGRES_SCHEMA_V12_SHA256:
+    raise SchemaMigrationError(
+        "gateway key rotation generation evidence V12 differs from its pinned "
+        f"checksum: expected {_POSTGRES_SCHEMA_V12_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V12.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -2063,6 +2290,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V9,
         _POSTGRES_SCHEMA_V10,
         _POSTGRES_SCHEMA_V11,
+        _POSTGRES_SCHEMA_V12,
     )
 )
 
