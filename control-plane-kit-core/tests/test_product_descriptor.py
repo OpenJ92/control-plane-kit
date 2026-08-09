@@ -145,6 +145,7 @@ class ProductDescriptorCodecTests(unittest.TestCase):
             cyclic,
             {"too-deep": nested},
             {"too-many": [None] * 300},
+            {"huge-negative-integer": -(1 << 1_000_000)},
             {"not-finite": float("inf")},
             {"subclass": _HostileText(marker)},
             _DuplicateKeyMapping(),

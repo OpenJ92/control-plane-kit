@@ -925,7 +925,7 @@ def _bounded_json_snapshot(
     if value_type is str:
         return value, _require_json_width(_json_string_width(value), remaining)
     if value_type is int:
-        magnitude_bits = abs(value).bit_length()
+        magnitude_bits = value.bit_length()
         decimal_upper_bound = (
             1 if magnitude_bits == 0 else (magnitude_bits * 30_103) // 100_000 + 1
         )
