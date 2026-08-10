@@ -7,6 +7,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import re
 import threading
 import time
 import unittest
@@ -158,6 +159,7 @@ class _RecordingConnection:
         self.calls: list[tuple[str, tuple[object, ...]]] = []
         self.predeclared_locks: dict[str, set[str]] | None = None
         self.lock_call_index: int | None = None
+        self.lock_statements: list[str] = []
 
     @property
     def autocommit(self):
@@ -175,10 +177,11 @@ class _RecordingConnection:
             else self.delegate.execute(query, params)
         )
         if "LOCK TABLE ONLY" in text:
-            if self.predeclared_locks is not None:
-                raise AssertionError("schema lock plan was not acquired atomically")
-            self.lock_call_index = len(self.calls) - 1
-            self.predeclared_locks = _relation_locks(self.delegate)
+            self.lock_statements.append(text)
+            locks = _relation_locks(self.delegate)
+            if self.predeclared_locks is None and set(_CURRENT_LOCKS) <= set(locks):
+                self.lock_call_index = len(self.calls) - 1
+                self.predeclared_locks = locks
         return result
 
 
@@ -560,11 +563,31 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
             (
                 "unique-deferrable",
                 (
-                    "ALTER TABLE cpk_realized_graph_projections DROP CONSTRAINT "
-                    "cpk_realized_graph_projection_workspace_identity CASCADE",
-                    "ALTER TABLE cpk_realized_graph_projections ADD CONSTRAINT "
-                    "cpk_realized_graph_projection_workspace_identity UNIQUE "
-                    "(projection_id, workspace_id) DEFERRABLE",
+                    "ALTER TABLE cpk_activity_events DROP CONSTRAINT "
+                    "cpk_activity_events_run_id_ordinal_key",
+                    "ALTER TABLE cpk_activity_events ADD CONSTRAINT "
+                    "cpk_activity_events_run_id_ordinal_key UNIQUE "
+                    "(run_id, ordinal) DEFERRABLE",
+                ),
+            ),
+            (
+                "constraint-validation",
+                (
+                    "ALTER TABLE cpk_activity_events DROP CONSTRAINT "
+                    "cpk_activity_events_run_id_fkey",
+                    "ALTER TABLE cpk_activity_events ADD CONSTRAINT "
+                    "cpk_activity_events_run_id_fkey FOREIGN KEY (run_id) "
+                    "REFERENCES cpk_activity_runs(run_id) NOT VALID",
+                ),
+            ),
+            (
+                "primary-key-shape",
+                (
+                    "ALTER TABLE cpk_cloudflare_ingress_resources DROP "
+                    "CONSTRAINT cpk_cloudflare_ingress_resources_pkey",
+                    "ALTER TABLE cpk_cloudflare_ingress_resources ADD "
+                    "CONSTRAINT cpk_cloudflare_ingress_resources_pkey "
+                    "PRIMARY KEY (epoch, ingress_id, workspace_id)",
                 ),
             ),
             (
@@ -603,6 +626,15 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
                     "rotation_id IS NOT NULL",
                 ),
             ),
+            (
+                "index-include",
+                (
+                    "DROP INDEX cpk_approval_requests_rotation_identity",
+                    "CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity "
+                    "ON cpk_approval_requests (rotation_id) INCLUDE (request_id) "
+                    "WHERE rotation_id IS NOT NULL",
+                ),
+            ),
         )
         for label, statements in arrangements:
             with self.subTest(label=label):
@@ -614,6 +646,52 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
                     self._assert_contract_not_current(connection)
                 finally:
                     connection.close()
+
+    def test_current_contract_rejects_partition_identity_and_generated_drift(
+        self,
+    ) -> None:
+        shadow = f"{self.schema}_partition"
+        arrangements = (
+            (
+                "partition",
+                (
+                    f'CREATE SCHEMA "{shadow}"',
+                    f'CREATE TABLE "{shadow}".activity_events_parent '
+                    "(LIKE cpk_activity_events INCLUDING DEFAULTS "
+                    "INCLUDING GENERATED) PARTITION BY LIST (event_id)",
+                    f'ALTER TABLE "{shadow}".activity_events_parent ATTACH '
+                    "PARTITION cpk_activity_events DEFAULT",
+                ),
+            ),
+            (
+                "identity",
+                (
+                    "ALTER TABLE cpk_activity_events ALTER COLUMN ordinal "
+                    "ADD GENERATED ALWAYS AS IDENTITY",
+                ),
+            ),
+            (
+                "generated",
+                (
+                    "ALTER TABLE cpk_approval_decisions DROP COLUMN comment",
+                    "ALTER TABLE cpk_approval_decisions ADD COLUMN comment text "
+                    "GENERATED ALWAYS AS ('generated'::text) STORED",
+                ),
+            ),
+        )
+        for label, statements in arrangements:
+            with self.subTest(label=label):
+                connection = self._connection(reset=True)
+                try:
+                    postgres.install_postgres_schema(connection)
+                    for statement in statements:
+                        connection.execute(statement)
+                    self._assert_contract_not_current(connection)
+                finally:
+                    connection.close()
+                    self.admin.execute(
+                        f'DROP SCHEMA IF EXISTS "{shadow}" CASCADE'
+                    )
 
     def test_cross_schema_lookalikes_cannot_satisfy_missing_owned_truth(self) -> None:
         connection = self._connection()
@@ -636,6 +714,31 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
             )
 
             self._assert_contract_not_current(connection)
+            self.assertEqual(
+                connection.execute(
+                    """
+                    SELECT EXISTS (
+                             SELECT 1
+                             FROM pg_class AS relation
+                             JOIN pg_namespace AS namespace
+                               ON namespace.oid = relation.relnamespace
+                             WHERE namespace.nspname = %s
+                               AND relation.relname = 'cpk_approval_requests'
+                           ),
+                           EXISTS (
+                             SELECT 1
+                             FROM pg_class AS relation
+                             JOIN pg_namespace AS namespace
+                               ON namespace.oid = relation.relnamespace
+                             WHERE namespace.nspname = %s
+                               AND relation.relname =
+                                 'cpk_approval_requests_rotation_identity'
+                           )
+                    """,
+                    (shadow, shadow),
+                ).fetchone(),
+                (True, True),
+            )
         finally:
             connection.execute(f'DROP SCHEMA IF EXISTS "{shadow}" CASCADE')
             connection.close()
@@ -657,6 +760,10 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
             for relation in module.PENDING_SCHEMA_LOCK_PLAN.relations:
                 self.assertIn("AccessExclusiveLock", locks[relation.relation])
             self._assert_fresh_lock_sequence(recorded_fresh)
+            self._assert_canonical_lock_statements(
+                recorded_fresh,
+                module.PENDING_SCHEMA_LOCK_PLAN,
+            )
             self._assert_later_locks_are_subsumed(
                 recorded_fresh,
                 module.PENDING_SCHEMA_LOCK_PLAN,
@@ -687,6 +794,10 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(len(contract_reads), 1)
             self.assertLess(recorded_current.lock_call_index, contract_reads[0])
+            self._assert_canonical_lock_statements(
+                recorded_current,
+                module.CURRENT_SCHEMA_LOCK_PLAN,
+            )
             self._assert_later_locks_are_subsumed(
                 recorded_current,
                 module.CURRENT_SCHEMA_LOCK_PLAN,
@@ -731,6 +842,19 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
                     )
                     self.assertTrue(ledger_inserts)
                     self.assertLess(recorded.lock_call_index, ledger_inserts[0])
+                    first_pending_sql = (
+                        postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[1].sql
+                    )
+                    first_pending_call = next(
+                        index
+                        for index, (query, _params) in enumerate(recorded.calls)
+                        if query == first_pending_sql
+                    )
+                    self.assertLess(recorded.lock_call_index, first_pending_call)
+                    self._assert_canonical_lock_statements(
+                        recorded,
+                        _contract_module().PENDING_SCHEMA_LOCK_PLAN,
+                    )
                     self._assert_later_locks_are_subsumed(
                         recorded,
                         _contract_module().PENDING_SCHEMA_LOCK_PLAN,
@@ -811,7 +935,8 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
             setup.close()
 
         blocker = self._connection(autocommit=False)
-        contender = self._connection(application_name="cpk-contract-cancel")
+        contender = self._connection()
+        contender_pid = contender.info.backend_pid
         failures: list[BaseException] = []
         finished = threading.Event()
         thread = None
@@ -836,8 +961,9 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
                     """
                     SELECT wait_event_type
                     FROM pg_stat_activity
-                    WHERE application_name = 'cpk-contract-cancel'
-                    """
+                    WHERE pid = %s
+                    """,
+                    (contender_pid,),
                 ).fetchone()
                 if waiting == ("Lock",):
                     break
@@ -898,42 +1024,120 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
         self.assertEqual(len(connection.calls), 1)
         query, parameters = connection.calls[0]
         normalized = " ".join(query.split())
-        for candidate in (
-            "candidate_relations AS MATERIALIZED",
-            "candidate_columns AS MATERIALIZED",
-            "candidate_constraints AS MATERIALIZED",
-            "candidate_indexes AS MATERIALIZED",
-        ):
+        candidate_names = (
+            "candidate_relations",
+            "candidate_columns",
+            "candidate_constraints",
+            "candidate_indexes",
+        )
+        self.assertEqual(parameters[:4], (30, 358, 233, 79))
+        for index, candidate in enumerate(candidate_names):
+            next_candidate = (
+                candidate_names[index + 1]
+                if index + 1 < len(candidate_names)
+                else "candidate_history"
+            )
+            section = normalized.split(
+                f"{candidate} AS MATERIALIZED (",
+                1,
+            )[1].split(f"), {next_candidate} AS MATERIALIZED (", 1)[0]
             with self.subTest(candidate=candidate):
-                self.assertIn(candidate, normalized)
-        for bound in (30, 358, 233, 79):
-            with self.subTest(bound=bound):
-                self.assertIn(bound, parameters)
-        self.assertIn("WITH ORDINALITY", normalized)
-        self.assertIn("LEFT JOIN pg_attribute", normalized)
-        self.assertIn("owned_constraint.confrelid", normalized)
-        self.assertIn("key.attnum = 0", normalized)
-        self.assertIn("cardinality(owned_constraint.conkey)", normalized)
-        self.assertIn("cardinality(owned_constraint.confkey)", normalized)
-        self.assertIn("relation.relpersistence", normalized)
-        self.assertIn("relation.relispartition", normalized)
-        self.assertIn("relation.relrowsecurity", normalized)
-        self.assertIn("relation.relforcerowsecurity", normalized)
+                self.assertEqual(section.count("LIMIT %s"), 1)
+                self.assertNotIn("pg_get_expr", section)
+                self.assertNotIn("pg_get_indexdef", section)
+
+        semantic_names = (
+            "semantic_relations",
+            "semantic_columns",
+            "semantic_constraints",
+            "semantic_indexes",
+        )
+        expected_fields = {
+            "semantic_relations": (
+                "name", "kind", "persistence", "access_method",
+                "replica_identity", "is_partition", "row_security",
+                "force_row_security", "non_internal_triggers", "policies",
+                "user_rules",
+            ),
+            "semantic_columns": (
+                "relation", "name", "type_namespace", "formatted_type",
+                "not_null", "identity", "generated", "collation_namespace",
+                "collation_name", "default_expression",
+            ),
+            "semantic_constraints": (
+                "relation", "name", "kind", "validated", "deferrable",
+                "deferred", "no_inherit", "local_columns",
+                "referenced_relation", "referenced_columns", "update_action",
+                "delete_action", "match_type", "check_expression",
+            ),
+            "semantic_indexes": (
+                "relation", "name", "owning_constraint", "access_method",
+                "unique", "primary", "valid", "ready", "live", "immediate",
+                "clustered", "replica_identity", "nulls_not_distinct",
+                "key_entries", "include_entries", "opclasses", "collations",
+                "options", "predicate", "expressions",
+            ),
+        }
+        semantic_sections = {}
+        for index, semantic in enumerate(semantic_names):
+            next_marker = (
+                f"), {semantic_names[index + 1]} AS ("
+                if index + 1 < len(semantic_names)
+                else ") SELECT"
+            )
+            section = normalized.split(f"{semantic} AS (", 1)[1].split(
+                next_marker,
+                1,
+            )[0]
+            semantic_sections[semantic] = section
+            with self.subTest(semantic=semantic):
+                for field in expected_fields[semantic]:
+                    self.assertIn(f"'{field}'", section)
+
+        constraints = semantic_sections["semantic_constraints"]
+        local_translation = constraints.split("'local_columns'", 1)[1].split(
+            "'referenced_relation'",
+            1,
+        )[0]
+        referenced_translation = constraints.split(
+            "'referenced_columns'",
+            1,
+        )[1].split("'update_action'", 1)[0]
+        self.assertIn("WITH ORDINALITY", local_translation)
+        self.assertIn("LEFT JOIN pg_attribute", local_translation)
+        self.assertIn("owned_constraint.conrelid", local_translation)
+        self.assertIn("key.attnum = 0", local_translation)
+        self.assertIn("WITH ORDINALITY", referenced_translation)
+        self.assertIn("LEFT JOIN pg_attribute", referenced_translation)
+        self.assertIn("owned_constraint.confrelid", referenced_translation)
+        self.assertIn("key.attnum = 0", referenced_translation)
+        self.assertIn("cardinality(owned_constraint.conkey)", constraints)
+        self.assertIn("cardinality(owned_constraint.confkey)", constraints)
+
+        indexes = semantic_sections["semantic_indexes"]
+        for token in (
+            "index.indnkeyatts",
+            "index.indnatts",
+            "index.indnullsnotdistinct",
+            "index.indimmediate",
+            "index.indisvalid",
+            "index.indisready",
+            "index.indislive",
+            "cardinality(index.indclass::oid[])",
+            "cardinality(index.indcollation::oid[])",
+            "cardinality(index.indoption::smallint[])",
+        ):
+            self.assertIn(token, normalized)
+        self.assertIn("pg_get_indexdef", indexes)
+        self.assertIn("pg_get_expr", indexes)
         self.assertIn("attribute.attidentity", normalized)
         self.assertIn("attribute.attgenerated", normalized)
         self.assertIn("attribute.attisdropped IS FALSE", normalized)
-        self.assertIn("index.indnkeyatts", normalized)
-        self.assertIn("index.indnatts", normalized)
-        self.assertIn("index.indnullsnotdistinct", normalized)
-        self.assertIn("index.indimmediate", normalized)
-        self.assertIn("index.indisvalid", normalized)
-        self.assertIn("index.indisready", normalized)
-        self.assertIn("index.indislive", normalized)
-        self.assertIn("cardinality(index.indclass::oid[])", normalized)
-        self.assertIn("cardinality(index.indcollation::oid[])", normalized)
-        self.assertIn("cardinality(index.indoption::smallint[])", normalized)
-        self.assertLess(normalized.index("LIMIT"), normalized.index("pg_get_expr"))
-        self.assertLess(normalized.index("LIMIT"), normalized.index("pg_get_indexdef"))
+        final_projection = normalized.rsplit(") SELECT", 1)[1]
+        self.assertEqual(final_projection.count("COALESCE("), 5)
+        self.assertEqual(final_projection.count("= %s::jsonb"), 5)
+        self.assertNotIn("pg_get_expr", final_projection)
+        self.assertNotIn("pg_get_indexdef", final_projection)
         self.assertNotIn("pg_get_constraintdef", normalized)
 
         marker = "private-candidate-definition-and-database-address"
@@ -1036,6 +1240,23 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
                 self.assertIn(declared_mode, recorded.predeclared_locks[relation])
                 for mode in modes:
                     self.assertLessEqual(_CONFLICTS[mode], _CONFLICTS[declared_mode])
+
+    def _assert_canonical_lock_statements(self, recorded, plan) -> None:
+        relation_groups = tuple(
+            tuple(re.findall(r'LOCK TABLE ONLY "([^"]+)"', statement))
+            for statement in recorded.lock_statements
+        )
+        self.assertTrue(relation_groups)
+        self.assertEqual(
+            {relation for group in relation_groups for relation in group},
+            {item.relation for item in plan.relations},
+        )
+        self.assertEqual(
+            sum(len(group) for group in relation_groups),
+            len(plan.relations),
+        )
+        for group in relation_groups:
+            self.assertEqual(group, tuple(sorted(group)))
 
     @staticmethod
     def _reorder_workspace_name(connection) -> None:
