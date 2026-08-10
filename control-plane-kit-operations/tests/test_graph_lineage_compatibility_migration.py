@@ -193,6 +193,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             "negative-workspace-revision",
             "negative-plan-revision",
             "missing-plan-session",
+            "null-plan-session",
         )
         for case in cases:
             with self.subTest(case=case):
@@ -629,6 +630,29 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 finally:
                     connection.close()
 
+    def test_already_v17_null_plan_session_is_rejected_without_repair(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v16(connection)
+            self._seed_workspace_graph_plan_truth(connection)
+            postgres.install_postgres_schema(connection)
+            connection.execute(
+                "ALTER TABLE cpk_activity_plans ALTER COLUMN session_id DROP NOT NULL"
+            )
+            connection.execute(
+                "UPDATE cpk_activity_plans SET session_id=NULL WHERE plan_id='plan-a'"
+            )
+            before = self._snapshot(connection)
+
+            with self.assertRaisesRegex(
+                postgres.SchemaMigrationError,
+                "^graph lineage schema is not current$",
+            ):
+                postgres.install_postgres_schema(connection)
+            self.assertEqual(self._snapshot(connection), before)
+        finally:
+            connection.close()
+
     def test_caller_rollback_restores_exact_v16_truth(self) -> None:
         connection = self._connection(autocommit=False)
         try:
@@ -797,6 +821,13 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             connection.execute(
                 "UPDATE cpk_activity_plans SET session_id='private-missing' "
                 "WHERE plan_id='plan-a'"
+            )
+        elif case == "null-plan-session":
+            connection.execute(
+                "ALTER TABLE cpk_activity_plans ALTER COLUMN session_id DROP NOT NULL"
+            )
+            connection.execute(
+                "UPDATE cpk_activity_plans SET session_id=NULL WHERE plan_id='plan-a'"
             )
         else:
             raise AssertionError(case)
