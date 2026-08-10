@@ -5,7 +5,8 @@ import os
 import unittest
 
 import psycopg
-from psycopg.types.json import Jsonb
+
+from tests.graph_lineage_fixture import seed_identity_graphs
 
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -15,7 +16,6 @@ from control_plane_kit_core.operations.lifecycle import (
     LifecycleOperationKind,
 )
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
     CompleteActivityRun,
@@ -375,33 +375,34 @@ class RunLifecycleTests(unittest.TestCase):
             VALUES ('workspace-a', 'Workspace A', 'created');
             """
         )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_graph_versions
-              (graph_id, workspace_id, version, graph_descriptor, created_by,
-               created_at)
-            VALUES
-              ('graph-current', 'workspace-a', 1, %s, 'operator-a',
-               '2026-07-22T12:00:00Z'),
-              ('graph-desired', 'workspace-a', 2, %s, 'operator-a',
-               '2026-07-22T12:00:30Z');
-            """,
-            (
-                Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("current"))),
-                Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("desired"))),
-            ),
-        )
+        with self.unit_of_work() as unit_of_work:
+            lineage = seed_identity_graphs(
+                unit_of_work.stores,
+                workspace_id="workspace-a",
+                graph_ids=("graph-current", "graph-desired"),
+            )
+            unit_of_work.commit()
         self.connection.execute(
             """
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator-a', 'Deploy', 'open',
                     '2026-07-22T12:01:00Z');
+            """
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_activity_plans
-              (plan_id, session_id, base_graph_id, desired_graph_id, status,
-               created_at, payload)
+              (plan_id, session_id, base_graph_id, desired_graph_id,
+               base_realized_projection_id, desired_realized_projection_id,
+               status, created_at, payload)
             VALUES ('plan-a', 'session-a', 'graph-current', 'graph-desired',
-                    'planned', '2026-07-22T12:02:00Z', '{}'::jsonb);
+                    %s, %s, 'planned', '2026-07-22T12:02:00Z', '{}'::jsonb);
+            """,
+            (lineage["graph-current"], lineage["graph-desired"]),
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, subject_kind, subject_payload,
                review_digest, requested_by, requested_at,
