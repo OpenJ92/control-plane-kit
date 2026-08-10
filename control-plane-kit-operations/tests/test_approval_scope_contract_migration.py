@@ -188,14 +188,6 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
         self.assertFalse(hasattr(schema_module, "_upgrade_approval_scope_constraints"))
         runner_source = inspect.getsource(migration_runner)
         self.assertNotIn("_upgrade_approval_scope_constraints", runner_source)
-        self.assertNotIn(
-            "DROP CONSTRAINT cpk_approval_requests_scope_check",
-            getattr(schema_module, "_CURRENT_POSTGRES_SCHEMA"),
-        )
-        self.assertNotIn(
-            "DROP CONSTRAINT cpk_approval_decisions_scope_check",
-            getattr(schema_module, "_CURRENT_POSTGRES_SCHEMA"),
-        )
 
     def test_all_nine_accepted_constraint_state_combinations_converge(self) -> None:
         for request_state in ("absent", "legacy", "current"):

@@ -1061,81 +1061,6 @@ POSTGRES_SCHEMA_V1_TABLE_COLUMNS = (
 )
 
 _V1_TABLE_NAMES = frozenset(table for table, _ in POSTGRES_SCHEMA_V1_TABLE_COLUMNS)
-_V1_COLUMNS_BY_TABLE = dict(POSTGRES_SCHEMA_V1_TABLE_COLUMNS)
-
-
-def _historical_append_order(
-    table: str,
-    appended_columns: tuple[str, ...],
-) -> tuple[str, ...]:
-    appended = frozenset(appended_columns)
-    return (
-        *(column for column in _V1_COLUMNS_BY_TABLE[table] if column not in appended),
-        *appended_columns,
-    )
-
-
-_V1_HISTORICAL_COLUMN_ORDERS = {
-    "cpk_registered_products": _historical_append_order(
-        "cpk_registered_products", ("descriptor_content",)
-    ),
-    "cpk_gateway_probe_attempts": _historical_append_order(
-        "cpk_gateway_probe_attempts", ("access_path",)
-    ),
-    "cpk_gateway_key_rotations": _historical_append_order(
-        "cpk_gateway_key_rotations",
-        ("generation_provider_registration_id", "generation_action_digest"),
-    ),
-    "cpk_approval_requests": _historical_append_order(
-        "cpk_approval_requests",
-        ("rotation_id", "subject_kind", "subject_payload", "review_digest"),
-    ),
-    "cpk_workspaces": _historical_append_order(
-        "cpk_workspaces",
-        (
-            "current_realized_projection_id",
-            "desired_realized_projection_id",
-            "desired_graph_revision",
-        ),
-    ),
-    "cpk_activity_plans": _historical_append_order(
-        "cpk_activity_plans",
-        (
-            "base_realized_projection_id",
-            "desired_realized_projection_id",
-            "desired_graph_revision",
-        ),
-    ),
-}
-_V1_PRE_GRAPH_LINEAGE_COLUMN_ORDERS = {
-    table: tuple(
-        column
-        for column in _V1_COLUMNS_BY_TABLE[table]
-        if column not in appended
-    )
-    for table, appended in (
-        (
-            "cpk_workspaces",
-            frozenset(
-                {
-                    "current_realized_projection_id",
-                    "desired_realized_projection_id",
-                    "desired_graph_revision",
-                }
-            ),
-        ),
-        (
-            "cpk_activity_plans",
-            frozenset(
-                {
-                    "base_realized_projection_id",
-                    "desired_realized_projection_id",
-                    "desired_graph_revision",
-                }
-            ),
-        ),
-    )
-}
 _MAX_CATALOG_TABLES = len(POSTGRES_SCHEMA_V1_TABLE_COLUMNS) + 2
 _MAX_CATALOG_COLUMNS = (
     sum(len(columns) for _, columns in POSTGRES_SCHEMA_V1_TABLE_COLUMNS)
@@ -2628,22 +2553,6 @@ def _read_secret_use_authorization_temporal_contract(
             "secret-use authorization temporal schema is not current"
         )
     return tuple(rows)
-
-
-def _is_accepted_current_manifest(
-    observed: tuple[tuple[str, tuple[str, ...]], ...],
-) -> bool:
-    if tuple(table for table, _ in observed) != tuple(
-        table for table, _ in POSTGRES_SCHEMA_V1_TABLE_COLUMNS
-    ):
-        return False
-    for table, columns in observed:
-        canonical = _V1_COLUMNS_BY_TABLE[table]
-        historical = _V1_HISTORICAL_COLUMN_ORDERS.get(table)
-        pre_lineage = _V1_PRE_GRAPH_LINEAGE_COLUMN_ORDERS.get(table)
-        if columns not in (canonical, historical, pre_lineage):
-            return False
-    return True
 
 
 def _read_catalog(

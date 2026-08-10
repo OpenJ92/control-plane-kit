@@ -1258,108 +1258,6 @@ ALTER TABLE cpk_activity_plans
 """
 
 
-_GRAPH_LINEAGE_CONSTRAINTS = """
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_realized_graph_projection_workspace_identity'
-  ) THEN
-    ALTER TABLE cpk_realized_graph_projections
-      ADD CONSTRAINT cpk_realized_graph_projection_workspace_identity
-      UNIQUE (projection_id, workspace_id);
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_realized_graph_projection_source_identity'
-  ) THEN
-    ALTER TABLE cpk_realized_graph_projections
-      ADD CONSTRAINT cpk_realized_graph_projection_source_identity
-      UNIQUE (projection_id, source_authored_graph_id);
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_current_realized_projection_fk'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_current_realized_projection_fk
-      FOREIGN KEY (current_realized_projection_id, workspace_id)
-      REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_desired_realized_projection_fk'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_desired_realized_projection_fk
-      FOREIGN KEY (desired_realized_projection_id, workspace_id)
-      REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_current_projection_source_fk'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_current_projection_source_fk
-      FOREIGN KEY (current_realized_projection_id, current_graph_id)
-      REFERENCES cpk_realized_graph_projections(
-        projection_id, source_authored_graph_id
-      );
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_desired_projection_source_fk'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_desired_projection_source_fk
-      FOREIGN KEY (desired_realized_projection_id, desired_graph_id)
-      REFERENCES cpk_realized_graph_projections(
-        projection_id, source_authored_graph_id
-      );
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_current_lineage_check'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_current_lineage_check
-      CHECK ((current_graph_id IS NULL) = (current_realized_projection_id IS NULL));
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_desired_lineage_check'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_desired_lineage_check
-      CHECK ((desired_graph_id IS NULL) = (desired_realized_projection_id IS NULL));
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_activity_plans_base_projection_source_fk'
-  ) THEN
-    ALTER TABLE cpk_activity_plans
-      ADD CONSTRAINT cpk_activity_plans_base_projection_source_fk
-      FOREIGN KEY (base_realized_projection_id, base_graph_id)
-      REFERENCES cpk_realized_graph_projections(
-        projection_id, source_authored_graph_id
-      );
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_activity_plans_desired_projection_source_fk'
-  ) THEN
-    ALTER TABLE cpk_activity_plans
-      ADD CONSTRAINT cpk_activity_plans_desired_projection_source_fk
-      FOREIGN KEY (desired_realized_projection_id, desired_graph_id)
-      REFERENCES cpk_realized_graph_projections(
-        projection_id, source_authored_graph_id
-      );
-  END IF;
-END
-$$;
-"""
-
-
 _POSTGRES_SCHEMA_CONTEXT = dict(
     activity_event_kinds=tuple(ActivityEventKind),
     activity_event_run_kinds=_RUN_EVENT_KINDS,
@@ -1415,29 +1313,6 @@ _POSTGRES_SCHEMA_RENDERER = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLA
 POSTGRES_SCHEMA = _POSTGRES_SCHEMA_RENDERER.render(
     include_approval_subject_compatibility=True,
     **_POSTGRES_SCHEMA_CONTEXT,
-)
-_CURRENT_POSTGRES_SCHEMA = _POSTGRES_SCHEMA_RENDERER.render(
-    include_approval_subject_compatibility=False,
-    **_POSTGRES_SCHEMA_CONTEXT,
-)
-_GRAPH_LINEAGE_COLUMN_COMPATIBILITY = """ALTER TABLE cpk_workspaces
-  ADD COLUMN IF NOT EXISTS current_realized_projection_id text;
-ALTER TABLE cpk_workspaces
-  ADD COLUMN IF NOT EXISTS desired_realized_projection_id text;
-ALTER TABLE cpk_workspaces
-  ADD COLUMN IF NOT EXISTS desired_graph_revision bigint NOT NULL DEFAULT 0;
-
-ALTER TABLE cpk_activity_plans
-  ADD COLUMN IF NOT EXISTS base_realized_projection_id text;
-ALTER TABLE cpk_activity_plans
-  ADD COLUMN IF NOT EXISTS desired_realized_projection_id text;
-ALTER TABLE cpk_activity_plans
-  ADD COLUMN IF NOT EXISTS desired_graph_revision bigint NOT NULL DEFAULT 0;"""
-if _CURRENT_POSTGRES_SCHEMA.count(_GRAPH_LINEAGE_COLUMN_COMPATIBILITY) != 1:
-    raise SchemaMigrationError("current graph lineage compatibility seam is not exact")
-_CURRENT_POSTGRES_SCHEMA = _CURRENT_POSTGRES_SCHEMA.replace(
-    _GRAPH_LINEAGE_COLUMN_COMPATIBILITY,
-    "",
 )
 
 _POSTGRES_SCHEMA_V2_SQL = r"""

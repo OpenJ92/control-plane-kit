@@ -212,24 +212,74 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_repeated_install_preserves_database_application_time(self) -> None:
+    def test_current_reinstall_is_verification_only_and_preserves_exact_truth(
+        self,
+    ) -> None:
         install = self._required("install_postgres_schema")
         connection = self._connection()
+        submitted: list[str] = []
+
+        class RecordingConnection:
+            @property
+            def autocommit(self):
+                return connection.autocommit
+
+            def transaction(self):
+                return connection.transaction()
+
+            def execute(self, query, params=None):
+                submitted.append(str(query))
+                if params is None:
+                    return connection.execute(query)
+                return connection.execute(query, params)
+
         try:
             install(connection)
-            before = connection.execute(
+            connection.execute(
+                "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
+                "VALUES ('workspace-retained', 'Retained', 'created')"
+            )
+            before_rows = connection.execute(
+                "SELECT * FROM cpk_workspaces ORDER BY workspace_id"
+            ).fetchall()
+            before_relations = self._application_relation_identities(connection)
+            before_constraints = self._schema_constraint_identities(connection)
+            before_indexes = self._schema_index_identities(connection)
+            before_ledger = connection.execute(
                 "SELECT version, name, checksum_sha256, applied_at "
-                "FROM cpk_schema_migrations"
+                "FROM cpk_schema_migrations ORDER BY version"
             ).fetchall()
 
-            install(connection)
+            install(RecordingConnection())
 
             self.assertEqual(
                 connection.execute(
-                    "SELECT version, name, checksum_sha256, applied_at "
-                    "FROM cpk_schema_migrations"
+                    "SELECT * FROM cpk_workspaces ORDER BY workspace_id"
                 ).fetchall(),
-                before,
+                before_rows,
+            )
+            self.assertEqual(
+                self._application_relation_identities(connection),
+                before_relations,
+            )
+            self.assertEqual(
+                self._schema_constraint_identities(connection),
+                before_constraints,
+            )
+            self.assertEqual(
+                self._schema_index_identities(connection),
+                before_indexes,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT version, name, checksum_sha256, applied_at "
+                    "FROM cpk_schema_migrations ORDER BY version"
+                ).fetchall(),
+                before_ledger,
+            )
+            self.assertLessEqual(
+                {query.lstrip().split(None, 1)[0].upper() for query in submitted},
+                {"LOCK", "SELECT", "WITH"},
             )
         finally:
             connection.close()
@@ -667,6 +717,19 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             """
         ).fetchall()
 
+    def _application_relation_identities(self, connection):
+        return connection.execute(
+            """
+            SELECT relation.relname, relation.oid, relation.relkind
+            FROM pg_class AS relation
+            JOIN pg_namespace AS namespace
+              ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = current_schema()
+              AND relation.relkind IN ('r', 'S')
+            ORDER BY relation.relkind, relation.relname
+            """
+        ).fetchall()
+
     def _application_index_identities(self, connection):
         return connection.execute(
             """
@@ -681,6 +744,33 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
               ON index_relation.oid = pg_index.indexrelid
             WHERE pg_namespace.nspname = current_schema()
               AND index_relation.relname <> 'cpk_schema_migrations_pkey'
+            ORDER BY index_relation.relname
+            """
+        ).fetchall()
+
+    def _schema_constraint_identities(self, connection):
+        return connection.execute(
+            """
+            SELECT conname, oid, pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE connamespace = current_schema()::regnamespace
+            ORDER BY conname
+            """
+        ).fetchall()
+
+    def _schema_index_identities(self, connection):
+        return connection.execute(
+            """
+            SELECT index_relation.relname, index_relation.oid,
+                   pg_get_indexdef(index_relation.oid)
+            FROM pg_index
+            JOIN pg_class AS table_relation
+              ON table_relation.oid = pg_index.indrelid
+            JOIN pg_namespace
+              ON pg_namespace.oid = table_relation.relnamespace
+            JOIN pg_class AS index_relation
+              ON index_relation.oid = pg_index.indexrelid
+            WHERE pg_namespace.nspname = current_schema()
             ORDER BY index_relation.relname
             """
         ).fetchall()
