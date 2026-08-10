@@ -431,6 +431,70 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
                 finally:
                     connection.close()
 
+    def test_failed_v16_savepoint_releases_locks_but_preserves_outer_work(self) -> None:
+        setup = self._connection()
+        caller = self._connection(autocommit=False)
+        observer = self._connection()
+        try:
+            self._prepare(15, setup)
+            self._set_state(setup, _REQUESTS, "legacy")
+            self._set_state(setup, _DECISIONS, "legacy")
+            self._seed_one_approval(setup, include_decision=False)
+            self._replace_constraint(
+                setup,
+                _REQUESTS,
+                "CHECK (required_scope <> 'private-lock-material')",
+            )
+            caller.execute(
+                "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
+                "VALUES ('workspace-outer', 'Outer work', 'created')"
+            )
+
+            with self.assertRaisesRegex(
+                postgres.SchemaMigrationError,
+                f"^{_CATEGORICAL_ERROR}$",
+            ):
+                postgres.install_postgres_schema(caller)
+
+            self.assertEqual(
+                caller.execute(
+                    "SELECT count(*) FROM cpk_workspaces "
+                    "WHERE workspace_id = 'workspace-outer'"
+                ).fetchone(),
+                (1,),
+            )
+            self.assertEqual(
+                observer.execute(
+                    "SELECT count(*) FROM cpk_workspaces "
+                    "WHERE workspace_id = 'workspace-outer'"
+                ).fetchone(),
+                (0,),
+            )
+
+            def package_factory():
+                connection = self._package_connection()
+                connection.execute("SET lock_timeout TO '500ms'")
+                return connection
+
+            result = self._decision_service(package_factory).execute(
+                self._decision_command()
+            )
+            self.assertEqual(result.decision.decision_id, "package-decision")
+
+            caller.rollback()
+            self.assertEqual(
+                observer.execute(
+                    "SELECT count(*) FROM cpk_workspaces "
+                    "WHERE workspace_id = 'workspace-outer'"
+                ).fetchone(),
+                (0,),
+            )
+        finally:
+            caller.rollback()
+            setup.close()
+            caller.close()
+            observer.close()
+
     def test_v15_success_then_v16_failure_restores_exact_v14_truth(self) -> None:
         connection = self._connection(autocommit=False)
         try:
