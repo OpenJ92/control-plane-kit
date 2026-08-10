@@ -165,6 +165,67 @@ _APPROVAL_SUBJECT_EVIDENCE_DEFINITIONS = (
     "CHECK ((subject_kind = ANY (ARRAY['activity-plan'::text, "
     "'gateway-key-rotation'::text])))",
 )
+_APPROVAL_SCOPE_VALUES = (
+    "hub:instance:create",
+    "hub:instance:read",
+    "instance:workspace:read",
+    "instance:workspace:edit",
+    "plan:request",
+    "plan:approve",
+    "plan:approve-destructive",
+    "plan:execute",
+    "execution:operate",
+    "runtime-authority:register",
+    "runtime-authority:read",
+    "runtime-authority:revoke",
+    "runtime-authority:use",
+    "runtime-authority-delivery:register",
+    "runtime-authority-delivery:read",
+    "runtime-authority-delivery:revoke",
+    "ingress-authority:register",
+    "ingress-authority:read",
+    "ingress-authority:revoke",
+    "ingress-authority:use",
+    "secret-provider:register",
+    "secret-provider:read",
+    "secret-provider:use",
+    "secret-provider:revoke",
+    "delegation-key:generate",
+    "delegation-key:register",
+    "delegation-key:read",
+    "delegation-key:activate",
+    "delegation-key:retire",
+    "delegation-key:revoke",
+    "delegation-key:use",
+    "delegation-key:rotate",
+    "delegation-key:rotate-approve",
+    "gateway-probe:use",
+)
+
+
+def _approval_scope_definition(column: str) -> str:
+    values = ", ".join(f"'{value}'::text" for value in _APPROVAL_SCOPE_VALUES)
+    return f"CHECK (({column} = ANY (ARRAY[{values}])))"
+
+
+_APPROVAL_SCOPE_CONTRACTS = (
+    (
+        "cpk_approval_decisions",
+        "cpk_approval_decisions_scope_check",
+        "c",
+        True,
+        True,
+    ),
+    (
+        "cpk_approval_requests",
+        "cpk_approval_requests_scope_check",
+        "c",
+        True,
+        True,
+    ),
+)
+_APPROVAL_REQUEST_SCOPE_DEFINITION = _approval_scope_definition("required_scope")
+_APPROVAL_DECISION_SCOPE_DEFINITION = _approval_scope_definition("scope")
 _COORDINATION_TEMPORAL_CONTRACT = (
     ("cpk_activity_events", "occurred_at", "timestamp with time zone", 6, "NO", True),
     ("cpk_activity_plans", "created_at", "timestamp with time zone", 6, "NO", True),
@@ -1132,6 +1193,8 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         _verify_gateway_key_rotation_retirement_evidence_contract(connection)
     if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 15:
         _verify_approval_subject_evidence_contract(connection)
+    if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 16:
+        _verify_approval_scope_contracts(connection)
     if _read_coordination_temporal_contract(connection) != (
         _COORDINATION_TEMPORAL_CONTRACT
     ):
@@ -1651,6 +1714,50 @@ def _verify_approval_subject_evidence_contract(
     )
     if semantic_rows != [(True,)]:
         raise SchemaMigrationError("approval subject evidence is not current")
+
+
+def _verify_approval_scope_contracts(connection: PostgresConnection) -> None:
+    constraint_rows = _read_rows(
+        connection,
+        """
+        SELECT relation.relname, constraints.conname,
+               constraints.contype::text, constraints.convalidated,
+               CASE
+                 WHEN relation.relname = 'cpk_approval_requests'
+                  AND constraints.conname =
+                    'cpk_approval_requests_scope_check'
+                 THEN pg_get_constraintdef(constraints.oid, false) = %s
+                 WHEN relation.relname = 'cpk_approval_decisions'
+                  AND constraints.conname =
+                    'cpk_approval_decisions_scope_check'
+                 THEN pg_get_constraintdef(constraints.oid, false) = %s
+                 ELSE false
+               END
+        FROM pg_constraint AS constraints
+        JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = current_schema()
+          AND (
+            (relation.relname = 'cpk_approval_requests'
+             AND constraints.conname =
+               'cpk_approval_requests_scope_check')
+            OR
+            (relation.relname = 'cpk_approval_decisions'
+             AND constraints.conname =
+               'cpk_approval_decisions_scope_check')
+          )
+        ORDER BY relation.relname, constraints.conname, constraints.oid
+        LIMIT 3
+        """,
+        (
+            _APPROVAL_REQUEST_SCOPE_DEFINITION,
+            _APPROVAL_DECISION_SCOPE_DEFINITION,
+        ),
+        "approval scope schema read failed",
+    )
+    if constraint_rows != list(_APPROVAL_SCOPE_CONTRACTS):
+        raise SchemaMigrationError("approval scope schema is not current")
+
 
 def _read_coordination_temporal_contract(
     connection: PostgresConnection,

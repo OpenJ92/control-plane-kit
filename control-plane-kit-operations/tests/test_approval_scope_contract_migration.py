@@ -38,6 +38,7 @@ _V15_HISTORY = (
     (15, "approval-subject-evidence"),
 )
 _V16_IDENTITY = (16, "approval-scope-contracts")
+_V16_SHA256 = "301c05458431939355d7c835bbdd05dad221a8370a7fb6ed6b95cd086162497e"
 _CATEGORICAL_ERROR = "approval scope contract is not accepted"
 _REQUESTS = (
     "cpk_approval_requests",
@@ -121,6 +122,14 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
         self.assertEqual(tuple(scope.value for scope in PolicyScope), _CURRENT_SCOPES)
+        self.assertEqual(
+            getattr(schema_module, "_POSTGRES_SCHEMA_V16_LEGACY_SCOPES"),
+            _LEGACY_SCOPES,
+        )
+        self.assertEqual(
+            getattr(schema_module, "_POSTGRES_SCHEMA_V16_CURRENT_SCOPES"),
+            _CURRENT_SCOPES,
+        )
         self.assertEqual(registry.target_version, 16)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
@@ -141,12 +150,19 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
                 "LOCK TABLE cpk_approval_decisions IN ACCESS EXCLUSIVE MODE;"
             ),
         )
-        self.assertIn(_definition("required_scope", _LEGACY_SCOPES), preflight)
-        self.assertIn(_definition("required_scope", _CURRENT_SCOPES), preflight)
-        self.assertIn(_definition("scope", _LEGACY_SCOPES), preflight)
-        self.assertIn(_definition("scope", _CURRENT_SCOPES), preflight)
+        for column in ("required_scope", "scope"):
+            for scopes in (_LEGACY_SCOPES, _CURRENT_SCOPES):
+                with self.subTest(column=column, scopes=len(scopes)):
+                    self.assertIn(
+                        _definition(column, scopes).replace("'", "''"),
+                        preflight,
+                    )
         self.assertNotIn("ALTER TABLE", preflight)
         self.assertIn(_CATEGORICAL_ERROR, preflight)
+        self.assertIn("count(DISTINCT constraints.oid)", preflight)
+        self.assertIn("count(DISTINCT constraints.conname)", preflight)
+        self.assertIn("constraint_count > 2", preflight)
+        self.assertEqual(migration.checksum_sha256, _V16_SHA256)
         self.assertEqual(
             migration.checksum_sha256,
             getattr(schema_module, "_POSTGRES_SCHEMA_V16_SHA256"),
@@ -465,6 +481,19 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
                 _definition("scope", _CURRENT_SCOPES),
             ),
         )
+
+        accepted_rows = connection._rows
+        for invalid_rows in (
+            accepted_rows[:1],
+            [*accepted_rows, accepted_rows[-1]],
+            [(*accepted_rows[0][:-1], False), accepted_rows[1]],
+        ):
+            with self.subTest(rows=len(invalid_rows)):
+                with self.assertRaisesRegex(
+                    postgres.SchemaMigrationError,
+                    "^approval scope schema is not current$",
+                ):
+                    verifier(_ScriptedConnection(invalid_rows))
 
     def _prepare(self, version: int, connection) -> None:
         connection.execute(postgres.POSTGRES_SCHEMA)
