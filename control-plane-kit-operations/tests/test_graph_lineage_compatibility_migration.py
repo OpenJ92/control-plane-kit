@@ -22,6 +22,7 @@ from control_plane_kit_operations.records import (
     ActivityPlanStatus,
     GraphVersionRecord,
     OperationsRecordError,
+    RealizedGraphProjectionKind,
     RealizedGraphProjectionRecord,
 )
 
@@ -173,31 +174,115 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             connection.close()
 
     def test_current_plan_store_rejects_incomplete_lineage_before_sql(self) -> None:
-        connection = self._connection()
-        try:
-            self._prepare_v16(connection)
-            self._seed_workspace_graph_plan_truth(connection)
-            postgres.install_postgres_schema(connection)
-            before = connection.execute(
-                "SELECT count(*) FROM cpk_activity_plans"
-            ).fetchone()
+        connection = _NoSqlConnection()
 
-            with self.assertRaisesRegex(
-                OperationsRecordError,
-                "^activity plan record requires complete graph lineage$",
-            ):
-                PostgresActivityHistoryStore(connection).add_plan(
-                    self._plan_record("plan-incomplete")
-                )
-
-            self.assertEqual(
-                connection.execute(
-                    "SELECT count(*) FROM cpk_activity_plans"
-                ).fetchone(),
-                before,
+        with self.assertRaisesRegex(
+            OperationsRecordError,
+            "^activity plan record requires complete graph lineage$",
+        ):
+            PostgresActivityHistoryStore(connection).add_plan(
+                self._plan_record("plan-incomplete")
             )
-        finally:
-            connection.close()
+
+        self.assertEqual(connection.calls, [])
+
+    def test_current_plan_store_rejects_invalid_complete_lineage(self) -> None:
+        for case in (
+            "missing-session",
+            "projection-source-mismatch",
+            "cross-workspace",
+            "non-identity",
+        ):
+            with self.subTest(case=case):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare_v16(connection)
+                    self._seed_workspace_graph_plan_truth(connection)
+                    if case == "cross-workspace":
+                        connection.execute(
+                            "INSERT INTO cpk_workspaces "
+                            "(workspace_id, name, lifecycle) VALUES "
+                            "('workspace-b', 'Workspace B', 'created')"
+                        )
+                        self._insert_graph(connection, "graph-c", "workspace-b", 1)
+                        self._insert_graph(connection, "graph-d", "workspace-b", 2)
+                        self._insert_projection(
+                            connection,
+                            self._expected("graph-c", "workspace-b", 1),
+                        )
+                        self._insert_projection(
+                            connection,
+                            self._expected("graph-d", "workspace-b", 2),
+                        )
+                    postgres.install_postgres_schema(connection)
+                    base = self._expected("graph-a", "workspace-a", 1)
+                    desired = self._expected("graph-b", "workspace-a", 2)
+                    record = self._plan_record(
+                        f"plan-{case}",
+                        base_projection_id=base.projection_id,
+                        desired_projection_id=desired.projection_id,
+                    )
+                    if case == "missing-session":
+                        record = self._plan_record(
+                            f"plan-{case}",
+                            session_id="session-missing",
+                            base_projection_id=base.projection_id,
+                            desired_projection_id=desired.projection_id,
+                        )
+                    elif case == "projection-source-mismatch":
+                        record = self._plan_record(
+                            f"plan-{case}",
+                            base_projection_id=desired.projection_id,
+                            desired_projection_id=base.projection_id,
+                        )
+                    elif case == "cross-workspace":
+                        foreign_base = self._expected("graph-c", "workspace-b", 1)
+                        foreign_desired = self._expected("graph-d", "workspace-b", 2)
+                        record = self._plan_record(
+                            f"plan-{case}",
+                            base_graph_id="graph-c",
+                            desired_graph_id="graph-d",
+                            base_projection_id=foreign_base.projection_id,
+                            desired_projection_id=foreign_desired.projection_id,
+                        )
+                    elif case == "non-identity":
+                        non_identity = RealizedGraphProjectionRecord.from_graph(
+                            projection_id="projection-delegation-verifier",
+                            workspace_id="workspace-a",
+                            source_authored_graph_id="graph-a",
+                            projection_kind=(
+                                RealizedGraphProjectionKind.DELEGATION_VERIFIER
+                            ),
+                            projection_key="key-a",
+                            graph=DeploymentGraph("graph-a"),
+                            created_by="operator-a",
+                            created_at="2026-08-10T00:00:05Z",
+                        )
+                        self._insert_projection(connection, non_identity)
+                        record = self._plan_record(
+                            f"plan-{case}",
+                            base_projection_id=non_identity.projection_id,
+                            desired_projection_id=desired.projection_id,
+                        )
+                    before = connection.execute(
+                        "SELECT count(*) FROM cpk_activity_plans"
+                    ).fetchone()
+
+                    with self.assertRaisesRegex(
+                        OperationsRecordError,
+                        "^activity plan record requires complete graph lineage$",
+                    ):
+                        PostgresActivityHistoryStore(connection).add_plan(record)
+
+                    self.assertEqual(
+                        connection.execute(
+                            "SELECT count(*) FROM cpk_activity_plans"
+                        ).fetchone(),
+                        before,
+                    )
+                finally:
+                    connection.close()
 
     def test_current_plan_store_writes_complete_exact_lineage(self) -> None:
         connection = self._connection()
@@ -860,14 +945,17 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
     def _plan_record(
         plan_id: str,
         *,
+        session_id: str = "session-a",
+        base_graph_id: str = "graph-a",
+        desired_graph_id: str = "graph-b",
         base_projection_id: str | None = None,
         desired_projection_id: str | None = None,
     ) -> ActivityPlanRecord:
         return ActivityPlanRecord(
             plan_id=plan_id,
-            session_id="session-a",
-            base_graph_id="graph-a",
-            desired_graph_id="graph-b",
+            session_id=session_id,
+            base_graph_id=base_graph_id,
+            desired_graph_id=desired_graph_id,
             status=ActivityPlanStatus.PLANNED,
             created_at="2026-08-10T00:00:04Z",
             plan=ActivityPlan(()),
@@ -1084,6 +1172,15 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
     def _reset_schema(self) -> None:
         self.admin.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
         self.admin.execute(f'CREATE SCHEMA "{self.schema}"')
+
+
+class _NoSqlConnection:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, object]] = []
+
+    def execute(self, query, parameters=()):
+        self.calls.append((query, parameters))
+        raise AssertionError("incomplete lineage must fail before SQL")
 
 
 if __name__ == "__main__":
