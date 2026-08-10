@@ -8,6 +8,8 @@ import uuid
 
 import psycopg
 
+from tests.graph_lineage_fixture import seed_identity_graphs
+
 import control_plane_kit_operations.postgres as postgres
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
@@ -16,6 +18,7 @@ from control_plane_kit_operations.postgres.execution import PostgresExecutionSto
 from control_plane_kit_operations.postgres.observed_state import (
     PostgresObservedStateStore,
 )
+from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.records import (
     ExecutionIdempotency,
     ExecutionRequestIdentity,
@@ -179,6 +182,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 (14, "gateway-key-rotation-retirement-evidence"),
                 (15, "approval-subject-evidence"),
                 (16, "approval-scope-contracts"),
+                (17, "graph-lineage-compatibility"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
@@ -224,6 +228,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 (14, "gateway-key-rotation-retirement-evidence"),
                 (15, "approval-subject-evidence"),
                 (16, "approval-scope-contracts"),
+                (17, "graph-lineage-compatibility"),
             ],
         )
         self.assertEqual(
@@ -399,16 +404,35 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
-            VALUES ('workspace-a', 'Workspace A', 'created');
+            VALUES ('workspace-a', 'Workspace A', 'created')
+            """
+        )
+        lineage = seed_identity_graphs(
+            PostgresStoreBundle(self.connection),
+            workspace_id="workspace-a",
+            graph_ids=("graph-a", "graph-b"),
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator-a', 'Deploy', 'open',
-                    '2026-08-07T06:00:00Z');
+                    '2026-08-07T06:00:00Z')
+            """
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_activity_plans
-              (plan_id, session_id, base_graph_id, desired_graph_id, status,
-               created_at, payload)
-            VALUES ('plan-a', 'session-a', 'graph-a', 'graph-b', 'planned',
-                    '2026-08-07T06:00:01Z', '{}'::jsonb);
+              (plan_id, session_id, base_graph_id, desired_graph_id,
+               base_realized_projection_id, desired_realized_projection_id,
+               status, created_at, payload)
+            VALUES ('plan-a', 'session-a', 'graph-a', 'graph-b', %s, %s,
+                    'planned', '2026-08-07T06:00:01Z', '{}'::jsonb)
+            """,
+            (lineage["graph-a"], lineage["graph-b"]),
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, subject_kind, subject_payload,
                review_digest, requested_by, requested_at, required_scope,
@@ -417,11 +441,15 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                     '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
                     encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
                     'operator-a', '2026-08-07T06:00:02Z', 'plan:approve',
-                    'low', false);
+                    'low', false)
+            """
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_approval_decisions
               (decision_id, request_id, actor_id, decision, scope, decided_at)
             VALUES ('approval-decision-a', 'approval-request-a', 'manager-a',
-                    'approved', 'plan:approve', '2026-08-07T06:00:02Z');
+                    'approved', 'plan:approve', '2026-08-07T06:00:02Z')
             """
         )
 

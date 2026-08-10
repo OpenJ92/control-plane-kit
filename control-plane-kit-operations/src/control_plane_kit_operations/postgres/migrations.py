@@ -35,6 +35,7 @@ class SchemaBackfillKind(StrEnum):
     """Closed deterministic backfill vocabulary understood by migrations."""
 
     PRODUCT_DESCRIPTOR_CONTENT = "product-descriptor-content"
+    GRAPH_LINEAGE = "graph-lineage"
 
 
 @dataclass(frozen=True)

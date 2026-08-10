@@ -13,6 +13,7 @@ import psycopg
 import control_plane_kit_operations.gateway_key_rotations as rotation_module
 import control_plane_kit_operations.postgres as postgres
 import control_plane_kit_operations.postgres.schema as schema_module
+from tests.graph_lineage_fixture import seed_historical_graph_lineage_constraints
 from control_plane_kit_operations.postgres.gateway_key_rotation_store import (
     GatewayKeyRotationStore,
 )
@@ -38,6 +39,7 @@ _CURRENT_HISTORY = [
     (14, "gateway-key-rotation-retirement-evidence"),
     (15, "approval-subject-evidence"),
     (16, "approval-scope-contracts"),
+    (17, "graph-lineage-compatibility"),
 ]
 _TEMPORAL_COLUMNS = (
     ("cpk_gateway_key_rotation_deployments", "accepted_at", "YES"),
@@ -85,6 +87,8 @@ _CANONICAL_DIGEST_DEFINITION = (
     "'^[0-9a-f]{64}$'::text)))"
 )
 _CURRENT_ADDED_OBJECTS = {
+    ("constraint", "cpk_activity_plans_desired_graph_revision_check"),
+    ("constraint", "cpk_workspaces_desired_graph_revision_check"),
     ("constraint", "cpk_registered_products_content_digest_check"),
     ("constraint", "cpk_gateway_key_rotations_generation_provider_check"),
 }
@@ -110,7 +114,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_key_rotation_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 16)
+        self.assertEqual(registry.target_version, 17)
         self.assertEqual(
             [(value.version, value.name) for value in registry.migrations[:7]],
             _V7_HISTORY,
@@ -396,7 +400,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
                 "VALUES (%s,%s,%s)",
                 (migration.version, migration.name, migration.checksum_sha256),
             )
-        self.connection.execute(schema_module._GRAPH_LINEAGE_CONSTRAINTS)
+        seed_historical_graph_lineage_constraints(self.connection)
 
     def _seed_rows(self, *, native: bool = False) -> None:
         seconds = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc) if native else _SECONDS

@@ -28,6 +28,7 @@ from control_plane_kit_operations.records import (
     ApprovalDecisionRecord,
     ApprovalRequestRecord,
     OperationActionRecord,
+    OperationsRecordError,
     OperationSessionRecord,
     OperationSessionStatus,
 )
@@ -235,13 +236,48 @@ class PostgresActivityHistoryStore:
         return tuple(_action_record(row) for row in rows)
 
     def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
-        self._connection.execute(
+        if (
+            record.base_realized_projection_id is None
+            or record.desired_realized_projection_id is None
+        ):
+            raise OperationsRecordError(
+                "activity plan record requires complete graph lineage"
+            )
+        inserted = self._connection.execute(
             """
+            WITH candidate (
+              plan_id, session_id, base_graph_id, desired_graph_id,
+              base_realized_projection_id, desired_realized_projection_id,
+              desired_graph_revision, status, created_at, payload
+            ) AS (
+              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            )
             INSERT INTO cpk_activity_plans
               (plan_id, session_id, base_graph_id, desired_graph_id,
                base_realized_projection_id, desired_realized_projection_id,
                desired_graph_revision, status, created_at, payload)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            SELECT candidate.plan_id, candidate.session_id,
+                   candidate.base_graph_id, candidate.desired_graph_id,
+                   candidate.base_realized_projection_id,
+                   candidate.desired_realized_projection_id,
+                   candidate.desired_graph_revision, candidate.status,
+                   candidate.created_at, candidate.payload
+            FROM candidate
+            JOIN cpk_operation_sessions AS session
+              ON session.session_id = candidate.session_id
+            JOIN cpk_realized_graph_projections AS base_projection
+              ON base_projection.projection_id =
+                   candidate.base_realized_projection_id
+            JOIN cpk_realized_graph_projections AS desired_projection
+              ON desired_projection.projection_id =
+                   candidate.desired_realized_projection_id
+            WHERE base_projection.workspace_id = session.workspace_id
+              AND desired_projection.workspace_id = session.workspace_id
+              AND base_projection.source_authored_graph_id =
+                    candidate.base_graph_id
+              AND desired_projection.source_authored_graph_id =
+                    candidate.desired_graph_id
+            RETURNING plan_id
             """,
             (
                 record.plan_id,
@@ -255,7 +291,11 @@ class PostgresActivityHistoryStore:
                 encode_postgres_timestamp(record.created_at),
                 Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)),
             ),
-        )
+        ).fetchone()
+        if inserted is None:
+            raise OperationsRecordError(
+                "activity plan record requires complete graph lineage"
+            )
         return record
 
     def get_plan(self, plan_id: str) -> ActivityPlanRecord:

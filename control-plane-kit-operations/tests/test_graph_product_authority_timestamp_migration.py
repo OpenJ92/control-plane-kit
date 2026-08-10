@@ -98,6 +98,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 (14, "gateway-key-rotation-retirement-evidence"),
                 (15, "approval-subject-evidence"),
                 (16, "approval-scope-contracts"),
+                (17, "graph-lineage-compatibility"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
@@ -241,7 +242,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                         )
 
     def test_reinstall_backfills_graph_lineage_through_temporal_codec(self) -> None:
-        postgres.install_postgres_schema(self.connection)
+        self._install_v2_baseline()
         created_at = datetime(2026, 8, 7, 6, 0, 0, 1, tzinfo=timezone.utc)
         self.connection.execute(
             """
@@ -259,7 +260,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
             """,
             (
                 Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("graph-a"))),
-                created_at,
+                "2026-08-07T06:00:00.000001Z",
             ),
         )
         self.connection.execute(
