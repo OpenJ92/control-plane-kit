@@ -3291,6 +3291,59 @@ _POSTGRES_SCHEMA_V16_CONVERGE_SQL = (
 )
 
 _POSTGRES_SCHEMA_V17_ERROR = "graph lineage compatibility is not accepted"
+_POSTGRES_SCHEMA_V17_DEPENDENCIES = (
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_pkey",
+        "p",
+        "PRIMARY KEY (workspace_id)",
+    ),
+    (
+        "cpk_graph_versions",
+        "cpk_graph_versions_pkey",
+        "p",
+        "PRIMARY KEY (graph_id)",
+    ),
+    (
+        "cpk_graph_versions",
+        "cpk_graph_versions_workspace_identity",
+        "u",
+        "UNIQUE (graph_id, workspace_id)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projections_pkey",
+        "p",
+        "PRIMARY KEY (projection_id)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_source",
+        "f",
+        "FOREIGN KEY (source_authored_graph_id, workspace_id) REFERENCES "
+        "cpk_graph_versions(graph_id, workspace_id)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_identity",
+        "u",
+        "UNIQUE (workspace_id, source_authored_graph_id, projection_kind, "
+        "projection_key)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_kind_check",
+        "c",
+        "CHECK ((projection_kind = ANY (ARRAY['identity'::text, "
+        "'delegation-verifier'::text])))",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_digest_check",
+        "c",
+        "CHECK ((projection_digest ~ '^[0-9a-f]{64}$'::text))",
+    ),
+)
 _POSTGRES_SCHEMA_V17_CONSTRAINTS = (
     (
         "cpk_realized_graph_projections",
@@ -3413,6 +3466,15 @@ def _graph_lineage_constraint_values() -> str:
     )
 
 
+def _graph_lineage_dependency_values() -> str:
+    return ",\n".join(
+        "(" + ", ".join(
+            _postgres_text_literal(value) for value in dependency
+        ) + ")"
+        for dependency in _POSTGRES_SCHEMA_V17_DEPENDENCIES
+    )
+
+
 _POSTGRES_SCHEMA_V17_PREFLIGHT_SQL = f"""
 LOCK TABLE cpk_workspaces IN ACCESS EXCLUSIVE MODE;
 LOCK TABLE cpk_graph_versions IN ACCESS EXCLUSIVE MODE;
@@ -3465,6 +3527,33 @@ BEGIN
     OR plan_column_count NOT IN (0, 3)
     OR (plan_column_count = 3 AND plan_columns_are_current IS NOT TRUE)
   THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+  END IF;
+
+  IF EXISTS (
+    WITH accepted(relation_name, constraint_name, constraint_kind, definition) AS (
+      VALUES {_graph_lineage_dependency_values()}
+    )
+    SELECT 1
+    FROM accepted
+    LEFT JOIN pg_namespace AS namespace
+      ON namespace.nspname = current_schema()
+    LEFT JOIN pg_class AS relation
+      ON relation.relnamespace = namespace.oid
+     AND relation.relname = accepted.relation_name
+    LEFT JOIN pg_constraint AS constraints
+      ON constraints.conrelid = relation.oid
+     AND constraints.conname = accepted.constraint_name
+    GROUP BY accepted.relation_name, accepted.constraint_name,
+             accepted.constraint_kind, accepted.definition
+    HAVING count(constraints.oid) <> 1
+      OR COALESCE(bool_and(
+           constraints.contype::text = accepted.constraint_kind
+           AND constraints.convalidated IS TRUE
+           AND pg_get_constraintdef(constraints.oid, false) = accepted.definition
+         ), false) IS NOT TRUE
+  ) THEN
     RAISE EXCEPTION USING ERRCODE = 'P1110',
       MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
   END IF;
@@ -3943,7 +4032,7 @@ _POSTGRES_SCHEMA_V17 = SchemaMigration(
     ),
 )
 _POSTGRES_SCHEMA_V17_SHA256 = (
-    "e97706a99bc8e161a4b9bb77612b07040a615bff3396cce2a832e1bb74a6505e"
+    "18fb97e379b985da9bbd61ccac382f5dc9624f4a631ff64bc90223001f1eb9e9"
 )
 if _POSTGRES_SCHEMA_V17.checksum_sha256 != _POSTGRES_SCHEMA_V17_SHA256:
     raise SchemaMigrationError(

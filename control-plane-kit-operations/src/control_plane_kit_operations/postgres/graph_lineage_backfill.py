@@ -180,7 +180,7 @@ def verify_graph_lineage_v1(connection: _Connection) -> None:
 
     failed = False
     try:
-        connection.execute(_LOCKS)
+        lock_graph_lineage_v1(connection)
         _scan(connection, insert_missing=False, require_present=True)
         rows = connection.execute(_VERIFY_REFERENCES).fetchall()
         if rows != [(True,)]:
@@ -189,6 +189,15 @@ def verify_graph_lineage_v1(connection: _Connection) -> None:
         failed = True
     if failed:
         raise SchemaMigrationError("graph lineage schema is not current")
+
+
+def lock_graph_lineage_v1(connection: _Connection) -> None:
+    """Acquire the closed graph-lineage relation set in canonical order."""
+
+    try:
+        connection.execute(_LOCKS)
+    except Exception:
+        raise SchemaMigrationError("graph lineage schema is not current") from None
 
 
 def _scan(

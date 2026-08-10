@@ -13,8 +13,10 @@ from control_plane_kit_operations.postgres.schema import (
     MigrationPostgresConnection,
     PostgresConnection,
     _POSTGRES_SCHEMA_V17_CONSTRAINTS,
+    _POSTGRES_SCHEMA_V17_DEPENDENCIES,
 )
 from control_plane_kit_operations.postgres.graph_lineage_backfill import (
+    lock_graph_lineage_v1,
     verify_graph_lineage_v1,
 )
 
@@ -1807,10 +1809,22 @@ def _verify_approval_scope_contracts(connection: PostgresConnection) -> None:
 
 
 def _verify_graph_lineage_contracts(connection: PostgresConnection) -> None:
+    lock_graph_lineage_v1(connection)
     column_rows = _read_rows(
         connection,
         """
-        SELECT table_name, column_name, data_type, is_nullable, column_default
+        SELECT table_name, column_name,
+               CASE
+                 WHEN column_name IN ('current_realized_projection_id',
+                                      'desired_realized_projection_id',
+                                      'base_realized_projection_id')
+                 THEN data_type = 'text' AND is_nullable = 'YES'
+                      AND column_default IS NULL
+                 WHEN column_name = 'desired_graph_revision'
+                 THEN data_type = 'bigint' AND is_nullable = 'NO'
+                      AND column_default IS NOT DISTINCT FROM '0'
+                 ELSE false
+               END
         FROM information_schema.columns
         WHERE table_schema = current_schema()
           AND (table_name, column_name) IN (
@@ -1828,62 +1842,75 @@ def _verify_graph_lineage_contracts(connection: PostgresConnection) -> None:
         "graph lineage schema read failed",
     )
     expected_columns = [
-        ("cpk_activity_plans", "base_realized_projection_id", "text", "YES", None),
-        ("cpk_activity_plans", "desired_graph_revision", "bigint", "NO", "0"),
-        ("cpk_activity_plans", "desired_realized_projection_id", "text", "YES", None),
-        ("cpk_workspaces", "current_realized_projection_id", "text", "YES", None),
-        ("cpk_workspaces", "desired_graph_revision", "bigint", "NO", "0"),
-        ("cpk_workspaces", "desired_realized_projection_id", "text", "YES", None),
+        ("cpk_activity_plans", "base_realized_projection_id", True),
+        ("cpk_activity_plans", "desired_graph_revision", True),
+        ("cpk_activity_plans", "desired_realized_projection_id", True),
+        ("cpk_workspaces", "current_realized_projection_id", True),
+        ("cpk_workspaces", "desired_graph_revision", True),
+        ("cpk_workspaces", "desired_realized_projection_id", True),
     ]
     if column_rows != expected_columns:
         raise SchemaMigrationError("graph lineage schema is not current")
 
-    expected_constraints = tuple(
-        sorted(
-            (table, name, kind, True, definition)
-            for table, name, kind, _ddl, definition in (
-                _POSTGRES_SCHEMA_V17_CONSTRAINTS
-            )
-        )
+    target_contracts = tuple(
+        (table, name, kind, definition)
+        for table, name, kind, _ddl, definition in _POSTGRES_SCHEMA_V17_CONSTRAINTS
     )
-    constraint_rows = _read_rows(
+    if not _graph_lineage_contracts_are_current(connection, target_contracts):
+        raise SchemaMigrationError("graph lineage schema is not current")
+    if not _graph_lineage_contracts_are_current(
         connection,
-        """
-        SELECT relation.relname, constraints.conname,
-               constraints.contype::text, constraints.convalidated,
-               pg_get_constraintdef(constraints.oid, false)
-        FROM pg_constraint AS constraints
-        JOIN pg_class AS relation ON relation.oid = constraints.conrelid
-        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-        WHERE namespace.nspname = current_schema()
-          AND (relation.relname, constraints.conname) IN (
-            ('cpk_realized_graph_projections',
-             'cpk_realized_graph_projection_workspace_identity'),
-            ('cpk_realized_graph_projections',
-             'cpk_realized_graph_projection_source_identity'),
-            ('cpk_workspaces', 'cpk_workspaces_current_realized_projection_fk'),
-            ('cpk_workspaces', 'cpk_workspaces_desired_realized_projection_fk'),
-            ('cpk_workspaces', 'cpk_workspaces_current_projection_source_fk'),
-            ('cpk_workspaces', 'cpk_workspaces_desired_projection_source_fk'),
-            ('cpk_workspaces', 'cpk_workspaces_current_lineage_check'),
-            ('cpk_workspaces', 'cpk_workspaces_desired_lineage_check'),
-            ('cpk_workspaces', 'cpk_workspaces_desired_graph_revision_check'),
-            ('cpk_activity_plans',
-             'cpk_activity_plans_base_projection_source_fk'),
-            ('cpk_activity_plans',
-             'cpk_activity_plans_desired_projection_source_fk'),
-            ('cpk_activity_plans',
-             'cpk_activity_plans_desired_graph_revision_check')
-          )
-        ORDER BY relation.relname, constraints.conname, constraints.oid
-        LIMIT 13
-        """,
-        (),
-        "graph lineage schema read failed",
-    )
-    if tuple(constraint_rows) != expected_constraints:
+        _POSTGRES_SCHEMA_V17_DEPENDENCIES,
+    ):
         raise SchemaMigrationError("graph lineage schema is not current")
     verify_graph_lineage_v1(connection)
+
+
+def _graph_lineage_contracts_are_current(
+    connection: PostgresConnection,
+    contracts: tuple[tuple[str, str, str, str], ...],
+) -> bool:
+    rows = _read_rows(
+        connection,
+        """
+        WITH expected(relation_name, constraint_name, constraint_kind,
+                      definition) AS (
+          SELECT * FROM unnest(%s::text[], %s::text[], %s::text[], %s::text[])
+        )
+        SELECT expected.relation_name, expected.constraint_name,
+               count(constraints.oid) = 1
+               AND COALESCE(bool_and(
+                     constraints.contype::text = expected.constraint_kind
+                     AND constraints.convalidated IS TRUE
+                     AND pg_get_constraintdef(constraints.oid, false)
+                           = expected.definition
+                   ), false)
+        FROM expected
+        LEFT JOIN pg_namespace AS namespace
+          ON namespace.nspname = current_schema()
+        LEFT JOIN pg_class AS relation
+          ON relation.relnamespace = namespace.oid
+         AND relation.relname = expected.relation_name
+        LEFT JOIN pg_constraint AS constraints
+          ON constraints.conrelid = relation.oid
+         AND constraints.conname = expected.constraint_name
+        GROUP BY expected.relation_name, expected.constraint_name,
+                 expected.constraint_kind, expected.definition
+        ORDER BY expected.relation_name, expected.constraint_name
+        LIMIT %s
+        """,
+        (
+            [contract[0] for contract in contracts],
+            [contract[1] for contract in contracts],
+            [contract[2] for contract in contracts],
+            [contract[3] for contract in contracts],
+            len(contracts) + 1,
+        ),
+        "graph lineage schema read failed",
+    )
+    return rows == sorted(
+        (table, name, True) for table, name, _kind, _definition in contracts
+    )
 
 
 def _read_coordination_temporal_contract(
