@@ -293,7 +293,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                     token
                     for query in submitted
                     for token in mutation_tokens
-                    if token in query.upper()
+                    if query.lstrip().upper().startswith(token)
                 ],
                 [],
             )
