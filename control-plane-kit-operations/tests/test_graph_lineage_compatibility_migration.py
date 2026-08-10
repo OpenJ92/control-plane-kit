@@ -118,6 +118,52 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8",
         )
 
+    def test_v16_to_v17_has_no_post_ledger_replay(self) -> None:
+        connection = self._connection()
+        submitted_after_v17: list[str] = []
+
+        class RecordingConnection:
+            v17_recorded = False
+
+            @property
+            def autocommit(self):
+                return connection.autocommit
+
+            def transaction(self):
+                return connection.transaction()
+
+            def execute(self, query, params=None):
+                if self.v17_recorded:
+                    submitted_after_v17.append(str(query))
+                if params is None:
+                    result = connection.execute(query)
+                else:
+                    result = connection.execute(query, params)
+                if (
+                    "INSERT INTO cpk_schema_migrations" in str(query)
+                    and params is not None
+                    and params[0] == 17
+                ):
+                    self.v17_recorded = True
+                return result
+
+        try:
+            self._prepare_v16(connection)
+
+            postgres.install_postgres_schema(RecordingConnection())
+
+            self.assertTrue(submitted_after_v17)
+            self.assertLessEqual(
+                {
+                    query.lstrip().split(None, 1)[0].upper()
+                    for query in submitted_after_v17
+                },
+                {"SELECT", "WITH"},
+            )
+            self.assertEqual(self._history(connection)[-1][:2], _V17_IDENTITY)
+        finally:
+            connection.close()
+
     def test_missing_workspace_and_plan_paths_backfill_exact_identity(self) -> None:
         connection = self._connection()
         try:

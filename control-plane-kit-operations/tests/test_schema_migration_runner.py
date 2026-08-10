@@ -243,8 +243,8 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "SELECT * FROM cpk_workspaces ORDER BY workspace_id"
             ).fetchall()
             before_relations = self._application_relation_identities(connection)
-            before_constraints = self._application_constraint_identities(connection)
-            before_indexes = self._application_index_identities(connection)
+            before_constraints = self._schema_constraint_identities(connection)
+            before_indexes = self._schema_index_identities(connection)
             before_ledger = connection.execute(
                 "SELECT version, name, checksum_sha256, applied_at "
                 "FROM cpk_schema_migrations ORDER BY version"
@@ -263,11 +263,11 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 before_relations,
             )
             self.assertEqual(
-                self._application_constraint_identities(connection),
+                self._schema_constraint_identities(connection),
                 before_constraints,
             )
             self.assertEqual(
-                self._application_index_identities(connection),
+                self._schema_index_identities(connection),
                 before_indexes,
             )
             self.assertEqual(
@@ -277,25 +277,9 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 ).fetchall(),
                 before_ledger,
             )
-            mutation_tokens = (
-                "ALTER TABLE",
-                "CREATE INDEX",
-                "CREATE TABLE",
-                "CREATE UNIQUE INDEX",
-                "DELETE FROM",
-                "DROP ",
-                "INSERT INTO",
-                "TRUNCATE ",
-                "UPDATE ",
-            )
-            self.assertEqual(
-                [
-                    token
-                    for query in submitted
-                    for token in mutation_tokens
-                    if query.lstrip().upper().startswith(token)
-                ],
-                [],
+            self.assertLessEqual(
+                {query.lstrip().split(None, 1)[0].upper() for query in submitted},
+                {"LOCK", "SELECT", "WITH"},
             )
         finally:
             connection.close()
@@ -760,6 +744,33 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
               ON index_relation.oid = pg_index.indexrelid
             WHERE pg_namespace.nspname = current_schema()
               AND index_relation.relname <> 'cpk_schema_migrations_pkey'
+            ORDER BY index_relation.relname
+            """
+        ).fetchall()
+
+    def _schema_constraint_identities(self, connection):
+        return connection.execute(
+            """
+            SELECT conname, oid, pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE connamespace = current_schema()::regnamespace
+            ORDER BY conname
+            """
+        ).fetchall()
+
+    def _schema_index_identities(self, connection):
+        return connection.execute(
+            """
+            SELECT index_relation.relname, index_relation.oid,
+                   pg_get_indexdef(index_relation.oid)
+            FROM pg_index
+            JOIN pg_class AS table_relation
+              ON table_relation.oid = pg_index.indrelid
+            JOIN pg_namespace
+              ON pg_namespace.oid = table_relation.relnamespace
+            JOIN pg_class AS index_relation
+              ON index_relation.oid = pg_index.indexrelid
+            WHERE pg_namespace.nspname = current_schema()
             ORDER BY index_relation.relname
             """
         ).fetchall()

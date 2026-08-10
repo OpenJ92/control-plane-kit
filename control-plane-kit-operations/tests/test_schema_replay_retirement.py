@@ -15,6 +15,7 @@ _RETIRED_NAMES_BY_MODULE = {
     schema: {
         "_CURRENT_POSTGRES_SCHEMA",
         "_GRAPH_LINEAGE_COLUMN_COMPATIBILITY",
+        "_GRAPH_LINEAGE_CONSTRAINTS",
     },
     migration_runner: {"_CURRENT_POSTGRES_SCHEMA"},
     migration_inspection: {
