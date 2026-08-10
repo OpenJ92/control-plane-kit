@@ -367,27 +367,34 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
                 },
             ],
         }
-        for label, public_ingresses in cases.items():
-            with self.subTest(label=label):
-                descriptor = {**original, "public_ingresses": public_ingresses}
-                self.connection.execute(
-                    "UPDATE cpk_graph_versions SET graph_descriptor = %s "
-                    "WHERE graph_id = %s",
-                    (json.dumps(descriptor), "graph-current"),
-                )
-                expected = (
-                    "ambiguous"
-                    if label == "ambiguous"
-                    else "no named public ingress"
-                )
-                with self.assertRaisesRegex(GatewayProbeConflict, expected):
-                    self.service.execute(
-                        self.command(
-                            access_path=(
-                                GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS
-                            ),
-                        )
+        try:
+            for label, public_ingresses in cases.items():
+                with self.subTest(label=label):
+                    descriptor = {**original, "public_ingresses": public_ingresses}
+                    self.connection.execute(
+                        "UPDATE cpk_graph_versions SET graph_descriptor = %s "
+                        "WHERE graph_id = %s",
+                        (json.dumps(descriptor), "graph-current"),
                     )
+                    expected = (
+                        "ambiguous"
+                        if label == "ambiguous"
+                        else "no named public ingress"
+                    )
+                    with self.assertRaisesRegex(GatewayProbeConflict, expected):
+                        self.service.execute(
+                            self.command(
+                                access_path=(
+                                    GatewayProbeAccessPath.NAMED_PUBLIC_INGRESS
+                                ),
+                            )
+                        )
+        finally:
+            self.connection.execute(
+                "UPDATE cpk_graph_versions SET graph_descriptor = %s "
+                "WHERE graph_id = %s",
+                (json.dumps(original), "graph-current"),
+            )
         self.assertEqual(self.dispatcher.requests, [])
 
     def test_duplicate_request_is_idempotent_without_redispatch(self) -> None:
