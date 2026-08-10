@@ -364,7 +364,7 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
 
                         self.assertEqual(
                             str(raised.exception),
-                            "ingress evidence temporal schema is not current",
+                            "database schema contract is not current",
                         )
                         self.assertIsNone(raised.exception.__context__)
                         self.assertIsNone(raised.exception.__cause__)

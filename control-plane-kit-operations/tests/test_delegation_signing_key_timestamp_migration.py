@@ -227,7 +227,7 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
 
                         self.assertEqual(
                             str(raised.exception),
-                            "delegation signing-key temporal schema is not current",
+                            "database schema contract is not current",
                         )
                         self.assertLessEqual(len(str(raised.exception)), 256)
                         self.assertIsNone(raised.exception.__context__)

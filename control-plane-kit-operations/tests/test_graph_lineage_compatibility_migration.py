@@ -885,7 +885,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                     for _attempt in range(2):
                         with self.assertRaisesRegex(
                             postgres.SchemaMigrationError,
-                            "^graph lineage schema is not current$",
+                            "^database schema contract is not current$",
                         ):
                             postgres.install_postgres_schema(connection)
                         self.assertEqual(self._snapshot(connection), before)
@@ -908,7 +908,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 postgres.SchemaMigrationError,
-                "^graph lineage schema is not current$",
+                "^database schema contract is not current$",
             ):
                 postgres.install_postgres_schema(connection)
             self.assertEqual(self._snapshot(connection), before)
@@ -931,7 +931,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             for _attempt in range(2):
                 with self.assertRaisesRegex(
                     postgres.SchemaMigrationError,
-                    "^graph lineage schema is not current$",
+                    "^database schema contract is not current$",
                 ):
                     postgres.install_postgres_schema(connection)
                 self.assertEqual(self._snapshot(connection), before)
