@@ -2800,6 +2800,12 @@ BEGIN
           )
           ELSE true
         END
+    ) OR EXISTS (
+      SELECT approvals.rotation_id
+      FROM cpk_approval_requests AS approvals
+      WHERE approvals.rotation_id IS NOT NULL
+      GROUP BY approvals.rotation_id
+      HAVING count(*) > 1
     ) THEN
       RAISE EXCEPTION USING
         ERRCODE = 'P1110',
@@ -3267,7 +3273,7 @@ _POSTGRES_SCHEMA_V15 = SchemaMigration(
     ),
 )
 _POSTGRES_SCHEMA_V15_SHA256 = (
-    "80df40a86e19f5a75adc6d619b77ca6c0cfc2767fa4431057d3e05218de35cb3"
+    "215c6a71efd06f699c1d988a7e55435920075726009f030eecbd4a8c0fd91a0b"
 )
 if _POSTGRES_SCHEMA_V15.checksum_sha256 != _POSTGRES_SCHEMA_V15_SHA256:
     raise SchemaMigrationError(
