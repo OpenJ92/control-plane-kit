@@ -169,7 +169,11 @@ class _RecordingConnection:
     def execute(self, query, params=()):
         text = query if isinstance(query, str) else str(query)
         self.calls.append((text, params))
-        result = self.delegate.execute(query, params)
+        result = (
+            self.delegate.execute(query)
+            if params == ()
+            else self.delegate.execute(query, params)
+        )
         if "LOCK TABLE ONLY" in text:
             if self.predeclared_locks is not None:
                 raise AssertionError("schema lock plan was not acquired atomically")
@@ -771,7 +775,7 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
             contender.close()
 
         owner = self._connection(autocommit=False)
-        observer = self._connection()
+        observer = self._connection(autocommit=False)
         try:
             postgres.verify_postgres_schema(owner)
             observer.execute("SET lock_timeout TO '100ms'")
@@ -779,6 +783,7 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
                 observer.execute(
                     "LOCK TABLE cpk_activity_events IN ACCESS EXCLUSIVE MODE"
                 )
+            observer.rollback()
             owner.rollback()
             observer.execute(
                 "LOCK TABLE cpk_activity_events IN ACCESS EXCLUSIVE MODE"
