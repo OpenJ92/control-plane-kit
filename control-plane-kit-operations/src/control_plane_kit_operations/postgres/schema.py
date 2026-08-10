@@ -3343,6 +3343,12 @@ _POSTGRES_SCHEMA_V17_DEPENDENCIES = (
         "c",
         "CHECK ((projection_digest ~ '^[0-9a-f]{64}$'::text))",
     ),
+    (
+        "cpk_activity_plans",
+        "cpk_activity_plans_session_id_fkey",
+        "f",
+        "FOREIGN KEY (session_id) REFERENCES cpk_operation_sessions(session_id)",
+    ),
 )
 _POSTGRES_SCHEMA_V17_CONSTRAINTS = (
     (
@@ -4032,7 +4038,7 @@ _POSTGRES_SCHEMA_V17 = SchemaMigration(
     ),
 )
 _POSTGRES_SCHEMA_V17_SHA256 = (
-    "18fb97e379b985da9bbd61ccac382f5dc9624f4a631ff64bc90223001f1eb9e9"
+    "fbb364b06d580df44962b2f8920de5b00e1ecb6197989fbf8392a95e939d070b"
 )
 if _POSTGRES_SCHEMA_V17.checksum_sha256 != _POSTGRES_SCHEMA_V17_SHA256:
     raise SchemaMigrationError(
