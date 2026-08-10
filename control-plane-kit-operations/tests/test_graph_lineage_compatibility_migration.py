@@ -35,6 +35,16 @@ _LINEAGE_CONSTRAINTS = {
     "cpk_workspaces_desired_graph_revision_check",
     "cpk_activity_plans_desired_graph_revision_check",
 }
+_V1_DEPENDENCIES = {
+    "cpk_workspaces_pkey",
+    "cpk_graph_versions_pkey",
+    "cpk_graph_versions_workspace_identity",
+    "cpk_realized_graph_projections_pkey",
+    "cpk_realized_graph_projection_source",
+    "cpk_realized_graph_projection_identity",
+    "cpk_realized_graph_projection_kind_check",
+    "cpk_realized_graph_projection_digest_check",
+}
 
 
 class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
@@ -206,38 +216,286 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 finally:
                     connection.close()
 
-    def test_keyset_batches_have_no_total_row_cap(self) -> None:
-        connection = self._connection()
+    def test_keyset_batch_boundaries_have_no_total_row_cap(self) -> None:
+        for count in (0, 1, 63, 64, 65, 129):
+            with self.subTest(count=count):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare_v16(connection)
+                    for index in range(count):
+                        workspace = f"workspace-{index:03d}"
+                        graph = f"graph-{index:03d}"
+                        connection.execute(
+                            "INSERT INTO cpk_workspaces "
+                            "(workspace_id, name, lifecycle, current_graph_id) "
+                            "VALUES (%s, %s, 'created', %s)",
+                            (workspace, workspace, graph),
+                        )
+                        self._insert_graph(connection, graph, workspace, 1)
+
+                    postgres.install_postgres_schema(connection)
+
+                    self.assertEqual(
+                        connection.execute(
+                            "SELECT count(*) FROM cpk_realized_graph_projections"
+                        ).fetchone(),
+                        (count,),
+                    )
+                    self.assertEqual(
+                        connection.execute(
+                            "SELECT count(*) FROM cpk_workspaces "
+                            "WHERE current_realized_projection_id IS NOT NULL"
+                        ).fetchone(),
+                        (count,),
+                    )
+                finally:
+                    connection.close()
+
+    def test_v1_identity_dependency_drift_rejects_without_rebuild(self) -> None:
+        for constraint in sorted(_V1_DEPENDENCIES):
+            with self.subTest(constraint=constraint):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare_v16(connection)
+                    relation = connection.execute(
+                        "SELECT relation.relname FROM pg_constraint AS constraints "
+                        "JOIN pg_class AS relation ON relation.oid=constraints.conrelid "
+                        "JOIN pg_namespace AS namespace "
+                        "ON namespace.oid=relation.relnamespace "
+                        "WHERE namespace.nspname=current_schema() "
+                        "AND constraints.conname=%s",
+                        (constraint,),
+                    ).fetchone()[0]
+                    connection.execute(
+                        f"ALTER TABLE {relation} DROP CONSTRAINT {constraint} CASCADE"
+                    )
+                    before = self._snapshot(connection)
+
+                    with self.assertRaises(postgres.SchemaMigrationError):
+                        postgres.install_postgres_schema(connection)
+
+                    self.assertEqual(self._snapshot(connection), before)
+                    self.assertNotIn(constraint, self._all_constraint_names(connection))
+                finally:
+                    connection.close()
+
+    def test_wrong_or_unvalidated_owned_constraint_rejects_before_effects(self) -> None:
+        mutations = (
+            (
+                "cpk_workspaces",
+                "cpk_workspaces_current_lineage_check",
+                "CHECK (current_graph_id IS NULL)",
+            ),
+            (
+                "cpk_activity_plans",
+                "cpk_activity_plans_base_projection_source_fk",
+                "FOREIGN KEY (base_realized_projection_id, base_graph_id) "
+                "REFERENCES cpk_realized_graph_projections"
+                "(projection_id, source_authored_graph_id) NOT VALID",
+            ),
+        )
+        for table, constraint, definition in mutations:
+            with self.subTest(constraint=constraint):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare_v16(connection)
+                    connection.execute(schema_module._GRAPH_LINEAGE_CONSTRAINTS)
+                    connection.execute(
+                        f"ALTER TABLE {table} DROP CONSTRAINT {constraint}"
+                    )
+                    connection.execute(
+                        f"ALTER TABLE {table} ADD CONSTRAINT {constraint} {definition}"
+                    )
+                    before = self._snapshot(connection)
+                    with self.assertRaisesRegex(
+                        postgres.SchemaMigrationError,
+                        f"^{_CATEGORICAL_ERROR}$",
+                    ):
+                        postgres.install_postgres_schema(connection)
+                    self.assertEqual(self._snapshot(connection), before)
+                finally:
+                    connection.close()
+
+    def test_projection_identity_key_and_each_material_field_mismatch_reject(self) -> None:
+        cases = (
+            "identity-key",
+            "digest",
+            "descriptor",
+            "created-by",
+            "created-at",
+        )
+        for case in cases:
+            with self.subTest(case=case):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare_v16(connection)
+                    self._seed_workspace_graph_plan_truth(connection)
+                    expected = self._expected("graph-a", "workspace-a", 1)
+                    self._insert_projection(connection, expected)
+                    if case == "identity-key":
+                        connection.execute(
+                            "UPDATE cpk_realized_graph_projections "
+                            "SET projection_id='private-collision' "
+                            "WHERE projection_id=%s",
+                            (expected.projection_id,),
+                        )
+                    elif case == "digest":
+                        connection.execute(
+                            "UPDATE cpk_realized_graph_projections "
+                            "SET projection_digest=%s WHERE projection_id=%s",
+                            ("a" * 64, expected.projection_id),
+                        )
+                    elif case == "descriptor":
+                        connection.execute(
+                            "UPDATE cpk_realized_graph_projections "
+                            "SET graph_descriptor=%s WHERE projection_id=%s",
+                            (
+                                Jsonb(
+                                    DEFAULT_GRAPH_CODEC.encode(
+                                        DeploymentGraph("private-different")
+                                    )
+                                ),
+                                expected.projection_id,
+                            ),
+                        )
+                    elif case == "created-by":
+                        connection.execute(
+                            "UPDATE cpk_realized_graph_projections "
+                            "SET created_by='private-actor' WHERE projection_id=%s",
+                            (expected.projection_id,),
+                        )
+                    else:
+                        connection.execute(
+                            "UPDATE cpk_realized_graph_projections "
+                            "SET created_at='2026-08-10T00:01:01Z' "
+                            "WHERE projection_id=%s",
+                            (expected.projection_id,),
+                        )
+                    before = self._snapshot(connection)
+                    with self.assertRaisesRegex(
+                        postgres.SchemaMigrationError,
+                        f"^{_CATEGORICAL_ERROR}$",
+                    ):
+                        postgres.install_postgres_schema(connection)
+                    self.assertEqual(self._snapshot(connection), before)
+                finally:
+                    connection.close()
+
+    def test_each_v17_phase_failure_restores_exact_v16_truth(self) -> None:
+        for failure in ("prepare", "backfill", "final", "ledger", "verifier"):
+            with self.subTest(failure=failure):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare_v16(connection)
+                    self._seed_workspace_graph_plan_truth(connection)
+                    before = self._snapshot(connection)
+                    migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[16]
+                    failed = False
+                    v17_ledger_written = False
+                    omitted = object()
+
+                    class FailingConnection:
+                        @property
+                        def autocommit(self):
+                            return connection.autocommit
+
+                        def transaction(self):
+                            return connection.transaction()
+
+                        def execute(self, query, params=omitted):
+                            nonlocal failed, v17_ledger_written
+                            should_fail = (
+                                (failure == "prepare" and query == migration.steps[0].sql)
+                                or (
+                                    failure == "backfill"
+                                    and type(query) is str
+                                    and "WITH referenced(graph_id)" in query
+                                )
+                                or (failure == "final" and query == migration.steps[2].sql)
+                                or (
+                                    failure == "ledger"
+                                    and type(query) is str
+                                    and "INSERT INTO cpk_schema_migrations" in query
+                                    and params is not omitted
+                                    and params
+                                    and params[0] == 17
+                                )
+                                or (
+                                    failure == "verifier"
+                                    and v17_ledger_written
+                                    and type(query) is str
+                                    and "SELECT version," in query
+                                )
+                            )
+                            if should_fail and not failed:
+                                failed = True
+                                raise RuntimeError("private-provider-material")
+                            result = (
+                                connection.execute(query)
+                                if params is omitted
+                                else connection.execute(query, params)
+                            )
+                            if (
+                                type(query) is str
+                                and "INSERT INTO cpk_schema_migrations" in query
+                                and params is not omitted
+                                and params
+                                and params[0] == 17
+                            ):
+                                v17_ledger_written = True
+                            return result
+
+                    with self.assertRaises(postgres.SchemaMigrationError) as raised:
+                        postgres.install_postgres_schema(FailingConnection())
+                    self.assertTrue(failed, str(raised.exception))
+                    self.assertNotIn("private-provider-material", repr(raised.exception))
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertEqual(self._snapshot(connection), before)
+                finally:
+                    connection.close()
+
+    def test_installer_and_service_lock_orders_are_bounded_and_release(self) -> None:
+        owner = self._connection(autocommit=False)
+        contender = self._connection(autocommit=False)
         try:
-            self._prepare_v16(connection)
-            for index in range(65):
-                workspace = f"workspace-{index:03d}"
-                graph = f"graph-{index:03d}"
-                connection.execute(
-                    "INSERT INTO cpk_workspaces "
-                    "(workspace_id, name, lifecycle, current_graph_id) "
-                    "VALUES (%s, %s, 'created', %s)",
-                    (workspace, workspace, graph),
+            self._prepare_v16(owner)
+            owner.execute(
+                "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
+                "VALUES ('workspace-a', 'Workspace A', 'created')"
+            )
+            owner.commit()
+
+            postgres.install_postgres_schema(owner)
+            contender.execute("SET LOCAL lock_timeout='150ms'")
+            with self.assertRaises(psycopg.errors.LockNotAvailable):
+                contender.execute(
+                    "UPDATE cpk_workspaces SET name='Blocked' "
+                    "WHERE workspace_id='workspace-a'"
                 )
-                self._insert_graph(connection, graph, workspace, 1)
+            contender.rollback()
+            owner.rollback()
 
-            postgres.install_postgres_schema(connection)
+            contender.execute(
+                "UPDATE cpk_workspaces SET name='Service first' "
+                "WHERE workspace_id='workspace-a'"
+            )
+            owner.execute("SET LOCAL lock_timeout='150ms'")
+            with self.assertRaises(postgres.SchemaMigrationError):
+                postgres.install_postgres_schema(owner)
+            owner.rollback()
+            contender.rollback()
 
-            self.assertEqual(
-                connection.execute(
-                    "SELECT count(*) FROM cpk_realized_graph_projections"
-                ).fetchone(),
-                (65,),
-            )
-            self.assertEqual(
-                connection.execute(
-                    "SELECT count(*) FROM cpk_workspaces "
-                    "WHERE current_realized_projection_id IS NOT NULL"
-                ).fetchone(),
-                (65,),
-            )
+            postgres.install_postgres_schema(owner)
+            owner.rollback()
         finally:
-            connection.close()
+            owner.close()
+            contender.close()
 
     def test_absent_columns_and_relation_owned_constraints_converge(self) -> None:
         connection = self._connection()
@@ -553,6 +811,18 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             (list(_LINEAGE_CONSTRAINTS),),
         ).fetchall()
         return {row[0]: row[1:] for row in rows}
+
+    @staticmethod
+    def _all_constraint_names(connection):
+        return {
+            row[0]
+            for row in connection.execute(
+                "SELECT constraints.conname FROM pg_constraint AS constraints "
+                "JOIN pg_class AS relation ON relation.oid=constraints.conrelid "
+                "JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace "
+                "WHERE namespace.nspname=current_schema()"
+            ).fetchall()
+        }
 
     @staticmethod
     def _lineage_columns(connection):
