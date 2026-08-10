@@ -13,10 +13,57 @@ from control_plane_kit_operations.postgres.schema import (
 from control_plane_kit_operations.records import GraphVersionRecord
 
 
+_HISTORICAL_GRAPH_LINEAGE_CONSTRAINTS = frozenset(
+    {
+        (
+            "cpk_realized_graph_projections",
+            "cpk_realized_graph_projection_workspace_identity",
+        ),
+        (
+            "cpk_realized_graph_projections",
+            "cpk_realized_graph_projection_source_identity",
+        ),
+        ("cpk_workspaces", "cpk_workspaces_current_realized_projection_fk"),
+        ("cpk_workspaces", "cpk_workspaces_desired_realized_projection_fk"),
+        ("cpk_workspaces", "cpk_workspaces_current_projection_source_fk"),
+        ("cpk_workspaces", "cpk_workspaces_desired_projection_source_fk"),
+        ("cpk_workspaces", "cpk_workspaces_current_lineage_check"),
+        ("cpk_workspaces", "cpk_workspaces_desired_lineage_check"),
+        (
+            "cpk_activity_plans",
+            "cpk_activity_plans_base_projection_source_fk",
+        ),
+        (
+            "cpk_activity_plans",
+            "cpk_activity_plans_desired_projection_source_fk",
+        ),
+    }
+)
+_V17_GRAPH_LINEAGE_CONSTRAINTS = frozenset(
+    {
+        ("cpk_workspaces", "cpk_workspaces_desired_graph_revision_check"),
+        (
+            "cpk_activity_plans",
+            "cpk_activity_plans_desired_graph_revision_check",
+        ),
+    }
+)
+
+
 def seed_historical_graph_lineage_constraints(connection: Any) -> None:
-    for table, name, _kind, ddl, _definition in (
-        _POSTGRES_SCHEMA_V17_CONSTRAINTS[:-2]
+    specifications = {
+        (table, name): (ddl, definition)
+        for table, name, _kind, ddl, definition in (
+            _POSTGRES_SCHEMA_V17_CONSTRAINTS
+        )
+    }
+    if set(specifications) != (
+        _HISTORICAL_GRAPH_LINEAGE_CONSTRAINTS
+        | _V17_GRAPH_LINEAGE_CONSTRAINTS
     ):
+        raise AssertionError("unexpected graph lineage constraint inventory")
+    for table, name in sorted(_HISTORICAL_GRAPH_LINEAGE_CONSTRAINTS):
+        ddl, _definition = specifications[(table, name)]
         count = connection.execute(
             "SELECT count(*) FROM pg_constraint AS owned_constraint "
             "JOIN pg_class AS relation ON relation.oid=owned_constraint.conrelid "
