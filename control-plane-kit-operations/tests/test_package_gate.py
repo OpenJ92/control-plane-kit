@@ -107,6 +107,33 @@ class OperationsPackageGateTests(unittest.TestCase):
             2,
         )
 
+    def test_unhealthy_fixture_emits_bounded_logs_before_cleanup(self) -> None:
+        result, events = self._run_gate(health_status="unhealthy")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Postgres did not become healthy", result.stderr)
+        expected_log = (
+            "logs:logs --timestamps --tail 400 cpk-operations-test-postgres"
+        )
+        self.assertIn(expected_log, events)
+        log_index = events.index(expected_log)
+        final_container_cleanup = max(
+            index
+            for index, event in enumerate(events)
+            if event == "rm:rm -fv cpk-operations-test-postgres"
+        )
+        final_network_cleanup = max(
+            index
+            for index, event in enumerate(events)
+            if event == "network:network rm cpk-operations-test"
+        )
+        self.assertLess(log_index, final_container_cleanup)
+        self.assertLess(log_index, final_network_cleanup)
+        self.assertEqual(
+            [event for event in events if event.startswith("run:")],
+            ["run:1", "run:2"],
+        )
+
     def test_success_runs_all_phases_without_failure_diagnostics(self) -> None:
         result, events = self._run_gate()
 
@@ -135,6 +162,7 @@ class OperationsPackageGateTests(unittest.TestCase):
         *,
         unittest_status: int = 0,
         log_status: int = 0,
+        health_status: str = "healthy",
     ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
@@ -171,7 +199,7 @@ class OperationsPackageGateTests(unittest.TestCase):
                         ;;
                       inspect)
                         printf 'inspect:%s\n' "$*" >>"$FAKE_DOCKER_EVENTS"
-                        printf 'healthy\n'
+                        printf '%s\n' "$FAKE_DOCKER_HEALTH_STATUS"
                         ;;
                       logs)
                         printf 'logs:%s\n' "$*" >>"$FAKE_DOCKER_EVENTS"
@@ -194,6 +222,9 @@ class OperationsPackageGateTests(unittest.TestCase):
                 encoding="utf-8",
             )
             docker.chmod(0o755)
+            sleep = binary_directory / "sleep"
+            sleep.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            sleep.chmod(0o755)
             environment = os.environ.copy()
             environment.update(
                 {
@@ -202,6 +233,7 @@ class OperationsPackageGateTests(unittest.TestCase):
                     "FAKE_DOCKER_STATE": str(state_path),
                     "FAKE_DOCKER_UNITTEST_STATUS": str(unittest_status),
                     "FAKE_DOCKER_LOG_STATUS": str(log_status),
+                    "FAKE_DOCKER_HEALTH_STATUS": health_status,
                 }
             )
             result = subprocess.run(
