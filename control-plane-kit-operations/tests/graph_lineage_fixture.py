@@ -51,15 +51,20 @@ _V17_GRAPH_LINEAGE_CONSTRAINTS = frozenset(
 
 
 def seed_historical_graph_lineage_constraints(connection: Any) -> None:
+    inventory = tuple(_POSTGRES_SCHEMA_V17_CONSTRAINTS)
+    identities = tuple((table, name) for table, name, *_rest in inventory)
     specifications = {
         (table, name): (ddl, definition)
-        for table, name, _kind, ddl, definition in (
-            _POSTGRES_SCHEMA_V17_CONSTRAINTS
-        )
+        for table, name, _kind, ddl, definition in inventory
     }
-    if set(specifications) != (
+    accepted_identities = (
         _HISTORICAL_GRAPH_LINEAGE_CONSTRAINTS
         | _V17_GRAPH_LINEAGE_CONSTRAINTS
+    )
+    if (
+        len(inventory) != len(accepted_identities)
+        or len(specifications) != len(inventory)
+        or set(identities) != accepted_identities
     ):
         raise AssertionError("unexpected graph lineage constraint inventory")
     for table, name in sorted(_HISTORICAL_GRAPH_LINEAGE_CONSTRAINTS):
