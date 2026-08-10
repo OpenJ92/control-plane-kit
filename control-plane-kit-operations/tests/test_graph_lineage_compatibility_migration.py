@@ -9,12 +9,19 @@ import uuid
 import psycopg
 from psycopg.types.json import Jsonb
 
+from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 import control_plane_kit_operations.postgres as postgres
 from control_plane_kit_operations.postgres import migration_runner
 from control_plane_kit_operations.postgres import schema as schema_module
+from control_plane_kit_operations.postgres.activity_history import (
+    PostgresActivityHistoryStore,
+)
 from control_plane_kit_operations.records import (
+    ActivityPlanRecord,
+    ActivityPlanStatus,
     GraphVersionRecord,
+    OperationsRecordError,
     RealizedGraphProjectionRecord,
 )
 
@@ -148,6 +155,89 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 {(expected_a.projection_id,), (expected_b.projection_id,)},
             )
             self.assertEqual(self._history(connection)[-1][:2], _V17_IDENTITY)
+            self.assertEqual(
+                connection.execute(
+                    "SELECT column_name, is_nullable "
+                    "FROM information_schema.columns "
+                    "WHERE table_schema=current_schema() "
+                    "AND table_name='cpk_activity_plans' "
+                    "AND column_name IN ('base_realized_projection_id', "
+                    "'desired_realized_projection_id') ORDER BY column_name"
+                ).fetchall(),
+                [
+                    ("base_realized_projection_id", "NO"),
+                    ("desired_realized_projection_id", "NO"),
+                ],
+            )
+        finally:
+            connection.close()
+
+    def test_current_plan_store_rejects_incomplete_lineage_before_sql(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v16(connection)
+            self._seed_workspace_graph_plan_truth(connection)
+            postgres.install_postgres_schema(connection)
+            before = connection.execute(
+                "SELECT count(*) FROM cpk_activity_plans"
+            ).fetchone()
+
+            with self.assertRaisesRegex(
+                OperationsRecordError,
+                "^activity plan record requires complete graph lineage$",
+            ):
+                PostgresActivityHistoryStore(connection).add_plan(
+                    self._plan_record("plan-incomplete")
+                )
+
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM cpk_activity_plans"
+                ).fetchone(),
+                before,
+            )
+        finally:
+            connection.close()
+
+    def test_current_plan_store_writes_complete_exact_lineage(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v16(connection)
+            self._seed_workspace_graph_plan_truth(connection)
+            postgres.install_postgres_schema(connection)
+            base = self._expected("graph-a", "workspace-a", 1)
+            desired = self._expected("graph-b", "workspace-a", 2)
+            record = self._plan_record(
+                "plan-complete",
+                base_projection_id=base.projection_id,
+                desired_projection_id=desired.projection_id,
+            )
+
+            stored = PostgresActivityHistoryStore(connection).add_plan(record)
+
+            self.assertEqual(stored, record)
+            self.assertEqual(
+                PostgresActivityHistoryStore(connection).get_plan("plan-complete"),
+                record,
+            )
+        finally:
+            connection.close()
+
+    def test_current_database_rejects_direct_null_plan_lineage(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v16(connection)
+            self._seed_workspace_graph_plan_truth(connection)
+            postgres.install_postgres_schema(connection)
+
+            with self.assertRaises(psycopg.errors.NotNullViolation):
+                connection.execute(
+                    "INSERT INTO cpk_activity_plans "
+                    "(plan_id, session_id, base_graph_id, desired_graph_id, status, "
+                    "created_at, payload) VALUES "
+                    "('plan-null', 'session-a', 'graph-a', 'graph-b', 'planned', "
+                    "'2026-08-10T00:00:04Z', '{}'::jsonb)"
+                )
         finally:
             connection.close()
 
@@ -562,12 +652,12 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                     ),
                     ("cpk_activity_plans", "base_realized_projection_id"): (
                         "text",
-                        "YES",
+                        "NO",
                         None,
                     ),
                     ("cpk_activity_plans", "desired_realized_projection_id"): (
                         "text",
-                        "YES",
+                        "NO",
                         None,
                     ),
                     ("cpk_activity_plans", "desired_graph_revision"): (
@@ -650,6 +740,29 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             ):
                 postgres.install_postgres_schema(connection)
             self.assertEqual(self._snapshot(connection), before)
+        finally:
+            connection.close()
+
+    def test_already_v17_nullable_plan_lineage_is_rejected_without_repair(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v16(connection)
+            self._seed_workspace_graph_plan_truth(connection)
+            postgres.install_postgres_schema(connection)
+            connection.execute(
+                "ALTER TABLE cpk_activity_plans "
+                "ALTER COLUMN base_realized_projection_id DROP NOT NULL, "
+                "ALTER COLUMN desired_realized_projection_id DROP NOT NULL"
+            )
+            before = self._snapshot(connection)
+
+            for _attempt in range(2):
+                with self.assertRaisesRegex(
+                    postgres.SchemaMigrationError,
+                    "^graph lineage schema is not current$",
+                ):
+                    postgres.install_postgres_schema(connection)
+                self.assertEqual(self._snapshot(connection), before)
         finally:
             connection.close()
 
@@ -741,6 +854,26 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 record.created_by,
                 record.created_at,
             ),
+        )
+
+    @staticmethod
+    def _plan_record(
+        plan_id: str,
+        *,
+        base_projection_id: str | None = None,
+        desired_projection_id: str | None = None,
+    ) -> ActivityPlanRecord:
+        return ActivityPlanRecord(
+            plan_id=plan_id,
+            session_id="session-a",
+            base_graph_id="graph-a",
+            desired_graph_id="graph-b",
+            status=ActivityPlanStatus.PLANNED,
+            created_at="2026-08-10T00:00:04Z",
+            plan=ActivityPlan(()),
+            base_realized_projection_id=base_projection_id,
+            desired_realized_projection_id=desired_projection_id,
+            desired_graph_revision=9,
         )
 
     @staticmethod
