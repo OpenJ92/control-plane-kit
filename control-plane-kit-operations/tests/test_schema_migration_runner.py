@@ -247,11 +247,20 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_unlisted_column_order_is_not_accepted_as_compatibility(self) -> None:
+    def test_unlisted_column_order_is_accepted_when_semantics_are_current(self) -> None:
         install = self._required("install_postgres_schema")
         connection = self._connection()
         try:
             install(connection)
+            before_ordinal = connection.execute(
+                """
+                SELECT ordinal_position
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'cpk_workspaces'
+                  AND column_name = 'name'
+                """
+            ).fetchone()[0]
             connection.execute("ALTER TABLE cpk_workspaces DROP COLUMN name")
             connection.execute(
                 "ALTER TABLE cpk_workspaces ADD COLUMN name text NOT NULL DEFAULT ''"
@@ -260,8 +269,18 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "ALTER TABLE cpk_workspaces ALTER COLUMN name DROP DEFAULT"
             )
 
-            with self.assertRaises(postgres.SchemaMigrationError):
-                postgres.verify_postgres_schema(connection)
+            postgres.verify_postgres_schema(connection)
+            after = connection.execute(
+                """
+                SELECT ordinal_position, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'cpk_workspaces'
+                  AND column_name = 'name'
+                """
+            ).fetchone()
+            self.assertNotEqual(after[0], before_ordinal)
+            self.assertEqual(after[1:], ("NO", None))
         finally:
             connection.close()
 

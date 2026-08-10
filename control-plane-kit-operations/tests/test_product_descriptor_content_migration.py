@@ -25,7 +25,6 @@ import control_plane_kit_operations.postgres as postgres
 from control_plane_kit_operations.postgres import migration_inspection
 from control_plane_kit_operations.postgres import migration_runner
 from control_plane_kit_operations.postgres import product_descriptor_backfill
-from control_plane_kit_operations.postgres import schema as schema_module
 
 
 _V9_HISTORY = (
@@ -346,7 +345,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                 finally:
                     connection.close()
 
-    def test_final_verifier_ignores_constraints_outside_the_target_relation(self) -> None:
+    def test_private_verifier_ignores_constraints_outside_the_target_relation(self) -> None:
         connection = self._connection()
         try:
             postgres.install_postgres_schema(connection)
@@ -372,14 +371,18 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                 "CHECK (descriptor_sha256 = descriptor_sha256)"
             )
 
-            postgres.verify_postgres_schema(connection)
+            migration_inspection._verify_product_descriptor_content_contract(
+                connection
+            )
 
             connection.execute(
                 "ALTER TABLE cpk_registered_products DROP CONSTRAINT "
                 "cpk_registered_products_content_digest_check"
             )
             with self.assertRaises(postgres.SchemaMigrationError):
-                postgres.verify_postgres_schema(connection)
+                migration_inspection._verify_product_descriptor_content_contract(
+                    connection
+                )
         finally:
             connection.close()
 
@@ -600,24 +603,25 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
             observer.close()
 
     def _prepare_v9(self, connection) -> None:
-        production = schema_module.POSTGRES_SCHEMA_MIGRATIONS
-        v9 = postgres.SchemaMigrationRegistry(production.migrations[:9])
-        previous = (
-            schema_module.POSTGRES_SCHEMA_MIGRATIONS,
-            migration_runner.POSTGRES_SCHEMA_MIGRATIONS,
-            migration_inspection.POSTGRES_SCHEMA_MIGRATIONS,
+        connection.execute(postgres.POSTGRES_SCHEMA)
+        for migration in postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[1:9]:
+            migration_runner._apply_schema_migration(connection, migration)
+        connection.execute(
+            """
+            CREATE TABLE cpk_schema_migrations (
+              version integer NOT NULL PRIMARY KEY,
+              name text NOT NULL,
+              checksum_sha256 text NOT NULL,
+              applied_at timestamptz NOT NULL DEFAULT clock_timestamp()
+            )
+            """
         )
-        schema_module.POSTGRES_SCHEMA_MIGRATIONS = v9
-        migration_runner.POSTGRES_SCHEMA_MIGRATIONS = v9
-        migration_inspection.POSTGRES_SCHEMA_MIGRATIONS = v9
-        try:
-            postgres.install_postgres_schema(connection)
-        finally:
-            (
-                schema_module.POSTGRES_SCHEMA_MIGRATIONS,
-                migration_runner.POSTGRES_SCHEMA_MIGRATIONS,
-                migration_inspection.POSTGRES_SCHEMA_MIGRATIONS,
-            ) = previous
+        for migration in postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[:9]:
+            connection.execute(
+                "INSERT INTO cpk_schema_migrations "
+                "(version, name, checksum_sha256) VALUES (%s, %s, %s)",
+                (migration.version, migration.name, migration.checksum_sha256),
+            )
         connection.execute(
             "ALTER TABLE cpk_registered_products "
             "ALTER COLUMN descriptor_content DROP NOT NULL"

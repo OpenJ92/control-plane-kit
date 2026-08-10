@@ -291,7 +291,12 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
                     )
                     before_other = self._other_named_identities(connection)
 
-                    postgres.install_postgres_schema(connection)
+                    migration_runner._apply_schema_migration(
+                        connection, self._v13()
+                    )
+                    migration_inspection._verify_gateway_key_rotation_status_contracts(
+                        connection
+                    )
 
                     targets = self._target_identities(connection)
                     self.assertIn(constraint, targets)
