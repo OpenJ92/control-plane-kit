@@ -44,6 +44,7 @@ _V1_DEPENDENCIES = {
     "cpk_realized_graph_projection_identity",
     "cpk_realized_graph_projection_kind_check",
     "cpk_realized_graph_projection_digest_check",
+    "cpk_activity_plans_session_id_fkey",
 }
 
 
@@ -191,6 +192,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             "oversized-graph",
             "negative-workspace-revision",
             "negative-plan-revision",
+            "missing-plan-session",
         )
         for case in cases:
             with self.subTest(case=case):
@@ -603,24 +605,29 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                     connection.close()
 
     def test_already_v17_drift_is_rejected_twice_without_repair(self) -> None:
-        connection = self._connection()
-        try:
-            postgres.install_postgres_schema(connection)
-            connection.execute(
-                "ALTER TABLE cpk_workspaces DROP CONSTRAINT "
-                "cpk_workspaces_current_lineage_check"
-            )
-            before = self._snapshot(connection)
-
-            for _attempt in range(2):
-                with self.assertRaisesRegex(
-                    postgres.SchemaMigrationError,
-                    "^graph lineage schema is not current$",
-                ):
+        for table, constraint in (
+            ("cpk_workspaces", "cpk_workspaces_current_lineage_check"),
+            ("cpk_activity_plans", "cpk_activity_plans_session_id_fkey"),
+        ):
+            with self.subTest(constraint=constraint):
+                self._reset_schema()
+                connection = self._connection()
+                try:
                     postgres.install_postgres_schema(connection)
-                self.assertEqual(self._snapshot(connection), before)
-        finally:
-            connection.close()
+                    connection.execute(
+                        f"ALTER TABLE {table} DROP CONSTRAINT {constraint}"
+                    )
+                    before = self._snapshot(connection)
+
+                    for _attempt in range(2):
+                        with self.assertRaisesRegex(
+                            postgres.SchemaMigrationError,
+                            "^graph lineage schema is not current$",
+                        ):
+                            postgres.install_postgres_schema(connection)
+                        self.assertEqual(self._snapshot(connection), before)
+                finally:
+                    connection.close()
 
     def test_caller_rollback_restores_exact_v16_truth(self) -> None:
         connection = self._connection(autocommit=False)
@@ -780,6 +787,15 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
         elif case == "negative-plan-revision":
             connection.execute(
                 "UPDATE cpk_activity_plans SET desired_graph_revision=-1 "
+                "WHERE plan_id='plan-a'"
+            )
+        elif case == "missing-plan-session":
+            connection.execute(
+                "ALTER TABLE cpk_activity_plans DROP CONSTRAINT "
+                "cpk_activity_plans_session_id_fkey"
+            )
+            connection.execute(
+                "UPDATE cpk_activity_plans SET session_id='private-missing' "
                 "WHERE plan_id='plan-a'"
             )
         else:
