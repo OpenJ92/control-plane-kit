@@ -121,7 +121,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8",
         )
 
-    def test_all_workspace_and_plan_paths_use_exact_identity_projection(self) -> None:
+    def test_missing_workspace_and_plan_paths_backfill_exact_identity(self) -> None:
         connection = self._connection()
         try:
             self._prepare_v16(connection)
@@ -191,7 +191,6 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             "missing-session",
             "projection-source-mismatch",
             "cross-workspace",
-            "non-identity",
         ):
             with self.subTest(case=case):
                 self._reset_schema()
@@ -246,25 +245,6 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                             base_projection_id=foreign_base.projection_id,
                             desired_projection_id=foreign_desired.projection_id,
                         )
-                    elif case == "non-identity":
-                        non_identity = RealizedGraphProjectionRecord.from_graph(
-                            projection_id="projection-delegation-verifier",
-                            workspace_id="workspace-a",
-                            source_authored_graph_id="graph-a",
-                            projection_kind=(
-                                RealizedGraphProjectionKind.DELEGATION_VERIFIER
-                            ),
-                            projection_key="key-a",
-                            graph=DeploymentGraph("graph-a"),
-                            created_by="operator-a",
-                            created_at="2026-08-10T00:00:05Z",
-                        )
-                        self._insert_projection(connection, non_identity)
-                        record = self._plan_record(
-                            f"plan-{case}",
-                            base_projection_id=non_identity.projection_id,
-                            desired_projection_id=desired.projection_id,
-                        )
                     before = connection.execute(
                         "SELECT count(*) FROM cpk_activity_plans"
                     ).fetchone()
@@ -283,6 +263,112 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                     )
                 finally:
                     connection.close()
+
+    def test_current_plan_store_accepts_exact_non_identity_lineage(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v16(connection)
+            self._seed_workspace_graph_plan_truth(connection)
+            postgres.install_postgres_schema(connection)
+            base = self._non_identity("graph-a", "workspace-a", "base")
+            desired = self._non_identity("graph-b", "workspace-a", "desired")
+            self._insert_projection(connection, base)
+            self._insert_projection(connection, desired)
+            record = self._plan_record(
+                "plan-non-identity",
+                base_projection_id=base.projection_id,
+                desired_projection_id=desired.projection_id,
+            )
+
+            stored = PostgresActivityHistoryStore(connection).add_plan(record)
+
+            self.assertEqual(stored, record)
+            self.assertEqual(
+                PostgresActivityHistoryStore(connection).get_plan(record.plan_id),
+                record,
+            )
+        finally:
+            connection.close()
+
+    def test_exact_non_identity_lineage_survives_v17_and_reinstall(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare_v16(connection)
+            self._seed_workspace_graph_plan_truth(connection)
+            base = self._non_identity("graph-a", "workspace-a", "base")
+            desired = self._non_identity("graph-b", "workspace-a", "desired")
+            self._insert_projection(connection, base)
+            self._insert_projection(connection, desired)
+            connection.execute(
+                "UPDATE cpk_workspaces SET current_realized_projection_id=%s, "
+                "desired_realized_projection_id=%s WHERE workspace_id='workspace-a'",
+                (base.projection_id, desired.projection_id),
+            )
+            connection.execute(
+                "UPDATE cpk_activity_plans SET base_realized_projection_id=%s, "
+                "desired_realized_projection_id=%s WHERE plan_id='plan-a'",
+                (base.projection_id, desired.projection_id),
+            )
+
+            postgres.install_postgres_schema(connection)
+            postgres.install_postgres_schema(connection)
+
+            self.assertEqual(
+                connection.execute(
+                    "SELECT current_realized_projection_id, "
+                    "desired_realized_projection_id FROM cpk_workspaces "
+                    "WHERE workspace_id='workspace-a'"
+                ).fetchone(),
+                (base.projection_id, desired.projection_id),
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT base_realized_projection_id, "
+                    "desired_realized_projection_id FROM cpk_activity_plans "
+                    "WHERE plan_id='plan-a'"
+                ).fetchone(),
+                (base.projection_id, desired.projection_id),
+            )
+        finally:
+            connection.close()
+
+    def test_current_verifier_accepts_only_exact_non_identity_projection(self) -> None:
+        connection = self._connection()
+        try:
+            postgres.install_postgres_schema(connection)
+            connection.execute(
+                "INSERT INTO cpk_workspaces "
+                "(workspace_id, name, lifecycle) VALUES "
+                "('workspace-current', 'Current', 'created')"
+            )
+            self._insert_graph(connection, "graph-current", "workspace-current", 1)
+            projection = self._non_identity(
+                "graph-current",
+                "workspace-current",
+                "current",
+            )
+            self._insert_projection(connection, projection)
+            connection.execute(
+                "UPDATE cpk_workspaces SET current_graph_id='graph-current', "
+                "desired_graph_id='graph-current', "
+                "current_realized_projection_id=%s, "
+                "desired_realized_projection_id=%s "
+                "WHERE workspace_id='workspace-current'",
+                (projection.projection_id, projection.projection_id),
+            )
+
+            postgres.install_postgres_schema(connection)
+
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM cpk_realized_graph_projections "
+                    "WHERE source_authored_graph_id='graph-current' "
+                    "AND projection_kind='identity'"
+                ).fetchone(),
+                (0,),
+            )
+        finally:
+            connection.close()
 
     def test_current_plan_store_writes_complete_exact_lineage(self) -> None:
         connection = self._connection()
@@ -975,6 +1061,23 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 created_by="operator-a",
                 created_at=f"2026-08-10T00:00:{version:02d}Z",
             )
+        )
+
+    @staticmethod
+    def _non_identity(
+        graph_id: str,
+        workspace_id: str,
+        projection_key: str,
+    ) -> RealizedGraphProjectionRecord:
+        return RealizedGraphProjectionRecord.from_graph(
+            projection_id=f"projection-{projection_key}",
+            workspace_id=workspace_id,
+            source_authored_graph_id=graph_id,
+            projection_kind=RealizedGraphProjectionKind.DELEGATION_VERIFIER,
+            projection_key=projection_key,
+            graph=DeploymentGraph(f"realized-{projection_key}"),
+            created_by="operator-a",
+            created_at="2026-08-10T00:00:05Z",
         )
 
     def _make_invalid(self, connection, case: str) -> None:
