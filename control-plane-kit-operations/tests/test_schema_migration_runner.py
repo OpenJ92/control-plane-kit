@@ -31,6 +31,7 @@ _CURRENT_HISTORY = [
     (13, "gateway-key-rotation-status-contracts"),
     (14, "gateway-key-rotation-retirement-evidence"),
     (15, "approval-subject-evidence"),
+    (16, "approval-scope-contracts"),
 ]
 
 
@@ -65,6 +66,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
@@ -345,7 +347,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 schema_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,
             )
-            self.assertEqual(production_registry.target_version, 15)
+            self.assertEqual(production_registry.target_version, 16)
             self.assertIs(
                 runner_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,

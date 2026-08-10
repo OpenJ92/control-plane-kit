@@ -178,6 +178,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 (13, "gateway-key-rotation-status-contracts"),
                 (14, "gateway-key-rotation-retirement-evidence"),
                 (15, "approval-subject-evidence"),
+                (16, "approval-scope-contracts"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)
@@ -222,6 +223,7 @@ class CoordinationTimestampMigrationTests(unittest.TestCase):
                 (13, "gateway-key-rotation-status-contracts"),
                 (14, "gateway-key-rotation-retirement-evidence"),
                 (15, "approval-subject-evidence"),
+                (16, "approval-scope-contracts"),
             ],
         )
         self.assertEqual(
