@@ -512,16 +512,44 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
                 "CREATE TRIGGER cpk_test_trigger BEFORE UPDATE ON cpk_activity_events "
                 "FOR EACH ROW EXECUTE FUNCTION cpk_test_trigger()"
             )
+            connection.execute(
+                "CREATE TRIGGER cpk_test_trigger_second BEFORE INSERT ON "
+                "cpk_activity_events FOR EACH ROW EXECUTE FUNCTION "
+                "cpk_test_trigger()"
+            )
             self._assert_contract_not_current(connection)
 
             connection.execute("DROP TRIGGER cpk_test_trigger ON cpk_activity_events")
             connection.execute(
+                "DROP TRIGGER cpk_test_trigger_second ON cpk_activity_events"
+            )
+            connection.execute(
                 "CREATE RULE cpk_test_rule AS ON UPDATE TO cpk_activity_events "
                 "DO INSTEAD NOTHING"
+            )
+            connection.execute(
+                "CREATE RULE cpk_test_rule_second AS ON DELETE TO "
+                "cpk_activity_events DO INSTEAD NOTHING"
             )
             self._assert_contract_not_current(connection)
 
             connection.execute("DROP RULE cpk_test_rule ON cpk_activity_events")
+            connection.execute(
+                "DROP RULE cpk_test_rule_second ON cpk_activity_events"
+            )
+            connection.execute(
+                "CREATE POLICY cpk_test_policy ON cpk_activity_events USING (true)"
+            )
+            connection.execute(
+                "CREATE POLICY cpk_test_policy_second ON cpk_activity_events "
+                "FOR INSERT WITH CHECK (true)"
+            )
+            self._assert_contract_not_current(connection)
+
+            connection.execute("DROP POLICY cpk_test_policy ON cpk_activity_events")
+            connection.execute(
+                "DROP POLICY cpk_test_policy_second ON cpk_activity_events"
+            )
             connection.execute("DROP INDEX cpk_approval_requests_rotation_identity")
             connection.execute(
                 "CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity "
@@ -1095,6 +1123,18 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
                     self.assertIn(f"'{field}'", section)
 
         constraints = semantic_sections["semantic_constraints"]
+        relations = semantic_sections["semantic_relations"]
+        self.assertEqual(relations.count("EXISTS ( SELECT 1"), 3)
+        self.assertEqual(relations.count("LIMIT 1"), 3)
+        self.assertNotIn("count(*)", relations)
+        for catalog in ("pg_trigger", "pg_policy", "pg_rewrite"):
+            with self.subTest(catalog=catalog):
+                adjunct = relations.split(f"FROM {catalog}", 1)[1].split(
+                    "LIMIT 1",
+                    1,
+                )[0]
+                self.assertLess(len(adjunct), 400)
+
         local_translation = constraints.split("'local_columns'", 1)[1].split(
             "'referenced_relation'",
             1,
