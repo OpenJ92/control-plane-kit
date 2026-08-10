@@ -31,7 +31,7 @@ docker network create "$NETWORK_NAME" >/dev/null
 docker run -d \
   --name "$POSTGRES_CONTAINER" \
   --network "$NETWORK_NAME" \
-  --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=1g \
+  --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=2g \
   -e POSTGRES_DB=cpk \
   -e POSTGRES_USER=cpk \
   -e POSTGRES_PASSWORD=cpk \
@@ -39,7 +39,11 @@ docker run -d \
   --health-interval 1s \
   --health-timeout 5s \
   --health-retries 30 \
-  postgres:16-alpine >/dev/null
+  postgres:16-alpine \
+  postgres \
+    -c max_wal_size=512MB \
+    -c checkpoint_timeout=2min \
+    -c log_checkpoints=on >/dev/null
 
 attempt=0
 while [ "$attempt" -lt 60 ]; do
@@ -53,18 +57,24 @@ done
 
 if [ "$(docker inspect -f '{{.State.Health.Status}}' "$POSTGRES_CONTAINER")" != "healthy" ]; then
   echo "Postgres did not become healthy" >&2
-  docker logs "$POSTGRES_CONTAINER" >&2
+  docker logs --timestamps --tail 400 "$POSTGRES_CONTAINER" >&2 || true
   exit 1
 fi
 
-docker run --rm \
+if docker run --rm \
   -v "$REPO_ROOT/control-plane-kit-core:/core:ro" \
   -v "$ROOT:/source:ro" \
   --network "$NETWORK_NAME" \
   -e PYTHONDONTWRITEBYTECODE=1 \
   -e CPK_OPERATIONS_TEST_DATABASE_URL=postgresql://cpk:cpk@"$POSTGRES_CONTAINER":5432/cpk \
   "$IMAGE" \
-  sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp/pkg && python -m unittest discover -s tests'
+  sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp/pkg && python -m unittest discover -s tests'; then
+  :
+else
+  test_status=$?
+  docker logs --timestamps --tail 400 "$POSTGRES_CONTAINER" >&2 || true
+  exit "$test_status"
+fi
 
 docker run --rm \
   -v "$REPO_ROOT/control-plane-kit-core:/core:ro" \
