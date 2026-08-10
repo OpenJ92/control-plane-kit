@@ -1509,7 +1509,8 @@ def _verify_approval_subject_evidence_contract(
                index_contract.indisunique,
                index_contract.indisvalid, index_contract.indisready,
                index_contract.indislive,
-               index_contract.indnkeyatts, index_contract.indnatts,
+               index_contract.indnkeyatts = 1,
+               index_contract.indnatts = 1,
                pg_get_indexdef(indexes.oid, 1, false) = 'rotation_id',
                pg_get_expr(
                  index_contract.indpred, index_contract.indrelid, false
@@ -1536,8 +1537,8 @@ def _verify_approval_subject_evidence_contract(
             "btree",
             True,
             True,
-            1,
-            1,
+            True,
+            True,
             True,
             True,
             True,

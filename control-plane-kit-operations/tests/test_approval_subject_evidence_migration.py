@@ -964,8 +964,8 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
                 True,
                 True,
                 True,
-                1,
-                1,
+                True,
+                True,
                 True,
                 True,
             )
@@ -994,6 +994,8 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
         self.assertIn("LIMIT 6", connection.queries[0][0])
         self.assertIn("LIMIT 5", connection.queries[1][0])
         self.assertIn("LIMIT 2", connection.queries[2][0])
+        self.assertIn("indnkeyatts = 1", connection.queries[2][0])
+        self.assertIn("indnatts = 1", connection.queries[2][0])
         self.assertIn("SELECT NOT EXISTS", connection.queries[3][0])
         self.assertNotIn("SELECT subject_payload", connection.queries[3][0])
 
