@@ -675,7 +675,7 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
 
                     with self.assertRaisesRegex(
                         postgres.SchemaMigrationError,
-                        "^approval scope schema is not current$",
+                        "^database schema contract is not current$",
                     ) as raised:
                         postgres.install_postgres_schema(connection)
 

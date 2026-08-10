@@ -280,7 +280,7 @@ class SecretUseAuthorizationTimestampMigrationTests(unittest.TestCase):
 
                     self.assertEqual(
                         str(raised.exception),
-                        "secret-use authorization temporal schema is not current",
+                        "database schema contract is not current",
                     )
                     self.assertIsNone(raised.exception.__context__)
                     self.assertIsNone(raised.exception.__cause__)

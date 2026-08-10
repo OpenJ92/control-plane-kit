@@ -254,7 +254,11 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
             )
             before = self._lookalikes(connection)
 
-            postgres.install_postgres_schema(connection)
+            with connection.transaction():
+                migration_runner._apply_schema_migration(connection, self._v14())
+                migration_inspection._verify_gateway_key_rotation_retirement_evidence_contract(
+                    connection
+                )
 
             self.assertEqual(self._definition(connection), _CURRENT_DEFINITION)
             self.assertEqual(self._lookalikes(connection), before)
@@ -392,7 +396,7 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
         caller = self._connection(autocommit=False)
         observer = self._connection()
         try:
-            postgres.install_postgres_schema(caller)
+            migration_runner._apply_schema_migration(caller, self._v14())
             observer.execute("SET lock_timeout TO '250ms'")
             with self.assertRaises(psycopg.errors.LockNotAvailable):
                 observer.execute(f"SELECT count(*) FROM {_TABLE}")

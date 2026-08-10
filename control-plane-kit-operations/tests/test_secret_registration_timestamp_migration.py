@@ -231,7 +231,7 @@ class SecretRegistrationTimestampMigrationTests(unittest.TestCase):
 
                         self.assertEqual(
                             str(raised.exception),
-                            "secret registration temporal schema is not current",
+                            "database schema contract is not current",
                         )
                         self.assertLessEqual(len(str(raised.exception)), 256)
                         self.assertIsNone(raised.exception.__context__)

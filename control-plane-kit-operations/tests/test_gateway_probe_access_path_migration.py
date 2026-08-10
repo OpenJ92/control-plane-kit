@@ -579,7 +579,7 @@ class GatewayProbeAccessPathMigrationTests(unittest.TestCase):
 
                     self.assertEqual(
                         str(raised.exception),
-                        "gateway probe access path schema is not current",
+                        "database schema contract is not current",
                     )
                     self.assertLessEqual(len(str(raised.exception)), 256)
                 finally:

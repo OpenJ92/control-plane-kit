@@ -228,8 +228,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
 
                         self.assertEqual(
                             str(raised.exception),
-                            "graph, product, and authority temporal schema "
-                            "is not current",
+                            "database schema contract is not current",
                         )
                         self.assertLessEqual(len(str(raised.exception)), 256)
                         self.assertIsNone(raised.exception.__context__)
