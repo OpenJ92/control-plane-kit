@@ -20,10 +20,10 @@ from control_plane_kit_operations.postgres.product_descriptor_backfill import (
     backfill_product_descriptor_content_v1,
 )
 from control_plane_kit_operations.postgres.schema import (
-    POSTGRES_SCHEMA,
     POSTGRES_SCHEMA_MIGRATIONS,
     MigrationPostgresConnection,
     PostgresConnection,
+    _CURRENT_POSTGRES_SCHEMA,
     _GRAPH_LINEAGE_CONSTRAINTS,
     _backfill_graph_lineage,
     _upgrade_approval_scope_constraints,
@@ -90,6 +90,7 @@ _CATEGORICAL_MIGRATION_FAILURES = {
         "gateway key rotation retirement evidence is not accepted",
         frozenset({"P1110"}),
     ),
+    15: ("approval subject evidence is not accepted", frozenset({"P1110"})),
 }
 
 
@@ -151,7 +152,7 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
                 ),
             )
         if observed.kind is not ObservedSchemaKind.EMPTY:
-            connection.execute(POSTGRES_SCHEMA)
+            connection.execute(_CURRENT_POSTGRES_SCHEMA)
         _upgrade_approval_scope_constraints(connection)
         _backfill_graph_lineage(connection)
         connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)

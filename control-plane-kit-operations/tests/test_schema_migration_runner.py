@@ -30,6 +30,7 @@ _CURRENT_HISTORY = [
     (12, "gateway-key-rotation-generation-evidence"),
     (13, "gateway-key-rotation-status-contracts"),
     (14, "gateway-key-rotation-retirement-evidence"),
+    (15, "approval-subject-evidence"),
 ]
 
 
@@ -64,6 +65,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
@@ -148,6 +150,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_gateway_key_rotations_activation_check",
                 "cpk_gateway_key_rotations_generation_digest_check",
                 "cpk_gateway_key_rotations_retirement_check",
+                "cpk_approval_requests_review_digest_check",
                 "cpk_gateway_probe_completion_check",
                 "cpk_cloudflare_ingress_resources_removed_evidence_check",
                 "cpk_operation_sessions_closed_check",
@@ -169,6 +172,12 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                             "CHECK (((generation_action_digest IS NULL) OR "
                             '((generation_action_digest COLLATE "C") ~ '
                             "'^[0-9a-f]{64}$'::text)))",
+                        )
+                    elif constraint == "cpk_approval_requests_review_digest_check":
+                        self.assertEqual(
+                            after_definition,
+                            'CHECK (((review_digest COLLATE "C") ~ '
+                            "'^[0-9a-f]{64}$'::text))",
                         )
                     else:
                         self.assertEqual(after_definition, definition)
@@ -336,7 +345,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 schema_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,
             )
-            self.assertEqual(production_registry.target_version, 14)
+            self.assertEqual(production_registry.target_version, 15)
             self.assertIs(
                 runner_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,

@@ -964,6 +964,7 @@ CREATE TABLE IF NOT EXISTS cpk_approval_requests (
     )
 );
 
+{% if include_approval_subject_compatibility %}
 ALTER TABLE cpk_approval_requests
   ADD COLUMN IF NOT EXISTS rotation_id text;
 ALTER TABLE cpk_approval_requests
@@ -1039,14 +1040,17 @@ BEGIN
   END IF;
 END
 $$;
+{% endif %}
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
   ON cpk_approval_requests (session_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
 
+{% if include_approval_subject_compatibility %}
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_rotation_identity
   ON cpk_approval_requests (rotation_id)
   WHERE rotation_id IS NOT NULL;
+{% endif %}
 
 CREATE TABLE IF NOT EXISTS cpk_approval_decisions (
   decision_id text PRIMARY KEY,
@@ -1364,7 +1368,7 @@ $$;
 """
 
 
-POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render(
+_POSTGRES_SCHEMA_CONTEXT = dict(
     activity_event_kinds=tuple(ActivityEventKind),
     activity_event_run_kinds=_RUN_EVENT_KINDS,
     activity_event_step_kinds=_ACTIVITY_EVENT_KINDS,
@@ -1414,6 +1418,15 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     settled_run_statuses=_SETTLED_RUN_STATUSES,
     started_run_statuses=_STARTED_RUN_STATUSES,
     workspace_lifecycles=tuple(WorkspaceLifecycle),
+)
+_POSTGRES_SCHEMA_RENDERER = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE)
+POSTGRES_SCHEMA = _POSTGRES_SCHEMA_RENDERER.render(
+    include_approval_subject_compatibility=True,
+    **_POSTGRES_SCHEMA_CONTEXT,
+)
+_CURRENT_POSTGRES_SCHEMA = _POSTGRES_SCHEMA_RENDERER.render(
+    include_approval_subject_compatibility=False,
+    **_POSTGRES_SCHEMA_CONTEXT,
 )
 
 _POSTGRES_SCHEMA_V2_SQL = r"""
@@ -2596,6 +2609,439 @@ END
 $cpk$;
 """
 
+_POSTGRES_SCHEMA_V15_ROTATION_FK_DEFINITION = (
+    "FOREIGN KEY (rotation_id) REFERENCES "
+    "cpk_gateway_key_rotations(rotation_id)"
+)
+_POSTGRES_SCHEMA_V15_SUBJECT_KIND_DEFINITION = (
+    "CHECK ((subject_kind = ANY (ARRAY['activity-plan'::text, "
+    "'gateway-key-rotation'::text])))"
+)
+_POSTGRES_SCHEMA_V15_LEGACY_DIGEST_DEFINITION = (
+    "CHECK ((review_digest ~ '^[0-9a-f]{64}$'::text))"
+)
+_POSTGRES_SCHEMA_V15_CURRENT_DIGEST_DEFINITION = (
+    'CHECK (((review_digest COLLATE "C") ~ '
+    "'^[0-9a-f]{64}$'::text))"
+)
+_POSTGRES_SCHEMA_V15_SUBJECT_IDENTITY_DEFINITION = (
+    "CHECK ((((subject_kind = 'activity-plan'::text) AND "
+    "(plan_id IS NOT NULL) AND (rotation_id IS NULL)) OR "
+    "((subject_kind = 'gateway-key-rotation'::text) AND "
+    "(plan_id IS NULL) AND (rotation_id IS NOT NULL))))"
+)
+_POSTGRES_SCHEMA_V15_ERROR = "approval subject evidence is not accepted"
+_POSTGRES_SCHEMA_V15_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_gateway_key_rotations IN EXCLUSIVE MODE;
+LOCK TABLE cpk_approval_requests IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  legacy_columns_are_exact boolean;
+  current_columns_are_exact boolean;
+  subject_contract text;
+  constraint_count bigint;
+  constraint_identity_count bigint;
+  constraint_name_count bigint;
+  constraints_are_accepted boolean;
+  index_count bigint;
+  indexes_are_accepted boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             column_name = 'plan_id'
+             AND data_type = 'text'
+             AND is_nullable = 'NO'
+             AND column_default IS NULL
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             column_default IS NULL
+             AND CASE column_name
+               WHEN 'plan_id' THEN
+                 data_type = 'text' AND is_nullable = 'YES'
+               WHEN 'rotation_id' THEN
+                 data_type = 'text' AND is_nullable = 'YES'
+               WHEN 'subject_kind' THEN
+                 data_type = 'text' AND is_nullable = 'NO'
+               WHEN 'subject_payload' THEN
+                 data_type = 'jsonb' AND is_nullable = 'NO'
+               WHEN 'review_digest' THEN
+                 data_type = 'text' AND is_nullable = 'NO'
+               ELSE false
+             END
+           ),
+           false
+         )
+    INTO column_count, legacy_columns_are_exact, current_columns_are_exact
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_approval_requests'
+    AND column_name IN (
+      'plan_id', 'rotation_id', 'subject_kind', 'subject_payload',
+      'review_digest'
+    );
+
+  IF column_count = 1 AND legacy_columns_are_exact IS TRUE THEN
+    subject_contract := 'legacy';
+  ELSIF column_count = 5 AND current_columns_are_exact IS TRUE THEN
+    subject_contract := 'current';
+  ELSE
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+  END IF;
+
+  IF subject_contract = 'legacy' THEN
+    IF EXISTS (
+      SELECT 1
+      FROM cpk_approval_requests
+      WHERE NOT (
+        octet_length(plan_id) BETWEEN 1 AND 200
+        AND (plan_id COLLATE "C") ~ '^[A-Za-z0-9]'
+        AND (plan_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+      )
+    ) THEN
+      RAISE EXCEPTION USING
+        ERRCODE = 'P1110',
+        MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+    END IF;
+  ELSE
+    IF EXISTS (
+      SELECT 1
+      FROM cpk_approval_requests AS approvals
+      LEFT JOIN cpk_gateway_key_rotations AS rotations
+        ON rotations.rotation_id = approvals.rotation_id
+      WHERE
+        (approvals.review_digest COLLATE "C") !~ '^[0-9a-f]{{64}}$'
+        OR CASE
+          WHEN (approvals.subject_kind COLLATE "C") = 'activity-plan' THEN NOT (
+            approvals.plan_id IS NOT NULL
+            AND approvals.rotation_id IS NULL
+            AND octet_length(approvals.plan_id) BETWEEN 1 AND 200
+            AND (approvals.plan_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (approvals.plan_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND approvals.subject_payload = jsonb_build_object(
+              'kind', 'activity-plan', 'plan_id', approvals.plan_id
+            )
+            AND (approvals.review_digest COLLATE "C") = encode(
+              sha256(convert_to('activity-plan:' || approvals.plan_id, 'UTF8')),
+              'hex'
+            )
+          )
+          WHEN (approvals.subject_kind COLLATE "C") =
+               'gateway-key-rotation' THEN NOT (
+            approvals.plan_id IS NULL
+            AND approvals.rotation_id IS NOT NULL
+            AND rotations.rotation_id IS NOT NULL
+            AND octet_length(rotations.rotation_id) BETWEEN 1 AND 200
+            AND (rotations.rotation_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.rotation_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND octet_length(rotations.workspace_id) BETWEEN 1 AND 200
+            AND (rotations.workspace_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.workspace_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND octet_length(rotations.gateway_node_id) BETWEEN 1 AND 200
+            AND (rotations.gateway_node_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.gateway_node_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND octet_length(rotations.issuer) BETWEEN 1 AND 200
+            AND (rotations.issuer COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.issuer COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND octet_length(rotations.old_key_id) BETWEEN 1 AND 200
+            AND (rotations.old_key_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND (rotations.purpose COLLATE "C") IN
+              ({_sql_values(tuple(DelegationKeyPurpose))})
+            AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
+            AND rotations.clock_skew_seconds BETWEEN 0 AND 60
+            AND (rotations.intent_fingerprint COLLATE "C")
+                  ~ '^[0-9a-f]{{64}}$'
+            AND approvals.subject_payload = jsonb_build_object(
+              'kind', 'gateway-key-rotation',
+              'rotation_id', rotations.rotation_id,
+              'workspace_id', rotations.workspace_id,
+              'gateway_node_id', rotations.gateway_node_id,
+              'purpose', rotations.purpose,
+              'issuer', rotations.issuer,
+              'old_key_id', rotations.old_key_id,
+              'overlap_verifier_roles', jsonb_build_array('old', 'new'),
+              'retirement_verifier_roles', jsonb_build_array('new'),
+              'maximum_grant_lifetime_seconds',
+                rotations.maximum_grant_lifetime_seconds,
+              'clock_skew_seconds', rotations.clock_skew_seconds,
+              'rotation_intent_digest', rotations.intent_fingerprint
+            )
+            AND (approvals.review_digest COLLATE "C") = encode(
+              sha256(convert_to(
+                '{{"clock_skew_seconds":' ||
+                  rotations.clock_skew_seconds::text ||
+                  ',"gateway_node_id":' ||
+                  to_jsonb(rotations.gateway_node_id)::text ||
+                  ',"issuer":' || to_jsonb(rotations.issuer)::text ||
+                  ',"kind":"gateway-key-rotation"' ||
+                  ',"maximum_grant_lifetime_seconds":' ||
+                  rotations.maximum_grant_lifetime_seconds::text ||
+                  ',"old_key_id":' || to_jsonb(rotations.old_key_id)::text ||
+                  ',"overlap_verifier_roles":["old","new"]' ||
+                  ',"purpose":' || to_jsonb(rotations.purpose)::text ||
+                  ',"retirement_verifier_roles":["new"]' ||
+                  ',"rotation_id":' || to_jsonb(rotations.rotation_id)::text ||
+                  ',"rotation_intent_digest":' ||
+                  to_jsonb(rotations.intent_fingerprint)::text ||
+                  ',"workspace_id":' || to_jsonb(rotations.workspace_id)::text ||
+                  '}}',
+                'UTF8'
+              )),
+              'hex'
+            )
+          )
+          ELSE true
+        END
+    ) OR EXISTS (
+      SELECT approvals.rotation_id
+      FROM cpk_approval_requests AS approvals
+      WHERE approvals.rotation_id IS NOT NULL
+      GROUP BY approvals.rotation_id
+      HAVING count(*) > 1
+    ) THEN
+      RAISE EXCEPTION USING
+        ERRCODE = 'P1110',
+        MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+    END IF;
+  END IF;
+
+  SELECT count(*),
+         count(DISTINCT constraints.oid),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.convalidated
+             AND CASE constraints.conname
+               WHEN 'cpk_approval_requests_rotation_fk' THEN
+                 constraints.contype = 'f'
+                 AND pg_get_constraintdef(constraints.oid, false) =
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_ROTATION_FK_DEFINITION)}
+               WHEN 'cpk_approval_requests_subject_kind_check' THEN
+                 constraints.contype = 'c'
+                 AND pg_get_constraintdef(constraints.oid, false) =
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_SUBJECT_KIND_DEFINITION)}
+               WHEN 'cpk_approval_requests_review_digest_check' THEN
+                 constraints.contype = 'c'
+                 AND pg_get_constraintdef(constraints.oid, false) IN (
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_LEGACY_DIGEST_DEFINITION)},
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_CURRENT_DIGEST_DEFINITION)}
+                 )
+               WHEN 'cpk_approval_requests_subject_identity_check' THEN
+                 constraints.contype = 'c'
+                 AND pg_get_constraintdef(constraints.oid, false) =
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_SUBJECT_IDENTITY_DEFINITION)}
+               ELSE false
+             END
+           ),
+           false
+         )
+    INTO constraint_count, constraint_identity_count, constraint_name_count,
+         constraints_are_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_approval_requests'
+    AND constraints.conname IN (
+      'cpk_approval_requests_rotation_fk',
+      'cpk_approval_requests_subject_kind_check',
+      'cpk_approval_requests_review_digest_check',
+      'cpk_approval_requests_subject_identity_check'
+    );
+
+  IF constraint_count > 4
+    OR constraint_count <> constraint_identity_count
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0 AND constraints_are_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+  END IF;
+
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             indexes.relkind = 'i'
+             AND index_contract.indisunique
+             AND index_contract.indisvalid
+             AND index_contract.indisready
+             AND index_contract.indislive
+             AND relation.relname = 'cpk_approval_requests'
+             AND pg_get_indexdef(indexes.oid) = format(
+               'CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity '
+               'ON %I.cpk_approval_requests USING btree (rotation_id) '
+               'WHERE (rotation_id IS NOT NULL)',
+               current_schema()
+             )
+           ),
+           false
+         )
+    INTO index_count, indexes_are_accepted
+  FROM pg_class AS indexes
+  JOIN pg_namespace AS namespace ON namespace.oid = indexes.relnamespace
+  LEFT JOIN pg_index AS index_contract
+    ON index_contract.indexrelid = indexes.oid
+  LEFT JOIN pg_class AS relation
+    ON relation.oid = index_contract.indrelid
+  WHERE namespace.nspname = current_schema()
+    AND indexes.relname = 'cpk_approval_requests_rotation_identity';
+
+  IF index_count > 1
+    OR (index_count > 0 AND indexes_are_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V15_CONVERGE_ROWS_SQL = f"""
+DO $cpk$
+DECLARE
+  owned_column_count bigint;
+BEGIN
+  SELECT count(*)
+    INTO owned_column_count
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_approval_requests'
+    AND column_name IN (
+      'rotation_id', 'subject_kind', 'subject_payload', 'review_digest'
+    );
+
+  IF owned_column_count = 0 THEN
+    ALTER TABLE cpk_approval_requests
+      ADD COLUMN rotation_id text,
+      ADD COLUMN subject_kind text,
+      ADD COLUMN subject_payload jsonb,
+      ADD COLUMN review_digest text;
+
+    UPDATE cpk_approval_requests
+    SET subject_kind = 'activity-plan',
+        subject_payload = jsonb_build_object(
+          'kind', 'activity-plan', 'plan_id', plan_id
+        ),
+        review_digest = encode(
+          sha256(convert_to('activity-plan:' || plan_id, 'UTF8')),
+          'hex'
+        );
+
+    ALTER TABLE cpk_approval_requests
+      ALTER COLUMN plan_id DROP NOT NULL,
+      ALTER COLUMN subject_kind SET NOT NULL,
+      ALTER COLUMN subject_payload SET NOT NULL,
+      ALTER COLUMN review_digest SET NOT NULL;
+  ELSIF owned_column_count <> 4 THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V15_CONVERGE_OBJECTS_SQL = f"""
+DO $cpk$
+DECLARE
+  digest_definition text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_approval_requests'
+      AND constraints.conname = 'cpk_approval_requests_rotation_fk'
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_rotation_fk
+      FOREIGN KEY (rotation_id)
+      REFERENCES cpk_gateway_key_rotations(rotation_id);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_approval_requests'
+      AND constraints.conname = 'cpk_approval_requests_subject_kind_check'
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_subject_kind_check
+      CHECK (subject_kind IN ('activity-plan', 'gateway-key-rotation'));
+  END IF;
+
+  SELECT pg_get_constraintdef(constraints.oid, false)
+    INTO digest_definition
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_approval_requests'
+    AND constraints.conname = 'cpk_approval_requests_review_digest_check';
+
+  IF digest_definition IS NULL THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_review_digest_check
+      CHECK ((review_digest COLLATE "C") ~ '^[0-9a-f]{{64}}$');
+  ELSIF digest_definition =
+    {_postgres_text_literal(_POSTGRES_SCHEMA_V15_LEGACY_DIGEST_DEFINITION)}
+  THEN
+    ALTER TABLE cpk_approval_requests
+      DROP CONSTRAINT cpk_approval_requests_review_digest_check,
+      ADD CONSTRAINT cpk_approval_requests_review_digest_check
+      CHECK ((review_digest COLLATE "C") ~ '^[0-9a-f]{{64}}$');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_approval_requests'
+      AND constraints.conname = 'cpk_approval_requests_subject_identity_check'
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_subject_identity_check
+      CHECK (
+        (subject_kind = 'activity-plan'
+          AND plan_id IS NOT NULL AND rotation_id IS NULL)
+        OR
+        (subject_kind = 'gateway-key-rotation'
+          AND plan_id IS NULL AND rotation_id IS NOT NULL)
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class AS indexes
+    JOIN pg_namespace AS namespace ON namespace.oid = indexes.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND indexes.relname = 'cpk_approval_requests_rotation_identity'
+  ) THEN
+    CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity
+      ON cpk_approval_requests (rotation_id)
+      WHERE rotation_id IS NOT NULL;
+  END IF;
+END
+$cpk$;
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -2817,6 +3263,24 @@ if _POSTGRES_SCHEMA_V14.checksum_sha256 != _POSTGRES_SCHEMA_V14_SHA256:
         f"checksum: expected {_POSTGRES_SCHEMA_V14_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V14.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V15 = SchemaMigration(
+    version=15,
+    name="approval-subject-evidence",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V15_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V15_CONVERGE_ROWS_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V15_CONVERGE_OBJECTS_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V15_SHA256 = (
+    "215c6a71efd06f699c1d988a7e55435920075726009f030eecbd4a8c0fd91a0b"
+)
+if _POSTGRES_SCHEMA_V15.checksum_sha256 != _POSTGRES_SCHEMA_V15_SHA256:
+    raise SchemaMigrationError(
+        "approval subject evidence V15 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V15_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V15.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -2833,6 +3297,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V12,
         _POSTGRES_SCHEMA_V13,
         _POSTGRES_SCHEMA_V14,
+        _POSTGRES_SCHEMA_V15,
     )
 )
 

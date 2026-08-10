@@ -36,6 +36,7 @@ _CURRENT_HISTORY = [
     (12, "gateway-key-rotation-generation-evidence"),
     (13, "gateway-key-rotation-status-contracts"),
     (14, "gateway-key-rotation-retirement-evidence"),
+    (15, "approval-subject-evidence"),
 ]
 _TEMPORAL_COLUMNS = (
     ("cpk_gateway_key_rotation_deployments", "accepted_at", "YES"),
@@ -56,6 +57,7 @@ _SECONDS = "2026-08-08T12:00:00Z"
 _MICROS = "2026-08-08T12:00:00.000001Z"
 _V7_SCHEMA_SHA256 = "65c0309b51e82e4ad313f113cd5df266f61e6c8b98aa5d5ff7194b53b6e5a775"
 _EXPECTED_REBUILT_OBJECTS = {
+    ("constraint", "cpk_approval_requests_review_digest_check"),
     ("constraint", "cpk_cloudflare_ingress_resources_removed_evidence_check"),
     ("constraint", "cpk_gateway_key_rotations_activation_check"),
     ("constraint", "cpk_gateway_key_rotations_retirement_check"),
@@ -67,6 +69,14 @@ _EXPECTED_REBUILT_OBJECTS = {
 _CANONICAL_DIGEST_CONSTRAINT = (
     "constraint",
     "cpk_gateway_key_rotations_generation_digest_check",
+)
+_APPROVAL_DIGEST_CONSTRAINT = (
+    "constraint",
+    "cpk_approval_requests_review_digest_check",
+)
+_APPROVAL_DIGEST_DEFINITION = (
+    'CHECK (((review_digest COLLATE "C") ~ '
+    "'^[0-9a-f]{64}$'::text))"
 )
 _CANONICAL_DIGEST_DEFINITION = (
     "CHECK (((generation_action_digest IS NULL) OR "
@@ -99,7 +109,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_gateway_key_rotation_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 14)
+        self.assertEqual(registry.target_version, 15)
         self.assertEqual(
             [(value.version, value.name) for value in registry.migrations[:7]],
             _V7_HISTORY,
@@ -241,6 +251,8 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
             with self.subTest(identity=identity):
                 if identity == _CANONICAL_DIGEST_CONSTRAINT:
                     self.assertEqual(after_definition, _CANONICAL_DIGEST_DEFINITION)
+                elif identity == _APPROVAL_DIGEST_CONSTRAINT:
+                    self.assertEqual(after_definition, _APPROVAL_DIGEST_DEFINITION)
                 else:
                     self.assertEqual(after_definition, before_definition)
                 if after_oid != before_oid:

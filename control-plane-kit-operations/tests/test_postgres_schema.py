@@ -97,7 +97,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             ],
         )
 
-    def test_install_backfills_legacy_plan_approval_as_closed_subject(self) -> None:
+    def test_install_rejects_subject_drift_after_v15(self) -> None:
         install_schema(self.connection)
         self._seed_minimal_execution_truth()
         self.connection.execute(
@@ -116,22 +116,24 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             "ALTER TABLE cpk_approval_requests ALTER COLUMN plan_id SET NOT NULL"
         )
 
-        install_schema(self.connection)
+        with self.assertRaises(SchemaMigrationError):
+            install_schema(self.connection)
 
-        row = self.connection.execute(
-            """
-            SELECT plan_id, rotation_id, subject_kind, subject_payload,
-                   review_digest
-            FROM cpk_approval_requests
-            WHERE request_id = 'approval-request-a'
-            """
-        ).fetchone()
-        self.assertEqual(row[0:3], ("plan-a", None, "activity-plan"))
         self.assertEqual(
-            row[3],
-            {"kind": "activity-plan", "plan_id": "plan-a"},
+            self.connection.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'cpk_approval_requests'
+                  AND column_name IN (
+                    'rotation_id', 'subject_kind', 'subject_payload',
+                    'review_digest'
+                  )
+                """
+            ).fetchall(),
+            [],
         )
-        self.assertEqual(len(row[4]), 64)
 
     def test_install_expands_stale_approval_scope_checks_once(self) -> None:
         install_schema(self.connection)
