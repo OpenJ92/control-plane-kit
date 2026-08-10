@@ -25,6 +25,11 @@ from control_plane_kit_core.lifecycle import (
     ResourceOwnership,
     ResourcePersistence,
 )
+from control_plane_kit_core.node_control import (
+    MAX_NODE_CONTROL_SURFACES,
+    WorkloadNodeControlSurfaceDescriptor,
+    WorkloadNodeControlSurfaceDescriptorCodec,
+)
 from control_plane_kit_core.secrets import (
     SecretDelivery,
     secret_delivery_from_descriptor,
@@ -62,6 +67,9 @@ _PRODUCT_CONTRACT_DESCRIPTOR_KEYS = frozenset(
         "verification",
         "lifecycle",
     }
+)
+_PRODUCT_CONTRACT_WITH_CONTROL_DESCRIPTOR_KEYS = (
+    _PRODUCT_CONTRACT_DESCRIPTOR_KEYS | {"control_surfaces"}
 )
 _CONTAINER_PRODUCT_DESCRIPTOR_KEYS = frozenset(
     {
@@ -450,6 +458,7 @@ class ProductRuntimeContract:
     capabilities: tuple[CapabilityName, ...] = ()
     verification: VerificationContract = field(default_factory=VerificationContract)
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
+    control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.sockets, BlockSockets):
@@ -513,6 +522,46 @@ class ProductRuntimeContract:
         if not all(isinstance(value, CapabilityName) for value in capabilities):
             raise ProductRuntimeContractError("capabilities must be CapabilityName values")
         _require_unique(tuple(value.value for value in capabilities), "capabilities")
+        if not isinstance(self.control_surfaces, tuple):
+            raise ProductRuntimeContractError("control surfaces must be a tuple")
+        raw_control_surfaces = self.control_surfaces
+        if len(raw_control_surfaces) > MAX_NODE_CONTROL_SURFACES:
+            raise ProductRuntimeContractError(
+                "product runtime contract declares too many control surfaces"
+            )
+        if not all(
+            isinstance(surface, WorkloadNodeControlSurfaceDescriptor)
+            for surface in raw_control_surfaces
+        ):
+            raise ProductRuntimeContractError(
+                "control surfaces must contain WorkloadNodeControlSurfaceDescriptor values"
+            )
+        control_surfaces = tuple(
+            sorted(
+                raw_control_surfaces,
+                key=lambda surface: surface.provider_socket_name,
+            )
+        )
+        surface_sockets = tuple(
+            surface.provider_socket_name.value for surface in control_surfaces
+        )
+        _require_unique(surface_sockets, "control surface provider sockets")
+        node_controllable = CapabilityName.NODE_CONTROLLABLE in capabilities
+        if node_controllable != bool(control_surfaces):
+            raise ProductRuntimeContractError(
+                "node-controllable capability and control surfaces must agree"
+            )
+        for socket_name in surface_sockets:
+            try:
+                provider = self.sockets.provider(socket_name)
+            except KeyError as error:
+                raise ProductRuntimeContractError(
+                    "control surface references an unknown provider socket"
+                ) from error
+            if provider.protocol is not Protocol.HTTP:
+                raise ProductRuntimeContractError(
+                    "control surface provider socket must use HTTP"
+                )
         if not isinstance(self.verification, VerificationContract):
             raise ProductRuntimeContractError(
                 "verification must be VerificationContract"
@@ -531,9 +580,10 @@ class ProductRuntimeContract:
         object.__setattr__(self, "secret_deliveries", secret_deliveries)
         object.__setattr__(self, "retained_data_mounts", retained_data_mounts)
         object.__setattr__(self, "capabilities", capabilities)
+        object.__setattr__(self, "control_surfaces", control_surfaces)
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "sockets": _sockets_descriptor(self.sockets),
             "provider_ports": [value.descriptor() for value in self.provider_ports],
             "public_environment": [
@@ -550,6 +600,12 @@ class ProductRuntimeContract:
             "verification": self.verification.descriptor(),
             "lifecycle": self.lifecycle.descriptor(),
         }
+        if self.control_surfaces:
+            descriptor["control_surfaces"] = [
+                WorkloadNodeControlSurfaceDescriptorCodec().encode(surface)
+                for surface in self.control_surfaces
+            ]
+        return descriptor
 
 
 class ProductRuntimeContractCodec:
@@ -563,11 +619,21 @@ class ProductRuntimeContractCodec:
     def decode(self, descriptor: Mapping[str, object]) -> ProductRuntimeContract:
         try:
             mapping = _product_mapping(descriptor, "product runtime contract")
-            _require_product_keys(
-                mapping,
-                _PRODUCT_CONTRACT_DESCRIPTOR_KEYS,
-                "product runtime contract",
+            expected_keys = (
+                _PRODUCT_CONTRACT_WITH_CONTROL_DESCRIPTOR_KEYS
+                if "control_surfaces" in mapping
+                else _PRODUCT_CONTRACT_DESCRIPTOR_KEYS
             )
+            _require_product_keys(mapping, expected_keys, "product runtime contract")
+            raw_control_surfaces = (
+                _product_list(mapping, "control_surfaces")
+                if "control_surfaces" in mapping
+                else ()
+            )
+            if "control_surfaces" in mapping and not raw_control_surfaces:
+                raise ProductRuntimeContractError(
+                    "control_surfaces must be omitted when empty"
+                )
             return ProductRuntimeContract(
                 sockets=_sockets_from_descriptor(mapping["sockets"]),
                 provider_ports=tuple(
@@ -597,6 +663,12 @@ class ProductRuntimeContractCodec:
                 capabilities=tuple(
                     CapabilityName(_product_text_value(value, "capability"))
                     for value in _product_list(mapping, "capabilities")
+                ),
+                control_surfaces=tuple(
+                    WorkloadNodeControlSurfaceDescriptorCodec().decode(
+                        _product_mapping(value, "control surface")
+                    )
+                    for value in raw_control_surfaces
                 ),
                 verification=VerificationContract.from_descriptor(mapping["verification"]),
                 lifecycle=_lifecycle_from_descriptor(mapping["lifecycle"]),
@@ -1362,6 +1434,7 @@ def _instantiate_document(
             role_id=role_id,
             display_name=product.display_name,
             capabilities=product.runtime_contract.capabilities,
+            control_surfaces=product.runtime_contract.control_surfaces,
             verification=product.runtime_contract.verification,
         ),
         implementation=OciContainerProductImplementation(document, configuration),

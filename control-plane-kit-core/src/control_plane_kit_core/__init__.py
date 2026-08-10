@@ -207,6 +207,8 @@ from control_plane_kit_core.node_control import (
     WeightedRoutingControlState,
     WorkloadNodeControlGrantVerificationCode,
     WorkloadNodeControlGrantVerificationResult,
+    WorkloadNodeControlSurfaceDescriptor,
+    WorkloadNodeControlSurfaceDescriptorCodec,
     verify_workload_node_control_grant,
 )
 from control_plane_kit_core.products import (
@@ -528,6 +530,8 @@ __all__ = [
     "WeightedRoutingControlState",
     "WorkloadNodeControlGrantVerificationCode",
     "WorkloadNodeControlGrantVerificationResult",
+    "WorkloadNodeControlSurfaceDescriptor",
+    "WorkloadNodeControlSurfaceDescriptorCodec",
     "activity_event_scope",
     "approval_subject_from_descriptor",
     "canonical_cpk_server_entrypoint_handoff",

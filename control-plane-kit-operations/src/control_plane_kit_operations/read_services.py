@@ -1224,6 +1224,7 @@ def _operator_graph_descriptor(graph: object) -> dict[str, object]:
 
 def _node_control_surface(node_id: str, descriptor: Mapping[str, object]) -> dict[str, object]:
     metadata = _mapping(descriptor.get("metadata", {}))
+    block_spec = _mapping(descriptor.get("block_spec", {}))
     return {
         "node_id": node_id,
         "display_name": str(metadata.get("display_name", node_id)),
@@ -1232,6 +1233,7 @@ def _node_control_surface(node_id: str, descriptor: Mapping[str, object]) -> dic
         "capabilities": _list(metadata.get("capabilities", ())),
         "providers": dict(_mapping(descriptor.get("providers", {}))),
         "requirements": dict(_mapping(descriptor.get("requirements", {}))),
+        "control_surfaces": _list(block_spec.get("control_surfaces", ())),
         "metadata": {
             str(key): value
             for key, value in sorted(metadata.items())

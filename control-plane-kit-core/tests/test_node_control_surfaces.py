@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 import hashlib
 import json
 from pathlib import Path
@@ -27,6 +27,8 @@ from control_plane_kit_core.node_control import (
     NodeControlGraphReference,
     NodeControlGraphReferenceRole,
     NodeControlOperation,
+    MAX_NODE_CONTROL_SURFACES,
+    MAX_NODE_CONTROL_VARIABLES_PER_SURFACE,
 )
 from control_plane_kit_core.products import (
     ContainerServerProduct,
@@ -173,6 +175,13 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             codec.decode({**encoded, "future": True})
 
+        oversized = dict(encoded)
+        oversized["variables"] = [
+            encoded["variables"][0]
+        ] * (MAX_NODE_CONTROL_VARIABLES_PER_SURFACE + 1)
+        with self.assertRaisesRegex(ValueError, "too many variables"):
+            codec.decode(oversized)
+
     def test_product_contract_binds_surfaces_and_capability_biconditionally(self) -> None:
         surface = self.surface("control", "routing")
         contract = self.product(surface).runtime_contract
@@ -185,6 +194,11 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
                     providers=(ProviderSocket("control", Protocol.HTTP),)
                 ),
                 control_surfaces=(surface,),
+            )
+        with self.assertRaisesRegex(ProductRuntimeContractError, "too many"):
+            ProductRuntimeContract(
+                capabilities=(CapabilityName.NODE_CONTROLLABLE,),
+                control_surfaces=(None,) * (MAX_NODE_CONTROL_SURFACES + 1),
             )
         with self.assertRaises(ProductRuntimeContractError):
             ProductRuntimeContract(
@@ -204,6 +218,10 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
                 capabilities=(CapabilityName.NODE_CONTROLLABLE,),
                 control_surfaces=(surface,),
             )
+
+    def test_new_fields_append_without_reinterpreting_positional_callers(self) -> None:
+        self.assertEqual(fields(BlockSpec)[-1].name, "control_surfaces")
+        self.assertEqual(fields(ProductRuntimeContract)[-1].name, "control_surfaces")
 
     def test_surface_identity_is_socket_plus_variable_and_order_is_canonical(self) -> None:
         alpha = self.surface("alpha-control", "routing")
