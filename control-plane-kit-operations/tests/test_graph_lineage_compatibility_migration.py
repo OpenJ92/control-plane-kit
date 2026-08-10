@@ -158,7 +158,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                     query.lstrip().split(None, 1)[0].upper()
                     for query in submitted_after_v17
                 },
-                {"SELECT", "WITH"},
+                {"LOCK", "SELECT", "WITH"},
             )
             self.assertEqual(self._history(connection)[-1][:2], _V17_IDENTITY)
         finally:
