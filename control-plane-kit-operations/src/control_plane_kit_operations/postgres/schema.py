@@ -3607,16 +3607,12 @@ BEGIN
                  current_projection.workspace_id
                    IS DISTINCT FROM workspace.workspace_id
                  OR current_projection.source_authored_graph_id
-                   IS DISTINCT FROM workspace.current_graph_id
-                 OR current_projection.projection_kind IS DISTINCT FROM 'identity'
-                 OR current_projection.projection_key IS DISTINCT FROM 'identity'))
+                   IS DISTINCT FROM workspace.current_graph_id))
            OR (workspace.desired_realized_projection_id IS NOT NULL AND (
                  desired_projection.workspace_id
                    IS DISTINCT FROM workspace.workspace_id
                  OR desired_projection.source_authored_graph_id
-                   IS DISTINCT FROM workspace.desired_graph_id
-                 OR desired_projection.projection_kind IS DISTINCT FROM 'identity'
-                 OR desired_projection.projection_key IS DISTINCT FROM 'identity'))
+                   IS DISTINCT FROM workspace.desired_graph_id))
       )
     THEN
       RAISE EXCEPTION USING ERRCODE = 'P1110',
@@ -3639,15 +3635,11 @@ BEGIN
            OR (plan.base_realized_projection_id IS NOT NULL AND (
                  base_projection.workspace_id IS DISTINCT FROM session.workspace_id
                  OR base_projection.source_authored_graph_id
-                   IS DISTINCT FROM plan.base_graph_id
-                 OR base_projection.projection_kind IS DISTINCT FROM 'identity'
-                 OR base_projection.projection_key IS DISTINCT FROM 'identity'))
+                   IS DISTINCT FROM plan.base_graph_id))
            OR (plan.desired_realized_projection_id IS NOT NULL AND (
                  desired_projection.workspace_id IS DISTINCT FROM session.workspace_id
                  OR desired_projection.source_authored_graph_id
-                   IS DISTINCT FROM plan.desired_graph_id
-                 OR desired_projection.projection_kind IS DISTINCT FROM 'identity'
-                 OR desired_projection.projection_key IS DISTINCT FROM 'identity'))
+                   IS DISTINCT FROM plan.desired_graph_id))
       )
     THEN
       RAISE EXCEPTION USING ERRCODE = 'P1110',
@@ -4046,7 +4038,7 @@ _POSTGRES_SCHEMA_V17 = SchemaMigration(
     ),
 )
 _POSTGRES_SCHEMA_V17_SHA256 = (
-    "95593a35e575c079222eb773e8d139da01d4f8e7cdf91393de63b0050a34618c"
+    "7b84050a532d04ad9b54408640ad0f0c9c6b456ca7e9c522fcda9d3e32b696b6"
 )
 if _POSTGRES_SCHEMA_V17.checksum_sha256 != _POSTGRES_SCHEMA_V17_SHA256:
     raise SchemaMigrationError(

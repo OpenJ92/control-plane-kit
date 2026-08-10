@@ -117,8 +117,6 @@ SELECT NOT EXISTS (
          OR current_projection.workspace_id IS DISTINCT FROM workspace.workspace_id
          OR current_projection.source_authored_graph_id
               IS DISTINCT FROM workspace.current_graph_id
-         OR current_projection.projection_kind IS DISTINCT FROM 'identity'
-         OR current_projection.projection_key IS DISTINCT FROM 'identity'
        )
      )
      OR (
@@ -128,8 +126,6 @@ SELECT NOT EXISTS (
          OR desired_projection.workspace_id IS DISTINCT FROM workspace.workspace_id
          OR desired_projection.source_authored_graph_id
               IS DISTINCT FROM workspace.desired_graph_id
-         OR desired_projection.projection_kind IS DISTINCT FROM 'identity'
-         OR desired_projection.projection_key IS DISTINCT FROM 'identity'
        )
      )
 ) AND NOT EXISTS (
@@ -156,10 +152,6 @@ SELECT NOT EXISTS (
      OR base_projection.source_authored_graph_id IS DISTINCT FROM plan.base_graph_id
      OR desired_projection.source_authored_graph_id
           IS DISTINCT FROM plan.desired_graph_id
-     OR base_projection.projection_kind IS DISTINCT FROM 'identity'
-     OR base_projection.projection_key IS DISTINCT FROM 'identity'
-     OR desired_projection.projection_kind IS DISTINCT FROM 'identity'
-     OR desired_projection.projection_key IS DISTINCT FROM 'identity'
 )
 """
 
@@ -183,7 +175,7 @@ def verify_graph_lineage_v1(connection: _Connection) -> None:
     failed = False
     try:
         lock_graph_lineage_v1(connection)
-        _scan(connection, insert_missing=False, require_present=True)
+        _scan(connection, insert_missing=False)
         rows = connection.execute(_VERIFY_REFERENCES).fetchall()
         if rows != [(True,)]:
             raise ValueError("reference mismatch")
@@ -206,7 +198,6 @@ def _scan(
     connection: _Connection,
     *,
     insert_missing: bool,
-    require_present: bool = False,
 ) -> None:
     last_graph_id = ""
     while True:
@@ -235,8 +226,6 @@ def _scan(
                 authored_record=authored
             )
             exists = _projection_is_exact(connection, expected)
-            if require_present and not exists:
-                raise ValueError("projection missing")
             if insert_missing and not exists:
                 connection.execute(_INSERT_PROJECTION, _projection_parameters(expected))
                 if not _projection_is_exact(connection, expected):

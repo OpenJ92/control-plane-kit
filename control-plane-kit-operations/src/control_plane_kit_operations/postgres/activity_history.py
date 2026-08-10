@@ -277,10 +277,6 @@ class PostgresActivityHistoryStore:
                     candidate.base_graph_id
               AND desired_projection.source_authored_graph_id =
                     candidate.desired_graph_id
-              AND base_projection.projection_kind = 'identity'
-              AND base_projection.projection_key = 'identity'
-              AND desired_projection.projection_kind = 'identity'
-              AND desired_projection.projection_key = 'identity'
             RETURNING plan_id
             """,
             (
