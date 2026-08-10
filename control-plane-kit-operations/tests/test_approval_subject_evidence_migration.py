@@ -343,6 +343,74 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_duplicate_rotation_identity_rejects_before_v15_mutation(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare(14, connection)
+            subject = GatewayKeyRotationApprovalSubject(
+                rotation_id="rotation-a",
+                workspace_id="workspace-a",
+                gateway_node_id="gateway-a",
+                purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+                issuer="issuer-a",
+                old_key_id="key-a",
+                maximum_grant_lifetime_seconds=300,
+                clock_skew_seconds=60,
+                rotation_intent_digest="a" * 64,
+            )
+            self._seed_current_rotation_approval(connection, subject)
+            connection.execute(
+                "DROP INDEX cpk_approval_requests_rotation_identity"
+            )
+            connection.execute(
+                "INSERT INTO cpk_approval_requests ("
+                "request_id, session_id, rotation_id, subject_kind, "
+                "subject_payload, review_digest, requested_by, requested_at, "
+                "required_scope, max_risk, destructive"
+                ") SELECT "
+                "'request-b', session_id, rotation_id, subject_kind, "
+                "subject_payload, review_digest, requested_by, requested_at, "
+                "required_scope, max_risk, destructive "
+                "FROM cpk_approval_requests WHERE request_id = 'request-a'"
+            )
+            before = self._snapshot(connection)
+
+            with self.assertRaises(postgres.SchemaMigrationError) as raised:
+                postgres.install_postgres_schema(connection)
+
+            self.assertEqual(str(raised.exception), _CATEGORICAL_ERROR)
+            self.assertIsNone(raised.exception.__context__)
+            self.assertIsNone(raised.exception.__cause__)
+            self.assertEqual(self._snapshot(connection), before)
+        finally:
+            connection.close()
+
+    def test_final_verifier_rejects_extra_index_key_or_include(self) -> None:
+        definitions = (
+            "ON cpk_approval_requests (rotation_id, request_id) "
+            "WHERE rotation_id IS NOT NULL",
+            "ON cpk_approval_requests (rotation_id) INCLUDE (request_id) "
+            "WHERE rotation_id IS NOT NULL",
+        )
+        for definition in definitions:
+            with self.subTest(definition=definition):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare(15, connection)
+                    connection.execute(
+                        "DROP INDEX cpk_approval_requests_rotation_identity"
+                    )
+                    connection.execute(
+                        "CREATE UNIQUE INDEX "
+                        "cpk_approval_requests_rotation_identity " + definition
+                    )
+
+                    with self.assertRaises(postgres.SchemaMigrationError):
+                        postgres.verify_postgres_schema(connection)
+                finally:
+                    connection.close()
+
     def test_explicit_c_admission_overrides_non_c_column_collation(self) -> None:
         connection = self._connection()
         try:
