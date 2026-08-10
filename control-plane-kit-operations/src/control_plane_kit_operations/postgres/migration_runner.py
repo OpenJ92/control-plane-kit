@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from control_plane_kit_operations.postgres.migration_inspection import (
+    _acquire_schema_lock_plan,
+    _verify_postgres_schema_under_transaction,
     inspect_postgres_schema,
-    verify_postgres_schema,
+)
+from control_plane_kit_operations.postgres.current_schema_contract import (
+    CURRENT_SCHEMA_LOCK_PLAN,
+    PENDING_SCHEMA_LOCK_PLAN,
 )
 from control_plane_kit_operations.postgres.migrations import (
     DeterministicBackfillStep,
@@ -136,26 +141,35 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
         plan = POSTGRES_SCHEMA_MIGRATIONS.plan(observed)
         if observed.kind is not ObservedSchemaKind.VERSIONED:
             connection.execute(_CREATE_LEDGER)
-        for action in plan.actions:
+        actions = plan.actions
+        if observed.kind is ObservedSchemaKind.EMPTY:
+            if (
+                not actions
+                or actions[0].kind is not SchemaMigrationActionKind.APPLY
+                or actions[0].migration.version != 1
+            ):
+                raise SchemaMigrationError("empty schema migration plan is not accepted")
+            first_action = actions[0]
+            active_migration_version = first_action.migration.version
+            _apply_schema_migration(connection, first_action.migration)
+            active_migration_version = None
+            _acquire_schema_lock_plan(connection, PENDING_SCHEMA_LOCK_PLAN)
+            _record_schema_migration(connection, first_action.migration)
+            actions = actions[1:]
+        else:
+            _acquire_schema_lock_plan(
+                connection,
+                PENDING_SCHEMA_LOCK_PLAN if actions else CURRENT_SCHEMA_LOCK_PLAN,
+            )
+        for action in actions:
             if action.kind is SchemaMigrationActionKind.APPLY:
                 active_migration_version = action.migration.version
                 _apply_schema_migration(connection, action.migration)
                 active_migration_version = None
-            connection.execute(
-                """
-                INSERT INTO cpk_schema_migrations
-                  (version, name, checksum_sha256)
-                VALUES (%s, %s, %s)
-                """,
-                (
-                    action.migration.version,
-                    action.migration.name,
-                    action.migration.checksum_sha256,
-                ),
-            )
+            _record_schema_migration(connection, action.migration)
         if observed.kind is not ObservedSchemaKind.EMPTY:
             connection.execute(_CURRENT_POSTGRES_SCHEMA)
-        verify_postgres_schema(connection)
+        _verify_postgres_schema_under_transaction(connection)
     except SchemaMigrationError:
         raise
     except Exception as error:
@@ -174,6 +188,24 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
         ):
             raise SchemaMigrationError(failure)
         raise SchemaMigrationError("schema migration application failed")
+
+
+def _record_schema_migration(
+    connection: PostgresConnection,
+    migration: SchemaMigration,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO cpk_schema_migrations
+          (version, name, checksum_sha256)
+        VALUES (%s, %s, %s)
+        """,
+        (
+            migration.version,
+            migration.name,
+            migration.checksum_sha256,
+        ),
+    )
 
 
 def _apply_schema_migration(
