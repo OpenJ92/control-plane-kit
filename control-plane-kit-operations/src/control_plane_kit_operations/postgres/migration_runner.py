@@ -26,7 +26,6 @@ from control_plane_kit_operations.postgres.schema import (
     _CURRENT_POSTGRES_SCHEMA,
     _GRAPH_LINEAGE_CONSTRAINTS,
     _backfill_graph_lineage,
-    _upgrade_approval_scope_constraints,
 )
 
 
@@ -91,6 +90,7 @@ _CATEGORICAL_MIGRATION_FAILURES = {
         frozenset({"P1110"}),
     ),
     15: ("approval subject evidence is not accepted", frozenset({"P1110"})),
+    16: ("approval scope contract is not accepted", frozenset({"P1110"})),
 }
 
 
@@ -153,7 +153,6 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
             )
         if observed.kind is not ObservedSchemaKind.EMPTY:
             connection.execute(_CURRENT_POSTGRES_SCHEMA)
-        _upgrade_approval_scope_constraints(connection)
         _backfill_graph_lineage(connection)
         connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
         verify_postgres_schema(connection)

@@ -36,6 +36,7 @@ _CURRENT_HISTORY = [
     (13, "gateway-key-rotation-status-contracts"),
     (14, "gateway-key-rotation-retirement-evidence"),
     (15, "approval-subject-evidence"),
+    (16, "approval-scope-contracts"),
 ]
 _CANONICAL = "2026-08-07T06:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-07T02:00:00-04:00"
@@ -66,7 +67,7 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_delegation_signing_key_v5(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 15)
+        self.assertEqual(registry.target_version, 16)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations[:5]],
             _V5_HISTORY,

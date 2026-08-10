@@ -3042,6 +3042,243 @@ END
 $cpk$;
 """
 
+_POSTGRES_SCHEMA_V16_LEGACY_SCOPES = (
+    "hub:instance:create",
+    "hub:instance:read",
+    "instance:workspace:read",
+    "instance:workspace:edit",
+    "plan:request",
+    "plan:approve",
+    "plan:approve-destructive",
+    "plan:execute",
+    "execution:operate",
+    "runtime-authority:register",
+    "runtime-authority:read",
+    "runtime-authority:revoke",
+    "runtime-authority:use",
+    "runtime-authority-delivery:register",
+    "runtime-authority-delivery:read",
+    "runtime-authority-delivery:revoke",
+    "ingress-authority:register",
+    "ingress-authority:read",
+    "ingress-authority:revoke",
+    "ingress-authority:use",
+    "secret-provider:register",
+    "secret-provider:read",
+    "secret-provider:use",
+    "secret-provider:revoke",
+    "delegation-key:generate",
+    "delegation-key:register",
+    "delegation-key:read",
+    "delegation-key:activate",
+    "delegation-key:retire",
+    "delegation-key:revoke",
+    "delegation-key:use",
+    "delegation-key:rotate",
+    "gateway-probe:use",
+)
+_POSTGRES_SCHEMA_V16_CURRENT_SCOPES = (
+    "hub:instance:create",
+    "hub:instance:read",
+    "instance:workspace:read",
+    "instance:workspace:edit",
+    "plan:request",
+    "plan:approve",
+    "plan:approve-destructive",
+    "plan:execute",
+    "execution:operate",
+    "runtime-authority:register",
+    "runtime-authority:read",
+    "runtime-authority:revoke",
+    "runtime-authority:use",
+    "runtime-authority-delivery:register",
+    "runtime-authority-delivery:read",
+    "runtime-authority-delivery:revoke",
+    "ingress-authority:register",
+    "ingress-authority:read",
+    "ingress-authority:revoke",
+    "ingress-authority:use",
+    "secret-provider:register",
+    "secret-provider:read",
+    "secret-provider:use",
+    "secret-provider:revoke",
+    "delegation-key:generate",
+    "delegation-key:register",
+    "delegation-key:read",
+    "delegation-key:activate",
+    "delegation-key:retire",
+    "delegation-key:revoke",
+    "delegation-key:use",
+    "delegation-key:rotate",
+    "delegation-key:rotate-approve",
+    "gateway-probe:use",
+)
+_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL = _postgres_status_values(
+    _POSTGRES_SCHEMA_V16_CURRENT_SCOPES
+)
+_POSTGRES_SCHEMA_V16_REQUEST_DEFINITIONS = (
+    _postgres_status_definition(
+        "required_scope", _POSTGRES_SCHEMA_V16_LEGACY_SCOPES
+    ),
+    _postgres_status_definition(
+        "required_scope", _POSTGRES_SCHEMA_V16_CURRENT_SCOPES
+    ),
+)
+_POSTGRES_SCHEMA_V16_DECISION_DEFINITIONS = (
+    _postgres_status_definition("scope", _POSTGRES_SCHEMA_V16_LEGACY_SCOPES),
+    _postgres_status_definition("scope", _POSTGRES_SCHEMA_V16_CURRENT_SCOPES),
+)
+_POSTGRES_SCHEMA_V16_ERROR = "approval scope contract is not accepted"
+_POSTGRES_SCHEMA_V16_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_approval_requests IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_approval_decisions IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_identity_count bigint;
+  constraint_name_count bigint;
+  constraints_are_accepted boolean;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_approval_requests
+    WHERE required_scope NOT IN ({_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL})
+  ) OR EXISTS (
+    SELECT 1
+    FROM cpk_approval_decisions
+    WHERE scope NOT IN ({_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL})
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V16_ERROR}';
+  END IF;
+
+  WITH accepted(relation_name, constraint_name, definitions) AS (
+    VALUES
+      (
+        'cpk_approval_requests',
+        'cpk_approval_requests_scope_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V16_REQUEST_DEFINITIONS)}]
+      ),
+      (
+        'cpk_approval_decisions',
+        'cpk_approval_decisions_scope_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V16_DECISION_DEFINITIONS)}]
+      )
+  )
+  SELECT count(*),
+         count(DISTINCT constraints.oid),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false)
+                   = ANY(accepted.definitions)
+           ),
+           false
+         )
+    INTO constraint_count, constraint_identity_count, constraint_name_count,
+         constraints_are_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN accepted
+    ON accepted.relation_name = relation.relname
+   AND accepted.constraint_name = constraints.conname
+  WHERE namespace.nspname = current_schema();
+
+  IF constraint_count > 2
+    OR constraint_count <> constraint_identity_count
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0 AND constraints_are_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V16_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
+
+def _approval_scope_convergence_sql(
+    table: str,
+    column: str,
+    constraint: str,
+    definitions: tuple[str, str],
+) -> str:
+    return f"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_legacy boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(definitions[1])}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(definitions[0])}
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_legacy
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = '{table}'
+    AND constraints.conname = '{constraint}';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE {table}
+      ADD CONSTRAINT {constraint}
+      CHECK ({column} IN ({_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL}));
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE AND constraint_is_legacy IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V16_ERROR}';
+  ELSIF constraint_is_legacy IS TRUE THEN
+    ALTER TABLE {table}
+      DROP CONSTRAINT {constraint},
+      ADD CONSTRAINT {constraint}
+      CHECK ({column} IN ({_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL}));
+  END IF;
+END
+$cpk$;
+"""
+
+
+_POSTGRES_SCHEMA_V16_CONVERGE_SQL = (
+    _approval_scope_convergence_sql(
+        "cpk_approval_requests",
+        "required_scope",
+        "cpk_approval_requests_scope_check",
+        _POSTGRES_SCHEMA_V16_REQUEST_DEFINITIONS,
+    )
+    + _approval_scope_convergence_sql(
+        "cpk_approval_decisions",
+        "scope",
+        "cpk_approval_decisions_scope_check",
+        _POSTGRES_SCHEMA_V16_DECISION_DEFINITIONS,
+    )
+)
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -3281,6 +3518,23 @@ if _POSTGRES_SCHEMA_V15.checksum_sha256 != _POSTGRES_SCHEMA_V15_SHA256:
         f"expected {_POSTGRES_SCHEMA_V15_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V15.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V16 = SchemaMigration(
+    version=16,
+    name="approval-scope-contracts",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V16_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V16_CONVERGE_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V16_SHA256 = (
+    "301c05458431939355d7c835bbdd05dad221a8370a7fb6ed6b95cd086162497e"
+)
+if _POSTGRES_SCHEMA_V16.checksum_sha256 != _POSTGRES_SCHEMA_V16_SHA256:
+    raise SchemaMigrationError(
+        "approval scope contracts V16 differ from their pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V16_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V16.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -3298,6 +3552,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V13,
         _POSTGRES_SCHEMA_V14,
         _POSTGRES_SCHEMA_V15,
+        _POSTGRES_SCHEMA_V16,
     )
 )
 
@@ -3310,41 +3565,6 @@ def install_schema(connection: MigrationPostgresConnection) -> None:
     )
 
     install_postgres_schema(connection)
-
-
-def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
-    """Evolve closed approval scopes only when an installed check is stale."""
-
-    required = PolicyScope.DELEGATION_KEY_ROTATE_APPROVE.value
-    allowed = _sql_values(tuple(PolicyScope))
-    for table, column, constraint in (
-        (
-            "cpk_approval_requests",
-            "required_scope",
-            "cpk_approval_requests_scope_check",
-        ),
-        (
-            "cpk_approval_decisions",
-            "scope",
-            "cpk_approval_decisions_scope_check",
-        ),
-    ):
-        row = connection.execute(
-            """
-            SELECT pg_get_constraintdef(oid)
-            FROM pg_constraint
-            WHERE conname = %s
-              AND conrelid = %s::regclass
-            """,
-            (constraint, table),
-        ).fetchone()
-        if row is None or required in row[0]:
-            continue
-        connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
-        connection.execute(
-            f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
-            f"CHECK ({column} IN ({allowed}))"
-        )
 
 
 def _backfill_graph_lineage(connection: PostgresConnection) -> None:

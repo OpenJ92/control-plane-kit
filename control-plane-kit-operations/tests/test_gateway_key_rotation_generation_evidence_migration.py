@@ -35,7 +35,8 @@ _V11_HISTORY = (
 _V12_IDENTITY = (12, "gateway-key-rotation-generation-evidence")
 _V13_IDENTITY = (13, "gateway-key-rotation-status-contracts")
 _V14_IDENTITY = (14, "gateway-key-rotation-retirement-evidence")
-_CURRENT_IDENTITY = (15, "approval-subject-evidence")
+_V15_IDENTITY = (15, "approval-subject-evidence")
+_CURRENT_IDENTITY = (16, "approval-scope-contracts")
 _CATEGORICAL_ERROR = "gateway key rotation generation evidence is not accepted"
 _TABLE = "cpk_gateway_key_rotations"
 _PROVIDER_COLUMN = "generation_provider_registration_id"
@@ -72,7 +73,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_three_sql_step_v12_program(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 15)
+        self.assertEqual(registry.target_version, 16)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
             (
@@ -80,6 +81,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
                 _V12_IDENTITY,
                 _V13_IDENTITY,
                 _V14_IDENTITY,
+                _V15_IDENTITY,
                 _CURRENT_IDENTITY,
             ),
         )

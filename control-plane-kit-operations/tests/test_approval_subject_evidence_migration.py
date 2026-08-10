@@ -47,6 +47,7 @@ _V14_HISTORY = (
     (14, "gateway-key-rotation-retirement-evidence"),
 )
 _V15_IDENTITY = (15, "approval-subject-evidence")
+_CURRENT_IDENTITY = (16, "approval-scope-contracts")
 _TABLE = "cpk_approval_requests"
 _DIGEST_CONSTRAINT = "cpk_approval_requests_review_digest_check"
 _CATEGORICAL_ERROR = "approval subject evidence is not accepted"
@@ -94,10 +95,10 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
 
     def test_registry_appends_exact_three_sql_step_v15_program(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
-        self.assertEqual(registry.target_version, 15)
+        self.assertEqual(registry.target_version, 16)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V14_HISTORY, _V15_IDENTITY),
+            (*_V14_HISTORY, _V15_IDENTITY, _CURRENT_IDENTITY),
         )
 
         migration = self._v15()
@@ -187,7 +188,7 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
                     subject.review_digest,
                 ),
             )
-            self.assertEqual(self._history(connection)[-1][:2], _V15_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _CURRENT_IDENTITY)
             self.assertIn('COLLATE "C"', self._digest_constraint(connection)[1])
         finally:
             connection.close()
@@ -286,7 +287,9 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
                     postgres.install_postgres_schema(connection)
 
                     self.assertEqual(self._approval_rows(connection), before)
-                    self.assertEqual(self._history(connection)[-1][:2], _V15_IDENTITY)
+                    self.assertEqual(
+                        self._history(connection)[-1][:2], _CURRENT_IDENTITY
+                    )
                 finally:
                     connection.close()
 
@@ -1078,7 +1081,7 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
                 service.commit()
                 future.result(timeout=10)
 
-            self.assertEqual(self._history(migration)[-1][:2], _V15_IDENTITY)
+            self.assertEqual(self._history(migration)[-1][:2], _CURRENT_IDENTITY)
         finally:
             service.rollback()
             migration.rollback()
@@ -1457,7 +1460,7 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
 
     @staticmethod
     def _v15():
-        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[-1]
+        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[14]
         if (migration.version, migration.name) != _V15_IDENTITY:
             raise AssertionError("V15 approval-subject-evidence migration is missing")
         return migration

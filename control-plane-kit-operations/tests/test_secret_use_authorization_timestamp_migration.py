@@ -45,6 +45,7 @@ _CURRENT_HISTORY = [
     (13, "gateway-key-rotation-status-contracts"),
     (14, "gateway-key-rotation-retirement-evidence"),
     (15, "approval-subject-evidence"),
+    (16, "approval-scope-contracts"),
 ]
 _V9_SHA256 = "51e322bc4c578bef768cd516b63fd0018cfeb658bd4b9bfd6eed118666d50adb"
 _SECONDS = "2026-08-08T12:00:00Z"
@@ -125,7 +126,7 @@ class SecretUseAuthorizationTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_checksum_guarded_v9_after_immutable_v8(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 15)
+        self.assertEqual(registry.target_version, 16)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations],
             _CURRENT_HISTORY,
