@@ -25,6 +25,7 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionKind,
     RealizedGraphProjectionRecord,
 )
+from tests.graph_lineage_fixture import seed_historical_graph_lineage_constraints
 
 
 _V17_IDENTITY = (17, "graph-lineage-compatibility")
@@ -566,7 +567,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 connection = self._connection()
                 try:
                     self._prepare_v16(connection)
-                    connection.execute(schema_module._GRAPH_LINEAGE_CONSTRAINTS)
+                    seed_historical_graph_lineage_constraints(connection)
                     connection.execute(
                         f"ALTER TABLE {table} DROP CONSTRAINT {constraint}"
                     )

@@ -11,6 +11,7 @@ import psycopg
 
 import control_plane_kit_operations.postgres as postgres
 import control_plane_kit_operations.postgres.schema as schema_module
+from tests.graph_lineage_fixture import seed_historical_graph_lineage_constraints
 
 
 _V5_HISTORY = [
@@ -376,7 +377,7 @@ class GatewayProbeTimestampMigrationTests(unittest.TestCase):
                 """,
                 (migration.version, migration.name, migration.checksum_sha256),
             )
-        self.connection.execute(schema_module._GRAPH_LINEAGE_CONSTRAINTS)
+        seed_historical_graph_lineage_constraints(self.connection)
 
     def _seed_foundation(self) -> None:
         self.connection.execute(

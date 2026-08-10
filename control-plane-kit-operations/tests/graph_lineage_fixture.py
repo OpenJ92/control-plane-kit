@@ -3,10 +3,39 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from psycopg import sql
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
+from control_plane_kit_operations.postgres.schema import (
+    _POSTGRES_SCHEMA_V17_CONSTRAINTS,
+)
 from control_plane_kit_operations.records import GraphVersionRecord
+
+
+def seed_historical_graph_lineage_constraints(connection: Any) -> None:
+    for table, name, _kind, ddl, _definition in (
+        _POSTGRES_SCHEMA_V17_CONSTRAINTS[:-2]
+    ):
+        count = connection.execute(
+            "SELECT count(*) FROM pg_constraint AS owned_constraint "
+            "JOIN pg_class AS relation ON relation.oid=owned_constraint.conrelid "
+            "JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace "
+            "WHERE namespace.nspname=current_schema() "
+            "AND relation.relname=%s AND owned_constraint.conname=%s",
+            (table, name),
+        ).fetchone()
+        if count == (1,):
+            continue
+        if count != (0,):
+            raise AssertionError("unexpected historical lineage constraint cardinality")
+        connection.execute(
+            sql.SQL("ALTER TABLE {} ADD CONSTRAINT {} {}").format(
+                sql.Identifier(table),
+                sql.Identifier(name),
+                sql.SQL(ddl),
+            )
+        )
 
 
 def seed_authored_graphs(

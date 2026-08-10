@@ -12,6 +12,7 @@ import psycopg
 
 import control_plane_kit_operations.postgres as postgres
 import control_plane_kit_operations.postgres.schema as schema_module
+from tests.graph_lineage_fixture import seed_historical_graph_lineage_constraints
 import control_plane_kit_operations.secret_providers as secret_provider_module
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import SecretReference, SecretUseIntent
@@ -416,7 +417,7 @@ class SecretUseAuthorizationTimestampMigrationTests(unittest.TestCase):
                 """,
                 (migration.version, migration.name, migration.checksum_sha256),
             )
-        self.connection.execute(schema_module._GRAPH_LINEAGE_CONSTRAINTS)
+        seed_historical_graph_lineage_constraints(self.connection)
 
     def _seed_authorization(self, *, index: int, requested_at: object) -> None:
         if self.connection.execute(

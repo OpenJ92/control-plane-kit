@@ -13,6 +13,7 @@ import psycopg
 import control_plane_kit_operations.gateway_key_rotations as rotation_module
 import control_plane_kit_operations.postgres as postgres
 import control_plane_kit_operations.postgres.schema as schema_module
+from tests.graph_lineage_fixture import seed_historical_graph_lineage_constraints
 from control_plane_kit_operations.postgres.gateway_key_rotation_store import (
     GatewayKeyRotationStore,
 )
@@ -399,7 +400,7 @@ class GatewayKeyRotationTimestampMigrationTests(unittest.TestCase):
                 "VALUES (%s,%s,%s)",
                 (migration.version, migration.name, migration.checksum_sha256),
             )
-        self.connection.execute(schema_module._GRAPH_LINEAGE_CONSTRAINTS)
+        seed_historical_graph_lineage_constraints(self.connection)
 
     def _seed_rows(self, *, native: bool = False) -> None:
         seconds = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc) if native else _SECONDS
