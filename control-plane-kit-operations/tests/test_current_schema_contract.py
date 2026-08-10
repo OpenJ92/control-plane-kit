@@ -648,7 +648,10 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
             postgres.install_postgres_schema(recorded_fresh)
             locks = _relation_locks(fresh)
             self.assertEqual(
-                {relation.name for relation in module.PENDING_SCHEMA_LOCK_PLAN.relations},
+                {
+                    relation.relation
+                    for relation in module.PENDING_SCHEMA_LOCK_PLAN.relations
+                },
                 set(locks),
             )
             for relation in module.PENDING_SCHEMA_LOCK_PLAN.relations:
@@ -777,6 +780,7 @@ class CurrentSchemaContractIntegrationTests(unittest.TestCase):
         owner = self._connection(autocommit=False)
         observer = self._connection(autocommit=False)
         try:
+            owner.execute("SELECT 1")
             postgres.verify_postgres_schema(owner)
             observer.execute("SET lock_timeout TO '100ms'")
             with self.assertRaises(psycopg.errors.LockNotAvailable):
