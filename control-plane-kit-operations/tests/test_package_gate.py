@@ -70,8 +70,8 @@ class OperationsPackageGateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 37)
         self.assertIn("postgres-root-cause", result.stderr)
         self.assertEqual(
-            [event for event in events if event.startswith("run:")],
-            ["run:1", "run:2", "run:3"],
+            [event for event in events if event.startswith("phase:")],
+            ["phase:integrity", "phase:postgres", "phase:unittest"],
         )
         log_index = events.index(
             "logs:logs --timestamps --tail 400 cpk-operations-test-postgres"
@@ -86,7 +86,7 @@ class OperationsPackageGateTests(unittest.TestCase):
             for index, event in enumerate(events)
             if event == "network:network rm cpk-operations-test"
         )
-        self.assertLess(events.index("run:3"), log_index)
+        self.assertLess(events.index("phase:unittest"), log_index)
         self.assertLess(log_index, final_container_cleanup)
         self.assertLess(log_index, final_network_cleanup)
 
@@ -108,7 +108,10 @@ class OperationsPackageGateTests(unittest.TestCase):
         )
 
     def test_unhealthy_fixture_emits_bounded_logs_before_cleanup(self) -> None:
-        result, events = self._run_gate(health_status="unhealthy")
+        result, events = self._run_gate(
+            health_status="unhealthy",
+            log_status=19,
+        )
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("Postgres did not become healthy", result.stderr)
@@ -130,8 +133,8 @@ class OperationsPackageGateTests(unittest.TestCase):
         self.assertLess(log_index, final_container_cleanup)
         self.assertLess(log_index, final_network_cleanup)
         self.assertEqual(
-            [event for event in events if event.startswith("run:")],
-            ["run:1", "run:2"],
+            [event for event in events if event.startswith("phase:")],
+            ["phase:integrity", "phase:postgres"],
         )
 
     def test_success_runs_all_phases_without_failure_diagnostics(self) -> None:
@@ -141,8 +144,14 @@ class OperationsPackageGateTests(unittest.TestCase):
         self.assertNotIn("postgres-root-cause", result.stderr)
         self.assertFalse(any(event.startswith("logs:") for event in events))
         self.assertEqual(
-            [event for event in events if event.startswith("run:")],
-            ["run:1", "run:2", "run:3", "run:4", "run:5"],
+            [event for event in events if event.startswith("phase:")],
+            [
+                "phase:integrity",
+                "phase:postgres",
+                "phase:unittest",
+                "phase:compile",
+                "phase:clean-import",
+            ],
         )
         self.assertEqual(
             events.count("rm:rm -fv cpk-operations-test-postgres"),
@@ -169,7 +178,6 @@ class OperationsPackageGateTests(unittest.TestCase):
             binary_directory = temporary / "bin"
             binary_directory.mkdir()
             events_path = temporary / "events"
-            state_path = temporary / "run-count"
             docker = binary_directory / "docker"
             docker.write_text(
                 textwrap.dedent(
@@ -180,20 +188,40 @@ class OperationsPackageGateTests(unittest.TestCase):
                     command_name="$1"
                     case "$command_name" in
                       run)
-                        run_count=0
-                        if [ -f "$FAKE_DOCKER_STATE" ]; then
-                          run_count="$(cat "$FAKE_DOCKER_STATE")"
+                        phase=""
+                        for argument in "$@"; do
+                          case "$argument" in
+                            */test-support/package_integrity.py)
+                              phase="integrity"
+                              ;;
+                            postgres:16-alpine)
+                              phase="postgres"
+                              ;;
+                            *"python -m unittest discover -s tests"*)
+                              phase="unittest"
+                              ;;
+                            *"python -m compileall src tests"*)
+                              phase="compile"
+                              ;;
+                            *"import control_plane_kit_operations"*)
+                              phase="clean-import"
+                              ;;
+                          esac
+                        done
+                        if [ -z "$phase" ]; then
+                          printf 'unexpected:%s\n' "$*" \
+                            >>"$FAKE_DOCKER_EVENTS"
+                          exit 99
                         fi
-                        run_count=$((run_count + 1))
-                        printf '%s\n' "$run_count" >"$FAKE_DOCKER_STATE"
-                        printf 'run:%s\n' "$run_count" >>"$FAKE_DOCKER_EVENTS"
-                        if [ "$run_count" -eq 2 ]; then
+                        printf 'phase:%s\n' "$phase" \
+                          >>"$FAKE_DOCKER_EVENTS"
+                        if [ "$phase" = "postgres" ]; then
                           for argument in "$@"; do
                             printf 'launch:%s\n' "$argument" \
                               >>"$FAKE_DOCKER_EVENTS"
                           done
                         fi
-                        if [ "$run_count" -eq 3 ]; then
+                        if [ "$phase" = "unittest" ]; then
                           exit "$FAKE_DOCKER_UNITTEST_STATUS"
                         fi
                         ;;
@@ -230,7 +258,6 @@ class OperationsPackageGateTests(unittest.TestCase):
                 {
                     "PATH": f"{binary_directory}:{environment['PATH']}",
                     "FAKE_DOCKER_EVENTS": str(events_path),
-                    "FAKE_DOCKER_STATE": str(state_path),
                     "FAKE_DOCKER_UNITTEST_STATUS": str(unittest_status),
                     "FAKE_DOCKER_LOG_STATUS": str(log_status),
                     "FAKE_DOCKER_HEALTH_STATUS": health_status,
