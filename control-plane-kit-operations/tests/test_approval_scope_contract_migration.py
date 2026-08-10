@@ -14,10 +14,17 @@ from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.approvals import (
+    ApprovalCommandService,
+    DecideApproval,
+)
 import control_plane_kit_operations.postgres as postgres
 from control_plane_kit_operations.postgres import migration_inspection
 from control_plane_kit_operations.postgres import migration_runner
 from control_plane_kit_operations.postgres import schema as schema_module
+from control_plane_kit_operations.postgres import PostgresUnitOfWork
+from control_plane_kit_operations.records import ApprovalDecisionKind
+from control_plane_kit_operations.workflows import IdempotencyKey
 
 
 _V15_HISTORY = (
@@ -39,6 +46,10 @@ _V15_HISTORY = (
 )
 _V16_IDENTITY = (16, "approval-scope-contracts")
 _V16_SHA256 = "301c05458431939355d7c835bbdd05dad221a8370a7fb6ed6b95cd086162497e"
+_V16_STEP_SHA256 = (
+    "9fa1ec3c562647985a4a0cd83af9cda2d34194df6fe0601a9b87453ec5b16fe9",
+    "4578f21d03526be03cb3188bae81fab3fdf626f1a06f3ef62ef2b9873a085b23",
+)
 _CATEGORICAL_ERROR = "approval scope contract is not accepted"
 _REQUESTS = (
     "cpk_approval_requests",
@@ -140,6 +151,10 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
         self.assertEqual(len(migration.steps), 2)
         self.assertTrue(
             all(type(step) is postgres.SqlMigrationStep for step in migration.steps)
+        )
+        self.assertEqual(
+            tuple(step.checksum_sha256 for step in migration.steps),
+            _V16_STEP_SHA256,
         )
         preflight = migration.steps[0].sql
         self.assertLess(
@@ -364,6 +379,58 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_each_v16_phase_and_ledger_failure_restore_exact_v15_truth(self) -> None:
+        for failure in ("preflight", "after-convergence", "ledger"):
+            with self.subTest(failure=failure):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare(15, connection)
+                    self._set_state(connection, _REQUESTS, "legacy")
+                    self._set_state(connection, _DECISIONS, "legacy")
+                    self._seed_one_approval(connection)
+                    before = self._snapshot(connection)
+                    migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[15]
+
+                    class FailingConnection:
+                        @property
+                        def autocommit(self):
+                            return connection.autocommit
+
+                        def transaction(self):
+                            return connection.transaction()
+
+                        def execute(self, query, params=()):
+                            if failure == "preflight" and query == migration.steps[0].sql:
+                                raise RuntimeError("private preflight material")
+                            if (
+                                failure == "after-convergence"
+                                and query == migration.steps[1].sql
+                            ):
+                                connection.execute(query, params)
+                                raise RuntimeError("private convergence material")
+                            if (
+                                failure == "ledger"
+                                and "INSERT INTO cpk_schema_migrations" in query
+                                and params
+                                and params[0] == 16
+                            ):
+                                raise RuntimeError("private ledger material")
+                            return connection.execute(query, params)
+
+                    with self.assertRaisesRegex(
+                        postgres.SchemaMigrationError,
+                        "^schema migration application failed$",
+                    ) as raised:
+                        postgres.install_postgres_schema(FailingConnection())
+
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertNotIn("private", repr(raised.exception))
+                    self.assertEqual(self._snapshot(connection), before)
+                finally:
+                    connection.close()
+
     def test_v15_success_then_v16_failure_restores_exact_v14_truth(self) -> None:
         connection = self._connection(autocommit=False)
         try:
@@ -412,37 +479,143 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
             migration.close()
             observer.close()
 
-    def test_package_decision_first_completes_then_migration_converges(self) -> None:
-        package = self._connection(autocommit=False)
+    def test_migration_first_serializes_real_package_decision(self) -> None:
         migration = self._connection(autocommit=False)
         try:
-            self._prepare(15, package)
-            self._set_state(package, _REQUESTS, "legacy")
-            self._set_state(package, _DECISIONS, "legacy")
-            self._seed_one_approval(package)
-            package.commit()
-            package.execute("LOCK TABLE cpk_approval_requests IN ROW EXCLUSIVE MODE")
-            package.execute("LOCK TABLE cpk_approval_decisions IN ROW EXCLUSIVE MODE")
+            self._prepare(15, migration)
+            self._set_state(migration, _REQUESTS, "legacy")
+            self._set_state(migration, _DECISIONS, "legacy")
+            self._seed_one_approval(migration, include_decision=False)
+            migration.commit()
+            postgres.install_postgres_schema(migration)
             started = threading.Event()
 
-            def install() -> None:
+            def decide():
                 started.set()
-                postgres.install_postgres_schema(migration)
+                return self._decision_service(self._package_connection).execute(
+                    self._decision_command()
+                )
 
             with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(install)
+                future = executor.submit(decide)
                 self.assertTrue(started.wait(timeout=2))
                 time.sleep(0.1)
                 self.assertFalse(future.done())
-                package.commit()
-                future.result(timeout=5)
-            migration.commit()
-            self.assertEqual(self._history(package)[-1][:2], _V16_IDENTITY)
+                migration.commit()
+                result = future.result(timeout=5)
+            self.assertEqual(result.decision.decision_id, "package-decision")
         finally:
-            package.rollback()
             migration.rollback()
-            package.close()
             migration.close()
+
+    def test_real_package_decision_first_then_migration_converges(self) -> None:
+        setup = self._connection()
+        migration = self._connection(autocommit=False)
+        package_at_commit = threading.Event()
+        release_package = threading.Event()
+        try:
+            self._prepare(15, setup)
+            self._set_state(setup, _REQUESTS, "legacy")
+            self._set_state(setup, _DECISIONS, "legacy")
+            self._seed_one_approval(setup, include_decision=False)
+
+            def factory():
+                return _HeldCommitConnection(
+                    self._package_connection(),
+                    package_at_commit,
+                    release_package,
+                )
+
+            migration_started = threading.Event()
+
+            def install() -> None:
+                migration_started.set()
+                postgres.install_postgres_schema(migration)
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                package_future = executor.submit(
+                    self._decision_service(factory).execute,
+                    self._decision_command(),
+                )
+                self.assertTrue(package_at_commit.wait(timeout=5))
+                migration_future = executor.submit(install)
+                self.assertTrue(migration_started.wait(timeout=2))
+                time.sleep(0.1)
+                self.assertFalse(migration_future.done())
+                release_package.set()
+                package_result = package_future.result(timeout=5)
+                migration_future.result(timeout=5)
+            migration.commit()
+            self.assertEqual(
+                package_result.decision.decision_id,
+                "package-decision",
+            )
+            self.assertEqual(self._history(setup)[-1][:2], _V16_IDENTITY)
+        finally:
+            release_package.set()
+            setup.close()
+            migration.rollback()
+            migration.close()
+
+    def test_failed_package_decision_releases_locks_before_migration(self) -> None:
+        setup = self._connection()
+        migration = self._connection(autocommit=False)
+        commit_attempted = threading.Event()
+        try:
+            self._prepare(15, setup)
+            self._set_state(setup, _REQUESTS, "legacy")
+            self._set_state(setup, _DECISIONS, "legacy")
+            self._seed_one_approval(setup, include_decision=False)
+
+            def factory():
+                return _FailingCommitConnection(
+                    self._package_connection(),
+                    commit_attempted,
+                )
+
+            with self.assertRaisesRegex(RuntimeError, "private package commit"):
+                self._decision_service(factory).execute(self._decision_command())
+            self.assertTrue(commit_attempted.is_set())
+            self.assertEqual(
+                setup.execute("SELECT count(*) FROM cpk_approval_decisions").fetchone(),
+                (0,),
+            )
+
+            postgres.install_postgres_schema(migration)
+            migration.commit()
+            self.assertEqual(self._history(setup)[-1][:2], _V16_IDENTITY)
+        finally:
+            setup.close()
+            migration.rollback()
+            migration.close()
+
+    def test_already_v16_scope_drift_rejects_without_repair_or_row_loss(self) -> None:
+        for target in _TARGETS:
+            with self.subTest(target=target[0]):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare(16, connection)
+                    self._seed_one_approval(connection)
+                    self._replace_constraint(
+                        connection,
+                        target,
+                        f"CHECK ({target[1]} <> 'private-drift-material')",
+                    )
+                    before = self._snapshot(connection)
+
+                    with self.assertRaisesRegex(
+                        postgres.SchemaMigrationError,
+                        "^approval scope schema is not current$",
+                    ) as raised:
+                        postgres.install_postgres_schema(connection)
+
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertNotIn("private-drift-material", repr(raised.exception))
+                    self.assertEqual(self._snapshot(connection), before)
+                finally:
+                    connection.close()
 
     def test_final_verifier_is_relation_scoped_boolean_and_bounded(self) -> None:
         verifier = getattr(migration_inspection, "_verify_approval_scope_contracts")
@@ -581,7 +754,7 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
             (identity,),
         )
 
-    def _seed_one_approval(self, connection) -> None:
+    def _seed_one_approval(self, connection, *, include_decision: bool = True) -> None:
         self._seed_execution_truth(connection)
         subject = ActivityPlanApprovalSubject("plan-a")
         connection.execute(
@@ -599,11 +772,38 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
             "'plan:approve', 'low', false)",
             (Jsonb(subject.descriptor()), subject.review_digest),
         )
-        connection.execute(
-            "INSERT INTO cpk_approval_decisions "
-            "(decision_id, request_id, actor_id, decision, scope, decided_at) "
-            "VALUES ('decision-a', 'request-a', 'operator-b', 'approved', "
-            "'plan:approve', '2026-08-10T00:00:03Z')"
+        if include_decision:
+            connection.execute(
+                "INSERT INTO cpk_approval_decisions "
+                "(decision_id, request_id, actor_id, decision, scope, decided_at) "
+                "VALUES ('decision-a', 'request-a', 'operator-b', 'approved', "
+                "'plan:approve', '2026-08-10T00:00:03Z')"
+            )
+
+    def _package_connection(self):
+        connection = psycopg.connect(self.database_url)
+        connection.execute(f'SET search_path TO "{self.schema}"')
+        connection.commit()
+        return connection
+
+    @staticmethod
+    def _decision_service(connection_factory) -> ApprovalCommandService:
+        identities = iter(("package-decision", "package-action"))
+        return ApprovalCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "2026-08-10T00:00:04.000001Z",
+            id_factory=lambda: next(identities),
+        )
+
+    @staticmethod
+    def _decision_command() -> DecideApproval:
+        return DecideApproval(
+            session_id="session-a",
+            request_id="request-a",
+            actor_id="operator-b",
+            actor_scopes=(PolicyScope.PLAN_APPROVE,),
+            decision=ApprovalDecisionKind.APPROVED,
+            idempotency_key=IdempotencyKey("package-decision-key"),
         )
 
     @staticmethod
@@ -753,6 +953,47 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
     def _reset_schema(self) -> None:
         self.admin.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
         self.admin.execute(f'CREATE SCHEMA "{self.schema}"')
+
+
+class _HeldCommitConnection:
+    def __init__(self, delegate, at_commit, release):
+        self._delegate = delegate
+        self._at_commit = at_commit
+        self._release = release
+
+    def execute(self, query, params=()):
+        return self._delegate.execute(query, params)
+
+    def commit(self):
+        self._at_commit.set()
+        if not self._release.wait(timeout=5):
+            raise TimeoutError("package commit was not released")
+        self._delegate.commit()
+
+    def rollback(self):
+        self._delegate.rollback()
+
+    def close(self):
+        self._delegate.close()
+
+
+class _FailingCommitConnection:
+    def __init__(self, delegate, commit_attempted):
+        self._delegate = delegate
+        self._commit_attempted = commit_attempted
+
+    def execute(self, query, params=()):
+        return self._delegate.execute(query, params)
+
+    def commit(self):
+        self._commit_attempted.set()
+        raise RuntimeError("private package commit")
+
+    def rollback(self):
+        self._delegate.rollback()
+
+    def close(self):
+        self._delegate.close()
 
 
 class _ScriptedCursor:
