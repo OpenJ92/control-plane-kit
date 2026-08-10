@@ -135,7 +135,8 @@ SELECT NOT EXISTS (
 ) AND NOT EXISTS (
   SELECT 1
   FROM cpk_activity_plans AS plan
-  JOIN cpk_operation_sessions AS session ON session.session_id = plan.session_id
+  LEFT JOIN cpk_operation_sessions AS session
+    ON session.session_id = plan.session_id
   LEFT JOIN cpk_graph_versions AS base_graph
     ON base_graph.graph_id = plan.base_graph_id
   LEFT JOIN cpk_realized_graph_projections AS base_projection
@@ -144,7 +145,8 @@ SELECT NOT EXISTS (
     ON desired_graph.graph_id = plan.desired_graph_id
   LEFT JOIN cpk_realized_graph_projections AS desired_projection
     ON desired_projection.projection_id = plan.desired_realized_projection_id
-  WHERE plan.desired_graph_revision < 0
+  WHERE session.session_id IS NULL
+     OR plan.desired_graph_revision < 0
      OR plan.base_realized_projection_id IS NULL
      OR plan.desired_realized_projection_id IS NULL
      OR base_graph.workspace_id IS DISTINCT FROM session.workspace_id

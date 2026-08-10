@@ -3578,12 +3578,14 @@ BEGIN
   ) OR EXISTS (
     SELECT 1
     FROM cpk_activity_plans AS plan
-    JOIN cpk_operation_sessions AS session ON session.session_id = plan.session_id
+    LEFT JOIN cpk_operation_sessions AS session
+      ON session.session_id = plan.session_id
     LEFT JOIN cpk_graph_versions AS base_graph
       ON base_graph.graph_id = plan.base_graph_id
     LEFT JOIN cpk_graph_versions AS desired_graph
       ON desired_graph.graph_id = plan.desired_graph_id
-    WHERE base_graph.workspace_id IS DISTINCT FROM session.workspace_id
+    WHERE session.session_id IS NULL
+       OR base_graph.workspace_id IS DISTINCT FROM session.workspace_id
        OR desired_graph.workspace_id IS DISTINCT FROM session.workspace_id
   ) THEN
     RAISE EXCEPTION USING ERRCODE = 'P1110',
@@ -3627,12 +3629,14 @@ BEGIN
       OR EXISTS (
         SELECT 1
         FROM cpk_activity_plans AS plan
-        JOIN cpk_operation_sessions AS session ON session.session_id = plan.session_id
+        LEFT JOIN cpk_operation_sessions AS session
+          ON session.session_id = plan.session_id
         LEFT JOIN cpk_realized_graph_projections AS base_projection
           ON base_projection.projection_id = plan.base_realized_projection_id
         LEFT JOIN cpk_realized_graph_projections AS desired_projection
           ON desired_projection.projection_id = plan.desired_realized_projection_id
-        WHERE (plan.base_realized_projection_id IS NOT NULL AND (
+        WHERE session.session_id IS NULL
+           OR (plan.base_realized_projection_id IS NOT NULL AND (
                  base_projection.workspace_id IS DISTINCT FROM session.workspace_id
                  OR base_projection.source_authored_graph_id
                    IS DISTINCT FROM plan.base_graph_id
@@ -4038,7 +4042,7 @@ _POSTGRES_SCHEMA_V17 = SchemaMigration(
     ),
 )
 _POSTGRES_SCHEMA_V17_SHA256 = (
-    "fbb364b06d580df44962b2f8920de5b00e1ecb6197989fbf8392a95e939d070b"
+    "61f6ec27ce75cb7fe4906f74fd04a3ca6a3e08b33a76e04f25bd01eda92b1632"
 )
 if _POSTGRES_SCHEMA_V17.checksum_sha256 != _POSTGRES_SCHEMA_V17_SHA256:
     raise SchemaMigrationError(
