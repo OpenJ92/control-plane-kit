@@ -19,13 +19,14 @@ from control_plane_kit_operations.postgres.migrations import (
 from control_plane_kit_operations.postgres.product_descriptor_backfill import (
     backfill_product_descriptor_content_v1,
 )
+from control_plane_kit_operations.postgres.graph_lineage_backfill import (
+    backfill_graph_lineage_v1,
+)
 from control_plane_kit_operations.postgres.schema import (
     POSTGRES_SCHEMA_MIGRATIONS,
     MigrationPostgresConnection,
     PostgresConnection,
     _CURRENT_POSTGRES_SCHEMA,
-    _GRAPH_LINEAGE_CONSTRAINTS,
-    _backfill_graph_lineage,
 )
 
 
@@ -91,6 +92,7 @@ _CATEGORICAL_MIGRATION_FAILURES = {
     ),
     15: ("approval subject evidence is not accepted", frozenset({"P1110"})),
     16: ("approval scope contract is not accepted", frozenset({"P1110"})),
+    17: ("graph lineage compatibility is not accepted", frozenset({"P1110"})),
 }
 
 
@@ -153,8 +155,6 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
             )
         if observed.kind is not ObservedSchemaKind.EMPTY:
             connection.execute(_CURRENT_POSTGRES_SCHEMA)
-        _backfill_graph_lineage(connection)
-        connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
         verify_postgres_schema(connection)
     except SchemaMigrationError:
         raise
@@ -192,6 +192,11 @@ def _apply_schema_migration(
                 and step.algorithm_version == 1
             ):
                 backfill_product_descriptor_content_v1(connection)
+            elif (
+                step.kind is SchemaBackfillKind.GRAPH_LINEAGE
+                and step.algorithm_version == 1
+            ):
+                backfill_graph_lineage_v1(connection)
             else:
                 raise SchemaMigrationError("schema migration backfill is not supported")
         else:

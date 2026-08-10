@@ -7,8 +7,6 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from jinja2 import Environment, StrictUndefined
-from psycopg.types.json import Jsonb
-
 from control_plane_kit_core.approval_subjects import ApprovalSubjectKind
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.gateway_delegation import (
@@ -39,11 +37,9 @@ from control_plane_kit_core.probe_intents import (
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import (
-    GraphVersionRecord,
     ObservationFreshness,
     ObservationStatus,
     RealizedGraphProjectionKind,
-    RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.gateway_probes import GatewayProbeAttemptStatus
 from control_plane_kit_operations.gateway_key_rotations import (
@@ -77,10 +73,6 @@ from control_plane_kit_operations.postgres.migrations import (
     SchemaMigrationError,
     SchemaMigrationRegistry,
     SqlMigrationStep,
-)
-from control_plane_kit_operations.postgres.temporal import (
-    decode_postgres_timestamp,
-    encode_postgres_timestamp,
 )
 
 
@@ -1427,6 +1419,25 @@ POSTGRES_SCHEMA = _POSTGRES_SCHEMA_RENDERER.render(
 _CURRENT_POSTGRES_SCHEMA = _POSTGRES_SCHEMA_RENDERER.render(
     include_approval_subject_compatibility=False,
     **_POSTGRES_SCHEMA_CONTEXT,
+)
+_GRAPH_LINEAGE_COLUMN_COMPATIBILITY = """ALTER TABLE cpk_workspaces
+  ADD COLUMN IF NOT EXISTS current_realized_projection_id text;
+ALTER TABLE cpk_workspaces
+  ADD COLUMN IF NOT EXISTS desired_realized_projection_id text;
+ALTER TABLE cpk_workspaces
+  ADD COLUMN IF NOT EXISTS desired_graph_revision bigint NOT NULL DEFAULT 0;
+
+ALTER TABLE cpk_activity_plans
+  ADD COLUMN IF NOT EXISTS base_realized_projection_id text;
+ALTER TABLE cpk_activity_plans
+  ADD COLUMN IF NOT EXISTS desired_realized_projection_id text;
+ALTER TABLE cpk_activity_plans
+  ADD COLUMN IF NOT EXISTS desired_graph_revision bigint NOT NULL DEFAULT 0;"""
+if _CURRENT_POSTGRES_SCHEMA.count(_GRAPH_LINEAGE_COLUMN_COMPATIBILITY) != 1:
+    raise SchemaMigrationError("current graph lineage compatibility seam is not exact")
+_CURRENT_POSTGRES_SCHEMA = _CURRENT_POSTGRES_SCHEMA.replace(
+    _GRAPH_LINEAGE_COLUMN_COMPATIBILITY,
+    "",
 )
 
 _POSTGRES_SCHEMA_V2_SQL = r"""
@@ -3279,6 +3290,393 @@ _POSTGRES_SCHEMA_V16_CONVERGE_SQL = (
     )
 )
 
+_POSTGRES_SCHEMA_V17_ERROR = "graph lineage compatibility is not accepted"
+_POSTGRES_SCHEMA_V17_CONSTRAINTS = (
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_workspace_identity",
+        "u",
+        "UNIQUE (projection_id, workspace_id)",
+        "UNIQUE (projection_id, workspace_id)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_source_identity",
+        "u",
+        "UNIQUE (projection_id, source_authored_graph_id)",
+        "UNIQUE (projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_current_realized_projection_fk",
+        "f",
+        "FOREIGN KEY (current_realized_projection_id, workspace_id) "
+        "REFERENCES cpk_realized_graph_projections(projection_id, workspace_id)",
+        "FOREIGN KEY (current_realized_projection_id, workspace_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, workspace_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_desired_realized_projection_fk",
+        "f",
+        "FOREIGN KEY (desired_realized_projection_id, workspace_id) "
+        "REFERENCES cpk_realized_graph_projections(projection_id, workspace_id)",
+        "FOREIGN KEY (desired_realized_projection_id, workspace_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, workspace_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_current_projection_source_fk",
+        "f",
+        "FOREIGN KEY (current_realized_projection_id, current_graph_id) "
+        "REFERENCES cpk_realized_graph_projections"
+        "(projection_id, source_authored_graph_id)",
+        "FOREIGN KEY (current_realized_projection_id, current_graph_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_desired_projection_source_fk",
+        "f",
+        "FOREIGN KEY (desired_realized_projection_id, desired_graph_id) "
+        "REFERENCES cpk_realized_graph_projections"
+        "(projection_id, source_authored_graph_id)",
+        "FOREIGN KEY (desired_realized_projection_id, desired_graph_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_current_lineage_check",
+        "c",
+        "CHECK ((current_graph_id IS NULL) = "
+        "(current_realized_projection_id IS NULL))",
+        "CHECK (((current_graph_id IS NULL) = "
+        "(current_realized_projection_id IS NULL)))",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_desired_lineage_check",
+        "c",
+        "CHECK ((desired_graph_id IS NULL) = "
+        "(desired_realized_projection_id IS NULL))",
+        "CHECK (((desired_graph_id IS NULL) = "
+        "(desired_realized_projection_id IS NULL)))",
+    ),
+    (
+        "cpk_activity_plans",
+        "cpk_activity_plans_base_projection_source_fk",
+        "f",
+        "FOREIGN KEY (base_realized_projection_id, base_graph_id) "
+        "REFERENCES cpk_realized_graph_projections"
+        "(projection_id, source_authored_graph_id)",
+        "FOREIGN KEY (base_realized_projection_id, base_graph_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_activity_plans",
+        "cpk_activity_plans_desired_projection_source_fk",
+        "f",
+        "FOREIGN KEY (desired_realized_projection_id, desired_graph_id) "
+        "REFERENCES cpk_realized_graph_projections"
+        "(projection_id, source_authored_graph_id)",
+        "FOREIGN KEY (desired_realized_projection_id, desired_graph_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_desired_graph_revision_check",
+        "c",
+        "CHECK (desired_graph_revision >= 0)",
+        "CHECK ((desired_graph_revision >= 0))",
+    ),
+    (
+        "cpk_activity_plans",
+        "cpk_activity_plans_desired_graph_revision_check",
+        "c",
+        "CHECK (desired_graph_revision >= 0)",
+        "CHECK ((desired_graph_revision >= 0))",
+    ),
+)
+
+
+def _graph_lineage_constraint_values() -> str:
+    return ",\n".join(
+        "(" + ", ".join(
+            (
+                _postgres_text_literal(table),
+                _postgres_text_literal(name),
+                _postgres_text_literal(kind),
+                _postgres_text_literal(definition),
+            )
+        ) + ")"
+        for table, name, kind, _ddl, definition in _POSTGRES_SCHEMA_V17_CONSTRAINTS
+    )
+
+
+_POSTGRES_SCHEMA_V17_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_workspaces IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_graph_versions IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_realized_graph_projections IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_activity_plans IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  workspace_column_count bigint;
+  workspace_columns_are_current boolean;
+  plan_column_count bigint;
+  plan_columns_are_current boolean;
+BEGIN
+  SELECT count(*), COALESCE(bool_and(
+      (column_name IN ('current_realized_projection_id',
+                       'desired_realized_projection_id')
+       AND data_type = 'text' AND is_nullable = 'YES'
+       AND column_default IS NULL)
+      OR
+      (column_name = 'desired_graph_revision' AND data_type = 'bigint'
+       AND is_nullable = 'NO' AND column_default IS NOT DISTINCT FROM '0')
+    ), false)
+  INTO workspace_column_count, workspace_columns_are_current
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_workspaces'
+    AND column_name IN ('current_realized_projection_id',
+                        'desired_realized_projection_id',
+                        'desired_graph_revision');
+
+  SELECT count(*), COALESCE(bool_and(
+      (column_name IN ('base_realized_projection_id',
+                       'desired_realized_projection_id')
+       AND data_type = 'text' AND is_nullable = 'YES'
+       AND column_default IS NULL)
+      OR
+      (column_name = 'desired_graph_revision' AND data_type = 'bigint'
+       AND is_nullable = 'NO' AND column_default IS NOT DISTINCT FROM '0')
+    ), false)
+  INTO plan_column_count, plan_columns_are_current
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_activity_plans'
+    AND column_name IN ('base_realized_projection_id',
+                        'desired_realized_projection_id',
+                        'desired_graph_revision');
+
+  IF workspace_column_count NOT IN (0, 3)
+    OR (workspace_column_count = 3 AND workspace_columns_are_current IS NOT TRUE)
+    OR plan_column_count NOT IN (0, 3)
+    OR (plan_column_count = 3 AND plan_columns_are_current IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_workspaces AS workspace
+    LEFT JOIN cpk_graph_versions AS current_graph
+      ON current_graph.graph_id = workspace.current_graph_id
+    LEFT JOIN cpk_graph_versions AS desired_graph
+      ON desired_graph.graph_id = workspace.desired_graph_id
+    WHERE (workspace.current_graph_id IS NOT NULL
+           AND current_graph.workspace_id IS DISTINCT FROM workspace.workspace_id)
+       OR (workspace.desired_graph_id IS NOT NULL
+           AND desired_graph.workspace_id IS DISTINCT FROM workspace.workspace_id)
+  ) OR EXISTS (
+    SELECT 1
+    FROM cpk_activity_plans AS plan
+    JOIN cpk_operation_sessions AS session ON session.session_id = plan.session_id
+    LEFT JOIN cpk_graph_versions AS base_graph
+      ON base_graph.graph_id = plan.base_graph_id
+    LEFT JOIN cpk_graph_versions AS desired_graph
+      ON desired_graph.graph_id = plan.desired_graph_id
+    WHERE base_graph.workspace_id IS DISTINCT FROM session.workspace_id
+       OR desired_graph.workspace_id IS DISTINCT FROM session.workspace_id
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+  END IF;
+
+  IF workspace_column_count = 3 THEN
+    IF EXISTS (SELECT 1 FROM cpk_workspaces WHERE desired_graph_revision < 0)
+      OR EXISTS (
+        SELECT 1
+        FROM cpk_workspaces AS workspace
+        LEFT JOIN cpk_realized_graph_projections AS current_projection
+          ON current_projection.projection_id =
+               workspace.current_realized_projection_id
+        LEFT JOIN cpk_realized_graph_projections AS desired_projection
+          ON desired_projection.projection_id =
+               workspace.desired_realized_projection_id
+        WHERE (workspace.current_realized_projection_id IS NOT NULL AND (
+                 current_projection.workspace_id
+                   IS DISTINCT FROM workspace.workspace_id
+                 OR current_projection.source_authored_graph_id
+                   IS DISTINCT FROM workspace.current_graph_id
+                 OR current_projection.projection_kind IS DISTINCT FROM 'identity'
+                 OR current_projection.projection_key IS DISTINCT FROM 'identity'))
+           OR (workspace.desired_realized_projection_id IS NOT NULL AND (
+                 desired_projection.workspace_id
+                   IS DISTINCT FROM workspace.workspace_id
+                 OR desired_projection.source_authored_graph_id
+                   IS DISTINCT FROM workspace.desired_graph_id
+                 OR desired_projection.projection_kind IS DISTINCT FROM 'identity'
+                 OR desired_projection.projection_key IS DISTINCT FROM 'identity'))
+      )
+    THEN
+      RAISE EXCEPTION USING ERRCODE = 'P1110',
+        MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+    END IF;
+  END IF;
+
+  IF plan_column_count = 3 THEN
+    IF EXISTS (SELECT 1 FROM cpk_activity_plans WHERE desired_graph_revision < 0)
+      OR EXISTS (
+        SELECT 1
+        FROM cpk_activity_plans AS plan
+        JOIN cpk_operation_sessions AS session ON session.session_id = plan.session_id
+        LEFT JOIN cpk_realized_graph_projections AS base_projection
+          ON base_projection.projection_id = plan.base_realized_projection_id
+        LEFT JOIN cpk_realized_graph_projections AS desired_projection
+          ON desired_projection.projection_id = plan.desired_realized_projection_id
+        WHERE (plan.base_realized_projection_id IS NOT NULL AND (
+                 base_projection.workspace_id IS DISTINCT FROM session.workspace_id
+                 OR base_projection.source_authored_graph_id
+                   IS DISTINCT FROM plan.base_graph_id
+                 OR base_projection.projection_kind IS DISTINCT FROM 'identity'
+                 OR base_projection.projection_key IS DISTINCT FROM 'identity'))
+           OR (plan.desired_realized_projection_id IS NOT NULL AND (
+                 desired_projection.workspace_id IS DISTINCT FROM session.workspace_id
+                 OR desired_projection.source_authored_graph_id
+                   IS DISTINCT FROM plan.desired_graph_id
+                 OR desired_projection.projection_kind IS DISTINCT FROM 'identity'
+                 OR desired_projection.projection_key IS DISTINCT FROM 'identity'))
+      )
+    THEN
+      RAISE EXCEPTION USING ERRCODE = 'P1110',
+        MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+    END IF;
+  END IF;
+
+  IF EXISTS (
+    WITH accepted(relation_name, constraint_name, constraint_kind, definition) AS (
+      VALUES {_graph_lineage_constraint_values()}
+    )
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    JOIN accepted ON accepted.relation_name = relation.relname
+      AND accepted.constraint_name = constraints.conname
+    WHERE namespace.nspname = current_schema()
+      AND (constraints.contype::text <> accepted.constraint_kind
+           OR constraints.convalidated IS NOT TRUE
+           OR pg_get_constraintdef(constraints.oid, false) <> accepted.definition)
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
+
+def _graph_lineage_constraint_install_sql(
+    table: str,
+    name: str,
+    ddl: str,
+) -> str:
+    return f"""
+DO $cpk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = '{table}'
+      AND constraints.conname = '{name}'
+  ) THEN
+    ALTER TABLE {table} ADD CONSTRAINT {name} {ddl};
+  END IF;
+END
+$cpk$;
+"""
+
+
+_POSTGRES_SCHEMA_V17_FINAL_SQL = """
+DO $cpk$
+DECLARE
+  workspace_column_count bigint;
+  plan_column_count bigint;
+BEGIN
+  SELECT count(*) INTO workspace_column_count
+  FROM information_schema.columns
+  WHERE table_schema = current_schema() AND table_name = 'cpk_workspaces'
+    AND column_name IN ('current_realized_projection_id',
+                        'desired_realized_projection_id',
+                        'desired_graph_revision');
+  SELECT count(*) INTO plan_column_count
+  FROM information_schema.columns
+  WHERE table_schema = current_schema() AND table_name = 'cpk_activity_plans'
+    AND column_name IN ('base_realized_projection_id',
+                        'desired_realized_projection_id',
+                        'desired_graph_revision');
+  IF workspace_column_count = 0 THEN
+    ALTER TABLE cpk_workspaces
+      ADD COLUMN current_realized_projection_id text,
+      ADD COLUMN desired_realized_projection_id text,
+      ADD COLUMN desired_graph_revision bigint NOT NULL DEFAULT 0;
+  END IF;
+  IF plan_column_count = 0 THEN
+    ALTER TABLE cpk_activity_plans
+      ADD COLUMN base_realized_projection_id text,
+      ADD COLUMN desired_realized_projection_id text,
+      ADD COLUMN desired_graph_revision bigint NOT NULL DEFAULT 0;
+  END IF;
+END
+$cpk$;
+
+UPDATE cpk_workspaces AS workspace
+SET current_realized_projection_id = projection.projection_id
+FROM cpk_realized_graph_projections AS projection
+WHERE workspace.current_graph_id = projection.source_authored_graph_id
+  AND workspace.workspace_id = projection.workspace_id
+  AND projection.projection_kind = 'identity'
+  AND projection.projection_key = 'identity'
+  AND workspace.current_realized_projection_id IS NULL;
+UPDATE cpk_workspaces AS workspace
+SET desired_realized_projection_id = projection.projection_id
+FROM cpk_realized_graph_projections AS projection
+WHERE workspace.desired_graph_id = projection.source_authored_graph_id
+  AND workspace.workspace_id = projection.workspace_id
+  AND projection.projection_kind = 'identity'
+  AND projection.projection_key = 'identity'
+  AND workspace.desired_realized_projection_id IS NULL;
+UPDATE cpk_activity_plans AS plan
+SET base_realized_projection_id = projection.projection_id
+FROM cpk_operation_sessions AS session,
+     cpk_realized_graph_projections AS projection
+WHERE plan.session_id = session.session_id
+  AND plan.base_graph_id = projection.source_authored_graph_id
+  AND session.workspace_id = projection.workspace_id
+  AND projection.projection_kind = 'identity'
+  AND projection.projection_key = 'identity'
+  AND plan.base_realized_projection_id IS NULL;
+UPDATE cpk_activity_plans AS plan
+SET desired_realized_projection_id = projection.projection_id
+FROM cpk_operation_sessions AS session,
+     cpk_realized_graph_projections AS projection
+WHERE plan.session_id = session.session_id
+  AND plan.desired_graph_id = projection.source_authored_graph_id
+  AND session.workspace_id = projection.workspace_id
+  AND projection.projection_kind = 'identity'
+  AND projection.projection_key = 'identity'
+  AND plan.desired_realized_projection_id IS NULL;
+""" + "".join(
+    _graph_lineage_constraint_install_sql(table, name, ddl)
+    for table, name, _kind, ddl, _definition in _POSTGRES_SCHEMA_V17_CONSTRAINTS
+)
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -3535,6 +3933,24 @@ if _POSTGRES_SCHEMA_V16.checksum_sha256 != _POSTGRES_SCHEMA_V16_SHA256:
         f"expected {_POSTGRES_SCHEMA_V16_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V16.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V17 = SchemaMigration(
+    version=17,
+    name="graph-lineage-compatibility",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V17_PREFLIGHT_SQL),
+        DeterministicBackfillStep(SchemaBackfillKind.GRAPH_LINEAGE, 1),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V17_FINAL_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V17_SHA256 = (
+    "e97706a99bc8e161a4b9bb77612b07040a615bff3396cce2a832e1bb74a6505e"
+)
+if _POSTGRES_SCHEMA_V17.checksum_sha256 != _POSTGRES_SCHEMA_V17_SHA256:
+    raise SchemaMigrationError(
+        "graph lineage compatibility V17 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V17_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V17.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -3553,6 +3969,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V14,
         _POSTGRES_SCHEMA_V15,
         _POSTGRES_SCHEMA_V16,
+        _POSTGRES_SCHEMA_V17,
     )
 )
 
@@ -3565,121 +3982,3 @@ def install_schema(connection: MigrationPostgresConnection) -> None:
     )
 
     install_postgres_schema(connection)
-
-
-def _backfill_graph_lineage(connection: PostgresConnection) -> None:
-    """Materialize deterministic identity projections for pre-lineage rows."""
-
-    rows = connection.execute(
-        """
-        SELECT graph_id, workspace_id, version, graph_descriptor,
-               created_by, created_at, metadata
-        FROM cpk_graph_versions
-        WHERE graph_id IN (
-          SELECT current_graph_id FROM cpk_workspaces
-          WHERE current_graph_id IS NOT NULL
-          UNION
-          SELECT desired_graph_id FROM cpk_workspaces
-          WHERE desired_graph_id IS NOT NULL
-          UNION
-          SELECT base_graph_id FROM cpk_activity_plans
-          UNION
-          SELECT desired_graph_id FROM cpk_activity_plans
-        )
-        ORDER BY workspace_id, version
-        """
-    ).fetchall()
-    for row in rows:
-        existing = connection.execute(
-            """
-            SELECT projection_id
-            FROM cpk_realized_graph_projections
-            WHERE workspace_id = %s
-              AND source_authored_graph_id = %s
-              AND projection_kind = 'identity'
-              AND projection_key = 'identity'
-            """,
-            (row[1], row[0]),
-        ).fetchone()
-        if existing is not None:
-            continue
-        authored = GraphVersionRecord(
-            graph_id=row[0],
-            workspace_id=row[1],
-            version=row[2],
-            graph_descriptor=row[3],
-            created_by=row[4],
-            created_at=decode_postgres_timestamp(row[5]),
-            metadata=row[6],
-        )
-        projection = RealizedGraphProjectionRecord.identity_for_authored(
-            authored_record=authored
-        )
-        encoded_created_at = encode_postgres_timestamp(projection.created_at)
-        connection.execute(
-            """
-            INSERT INTO cpk_realized_graph_projections
-              (projection_id, workspace_id, source_authored_graph_id,
-               projection_kind, projection_key, projection_digest,
-               graph_descriptor, created_by, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT DO NOTHING
-            """,
-            (
-                projection.projection_id,
-                projection.workspace_id,
-                projection.source_authored_graph_id,
-                projection.projection_kind.value,
-                projection.projection_key,
-                projection.projection_digest,
-                Jsonb(projection.graph_descriptor),
-                projection.created_by,
-                encoded_created_at,
-            ),
-        )
-    connection.execute(
-        """
-        UPDATE cpk_workspaces AS workspace
-        SET current_realized_projection_id = projection.projection_id
-        FROM cpk_realized_graph_projections AS projection
-        WHERE workspace.current_graph_id = projection.source_authored_graph_id
-          AND workspace.workspace_id = projection.workspace_id
-          AND projection.projection_kind = 'identity'
-          AND projection.projection_key = 'identity'
-          AND workspace.current_realized_projection_id IS NULL
-        """
-    )
-    connection.execute(
-        """
-        UPDATE cpk_workspaces AS workspace
-        SET desired_realized_projection_id = projection.projection_id
-        FROM cpk_realized_graph_projections AS projection
-        WHERE workspace.desired_graph_id = projection.source_authored_graph_id
-          AND workspace.workspace_id = projection.workspace_id
-          AND projection.projection_kind = 'identity'
-          AND projection.projection_key = 'identity'
-          AND workspace.desired_realized_projection_id IS NULL
-        """
-    )
-    connection.execute(
-        """
-        UPDATE cpk_activity_plans AS plan
-        SET base_realized_projection_id = projection.projection_id
-        FROM cpk_realized_graph_projections AS projection
-        WHERE plan.base_graph_id = projection.source_authored_graph_id
-          AND projection.projection_kind = 'identity'
-          AND projection.projection_key = 'identity'
-          AND plan.base_realized_projection_id IS NULL
-        """
-    )
-    connection.execute(
-        """
-        UPDATE cpk_activity_plans AS plan
-        SET desired_realized_projection_id = projection.projection_id
-        FROM cpk_realized_graph_projections AS projection
-        WHERE plan.desired_graph_id = projection.source_authored_graph_id
-          AND projection.projection_kind = 'identity'
-          AND projection.projection_key = 'identity'
-          AND plan.desired_realized_projection_id IS NULL
-        """
-    )

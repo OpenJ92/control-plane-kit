@@ -10,7 +10,12 @@ from control_plane_kit_operations.postgres.migrations import (
 )
 from control_plane_kit_operations.postgres.schema import (
     POSTGRES_SCHEMA_MIGRATIONS,
+    MigrationPostgresConnection,
     PostgresConnection,
+    _POSTGRES_SCHEMA_V17_CONSTRAINTS,
+)
+from control_plane_kit_operations.postgres.graph_lineage_backfill import (
+    verify_graph_lineage_v1,
 )
 
 
@@ -1091,6 +1096,35 @@ _V1_HISTORICAL_COLUMN_ORDERS = {
         ),
     ),
 }
+_V1_PRE_GRAPH_LINEAGE_COLUMN_ORDERS = {
+    table: tuple(
+        column
+        for column in _V1_COLUMNS_BY_TABLE[table]
+        if column not in appended
+    )
+    for table, appended in (
+        (
+            "cpk_workspaces",
+            frozenset(
+                {
+                    "current_realized_projection_id",
+                    "desired_realized_projection_id",
+                    "desired_graph_revision",
+                }
+            ),
+        ),
+        (
+            "cpk_activity_plans",
+            frozenset(
+                {
+                    "base_realized_projection_id",
+                    "desired_realized_projection_id",
+                    "desired_graph_revision",
+                }
+            ),
+        ),
+    )
+}
 _MAX_CATALOG_TABLES = len(POSTGRES_SCHEMA_V1_TABLE_COLUMNS) + 2
 _MAX_CATALOG_COLUMNS = (
     sum(len(columns) for _, columns in POSTGRES_SCHEMA_V1_TABLE_COLUMNS)
@@ -1163,8 +1197,19 @@ def inspect_postgres_schema(connection: PostgresConnection) -> ObservedSchemaSta
     return observed
 
 
-def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaState:
-    """Require canonical current migration history and exact V1 structure."""
+def verify_postgres_schema(
+    connection: MigrationPostgresConnection,
+) -> ObservedSchemaState:
+    """Require current migration truth inside one coherent transaction."""
+
+    with connection.transaction():
+        return _verify_postgres_schema_under_transaction(connection)
+
+
+def _verify_postgres_schema_under_transaction(
+    connection: PostgresConnection,
+) -> ObservedSchemaState:
+    """Verify current migration history and exact retained structure."""
 
     observed = inspect_postgres_schema(connection)
     if observed.kind is not ObservedSchemaKind.VERSIONED:
@@ -1195,6 +1240,8 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         _verify_approval_subject_evidence_contract(connection)
     if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 16:
         _verify_approval_scope_contracts(connection)
+    if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 17:
+        _verify_graph_lineage_contracts(connection)
     if _read_coordination_temporal_contract(connection) != (
         _COORDINATION_TEMPORAL_CONTRACT
     ):
@@ -1759,6 +1806,86 @@ def _verify_approval_scope_contracts(connection: PostgresConnection) -> None:
         raise SchemaMigrationError("approval scope schema is not current")
 
 
+def _verify_graph_lineage_contracts(connection: PostgresConnection) -> None:
+    column_rows = _read_rows(
+        connection,
+        """
+        SELECT table_name, column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND (table_name, column_name) IN (
+            ('cpk_workspaces', 'current_realized_projection_id'),
+            ('cpk_workspaces', 'desired_realized_projection_id'),
+            ('cpk_workspaces', 'desired_graph_revision'),
+            ('cpk_activity_plans', 'base_realized_projection_id'),
+            ('cpk_activity_plans', 'desired_realized_projection_id'),
+            ('cpk_activity_plans', 'desired_graph_revision')
+          )
+        ORDER BY table_name, column_name
+        LIMIT 7
+        """,
+        (),
+        "graph lineage schema read failed",
+    )
+    expected_columns = [
+        ("cpk_activity_plans", "base_realized_projection_id", "text", "YES", None),
+        ("cpk_activity_plans", "desired_graph_revision", "bigint", "NO", "0"),
+        ("cpk_activity_plans", "desired_realized_projection_id", "text", "YES", None),
+        ("cpk_workspaces", "current_realized_projection_id", "text", "YES", None),
+        ("cpk_workspaces", "desired_graph_revision", "bigint", "NO", "0"),
+        ("cpk_workspaces", "desired_realized_projection_id", "text", "YES", None),
+    ]
+    if column_rows != expected_columns:
+        raise SchemaMigrationError("graph lineage schema is not current")
+
+    expected_constraints = tuple(
+        sorted(
+            (table, name, kind, True, definition)
+            for table, name, kind, _ddl, definition in (
+                _POSTGRES_SCHEMA_V17_CONSTRAINTS
+            )
+        )
+    )
+    constraint_rows = _read_rows(
+        connection,
+        """
+        SELECT relation.relname, constraints.conname,
+               constraints.contype::text, constraints.convalidated,
+               pg_get_constraintdef(constraints.oid, false)
+        FROM pg_constraint AS constraints
+        JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = current_schema()
+          AND (relation.relname, constraints.conname) IN (
+            ('cpk_realized_graph_projections',
+             'cpk_realized_graph_projection_workspace_identity'),
+            ('cpk_realized_graph_projections',
+             'cpk_realized_graph_projection_source_identity'),
+            ('cpk_workspaces', 'cpk_workspaces_current_realized_projection_fk'),
+            ('cpk_workspaces', 'cpk_workspaces_desired_realized_projection_fk'),
+            ('cpk_workspaces', 'cpk_workspaces_current_projection_source_fk'),
+            ('cpk_workspaces', 'cpk_workspaces_desired_projection_source_fk'),
+            ('cpk_workspaces', 'cpk_workspaces_current_lineage_check'),
+            ('cpk_workspaces', 'cpk_workspaces_desired_lineage_check'),
+            ('cpk_workspaces', 'cpk_workspaces_desired_graph_revision_check'),
+            ('cpk_activity_plans',
+             'cpk_activity_plans_base_projection_source_fk'),
+            ('cpk_activity_plans',
+             'cpk_activity_plans_desired_projection_source_fk'),
+            ('cpk_activity_plans',
+             'cpk_activity_plans_desired_graph_revision_check')
+          )
+        ORDER BY relation.relname, constraints.conname, constraints.oid
+        LIMIT 13
+        """,
+        (),
+        "graph lineage schema read failed",
+    )
+    if tuple(constraint_rows) != expected_constraints:
+        raise SchemaMigrationError("graph lineage schema is not current")
+    verify_graph_lineage_v1(connection)
+
+
 def _read_coordination_temporal_contract(
     connection: PostgresConnection,
 ) -> tuple[tuple[str, str, str, int, str, bool], ...]:
@@ -2005,7 +2132,8 @@ def _is_accepted_current_manifest(
     for table, columns in observed:
         canonical = _V1_COLUMNS_BY_TABLE[table]
         historical = _V1_HISTORICAL_COLUMN_ORDERS.get(table)
-        if columns != canonical and columns != historical:
+        pre_lineage = _V1_PRE_GRAPH_LINEAGE_COLUMN_ORDERS.get(table)
+        if columns not in (canonical, historical, pre_lineage):
             return False
     return True
 

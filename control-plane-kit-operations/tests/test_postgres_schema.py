@@ -18,6 +18,10 @@ from control_plane_kit_operations.postgres import (
     SchemaMigrationError,
     install_schema,
 )
+from control_plane_kit_operations.records import (
+    GraphVersionRecord,
+    RealizedGraphProjectionRecord,
+)
 
 
 class PostgresSchemaFoundationTests(unittest.TestCase):
@@ -403,17 +407,66 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             """,
             (Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("current"))),),
         )
+        projection = RealizedGraphProjectionRecord.identity_for_authored(
+            authored_record=GraphVersionRecord(
+                graph_id="graph-a",
+                workspace_id="workspace-a",
+                version=1,
+                graph_descriptor=DEFAULT_GRAPH_CODEC.encode(
+                    DeploymentGraph("current")
+                ),
+                created_by="operator",
+                created_at="2026-08-07T05:59:00Z",
+            )
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_realized_graph_projections
+              (projection_id, workspace_id, source_authored_graph_id,
+               projection_kind, projection_key, projection_digest,
+               graph_descriptor, created_by, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                projection.projection_id,
+                projection.workspace_id,
+                projection.source_authored_graph_id,
+                projection.projection_kind.value,
+                projection.projection_key,
+                projection.projection_digest,
+                Jsonb(projection.graph_descriptor),
+                projection.created_by,
+                projection.created_at,
+            ),
+        )
+        self.connection.execute(
+            "UPDATE cpk_workspaces SET current_graph_id='graph-a', "
+            "desired_graph_id='graph-a', current_realized_projection_id=%s, "
+            "desired_realized_projection_id=%s, desired_graph_revision=1 "
+            "WHERE workspace_id='workspace-a'",
+            (projection.projection_id, projection.projection_id),
+        )
         self.connection.execute(
             """
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator', 'Deploy', 'open',
                     '2026-08-07T06:00:00Z');
+            """
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_activity_plans
-              (plan_id, session_id, base_graph_id, desired_graph_id, status,
-               created_at, payload)
-            VALUES ('plan-a', 'session-a', 'graph-a', 'graph-a', 'planned',
-                    '2026-08-07T06:01:00Z', '{}'::jsonb);
+              (plan_id, session_id, base_graph_id, desired_graph_id,
+               base_realized_projection_id, desired_realized_projection_id,
+               desired_graph_revision, status, created_at, payload)
+            VALUES ('plan-a', 'session-a', 'graph-a', 'graph-a', %s, %s, 1,
+                    'planned', '2026-08-07T06:01:00Z', '{}'::jsonb)
+            """,
+            (projection.projection_id, projection.projection_id),
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, subject_kind, subject_payload,
                review_digest, requested_by, requested_at,
@@ -440,7 +493,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed',
                     '2026-08-07T06:05:00Z',
                     '{}'::jsonb);
-            """
+            """,
         )
         if include_events:
             self.connection.execute(
