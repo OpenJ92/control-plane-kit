@@ -13,6 +13,7 @@ from enum import StrEnum
 
 
 DEFAULT_CONTROL_PREFIX = "/__deploy"
+WORKLOAD_CONTROL_PREFIX = "/__control"
 
 
 class ControlRouteMethod(StrEnum):
@@ -33,6 +34,8 @@ class ControlRouteScope(StrEnum):
     RUN_LOAD = "load:run"
     READ_DISCOVERY = "discovery:read"
     WRITE_DISCOVERY = "discovery:write"
+    READ_NODE_CONTROL = "node-control:read"
+    APPLY_NODE_CONTROL = "node-control:apply"
 
 
 class ControlRouteSetName(StrEnum):
@@ -49,6 +52,7 @@ class ControlRouteSetName(StrEnum):
     CACHE = "cache"
     LOADS = "loads"
     DISCOVERY = "discovery"
+    NODE_CONTROL = "node-control"
 
 
 @dataclass(frozen=True)
@@ -345,6 +349,32 @@ DISCOVERY_ROUTES = ControlRouteSet(
     ),
 )
 
+NODE_CONTROL_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.NODE_CONTROL,
+    routes=(
+        ControlRoute(
+            name="read-variable",
+            method=ControlRouteMethod.GET,
+            path=control_path(
+                "variables/{variable_name}",
+                prefix=WORKLOAD_CONTROL_PREFIX,
+            ),
+            scope=ControlRouteScope.READ_NODE_CONTROL,
+            description="Read one bounded typed workload control variable.",
+        ),
+        ControlRoute(
+            name="apply-variable-command",
+            method=ControlRouteMethod.POST,
+            path=control_path(
+                "variables/{variable_name}/commands",
+                prefix=WORKLOAD_CONTROL_PREFIX,
+            ),
+            scope=ControlRouteScope.APPLY_NODE_CONTROL,
+            description="Apply one authenticated semantic workload variable command.",
+        ),
+    ),
+)
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
@@ -357,6 +387,7 @@ CONTROL_ROUTE_SETS = (
     CACHE_ROUTES,
     LOAD_ROUTES,
     DISCOVERY_ROUTES,
+    NODE_CONTROL_ROUTES,
 )
 
 

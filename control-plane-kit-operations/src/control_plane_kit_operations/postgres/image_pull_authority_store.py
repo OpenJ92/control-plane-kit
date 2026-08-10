@@ -11,6 +11,10 @@ from control_plane_kit_core.runtime_effects import (
     ImagePullAuthorityCodec,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.products import (
     ProductRegistrationConflict,
     ProductRegistrationNotFound,
@@ -39,6 +43,7 @@ class ImagePullAuthorityStore:
             admitted_by=admitted_by,
             admitted_at=admitted_at,
         )
+        encoded_admitted_at = encode_postgres_timestamp(candidate.admitted_at)
         existing = self._get_by_id(workspace_id, candidate.authority_id)
         if existing is not None:
             return existing
@@ -73,7 +78,7 @@ class ImagePullAuthorityStore:
                 candidate.authority.repository,
                 candidate.authority.credential_reference.reference_id,
                 candidate.admitted_by,
-                candidate.admitted_at,
+                encoded_admitted_at,
                 candidate.status.value,
             ),
         )
@@ -175,7 +180,7 @@ def _row_to_authority(row: tuple[Any, ...]) -> RegisteredImagePullAuthority:
         workspace_id=row[1],
         authority=ImagePullAuthorityCodec().decode(row[2]),
         admitted_by=row[3],
-        admitted_at=row[4],
+        admitted_at=decode_postgres_timestamp(row[4]),
         status=RegisteredImagePullAuthorityStatus(row[5]),
         metadata=row[6],
     )

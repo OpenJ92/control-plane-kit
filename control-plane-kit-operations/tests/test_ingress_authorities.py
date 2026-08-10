@@ -151,7 +151,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         resource = self.cloudflare_resource(
             epoch=2,
             status=OwnedIngressResourceStatus.REMOVED,
-            removed_at="removed-at",
+            removed_at="2026-07-28T08:02:00Z",
             removed_by_run_id="run-002",
         )
 
@@ -159,7 +159,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         self.assertEqual(descriptor["epoch"], 2)
         self.assertEqual(descriptor["status"], "removed")
         self.assertEqual(descriptor["lifecycle"], "ephemeral")
-        self.assertEqual(descriptor["removed_at"], "removed-at")
+        self.assertEqual(descriptor["removed_at"], "2026-07-28T08:02:00Z")
         self.assertEqual(descriptor["removed_by_run_id"], "run-002")
 
         with self.assertRaisesRegex(
@@ -173,7 +173,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         ):
             self.cloudflare_resource(
                 status=OwnedIngressResourceStatus.ACTIVE,
-                removed_at="removed-at",
+                removed_at="2026-07-28T08:02:00Z",
                 removed_by_run_id="run-002",
             )
 
@@ -440,7 +440,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
                 authority_ref=IngressAuthorityReference("openj92-public-ingress"),
                 authority=self.cloudflare_authority(),
                 admitted_by="operator-a",
-                admitted_at="2026-07-27T22:50:00Z",
+                admitted_at="2026-07-27T22:50:00.000001Z",
                 actor_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,),
             )
         )
@@ -454,6 +454,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             registered.provider_kind,
             IngressAuthorityProviderKind.CLOUDFLARE,
         )
+        self.assertEqual(registered.admitted_at, "2026-07-27T22:50:00.000001Z")
         self.assertEqual(registered.status, RegisteredIngressAuthorityStatus.ACTIVE)
         with self.unit_of_work() as unit_of_work:
             self.assertEqual(
@@ -492,6 +493,33 @@ class IngressAuthorityStoreTests(unittest.TestCase):
                     actor_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,),
                 )
             )
+
+    def test_ingress_authority_rejects_noncanonical_timestamp_before_lookup_or_write(
+        self,
+    ) -> None:
+        service = IngressAuthorityRegistrationService(self.unit_of_work)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "^postgres timestamp must be canonical UTC text$",
+        ):
+            service.register(
+                RegisterIngressAuthorityCommand(
+                    workspace_id="workspace-a",
+                    authority_ref=IngressAuthorityReference("invalid-time-ingress"),
+                    authority=self.cloudflare_authority(),
+                    admitted_by="operator-a",
+                    admitted_at="not-a-timestamp",
+                    actor_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,),
+                )
+            )
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_ingress_authorities"
+            ).fetchone()[0],
+            0,
+        )
 
     def test_revoked_ingress_authority_is_not_selectable_but_remains_inspectable(
         self,
@@ -655,7 +683,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             removed = unit_of_work.stores.ingress_resources.mark_removed(
                 "workspace-a",
                 "gateway-001",
-                removed_at="removed-at",
+                removed_at="2026-07-28T08:02:00Z",
                 removed_by_run_id="run-002",
             )
             reallocated = unit_of_work.stores.ingress_resources.record_cloudflare(
@@ -740,7 +768,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             removed = unit_of_work.stores.ingress_resources.mark_removed(
                 "workspace-a",
                 "gateway-001",
-                removed_at="removed-at",
+                removed_at="2026-07-28T08:02:00Z",
                 removed_by_run_id="run-003",
             )
             unit_of_work.commit()

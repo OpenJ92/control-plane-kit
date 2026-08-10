@@ -7,6 +7,9 @@ import unittest
 
 import psycopg
 
+from tests.graph_lineage_fixture import seed_identity_graphs
+
+import control_plane_kit_core.policies as policies
 from control_plane_kit_core.planning import (
     ActivityId,
     ActivityImpact,
@@ -17,7 +20,7 @@ from control_plane_kit_core.planning import (
     StartNode,
     StopNode,
 )
-from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_operations.approvals import (
     ApprovalAuthorizationDenied,
     ApprovalCommandService,
@@ -65,6 +68,13 @@ class ApprovalCommandTests(unittest.TestCase):
             unit_of_work.stores.workspaces.create(
                 WorkspaceRecord("workspace-a", "Workspace A")
             )
+            lineage = seed_identity_graphs(
+                unit_of_work.stores,
+                workspace_id="workspace-a",
+                graph_ids=("graph-current", "graph-desired"),
+            )
+            self.current_projection_id = lineage["graph-current"]
+            self.desired_projection_id = lineage["graph-desired"]
             unit_of_work.commit()
         self.operation_service("session-a", "action-start").execute(
             StartOperationSession(
@@ -91,11 +101,16 @@ class ApprovalCommandTests(unittest.TestCase):
             id_factory=Sequence(*ids),
         )
 
-    def approval_service(self, *ids: str) -> ApprovalCommandService:
+    def approval_service(
+        self,
+        *ids: str,
+        policy: ApprovalPolicy | None = None,
+    ) -> ApprovalCommandService:
         return ApprovalCommandService(
             self.unit_of_work,
             clock=lambda: "2026-07-22T11:01:00Z",
             id_factory=Sequence(*ids),
+            policy=policy,
         )
 
     def save_plan(self, plan_id: str, plan: ActivityPlan) -> None:
@@ -109,6 +124,8 @@ class ApprovalCommandTests(unittest.TestCase):
                     status=ActivityPlanStatus.PLANNED,
                     created_at="2026-07-22T11:00:30Z",
                     plan=plan,
+                    base_realized_projection_id=self.current_projection_id,
+                    desired_realized_projection_id=self.desired_projection_id,
                 )
             )
             unit_of_work.commit()
@@ -133,6 +150,7 @@ class ApprovalCommandTests(unittest.TestCase):
         self,
         *,
         request_id: str = "request-a",
+        actor_id: str = "manager-a",
         scopes: tuple[PolicyScope, ...] = (PolicyScope.PLAN_APPROVE,),
         decision: ApprovalDecisionKind = ApprovalDecisionKind.APPROVED,
         key: str = "decide-approval",
@@ -140,7 +158,7 @@ class ApprovalCommandTests(unittest.TestCase):
         return DecideApproval(
             session_id="session-a",
             request_id=request_id,
-            actor_id="manager-a",
+            actor_id=actor_id,
             actor_scopes=scopes,
             decision=decision,
             idempotency_key=IdempotencyKey(key),
@@ -218,6 +236,91 @@ class ApprovalCommandTests(unittest.TestCase):
             )
         )
         self.assertEqual(approved.decision.scope, PolicyScope.PLAN_APPROVE_DESTRUCTIVE)
+
+    def test_destructive_self_approval_rolls_back_before_history_writes(self) -> None:
+        request = self.approval_service("request-a", "action-request").execute(
+            self.request(plan_id="plan-destructive")
+        ).request
+
+        with self.assertRaisesRegex(
+            ApprovalAuthorizationDenied,
+            "destructive approval requires a distinct principal",
+        ):
+            self.approval_service("decision-a", "action-decision").execute(
+                self.decision(
+                    request_id=request.request_id,
+                    actor_id="operator-a",
+                    scopes=(PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+                )
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            history = unit_of_work.stores.activity_history
+            self.assertIsNone(
+                history.approval_decision_for_request(request.request_id)
+            )
+            self.assertEqual(
+                tuple(
+                    action.action_type.value
+                    for action in history.actions_for_session("session-a")
+                ),
+                ("start-operation-session", "request-approval"),
+            )
+            unit_of_work.commit()
+
+        approved = self.approval_service(
+            "decision-b",
+            "action-decision-b",
+        ).execute(
+            self.decision(
+                request_id=request.request_id,
+                actor_id="manager-a",
+                scopes=(PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+                key="distinct-approval",
+            )
+        )
+        self.assertEqual(approved.decision.actor_id, "manager-a")
+
+    def test_explicit_local_policy_allows_destructive_self_approval(self) -> None:
+        request = self.approval_service("request-a", "action-request").execute(
+            self.request(plan_id="plan-destructive")
+        ).request
+        local_policy = ApprovalPolicy(
+            destructive_separation=(
+                policies.DestructiveApprovalSeparation.ALLOW_SELF
+            )
+        )
+
+        approved = self.approval_service(
+            "decision-a",
+            "action-decision",
+            policy=local_policy,
+        ).execute(
+            self.decision(
+                request_id=request.request_id,
+                actor_id="operator-a",
+                scopes=(PolicyScope.PLAN_APPROVE_DESTRUCTIVE,),
+            )
+        )
+
+        self.assertEqual(approved.decision.actor_id, "operator-a")
+
+    def test_non_destructive_self_approval_remains_allowed(self) -> None:
+        request = self.approval_service("request-a", "action-request").execute(
+            self.request()
+        ).request
+
+        approved = self.approval_service(
+            "decision-a",
+            "action-decision",
+        ).execute(
+            self.decision(
+                request_id=request.request_id,
+                actor_id="operator-a",
+            )
+        )
+
+        self.assertEqual(approved.decision.actor_id, "operator-a")
 
     def test_request_and_decision_replay_without_duplicate_history(self) -> None:
         request_command = self.request()

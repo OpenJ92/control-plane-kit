@@ -5,16 +5,23 @@ import unittest
 import uuid
 
 import psycopg
-from psycopg.errors import CheckViolation, UndefinedColumn
+from psycopg.errors import CheckViolation
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
-from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationStatus,
 )
-from control_plane_kit_operations.postgres import POSTGRES_SCHEMA, install_schema
+from control_plane_kit_operations.postgres import (
+    POSTGRES_SCHEMA,
+    SchemaMigrationError,
+    install_schema,
+)
+from control_plane_kit_operations.records import (
+    GraphVersionRecord,
+    RealizedGraphProjectionRecord,
+)
 
 
 class PostgresSchemaFoundationTests(unittest.TestCase):
@@ -51,10 +58,12 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
         )
         self.connection.autocommit = False
         try:
-            with self.assertRaises(UndefinedColumn):
+            with self.assertRaises(SchemaMigrationError):
                 install_schema(self.connection)
             self.connection.rollback()
         finally:
+            if self.connection.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+                self.connection.rollback()
             self.connection.autocommit = True
 
         self.assertEqual(self._table_names(), {"cpk_activity_runs"})
@@ -91,7 +100,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             ],
         )
 
-    def test_install_backfills_legacy_plan_approval_as_closed_subject(self) -> None:
+    def test_install_rejects_subject_drift_after_v15(self) -> None:
         install_schema(self.connection)
         self._seed_minimal_execution_truth()
         self.connection.execute(
@@ -110,80 +119,26 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             "ALTER TABLE cpk_approval_requests ALTER COLUMN plan_id SET NOT NULL"
         )
 
-        install_schema(self.connection)
+        with self.assertRaises(SchemaMigrationError):
+            install_schema(self.connection)
 
-        row = self.connection.execute(
-            """
-            SELECT plan_id, rotation_id, subject_kind, subject_payload,
-                   review_digest
-            FROM cpk_approval_requests
-            WHERE request_id = 'approval-request-a'
-            """
-        ).fetchone()
-        self.assertEqual(row[0:3], ("plan-a", None, "activity-plan"))
-        self.assertEqual(
-            row[3],
-            {"kind": "activity-plan", "plan_id": "plan-a"},
-        )
-        self.assertEqual(len(row[4]), 64)
-
-    def test_install_expands_stale_approval_scope_checks_once(self) -> None:
-        install_schema(self.connection)
-        self._seed_minimal_execution_truth()
-        old_values = ", ".join(
-            f"'{scope.value}'"
-            for scope in PolicyScope
-            if scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
-        )
-        for table, column, constraint in (
-            (
-                "cpk_approval_requests",
-                "required_scope",
-                "cpk_approval_requests_scope_check",
-            ),
-            (
-                "cpk_approval_decisions",
-                "scope",
-                "cpk_approval_decisions_scope_check",
-            ),
-        ):
-            self.connection.execute(
-                f"ALTER TABLE {table} DROP CONSTRAINT {constraint}"
-            )
-            self.connection.execute(
-                f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
-                f"CHECK ({column} IN ({old_values}))"
-            )
-
-        install_schema(self.connection)
-        after_upgrade = self._constraint_identities()
-
-        definitions = " ".join(
-            row[0]
-            for row in self.connection.execute(
-                """
-                SELECT pg_get_constraintdef(oid)
-                FROM pg_constraint
-                WHERE conname IN (
-                  'cpk_approval_requests_scope_check',
-                  'cpk_approval_decisions_scope_check'
-                )
-                ORDER BY conname
-                """
-            ).fetchall()
-        )
-        self.assertIn(PolicyScope.DELEGATION_KEY_ROTATE_APPROVE.value, definitions)
         self.assertEqual(
             self.connection.execute(
-                "SELECT count(*) FROM cpk_approval_requests"
-            ).fetchone(),
-            (1,),
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'cpk_approval_requests'
+                  AND column_name IN (
+                    'rotation_id', 'subject_kind', 'subject_payload',
+                    'review_digest'
+                  )
+                """
+            ).fetchall(),
+            [],
         )
 
-        install_schema(self.connection)
-        self.assertEqual(self._constraint_identities(), after_upgrade)
-
-    def test_install_expands_stale_rotation_status_checks_without_row_loss(
+    def test_install_rejects_post_v13_status_drift_without_row_loss_or_repair(
         self,
     ) -> None:
         install_schema(self.connection)
@@ -241,41 +196,31 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 f"CHECK ({column} IN ({old_values}))"
             )
 
-        install_schema(self.connection)
-        after_upgrade = self._constraint_identities()
-        self.connection.execute(
-            """
-            UPDATE cpk_gateway_key_rotations
-            SET status = 'generation-prepared', version = 2,
-                generation_provider_registration_id = 'provider-registration-a',
-                generation_action_digest = %s
-            WHERE rotation_id = 'rotation-a'
-            """,
-            ("b" * 64,),
-        )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_gateway_key_rotation_transitions (
-              rotation_id, transition_id, from_status, to_status,
-              from_version, to_version, transition_fingerprint,
-              advanced_by, advanced_at
-            ) VALUES (
-              'rotation-a', 'prepare-generation', 'approved',
-              'generation-prepared', 1, 2, %s, 'operator-a',
-              '2026-08-02T00:00:01Z'
-            )
-            """,
-            ("c" * 64,),
-        )
-        self.assertEqual(
-            self.connection.execute(
-                "SELECT status FROM cpk_gateway_key_rotations"
-            ).fetchall(),
-            [(GatewayKeyRotationStatus.GENERATION_PREPARED.value,)],
-        )
+        before_rejection = self._constraint_identities()
+        for _ in range(2):
+            with self.assertRaises(SchemaMigrationError) as raised:
+                install_schema(self.connection)
 
-        install_schema(self.connection)
-        self.assertEqual(self._constraint_identities(), after_upgrade)
+            self.assertEqual(
+                str(raised.exception),
+                "database schema contract is not current",
+            )
+            self.assertIsNone(raised.exception.__context__)
+            self.assertIsNone(raised.exception.__cause__)
+            self.assertEqual(self._constraint_identities(), before_rejection)
+            self.assertEqual(
+                self.connection.execute(
+                    "SELECT rotation_id, status, version "
+                    "FROM cpk_gateway_key_rotations"
+                ).fetchall(),
+                [("rotation-a", GatewayKeyRotationStatus.APPROVED.value, 1)],
+            )
+            self.assertEqual(
+                self.connection.execute(
+                    "SELECT count(*) FROM cpk_gateway_key_rotation_transitions"
+                ).fetchone(),
+                (0,),
+            )
 
     def test_cloudflare_owned_ingress_resources_are_epoch_history_records(
         self,
@@ -296,7 +241,10 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
         }
         self.assertEqual(columns["epoch"], ("integer", "NO"))
         self.assertEqual(columns["status"], ("text", "NO"))
-        self.assertEqual(columns["removed_at"], ("text", "YES"))
+        self.assertEqual(
+            columns["removed_at"],
+            ("timestamp with time zone", "YES"),
+        )
         self.assertEqual(columns["removed_by_run_id"], ("text", "YES"))
 
         primary_key_columns = self.connection.execute(
@@ -357,7 +305,8 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                         """
                         INSERT INTO cpk_activity_events
                           (event_id, run_id, ordinal, event_type, occurred_at, payload)
-                        VALUES (%s, 'run-a', 20, %s, 'invalid-at', %s)
+                        VALUES (%s, 'run-a', 20, %s,
+                                '2026-08-07T06:30:00Z', %s)
                         """,
                         (event_id, event_type, Jsonb(payload)),
                     )
@@ -388,7 +337,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                         '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
                         encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
                         'operator',
-                        'approval-request-at', 'plan:invented', 'low', false)
+                        '2026-08-07T06:31:00Z', 'plan:invented', 'low', false)
                 """
             )
         with self.assertRaises(CheckViolation):
@@ -402,7 +351,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                         '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
                         encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
                         'operator',
-                        'approval-request-at', 'plan:approve', 'invented', false)
+                        '2026-08-07T06:31:00Z', 'plan:approve', 'invented', false)
                 """
             )
         with self.assertRaises(CheckViolation):
@@ -411,7 +360,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 INSERT INTO cpk_approval_decisions
                   (decision_id, request_id, actor_id, decision, scope, decided_at)
                 VALUES ('bad-decision-scope', 'approval-request-a', 'manager',
-                        'approved', 'plan:invented', 'approval-at')
+                        'approved', 'plan:invented', '2026-08-07T06:32:00Z')
                 """
             )
         with self.assertRaises(CheckViolation):
@@ -421,7 +370,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                   (action_id, session_id, ordinal, action_type, actor_id,
                    created_at)
                 VALUES ('bad-action-type', 'session-a', 1, 'invented',
-                        'operator', 'action-at')
+                        'operator', '2026-08-07T06:33:00Z')
                 """
             )
         self.connection.execute(
@@ -430,7 +379,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
               (action_id, session_id, ordinal, action_type, actor_id,
                created_at)
             VALUES ('admit-action', 'session-a', 1, 'admit-execution',
-                    'operator', 'action-at')
+                    'operator', '2026-08-07T06:33:00Z')
             """
         )
 
@@ -453,21 +402,71 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             INSERT INTO cpk_graph_versions
               (graph_id, workspace_id, version, graph_descriptor, created_by,
                created_at)
-            VALUES ('graph-a', 'workspace-a', 1, %s, 'operator', 'graph-at');
+            VALUES ('graph-a', 'workspace-a', 1, %s, 'operator',
+                    '2026-08-07T05:59:00Z');
             """,
             (Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("current"))),),
+        )
+        projection = RealizedGraphProjectionRecord.identity_for_authored(
+            authored_record=GraphVersionRecord(
+                graph_id="graph-a",
+                workspace_id="workspace-a",
+                version=1,
+                graph_descriptor=DEFAULT_GRAPH_CODEC.encode(
+                    DeploymentGraph("current")
+                ),
+                created_by="operator",
+                created_at="2026-08-07T05:59:00Z",
+            )
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_realized_graph_projections
+              (projection_id, workspace_id, source_authored_graph_id,
+               projection_kind, projection_key, projection_digest,
+               graph_descriptor, created_by, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                projection.projection_id,
+                projection.workspace_id,
+                projection.source_authored_graph_id,
+                projection.projection_kind.value,
+                projection.projection_key,
+                projection.projection_digest,
+                Jsonb(projection.graph_descriptor),
+                projection.created_by,
+                projection.created_at,
+            ),
+        )
+        self.connection.execute(
+            "UPDATE cpk_workspaces SET current_graph_id='graph-a', "
+            "desired_graph_id='graph-a', current_realized_projection_id=%s, "
+            "desired_realized_projection_id=%s, desired_graph_revision=1 "
+            "WHERE workspace_id='workspace-a'",
+            (projection.projection_id, projection.projection_id),
         )
         self.connection.execute(
             """
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator', 'Deploy', 'open',
-                    'session-at');
+                    '2026-08-07T06:00:00Z');
+            """
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_activity_plans
-              (plan_id, session_id, base_graph_id, desired_graph_id, status,
-               created_at, payload)
-            VALUES ('plan-a', 'session-a', 'graph-a', 'graph-a', 'planned',
-                    'plan-at', '{}'::jsonb);
+              (plan_id, session_id, base_graph_id, desired_graph_id,
+               base_realized_projection_id, desired_realized_projection_id,
+               desired_graph_revision, status, created_at, payload)
+            VALUES ('plan-a', 'session-a', 'graph-a', 'graph-a', %s, %s, 1,
+                    'planned', '2026-08-07T06:01:00Z', '{}'::jsonb)
+            """,
+            (projection.projection_id, projection.projection_id),
+        )
+        self.connection.execute(
+            """
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, subject_kind, subject_payload,
                review_digest, requested_by, requested_at,
@@ -476,24 +475,25 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                     '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
                     encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
                     'operator',
-                    'approval-request-at', 'plan:approve', 'low', false);
+                    '2026-08-07T06:02:00Z', 'plan:approve', 'low', false);
             INSERT INTO cpk_approval_decisions
               (decision_id, request_id, actor_id, decision, scope, decided_at)
             VALUES ('approval-decision-a', 'approval-request-a', 'manager',
-                    'approved', 'plan:approve', 'approval-at');
+                    'approved', 'plan:approve', '2026-08-07T06:03:00Z');
             INSERT INTO cpk_execution_requests
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
                approval_decision_id, idempotency_key, intent_fingerprint)
             VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
-                    'operator', 'execution-at', 'approval-request-a',
+                    'operator', '2026-08-07T06:04:00Z', 'approval-request-a',
                     'approval-decision-a', 'execute-a', 'fingerprint-a');
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, status, created_at,
                metadata)
-            VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed', 'run-at',
+            VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed',
+                    '2026-08-07T06:05:00Z',
                     '{}'::jsonb);
-            """
+            """,
         )
         if include_events:
             self.connection.execute(
@@ -501,13 +501,14 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                 INSERT INTO cpk_activity_events
                   (event_id, run_id, ordinal, event_type, occurred_at, payload)
                 VALUES
-                  ('event-opened', 'run-a', 1, 'run_opened', 'opened-at',
+                  ('event-opened', 'run-a', 1, 'run_opened',
+                   '2026-08-07T06:06:00Z',
                    '{"activity_id": null, "recovery": null}'::jsonb),
                   ('event-step-started', 'run-a', 2, 'step_started',
-                   'step-at',
+                   '2026-08-07T06:07:00Z',
                    '{"activity_id": "start-api", "recovery": null}'::jsonb),
                   ('event-recovery', 'run-a', 3, 'recovery_decision_recorded',
-                   'recovery-at',
+                   '2026-08-07T06:08:00Z',
                    '{"activity_id": null, "recovery": {"decision_id": "decision-a"}}'::jsonb);
                 """
             )

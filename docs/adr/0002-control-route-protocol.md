@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted.
+Accepted as the historical control-route descriptor baseline.
+
+Superseded for newly published CPK-enabled workload-control SDK routes by
+[ADR 0010](0010-node-control-route-prefix-and-server-sdk.md), which selects
+`/__control` as the canonical future workload-control prefix while preserving
+`/__deploy` as bounded legacy descriptor compatibility until a dedicated
+migration changes live descriptors.
 
 ## Context
 

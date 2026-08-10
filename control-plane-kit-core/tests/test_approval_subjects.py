@@ -65,12 +65,16 @@ class ApprovalSubjectTests(unittest.TestCase):
         )
         self.assertFalse(
             policy.can_approve_gateway_key_rotation(
-                (PolicyScope.DELEGATION_KEY_ROTATE,)
+                (PolicyScope.DELEGATION_KEY_ROTATE,),
+                requested_by="operator-a",
+                decided_by="manager-a",
             ).allowed
         )
         self.assertTrue(
             policy.can_approve_gateway_key_rotation(
-                (PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,)
+                (PolicyScope.DELEGATION_KEY_ROTATE_APPROVE,),
+                requested_by="operator-a",
+                decided_by="manager-a",
             ).allowed
         )
 

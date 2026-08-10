@@ -29,6 +29,10 @@ from control_plane_kit_operations.ingress_authorities import (
     RegisteredIngressAuthorityStatus,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 
 
 _BLOCKING_INGRESS_RESOURCE_STATUSES = (
@@ -62,6 +66,7 @@ class IngressAuthorityStore:
             admitted_by=admitted_by,
             admitted_at=admitted_at,
         )
+        encoded_admitted_at = encode_postgres_timestamp(candidate.admitted_at)
         existing = self._get_active_by_ref(workspace_id, authority_ref)
         if existing is not None:
             if existing.authority == candidate.authority:
@@ -96,7 +101,7 @@ class IngressAuthorityStore:
                 Jsonb(_credential_references(candidate)),
                 candidate.authority.allowed_hostname_pattern,
                 candidate.admitted_by,
-                candidate.admitted_at,
+                encoded_admitted_at,
                 candidate.status.value,
             ),
         )
@@ -229,6 +234,13 @@ class IngressResourceStore:
     ) -> CloudflareOwnedIngressResource:
         if not isinstance(resource, CloudflareOwnedIngressResource):
             raise TypeError("record_cloudflare requires CloudflareOwnedIngressResource")
+        encoded_created_at = encode_postgres_timestamp(resource.created_at)
+        encoded_observed_at = encode_postgres_timestamp(resource.observed_at)
+        encoded_removed_at = (
+            None
+            if resource.removed_at is None
+            else encode_postgres_timestamp(resource.removed_at)
+        )
         existing = self._get_blocking_cloudflare(
             resource.workspace_id,
             resource.ingress_id,
@@ -289,12 +301,12 @@ class IngressResourceStore:
                 resource.hostname,
                 resource.zone_id,
                 resource.lifecycle.value,
-                resource.created_at,
-                resource.observed_at,
+                encoded_created_at,
+                encoded_observed_at,
                 resource.source_run_id,
                 resource.source_activity_id,
                 resource.source_event_id,
-                resource.removed_at,
+                encoded_removed_at,
                 resource.removed_by_run_id,
             ),
         )
@@ -338,6 +350,7 @@ class IngressResourceStore:
         removed_at: str,
         removed_by_run_id: str,
     ) -> CloudflareOwnedIngressResource:
+        encode_postgres_timestamp(removed_at)
         resource = self._get_cloudflare_by_status(
             workspace_id,
             ingress_id,
@@ -493,6 +506,11 @@ class IngressResourceStore:
         self,
         resource: CloudflareOwnedIngressResource,
     ) -> None:
+        encoded_removed_at = (
+            None
+            if resource.removed_at is None
+            else encode_postgres_timestamp(resource.removed_at)
+        )
         self._connection.execute(
             """
             UPDATE cpk_cloudflare_ingress_resources
@@ -508,7 +526,7 @@ class IngressResourceStore:
             (
                 resource.status.value,
                 resource.source_run_id,
-                resource.removed_at,
+                encoded_removed_at,
                 resource.removed_by_run_id,
                 resource.workspace_id,
                 resource.ingress_id,
@@ -529,6 +547,7 @@ class GeneratedIngressSecretReferenceStore:
     ) -> GeneratedIngressSecretReference:
         if not isinstance(evidence, GeneratedIngressSecretReference):
             raise TypeError("record requires GeneratedIngressSecretReference")
+        encoded_recorded_at = encode_postgres_timestamp(evidence.recorded_at)
         existing = self._get_by_source(
             workspace_id=evidence.workspace_id,
             purpose=evidence.purpose,
@@ -560,7 +579,7 @@ class GeneratedIngressSecretReferenceStore:
                 evidence.workspace_id,
                 evidence.purpose.value,
                 evidence.secret_ref.reference_id,
-                evidence.recorded_at,
+                encoded_recorded_at,
                 evidence.source_run_id,
                 evidence.source_activity_id,
                 evidence.source_event_id,
@@ -675,7 +694,7 @@ def _row_to_authority(row: tuple[Any, ...]) -> RegisteredIngressAuthority:
         authority_ref=IngressAuthorityReference(row[2]),
         authority=CloudflareZoneIngressAuthorityCodec().decode(row[3]),
         admitted_by=row[4],
-        admitted_at=row[5],
+        admitted_at=decode_postgres_timestamp(row[5]),
         status=RegisteredIngressAuthorityStatus(row[6]),
         metadata=row[7],
     )
@@ -696,12 +715,14 @@ def _row_to_cloudflare_resource(row: tuple[Any, ...]) -> CloudflareOwnedIngressR
         hostname=row[10],
         zone_id=row[11],
         lifecycle=PublicIngressLifecycle(row[12]),
-        created_at=row[13],
-        observed_at=row[14],
+        created_at=decode_postgres_timestamp(row[13]),
+        observed_at=decode_postgres_timestamp(row[14]),
         source_run_id=row[15],
         source_activity_id=row[16],
         source_event_id=row[17],
-        removed_at=row[18],
+        removed_at=(
+            None if row[18] is None else decode_postgres_timestamp(row[18])
+        ),
         removed_by_run_id=row[19],
     )
 
@@ -732,7 +753,7 @@ def _row_to_generated_ingress_secret_reference(
             metadata,
             "provider_version_number",
         ),
-        recorded_at=row[3],
+        recorded_at=decode_postgres_timestamp(row[3]),
         source_run_id=row[4],
         source_activity_id=row[5],
         source_event_id=row[6],

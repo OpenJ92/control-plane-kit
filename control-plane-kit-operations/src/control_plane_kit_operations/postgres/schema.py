@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from enum import StrEnum
 from typing import Any, Protocol
 
 from jinja2 import Environment, StrictUndefined
-from psycopg.types.json import Jsonb
-
 from control_plane_kit_core.approval_subjects import ApprovalSubjectKind
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.gateway_delegation import (
@@ -38,11 +37,9 @@ from control_plane_kit_core.probe_intents import (
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.records import (
-    GraphVersionRecord,
     ObservationFreshness,
     ObservationStatus,
     RealizedGraphProjectionKind,
-    RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.gateway_probes import GatewayProbeAttemptStatus
 from control_plane_kit_operations.gateway_key_rotations import (
@@ -69,12 +66,35 @@ from control_plane_kit_operations.secret_providers import (
     RegisteredSecretReferenceStatus,
     SecretProviderKind,
 )
+from control_plane_kit_operations.postgres.migrations import (
+    DeterministicBackfillStep,
+    SchemaBackfillKind,
+    SchemaMigration,
+    SchemaMigrationError,
+    SchemaMigrationRegistry,
+    SqlMigrationStep,
+)
 
 
 class PostgresConnection(Protocol):
     """Small connection protocol satisfied by psycopg connections."""
 
     def execute(self, query: str, params: tuple[object, ...] = ()) -> Any: ...
+
+
+class MigrationPostgresConnection(PostgresConnection, Protocol):
+    """Postgres capabilities required by the migration interpreter.
+
+    ``transaction()`` must open a top-level transaction when none exists and a
+    nested savepoint when the caller already owns a transaction. Exceptions
+    roll back that innermost scope and escape; the caller retains authority to
+    commit or roll back its outer transaction.
+    """
+
+    @property
+    def autocommit(self) -> bool: ...
+
+    def transaction(self) -> AbstractContextManager[object]: ...
 
 
 class _OperationsSessionStatus(StrEnum):
@@ -117,6 +137,8 @@ _RUN_EVENT_KINDS = tuple(
 
 
 def _sql_values(values: tuple[StrEnum, ...] | frozenset[StrEnum]) -> str:
+    if isinstance(values, frozenset):
+        values = tuple(sorted(values, key=lambda value: value.value))
     return ", ".join(f"'{value.value}'" for value in values)
 
 
@@ -934,6 +956,7 @@ CREATE TABLE IF NOT EXISTS cpk_approval_requests (
     )
 );
 
+{% if include_approval_subject_compatibility %}
 ALTER TABLE cpk_approval_requests
   ADD COLUMN IF NOT EXISTS rotation_id text;
 ALTER TABLE cpk_approval_requests
@@ -1009,14 +1032,17 @@ BEGIN
   END IF;
 END
 $$;
+{% endif %}
 
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_idempotency
   ON cpk_approval_requests (session_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
 
+{% if include_approval_subject_compatibility %}
 CREATE UNIQUE INDEX IF NOT EXISTS cpk_approval_requests_rotation_identity
   ON cpk_approval_requests (rotation_id)
   WHERE rotation_id IS NOT NULL;
+{% endif %}
 
 CREATE TABLE IF NOT EXISTS cpk_approval_decisions (
   decision_id text PRIMARY KEY,
@@ -1232,109 +1258,7 @@ ALTER TABLE cpk_activity_plans
 """
 
 
-_GRAPH_LINEAGE_CONSTRAINTS = """
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_realized_graph_projection_workspace_identity'
-  ) THEN
-    ALTER TABLE cpk_realized_graph_projections
-      ADD CONSTRAINT cpk_realized_graph_projection_workspace_identity
-      UNIQUE (projection_id, workspace_id);
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_realized_graph_projection_source_identity'
-  ) THEN
-    ALTER TABLE cpk_realized_graph_projections
-      ADD CONSTRAINT cpk_realized_graph_projection_source_identity
-      UNIQUE (projection_id, source_authored_graph_id);
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_current_realized_projection_fk'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_current_realized_projection_fk
-      FOREIGN KEY (current_realized_projection_id, workspace_id)
-      REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_desired_realized_projection_fk'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_desired_realized_projection_fk
-      FOREIGN KEY (desired_realized_projection_id, workspace_id)
-      REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_current_projection_source_fk'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_current_projection_source_fk
-      FOREIGN KEY (current_realized_projection_id, current_graph_id)
-      REFERENCES cpk_realized_graph_projections(
-        projection_id, source_authored_graph_id
-      );
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_desired_projection_source_fk'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_desired_projection_source_fk
-      FOREIGN KEY (desired_realized_projection_id, desired_graph_id)
-      REFERENCES cpk_realized_graph_projections(
-        projection_id, source_authored_graph_id
-      );
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_current_lineage_check'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_current_lineage_check
-      CHECK ((current_graph_id IS NULL) = (current_realized_projection_id IS NULL));
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_workspaces_desired_lineage_check'
-  ) THEN
-    ALTER TABLE cpk_workspaces
-      ADD CONSTRAINT cpk_workspaces_desired_lineage_check
-      CHECK ((desired_graph_id IS NULL) = (desired_realized_projection_id IS NULL));
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_activity_plans_base_projection_source_fk'
-  ) THEN
-    ALTER TABLE cpk_activity_plans
-      ADD CONSTRAINT cpk_activity_plans_base_projection_source_fk
-      FOREIGN KEY (base_realized_projection_id, base_graph_id)
-      REFERENCES cpk_realized_graph_projections(
-        projection_id, source_authored_graph_id
-      );
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'cpk_activity_plans_desired_projection_source_fk'
-  ) THEN
-    ALTER TABLE cpk_activity_plans
-      ADD CONSTRAINT cpk_activity_plans_desired_projection_source_fk
-      FOREIGN KEY (desired_realized_projection_id, desired_graph_id)
-      REFERENCES cpk_realized_graph_projections(
-        projection_id, source_authored_graph_id
-      );
-  END IF;
-END
-$$;
-"""
-
-
-POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render(
+_POSTGRES_SCHEMA_CONTEXT = dict(
     activity_event_kinds=tuple(ActivityEventKind),
     activity_event_run_kinds=_RUN_EVENT_KINDS,
     activity_event_step_kinds=_ACTIVITY_EVENT_KINDS,
@@ -1385,238 +1309,2646 @@ POSTGRES_SCHEMA = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE).render
     started_run_statuses=_STARTED_RUN_STATUSES,
     workspace_lifecycles=tuple(WorkspaceLifecycle),
 )
+_POSTGRES_SCHEMA_RENDERER = _SQL_ENVIRONMENT.from_string(_POSTGRES_SCHEMA_TEMPLATE)
+POSTGRES_SCHEMA = _POSTGRES_SCHEMA_RENDERER.render(
+    include_approval_subject_compatibility=True,
+    **_POSTGRES_SCHEMA_CONTEXT,
+)
 
+_POSTGRES_SCHEMA_V2_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT created_at AS value FROM cpk_operation_sessions
+      UNION ALL SELECT closed_at FROM cpk_operation_sessions
+      UNION ALL SELECT created_at FROM cpk_operation_actions
+      UNION ALL SELECT created_at FROM cpk_activity_plans
+      UNION ALL SELECT requested_at FROM cpk_approval_requests
+      UNION ALL SELECT decided_at FROM cpk_approval_decisions
+      UNION ALL SELECT requested_at FROM cpk_execution_requests
+      UNION ALL SELECT claimed_at FROM cpk_execution_requests
+      UNION ALL SELECT lease_expires_at FROM cpk_execution_requests
+      UNION ALL SELECT created_at FROM cpk_activity_runs
+      UNION ALL SELECT started_at FROM cpk_activity_runs
+      UNION ALL SELECT settled_at FROM cpk_activity_runs
+      UNION ALL SELECT occurred_at FROM cpk_activity_events
+      UNION ALL SELECT observed_at FROM cpk_observations
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'coordination timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
 
-def install_schema(connection: PostgresConnection) -> None:
-    """Install the current operations schema on a caller-managed transaction."""
+ALTER TABLE cpk_operation_sessions
+  ALTER COLUMN created_at TYPE timestamptz USING created_at::timestamptz,
+  ALTER COLUMN closed_at TYPE timestamptz USING closed_at::timestamptz;
+ALTER TABLE cpk_operation_actions
+  ALTER COLUMN created_at TYPE timestamptz USING created_at::timestamptz;
+ALTER TABLE cpk_activity_plans
+  ALTER COLUMN created_at TYPE timestamptz USING created_at::timestamptz;
+ALTER TABLE cpk_approval_requests
+  ALTER COLUMN requested_at TYPE timestamptz USING requested_at::timestamptz;
+ALTER TABLE cpk_approval_decisions
+  ALTER COLUMN decided_at TYPE timestamptz USING decided_at::timestamptz;
+ALTER TABLE cpk_execution_requests
+  ALTER COLUMN requested_at TYPE timestamptz USING requested_at::timestamptz,
+  ALTER COLUMN claimed_at TYPE timestamptz USING claimed_at::timestamptz,
+  ALTER COLUMN lease_expires_at TYPE timestamptz USING lease_expires_at::timestamptz;
+ALTER TABLE cpk_activity_runs
+  ALTER COLUMN created_at TYPE timestamptz USING created_at::timestamptz,
+  ALTER COLUMN started_at TYPE timestamptz USING started_at::timestamptz,
+  ALTER COLUMN settled_at TYPE timestamptz USING settled_at::timestamptz;
+ALTER TABLE cpk_activity_events
+  ALTER COLUMN occurred_at TYPE timestamptz USING occurred_at::timestamptz;
+ALTER TABLE cpk_observations
+  ALTER COLUMN observed_at TYPE timestamptz USING observed_at::timestamptz;
+"""
 
-    connection.execute(POSTGRES_SCHEMA)
-    _upgrade_approval_scope_constraints(connection)
-    _upgrade_gateway_key_rotation_status_constraints(connection)
-    _upgrade_gateway_key_rotation_retirement_constraint(connection)
-    _backfill_graph_lineage(connection)
-    connection.execute(_GRAPH_LINEAGE_CONSTRAINTS)
+_POSTGRES_SCHEMA_V3_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT created_at AS value FROM cpk_graph_versions
+      UNION ALL SELECT admitted_at FROM cpk_image_pull_authorities
+      UNION ALL SELECT admitted_at FROM cpk_ingress_authorities
+      UNION ALL SELECT created_at FROM cpk_realized_graph_projections
+      UNION ALL SELECT imported_at FROM cpk_registered_products
+      UNION ALL SELECT admitted_at FROM cpk_runtime_authorities
+      UNION ALL SELECT admitted_at FROM cpk_runtime_authority_deliveries
+    ) AS retained
+    WHERE CASE
+      WHEN octet_length(value) > 27 THEN TRUE
+      WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+        THEN TRUE
+      WHEN value ~ '[.]000000Z$' THEN TRUE
+      ELSE FALSE
+    END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'graph, product, and authority timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
 
+ALTER TABLE cpk_graph_versions
+  ALTER COLUMN created_at TYPE timestamptz(6) USING created_at::timestamptz(6);
+ALTER TABLE cpk_image_pull_authorities
+  ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
+ALTER TABLE cpk_ingress_authorities
+  ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
+ALTER TABLE cpk_realized_graph_projections
+  ALTER COLUMN created_at TYPE timestamptz(6) USING created_at::timestamptz(6);
+ALTER TABLE cpk_registered_products
+  ALTER COLUMN imported_at TYPE timestamptz(6) USING imported_at::timestamptz(6);
+ALTER TABLE cpk_runtime_authorities
+  ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
+ALTER TABLE cpk_runtime_authority_deliveries
+  ALTER COLUMN admitted_at TYPE timestamptz(6) USING admitted_at::timestamptz(6);
+"""
 
-def _upgrade_approval_scope_constraints(connection: PostgresConnection) -> None:
-    """Evolve closed approval scopes only when an installed check is stale."""
+_POSTGRES_SCHEMA_V4_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT admitted_at AS value FROM cpk_secret_providers
+      UNION ALL SELECT revoked_at FROM cpk_secret_providers
+      UNION ALL SELECT admitted_at FROM cpk_secret_references
+      UNION ALL SELECT revoked_at FROM cpk_secret_references
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'secret registration timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
 
-    required = PolicyScope.DELEGATION_KEY_ROTATE_APPROVE.value
-    allowed = _sql_values(tuple(PolicyScope))
-    for table, column, constraint in (
-        (
-            "cpk_approval_requests",
-            "required_scope",
-            "cpk_approval_requests_scope_check",
-        ),
-        (
-            "cpk_approval_decisions",
-            "scope",
-            "cpk_approval_decisions_scope_check",
-        ),
-    ):
-        row = connection.execute(
-            """
-            SELECT pg_get_constraintdef(oid)
-            FROM pg_constraint
-            WHERE conname = %s
-              AND conrelid = %s::regclass
-            """,
-            (constraint, table),
-        ).fetchone()
-        if row is None or required in row[0]:
-            continue
-        connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
-        connection.execute(
-            f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
-            f"CHECK ({column} IN ({allowed}))"
+ALTER TABLE cpk_secret_providers
+  ALTER COLUMN admitted_at TYPE timestamptz(6)
+    USING admitted_at::timestamptz(6),
+  ALTER COLUMN revoked_at TYPE timestamptz(6)
+    USING revoked_at::timestamptz(6);
+ALTER TABLE cpk_secret_references
+  ALTER COLUMN admitted_at TYPE timestamptz(6)
+    USING admitted_at::timestamptz(6),
+  ALTER COLUMN revoked_at TYPE timestamptz(6)
+    USING revoked_at::timestamptz(6);
+"""
+
+_POSTGRES_SCHEMA_V5_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT admitted_at AS value FROM cpk_delegation_signing_keys
+      UNION ALL SELECT activated_at FROM cpk_delegation_signing_keys
+      UNION ALL SELECT retired_at FROM cpk_delegation_signing_keys
+      UNION ALL SELECT revoked_at FROM cpk_delegation_signing_keys
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'delegation signing-key timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_delegation_signing_keys
+  ALTER COLUMN admitted_at TYPE timestamptz(6)
+    USING admitted_at::timestamptz(6),
+  ALTER COLUMN activated_at TYPE timestamptz(6)
+    USING activated_at::timestamptz(6),
+  ALTER COLUMN retired_at TYPE timestamptz(6)
+    USING retired_at::timestamptz(6),
+  ALTER COLUMN revoked_at TYPE timestamptz(6)
+    USING revoked_at::timestamptz(6);
+"""
+
+_POSTGRES_SCHEMA_V6_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT requested_at AS value FROM cpk_gateway_probe_attempts
+      UNION ALL SELECT completed_at FROM cpk_gateway_probe_attempts
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway probe timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_gateway_probe_attempts
+  ALTER COLUMN requested_at TYPE timestamptz(6)
+    USING requested_at::timestamptz(6),
+  ALTER COLUMN completed_at TYPE timestamptz(6)
+    USING completed_at::timestamptz(6);
+"""
+
+_POSTGRES_SCHEMA_V7_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT requested_at AS value FROM cpk_gateway_key_rotations
+      UNION ALL SELECT new_key_activated_at FROM cpk_gateway_key_rotations
+      UNION ALL SELECT old_key_retired_at FROM cpk_gateway_key_rotations
+      UNION ALL SELECT old_secret_revoked_at FROM cpk_gateway_key_rotations
+      UNION ALL SELECT updated_at FROM cpk_gateway_key_rotations
+      UNION ALL SELECT prepared_at FROM cpk_gateway_key_rotation_revocations
+      UNION ALL SELECT advanced_at FROM cpk_gateway_key_rotation_transitions
+      UNION ALL SELECT prepared_at FROM cpk_gateway_key_rotation_deployments
+      UNION ALL SELECT accepted_at FROM cpk_gateway_key_rotation_deployments
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_gateway_key_rotations
+  ALTER COLUMN requested_at TYPE timestamptz(6)
+    USING requested_at::timestamptz(6),
+  ALTER COLUMN new_key_activated_at TYPE timestamptz(6)
+    USING new_key_activated_at::timestamptz(6),
+  ALTER COLUMN old_key_retired_at TYPE timestamptz(6)
+    USING old_key_retired_at::timestamptz(6),
+  ALTER COLUMN old_secret_revoked_at TYPE timestamptz(6)
+    USING old_secret_revoked_at::timestamptz(6),
+  ALTER COLUMN updated_at TYPE timestamptz(6)
+    USING updated_at::timestamptz(6);
+
+ALTER TABLE cpk_gateway_key_rotation_revocations
+  ALTER COLUMN prepared_at TYPE timestamptz(6)
+    USING prepared_at::timestamptz(6);
+
+ALTER TABLE cpk_gateway_key_rotation_transitions
+  ALTER COLUMN advanced_at TYPE timestamptz(6)
+    USING advanced_at::timestamptz(6);
+
+ALTER TABLE cpk_gateway_key_rotation_deployments
+  ALTER COLUMN prepared_at TYPE timestamptz(6)
+    USING prepared_at::timestamptz(6),
+  ALTER COLUMN accepted_at TYPE timestamptz(6)
+    USING accepted_at::timestamptz(6);
+"""
+
+_POSTGRES_SCHEMA_V8_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (
+      SELECT created_at AS value FROM cpk_cloudflare_ingress_resources
+      UNION ALL SELECT observed_at FROM cpk_cloudflare_ingress_resources
+      UNION ALL SELECT removed_at FROM cpk_cloudflare_ingress_resources
+      UNION ALL SELECT recorded_at FROM cpk_generated_ingress_secret_references
+    ) AS retained
+    WHERE value IS NOT NULL
+      AND CASE
+        WHEN octet_length(value) > 27 THEN TRUE
+        WHEN value !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+          THEN TRUE
+        WHEN value ~ '[.]000000Z$' THEN TRUE
+        ELSE FALSE
+      END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'ingress evidence timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_cloudflare_ingress_resources
+  ALTER COLUMN created_at TYPE timestamptz(6)
+    USING created_at::timestamptz(6),
+  ALTER COLUMN observed_at TYPE timestamptz(6)
+    USING observed_at::timestamptz(6),
+  ALTER COLUMN removed_at TYPE timestamptz(6)
+    USING removed_at::timestamptz(6);
+
+ALTER TABLE cpk_generated_ingress_secret_references
+  ALTER COLUMN recorded_at TYPE timestamptz(6)
+    USING recorded_at::timestamptz(6);
+"""
+
+_POSTGRES_SCHEMA_V9_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_secret_use_authorizations
+    WHERE CASE
+      WHEN octet_length(requested_at) > 27 THEN TRUE
+      WHEN requested_at !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{6})?Z$'
+        THEN TRUE
+      WHEN requested_at ~ '[.]000000Z$' THEN TRUE
+      ELSE FALSE
+    END
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'secret-use authorization timestamps are not canonical UTC';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_secret_use_authorizations
+  ALTER COLUMN requested_at TYPE timestamptz(6)
+    USING requested_at::timestamptz(6);
+"""
+
+_POSTGRES_SCHEMA_V10_PREPARE_SQL = r"""
+LOCK TABLE cpk_registered_products IN ACCESS EXCLUSIVE MODE;
+
+ALTER TABLE cpk_registered_products
+  ADD COLUMN IF NOT EXISTS descriptor_content text;
+"""
+
+_POSTGRES_SCHEMA_V10_FINAL_SQL = r"""
+ALTER TABLE cpk_registered_products
+  ALTER COLUMN descriptor_content SET NOT NULL;
+
+ALTER TABLE cpk_registered_products
+  ADD CONSTRAINT cpk_registered_products_content_digest_check
+  CHECK (
+    descriptor_sha256 =
+      encode(sha256(convert_to(descriptor_content, 'UTF8')), 'hex')
+  );
+"""
+
+_POSTGRES_SCHEMA_V11_PREPARE_SQL = r"""
+LOCK TABLE cpk_gateway_probe_attempts IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  column_contract_is_exact boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             data_type = 'text'
+             AND is_nullable = 'NO'
+             AND column_default = '''runtime-private''::text'
+           ),
+           false
+         )
+    INTO column_count, column_contract_is_exact
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_gateway_probe_attempts'
+    AND column_name = 'access_path';
+
+  IF column_count = 0 THEN
+    ALTER TABLE cpk_gateway_probe_attempts
+      ADD COLUMN access_path text;
+  ELSIF column_count <> 1
+    OR column_contract_is_exact IS NOT TRUE
+    OR EXISTS (
+      SELECT 1
+      FROM cpk_gateway_probe_attempts
+      WHERE access_path IS NULL
+    )
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway probe access path is not accepted';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V11_BACKFILL_SQL = r"""
+DO $cpk$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_gateway_probe_attempts
+    WHERE access_path IS NOT NULL
+      AND access_path NOT IN ('runtime-private', 'named-public-ingress')
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway probe access path is not accepted';
+  END IF;
+END
+$cpk$;
+
+UPDATE cpk_gateway_probe_attempts
+SET access_path = 'runtime-private'
+WHERE access_path IS NULL;
+"""
+
+_POSTGRES_SCHEMA_V11_FINAL_SQL = r"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_contract_is_exact boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               'CHECK ((access_path = ANY (ARRAY[''runtime-private''::text, ''named-public-ingress''::text])))'
+           ),
+           false
+         )
+    INTO constraint_count, constraint_contract_is_exact
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = constraints.connamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_probe_attempts'
+    AND constraints.conname = 'cpk_gateway_probe_access_path_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_probe_attempts
+      ADD CONSTRAINT cpk_gateway_probe_access_path_check
+      CHECK (access_path IN ('runtime-private', 'named-public-ingress'));
+  ELSIF constraint_count <> 1 OR constraint_contract_is_exact IS NOT TRUE THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway probe access path is not accepted';
+  END IF;
+END
+$cpk$;
+
+ALTER TABLE cpk_gateway_probe_attempts
+  ALTER COLUMN access_path SET DEFAULT 'runtime-private',
+  ALTER COLUMN access_path SET NOT NULL;
+"""
+
+_POSTGRES_SCHEMA_V12_PREFLIGHT_SQL = r"""
+LOCK TABLE cpk_gateway_key_rotations IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  column_contract_is_exact boolean;
+  constraint_count bigint;
+  constraint_name_count bigint;
+  constraint_contract_is_exact boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             data_type = 'text'
+             AND is_nullable = 'YES'
+             AND column_default IS NULL
+           ),
+           false
+         )
+    INTO column_count, column_contract_is_exact
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_gateway_key_rotations'
+    AND column_name IN (
+      'generation_provider_registration_id',
+      'generation_action_digest'
+    );
+
+  IF column_count = 0 THEN
+    NULL;
+  ELSIF column_count <> 2 OR column_contract_is_exact IS NOT TRUE THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation generation evidence is not accepted';
+  ELSIF EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotations
+    WHERE (generation_provider_registration_id IS NULL)
+            <> (generation_action_digest IS NULL)
+      OR (
+        generation_provider_registration_id IS NOT NULL
+        AND NOT (
+          octet_length(generation_provider_registration_id) BETWEEN 1 AND 200
+          AND (generation_provider_registration_id COLLATE "C")
+                ~ '^[A-Za-z0-9]'
+          AND (generation_provider_registration_id COLLATE "C")
+                !~ '[^A-Za-z0-9._:-]'
         )
+      )
+      OR (
+        generation_action_digest IS NOT NULL
+        AND (generation_action_digest COLLATE "C") !~ '^[0-9a-f]{64}$'
+      )
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation generation evidence is not accepted';
+  END IF;
 
+  SELECT count(*),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND CASE constraints.conname
+               WHEN 'cpk_gateway_key_rotations_generation_checkpoint_check'
+                 THEN pg_get_constraintdef(constraints.oid, false) =
+                   'CHECK (((generation_provider_registration_id IS NULL) = (generation_action_digest IS NULL)))'
+               WHEN 'cpk_gateway_key_rotations_generation_provider_check'
+                 THEN pg_get_constraintdef(constraints.oid, false) =
+                   'CHECK (((generation_provider_registration_id IS NULL) OR (((octet_length(generation_provider_registration_id) >= 1) AND (octet_length(generation_provider_registration_id) <= 200)) AND ((generation_provider_registration_id COLLATE "C") ~ ''^[A-Za-z0-9]''::text) AND ((generation_provider_registration_id COLLATE "C") !~ ''[^A-Za-z0-9._:-]''::text))))'
+               WHEN 'cpk_gateway_key_rotations_generation_digest_check'
+                 THEN pg_get_constraintdef(constraints.oid, false) IN (
+                   'CHECK (((generation_action_digest IS NULL) OR (generation_action_digest ~ ''^[0-9a-f]{64}$''::text)))',
+                   'CHECK (((generation_action_digest IS NULL) OR ((generation_action_digest COLLATE "C") ~ ''^[0-9a-f]{64}$''::text)))'
+                 )
+               ELSE false
+             END
+           ),
+           false
+         )
+    INTO constraint_count, constraint_name_count, constraint_contract_is_exact
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotations'
+    AND constraints.conname IN (
+      'cpk_gateway_key_rotations_generation_checkpoint_check',
+      'cpk_gateway_key_rotations_generation_provider_check',
+      'cpk_gateway_key_rotations_generation_digest_check'
+    );
 
-def _upgrade_gateway_key_rotation_status_constraints(
-    connection: PostgresConnection,
-) -> None:
-    """Expand installed closed rotation-state checks without row loss."""
+  IF constraint_count > 3
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0 AND constraint_contract_is_exact IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation generation evidence is not accepted';
+  END IF;
+END
+$cpk$;
+"""
 
-    statuses = tuple(GatewayKeyRotationStatus)
-    allowed = _sql_values(statuses)
-    for table, column, constraint in (
-        (
-            "cpk_gateway_key_rotations",
-            "status",
-            "cpk_gateway_key_rotations_status_check",
-        ),
-        (
-            "cpk_gateway_key_rotation_transitions",
-            "from_status",
-            "cpk_gateway_key_rotation_transitions_from_status_check",
-        ),
-        (
-            "cpk_gateway_key_rotation_transitions",
-            "to_status",
-            "cpk_gateway_key_rotation_transitions_to_status_check",
-        ),
-    ):
-        row = connection.execute(
-            """
-            SELECT pg_get_constraintdef(oid)
-            FROM pg_constraint
-            WHERE conname = %s
-              AND conrelid = %s::regclass
-            """,
-            (constraint, table),
-        ).fetchone()
-        if row is None or all(status.value in row[0] for status in statuses):
-            continue
-        connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
-        connection.execute(
-            f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
-            f"CHECK ({column} IN ({allowed}))"
+_POSTGRES_SCHEMA_V12_COLUMNS_SQL = r"""
+DO $cpk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'cpk_gateway_key_rotations'
+      AND column_name IN (
+        'generation_provider_registration_id',
+        'generation_action_digest'
+      )
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD COLUMN generation_provider_registration_id text,
+      ADD COLUMN generation_action_digest text;
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V12_CONSTRAINTS_SQL = r"""
+DO $cpk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_checkpoint_check'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_checkpoint_check
+      CHECK ((generation_provider_registration_id IS NULL)
+        = (generation_action_digest IS NULL));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_provider_check'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_provider_check
+      CHECK (
+        generation_provider_registration_id IS NULL
+        OR (
+          octet_length(generation_provider_registration_id) BETWEEN 1 AND 200
+          AND (generation_provider_registration_id COLLATE "C")
+                ~ '^[A-Za-z0-9]'
+          AND (generation_provider_registration_id COLLATE "C")
+                !~ '[^A-Za-z0-9._:-]'
         )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_digest_check'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_digest_check
+      CHECK (generation_action_digest IS NULL
+        OR (generation_action_digest COLLATE "C") ~ '^[0-9a-f]{64}$');
+  ELSIF EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_gateway_key_rotations'
+      AND constraints.conname =
+        'cpk_gateway_key_rotations_generation_digest_check'
+      AND pg_get_constraintdef(constraints.oid, false) =
+        'CHECK (((generation_action_digest IS NULL) OR (generation_action_digest ~ ''^[0-9a-f]{64}$''::text)))'
+  ) THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      DROP CONSTRAINT cpk_gateway_key_rotations_generation_digest_check,
+      ADD CONSTRAINT cpk_gateway_key_rotations_generation_digest_check
+      CHECK (generation_action_digest IS NULL
+        OR (generation_action_digest COLLATE "C") ~ '^[0-9a-f]{64}$');
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V13_INITIAL_STATUSES = (
+    "requested",
+    "awaiting-approval",
+    "approved",
+    "key-generated",
+    "overlap-deploying",
+    "overlap-ready",
+    "new-key-active",
+    "draining-old-grants",
+    "retirement-deploying",
+    "completed",
+    "blocked",
+    "rejected",
+)
+_POSTGRES_SCHEMA_V13_GENERATION_STATUSES = (
+    "requested",
+    "awaiting-approval",
+    "approved",
+    "generation-prepared",
+    "key-generated",
+    "overlap-deploying",
+    "overlap-ready",
+    "new-key-active",
+    "draining-old-grants",
+    "retirement-deploying",
+    "completed",
+    "blocked",
+    "rejected",
+)
+_POSTGRES_SCHEMA_V13_RETIREMENT_READY_STATUSES = (
+    "requested",
+    "awaiting-approval",
+    "approved",
+    "generation-prepared",
+    "key-generated",
+    "overlap-deploying",
+    "overlap-ready",
+    "new-key-active",
+    "draining-old-grants",
+    "retirement-deploying",
+    "retirement-ready",
+    "completed",
+    "blocked",
+    "rejected",
+)
+_POSTGRES_SCHEMA_V13_CURRENT_STATUSES = (
+    "requested",
+    "awaiting-approval",
+    "approved",
+    "generation-prepared",
+    "key-generated",
+    "overlap-deploying",
+    "overlap-ready",
+    "new-key-active",
+    "draining-old-grants",
+    "retirement-deploying",
+    "retirement-ready",
+    "old-key-retired",
+    "revocation-prepared",
+    "completed",
+    "blocked",
+    "rejected",
+)
+_POSTGRES_SCHEMA_V13_SHIPPED_STATUSES = (
+    _POSTGRES_SCHEMA_V13_INITIAL_STATUSES,
+    _POSTGRES_SCHEMA_V13_GENERATION_STATUSES,
+    _POSTGRES_SCHEMA_V13_RETIREMENT_READY_STATUSES,
+    _POSTGRES_SCHEMA_V13_CURRENT_STATUSES,
+)
 
 
-def _upgrade_gateway_key_rotation_retirement_constraint(
-    connection: PostgresConnection,
-) -> None:
-    """Allow public retirement to precede exact private-version revocation."""
+def _postgres_status_values(values: tuple[str, ...], *, cast: bool = False) -> str:
+    suffix = "::text" if cast else ""
+    return ", ".join(f"'{value}'{suffix}" for value in values)
 
-    table = "cpk_gateway_key_rotations"
-    constraint = "cpk_gateway_key_rotations_retirement_check"
-    row = connection.execute(
-        """
-        SELECT pg_get_constraintdef(oid)
-        FROM pg_constraint
-        WHERE conname = %s
-          AND conrelid = %s::regclass
-        """,
-        (constraint, table),
-    ).fetchone()
-    definition = "" if row is None else row[0].lower()
-    if (
-        "old_secret_revoked_at is null" in definition
-        and "old_key_retired_at is not null" in definition
-    ):
-        return
-    connection.execute(f"ALTER TABLE {table} DROP CONSTRAINT {constraint}")
-    connection.execute(
-        f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
-        "CHECK (old_secret_revoked_at IS NULL "
-        "OR old_key_retired_at IS NOT NULL)"
+
+def _postgres_status_definition(column: str, values: tuple[str, ...]) -> str:
+    return (
+        f"CHECK (({column} = ANY (ARRAY["
+        f"{_postgres_status_values(values, cast=True)}])))"
     )
 
 
-def _backfill_graph_lineage(connection: PostgresConnection) -> None:
-    """Materialize deterministic identity projections for pre-lineage rows."""
+def _postgres_text_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
 
-    rows = connection.execute(
-        """
-        SELECT graph_id, workspace_id, version, graph_descriptor,
-               created_by, created_at, metadata
-        FROM cpk_graph_versions
-        WHERE graph_id IN (
-          SELECT current_graph_id FROM cpk_workspaces
-          WHERE current_graph_id IS NOT NULL
-          UNION
-          SELECT desired_graph_id FROM cpk_workspaces
-          WHERE desired_graph_id IS NOT NULL
-          UNION
-          SELECT base_graph_id FROM cpk_activity_plans
-          UNION
-          SELECT desired_graph_id FROM cpk_activity_plans
-        )
-        ORDER BY workspace_id, version
-        """
-    ).fetchall()
-    for row in rows:
-        existing = connection.execute(
-            """
-            SELECT projection_id
-            FROM cpk_realized_graph_projections
-            WHERE workspace_id = %s
-              AND source_authored_graph_id = %s
-              AND projection_kind = 'identity'
-              AND projection_key = 'identity'
-            """,
-            (row[1], row[0]),
-        ).fetchone()
-        if existing is not None:
-            continue
-        authored = GraphVersionRecord(
-            graph_id=row[0],
-            workspace_id=row[1],
-            version=row[2],
-            graph_descriptor=row[3],
-            created_by=row[4],
-            created_at=row[5],
-            metadata=row[6],
-        )
-        projection = RealizedGraphProjectionRecord.identity_for_authored(
-            authored_record=authored
-        )
-        connection.execute(
-            """
-            INSERT INTO cpk_realized_graph_projections
-              (projection_id, workspace_id, source_authored_graph_id,
-               projection_kind, projection_key, projection_digest,
-               graph_descriptor, created_by, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT DO NOTHING
-            """,
+
+_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL = _postgres_status_values(
+    _POSTGRES_SCHEMA_V13_CURRENT_STATUSES
+)
+_POSTGRES_SCHEMA_V13_ROTATION_DEFINITIONS = tuple(
+    _postgres_status_definition("status", statuses)
+    for statuses in _POSTGRES_SCHEMA_V13_SHIPPED_STATUSES
+)
+_POSTGRES_SCHEMA_V13_FROM_DEFINITIONS = tuple(
+    _postgres_status_definition("from_status", statuses)
+    for statuses in _POSTGRES_SCHEMA_V13_SHIPPED_STATUSES
+)
+_POSTGRES_SCHEMA_V13_TO_DEFINITIONS = tuple(
+    _postgres_status_definition("to_status", statuses)
+    for statuses in _POSTGRES_SCHEMA_V13_SHIPPED_STATUSES
+)
+
+
+def _postgres_definition_array(values: tuple[str, ...]) -> str:
+    return ", ".join(_postgres_text_literal(value) for value in values)
+
+
+_POSTGRES_SCHEMA_V13_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_gateway_key_rotations IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_gateway_key_rotation_transitions IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_name_count bigint;
+  constraint_contract_is_accepted boolean;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotations
+    WHERE status NOT IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL})
+  ) OR EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotation_transitions
+    WHERE from_status NOT IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL})
+  ) OR EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotation_transitions
+    WHERE to_status NOT IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL})
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  END IF;
+
+  WITH accepted(relation_name, constraint_name, definitions) AS (
+    VALUES
+      (
+        'cpk_gateway_key_rotations',
+        'cpk_gateway_key_rotations_status_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V13_ROTATION_DEFINITIONS)}]
+      ),
+      (
+        'cpk_gateway_key_rotation_transitions',
+        'cpk_gateway_key_rotation_transitions_from_status_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V13_FROM_DEFINITIONS)}]
+      ),
+      (
+        'cpk_gateway_key_rotation_transitions',
+        'cpk_gateway_key_rotation_transitions_to_status_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V13_TO_DEFINITIONS)}]
+      )
+  )
+  SELECT count(*),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false)
+                   = ANY(accepted.definitions)
+           ),
+           false
+         )
+    INTO constraint_count, constraint_name_count,
+         constraint_contract_is_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  JOIN accepted
+    ON accepted.relation_name = relation.relname
+   AND accepted.constraint_name = constraints.conname
+  WHERE namespace.nspname = current_schema();
+
+  IF constraint_count > 3
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0
+        AND constraint_contract_is_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V13_ROTATION_SQL = f"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_historical boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V13_ROTATION_DEFINITIONS[-1])}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) = ANY(ARRAY[
+               {_postgres_definition_array(_POSTGRES_SCHEMA_V13_ROTATION_DEFINITIONS[:-1])}
+             ])
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_historical
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotations'
+    AND constraints.conname = 'cpk_gateway_key_rotations_status_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_status_check
+      CHECK (status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE
+        AND constraint_is_historical IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  ELSIF constraint_is_historical IS TRUE THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      DROP CONSTRAINT cpk_gateway_key_rotations_status_check,
+      ADD CONSTRAINT cpk_gateway_key_rotations_status_check
+      CHECK (status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V13_TRANSITIONS_SQL = f"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_historical boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V13_FROM_DEFINITIONS[-1])}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) = ANY(ARRAY[
+               {_postgres_definition_array(_POSTGRES_SCHEMA_V13_FROM_DEFINITIONS[:-1])}
+             ])
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_historical
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotation_transitions'
+    AND constraints.conname =
+      'cpk_gateway_key_rotation_transitions_from_status_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_key_rotation_transitions
+      ADD CONSTRAINT cpk_gateway_key_rotation_transitions_from_status_check
+      CHECK (from_status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE
+        AND constraint_is_historical IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  ELSIF constraint_is_historical IS TRUE THEN
+    ALTER TABLE cpk_gateway_key_rotation_transitions
+      DROP CONSTRAINT cpk_gateway_key_rotation_transitions_from_status_check,
+      ADD CONSTRAINT cpk_gateway_key_rotation_transitions_from_status_check
+      CHECK (from_status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  END IF;
+END
+$cpk$;
+
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_historical boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V13_TO_DEFINITIONS[-1])}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) = ANY(ARRAY[
+               {_postgres_definition_array(_POSTGRES_SCHEMA_V13_TO_DEFINITIONS[:-1])}
+             ])
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_historical
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation
+    ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace
+    ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotation_transitions'
+    AND constraints.conname =
+      'cpk_gateway_key_rotation_transitions_to_status_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_key_rotation_transitions
+      ADD CONSTRAINT cpk_gateway_key_rotation_transitions_to_status_check
+      CHECK (to_status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE
+        AND constraint_is_historical IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation status contract is not accepted';
+  ELSIF constraint_is_historical IS TRUE THEN
+    ALTER TABLE cpk_gateway_key_rotation_transitions
+      DROP CONSTRAINT cpk_gateway_key_rotation_transitions_to_status_check,
+      ADD CONSTRAINT cpk_gateway_key_rotation_transitions_to_status_check
+      CHECK (to_status IN ({_POSTGRES_SCHEMA_V13_CURRENT_VALUES_SQL}));
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V14_LEGACY_DEFINITION = (
+    "CHECK (((old_key_retired_at IS NULL) = "
+    "(old_secret_revoked_at IS NULL)))"
+)
+_POSTGRES_SCHEMA_V14_CURRENT_DEFINITION = (
+    "CHECK (((old_secret_revoked_at IS NULL) OR "
+    "(old_key_retired_at IS NOT NULL)))"
+)
+_POSTGRES_SCHEMA_V14_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_gateway_key_rotations IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  column_contract_is_accepted boolean;
+  constraint_count bigint;
+  constraint_name_count bigint;
+  constraint_contract_is_accepted boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             data_type = 'timestamp with time zone'
+             AND datetime_precision = 6
+             AND is_nullable = 'YES'
+             AND column_default IS NULL
+           ),
+           false
+         )
+    INTO column_count, column_contract_is_accepted
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_gateway_key_rotations'
+    AND column_name IN ('old_key_retired_at', 'old_secret_revoked_at');
+
+  IF column_count <> 2 OR column_contract_is_accepted IS NOT TRUE THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation retirement evidence is not accepted';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_gateway_key_rotations
+    WHERE old_secret_revoked_at IS NOT NULL
+      AND old_key_retired_at IS NULL
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation retirement evidence is not accepted';
+  END IF;
+
+  SELECT count(*),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) = ANY(ARRAY[
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V14_LEGACY_DEFINITION)},
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V14_CURRENT_DEFINITION)}
+             ])
+           ),
+           false
+         )
+    INTO constraint_count, constraint_name_count,
+         constraint_contract_is_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotations'
+    AND constraints.conname = 'cpk_gateway_key_rotations_retirement_check';
+
+  IF constraint_count > 1
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0
+        AND constraint_contract_is_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation retirement evidence is not accepted';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V14_CONVERGE_SQL = f"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_legacy boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V14_CURRENT_DEFINITION)}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(_POSTGRES_SCHEMA_V14_LEGACY_DEFINITION)}
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_legacy
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_gateway_key_rotations'
+    AND constraints.conname = 'cpk_gateway_key_rotations_retirement_check';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      ADD CONSTRAINT cpk_gateway_key_rotations_retirement_check
+      CHECK (old_secret_revoked_at IS NULL OR old_key_retired_at IS NOT NULL);
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE AND constraint_is_legacy IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = 'gateway key rotation retirement evidence is not accepted';
+  ELSIF constraint_is_legacy IS TRUE THEN
+    ALTER TABLE cpk_gateway_key_rotations
+      DROP CONSTRAINT cpk_gateway_key_rotations_retirement_check,
+      ADD CONSTRAINT cpk_gateway_key_rotations_retirement_check
+      CHECK (old_secret_revoked_at IS NULL OR old_key_retired_at IS NOT NULL);
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V15_ROTATION_FK_DEFINITION = (
+    "FOREIGN KEY (rotation_id) REFERENCES "
+    "cpk_gateway_key_rotations(rotation_id)"
+)
+_POSTGRES_SCHEMA_V15_SUBJECT_KIND_DEFINITION = (
+    "CHECK ((subject_kind = ANY (ARRAY['activity-plan'::text, "
+    "'gateway-key-rotation'::text])))"
+)
+_POSTGRES_SCHEMA_V15_LEGACY_DIGEST_DEFINITION = (
+    "CHECK ((review_digest ~ '^[0-9a-f]{64}$'::text))"
+)
+_POSTGRES_SCHEMA_V15_CURRENT_DIGEST_DEFINITION = (
+    'CHECK (((review_digest COLLATE "C") ~ '
+    "'^[0-9a-f]{64}$'::text))"
+)
+_POSTGRES_SCHEMA_V15_SUBJECT_IDENTITY_DEFINITION = (
+    "CHECK ((((subject_kind = 'activity-plan'::text) AND "
+    "(plan_id IS NOT NULL) AND (rotation_id IS NULL)) OR "
+    "((subject_kind = 'gateway-key-rotation'::text) AND "
+    "(plan_id IS NULL) AND (rotation_id IS NOT NULL))))"
+)
+_POSTGRES_SCHEMA_V15_ERROR = "approval subject evidence is not accepted"
+_POSTGRES_SCHEMA_V15_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_gateway_key_rotations IN EXCLUSIVE MODE;
+LOCK TABLE cpk_approval_requests IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  legacy_columns_are_exact boolean;
+  current_columns_are_exact boolean;
+  subject_contract text;
+  constraint_count bigint;
+  constraint_identity_count bigint;
+  constraint_name_count bigint;
+  constraints_are_accepted boolean;
+  index_count bigint;
+  indexes_are_accepted boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             column_name = 'plan_id'
+             AND data_type = 'text'
+             AND is_nullable = 'NO'
+             AND column_default IS NULL
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             column_default IS NULL
+             AND CASE column_name
+               WHEN 'plan_id' THEN
+                 data_type = 'text' AND is_nullable = 'YES'
+               WHEN 'rotation_id' THEN
+                 data_type = 'text' AND is_nullable = 'YES'
+               WHEN 'subject_kind' THEN
+                 data_type = 'text' AND is_nullable = 'NO'
+               WHEN 'subject_payload' THEN
+                 data_type = 'jsonb' AND is_nullable = 'NO'
+               WHEN 'review_digest' THEN
+                 data_type = 'text' AND is_nullable = 'NO'
+               ELSE false
+             END
+           ),
+           false
+         )
+    INTO column_count, legacy_columns_are_exact, current_columns_are_exact
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_approval_requests'
+    AND column_name IN (
+      'plan_id', 'rotation_id', 'subject_kind', 'subject_payload',
+      'review_digest'
+    );
+
+  IF column_count = 1 AND legacy_columns_are_exact IS TRUE THEN
+    subject_contract := 'legacy';
+  ELSIF column_count = 5 AND current_columns_are_exact IS TRUE THEN
+    subject_contract := 'current';
+  ELSE
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+  END IF;
+
+  IF subject_contract = 'legacy' THEN
+    IF EXISTS (
+      SELECT 1
+      FROM cpk_approval_requests
+      WHERE NOT (
+        octet_length(plan_id) BETWEEN 1 AND 200
+        AND (plan_id COLLATE "C") ~ '^[A-Za-z0-9]'
+        AND (plan_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+      )
+    ) THEN
+      RAISE EXCEPTION USING
+        ERRCODE = 'P1110',
+        MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+    END IF;
+  ELSE
+    IF EXISTS (
+      SELECT 1
+      FROM cpk_approval_requests AS approvals
+      LEFT JOIN cpk_gateway_key_rotations AS rotations
+        ON rotations.rotation_id = approvals.rotation_id
+      WHERE
+        (approvals.review_digest COLLATE "C") !~ '^[0-9a-f]{{64}}$'
+        OR CASE
+          WHEN (approvals.subject_kind COLLATE "C") = 'activity-plan' THEN NOT (
+            approvals.plan_id IS NOT NULL
+            AND approvals.rotation_id IS NULL
+            AND octet_length(approvals.plan_id) BETWEEN 1 AND 200
+            AND (approvals.plan_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (approvals.plan_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND approvals.subject_payload = jsonb_build_object(
+              'kind', 'activity-plan', 'plan_id', approvals.plan_id
+            )
+            AND (approvals.review_digest COLLATE "C") = encode(
+              sha256(convert_to('activity-plan:' || approvals.plan_id, 'UTF8')),
+              'hex'
+            )
+          )
+          WHEN (approvals.subject_kind COLLATE "C") =
+               'gateway-key-rotation' THEN NOT (
+            approvals.plan_id IS NULL
+            AND approvals.rotation_id IS NOT NULL
+            AND rotations.rotation_id IS NOT NULL
+            AND octet_length(rotations.rotation_id) BETWEEN 1 AND 200
+            AND (rotations.rotation_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.rotation_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND octet_length(rotations.workspace_id) BETWEEN 1 AND 200
+            AND (rotations.workspace_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.workspace_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND octet_length(rotations.gateway_node_id) BETWEEN 1 AND 200
+            AND (rotations.gateway_node_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.gateway_node_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND octet_length(rotations.issuer) BETWEEN 1 AND 200
+            AND (rotations.issuer COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.issuer COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND octet_length(rotations.old_key_id) BETWEEN 1 AND 200
+            AND (rotations.old_key_id COLLATE "C") ~ '^[A-Za-z0-9]'
+            AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+            AND (rotations.purpose COLLATE "C") IN
+              ({_sql_values(tuple(DelegationKeyPurpose))})
+            AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
+            AND rotations.clock_skew_seconds BETWEEN 0 AND 60
+            AND (rotations.intent_fingerprint COLLATE "C")
+                  ~ '^[0-9a-f]{{64}}$'
+            AND approvals.subject_payload = jsonb_build_object(
+              'kind', 'gateway-key-rotation',
+              'rotation_id', rotations.rotation_id,
+              'workspace_id', rotations.workspace_id,
+              'gateway_node_id', rotations.gateway_node_id,
+              'purpose', rotations.purpose,
+              'issuer', rotations.issuer,
+              'old_key_id', rotations.old_key_id,
+              'overlap_verifier_roles', jsonb_build_array('old', 'new'),
+              'retirement_verifier_roles', jsonb_build_array('new'),
+              'maximum_grant_lifetime_seconds',
+                rotations.maximum_grant_lifetime_seconds,
+              'clock_skew_seconds', rotations.clock_skew_seconds,
+              'rotation_intent_digest', rotations.intent_fingerprint
+            )
+            AND (approvals.review_digest COLLATE "C") = encode(
+              sha256(convert_to(
+                '{{"clock_skew_seconds":' ||
+                  rotations.clock_skew_seconds::text ||
+                  ',"gateway_node_id":' ||
+                  to_jsonb(rotations.gateway_node_id)::text ||
+                  ',"issuer":' || to_jsonb(rotations.issuer)::text ||
+                  ',"kind":"gateway-key-rotation"' ||
+                  ',"maximum_grant_lifetime_seconds":' ||
+                  rotations.maximum_grant_lifetime_seconds::text ||
+                  ',"old_key_id":' || to_jsonb(rotations.old_key_id)::text ||
+                  ',"overlap_verifier_roles":["old","new"]' ||
+                  ',"purpose":' || to_jsonb(rotations.purpose)::text ||
+                  ',"retirement_verifier_roles":["new"]' ||
+                  ',"rotation_id":' || to_jsonb(rotations.rotation_id)::text ||
+                  ',"rotation_intent_digest":' ||
+                  to_jsonb(rotations.intent_fingerprint)::text ||
+                  ',"workspace_id":' || to_jsonb(rotations.workspace_id)::text ||
+                  '}}',
+                'UTF8'
+              )),
+              'hex'
+            )
+          )
+          ELSE true
+        END
+    ) OR EXISTS (
+      SELECT approvals.rotation_id
+      FROM cpk_approval_requests AS approvals
+      WHERE approvals.rotation_id IS NOT NULL
+      GROUP BY approvals.rotation_id
+      HAVING count(*) > 1
+    ) THEN
+      RAISE EXCEPTION USING
+        ERRCODE = 'P1110',
+        MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+    END IF;
+  END IF;
+
+  SELECT count(*),
+         count(DISTINCT constraints.oid),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.convalidated
+             AND CASE constraints.conname
+               WHEN 'cpk_approval_requests_rotation_fk' THEN
+                 constraints.contype = 'f'
+                 AND pg_get_constraintdef(constraints.oid, false) =
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_ROTATION_FK_DEFINITION)}
+               WHEN 'cpk_approval_requests_subject_kind_check' THEN
+                 constraints.contype = 'c'
+                 AND pg_get_constraintdef(constraints.oid, false) =
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_SUBJECT_KIND_DEFINITION)}
+               WHEN 'cpk_approval_requests_review_digest_check' THEN
+                 constraints.contype = 'c'
+                 AND pg_get_constraintdef(constraints.oid, false) IN (
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_LEGACY_DIGEST_DEFINITION)},
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_CURRENT_DIGEST_DEFINITION)}
+                 )
+               WHEN 'cpk_approval_requests_subject_identity_check' THEN
+                 constraints.contype = 'c'
+                 AND pg_get_constraintdef(constraints.oid, false) =
+                   {_postgres_text_literal(_POSTGRES_SCHEMA_V15_SUBJECT_IDENTITY_DEFINITION)}
+               ELSE false
+             END
+           ),
+           false
+         )
+    INTO constraint_count, constraint_identity_count, constraint_name_count,
+         constraints_are_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_approval_requests'
+    AND constraints.conname IN (
+      'cpk_approval_requests_rotation_fk',
+      'cpk_approval_requests_subject_kind_check',
+      'cpk_approval_requests_review_digest_check',
+      'cpk_approval_requests_subject_identity_check'
+    );
+
+  IF constraint_count > 4
+    OR constraint_count <> constraint_identity_count
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0 AND constraints_are_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+  END IF;
+
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             indexes.relkind = 'i'
+             AND index_contract.indisunique
+             AND index_contract.indisvalid
+             AND index_contract.indisready
+             AND index_contract.indislive
+             AND relation.relname = 'cpk_approval_requests'
+             AND pg_get_indexdef(indexes.oid) = format(
+               'CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity '
+               'ON %I.cpk_approval_requests USING btree (rotation_id) '
+               'WHERE (rotation_id IS NOT NULL)',
+               current_schema()
+             )
+           ),
+           false
+         )
+    INTO index_count, indexes_are_accepted
+  FROM pg_class AS indexes
+  JOIN pg_namespace AS namespace ON namespace.oid = indexes.relnamespace
+  LEFT JOIN pg_index AS index_contract
+    ON index_contract.indexrelid = indexes.oid
+  LEFT JOIN pg_class AS relation
+    ON relation.oid = index_contract.indrelid
+  WHERE namespace.nspname = current_schema()
+    AND indexes.relname = 'cpk_approval_requests_rotation_identity';
+
+  IF index_count > 1
+    OR (index_count > 0 AND indexes_are_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V15_CONVERGE_ROWS_SQL = f"""
+DO $cpk$
+DECLARE
+  owned_column_count bigint;
+BEGIN
+  SELECT count(*)
+    INTO owned_column_count
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_approval_requests'
+    AND column_name IN (
+      'rotation_id', 'subject_kind', 'subject_payload', 'review_digest'
+    );
+
+  IF owned_column_count = 0 THEN
+    ALTER TABLE cpk_approval_requests
+      ADD COLUMN rotation_id text,
+      ADD COLUMN subject_kind text,
+      ADD COLUMN subject_payload jsonb,
+      ADD COLUMN review_digest text;
+
+    UPDATE cpk_approval_requests
+    SET subject_kind = 'activity-plan',
+        subject_payload = jsonb_build_object(
+          'kind', 'activity-plan', 'plan_id', plan_id
+        ),
+        review_digest = encode(
+          sha256(convert_to('activity-plan:' || plan_id, 'UTF8')),
+          'hex'
+        );
+
+    ALTER TABLE cpk_approval_requests
+      ALTER COLUMN plan_id DROP NOT NULL,
+      ALTER COLUMN subject_kind SET NOT NULL,
+      ALTER COLUMN subject_payload SET NOT NULL,
+      ALTER COLUMN review_digest SET NOT NULL;
+  ELSIF owned_column_count <> 4 THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V15_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V15_CONVERGE_OBJECTS_SQL = f"""
+DO $cpk$
+DECLARE
+  digest_definition text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_approval_requests'
+      AND constraints.conname = 'cpk_approval_requests_rotation_fk'
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_rotation_fk
+      FOREIGN KEY (rotation_id)
+      REFERENCES cpk_gateway_key_rotations(rotation_id);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_approval_requests'
+      AND constraints.conname = 'cpk_approval_requests_subject_kind_check'
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_subject_kind_check
+      CHECK (subject_kind IN ('activity-plan', 'gateway-key-rotation'));
+  END IF;
+
+  SELECT pg_get_constraintdef(constraints.oid, false)
+    INTO digest_definition
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = 'cpk_approval_requests'
+    AND constraints.conname = 'cpk_approval_requests_review_digest_check';
+
+  IF digest_definition IS NULL THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_review_digest_check
+      CHECK ((review_digest COLLATE "C") ~ '^[0-9a-f]{{64}}$');
+  ELSIF digest_definition =
+    {_postgres_text_literal(_POSTGRES_SCHEMA_V15_LEGACY_DIGEST_DEFINITION)}
+  THEN
+    ALTER TABLE cpk_approval_requests
+      DROP CONSTRAINT cpk_approval_requests_review_digest_check,
+      ADD CONSTRAINT cpk_approval_requests_review_digest_check
+      CHECK ((review_digest COLLATE "C") ~ '^[0-9a-f]{{64}}$');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = 'cpk_approval_requests'
+      AND constraints.conname = 'cpk_approval_requests_subject_identity_check'
+  ) THEN
+    ALTER TABLE cpk_approval_requests
+      ADD CONSTRAINT cpk_approval_requests_subject_identity_check
+      CHECK (
+        (subject_kind = 'activity-plan'
+          AND plan_id IS NOT NULL AND rotation_id IS NULL)
+        OR
+        (subject_kind = 'gateway-key-rotation'
+          AND plan_id IS NULL AND rotation_id IS NOT NULL)
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class AS indexes
+    JOIN pg_namespace AS namespace ON namespace.oid = indexes.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND indexes.relname = 'cpk_approval_requests_rotation_identity'
+  ) THEN
+    CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity
+      ON cpk_approval_requests (rotation_id)
+      WHERE rotation_id IS NOT NULL;
+  END IF;
+END
+$cpk$;
+"""
+
+_POSTGRES_SCHEMA_V16_LEGACY_SCOPES = (
+    "hub:instance:create",
+    "hub:instance:read",
+    "instance:workspace:read",
+    "instance:workspace:edit",
+    "plan:request",
+    "plan:approve",
+    "plan:approve-destructive",
+    "plan:execute",
+    "execution:operate",
+    "runtime-authority:register",
+    "runtime-authority:read",
+    "runtime-authority:revoke",
+    "runtime-authority:use",
+    "runtime-authority-delivery:register",
+    "runtime-authority-delivery:read",
+    "runtime-authority-delivery:revoke",
+    "ingress-authority:register",
+    "ingress-authority:read",
+    "ingress-authority:revoke",
+    "ingress-authority:use",
+    "secret-provider:register",
+    "secret-provider:read",
+    "secret-provider:use",
+    "secret-provider:revoke",
+    "delegation-key:generate",
+    "delegation-key:register",
+    "delegation-key:read",
+    "delegation-key:activate",
+    "delegation-key:retire",
+    "delegation-key:revoke",
+    "delegation-key:use",
+    "delegation-key:rotate",
+    "gateway-probe:use",
+)
+_POSTGRES_SCHEMA_V16_CURRENT_SCOPES = (
+    "hub:instance:create",
+    "hub:instance:read",
+    "instance:workspace:read",
+    "instance:workspace:edit",
+    "plan:request",
+    "plan:approve",
+    "plan:approve-destructive",
+    "plan:execute",
+    "execution:operate",
+    "runtime-authority:register",
+    "runtime-authority:read",
+    "runtime-authority:revoke",
+    "runtime-authority:use",
+    "runtime-authority-delivery:register",
+    "runtime-authority-delivery:read",
+    "runtime-authority-delivery:revoke",
+    "ingress-authority:register",
+    "ingress-authority:read",
+    "ingress-authority:revoke",
+    "ingress-authority:use",
+    "secret-provider:register",
+    "secret-provider:read",
+    "secret-provider:use",
+    "secret-provider:revoke",
+    "delegation-key:generate",
+    "delegation-key:register",
+    "delegation-key:read",
+    "delegation-key:activate",
+    "delegation-key:retire",
+    "delegation-key:revoke",
+    "delegation-key:use",
+    "delegation-key:rotate",
+    "delegation-key:rotate-approve",
+    "gateway-probe:use",
+)
+_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL = _postgres_status_values(
+    _POSTGRES_SCHEMA_V16_CURRENT_SCOPES
+)
+_POSTGRES_SCHEMA_V16_REQUEST_DEFINITIONS = (
+    _postgres_status_definition(
+        "required_scope", _POSTGRES_SCHEMA_V16_LEGACY_SCOPES
+    ),
+    _postgres_status_definition(
+        "required_scope", _POSTGRES_SCHEMA_V16_CURRENT_SCOPES
+    ),
+)
+_POSTGRES_SCHEMA_V16_DECISION_DEFINITIONS = (
+    _postgres_status_definition("scope", _POSTGRES_SCHEMA_V16_LEGACY_SCOPES),
+    _postgres_status_definition("scope", _POSTGRES_SCHEMA_V16_CURRENT_SCOPES),
+)
+_POSTGRES_SCHEMA_V16_ERROR = "approval scope contract is not accepted"
+_POSTGRES_SCHEMA_V16_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_approval_requests IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_approval_decisions IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_identity_count bigint;
+  constraint_name_count bigint;
+  constraints_are_accepted boolean;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_approval_requests
+    WHERE required_scope NOT IN ({_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL})
+  ) OR EXISTS (
+    SELECT 1
+    FROM cpk_approval_decisions
+    WHERE scope NOT IN ({_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL})
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V16_ERROR}';
+  END IF;
+
+  WITH accepted(relation_name, constraint_name, definitions) AS (
+    VALUES
+      (
+        'cpk_approval_requests',
+        'cpk_approval_requests_scope_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V16_REQUEST_DEFINITIONS)}]
+      ),
+      (
+        'cpk_approval_decisions',
+        'cpk_approval_decisions_scope_check',
+        ARRAY[{_postgres_definition_array(_POSTGRES_SCHEMA_V16_DECISION_DEFINITIONS)}]
+      )
+  )
+  SELECT count(*),
+         count(DISTINCT constraints.oid),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false)
+                   = ANY(accepted.definitions)
+           ),
+           false
+         )
+    INTO constraint_count, constraint_identity_count, constraint_name_count,
+         constraints_are_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN accepted
+    ON accepted.relation_name = relation.relname
+   AND accepted.constraint_name = constraints.conname
+  WHERE namespace.nspname = current_schema();
+
+  IF constraint_count > 2
+    OR constraint_count <> constraint_identity_count
+    OR constraint_count <> constraint_name_count
+    OR (constraint_count > 0 AND constraints_are_accepted IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V16_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
+
+def _approval_scope_convergence_sql(
+    table: str,
+    column: str,
+    constraint: str,
+    definitions: tuple[str, str],
+) -> str:
+    return f"""
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraint_is_current boolean;
+  constraint_is_legacy boolean;
+BEGIN
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(definitions[1])}
+           ),
+           false
+         ),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+               {_postgres_text_literal(definitions[0])}
+           ),
+           false
+         )
+    INTO constraint_count, constraint_is_current, constraint_is_legacy
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = current_schema()
+    AND relation.relname = '{table}'
+    AND constraints.conname = '{constraint}';
+
+  IF constraint_count = 0 THEN
+    ALTER TABLE {table}
+      ADD CONSTRAINT {constraint}
+      CHECK ({column} IN ({_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL}));
+  ELSIF constraint_count <> 1
+    OR (constraint_is_current IS NOT TRUE AND constraint_is_legacy IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V16_ERROR}';
+  ELSIF constraint_is_legacy IS TRUE THEN
+    ALTER TABLE {table}
+      DROP CONSTRAINT {constraint},
+      ADD CONSTRAINT {constraint}
+      CHECK ({column} IN ({_POSTGRES_SCHEMA_V16_CURRENT_VALUES_SQL}));
+  END IF;
+END
+$cpk$;
+"""
+
+
+_POSTGRES_SCHEMA_V16_CONVERGE_SQL = (
+    _approval_scope_convergence_sql(
+        "cpk_approval_requests",
+        "required_scope",
+        "cpk_approval_requests_scope_check",
+        _POSTGRES_SCHEMA_V16_REQUEST_DEFINITIONS,
+    )
+    + _approval_scope_convergence_sql(
+        "cpk_approval_decisions",
+        "scope",
+        "cpk_approval_decisions_scope_check",
+        _POSTGRES_SCHEMA_V16_DECISION_DEFINITIONS,
+    )
+)
+
+_POSTGRES_SCHEMA_V17_ERROR = "graph lineage compatibility is not accepted"
+_POSTGRES_SCHEMA_V17_DEPENDENCIES = (
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_pkey",
+        "p",
+        "PRIMARY KEY (workspace_id)",
+    ),
+    (
+        "cpk_graph_versions",
+        "cpk_graph_versions_pkey",
+        "p",
+        "PRIMARY KEY (graph_id)",
+    ),
+    (
+        "cpk_graph_versions",
+        "cpk_graph_versions_workspace_identity",
+        "u",
+        "UNIQUE (graph_id, workspace_id)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projections_pkey",
+        "p",
+        "PRIMARY KEY (projection_id)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_source",
+        "f",
+        "FOREIGN KEY (source_authored_graph_id, workspace_id) REFERENCES "
+        "cpk_graph_versions(graph_id, workspace_id)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_identity",
+        "u",
+        "UNIQUE (workspace_id, source_authored_graph_id, projection_kind, "
+        "projection_key)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_kind_check",
+        "c",
+        "CHECK ((projection_kind = ANY (ARRAY['identity'::text, "
+        "'delegation-verifier'::text])))",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_digest_check",
+        "c",
+        "CHECK ((projection_digest ~ '^[0-9a-f]{64}$'::text))",
+    ),
+    (
+        "cpk_activity_plans",
+        "cpk_activity_plans_session_id_fkey",
+        "f",
+        "FOREIGN KEY (session_id) REFERENCES cpk_operation_sessions(session_id)",
+    ),
+)
+_POSTGRES_SCHEMA_V17_CONSTRAINTS = (
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_workspace_identity",
+        "u",
+        "UNIQUE (projection_id, workspace_id)",
+        "UNIQUE (projection_id, workspace_id)",
+    ),
+    (
+        "cpk_realized_graph_projections",
+        "cpk_realized_graph_projection_source_identity",
+        "u",
+        "UNIQUE (projection_id, source_authored_graph_id)",
+        "UNIQUE (projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_current_realized_projection_fk",
+        "f",
+        "FOREIGN KEY (current_realized_projection_id, workspace_id) "
+        "REFERENCES cpk_realized_graph_projections(projection_id, workspace_id)",
+        "FOREIGN KEY (current_realized_projection_id, workspace_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, workspace_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_desired_realized_projection_fk",
+        "f",
+        "FOREIGN KEY (desired_realized_projection_id, workspace_id) "
+        "REFERENCES cpk_realized_graph_projections(projection_id, workspace_id)",
+        "FOREIGN KEY (desired_realized_projection_id, workspace_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, workspace_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_current_projection_source_fk",
+        "f",
+        "FOREIGN KEY (current_realized_projection_id, current_graph_id) "
+        "REFERENCES cpk_realized_graph_projections"
+        "(projection_id, source_authored_graph_id)",
+        "FOREIGN KEY (current_realized_projection_id, current_graph_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_desired_projection_source_fk",
+        "f",
+        "FOREIGN KEY (desired_realized_projection_id, desired_graph_id) "
+        "REFERENCES cpk_realized_graph_projections"
+        "(projection_id, source_authored_graph_id)",
+        "FOREIGN KEY (desired_realized_projection_id, desired_graph_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_current_lineage_check",
+        "c",
+        "CHECK ((current_graph_id IS NULL) = "
+        "(current_realized_projection_id IS NULL))",
+        "CHECK (((current_graph_id IS NULL) = "
+        "(current_realized_projection_id IS NULL)))",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_desired_lineage_check",
+        "c",
+        "CHECK ((desired_graph_id IS NULL) = "
+        "(desired_realized_projection_id IS NULL))",
+        "CHECK (((desired_graph_id IS NULL) = "
+        "(desired_realized_projection_id IS NULL)))",
+    ),
+    (
+        "cpk_activity_plans",
+        "cpk_activity_plans_base_projection_source_fk",
+        "f",
+        "FOREIGN KEY (base_realized_projection_id, base_graph_id) "
+        "REFERENCES cpk_realized_graph_projections"
+        "(projection_id, source_authored_graph_id)",
+        "FOREIGN KEY (base_realized_projection_id, base_graph_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_activity_plans",
+        "cpk_activity_plans_desired_projection_source_fk",
+        "f",
+        "FOREIGN KEY (desired_realized_projection_id, desired_graph_id) "
+        "REFERENCES cpk_realized_graph_projections"
+        "(projection_id, source_authored_graph_id)",
+        "FOREIGN KEY (desired_realized_projection_id, desired_graph_id) REFERENCES "
+        "cpk_realized_graph_projections(projection_id, source_authored_graph_id)",
+    ),
+    (
+        "cpk_workspaces",
+        "cpk_workspaces_desired_graph_revision_check",
+        "c",
+        "CHECK (desired_graph_revision >= 0)",
+        "CHECK ((desired_graph_revision >= 0))",
+    ),
+    (
+        "cpk_activity_plans",
+        "cpk_activity_plans_desired_graph_revision_check",
+        "c",
+        "CHECK (desired_graph_revision >= 0)",
+        "CHECK ((desired_graph_revision >= 0))",
+    ),
+)
+
+
+def _graph_lineage_constraint_values() -> str:
+    return ",\n".join(
+        "(" + ", ".join(
             (
-                projection.projection_id,
-                projection.workspace_id,
-                projection.source_authored_graph_id,
-                projection.projection_kind.value,
-                projection.projection_key,
-                projection.projection_digest,
-                Jsonb(projection.graph_descriptor),
-                projection.created_by,
-                projection.created_at,
-            ),
-        )
-    connection.execute(
-        """
-        UPDATE cpk_workspaces AS workspace
-        SET current_realized_projection_id = projection.projection_id
-        FROM cpk_realized_graph_projections AS projection
-        WHERE workspace.current_graph_id = projection.source_authored_graph_id
-          AND workspace.workspace_id = projection.workspace_id
-          AND projection.projection_kind = 'identity'
-          AND projection.projection_key = 'identity'
-          AND workspace.current_realized_projection_id IS NULL
-        """
+                _postgres_text_literal(table),
+                _postgres_text_literal(name),
+                _postgres_text_literal(kind),
+                _postgres_text_literal(definition),
+            )
+        ) + ")"
+        for table, name, kind, _ddl, definition in _POSTGRES_SCHEMA_V17_CONSTRAINTS
     )
-    connection.execute(
-        """
-        UPDATE cpk_workspaces AS workspace
-        SET desired_realized_projection_id = projection.projection_id
-        FROM cpk_realized_graph_projections AS projection
-        WHERE workspace.desired_graph_id = projection.source_authored_graph_id
-          AND workspace.workspace_id = projection.workspace_id
-          AND projection.projection_kind = 'identity'
-          AND projection.projection_key = 'identity'
-          AND workspace.desired_realized_projection_id IS NULL
-        """
+
+
+def _graph_lineage_dependency_values() -> str:
+    return ",\n".join(
+        "(" + ", ".join(
+            _postgres_text_literal(value) for value in dependency
+        ) + ")"
+        for dependency in _POSTGRES_SCHEMA_V17_DEPENDENCIES
     )
-    connection.execute(
-        """
-        UPDATE cpk_activity_plans AS plan
-        SET base_realized_projection_id = projection.projection_id
-        FROM cpk_realized_graph_projections AS projection
-        WHERE plan.base_graph_id = projection.source_authored_graph_id
-          AND projection.projection_kind = 'identity'
-          AND projection.projection_key = 'identity'
-          AND plan.base_realized_projection_id IS NULL
-        """
+
+
+_POSTGRES_SCHEMA_V17_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_workspaces IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_graph_versions IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_realized_graph_projections IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_activity_plans IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  workspace_column_count bigint;
+  workspace_columns_are_current boolean;
+  plan_column_count bigint;
+  plan_columns_are_current boolean;
+BEGIN
+  SELECT count(*), COALESCE(bool_and(
+      (column_name IN ('current_realized_projection_id',
+                       'desired_realized_projection_id')
+       AND data_type = 'text' AND is_nullable = 'YES'
+       AND column_default IS NULL)
+      OR
+      (column_name = 'desired_graph_revision' AND data_type = 'bigint'
+       AND is_nullable = 'NO' AND column_default IS NOT DISTINCT FROM '0')
+    ), false)
+  INTO workspace_column_count, workspace_columns_are_current
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_workspaces'
+    AND column_name IN ('current_realized_projection_id',
+                        'desired_realized_projection_id',
+                        'desired_graph_revision');
+
+  SELECT count(*), COALESCE(bool_and(
+      (column_name IN ('base_realized_projection_id',
+                       'desired_realized_projection_id')
+       AND data_type = 'text' AND is_nullable = 'YES'
+       AND column_default IS NULL)
+      OR
+      (column_name = 'desired_graph_revision' AND data_type = 'bigint'
+       AND is_nullable = 'NO' AND column_default IS NOT DISTINCT FROM '0')
+    ), false)
+  INTO plan_column_count, plan_columns_are_current
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND table_name = 'cpk_activity_plans'
+    AND column_name IN ('base_realized_projection_id',
+                        'desired_realized_projection_id',
+                        'desired_graph_revision');
+
+  IF workspace_column_count NOT IN (0, 3)
+    OR (workspace_column_count = 3 AND workspace_columns_are_current IS NOT TRUE)
+    OR plan_column_count NOT IN (0, 3)
+    OR (plan_column_count = 3 AND plan_columns_are_current IS NOT TRUE)
+  THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+  END IF;
+
+  IF EXISTS (
+    WITH accepted(relation_name, constraint_name, constraint_kind, definition) AS (
+      VALUES {_graph_lineage_dependency_values()}
     )
-    connection.execute(
-        """
-        UPDATE cpk_activity_plans AS plan
-        SET desired_realized_projection_id = projection.projection_id
-        FROM cpk_realized_graph_projections AS projection
-        WHERE plan.desired_graph_id = projection.source_authored_graph_id
-          AND projection.projection_kind = 'identity'
-          AND projection.projection_key = 'identity'
-          AND plan.desired_realized_projection_id IS NULL
-        """
+    SELECT 1
+    FROM accepted
+    LEFT JOIN pg_namespace AS namespace
+      ON namespace.nspname = current_schema()
+    LEFT JOIN pg_class AS relation
+      ON relation.relnamespace = namespace.oid
+     AND relation.relname = accepted.relation_name
+    LEFT JOIN pg_constraint AS constraints
+      ON constraints.conrelid = relation.oid
+     AND constraints.conname = accepted.constraint_name
+    GROUP BY accepted.relation_name, accepted.constraint_name,
+             accepted.constraint_kind, accepted.definition
+    HAVING count(constraints.oid) <> 1
+      OR COALESCE(bool_and(
+           constraints.contype::text = accepted.constraint_kind
+           AND constraints.convalidated IS TRUE
+           AND pg_get_constraintdef(constraints.oid, false) = accepted.definition
+         ), false) IS NOT TRUE
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM cpk_workspaces AS workspace
+    LEFT JOIN cpk_graph_versions AS current_graph
+      ON current_graph.graph_id = workspace.current_graph_id
+    LEFT JOIN cpk_graph_versions AS desired_graph
+      ON desired_graph.graph_id = workspace.desired_graph_id
+    WHERE (workspace.current_graph_id IS NOT NULL
+           AND current_graph.workspace_id IS DISTINCT FROM workspace.workspace_id)
+       OR (workspace.desired_graph_id IS NOT NULL
+           AND desired_graph.workspace_id IS DISTINCT FROM workspace.workspace_id)
+  ) OR EXISTS (
+    SELECT 1
+    FROM cpk_activity_plans AS plan
+    LEFT JOIN cpk_operation_sessions AS session
+      ON session.session_id = plan.session_id
+    LEFT JOIN cpk_graph_versions AS base_graph
+      ON base_graph.graph_id = plan.base_graph_id
+    LEFT JOIN cpk_graph_versions AS desired_graph
+      ON desired_graph.graph_id = plan.desired_graph_id
+    WHERE session.session_id IS NULL
+       OR base_graph.workspace_id IS DISTINCT FROM session.workspace_id
+       OR desired_graph.workspace_id IS DISTINCT FROM session.workspace_id
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+  END IF;
+
+  IF workspace_column_count = 3 THEN
+    IF EXISTS (SELECT 1 FROM cpk_workspaces WHERE desired_graph_revision < 0)
+      OR EXISTS (
+        SELECT 1
+        FROM cpk_workspaces AS workspace
+        LEFT JOIN cpk_realized_graph_projections AS current_projection
+          ON current_projection.projection_id =
+               workspace.current_realized_projection_id
+        LEFT JOIN cpk_realized_graph_projections AS desired_projection
+          ON desired_projection.projection_id =
+               workspace.desired_realized_projection_id
+        WHERE (workspace.current_realized_projection_id IS NOT NULL AND (
+                 current_projection.workspace_id
+                   IS DISTINCT FROM workspace.workspace_id
+                 OR current_projection.source_authored_graph_id
+                   IS DISTINCT FROM workspace.current_graph_id))
+           OR (workspace.desired_realized_projection_id IS NOT NULL AND (
+                 desired_projection.workspace_id
+                   IS DISTINCT FROM workspace.workspace_id
+                 OR desired_projection.source_authored_graph_id
+                   IS DISTINCT FROM workspace.desired_graph_id))
+      )
+    THEN
+      RAISE EXCEPTION USING ERRCODE = 'P1110',
+        MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+    END IF;
+  END IF;
+
+  IF plan_column_count = 3 THEN
+    IF EXISTS (SELECT 1 FROM cpk_activity_plans WHERE desired_graph_revision < 0)
+      OR EXISTS (
+        SELECT 1
+        FROM cpk_activity_plans AS plan
+        LEFT JOIN cpk_operation_sessions AS session
+          ON session.session_id = plan.session_id
+        LEFT JOIN cpk_realized_graph_projections AS base_projection
+          ON base_projection.projection_id = plan.base_realized_projection_id
+        LEFT JOIN cpk_realized_graph_projections AS desired_projection
+          ON desired_projection.projection_id = plan.desired_realized_projection_id
+        WHERE session.session_id IS NULL
+           OR (plan.base_realized_projection_id IS NOT NULL AND (
+                 base_projection.workspace_id IS DISTINCT FROM session.workspace_id
+                 OR base_projection.source_authored_graph_id
+                   IS DISTINCT FROM plan.base_graph_id))
+           OR (plan.desired_realized_projection_id IS NOT NULL AND (
+                 desired_projection.workspace_id IS DISTINCT FROM session.workspace_id
+                 OR desired_projection.source_authored_graph_id
+                   IS DISTINCT FROM plan.desired_graph_id))
+      )
+    THEN
+      RAISE EXCEPTION USING ERRCODE = 'P1110',
+        MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+    END IF;
+  END IF;
+
+  IF EXISTS (
+    WITH accepted(relation_name, constraint_name, constraint_kind, definition) AS (
+      VALUES {_graph_lineage_constraint_values()}
     )
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    JOIN accepted ON accepted.relation_name = relation.relname
+      AND accepted.constraint_name = constraints.conname
+    WHERE namespace.nspname = current_schema()
+      AND (constraints.contype::text <> accepted.constraint_kind
+           OR constraints.convalidated IS NOT TRUE
+           OR pg_get_constraintdef(constraints.oid, false) <> accepted.definition)
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V17_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
+
+def _graph_lineage_constraint_install_sql(
+    table: str,
+    name: str,
+    ddl: str,
+) -> str:
+    return f"""
+DO $cpk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraints
+    JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND relation.relname = '{table}'
+      AND constraints.conname = '{name}'
+  ) THEN
+    ALTER TABLE {table} ADD CONSTRAINT {name} {ddl};
+  END IF;
+END
+$cpk$;
+"""
+
+
+_POSTGRES_SCHEMA_V17_FINAL_SQL = """
+DO $cpk$
+DECLARE
+  workspace_column_count bigint;
+  plan_column_count bigint;
+BEGIN
+  SELECT count(*) INTO workspace_column_count
+  FROM information_schema.columns
+  WHERE table_schema = current_schema() AND table_name = 'cpk_workspaces'
+    AND column_name IN ('current_realized_projection_id',
+                        'desired_realized_projection_id',
+                        'desired_graph_revision');
+  SELECT count(*) INTO plan_column_count
+  FROM information_schema.columns
+  WHERE table_schema = current_schema() AND table_name = 'cpk_activity_plans'
+    AND column_name IN ('base_realized_projection_id',
+                        'desired_realized_projection_id',
+                        'desired_graph_revision');
+  IF workspace_column_count = 0 THEN
+    ALTER TABLE cpk_workspaces
+      ADD COLUMN current_realized_projection_id text,
+      ADD COLUMN desired_realized_projection_id text,
+      ADD COLUMN desired_graph_revision bigint NOT NULL DEFAULT 0;
+  END IF;
+  IF plan_column_count = 0 THEN
+    ALTER TABLE cpk_activity_plans
+      ADD COLUMN base_realized_projection_id text,
+      ADD COLUMN desired_realized_projection_id text,
+      ADD COLUMN desired_graph_revision bigint NOT NULL DEFAULT 0;
+  END IF;
+END
+$cpk$;
+
+UPDATE cpk_workspaces AS workspace
+SET current_realized_projection_id = projection.projection_id
+FROM cpk_realized_graph_projections AS projection
+WHERE workspace.current_graph_id = projection.source_authored_graph_id
+  AND workspace.workspace_id = projection.workspace_id
+  AND projection.projection_kind = 'identity'
+  AND projection.projection_key = 'identity'
+  AND workspace.current_realized_projection_id IS NULL;
+UPDATE cpk_workspaces AS workspace
+SET desired_realized_projection_id = projection.projection_id
+FROM cpk_realized_graph_projections AS projection
+WHERE workspace.desired_graph_id = projection.source_authored_graph_id
+  AND workspace.workspace_id = projection.workspace_id
+  AND projection.projection_kind = 'identity'
+  AND projection.projection_key = 'identity'
+  AND workspace.desired_realized_projection_id IS NULL;
+UPDATE cpk_activity_plans AS plan
+SET base_realized_projection_id = projection.projection_id
+FROM cpk_operation_sessions AS session,
+     cpk_realized_graph_projections AS projection
+WHERE plan.session_id = session.session_id
+  AND plan.base_graph_id = projection.source_authored_graph_id
+  AND session.workspace_id = projection.workspace_id
+  AND projection.projection_kind = 'identity'
+  AND projection.projection_key = 'identity'
+  AND plan.base_realized_projection_id IS NULL;
+UPDATE cpk_activity_plans AS plan
+SET desired_realized_projection_id = projection.projection_id
+FROM cpk_operation_sessions AS session,
+     cpk_realized_graph_projections AS projection
+WHERE plan.session_id = session.session_id
+  AND plan.desired_graph_id = projection.source_authored_graph_id
+  AND session.workspace_id = projection.workspace_id
+  AND projection.projection_kind = 'identity'
+  AND projection.projection_key = 'identity'
+  AND plan.desired_realized_projection_id IS NULL;
+
+ALTER TABLE cpk_activity_plans
+  ALTER COLUMN base_realized_projection_id SET NOT NULL,
+  ALTER COLUMN desired_realized_projection_id SET NOT NULL;
+""" + "".join(
+    _graph_lineage_constraint_install_sql(table, name, ddl)
+    for table, name, _kind, ddl, _definition in _POSTGRES_SCHEMA_V17_CONSTRAINTS
+)
+
+POSTGRES_SCHEMA_V1_SHA256 = (
+    "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
+)
+_POSTGRES_SCHEMA_V1 = SchemaMigration(
+    version=1,
+    name="operations-baseline",
+    sql=POSTGRES_SCHEMA,
+)
+if _POSTGRES_SCHEMA_V1.checksum_sha256 != POSTGRES_SCHEMA_V1_SHA256:
+    raise SchemaMigrationError(
+        "operations baseline V1 content differs from its pinned checksum: "
+        f"expected {POSTGRES_SCHEMA_V1_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V1.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V2 = SchemaMigration(
+    version=2,
+    name="coordination-timestamps",
+    sql=_POSTGRES_SCHEMA_V2_SQL,
+)
+_POSTGRES_SCHEMA_V2_SHA256 = (
+    "95c7782cf66875a3f70c6354b86054ec4ca86f45dca7d2ccb4d971920162c329"
+)
+if _POSTGRES_SCHEMA_V2.checksum_sha256 != _POSTGRES_SCHEMA_V2_SHA256:
+    raise SchemaMigrationError(
+        "coordination timestamp V2 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V2_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V2.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V3 = SchemaMigration(
+    version=3,
+    name="graph-product-authority-timestamps",
+    sql=_POSTGRES_SCHEMA_V3_SQL,
+)
+_POSTGRES_SCHEMA_V3_SHA256 = (
+    "1f4cf8704affd90ab2ceb17d2a00a62a91e265d2c8c1f49a77c9a6e446cdbdfa"
+)
+if _POSTGRES_SCHEMA_V3.checksum_sha256 != _POSTGRES_SCHEMA_V3_SHA256:
+    raise SchemaMigrationError(
+        "graph, product, and authority timestamp V3 content differs from its pinned "
+        "checksum: "
+        f"expected {_POSTGRES_SCHEMA_V3_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V3.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V4 = SchemaMigration(
+    version=4,
+    name="secret-registration-timestamps",
+    sql=_POSTGRES_SCHEMA_V4_SQL,
+)
+_POSTGRES_SCHEMA_V4_SHA256 = (
+    "523fb7528d544ce9214181b9886adb5d96130341561c44613f038caee42b99c1"
+)
+if _POSTGRES_SCHEMA_V4.checksum_sha256 != _POSTGRES_SCHEMA_V4_SHA256:
+    raise SchemaMigrationError(
+        "secret registration timestamp V4 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V4_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V4.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V5 = SchemaMigration(
+    version=5,
+    name="delegation-signing-key-timestamps",
+    sql=_POSTGRES_SCHEMA_V5_SQL,
+)
+_POSTGRES_SCHEMA_V5_SHA256 = (
+    "c2dbe9c058c97a7c365804c2d0760af2a740352c3a3a9fc9b4fc88503fc2a203"
+)
+if _POSTGRES_SCHEMA_V5.checksum_sha256 != _POSTGRES_SCHEMA_V5_SHA256:
+    raise SchemaMigrationError(
+        "delegation signing-key timestamp V5 content differs from its pinned "
+        "checksum: "
+        f"expected {_POSTGRES_SCHEMA_V5_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V5.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V6 = SchemaMigration(
+    version=6,
+    name="gateway-probe-timestamps",
+    sql=_POSTGRES_SCHEMA_V6_SQL,
+)
+_POSTGRES_SCHEMA_V6_SHA256 = (
+    "ae60d9014fdc65167daa7750417fb9f3b59ebc6a2a98903d74cde21e09d473cb"
+)
+if _POSTGRES_SCHEMA_V6.checksum_sha256 != _POSTGRES_SCHEMA_V6_SHA256:
+    raise SchemaMigrationError(
+        "gateway probe timestamp V6 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V6_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V6.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V7 = SchemaMigration(
+    version=7,
+    name="gateway-key-rotation-timestamps",
+    sql=_POSTGRES_SCHEMA_V7_SQL,
+)
+_POSTGRES_SCHEMA_V7_SHA256 = (
+    "65c0309b51e82e4ad313f113cd5df266f61e6c8b98aa5d5ff7194b53b6e5a775"
+)
+if _POSTGRES_SCHEMA_V7.checksum_sha256 != _POSTGRES_SCHEMA_V7_SHA256:
+    raise SchemaMigrationError(
+        "gateway key rotation timestamp V7 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V7_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V7.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V8 = SchemaMigration(
+    version=8,
+    name="ingress-evidence-timestamps",
+    sql=_POSTGRES_SCHEMA_V8_SQL,
+)
+_POSTGRES_SCHEMA_V8_SHA256 = (
+    "3e7cb7c70c64511d76be9406588d2edc24fa3c9a62d95fd42d7a84fb3946069c"
+)
+if _POSTGRES_SCHEMA_V8.checksum_sha256 != _POSTGRES_SCHEMA_V8_SHA256:
+    raise SchemaMigrationError(
+        "ingress evidence timestamp V8 content differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V8_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V8.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V9 = SchemaMigration(
+    version=9,
+    name="secret-use-authorization-timestamps",
+    sql=_POSTGRES_SCHEMA_V9_SQL,
+)
+_POSTGRES_SCHEMA_V9_SHA256 = (
+    "51e322bc4c578bef768cd516b63fd0018cfeb658bd4b9bfd6eed118666d50adb"
+)
+if _POSTGRES_SCHEMA_V9.checksum_sha256 != _POSTGRES_SCHEMA_V9_SHA256:
+    raise SchemaMigrationError(
+        "secret-use authorization timestamp V9 content differs from its pinned "
+        "checksum: "
+        f"expected {_POSTGRES_SCHEMA_V9_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V9.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V10 = SchemaMigration(
+    version=10,
+    name="product-descriptor-content",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V10_PREPARE_SQL),
+        DeterministicBackfillStep(
+            SchemaBackfillKind.PRODUCT_DESCRIPTOR_CONTENT,
+            1,
+        ),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V10_FINAL_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V10_SHA256 = (
+    "279a103c28d13b4b68cab0433fa3001d6ea8a88195d99f911bc79cbb3bd24ccd"
+)
+if _POSTGRES_SCHEMA_V10.checksum_sha256 != _POSTGRES_SCHEMA_V10_SHA256:
+    raise SchemaMigrationError(
+        "product descriptor content V10 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V10_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V10.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V11 = SchemaMigration(
+    version=11,
+    name="gateway-probe-access-path",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V11_PREPARE_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V11_BACKFILL_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V11_FINAL_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V11_SHA256 = (
+    "8cda9a35e7cd8733708e09f96ee897ec30b142841f3baed80c7c279894dc42c8"
+)
+if _POSTGRES_SCHEMA_V11.checksum_sha256 != _POSTGRES_SCHEMA_V11_SHA256:
+    raise SchemaMigrationError(
+        "gateway probe access path V11 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V11_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V11.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V12 = SchemaMigration(
+    version=12,
+    name="gateway-key-rotation-generation-evidence",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V12_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V12_COLUMNS_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V12_CONSTRAINTS_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V12_SHA256 = (
+    "a9d5c552480172e7415def95df8a5ae44b03cd7023710ef13c975de90923732a"
+)
+if _POSTGRES_SCHEMA_V12.checksum_sha256 != _POSTGRES_SCHEMA_V12_SHA256:
+    raise SchemaMigrationError(
+        "gateway key rotation generation evidence V12 differs from its pinned "
+        f"checksum: expected {_POSTGRES_SCHEMA_V12_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V12.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V13 = SchemaMigration(
+    version=13,
+    name="gateway-key-rotation-status-contracts",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V13_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V13_ROTATION_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V13_TRANSITIONS_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V13_SHA256 = (
+    "101b76750e72d449928d9d236e05ada77708be667b30a9f490092b124d82c319"
+)
+if _POSTGRES_SCHEMA_V13.checksum_sha256 != _POSTGRES_SCHEMA_V13_SHA256:
+    raise SchemaMigrationError(
+        "gateway key rotation status contracts V13 differ from their pinned "
+        f"checksum: expected {_POSTGRES_SCHEMA_V13_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V13.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V14 = SchemaMigration(
+    version=14,
+    name="gateway-key-rotation-retirement-evidence",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V14_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V14_CONVERGE_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V14_SHA256 = (
+    "3cb2bade92c299c0d397f9d3462c526d768233fc064df51d6db9b43c3089ea90"
+)
+if _POSTGRES_SCHEMA_V14.checksum_sha256 != _POSTGRES_SCHEMA_V14_SHA256:
+    raise SchemaMigrationError(
+        "gateway key rotation retirement evidence V14 differs from its pinned "
+        f"checksum: expected {_POSTGRES_SCHEMA_V14_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V14.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V15 = SchemaMigration(
+    version=15,
+    name="approval-subject-evidence",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V15_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V15_CONVERGE_ROWS_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V15_CONVERGE_OBJECTS_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V15_SHA256 = (
+    "215c6a71efd06f699c1d988a7e55435920075726009f030eecbd4a8c0fd91a0b"
+)
+if _POSTGRES_SCHEMA_V15.checksum_sha256 != _POSTGRES_SCHEMA_V15_SHA256:
+    raise SchemaMigrationError(
+        "approval subject evidence V15 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V15_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V15.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V16 = SchemaMigration(
+    version=16,
+    name="approval-scope-contracts",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V16_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V16_CONVERGE_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V16_SHA256 = (
+    "301c05458431939355d7c835bbdd05dad221a8370a7fb6ed6b95cd086162497e"
+)
+if _POSTGRES_SCHEMA_V16.checksum_sha256 != _POSTGRES_SCHEMA_V16_SHA256:
+    raise SchemaMigrationError(
+        "approval scope contracts V16 differ from their pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V16_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V16.checksum_sha256}"
+    )
+_POSTGRES_SCHEMA_V17 = SchemaMigration(
+    version=17,
+    name="graph-lineage-compatibility",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V17_PREFLIGHT_SQL),
+        DeterministicBackfillStep(SchemaBackfillKind.GRAPH_LINEAGE, 1),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V17_FINAL_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V17_SHA256 = (
+    "7b84050a532d04ad9b54408640ad0f0c9c6b456ca7e9c522fcda9d3e32b696b6"
+)
+if _POSTGRES_SCHEMA_V17.checksum_sha256 != _POSTGRES_SCHEMA_V17_SHA256:
+    raise SchemaMigrationError(
+        "graph lineage compatibility V17 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V17_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V17.checksum_sha256}"
+    )
+POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
+    (
+        _POSTGRES_SCHEMA_V1,
+        _POSTGRES_SCHEMA_V2,
+        _POSTGRES_SCHEMA_V3,
+        _POSTGRES_SCHEMA_V4,
+        _POSTGRES_SCHEMA_V5,
+        _POSTGRES_SCHEMA_V6,
+        _POSTGRES_SCHEMA_V7,
+        _POSTGRES_SCHEMA_V8,
+        _POSTGRES_SCHEMA_V9,
+        _POSTGRES_SCHEMA_V10,
+        _POSTGRES_SCHEMA_V11,
+        _POSTGRES_SCHEMA_V12,
+        _POSTGRES_SCHEMA_V13,
+        _POSTGRES_SCHEMA_V14,
+        _POSTGRES_SCHEMA_V15,
+        _POSTGRES_SCHEMA_V16,
+        _POSTGRES_SCHEMA_V17,
+    )
+)
+
+
+def install_schema(connection: MigrationPostgresConnection) -> None:
+    """Install through the canonical caller-aware migration interpreter."""
+
+    from control_plane_kit_operations.postgres.migration_runner import (
+        install_postgres_schema,
+    )
+
+    install_postgres_schema(connection)

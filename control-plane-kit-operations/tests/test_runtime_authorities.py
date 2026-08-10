@@ -124,7 +124,7 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
                 runtime_kind=RuntimeKind.DOCKER,
                 authority=self.remote_authority(),
                 admitted_by="operator-a",
-                admitted_at="2026-07-24T12:00:00Z",
+                admitted_at="2026-07-24T12:00:00.000001Z",
                 actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
             )
         )
@@ -136,6 +136,7 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
         )
         self.assertEqual(registered.runtime_kind, RuntimeKind.DOCKER)
         self.assertEqual(registered.authority_kind, RuntimeAuthorityKind.REMOTE_DOCKER_TLS)
+        self.assertEqual(registered.admitted_at, "2026-07-24T12:00:00.000001Z")
         self.assertEqual(registered.status, RegisteredRuntimeAuthorityStatus.ACTIVE)
         with self.unit_of_work() as unit_of_work:
             self.assertEqual(
@@ -228,6 +229,34 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
                 (),
             )
 
+    def test_runtime_authority_rejects_noncanonical_timestamp_before_lookup_or_write(
+        self,
+    ) -> None:
+        service = RuntimeAuthorityRegistrationService(self.unit_of_work)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "^postgres timestamp must be canonical UTC text$",
+        ):
+            service.register(
+                RegisterRuntimeAuthorityCommand(
+                    workspace_id="workspace-a",
+                    authority_ref=RuntimeAuthorityReference("invalid-time-runtime"),
+                    runtime_kind=RuntimeKind.DOCKER,
+                    authority=LocalDockerSocketAuthority(),
+                    admitted_by="operator-a",
+                    admitted_at="not-a-timestamp",
+                    actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
+                )
+            )
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_runtime_authorities"
+            ).fetchone()[0],
+            0,
+        )
+
     def test_service_registers_workspace_scoped_authority_delivery(self) -> None:
         service = RuntimeAuthorityRegistrationService(self.unit_of_work)
         service.register(
@@ -247,7 +276,7 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
                 workspace_id="workspace-a",
                 delivery=self.local_delivery(),
                 admitted_by="operator-a",
-                admitted_at="2026-07-24T12:01:00Z",
+                admitted_at="2026-07-24T12:01:00.000001Z",
                 actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER,),
             )
         )
@@ -265,7 +294,45 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
             registered.status,
             RegisteredRuntimeAuthorityDeliveryStatus.ACTIVE,
         )
+        self.assertEqual(registered.admitted_at, "2026-07-24T12:01:00.000001Z")
         self.assertNotIn("/var/run/docker.sock", repr(registered.descriptor()))
+
+    def test_runtime_delivery_rejects_noncanonical_timestamp_before_lookup_or_write(
+        self,
+    ) -> None:
+        service = RuntimeAuthorityRegistrationService(self.unit_of_work)
+        service.register(
+            RegisterRuntimeAuthorityCommand(
+                workspace_id="workspace-a",
+                authority_ref=RuntimeAuthorityReference("local-docker"),
+                runtime_kind=RuntimeKind.DOCKER,
+                authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a",
+                admitted_at="2026-07-24T12:00:00Z",
+                actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_REGISTER,),
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "^postgres timestamp must be canonical UTC text$",
+        ):
+            service.register_delivery(
+                RegisterRuntimeAuthorityDeliveryCommand(
+                    workspace_id="workspace-a",
+                    delivery=self.local_delivery(),
+                    admitted_by="operator-a",
+                    admitted_at="not-a-timestamp",
+                    actor_scopes=(PolicyScope.RUNTIME_AUTHORITY_DELIVERY_REGISTER,),
+                )
+            )
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_runtime_authority_deliveries"
+            ).fetchone()[0],
+            0,
+        )
 
     def test_authority_delivery_requires_active_registered_authority(self) -> None:
         service = RuntimeAuthorityRegistrationService(self.unit_of_work)

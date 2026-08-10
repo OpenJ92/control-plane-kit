@@ -17,6 +17,10 @@ from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKeyStatus,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 
 
 _SELECT = """
@@ -40,6 +44,7 @@ class DelegationSigningKeyStore:
     ) -> RegisteredDelegationSigningKey:
         if not isinstance(candidate, RegisteredDelegationSigningKey):
             raise TypeError("delegation key store requires registered key")
+        admitted_at = encode_postgres_timestamp(candidate.admitted_at)
         self._lock_scope(
             candidate.workspace_id,
             candidate.purpose,
@@ -78,7 +83,7 @@ class DelegationSigningKeyStore:
                 candidate.public_key.fingerprint_sha256,
                 candidate.private_key_reference.reference_id,
                 candidate.admitted_by,
-                candidate.admitted_at,
+                admitted_at,
                 candidate.status.value,
             ),
         )
@@ -189,6 +194,7 @@ class DelegationSigningKeyStore:
         activated_by: str,
         activated_at: str,
     ) -> RegisteredDelegationSigningKey:
+        encoded_activated_at = encode_postgres_timestamp(activated_at)
         self._lock_scope(workspace_id, purpose, issuer)
         candidate = self._get_or_none(
             workspace_id, purpose, issuer, key_id, for_update=True
@@ -222,7 +228,14 @@ class DelegationSigningKeyStore:
               AND key_id = %s
               AND status = 'verify-only'
             """,
-            (activated_by, activated_at, workspace_id, purpose.value, issuer, key_id),
+            (
+                activated_by,
+                encoded_activated_at,
+                workspace_id,
+                purpose.value,
+                issuer,
+                key_id,
+            ),
         )
         return self.get(workspace_id, purpose, issuer, key_id)
 
@@ -236,6 +249,7 @@ class DelegationSigningKeyStore:
         retired_by: str,
         retired_at: str,
     ) -> RegisteredDelegationSigningKey:
+        encoded_retired_at = encode_postgres_timestamp(retired_at)
         self._lock_scope(workspace_id, purpose, issuer)
         current = self._get_or_none(
             workspace_id, purpose, issuer, key_id, for_update=True
@@ -254,7 +268,14 @@ class DelegationSigningKeyStore:
             SET status = 'retired', retired_by = %s, retired_at = %s
             WHERE workspace_id = %s AND purpose = %s AND issuer = %s AND key_id = %s
             """,
-            (retired_by, retired_at, workspace_id, purpose.value, issuer, key_id),
+            (
+                retired_by,
+                encoded_retired_at,
+                workspace_id,
+                purpose.value,
+                issuer,
+                key_id,
+            ),
         )
         return self.get(workspace_id, purpose, issuer, key_id)
 
@@ -268,6 +289,7 @@ class DelegationSigningKeyStore:
         revoked_by: str,
         revoked_at: str,
     ) -> RegisteredDelegationSigningKey:
+        encoded_revoked_at = encode_postgres_timestamp(revoked_at)
         self._lock_scope(workspace_id, purpose, issuer)
         current = self._get_or_none(
             workspace_id, purpose, issuer, key_id, for_update=True
@@ -282,7 +304,14 @@ class DelegationSigningKeyStore:
             SET status = 'revoked', revoked_by = %s, revoked_at = %s
             WHERE workspace_id = %s AND purpose = %s AND issuer = %s AND key_id = %s
             """,
-            (revoked_by, revoked_at, workspace_id, purpose.value, issuer, key_id),
+            (
+                revoked_by,
+                encoded_revoked_at,
+                workspace_id,
+                purpose.value,
+                issuer,
+                key_id,
+            ),
         )
         return self.get(workspace_id, purpose, issuer, key_id)
 
@@ -336,15 +365,19 @@ def _row(row: tuple[Any, ...]) -> RegisteredDelegationSigningKey:
         public_key=public_key,
         private_key_reference=SecretReference(row[8]),
         admitted_by=row[9],
-        admitted_at=row[10],
+        admitted_at=decode_postgres_timestamp(row[10]),
         status=RegisteredDelegationSigningKeyStatus(row[11]),
         activated_by=row[12],
-        activated_at=row[13],
+        activated_at=_decode_optional_timestamp(row[13]),
         retired_by=row[14],
-        retired_at=row[15],
+        retired_at=_decode_optional_timestamp(row[15]),
         revoked_by=row[16],
-        revoked_at=row[17],
+        revoked_at=_decode_optional_timestamp(row[17]),
     )
+
+
+def _decode_optional_timestamp(value: object) -> str | None:
+    return None if value is None else decode_postgres_timestamp(value)
 
 
 __all__ = ["DelegationSigningKeyStore"]

@@ -2,8 +2,36 @@
 
 from control_plane_kit_operations.postgres.schema import (
     POSTGRES_SCHEMA,
+    POSTGRES_SCHEMA_MIGRATIONS,
+    POSTGRES_SCHEMA_V1_SHA256,
     PostgresConnection,
     install_schema,
+)
+from control_plane_kit_operations.postgres.migrations import (
+    AppliedSchemaMigration,
+    DeterministicBackfillStep,
+    ObservedSchemaKind,
+    ObservedSchemaState,
+    SchemaBackfillKind,
+    SchemaMigration,
+    SchemaMigrationAction,
+    SchemaMigrationActionKind,
+    SchemaMigrationError,
+    SchemaMigrationPlan,
+    SchemaMigrationRegistry,
+    SqlMigrationStep,
+)
+from control_plane_kit_operations.postgres.migration_inspection import (
+    POSTGRES_SCHEMA_MIGRATION_LEDGER_COLUMNS,
+    POSTGRES_SCHEMA_MIGRATION_LEDGER_TABLE,
+    POSTGRES_SCHEMA_V1_TABLE_COLUMNS,
+    inspect_postgres_schema,
+    verify_postgres_schema,
+)
+from control_plane_kit_operations.postgres.migration_runner import (
+    MigrationPostgresConnection,
+    install_postgres_schema,
+    plan_postgres_schema_install,
 )
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
@@ -53,6 +81,13 @@ from control_plane_kit_operations.postgres.unit_of_work import (
 
 __all__ = [
     "POSTGRES_SCHEMA",
+    "POSTGRES_SCHEMA_MIGRATIONS",
+    "POSTGRES_SCHEMA_MIGRATION_LEDGER_COLUMNS",
+    "POSTGRES_SCHEMA_MIGRATION_LEDGER_TABLE",
+    "POSTGRES_SCHEMA_V1_TABLE_COLUMNS",
+    "POSTGRES_SCHEMA_V1_SHA256",
+    "AppliedSchemaMigration",
+    "DeterministicBackfillStep",
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
     "DelegationSigningKeyStore",
@@ -62,6 +97,7 @@ __all__ = [
     "GatewayProbeStore",
     "GatewayKeyRotationStore",
     "ImagePullAuthorityStore",
+    "MigrationPostgresConnection",
     "GeneratedIngressSecretReferenceStore",
     "IngressAuthorityStore",
     "IngressResourceStore",
@@ -77,7 +113,21 @@ __all__ = [
     "SecretProviderStore",
     "SecretReferenceStore",
     "SecretUseAuthorizationStore",
+    "ObservedSchemaKind",
+    "ObservedSchemaState",
+    "SchemaBackfillKind",
+    "SchemaMigration",
+    "SchemaMigrationAction",
+    "SchemaMigrationActionKind",
+    "SchemaMigrationError",
+    "SchemaMigrationPlan",
+    "SchemaMigrationRegistry",
+    "SqlMigrationStep",
     "TransactionalPostgresConnection",
     "UnitOfWorkStateError",
     "install_schema",
+    "install_postgres_schema",
+    "inspect_postgres_schema",
+    "plan_postgres_schema_install",
+    "verify_postgres_schema",
 ]

@@ -1,0 +1,122 @@
+{
+  "schema": "cpk.node-control.canonical-wire.v1",
+  "canonicalization": "jcs-rfc8785.v1",
+  "consumers": [
+    "python",
+    "java",
+    "cpp"
+  ],
+  "requests": [
+    {
+      "name": "read-state",
+      "descriptor": {
+        "target": {
+          "workspace_id": "workspace-1",
+          "graph_revision": "revision-7",
+          "node_id": "router",
+          "provider_socket_name": "control"
+        },
+        "variable_name": "routing",
+        "operation": "read-state",
+        "request_id": "request-read-1",
+        "idempotency_key": "routing-read-1",
+        "canonicalization": "jcs-rfc8785.v1",
+        "command_codec": null,
+        "precondition": null,
+        "payload": null
+      },
+      "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"command_codec\":null,\"idempotency_key\":\"routing-read-1\",\"operation\":\"read-state\",\"payload\":null,\"precondition\":null,\"request_id\":\"request-read-1\",\"target\":{\"graph_revision\":\"revision-7\",\"node_id\":\"router\",\"provider_socket_name\":\"control\",\"workspace_id\":\"workspace-1\"},\"variable_name\":\"routing\"}",
+      "canonical_utf8_hex": "7b2263616e6f6e6963616c697a6174696f6e223a226a63732d726663383738352e7631222c22636f6d6d616e645f636f646563223a6e756c6c2c226964656d706f74656e63795f6b6579223a22726f7574696e672d726561642d31222c226f7065726174696f6e223a22726561642d7374617465222c227061796c6f6164223a6e756c6c2c22707265636f6e646974696f6e223a6e756c6c2c22726571756573745f6964223a22726571756573742d726561642d31222c22746172676574223a7b2267726170685f7265766973696f6e223a227265766973696f6e2d37222c226e6f64655f6964223a22726f75746572222c2270726f76696465725f736f636b65745f6e616d65223a22636f6e74726f6c222c22776f726b73706163655f6964223a22776f726b73706163652d31227d2c227661726961626c655f6e616d65223a22726f7574696e67227d",
+      "sha256": "d45b4b5b47965db16bb7e2b2eab9744ba0047956fd1878b7b3787dadb1761134"
+    },
+    {
+      "name": "scalar-large-float",
+      "descriptor": {
+        "target": {
+          "workspace_id": "workspace-1",
+          "graph_revision": "revision-7",
+          "node_id": "router",
+          "provider_socket_name": "control"
+        },
+        "variable_name": "limit",
+        "operation": "apply-command",
+        "request_id": "request-scalar-1",
+        "idempotency_key": "limit-change-1",
+        "canonicalization": "jcs-rfc8785.v1",
+        "command_codec": "control.replace-scalar.v1",
+        "precondition": {
+          "expected_version": 4
+        },
+        "payload": {
+          "codec": "control.replace-scalar.v1",
+          "state": {
+            "kind": "scalar",
+            "value": 1e+20
+          }
+        }
+      },
+      "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"command_codec\":\"control.replace-scalar.v1\",\"idempotency_key\":\"limit-change-1\",\"operation\":\"apply-command\",\"payload\":{\"codec\":\"control.replace-scalar.v1\",\"state\":{\"kind\":\"scalar\",\"value\":100000000000000000000}},\"precondition\":{\"expected_version\":4},\"request_id\":\"request-scalar-1\",\"target\":{\"graph_revision\":\"revision-7\",\"node_id\":\"router\",\"provider_socket_name\":\"control\",\"workspace_id\":\"workspace-1\"},\"variable_name\":\"limit\"}",
+      "canonical_utf8_hex": "7b2263616e6f6e6963616c697a6174696f6e223a226a63732d726663383738352e7631222c22636f6d6d616e645f636f646563223a22636f6e74726f6c2e7265706c6163652d7363616c61722e7631222c226964656d706f74656e63795f6b6579223a226c696d69742d6368616e67652d31222c226f7065726174696f6e223a226170706c792d636f6d6d616e64222c227061796c6f6164223a7b22636f646563223a22636f6e74726f6c2e7265706c6163652d7363616c61722e7631222c227374617465223a7b226b696e64223a227363616c6172222c2276616c7565223a3130303030303030303030303030303030303030307d7d2c22707265636f6e646974696f6e223a7b2265787065637465645f76657273696f6e223a347d2c22726571756573745f6964223a22726571756573742d7363616c61722d31222c22746172676574223a7b2267726170685f7265766973696f6e223a227265766973696f6e2d37222c226e6f64655f6964223a22726f75746572222c2270726f76696465725f736f636b65745f6e616d65223a22636f6e74726f6c222c22776f726b73706163655f6964223a22776f726b73706163652d31227d2c227661726961626c655f6e616d65223a226c696d6974227d",
+      "sha256": "9597a9831eed6558fdcb6ee75a166b67ed57923c1b170444200681cffbba2836"
+    },
+    {
+      "name": "weighted-exponents",
+      "descriptor": {
+        "target": {
+          "workspace_id": "workspace-1",
+          "graph_revision": "revision-7",
+          "node_id": "router",
+          "provider_socket_name": "control"
+        },
+        "variable_name": "routing",
+        "operation": "apply-command",
+        "request_id": "request-weighted-1",
+        "idempotency_key": "routing-change-1",
+        "canonicalization": "jcs-rfc8785.v1",
+        "command_codec": "control.replace-weighted-routing.v1",
+        "precondition": {
+          "expected_version": 7
+        },
+        "payload": {
+          "codec": "control.replace-weighted-routing.v1",
+          "state": {
+            "kind": "weighted-routing",
+            "targets": [
+              "target-a",
+              "target-b"
+            ],
+            "weights": {
+              "target-a": 1e-7,
+              "target-b": 1.0
+            }
+          }
+        }
+      },
+      "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"command_codec\":\"control.replace-weighted-routing.v1\",\"idempotency_key\":\"routing-change-1\",\"operation\":\"apply-command\",\"payload\":{\"codec\":\"control.replace-weighted-routing.v1\",\"state\":{\"kind\":\"weighted-routing\",\"targets\":[\"target-a\",\"target-b\"],\"weights\":{\"target-a\":1e-7,\"target-b\":1}}},\"precondition\":{\"expected_version\":7},\"request_id\":\"request-weighted-1\",\"target\":{\"graph_revision\":\"revision-7\",\"node_id\":\"router\",\"provider_socket_name\":\"control\",\"workspace_id\":\"workspace-1\"},\"variable_name\":\"routing\"}",
+      "canonical_utf8_hex": "7b2263616e6f6e6963616c697a6174696f6e223a226a63732d726663383738352e7631222c22636f6d6d616e645f636f646563223a22636f6e74726f6c2e7265706c6163652d77656967687465642d726f7574696e672e7631222c226964656d706f74656e63795f6b6579223a22726f7574696e672d6368616e67652d31222c226f7065726174696f6e223a226170706c792d636f6d6d616e64222c227061796c6f6164223a7b22636f646563223a22636f6e74726f6c2e7265706c6163652d77656967687465642d726f7574696e672e7631222c227374617465223a7b226b696e64223a2277656967687465642d726f7574696e67222c2274617267657473223a5b227461726765742d61222c227461726765742d62225d2c2277656967687473223a7b227461726765742d61223a31652d372c227461726765742d62223a317d7d7d2c22707265636f6e646974696f6e223a7b2265787065637465645f76657273696f6e223a377d2c22726571756573745f6964223a22726571756573742d77656967687465642d31222c22746172676574223a7b2267726170685f7265766973696f6e223a227265766973696f6e2d37222c226e6f64655f6964223a22726f75746572222c2270726f76696465725f736f636b65745f6e616d65223a22636f6e74726f6c222c22776f726b73706163655f6964223a22776f726b73706163652d31227d2c227661726961626c655f6e616d65223a22726f7574696e67227d",
+      "sha256": "f53bf99f0b1f4533958d4a0e9df129635ed941586ec3cb2612a82e65db7c3eec"
+    }
+  ],
+  "rfc8785_number_vectors": [
+    {
+      "ieee754_hex": "0000000000000000",
+      "canonical_json": "0"
+    },
+    {
+      "ieee754_hex": "0000000000000001",
+      "canonical_json": "5e-324"
+    },
+    {
+      "ieee754_hex": "7fefffffffffffff",
+      "canonical_json": "1.7976931348623157e+308"
+    },
+    {
+      "ieee754_hex": "44b52d02c7e14af6",
+      "canonical_json": "1e+23"
+    },
+    {
+      "ieee754_hex": "444b1ae4d6e2ef50",
+      "canonical_json": "1e+21"
+    }
+  ]
+}

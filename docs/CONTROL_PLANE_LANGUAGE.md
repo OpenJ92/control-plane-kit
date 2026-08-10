@@ -1200,6 +1200,139 @@ laws:
   return existing evidence without redispatch, while changed intent conflicts.
   No Postgres transaction spans signing, gateway transport, or target IO.
 
+### Authenticated Workload Node Control
+
+meaning:
+  AUTH.NODE-CONTROL language for invoking one declared workload control surface
+  through a gateway relay and a workload-local SDK verifier. The architectural
+  boundary is frozen by `control-plane-kit-core/docs/NODE_CONTROL_TOPOLOGY.md`;
+  executable pure contracts live in
+  `control-plane-kit-core/src/control_plane_kit_core/node_control.py`.
+
+owned by:
+  `control-plane-kit-core` owns pure provider-neutral command, grant,
+  descriptor, and result contracts. `control-plane-kit-operations` owns
+  authorization, durable intent, replay/evidence, and result folding. The
+  separately installable `control-plane-kit-server-sdk` owns workload verifier,
+  dispatch, `ControlPlaneVariable[State, Command, Result]`, and optional
+  FastAPI route accrual.
+
+durable:
+  Commands and results may become durable operations evidence. SDK process-local
+  state is not durable. Durable adopters such as service discovery own their own
+  UnitOfWork, command ledger, revisions, and restart replay.
+
+may contain secrets:
+  No. This is a producer contract: core enforces bounded syntax and the exact
+  credential/endpoint envelopes in
+  `control-plane-kit-core/docs/NODE_CONTROL_PUBLIC_MATERIAL.md`; it cannot prove
+  arbitrary text is semantically public. Operator bearer credentials, compact
+  grants, signatures, private keys, secret values, private endpoint details,
+  and unbounded payloads remain forbidden from graph truth, descriptors,
+  grants, commands, results, events, observations, read models, logs, route
+  responses, and issue evidence.
+
+interpreted by:
+  cpk-server operations services issue bounded intent, cpk-local-gateway relays
+  only after transit authority, and a workload SDK verifies end-to-end workload
+  authority before one `ControlPlaneVariable` transition.
+
+laws:
+  Canonical newly published workload SDK routes use `/__control`; existing
+  `/__deploy` control-route descriptors remain bounded legacy compatibility
+  until a focused migration changes them. Gateway transit authority and
+  workload end-to-end authority have distinct audiences, command identities,
+  verifier responsibilities, and replay scopes. Variables may activate, drain,
+  weight, or select only graph-declared identities; they must not create graph
+  edges, accept caller URLs, expose arbitrary object reflection, or introduce a
+  second handler/plugin mechanism.
+
+public contract shape:
+  `NodeControlGraphReference` gives workspace, graph revision, node, provider
+  socket, variable, and weighted target identities one closed nominal role.
+  The wire retains ordinary strings whose role comes from the enclosing field;
+  codec construction proves bounded role syntax, not graph membership. An
+  authenticated producer must derive those references from the admitted graph,
+  and the SDK/operations boundary verifies that provenance before dispatch.
+  Resolved endpoint and secret material objects cannot substitute for graph
+  references. A bare DNS-looking string remains semantically ambiguous until
+  that producer-owned graph join rather than being guessed from bytes.
+  Other open text and scalar material follows
+  `cpk.node-control.public-material.v1`: exact lexical exclusions are applied
+  literally and after one ASCII percent projection, while semantic publicness
+  remains producer-attested. Python object representations and contract errors
+  omit open/rejected material; canonical descriptors retain admitted public
+  values required by the language-neutral wire.
+
+  `NodeControlCommandRequest` binds one workspace, graph revision, node,
+  provider socket, variable, closed operation, request id, idempotency key,
+  command codec, transition precondition, and bounded typed payload. The
+  request declares `jcs-rfc8785.v1`; its RFC 8785 UTF-8 canonical bytes and
+  SHA-256 digest are frozen by the language-neutral vectors in
+  `control-plane-kit-core/docs/NODE_CONTROL_CANONICAL_WIRE.md`.
+  `DelegatedWorkloadNodeControlGrant` binds that canonical request digest under
+  a distinct `workload-node-control` key purpose; gateway probe grants are a
+  different type and are rejected at this boundary.
+  `ControlPlaneVariableDescriptor` names one scalar, map, or atomic
+  weighted-routing state codec and an exact operation index. `read-state` has
+  no command codec and returns `control.state.v1`; `apply-command` names the
+  kind's matching replacement codec and returns `control.transition.v1`.
+  Descriptors declare both entries once in canonical order and retain the
+  canonical `node-control` route/capability pair. Strict codecs reject legacy
+  flat command/result fields, unknown keys and kinds, partial indexes, and
+  reordered entries. Results expose only bounded state and closed evidence
+  codes, never provider errors, signatures, credentials, endpoints, or secret
+  values.
+
+  ```json
+  {
+    "operation_contracts": [
+      {
+        "operation": "read-state",
+        "command_codec": null,
+        "result_codec": "control.state.v1"
+      },
+      {
+        "operation": "apply-command",
+        "command_codec": "control.replace-weighted-routing.v1",
+        "result_codec": "control.transition.v1"
+      }
+    ]
+  }
+  ```
+
+  Results are a closed nominal sum rather than one optional-field record.
+  Successful reads carry one versioned state whose state codec matches the
+  variable. Successful transitions carry one version and exactly `applied` or
+  `no-change` evidence. Rejected and failed results carry one closed evidence
+  code but no state or version; read and apply have separate rejection laws,
+  and failure is always `internal-failure`. `NodeControlResultCodec` is bound to
+  the selected variable descriptor and rejects legacy, cross-variant, and
+  variable-mismatched material.
+
+  ```json
+  {
+    "request_id": "request-read-1",
+    "operation": "read-state",
+    "status": "succeeded",
+    "codec": "control.state.v1",
+    "state_codec": "control.scalar.v1",
+    "version": 4,
+    "state": {"kind": "scalar", "value": "target-a"}
+  }
+  ```
+
+  ```json
+  {
+    "request_id": "request-apply-1",
+    "operation": "apply-command",
+    "status": "succeeded",
+    "codec": "control.transition.v1",
+    "version": 5,
+    "evidence": {"code": "applied"}
+  }
+  ```
+
 ## Planning Language
 
 ### DeploymentTransition
@@ -1592,6 +1725,49 @@ interpreted by:
 laws:
   Result folding must not erase historical evidence. Failure and uncertainty
   remain visible.
+
+### EffectAttemptState
+
+meaning:
+  Pure durable-coordination contract for one possible performance of an
+  external effect. Its identity is `(run_id, activity_id, attempt)` and its
+  active ownership fence is `(worker_id, generation)`.
+
+owned by:
+  The pure contract is exported by `control-plane-kit-core.operations`.
+  `control-plane-kit-operations` owns persistence and transactional enforcement.
+
+durable:
+  Yes, when #1105 provides the operations-store projection. The pure value does
+  not itself perform persistence.
+
+may contain secrets:
+  No. Request, result, and recovery evidence are lowercase SHA-256 fingerprints,
+  not raw requests, provider results, credentials, addresses, or exception text.
+
+interpreted by:
+  Operations lease/fence stores, the execution coordinator, recovery services,
+  and operator projections.
+
+laws:
+  The closed attempt states are `started`, `succeeded`, `failed`, `unsupported`,
+  `uncertain`, and `abandoned`. A stale or foreign fence cannot fold a result.
+  An exact duplicate terminal fold is idempotent; an incompatible duplicate is
+  rejected. Uncertainty is neither success nor failure and can become success,
+  failure, or abandonment only through an explicit `EffectRecoveryDecision`
+  that retains the exact attempt identity, the uncertainty fingerprint being
+  resolved, and the public reconciliation evidence fingerprint.
+
+  Retry creates a new positive attempt number and names the immediately prior
+  attempt; it never rewrites the previous attempt. `ActivityEvent` remains the
+  canonical append-only operational history. `EffectAttemptState` is the current
+  coordination/fence projection, not a second journal.
+
+  The persistence transaction introduced by #1105 must validate the active
+  lease and fence under row lock, fold the attempt state, and append its bounded
+  lifecycle event atomically. External interpreter IO never occurs inside that
+  Postgres transaction. Fence takeover and lease-expiry authority belong to that
+  operations transaction, not to the pure fold.
 
 ### RuntimeInterpreterDispatcher
 

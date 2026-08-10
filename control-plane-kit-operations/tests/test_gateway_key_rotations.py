@@ -26,9 +26,13 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationRevocationCheckpoint,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
+    GatewayKeyRotationTransition,
     RequestGatewayKeyRotation,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres.gateway_key_rotation_store import (
+    GatewayKeyRotationStore,
+)
 from control_plane_kit_operations.records import (
     ApprovalDecisionKind,
     OperationSessionRecord,
@@ -258,6 +262,281 @@ class GatewayKeyRotationTests(unittest.TestCase):
             self.service().transitions(rotation.rotation_id)[-1].to_status,
             GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
         )
+
+    def test_service_admits_all_supplied_times_before_uow_or_replay_access(self) -> None:
+        invalid = "2027-02-30T08:00:00Z"
+        accesses = 0
+
+        def forbidden_uow():
+            nonlocal accesses
+            accesses += 1
+            raise AssertionError("UoW opened before timestamp admission")
+
+        service = GatewayKeyRotationService(forbidden_uow, clock=lambda: self.now)
+        requested = replace(self.request(), requested_at=invalid)
+        prepared = self.checkpoint(GatewayKeyRotationDeploymentPhase.OVERLAP)
+        accepted = replace(
+            prepared,
+            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+            accepted_current_graph_id="graph-a",
+            accepted_current_projection_id="projection-a-b",
+            accepted_at=invalid,
+        )
+        revocation = GatewayKeyRotationRevocationCheckpoint(
+            provider_registration_id="provider-a",
+            secret_reference=SecretReference("secret://workspace-secrets/keys/key-a"),
+            provider_version_id="version-a",
+            provider_version_number=1,
+            revocation_id="srevoke_" + "a" * 64,
+            correlation_id="rotation-a:revoke-old-version",
+            action_digest="b" * 64,
+            prepared_at=invalid,
+        )
+        base = AdvanceGatewayKeyRotation(
+            rotation_id="rotation-a",
+            transition_id="transition-a",
+            expected_status=GatewayKeyRotationStatus.REQUESTED,
+            expected_version=1,
+            target_status=GatewayKeyRotationStatus.AWAITING_APPROVAL,
+            advanced_by="operator-a",
+            advanced_at="2027-01-15T08:00:00Z",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            approval_request_id="approval-request-a",
+        )
+        cases = (
+            ("request", lambda: service.request(requested)),
+            ("advanced", lambda: service.advance(replace(base, advanced_at=invalid))),
+            (
+                "activation",
+                lambda: service.advance(replace(base, new_key_activated_at=invalid)),
+            ),
+            (
+                "retirement",
+                lambda: service.advance(replace(base, old_key_retired_at=invalid)),
+            ),
+            (
+                "secret-revocation",
+                lambda: service.advance(replace(base, old_secret_revoked_at=invalid)),
+            ),
+            (
+                "deployment-prepared",
+                lambda: service.advance(
+                    replace(base, deployment=replace(prepared, prepared_at=invalid))
+                ),
+            ),
+            ("deployment-accepted", lambda: service.advance(replace(base, deployment=accepted))),
+            ("revocation-prepared", lambda: service.advance(replace(base, revocation=revocation))),
+        )
+        for identity, operation in cases:
+            with self.subTest(identity=identity):
+                with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+                    operation()
+        self.assertEqual(accesses, 0)
+
+    def test_direct_store_encodes_main_and_nested_times_before_first_access(self) -> None:
+        invalid = "2027-02-30T08:00:00Z"
+        current = self.service().request(self.request())
+
+        class FailOnAccessConnection:
+            def __init__(self) -> None:
+                self.accesses = 0
+
+            def execute(self, *_args: object, **_kwargs: object) -> object:
+                self.accesses += 1
+                raise AssertionError("database access occurred before timestamp admission")
+
+        prepared = self.checkpoint(GatewayKeyRotationDeploymentPhase.OVERLAP)
+        accepted = replace(
+            prepared,
+            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+            accepted_current_graph_id="graph-a",
+            accepted_current_projection_id="projection-a-b",
+            accepted_at=invalid,
+        )
+        revocation = GatewayKeyRotationRevocationCheckpoint(
+            provider_registration_id="provider-a",
+            secret_reference=SecretReference("secret://workspace-secrets/keys/key-a"),
+            provider_version_id="version-a",
+            provider_version_number=1,
+            revocation_id="srevoke_" + "a" * 64,
+            correlation_id="rotation-a:revoke-old-version",
+            action_digest="b" * 64,
+            prepared_at=invalid,
+        )
+        transition = GatewayKeyRotationTransition(
+            rotation_id=current.rotation_id,
+            transition_id="transition-direct",
+            from_status=GatewayKeyRotationStatus.REQUESTED,
+            to_status=GatewayKeyRotationStatus.AWAITING_APPROVAL,
+            from_version=1,
+            to_version=2,
+            transition_fingerprint="c" * 64,
+            advanced_by="operator-a",
+            advanced_at=invalid,
+        )
+        cases = (
+            ("add-requested", lambda store: store.add(replace(current, requested_at=invalid))),
+            ("add-updated", lambda store: store.add(replace(current, updated_at=invalid))),
+            (
+                "cas-updated",
+                lambda store: store.compare_and_set(
+                    current, replace(current, updated_at=invalid)
+                ),
+            ),
+            (
+                "cas-activation",
+                lambda store: store.compare_and_set(
+                    current, replace(current, new_key_activated_at=invalid, drain_deadline_epoch=1)
+                ),
+            ),
+            (
+                "cas-retirement",
+                lambda store: store.compare_and_set(current, replace(current, old_key_retired_at=invalid)),
+            ),
+            (
+                "cas-secret-revocation",
+                lambda store: store.compare_and_set(
+                    current,
+                    replace(
+                        current,
+                        old_key_retired_at="2027-01-15T08:00:00Z",
+                        old_secret_revoked_at=invalid,
+                        revocation=replace(revocation, prepared_at="2027-01-15T08:00:00Z"),
+                    ),
+                ),
+            ),
+            (
+                "cas-deployment",
+                lambda store: store.compare_and_set(
+                    current,
+                    replace(current, overlap_deployment=replace(prepared, prepared_at=invalid)),
+                ),
+            ),
+            (
+                "cas-deployment-accepted",
+                lambda store: store.compare_and_set(
+                    current, replace(current, overlap_deployment=accepted)
+                ),
+            ),
+            (
+                "cas-revocation",
+                lambda store: store.compare_and_set(
+                    current,
+                    replace(
+                        current,
+                        old_key_retired_at="2027-01-15T08:00:00Z",
+                        revocation=revocation,
+                    ),
+                ),
+            ),
+            ("transition", lambda store: store.add_transition(transition)),
+        )
+        for identity, operation in cases:
+            with self.subTest(identity=identity):
+                connection = FailOnAccessConnection()
+                with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+                    operation(GatewayKeyRotationStore(connection))
+                self.assertEqual(connection.accesses, 0)
+
+    def test_invalid_duplicate_request_and_transition_cannot_bypass_admission(self) -> None:
+        service = self.service()
+        original = service.request(self.request())
+        invalid = "2027-02-30T08:00:00Z"
+
+        with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+            service.request(replace(self.request(), requested_at=invalid))
+        self.assertEqual(service.get(original.rotation_id), original)
+
+        approval = self.request_approval(original)
+        command = AdvanceGatewayKeyRotation(
+            rotation_id=original.rotation_id,
+            transition_id="request-approval-replay",
+            expected_status=original.status,
+            expected_version=original.version,
+            target_status=GatewayKeyRotationStatus.AWAITING_APPROVAL,
+            advanced_by="operator-a",
+            advanced_at="2027-01-15T08:00:00Z",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            approval_request_id=approval.request.request_id,
+        )
+        advanced = service.advance(command)
+        with self.assertRaisesRegex(ValueError, "canonical UTC text"):
+            service.advance(replace(command, advanced_at=invalid))
+        self.assertEqual(service.get(original.rotation_id), advanced)
+
+    def test_exact_transition_replay_does_not_consult_the_epoch_clock(self) -> None:
+        original = self.service().request(self.request())
+        approval = self.request_approval(original)
+        command = AdvanceGatewayKeyRotation(
+            rotation_id=original.rotation_id,
+            transition_id="request-approval-no-clock",
+            expected_status=original.status,
+            expected_version=original.version,
+            target_status=GatewayKeyRotationStatus.AWAITING_APPROVAL,
+            advanced_by="operator-a",
+            advanced_at="2027-01-15T08:00:00Z",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            approval_request_id=approval.request.request_id,
+        )
+        clock_calls = 0
+
+        def counted_clock() -> int:
+            nonlocal clock_calls
+            clock_calls += 1
+            return self.now
+
+        first = GatewayKeyRotationService(
+            self.unit_of_work, clock=counted_clock
+        ).advance(command)
+        self.assertEqual(clock_calls, 1)
+
+        def unexpected_clock() -> int:
+            raise AssertionError("exact replay consulted the epoch clock")
+
+        replay = GatewayKeyRotationService(
+            self.unit_of_work, clock=unexpected_clock
+        ).advance(command)
+        self.assertEqual(replay, first)
+
+    def test_timestamp_admission_rejects_string_subclasses_without_invocation(self) -> None:
+        calls = 0
+        marker = "hostile-timestamp-material"
+
+        class HostileString(str):
+            def _called(self) -> None:
+                nonlocal calls
+                calls += 1
+                raise AssertionError("hostile timestamp method was invoked")
+
+            def encode(self, *_args: object, **_kwargs: object) -> bytes:
+                self._called()
+
+            def __str__(self) -> str:
+                self._called()
+
+            def __repr__(self) -> str:
+                self._called()
+
+            def __eq__(self, _other: object) -> bool:
+                self._called()
+
+            def __hash__(self) -> int:
+                self._called()
+
+            def __format__(self, _format_spec: str) -> str:
+                self._called()
+
+        command = replace(
+            self.request(), requested_at=HostileString(marker)
+        )
+        with self.assertRaises(ValueError) as raised:
+            self.service().request(command)
+        self.assertEqual(str(raised.exception), "timestamp must be canonical UTC text")
+        self.assertLessEqual(len(str(raised.exception)), 128)
+        self.assertNotIn(marker, str(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+        self.assertIsNone(raised.exception.__context__)
+        self.assertEqual(calls, 0)
 
     def prepare_generation(self, rotation):
         prepared = self.advance(

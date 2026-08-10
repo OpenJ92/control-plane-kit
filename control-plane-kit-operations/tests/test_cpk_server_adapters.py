@@ -232,6 +232,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 "workspace-a",
                 "graph-desired",
             )
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
             unit_of_work.stores.activity_history.add_session(
                 OperationSessionRecord(
                     session_id="session-a",
@@ -251,6 +252,12 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     status=ActivityPlanStatus.PLANNED,
                     created_at="2026-07-22T10:03:00Z",
                     plan=ActivityPlan(()),
+                    base_realized_projection_id=(
+                        workspace.current_realized_projection_id
+                    ),
+                    desired_realized_projection_id=(
+                        workspace.desired_realized_projection_id
+                    ),
                 )
             )
             unit_of_work.commit()

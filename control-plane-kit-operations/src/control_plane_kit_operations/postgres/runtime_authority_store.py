@@ -13,6 +13,10 @@ from control_plane_kit_core.runtime_authority import (
 )
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_timestamp,
+    encode_postgres_timestamp,
+)
 from control_plane_kit_operations.runtime_authorities import (
     DockerRuntimeAuthority,
     DockerRuntimeAuthorityCodec,
@@ -50,6 +54,7 @@ class RuntimeAuthorityStore:
             admitted_by=admitted_by,
             admitted_at=admitted_at,
         )
+        encoded_admitted_at = encode_postgres_timestamp(candidate.admitted_at)
         existing = self._get_active_by_ref(workspace_id, authority_ref)
         if existing is not None:
             if (
@@ -87,7 +92,7 @@ class RuntimeAuthorityStore:
                 Jsonb(DockerRuntimeAuthorityCodec().encode(candidate.authority)),
                 Jsonb(_credential_references(candidate)),
                 candidate.admitted_by,
-                candidate.admitted_at,
+                encoded_admitted_at,
                 candidate.status.value,
             ),
         )
@@ -204,7 +209,7 @@ def _row_to_authority(row: tuple[Any, ...]) -> RegisteredRuntimeAuthority:
         runtime_kind=RuntimeKind(row[3]),
         authority=DockerRuntimeAuthorityCodec().decode(row[4]),
         admitted_by=row[5],
-        admitted_at=row[6],
+        admitted_at=decode_postgres_timestamp(row[6]),
         status=RegisteredRuntimeAuthorityStatus(row[7]),
         metadata=row[8],
     )
@@ -240,6 +245,7 @@ class RuntimeAuthorityDeliveryStore:
             admitted_by=admitted_by,
             admitted_at=admitted_at,
         )
+        encoded_admitted_at = encode_postgres_timestamp(candidate.admitted_at)
         self._require_active_authority(workspace_id, delivery.authority_ref)
         existing = self._get_active_by_ref(workspace_id, delivery.authority_ref)
         if existing is not None:
@@ -273,7 +279,7 @@ class RuntimeAuthorityDeliveryStore:
                 Jsonb(RuntimeAuthorityAccessDeliveryCodec().encode(delivery)),
                 Jsonb(_delivery_secret_references(candidate)),
                 candidate.admitted_by,
-                candidate.admitted_at,
+                encoded_admitted_at,
                 candidate.status.value,
             ),
         )
@@ -407,7 +413,7 @@ def _row_to_delivery(row: tuple[Any, ...]) -> RegisteredRuntimeAuthorityDelivery
         workspace_id=row[1],
         delivery=RuntimeAuthorityAccessDeliveryCodec().decode(row[2]),
         admitted_by=row[3],
-        admitted_at=row[4],
+        admitted_at=decode_postgres_timestamp(row[4]),
         status=RegisteredRuntimeAuthorityDeliveryStatus(row[5]),
         metadata=row[6],
     )
