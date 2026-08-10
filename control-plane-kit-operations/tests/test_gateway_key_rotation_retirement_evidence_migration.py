@@ -30,6 +30,7 @@ _V13_HISTORY = (
     (13, "gateway-key-rotation-status-contracts"),
 )
 _V14_IDENTITY = (14, "gateway-key-rotation-retirement-evidence")
+_CURRENT_IDENTITY = (15, "approval-subject-evidence")
 _TABLE = "cpk_gateway_key_rotations"
 _CONSTRAINT = "cpk_gateway_key_rotations_retirement_check"
 _CATEGORICAL_ERROR = "gateway key rotation retirement evidence is not accepted"
@@ -78,10 +79,10 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
         self._v14()
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 14)
+        self.assertEqual(registry.target_version, 15)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V13_HISTORY, _V14_IDENTITY),
+            (*_V13_HISTORY, _V14_IDENTITY, _CURRENT_IDENTITY),
         )
         migration = self._v14()
         self.assertIsNone(migration.sql)
@@ -159,7 +160,10 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
                         postgres.install_postgres_schema(connection)
                         self.assertEqual(self._row_evidence(connection), before[1])
                         self.assertEqual(self._definition(connection), _CURRENT_DEFINITION)
-                        self.assertEqual(self._history(connection)[-1][:2], _V14_IDENTITY)
+                        self.assertEqual(
+                            self._history(connection)[-1][:2],
+                            _CURRENT_IDENTITY,
+                        )
                     else:
                         self._assert_preflight_rejection(connection)
                         self.assertEqual(self._snapshot(connection), before)
@@ -700,7 +704,7 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
 
     @staticmethod
     def _v14():
-        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[-1]
+        migration = postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[13]
         if (migration.version, migration.name) != _V14_IDENTITY:
             raise AssertionError("V14 retirement-evidence migration is missing")
         return migration

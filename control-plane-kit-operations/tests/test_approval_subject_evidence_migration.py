@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import os
+import time
 import unittest
 import uuid
 
 import psycopg
+from psycopg import sql
+from psycopg.types.json import Jsonb
 
-from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
+from control_plane_kit_core.approval_subjects import (
+    ActivityPlanApprovalSubject,
+    GatewayKeyRotationApprovalSubject,
+)
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 import control_plane_kit_operations.postgres as postgres
 from control_plane_kit_operations.postgres import migration_runner
 from control_plane_kit_operations.postgres import schema as schema_module
@@ -180,6 +188,244 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_current_rotation_subject_codec_vectors_are_identity(self) -> None:
+        vectors = (
+            ("minimal", "a", "b", "c", "d", "e", 1, 0, "1" * 64),
+            (
+                "punctuation",
+                "rotation.a-1:edge",
+                "workspace.a-1:edge",
+                "gateway.a-1:edge",
+                "issuer.a-1:edge",
+                "key.a-1:edge",
+                300,
+                60,
+                "a" * 64,
+            ),
+            (
+                "maximum",
+                "r" * 200,
+                "w" * 200,
+                "g" * 200,
+                "i" * 200,
+                "k" * 200,
+                300,
+                60,
+                "f" * 64,
+            ),
+        )
+        for vector in vectors:
+            with self.subTest(vector=vector[0]):
+                self._reset_schema()
+                connection = self._connection()
+                try:
+                    self._prepare(14, connection)
+                    subject = GatewayKeyRotationApprovalSubject(
+                        rotation_id=vector[1],
+                        workspace_id=vector[2],
+                        gateway_node_id=vector[3],
+                        purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+                        issuer=vector[4],
+                        old_key_id=vector[5],
+                        maximum_grant_lifetime_seconds=vector[6],
+                        clock_skew_seconds=vector[7],
+                        rotation_intent_digest=vector[8],
+                    )
+                    self._seed_current_rotation_approval(connection, subject)
+                    before = self._approval_rows(connection)
+
+                    postgres.install_postgres_schema(connection)
+
+                    self.assertEqual(self._approval_rows(connection), before)
+                    self.assertEqual(self._history(connection)[-1][:2], _V15_IDENTITY)
+                finally:
+                    connection.close()
+
+    def test_already_v15_subject_drift_rejects_instead_of_repairing(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare(14, connection)
+            self._downgrade_subject_contract(connection)
+            self._seed_legacy_plan_approval(connection, plan_id="plan-a")
+            for step in self._v15().steps:
+                connection.execute(step.sql)
+            connection.execute(
+                "UPDATE cpk_approval_requests "
+                "SET subject_payload = '{\"kind\":\"activity-plan\","
+                "\"plan_id\":\"other\"}'::jsonb"
+            )
+            drifted = self._snapshot(connection)
+
+            with self.assertRaises(postgres.SchemaMigrationError):
+                postgres.install_postgres_schema(connection)
+
+            self.assertEqual(self._snapshot(connection), drifted)
+        finally:
+            connection.close()
+
+    def test_constraint_lookalike_is_preserved_while_owned_absence_installs(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare(14, connection)
+            connection.execute(
+                f"ALTER TABLE {_TABLE} DROP CONSTRAINT {_DIGEST_CONSTRAINT}"
+            )
+            connection.execute(
+                "CREATE TABLE unrelated_subjects (review_digest text NOT NULL)"
+            )
+            connection.execute(
+                "ALTER TABLE unrelated_subjects ADD CONSTRAINT "
+                f"{_DIGEST_CONSTRAINT} CHECK (review_digest <> '')"
+            )
+            lookalike_oid = connection.execute(
+                "SELECT oid FROM pg_constraint WHERE conrelid = "
+                "'unrelated_subjects'::regclass AND conname = %s",
+                (_DIGEST_CONSTRAINT,),
+            ).fetchone()[0]
+
+            for step in self._v15().steps:
+                connection.execute(step.sql)
+
+            self.assertIn('COLLATE "C"', self._digest_constraint(connection)[1])
+            self.assertEqual(
+                connection.execute(
+                    "SELECT oid FROM pg_constraint WHERE conrelid = "
+                    "'unrelated_subjects'::regclass AND conname = %s",
+                    (_DIGEST_CONSTRAINT,),
+                ).fetchone()[0],
+                lookalike_oid,
+            )
+        finally:
+            connection.close()
+
+    def test_wrong_owned_digest_constraint_rejects_before_mutation(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare(14, connection)
+            connection.execute(
+                f"ALTER TABLE {_TABLE} DROP CONSTRAINT {_DIGEST_CONSTRAINT}"
+            )
+            connection.execute(
+                f"ALTER TABLE {_TABLE} ADD CONSTRAINT {_DIGEST_CONSTRAINT} "
+                "CHECK (review_digest <> '')"
+            )
+            before = self._snapshot(connection)
+
+            with self.assertRaises(postgres.SchemaMigrationError) as raised:
+                postgres.install_postgres_schema(connection)
+
+            self.assertEqual(str(raised.exception), _CATEGORICAL_ERROR)
+            self.assertEqual(self._snapshot(connection), before)
+        finally:
+            connection.close()
+
+    def test_target_index_name_on_wrong_relation_rejects(self) -> None:
+        connection = self._connection()
+        try:
+            self._prepare(14, connection)
+            connection.execute("DROP INDEX cpk_approval_requests_rotation_identity")
+            connection.execute("CREATE TABLE unrelated_indexes (rotation_id text)")
+            connection.execute(
+                "CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity "
+                "ON unrelated_indexes (rotation_id)"
+            )
+            before = self._snapshot(connection)
+
+            with self.assertRaises(psycopg.Error) as raised:
+                connection.execute(self._v15().steps[0].sql)
+
+            self.assertEqual(raised.exception.sqlstate, "P1110")
+            self.assertEqual(
+                raised.exception.diag.message_primary,
+                _CATEGORICAL_ERROR,
+            )
+            self.assertEqual(self._snapshot(connection), before)
+        finally:
+            connection.close()
+
+    def test_explicit_c_admission_overrides_non_c_column_collation(self) -> None:
+        connection = self._connection()
+        try:
+            collation = connection.execute(
+                "SELECT collname FROM pg_collation "
+                "WHERE collprovider = 'i' ORDER BY collname LIMIT 1"
+            ).fetchone()
+            if collation is None:
+                self.skipTest("PostgreSQL image exposes no ICU collation")
+            connection.execute(
+                sql.SQL("CREATE TABLE collated_values (value text COLLATE {})").format(
+                    sql.Identifier(collation[0])
+                )
+            )
+            connection.execute(
+                "INSERT INTO collated_values VALUES ('a'), ('a.b-1:c_d'), "
+                "('invalid-\u00e9'), ('-invalid')"
+            )
+
+            admitted = connection.execute(
+                "SELECT value FROM collated_values WHERE "
+                "octet_length(value) BETWEEN 1 AND 200 "
+                "AND (value COLLATE \"C\") ~ '^[A-Za-z0-9]' "
+                "AND (value COLLATE \"C\") !~ '[^A-Za-z0-9._:-]' "
+                "ORDER BY value COLLATE \"C\""
+            ).fetchall()
+
+            self.assertEqual(admitted, [("a",), ("a.b-1:c_d",)])
+        finally:
+            connection.close()
+
+    def test_rotation_service_lock_sequence_completes_without_deadlock(self) -> None:
+        setup = self._connection()
+        try:
+            self._prepare(14, setup)
+            subject = GatewayKeyRotationApprovalSubject(
+                rotation_id="rotation-a",
+                workspace_id="workspace-a",
+                gateway_node_id="gateway-a",
+                purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+                issuer="issuer-a",
+                old_key_id="key-a",
+                maximum_grant_lifetime_seconds=300,
+                clock_skew_seconds=60,
+                rotation_intent_digest="a" * 64,
+            )
+            self._seed_current_rotation_approval(setup, subject)
+        finally:
+            setup.close()
+
+        service = psycopg.connect(self.database_url, autocommit=False)
+        migration = psycopg.connect(self.database_url, autocommit=False)
+        try:
+            service.execute(f'SET search_path TO "{self.schema}"')
+            migration.execute(f'SET search_path TO "{self.schema}"')
+            migration.execute("SET lock_timeout TO '5s'")
+            service.execute(
+                "SELECT rotation_id FROM cpk_gateway_key_rotations "
+                "WHERE rotation_id = 'rotation-a' FOR UPDATE"
+            ).fetchone()
+            service.execute(
+                "SELECT request_id FROM cpk_approval_requests "
+                "WHERE rotation_id = 'rotation-a'"
+            ).fetchone()
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(postgres.install_postgres_schema, migration)
+                time.sleep(0.25)
+                self.assertFalse(future.done())
+                service.execute(
+                    "UPDATE cpk_gateway_key_rotations SET version = version "
+                    "WHERE rotation_id = 'rotation-a'"
+                )
+                service.commit()
+                future.result(timeout=10)
+
+            self.assertEqual(self._history(migration)[-1][:2], _V15_IDENTITY)
+        finally:
+            service.rollback()
+            migration.rollback()
+            service.close()
+            migration.close()
+
     def _prepare(self, version: int, connection) -> None:
         connection.execute(postgres.POSTGRES_SCHEMA)
         for migration in postgres.POSTGRES_SCHEMA_MIGRATIONS.migrations[1:version]:
@@ -219,29 +465,102 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
         connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
-            VALUES ('workspace-a', 'Workspace A', 'created');
+            VALUES ('workspace-a', 'Workspace A', 'created')
+            """
+        )
+        connection.execute(
+            """
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
             VALUES ('session-a', 'workspace-a', 'operator-a', 'Deploy', 'open',
-                    '2026-08-09T12:00:00Z');
+                    '2026-08-09T12:00:00Z')
+            """
+        )
+        connection.execute(
+            """
             INSERT INTO cpk_activity_plans
               (plan_id, session_id, base_graph_id, desired_graph_id, status,
                created_at, payload)
             VALUES (%s, 'session-a', 'graph-a', 'graph-b', 'planned',
-                    '2026-08-09T12:00:01Z', '{}'::jsonb);
+                    '2026-08-09T12:00:01Z', '{}'::jsonb)
+            """,
+            (plan_id,),
+        )
+        connection.execute(
+            """
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, requested_by, requested_at,
                required_scope, max_risk, destructive)
             VALUES ('request-a', 'session-a', %s, 'operator-a',
-                    '2026-08-09T12:00:02Z', 'plan:approve', 'low', false);
+                    '2026-08-09T12:00:02Z', 'plan:approve', 'low', false)
             """,
-            (plan_id, plan_id),
+            (plan_id,),
         )
 
     def _connection(self):
         connection = psycopg.connect(self.database_url, autocommit=True)
         connection.execute(f'SET search_path TO "{self.schema}"')
         return connection
+
+    def _reset_schema(self) -> None:
+        self.admin.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
+        self.admin.execute(f'CREATE SCHEMA "{self.schema}"')
+
+    @staticmethod
+    def _seed_current_rotation_approval(connection, subject) -> None:
+        connection.execute(
+            "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
+            "VALUES (%s, 'Workspace', 'created')",
+            (subject.workspace_id,),
+        )
+        connection.execute(
+            "INSERT INTO cpk_operation_sessions "
+            "(session_id, workspace_id, actor_id, title, status, created_at) "
+            "VALUES ('session-a', %s, 'operator-a', 'Rotate', 'open', "
+            "'2026-08-09T12:00:00Z')",
+            (subject.workspace_id,),
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_gateway_key_rotations (
+              rotation_id, workspace_id, gateway_node_id, purpose, issuer,
+              old_key_id, new_secret_reference, key_generation_correlation,
+              maximum_grant_lifetime_seconds, clock_skew_seconds,
+              correlation_id, requested_by, requested_at, intent_fingerprint,
+              status, version
+            ) VALUES (
+              %s, %s, %s, %s, %s, %s,
+              'secret://workspace-secrets/keys/new', 'generation-a', %s, %s,
+              'correlation-a', 'operator-a', '2026-08-09T12:00:01Z', %s,
+              'requested', 1
+            )
+            """,
+            (
+                subject.rotation_id,
+                subject.workspace_id,
+                subject.gateway_node_id,
+                subject.purpose.value,
+                subject.issuer,
+                subject.old_key_id,
+                subject.maximum_grant_lifetime_seconds,
+                subject.clock_skew_seconds,
+                subject.rotation_intent_digest,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_approval_requests (
+              request_id, session_id, rotation_id, subject_kind,
+              subject_payload, review_digest, requested_by, requested_at,
+              required_scope, max_risk, destructive
+            ) VALUES (
+              'request-a', 'session-a', %s, 'gateway-key-rotation', %s, %s,
+              'operator-a', '2026-08-09T12:00:02Z',
+              'delegation-key:rotate-approve', 'high', true
+            )
+            """,
+            (subject.rotation_id, Jsonb(subject.descriptor()), subject.review_digest),
+        )
 
     @staticmethod
     def _history(connection):
@@ -290,6 +609,16 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
             connection.execute(f"SELECT * FROM {_TABLE} ORDER BY request_id").fetchall()
         )
         return self._history(connection), columns, rows
+
+    @staticmethod
+    def _approval_rows(connection):
+        return tuple(
+            connection.execute(
+                "SELECT request_id, plan_id, rotation_id, subject_kind, "
+                "subject_payload, review_digest FROM cpk_approval_requests "
+                "ORDER BY request_id"
+            ).fetchall()
+        )
 
     @staticmethod
     def _v15():

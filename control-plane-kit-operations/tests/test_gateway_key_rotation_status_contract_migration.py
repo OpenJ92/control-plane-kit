@@ -33,6 +33,7 @@ _V12_HISTORY = (
 )
 _V13_IDENTITY = (13, "gateway-key-rotation-status-contracts")
 _V14_IDENTITY = (14, "gateway-key-rotation-retirement-evidence")
+_CURRENT_IDENTITY = (15, "approval-subject-evidence")
 _CATEGORICAL_ERROR = "gateway key rotation status contract is not accepted"
 _GENERATION_PROVIDER = "provider.registration:a-1"
 _GENERATION_DIGEST = "c" * 64
@@ -142,10 +143,10 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
             tuple(status.value for status in GatewayKeyRotationStatus),
             _CURRENT_STATUSES,
         )
-        self.assertEqual(registry.target_version, 14)
+        self.assertEqual(registry.target_version, 15)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V12_HISTORY, _V13_IDENTITY, _V14_IDENTITY),
+            (*_V12_HISTORY, _V13_IDENTITY, _V14_IDENTITY, _CURRENT_IDENTITY),
         )
         migration = self._v13()
         self.assertIsNone(migration.sql)
@@ -222,7 +223,12 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
 
                         self.assertEqual(
                             tuple(row[:2] for row in self._history(connection)),
-                            (*_V12_HISTORY, _V13_IDENTITY, _V14_IDENTITY),
+                            (
+                                *_V12_HISTORY,
+                                _V13_IDENTITY,
+                                _V14_IDENTITY,
+                                _CURRENT_IDENTITY,
+                            ),
                         )
                         self.assertEqual(self._owned_rows(connection), before_rows)
                         self.assertEqual(
@@ -453,7 +459,7 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
         connection = self._connection()
         try:
             postgres.install_postgres_schema(connection)
-            self.assertEqual(self._history(connection)[-1][:2], _V14_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _CURRENT_IDENTITY)
             connection.execute(
                 """
                 INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -599,7 +605,7 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
         observer = self._connection()
         try:
             postgres.install_postgres_schema(caller)
-            self.assertEqual(self._history(caller)[-1][:2], _V14_IDENTITY)
+            self.assertEqual(self._history(caller)[-1][:2], _CURRENT_IDENTITY)
             observer.execute("SET lock_timeout TO '250ms'")
             for table in (_ROTATIONS, _TRANSITIONS):
                 with self.subTest(table=table):
@@ -691,7 +697,7 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
         connection = self._connection()
         try:
             postgres.install_postgres_schema(connection)
-            self.assertEqual(self._history(connection)[-1][:2], _V14_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _CURRENT_IDENTITY)
             self._replace_status_constraint(
                 connection,
                 _ROTATIONS,

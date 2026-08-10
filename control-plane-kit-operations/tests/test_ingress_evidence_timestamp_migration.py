@@ -48,6 +48,7 @@ _CURRENT_HISTORY = [
     (12, "gateway-key-rotation-generation-evidence"),
     (13, "gateway-key-rotation-status-contracts"),
     (14, "gateway-key-rotation-retirement-evidence"),
+    (15, "approval-subject-evidence"),
 ]
 _TEMPORAL_COLUMNS = (
     (
@@ -89,6 +90,7 @@ _MICROS = "2026-08-08T12:00:00.000001Z"
 _LATER = "2026-08-08T13:00:00Z"
 _OFFSET = "2026-08-08T08:00:00-04:00"
 _EXPECTED_REBUILT = {
+    ("constraint", "cpk_approval_requests_review_digest_check"),
     ("constraint", "cpk_cloudflare_ingress_resources_removed_evidence_check"),
     ("constraint", "cpk_gateway_key_rotations_generation_digest_check"),
     ("index", "cpk_cloudflare_ingress_resources_workspace"),
@@ -97,6 +99,14 @@ _EXPECTED_REBUILT = {
 _CANONICAL_DIGEST_CONSTRAINT = (
     "constraint",
     "cpk_gateway_key_rotations_generation_digest_check",
+)
+_APPROVAL_DIGEST_CONSTRAINT = (
+    "constraint",
+    "cpk_approval_requests_review_digest_check",
+)
+_APPROVAL_DIGEST_DEFINITION = (
+    'CHECK (((review_digest COLLATE "C") ~ '
+    "'^[0-9a-f]{64}$'::text))"
 )
 _CANONICAL_DIGEST_DEFINITION = (
     "CHECK (((generation_action_digest IS NULL) OR "
@@ -140,7 +150,7 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_checksum_guarded_v8_after_immutable_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 14)
+        self.assertEqual(registry.target_version, 15)
         self.assertEqual(
             [(item.version, item.name) for item in registry.migrations],
             _CURRENT_HISTORY,
@@ -312,6 +322,8 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
             after_oid, after_definition = after[identity]
             if identity == _CANONICAL_DIGEST_CONSTRAINT:
                 self.assertEqual(after_definition, _CANONICAL_DIGEST_DEFINITION)
+            elif identity == _APPROVAL_DIGEST_CONSTRAINT:
+                self.assertEqual(after_definition, _APPROVAL_DIGEST_DEFINITION)
             else:
                 self.assertEqual(after_definition, before_definition)
             if before_oid != after_oid:

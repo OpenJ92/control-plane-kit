@@ -142,6 +142,29 @@ _GATEWAY_KEY_ROTATION_RETIREMENT_DEFINITION = (
     "CHECK (((old_secret_revoked_at IS NULL) OR "
     "(old_key_retired_at IS NOT NULL)))"
 )
+_APPROVAL_SUBJECT_EVIDENCE_COLUMNS = (
+    ("plan_id", "text", "YES", True),
+    ("review_digest", "text", "NO", True),
+    ("rotation_id", "text", "YES", True),
+    ("subject_kind", "text", "NO", True),
+    ("subject_payload", "jsonb", "NO", True),
+)
+_APPROVAL_SUBJECT_EVIDENCE_CONSTRAINTS = (
+    ("cpk_approval_requests_review_digest_check", "c", True, True),
+    ("cpk_approval_requests_rotation_fk", "f", True, True),
+    ("cpk_approval_requests_subject_identity_check", "c", True, True),
+    ("cpk_approval_requests_subject_kind_check", "c", True, True),
+)
+_APPROVAL_SUBJECT_EVIDENCE_DEFINITIONS = (
+    "CHECK (((review_digest COLLATE \"C\") ~ '^[0-9a-f]{64}$'::text))",
+    "FOREIGN KEY (rotation_id) REFERENCES cpk_gateway_key_rotations(rotation_id)",
+    "CHECK ((((subject_kind = 'activity-plan'::text) AND "
+    "(plan_id IS NOT NULL) AND (rotation_id IS NULL)) OR "
+    "((subject_kind = 'gateway-key-rotation'::text) AND "
+    "(plan_id IS NULL) AND (rotation_id IS NOT NULL))))",
+    "CHECK ((subject_kind = ANY (ARRAY['activity-plan'::text, "
+    "'gateway-key-rotation'::text])))",
+)
 _COORDINATION_TEMPORAL_CONTRACT = (
     ("cpk_activity_events", "occurred_at", "timestamp with time zone", 6, "NO", True),
     ("cpk_activity_plans", "created_at", "timestamp with time zone", 6, "NO", True),
@@ -1107,6 +1130,8 @@ def verify_postgres_schema(connection: PostgresConnection) -> ObservedSchemaStat
         _verify_gateway_key_rotation_status_contracts(connection)
     if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 14:
         _verify_gateway_key_rotation_retirement_evidence_contract(connection)
+    if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 15:
+        _verify_approval_subject_evidence_contract(connection)
     if _read_coordination_temporal_contract(connection) != (
         _COORDINATION_TEMPORAL_CONTRACT
     ):
@@ -1416,6 +1441,212 @@ def _verify_gateway_key_rotation_retirement_evidence_contract(
             "gateway key rotation retirement evidence schema is not current"
         )
 
+
+def _verify_approval_subject_evidence_contract(
+    connection: PostgresConnection,
+) -> None:
+    column_rows = _read_rows(
+        connection,
+        """
+        SELECT column_name, data_type, is_nullable, column_default IS NULL
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'cpk_approval_requests'
+          AND column_name IN (
+            'plan_id', 'rotation_id', 'subject_kind', 'subject_payload',
+            'review_digest'
+          )
+        ORDER BY column_name
+        LIMIT 6
+        """,
+        (),
+        "approval subject evidence schema read failed",
+    )
+    if column_rows != list(_APPROVAL_SUBJECT_EVIDENCE_COLUMNS):
+        raise SchemaMigrationError("approval subject evidence schema is not current")
+
+    constraint_rows = _read_rows(
+        connection,
+        """
+        SELECT constraints.conname, constraints.contype::text,
+               constraints.convalidated,
+               CASE constraints.conname
+                 WHEN 'cpk_approval_requests_review_digest_check' THEN
+                   pg_get_constraintdef(constraints.oid, false) = %s
+                 WHEN 'cpk_approval_requests_rotation_fk' THEN
+                   pg_get_constraintdef(constraints.oid, false) = %s
+                 WHEN 'cpk_approval_requests_subject_identity_check' THEN
+                   pg_get_constraintdef(constraints.oid, false) = %s
+                 WHEN 'cpk_approval_requests_subject_kind_check' THEN
+                   pg_get_constraintdef(constraints.oid, false) = %s
+                 ELSE false
+               END
+        FROM pg_constraint AS constraints
+        JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = current_schema()
+          AND relation.relname = 'cpk_approval_requests'
+          AND constraints.conname IN (
+            'cpk_approval_requests_review_digest_check',
+            'cpk_approval_requests_rotation_fk',
+            'cpk_approval_requests_subject_identity_check',
+            'cpk_approval_requests_subject_kind_check'
+          )
+        ORDER BY constraints.conname, constraints.oid
+        LIMIT 5
+        """,
+        _APPROVAL_SUBJECT_EVIDENCE_DEFINITIONS,
+        "approval subject evidence schema read failed",
+    )
+    if constraint_rows != list(_APPROVAL_SUBJECT_EVIDENCE_CONSTRAINTS):
+        raise SchemaMigrationError("approval subject evidence schema is not current")
+
+    index_rows = _read_rows(
+        connection,
+        """
+        SELECT indexes.relname, indexes.relkind::text,
+               access_method.amname,
+               index_contract.indisunique,
+               index_contract.indisvalid, index_contract.indisready,
+               index_contract.indislive,
+               pg_get_indexdef(indexes.oid, 1, false) = 'rotation_id',
+               pg_get_expr(
+                 index_contract.indpred, index_contract.indrelid, false
+               ) = '(rotation_id IS NOT NULL)'
+        FROM pg_class AS indexes
+        JOIN pg_namespace AS namespace ON namespace.oid = indexes.relnamespace
+        JOIN pg_am AS access_method ON access_method.oid = indexes.relam
+        JOIN pg_index AS index_contract
+          ON index_contract.indexrelid = indexes.oid
+        JOIN pg_class AS relation ON relation.oid = index_contract.indrelid
+        WHERE namespace.nspname = current_schema()
+          AND indexes.relname = 'cpk_approval_requests_rotation_identity'
+          AND relation.relname = 'cpk_approval_requests'
+        ORDER BY indexes.oid
+        LIMIT 2
+        """,
+        (),
+        "approval subject evidence schema read failed",
+    )
+    if index_rows != [
+        (
+            "cpk_approval_requests_rotation_identity",
+            "i",
+            "btree",
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+        )
+    ]:
+        raise SchemaMigrationError("approval subject evidence schema is not current")
+
+    semantic_rows = _read_rows(
+        connection,
+        """
+        SELECT NOT EXISTS (
+          SELECT 1
+          FROM cpk_approval_requests AS approvals
+          LEFT JOIN cpk_gateway_key_rotations AS rotations
+            ON rotations.rotation_id = approvals.rotation_id
+          WHERE
+            (approvals.review_digest COLLATE "C") !~ '^[0-9a-f]{64}$'
+            OR CASE
+              WHEN (approvals.subject_kind COLLATE "C") = 'activity-plan' THEN NOT (
+                approvals.plan_id IS NOT NULL
+                AND approvals.rotation_id IS NULL
+                AND octet_length(approvals.plan_id) BETWEEN 1 AND 200
+                AND (approvals.plan_id COLLATE "C") ~ '^[A-Za-z0-9]'
+                AND (approvals.plan_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+                AND approvals.subject_payload = jsonb_build_object(
+                  'kind', 'activity-plan', 'plan_id', approvals.plan_id
+                )
+                AND (approvals.review_digest COLLATE "C") = encode(
+                  sha256(convert_to(
+                    'activity-plan:' || approvals.plan_id, 'UTF8'
+                  )),
+                  'hex'
+                )
+              )
+              WHEN (approvals.subject_kind COLLATE "C") =
+                   'gateway-key-rotation' THEN NOT (
+                approvals.plan_id IS NULL
+                AND approvals.rotation_id IS NOT NULL
+                AND rotations.rotation_id IS NOT NULL
+                AND octet_length(rotations.rotation_id) BETWEEN 1 AND 200
+                AND (rotations.rotation_id COLLATE "C") ~ '^[A-Za-z0-9]'
+                AND (rotations.rotation_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+                AND octet_length(rotations.workspace_id) BETWEEN 1 AND 200
+                AND (rotations.workspace_id COLLATE "C") ~ '^[A-Za-z0-9]'
+                AND (rotations.workspace_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+                AND octet_length(rotations.gateway_node_id) BETWEEN 1 AND 200
+                AND (rotations.gateway_node_id COLLATE "C") ~ '^[A-Za-z0-9]'
+                AND (rotations.gateway_node_id COLLATE "C") !~
+                      '[^A-Za-z0-9._:-]'
+                AND octet_length(rotations.issuer) BETWEEN 1 AND 200
+                AND (rotations.issuer COLLATE "C") ~ '^[A-Za-z0-9]'
+                AND (rotations.issuer COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+                AND octet_length(rotations.old_key_id) BETWEEN 1 AND 200
+                AND (rotations.old_key_id COLLATE "C") ~ '^[A-Za-z0-9]'
+                AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+                AND (rotations.purpose COLLATE "C") IN (
+                  'gateway-probe', 'workload-node-control'
+                )
+                AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
+                AND rotations.clock_skew_seconds BETWEEN 0 AND 60
+                AND (rotations.intent_fingerprint COLLATE "C")
+                      ~ '^[0-9a-f]{64}$'
+                AND approvals.subject_payload = jsonb_build_object(
+                  'kind', 'gateway-key-rotation',
+                  'rotation_id', rotations.rotation_id,
+                  'workspace_id', rotations.workspace_id,
+                  'gateway_node_id', rotations.gateway_node_id,
+                  'purpose', rotations.purpose,
+                  'issuer', rotations.issuer,
+                  'old_key_id', rotations.old_key_id,
+                  'overlap_verifier_roles', jsonb_build_array('old', 'new'),
+                  'retirement_verifier_roles', jsonb_build_array('new'),
+                  'maximum_grant_lifetime_seconds',
+                    rotations.maximum_grant_lifetime_seconds,
+                  'clock_skew_seconds', rotations.clock_skew_seconds,
+                  'rotation_intent_digest', rotations.intent_fingerprint
+                )
+                AND (approvals.review_digest COLLATE "C") = encode(
+                  sha256(convert_to(
+                    '{"clock_skew_seconds":' ||
+                      rotations.clock_skew_seconds::text ||
+                      ',"gateway_node_id":' ||
+                      to_jsonb(rotations.gateway_node_id)::text ||
+                      ',"issuer":' || to_jsonb(rotations.issuer)::text ||
+                      ',"kind":"gateway-key-rotation"' ||
+                      ',"maximum_grant_lifetime_seconds":' ||
+                      rotations.maximum_grant_lifetime_seconds::text ||
+                      ',"old_key_id":' || to_jsonb(rotations.old_key_id)::text ||
+                      ',"overlap_verifier_roles":["old","new"]' ||
+                      ',"purpose":' || to_jsonb(rotations.purpose)::text ||
+                      ',"retirement_verifier_roles":["new"]' ||
+                      ',"rotation_id":' ||
+                      to_jsonb(rotations.rotation_id)::text ||
+                      ',"rotation_intent_digest":' ||
+                      to_jsonb(rotations.intent_fingerprint)::text ||
+                      ',"workspace_id":' ||
+                      to_jsonb(rotations.workspace_id)::text || '}',
+                    'UTF8'
+                  )),
+                  'hex'
+                )
+              )
+              ELSE true
+            END
+        )
+        """,
+        (),
+        "approval subject evidence schema read failed",
+    )
+    if semantic_rows != [(True,)]:
+        raise SchemaMigrationError("approval subject evidence is not current")
 
 def _read_coordination_temporal_contract(
     connection: PostgresConnection,
