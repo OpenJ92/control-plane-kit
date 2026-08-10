@@ -3771,6 +3771,10 @@ WHERE plan.session_id = session.session_id
   AND projection.projection_kind = 'identity'
   AND projection.projection_key = 'identity'
   AND plan.desired_realized_projection_id IS NULL;
+
+ALTER TABLE cpk_activity_plans
+  ALTER COLUMN base_realized_projection_id SET NOT NULL,
+  ALTER COLUMN desired_realized_projection_id SET NOT NULL;
 """ + "".join(
     _graph_lineage_constraint_install_sql(table, name, ddl)
     for table, name, _kind, ddl, _definition in _POSTGRES_SCHEMA_V17_CONSTRAINTS
@@ -4042,7 +4046,7 @@ _POSTGRES_SCHEMA_V17 = SchemaMigration(
     ),
 )
 _POSTGRES_SCHEMA_V17_SHA256 = (
-    "61f6ec27ce75cb7fe4906f74fd04a3ca6a3e08b33a76e04f25bd01eda92b1632"
+    "95593a35e575c079222eb773e8d139da01d4f8e7cdf91393de63b0050a34618c"
 )
 if _POSTGRES_SCHEMA_V17.checksum_sha256 != _POSTGRES_SCHEMA_V17_SHA256:
     raise SchemaMigrationError(

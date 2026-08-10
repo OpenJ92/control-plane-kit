@@ -1815,10 +1815,15 @@ def _verify_graph_lineage_contracts(connection: PostgresConnection) -> None:
         """
         SELECT table_name, column_name,
                CASE
-                 WHEN column_name IN ('current_realized_projection_id',
-                                      'desired_realized_projection_id',
-                                      'base_realized_projection_id')
+                 WHEN table_name = 'cpk_workspaces'
+                      AND column_name IN ('current_realized_projection_id',
+                                          'desired_realized_projection_id')
                  THEN data_type = 'text' AND is_nullable = 'YES'
+                      AND column_default IS NULL
+                 WHEN table_name = 'cpk_activity_plans'
+                      AND column_name IN ('base_realized_projection_id',
+                                          'desired_realized_projection_id')
+                 THEN data_type = 'text' AND is_nullable = 'NO'
                       AND column_default IS NULL
                  WHEN column_name = 'desired_graph_revision'
                  THEN data_type = 'bigint' AND is_nullable = 'NO'

@@ -28,6 +28,7 @@ from control_plane_kit_operations.records import (
     ApprovalDecisionRecord,
     ApprovalRequestRecord,
     OperationActionRecord,
+    OperationsRecordError,
     OperationSessionRecord,
     OperationSessionStatus,
 )
@@ -235,6 +236,13 @@ class PostgresActivityHistoryStore:
         return tuple(_action_record(row) for row in rows)
 
     def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
+        if (
+            record.base_realized_projection_id is None
+            or record.desired_realized_projection_id is None
+        ):
+            raise OperationsRecordError(
+                "activity plan record requires complete graph lineage"
+            )
         self._connection.execute(
             """
             INSERT INTO cpk_activity_plans
