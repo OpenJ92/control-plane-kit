@@ -31,7 +31,6 @@ from control_plane_kit_operations.postgres.schema import (
     POSTGRES_SCHEMA_MIGRATIONS,
     MigrationPostgresConnection,
     PostgresConnection,
-    _CURRENT_POSTGRES_SCHEMA,
 )
 
 
@@ -167,8 +166,6 @@ def _install_under_transaction(connection: PostgresConnection) -> None:
                 _apply_schema_migration(connection, action.migration)
                 active_migration_version = None
             _record_schema_migration(connection, action.migration)
-        if observed.kind is not ObservedSchemaKind.EMPTY:
-            connection.execute(_CURRENT_POSTGRES_SCHEMA)
         _verify_postgres_schema_under_transaction(connection)
     except SchemaMigrationError:
         raise
