@@ -1321,23 +1321,26 @@ semantic_relations AS (
            'is_partition', relation.is_partition,
            'row_security', relation.row_security,
            'force_row_security', relation.force_row_security,
-           'non_internal_triggers', (
-             SELECT count(*)::integer
+           'non_internal_triggers', CASE WHEN EXISTS (
+             SELECT 1
              FROM pg_trigger AS trigger
              WHERE trigger.tgrelid = relation.oid
                AND trigger.tgisinternal IS FALSE
-           ),
-           'policies', (
-             SELECT count(*)::integer
+             LIMIT 1
+           ) THEN 1 ELSE 0 END,
+           'policies', CASE WHEN EXISTS (
+             SELECT 1
              FROM pg_policy AS policy
              WHERE policy.polrelid = relation.oid
-           ),
-           'user_rules', (
-             SELECT count(*)::integer
+             LIMIT 1
+           ) THEN 1 ELSE 0 END,
+           'user_rules', CASE WHEN EXISTS (
+             SELECT 1
              FROM pg_rewrite AS rule
              WHERE rule.ev_class = relation.oid
                AND rule.rulename <> '_RETURN'
-           )
+             LIMIT 1
+           ) THEN 1 ELSE 0 END
          ) AS value
   FROM candidate_relations AS relation
 ),
