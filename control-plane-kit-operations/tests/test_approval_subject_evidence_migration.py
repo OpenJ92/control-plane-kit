@@ -13,6 +13,8 @@ import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
+from tests.graph_lineage_fixture import seed_authored_graphs
+
 from control_plane_kit_core.approval_subjects import (
     ActivityPlanApprovalSubject,
     GatewayKeyRotationApprovalSubject,
@@ -47,7 +49,8 @@ _V14_HISTORY = (
     (14, "gateway-key-rotation-retirement-evidence"),
 )
 _V15_IDENTITY = (15, "approval-subject-evidence")
-_CURRENT_IDENTITY = (16, "approval-scope-contracts")
+_V16_IDENTITY = (16, "approval-scope-contracts")
+_CURRENT_IDENTITY = (17, "graph-lineage-compatibility")
 _TABLE = "cpk_approval_requests"
 _DIGEST_CONSTRAINT = "cpk_approval_requests_review_digest_check"
 _CATEGORICAL_ERROR = "approval subject evidence is not accepted"
@@ -95,10 +98,10 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
 
     def test_registry_appends_exact_three_sql_step_v15_program(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
-        self.assertEqual(registry.target_version, 16)
+        self.assertEqual(registry.target_version, 17)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V14_HISTORY, _V15_IDENTITY, _CURRENT_IDENTITY),
+            (*_V14_HISTORY, _V15_IDENTITY, _V16_IDENTITY, _CURRENT_IDENTITY),
         )
 
         migration = self._v15()
@@ -1138,6 +1141,11 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
             VALUES ('workspace-a', 'Workspace A', 'created')
             """
         )
+        seed_authored_graphs(
+            connection,
+            workspace_id="workspace-a",
+            graph_ids=("graph-a", "graph-b"),
+        )
         connection.execute(
             """
             INSERT INTO cpk_operation_sessions
@@ -1180,6 +1188,11 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
             "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
             "VALUES ('workspace-a', 'Workspace A', 'created')"
         )
+        seed_authored_graphs(
+            connection,
+            workspace_id="workspace-a",
+            graph_ids=("graph-a", "graph-b"),
+        )
         connection.execute(
             "INSERT INTO cpk_operation_sessions "
             "(session_id, workspace_id, actor_id, title, status, created_at) "
@@ -1220,6 +1233,11 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
             "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
             "VALUES (%s, 'Workspace', 'created')",
             (subject.workspace_id,),
+        )
+        seed_authored_graphs(
+            connection,
+            workspace_id=subject.workspace_id,
+            graph_ids=("graph-a", "graph-b"),
         )
         connection.execute(
             "INSERT INTO cpk_operation_sessions "

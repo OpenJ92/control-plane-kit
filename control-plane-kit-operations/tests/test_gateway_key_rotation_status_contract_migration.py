@@ -34,7 +34,8 @@ _V12_HISTORY = (
 _V13_IDENTITY = (13, "gateway-key-rotation-status-contracts")
 _V14_IDENTITY = (14, "gateway-key-rotation-retirement-evidence")
 _V15_IDENTITY = (15, "approval-subject-evidence")
-_CURRENT_IDENTITY = (16, "approval-scope-contracts")
+_V16_IDENTITY = (16, "approval-scope-contracts")
+_CURRENT_IDENTITY = (17, "graph-lineage-compatibility")
 _CATEGORICAL_ERROR = "gateway key rotation status contract is not accepted"
 _GENERATION_PROVIDER = "provider.registration:a-1"
 _GENERATION_DIGEST = "c" * 64
@@ -144,7 +145,7 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
             tuple(status.value for status in GatewayKeyRotationStatus),
             _CURRENT_STATUSES,
         )
-        self.assertEqual(registry.target_version, 16)
+        self.assertEqual(registry.target_version, 17)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
             (
@@ -152,6 +153,7 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
                 _V13_IDENTITY,
                 _V14_IDENTITY,
                 _V15_IDENTITY,
+                _V16_IDENTITY,
                 _CURRENT_IDENTITY,
             ),
         )
@@ -235,6 +237,7 @@ class GatewayKeyRotationStatusContractMigrationTests(unittest.TestCase):
                                 _V13_IDENTITY,
                                 _V14_IDENTITY,
                                 _V15_IDENTITY,
+                                _V16_IDENTITY,
                                 _CURRENT_IDENTITY,
                             ),
                         )

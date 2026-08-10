@@ -1,9 +1,35 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
-from control_plane_kit_core.topology import DeploymentGraph
+from psycopg.types.json import Jsonb
+
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_operations.records import GraphVersionRecord
+
+
+def seed_authored_graphs(
+    connection: Any,
+    *,
+    workspace_id: str,
+    graph_ids: tuple[str, ...],
+    created_by: str = "operator-a",
+) -> None:
+    for version, graph_id in enumerate(graph_ids, start=1):
+        connection.execute(
+            "INSERT INTO cpk_graph_versions "
+            "(graph_id, workspace_id, version, graph_descriptor, created_by, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                graph_id,
+                workspace_id,
+                version,
+                Jsonb(DEFAULT_GRAPH_CODEC.encode(DeploymentGraph(graph_id))),
+                created_by,
+                datetime(2026, 8, 10, 0, 0, version, tzinfo=timezone.utc),
+            ),
+        )
 
 
 def seed_identity_graphs(

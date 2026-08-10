@@ -12,6 +12,8 @@ import psycopg
 from psycopg import errors
 from psycopg.types.json import Jsonb
 
+from tests.graph_lineage_fixture import seed_authored_graphs
+
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.approvals import (
@@ -45,6 +47,7 @@ _V15_HISTORY = (
     (15, "approval-subject-evidence"),
 )
 _V16_IDENTITY = (16, "approval-scope-contracts")
+_CURRENT_IDENTITY = (17, "graph-lineage-compatibility")
 _V16_SHA256 = "301c05458431939355d7c835bbdd05dad221a8370a7fb6ed6b95cd086162497e"
 _V16_STEP_SHA256 = (
     "9fa1ec3c562647985a4a0cd83af9cda2d34194df6fe0601a9b87453ec5b16fe9",
@@ -141,10 +144,10 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
             getattr(schema_module, "_POSTGRES_SCHEMA_V16_CURRENT_SCOPES"),
             _CURRENT_SCOPES,
         )
-        self.assertEqual(registry.target_version, 16)
+        self.assertEqual(registry.target_version, 17)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V15_HISTORY, _V16_IDENTITY),
+            (*_V15_HISTORY, _V16_IDENTITY, _CURRENT_IDENTITY),
         )
         migration = registry.migrations[15]
         self.assertIsNone(migration.sql)
@@ -228,7 +231,9 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
                                     identity[0],
                                     None if state == "absent" else before[target[2]][0],
                                 )
-                        self.assertEqual(self._history(connection)[-1][:2], _V16_IDENTITY)
+                        self.assertEqual(
+                            self._history(connection)[-1][:2], _CURRENT_IDENTITY
+                        )
                         snapshot = self._snapshot(connection)
                         postgres.install_postgres_schema(connection)
                         self.assertEqual(self._snapshot(connection), snapshot)
@@ -372,7 +377,7 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
             before = self._snapshot(connection)
 
             postgres.install_postgres_schema(connection)
-            self.assertEqual(self._history(connection)[-1][:2], _V16_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _CURRENT_IDENTITY)
             connection.rollback()
 
             self.assertEqual(self._snapshot(connection), before)
@@ -614,7 +619,7 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
                 package_result.decision.decision_id,
                 "package-decision",
             )
-            self.assertEqual(self._history(setup)[-1][:2], _V16_IDENTITY)
+            self.assertEqual(self._history(setup)[-1][:2], _CURRENT_IDENTITY)
         finally:
             release_package.set()
             setup.close()
@@ -647,7 +652,7 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
 
             postgres.install_postgres_schema(migration)
             migration.commit()
-            self.assertEqual(self._history(setup)[-1][:2], _V16_IDENTITY)
+            self.assertEqual(self._history(setup)[-1][:2], _CURRENT_IDENTITY)
         finally:
             setup.close()
             migration.rollback()
@@ -875,6 +880,11 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
         connection.execute(
             "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
             "VALUES ('workspace-a', 'Workspace A', 'created')"
+        )
+        seed_authored_graphs(
+            connection,
+            workspace_id="workspace-a",
+            graph_ids=("graph-a", "graph-b"),
         )
         connection.execute(
             "INSERT INTO cpk_operation_sessions "

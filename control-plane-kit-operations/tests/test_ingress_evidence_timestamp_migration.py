@@ -50,6 +50,7 @@ _CURRENT_HISTORY = [
     (14, "gateway-key-rotation-retirement-evidence"),
     (15, "approval-subject-evidence"),
     (16, "approval-scope-contracts"),
+    (17, "graph-lineage-compatibility"),
 ]
 _TEMPORAL_COLUMNS = (
     (
@@ -115,6 +116,8 @@ _CANONICAL_DIGEST_DEFINITION = (
     "'^[0-9a-f]{64}$'::text)))"
 )
 _CURRENT_ADDED_OBJECTS = {
+    ("constraint", "cpk_activity_plans_desired_graph_revision_check"),
+    ("constraint", "cpk_workspaces_desired_graph_revision_check"),
     ("constraint", "cpk_registered_products_content_digest_check"),
     ("constraint", "cpk_gateway_key_rotations_generation_provider_check"),
 }
@@ -151,7 +154,7 @@ class IngressEvidenceTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_checksum_guarded_v8_after_immutable_v7(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 16)
+        self.assertEqual(registry.target_version, 17)
         self.assertEqual(
             [(item.version, item.name) for item in registry.migrations],
             _CURRENT_HISTORY,
