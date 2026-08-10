@@ -7,6 +7,8 @@ import unittest
 
 import psycopg
 
+from tests.graph_lineage_fixture import seed_identity_graphs
+
 import control_plane_kit_core.policies as policies
 from control_plane_kit_core.planning import (
     ActivityId,
@@ -66,6 +68,13 @@ class ApprovalCommandTests(unittest.TestCase):
             unit_of_work.stores.workspaces.create(
                 WorkspaceRecord("workspace-a", "Workspace A")
             )
+            lineage = seed_identity_graphs(
+                unit_of_work.stores,
+                workspace_id="workspace-a",
+                graph_ids=("graph-current", "graph-desired"),
+            )
+            self.current_projection_id = lineage["graph-current"]
+            self.desired_projection_id = lineage["graph-desired"]
             unit_of_work.commit()
         self.operation_service("session-a", "action-start").execute(
             StartOperationSession(
@@ -115,6 +124,8 @@ class ApprovalCommandTests(unittest.TestCase):
                     status=ActivityPlanStatus.PLANNED,
                     created_at="2026-07-22T11:00:30Z",
                     plan=plan,
+                    base_realized_projection_id=self.current_projection_id,
+                    desired_realized_projection_id=self.desired_projection_id,
                 )
             )
             unit_of_work.commit()

@@ -432,33 +432,76 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
             VALUES ('workspace-b', 'Workspace B', 'created');
-            UPDATE cpk_graph_versions
-            SET workspace_id = 'workspace-b'
-            WHERE graph_id = 'graph-desired';
             """
         )
-        self.claim_and_start()
-        adapter = RecordingAdapter(
-            self.tracker,
-            ActivityExecutionOutcome.succeeded(),
-        )
-
-        with self.assertRaisesRegex(
-            ExecutionCoordinatorConflict,
-            "desired graph must match execution workspace",
-        ):
-            self.coordinator(adapter).execute(self.command())
-
-        self.assertEqual(adapter.calls, [])
         with self.unit_of_work() as unit_of_work:
-            events = unit_of_work.stores.execution.events_for_run("run-a")
-        self.assertEqual(
-            [event.kind for event in events],
-            [
-                ActivityEventKind.RUN_OPENED,
-                ActivityEventKind.RUN_STARTED,
-            ],
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-desired-b",
+                    workspace_id="workspace-b",
+                    version=1,
+                    graph=DeploymentGraph("desired-b"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T12:00:45Z",
+                )
+            )
+            desired_projection = (
+                unit_of_work.stores.realized_graphs.identity_for_authored(
+                    "workspace-b",
+                    "graph-desired-b",
+                )
+            )
+            unit_of_work.stores.realized_graphs.save(desired_projection)
+            unit_of_work.commit()
+        original_desired_projection_id = self.connection.execute(
+            """
+            SELECT desired_realized_projection_id
+            FROM cpk_activity_plans
+            WHERE plan_id = 'plan-a'
+            """
+        ).fetchone()[0]
+        self.connection.execute(
+            """
+            UPDATE cpk_activity_plans
+            SET desired_graph_id = 'graph-desired-b',
+                desired_realized_projection_id = %s
+            WHERE plan_id = 'plan-a'
+            """,
+            (desired_projection.projection_id,),
         )
+        try:
+            self.claim_and_start()
+            adapter = RecordingAdapter(
+                self.tracker,
+                ActivityExecutionOutcome.succeeded(),
+            )
+
+            with self.assertRaisesRegex(
+                ExecutionCoordinatorConflict,
+                "desired graph must match execution workspace",
+            ):
+                self.coordinator(adapter).execute(self.command())
+
+            self.assertEqual(adapter.calls, [])
+            with self.unit_of_work() as unit_of_work:
+                events = unit_of_work.stores.execution.events_for_run("run-a")
+            self.assertEqual(
+                [event.kind for event in events],
+                [
+                    ActivityEventKind.RUN_OPENED,
+                    ActivityEventKind.RUN_STARTED,
+                ],
+            )
+        finally:
+            self.connection.execute(
+                """
+                UPDATE cpk_activity_plans
+                SET desired_graph_id = 'graph-desired',
+                    desired_realized_projection_id = %s
+                WHERE plan_id = 'plan-a'
+                """,
+                (original_desired_projection_id,),
+            )
 
     def test_adapter_exception_records_uncertainty_and_does_not_blind_replay(self) -> None:
         self.claim_and_start()
@@ -692,6 +735,20 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     created_at="2026-07-22T12:00:30Z",
                 )
             )
+            base_projection = (
+                unit_of_work.stores.realized_graphs.identity_for_authored(
+                    "workspace-a",
+                    "graph-current",
+                )
+            )
+            desired_projection = (
+                unit_of_work.stores.realized_graphs.identity_for_authored(
+                    "workspace-a",
+                    "graph-desired",
+                )
+            )
+            unit_of_work.stores.realized_graphs.save(base_projection)
+            unit_of_work.stores.realized_graphs.save(desired_projection)
             product_document = ProductDescriptorCodec().encode_document(
                 ContainerServerProduct(
                     identity=ProductIdentity("control-plane-kit", "hello-server", 1),
@@ -722,6 +779,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     ActivityPlanStatus.PLANNED,
                     "2026-07-22T12:02:00Z",
                     plan,
+                    base_realized_projection_id=base_projection.projection_id,
+                    desired_realized_projection_id=(
+                        desired_projection.projection_id
+                    ),
                 )
             )
             unit_of_work.commit()

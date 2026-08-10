@@ -6,6 +6,7 @@ import uuid
 
 import psycopg
 
+from tests.graph_lineage_fixture import seed_identity_graphs
 import control_plane_kit_operations.postgres as postgres
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
@@ -36,6 +37,7 @@ from control_plane_kit_operations.postgres.runtime_authority_store import (
     RuntimeAuthorityDeliveryStore,
     RuntimeAuthorityStore,
 )
+from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.records import (
     ActivityPlanRecord,
     ActivityPlanStatus,
@@ -119,6 +121,11 @@ class NativeTemporalOrderingTests(unittest.TestCase):
             """
         )
         history = PostgresActivityHistoryStore(self.connection)
+        lineage = seed_identity_graphs(
+            PostgresStoreBundle(self.connection),
+            workspace_id="workspace-a",
+            graph_ids=("graph-a", "graph-b"),
+        )
 
         for identity, timestamp in (
             ("session-earlier", _EARLIER),
@@ -161,6 +168,8 @@ class NativeTemporalOrderingTests(unittest.TestCase):
                     status=ActivityPlanStatus.PLANNED,
                     created_at=timestamp,
                     plan=ActivityPlan(()),
+                    base_realized_projection_id=lineage["graph-a"],
+                    desired_realized_projection_id=lineage["graph-b"],
                 )
             )
         self.assertEqual(
