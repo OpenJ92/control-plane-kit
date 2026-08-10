@@ -137,9 +137,7 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
             _V15_SHA256,
         )
 
-    def test_frozen_v1_and_internal_current_replay_are_separate(self) -> None:
-        current = getattr(schema_module, "_CURRENT_POSTGRES_SCHEMA")
-
+    def test_frozen_v1_artifact_remains_immutable(self) -> None:
         self.assertEqual(
             hashlib.sha256(postgres.POSTGRES_SCHEMA.encode("utf-8")).hexdigest(),
             _V1_SHA256,
@@ -148,20 +146,6 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
         self.assertIn(
             "ALTER TABLE cpk_approval_requests\n  ADD COLUMN IF NOT EXISTS rotation_id",
             postgres.POSTGRES_SCHEMA,
-        )
-        self.assertIn(
-            "CREATE TABLE IF NOT EXISTS cpk_approval_requests",
-            current,
-        )
-        self.assertNotIn(
-            "ALTER TABLE cpk_approval_requests\n  ADD COLUMN IF NOT EXISTS rotation_id",
-            current,
-        )
-        self.assertNotIn("UPDATE cpk_approval_requests\nSET subject_kind", current)
-        self.assertNotIn(
-            "CREATE UNIQUE INDEX IF NOT EXISTS "
-            "cpk_approval_requests_rotation_identity",
-            current,
         )
         self.assertFalse(
             hasattr(schema_module, "_upgrade_approval_subject_evidence")

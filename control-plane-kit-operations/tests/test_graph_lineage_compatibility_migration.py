@@ -113,10 +113,6 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
         runner_source = inspect.getsource(migration_runner)
         self.assertNotIn("_backfill_graph_lineage", runner_source)
         self.assertNotIn("_GRAPH_LINEAGE_CONSTRAINTS", runner_source)
-        self.assertNotIn(
-            "ADD COLUMN IF NOT EXISTS current_realized_projection_id",
-            getattr(schema_module, "_CURRENT_POSTGRES_SCHEMA"),
-        )
         self.assertEqual(
             postgres.POSTGRES_SCHEMA_V1_SHA256,
             "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8",
