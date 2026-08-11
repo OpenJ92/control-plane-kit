@@ -8,6 +8,7 @@ import unittest
 
 import psycopg
 
+import control_plane_kit_operations.postgres as postgres
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import SecretReference
@@ -81,6 +82,27 @@ class GatewayKeyRotationTests(unittest.TestCase):
             service.request(replace(self.request(), new_secret_reference=SecretReference(
                 "secret://workspace-secrets/keys/other"
             )))
+
+    def test_surface_read_purpose_rotation_and_approval_are_current_truth(self) -> None:
+        purpose = getattr(
+            DelegationKeyPurpose,
+            "WORKLOAD_NODE_CONTROL_SURFACE_READ",
+            None,
+        )
+        self.assertIsNotNone(purpose)
+        rotation = self.service().request(replace(self.request(), purpose=purpose))
+        approval = self.request_approval(rotation)
+
+        self.assertIs(rotation.purpose, purpose)
+        self.assertEqual(
+            approval.request.subject.descriptor()["purpose"],
+            "workload-node-control-surface-read",
+        )
+        self.assertEqual(
+            approval.request.subject.review_digest,
+            approval.request.review_digest,
+        )
+        postgres.verify_postgres_schema(self.connection)
 
     def test_permissions_and_optimistic_version_are_enforced(self) -> None:
         service = self.service()
