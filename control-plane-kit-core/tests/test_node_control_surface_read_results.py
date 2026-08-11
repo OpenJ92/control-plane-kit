@@ -8,6 +8,7 @@ import importlib
 import importlib.util
 import json
 from pathlib import Path
+from typing import get_args
 import unittest
 
 import rfc8785
@@ -178,11 +179,12 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         )
 
     def status_context(self):
-        declaration = self.declaration("alpha", "beta")
-        request = self.request(
-            declaration,
-            NodeControlSurfaceReadKind.STATUS,
-            request_id="surface-status-1",
+        fixture = self.fixture()["results"]["status_context"]
+        declaration = WorkloadNodeControlSurfaceDeclarationCodec().decode(
+            fixture["declaration"]["descriptor"]
+        )
+        request = NodeControlSurfaceReadRequestCodec().decode(
+            fixture["request"]["descriptor"]
         )
         codec = self.contract("NodeControlSurfaceReadResultCodec")(
             request,
@@ -222,6 +224,16 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         )
         self.assertEqual(codec.decode(encoded), result)
 
+    def assert_context_vector(self, value, vector) -> None:
+        expected_bytes = vector["canonical_utf8"].encode("utf-8")
+        self.assertEqual(value.descriptor(), vector["descriptor"])
+        self.assertEqual(value.canonical_bytes(), expected_bytes)
+        self.assertEqual(rfc8785.dumps(value.descriptor()), expected_bytes)
+        self.assertEqual(
+            hashlib.sha256(expected_bytes).hexdigest(),
+            vector["sha256"],
+        )
+
     def test_nominal_variants_have_exact_request_bound_canonical_wire(self) -> None:
         module = self.result_module()
         fixture = self.fixture()["results"]
@@ -241,7 +253,15 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
             fixture["capabilities"],
         )
 
-        _, status_request, status_codec = self.status_context()
+        status_declaration, status_request, status_codec = self.status_context()
+        self.assert_context_vector(
+            status_declaration,
+            fixture["status_context"]["declaration"],
+        )
+        self.assert_context_vector(
+            status_request,
+            fixture["status_context"]["request"],
+        )
         coverage = module.NodeControlSurfaceRegistryCoverage
         for key, names, expected_coverage in (
             ("status_none", (), coverage.NONE),
@@ -260,10 +280,12 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
                 self.assert_vector(result, status_codec, fixture[key])
 
         self.assertEqual(
-            module.NodeControlSurfaceReadResult.__args__,
-            (
+            frozenset(get_args(module.NodeControlSurfaceReadResult)),
+            frozenset(
+                (
                 module.NodeControlSurfaceCapabilitiesResult,
                 module.NodeControlSurfaceStatusResult,
+                )
             ),
         )
 
@@ -282,7 +304,6 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
             tuple(field.name for field in fields(status_type)),
             ("request", "declaration", "installed_variable_names"),
         )
-        self.assertNotIn("registry_coverage", fields(status_type).__repr__())
         result = capability_type(request, declaration)
         self.assertIs(result.profile, profile.V1)
         self.assertIs(
@@ -315,6 +336,11 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(NodeControlSurfaceReadContractError, "socket"):
             capability_type(socket_request, socket_declaration)
+        with self.assertRaisesRegex(NodeControlSurfaceReadContractError, "socket"):
+            module.NodeControlSurfaceReadResultCodec(
+                socket_request,
+                socket_declaration,
+            )
 
         for values in (
             ("request", declaration),
@@ -323,6 +349,8 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
             with self.subTest(values=values):
                 with self.assertRaises(NodeControlSurfaceReadContractError):
                     capability_type(*values)
+                with self.assertRaises(NodeControlSurfaceReadContractError):
+                    module.NodeControlSurfaceReadResultCodec(*values)
 
     def test_codec_rejects_cross_kind_request_and_declaration_substitution(self) -> None:
         _, request, capability_codec = self.capabilities_context()
@@ -371,6 +399,25 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         ):
             codec_type(wrong_identity_request, capability.declaration)
 
+        substituted_declaration = self.declaration("node")
+        self.assertEqual(
+            len(substituted_declaration.canonical_bytes()),
+            len(capability.declaration.canonical_bytes()),
+        )
+        substituted_wire = {
+            **capability_codec.encode(capability),
+            "declaration": substituted_declaration.descriptor(),
+        }
+        self.assertEqual(
+            len(rfc8785.dumps(substituted_wire)),
+            len(capability.canonical_bytes()),
+        )
+        with self.assertRaisesRegex(
+            NodeControlSurfaceReadContractError,
+            "declaration",
+        ):
+            capability_codec.decode(substituted_wire)
+
     def test_status_coverage_is_total_canonical_and_non_authoritative(self) -> None:
         module = self.result_module()
         declaration, request, codec = self.status_context()
@@ -409,6 +456,7 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
             {**valid, "installed_variable_names": ["beta", "alpha"]},
             {**valid, "installed_variable_names": ["alpha", "alpha"]},
             {**valid, "installed_variable_names": ["alpha", "gamma"]},
+            {**valid, "installed_variable_names": [1]},
             {**valid, "installed_variable_names": "alpha"},
         )
         for descriptor in invalid_wire:
@@ -431,6 +479,10 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
             "endpoint": "https://attacker.invalid",
             "signature": "attacker-signature",
             "error": "provider diagnostic",
+            "target": {"node_id": "router"},
+            "registry": ["alpha"],
+            "health": "healthy",
+            "readiness": "ready",
         }
         for codec, descriptor in zip(
             (capability_codec, status_codec),
@@ -458,6 +510,9 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
             with self.subTest(descriptor=descriptor):
                 with self.assertRaises(NodeControlSurfaceReadContractError):
                     codec.decode(descriptor)
+
+        with self.assertRaises(NodeControlSurfaceReadContractError):
+            status_codec.encode(object())
 
     def maximum_capability_declaration(
         self,
@@ -584,6 +639,24 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         ):
             small_status_codec.decode(context_plus_one)
 
+        _, _, small_capability_codec = self.capabilities_context()
+        small_capability = small_capability_codec.encode(
+            small_capability_codec.capabilities_result()
+        )
+        capability_context_plus_one = {
+            **small_capability,
+            "request_id": small_capability["request_id"] + "x",
+        }
+        self.assertLess(
+            len(rfc8785.dumps(capability_context_plus_one)),
+            module.MAX_NODE_CONTROL_SURFACE_CAPABILITIES_RESULT_BYTES,
+        )
+        with self.assertRaisesRegex(
+            NodeControlSurfaceReadContractError,
+            "context.*bound",
+        ):
+            small_capability_codec.decode(capability_context_plus_one)
+
         count_plus_one = {
             **status_codec.encode(status),
             "installed_variable_names": [
@@ -613,6 +686,43 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         self.assertNotIn("sk-attacker-value", rendered)
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
+
+        _, _, capability_codec = self.capabilities_context()
+        capability = capability_codec.encode(
+            capability_codec.capabilities_result()
+        )
+        malformed_declaration = deepcopy(capability)
+        malformed_declaration["declaration"]["surface"]["variables"][0][
+            "description"
+        ] = "sk-nested"
+        nested_cases = (
+            (
+                capability_codec,
+                malformed_declaration,
+                "sk-nested",
+                "declaration.*malformed",
+            ),
+            (
+                codec,
+                {
+                    **descriptor,
+                    "installed_variable_names": ["sk-x"],
+                },
+                "sk-x",
+                "installed.*malformed",
+            ),
+        )
+        for candidate_codec, candidate, nested_canary, category in nested_cases:
+            with self.subTest(category=category):
+                with self.assertRaisesRegex(
+                    NodeControlSurfaceReadContractError,
+                    category,
+                ) as nested:
+                    candidate_codec.decode(candidate)
+                nested_rendered = f"{nested.exception!s} {nested.exception!r}"
+                self.assertNotIn(nested_canary, nested_rendered)
+                self.assertIsNone(nested.exception.__cause__)
+                self.assertIsNone(nested.exception.__context__)
 
         representation = repr(result)
         self.assertNotIn(result.request_id, representation)

@@ -91,6 +91,77 @@
       "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"declaration\":{\"profile\":\"workload-node-control-surface-declaration.v1\",\"surface\":{\"provider_socket_name\":\"control\",\"variables\":[{\"capability\":\"node-controllable\",\"description\":\"Public mode.\",\"kind\":\"scalar\",\"operation_contracts\":[{\"command_codec\":null,\"operation\":\"read-state\",\"result_codec\":\"control.state.v1\"},{\"command_codec\":\"control.replace-scalar.v1\",\"operation\":\"apply-command\",\"result_codec\":\"control.transition.v1\"}],\"route_set\":\"node-control\",\"state_codec\":\"control.scalar.v1\",\"variable_name\":\"mode\"}]}},\"declaration_identity\":\"e9ada911c3087418dbbdefafa7bf58e120832b15abb16d6a0fb453e33181acd2\",\"kind\":\"capabilities\",\"profile\":\"workload-node-control-surface-read-result.v1\",\"request_digest\":\"efba35d7602d45bf78dac53a3ea33c72f9805fcb6c74134beaca97cc038321dc\",\"request_id\":\"surface-read-1\"}",
       "sha256": "1f9873de1d166e25c07a1284b7ef3afb203e33ceca7ea38e5cd2c57b4c1b8a1d"
     },
+    "status_context": {
+      "declaration": {
+        "descriptor": {
+          "profile": "workload-node-control-surface-declaration.v1",
+          "surface": {
+            "provider_socket_name": "control",
+            "variables": [
+              {
+                "capability": "node-controllable",
+                "description": "Public alpha.",
+                "kind": "scalar",
+                "operation_contracts": [
+                  {
+                    "command_codec": null,
+                    "operation": "read-state",
+                    "result_codec": "control.state.v1"
+                  },
+                  {
+                    "command_codec": "control.replace-scalar.v1",
+                    "operation": "apply-command",
+                    "result_codec": "control.transition.v1"
+                  }
+                ],
+                "route_set": "node-control",
+                "state_codec": "control.scalar.v1",
+                "variable_name": "alpha"
+              },
+              {
+                "capability": "node-controllable",
+                "description": "Public beta.",
+                "kind": "scalar",
+                "operation_contracts": [
+                  {
+                    "command_codec": null,
+                    "operation": "read-state",
+                    "result_codec": "control.state.v1"
+                  },
+                  {
+                    "command_codec": "control.replace-scalar.v1",
+                    "operation": "apply-command",
+                    "result_codec": "control.transition.v1"
+                  }
+                ],
+                "route_set": "node-control",
+                "state_codec": "control.scalar.v1",
+                "variable_name": "beta"
+              }
+            ]
+          }
+        },
+        "canonical_utf8": "{\"profile\":\"workload-node-control-surface-declaration.v1\",\"surface\":{\"provider_socket_name\":\"control\",\"variables\":[{\"capability\":\"node-controllable\",\"description\":\"Public alpha.\",\"kind\":\"scalar\",\"operation_contracts\":[{\"command_codec\":null,\"operation\":\"read-state\",\"result_codec\":\"control.state.v1\"},{\"command_codec\":\"control.replace-scalar.v1\",\"operation\":\"apply-command\",\"result_codec\":\"control.transition.v1\"}],\"route_set\":\"node-control\",\"state_codec\":\"control.scalar.v1\",\"variable_name\":\"alpha\"},{\"capability\":\"node-controllable\",\"description\":\"Public beta.\",\"kind\":\"scalar\",\"operation_contracts\":[{\"command_codec\":null,\"operation\":\"read-state\",\"result_codec\":\"control.state.v1\"},{\"command_codec\":\"control.replace-scalar.v1\",\"operation\":\"apply-command\",\"result_codec\":\"control.transition.v1\"}],\"route_set\":\"node-control\",\"state_codec\":\"control.scalar.v1\",\"variable_name\":\"beta\"}]}}",
+        "sha256": "5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2"
+      },
+      "request": {
+        "descriptor": {
+          "canonicalization": "jcs-rfc8785.v1",
+          "declaration_identity": "5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2",
+          "kind": "status",
+          "profile": "workload-node-control-surface-read-request.v1",
+          "request_id": "surface-status-1",
+          "target": {
+            "graph_revision": "revision-7",
+            "node_id": "router",
+            "provider_socket_name": "control",
+            "workspace_id": "workspace-1"
+          }
+        },
+        "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"declaration_identity\":\"5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2\",\"kind\":\"status\",\"profile\":\"workload-node-control-surface-read-request.v1\",\"request_id\":\"surface-status-1\",\"target\":{\"graph_revision\":\"revision-7\",\"node_id\":\"router\",\"provider_socket_name\":\"control\",\"workspace_id\":\"workspace-1\"}}",
+        "sha256": "3706bad3fddb5580799458721e6dbb33c1e3b45ee6f2961f9af184f6c6abd652"
+      }
+    },
     "status_none": {
       "descriptor": {
         "canonicalization": "jcs-rfc8785.v1",
