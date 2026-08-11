@@ -37,7 +37,8 @@ _V13_IDENTITY = (13, "gateway-key-rotation-status-contracts")
 _V14_IDENTITY = (14, "gateway-key-rotation-retirement-evidence")
 _V15_IDENTITY = (15, "approval-subject-evidence")
 _V16_IDENTITY = (16, "approval-scope-contracts")
-_CURRENT_IDENTITY = (17, "graph-lineage-compatibility")
+_V17_IDENTITY = (17, "graph-lineage-compatibility")
+_CURRENT_IDENTITY = (18, "delegation-key-surface-read-purpose")
 _CATEGORICAL_ERROR = "gateway key rotation generation evidence is not accepted"
 _TABLE = "cpk_gateway_key_rotations"
 _PROVIDER_COLUMN = "generation_provider_registration_id"
@@ -74,7 +75,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_three_sql_step_v12_program(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 17)
+        self.assertEqual(registry.target_version, 18)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
             (
@@ -84,6 +85,7 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
                 _V14_IDENTITY,
                 _V15_IDENTITY,
                 _V16_IDENTITY,
+                _V17_IDENTITY,
                 _CURRENT_IDENTITY,
             ),
         )
@@ -926,7 +928,12 @@ class GatewayKeyRotationGenerationEvidenceMigrationTests(unittest.TestCase):
                   AND indexes.relkind = 'i'
                 ORDER BY 1, 2
                 """,
-                (list(_TARGET_CONSTRAINTS),),
+                (
+                    [
+                        *_TARGET_CONSTRAINTS,
+                        "cpk_gateway_key_rotations_purpose_check",
+                    ],
+                ),
             ).fetchall()
         }
 

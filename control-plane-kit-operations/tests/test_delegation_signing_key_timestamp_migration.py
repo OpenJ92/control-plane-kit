@@ -38,14 +38,25 @@ _CURRENT_HISTORY = [
     (15, "approval-subject-evidence"),
     (16, "approval-scope-contracts"),
     (17, "graph-lineage-compatibility"),
+    (18, "delegation-key-surface-read-purpose"),
 ]
 _CANONICAL = "2026-08-07T06:00:00.000001Z"
 _NONCANONICAL_OFFSET = "2026-08-07T02:00:00-04:00"
 _EXPECTED_REBUILT_OBJECTS = {
     ("constraint", "cpk_delegation_signing_keys_activation_evidence_check"),
+    ("constraint", "cpk_delegation_signing_keys_purpose_check"),
     ("constraint", "cpk_delegation_signing_keys_retirement_evidence_check"),
     ("constraint", "cpk_delegation_signing_keys_revocation_evidence_check"),
 }
+_CURRENT_PURPOSE_CONSTRAINT = (
+    "constraint",
+    "cpk_delegation_signing_keys_purpose_check",
+)
+_CURRENT_PURPOSE_DEFINITION = (
+    "CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, "
+    "'workload-node-control'::text, "
+    "'workload-node-control-surface-read'::text])))"
+)
 
 
 class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
@@ -68,7 +79,7 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
     def test_registry_appends_exact_delegation_signing_key_v5(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 17)
+        self.assertEqual(registry.target_version, 18)
         self.assertEqual(
             [(migration.version, migration.name) for migration in registry.migrations[:5]],
             _V5_HISTORY,
@@ -176,7 +187,7 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
                     self.connection.execute(f'SET search_path TO "{self.schema}"')
                     self.connection.execute(f'DROP SCHEMA "{case_schema}" CASCADE')
 
-    def test_success_rebuilds_only_three_evidence_constraints(self) -> None:
+    def test_success_rebuilds_only_declared_current_constraints(self) -> None:
         self._install_v4_baseline()
         self._seed_lifecycle_matrix()
         before = self._application_objects()
@@ -189,7 +200,10 @@ class DelegationSigningKeyTimestampMigrationTests(unittest.TestCase):
         for identity, (before_oid, before_definition) in before.items():
             after_oid, after_definition = after[identity]
             with self.subTest(identity=identity):
-                self.assertEqual(after_definition, before_definition)
+                if identity == _CURRENT_PURPOSE_CONSTRAINT:
+                    self.assertEqual(after_definition, _CURRENT_PURPOSE_DEFINITION)
+                else:
+                    self.assertEqual(after_definition, before_definition)
                 if after_oid != before_oid:
                     changed.add(identity)
         self.assertEqual(changed, _EXPECTED_REBUILT_OBJECTS)

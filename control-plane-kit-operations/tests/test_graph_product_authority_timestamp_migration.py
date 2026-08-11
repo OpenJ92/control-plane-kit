@@ -99,6 +99,7 @@ class GraphProductAuthorityTimestampMigrationTests(unittest.TestCase):
                 (15, "approval-subject-evidence"),
                 (16, "approval-scope-contracts"),
                 (17, "graph-lineage-compatibility"),
+                (18, "delegation-key-surface-read-purpose"),
             ],
         )
         self.assertEqual(self._temporal_contract(), _TEMPORAL_COLUMNS)

@@ -1258,6 +1258,12 @@ ALTER TABLE cpk_activity_plans
 """
 
 
+_POSTGRES_SCHEMA_V1_DELEGATION_KEY_PURPOSES = (
+    DelegationKeyPurpose.GATEWAY_PROBE,
+    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+)
+
+
 _POSTGRES_SCHEMA_CONTEXT = dict(
     activity_event_kinds=tuple(ActivityEventKind),
     activity_event_run_kinds=_RUN_EVENT_KINDS,
@@ -1299,7 +1305,7 @@ _POSTGRES_SCHEMA_CONTEXT = dict(
     gateway_key_rotation_deployment_phases=tuple(GatewayKeyRotationDeploymentPhase),
     gateway_key_rotation_deployment_statuses=tuple(GatewayKeyRotationDeploymentStatus),
     delegation_key_algorithms=tuple(DelegationKeyAlgorithm),
-    delegation_key_purposes=tuple(DelegationKeyPurpose),
+    delegation_key_purposes=_POSTGRES_SCHEMA_V1_DELEGATION_KEY_PURPOSES,
     delegation_signing_key_statuses=tuple(RegisteredDelegationSigningKeyStatus),
     risk_levels=tuple(RiskLevel),
     realized_graph_projection_kinds=tuple(RealizedGraphProjectionKind),
@@ -2495,6 +2501,10 @@ END
 $cpk$;
 """
 
+_POSTGRES_SCHEMA_V15_DELEGATION_KEY_PURPOSES = (
+    DelegationKeyPurpose.GATEWAY_PROBE,
+    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+)
 _POSTGRES_SCHEMA_V15_ROTATION_FK_DEFINITION = (
     "FOREIGN KEY (rotation_id) REFERENCES "
     "cpk_gateway_key_rotations(rotation_id)"
@@ -2640,7 +2650,7 @@ BEGIN
             AND (rotations.old_key_id COLLATE "C") ~ '^[A-Za-z0-9]'
             AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
             AND (rotations.purpose COLLATE "C") IN
-              ({_sql_values(tuple(DelegationKeyPurpose))})
+              ({_sql_values(_POSTGRES_SCHEMA_V15_DELEGATION_KEY_PURPOSES)})
             AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
             AND rotations.clock_skew_seconds BETWEEN 0 AND 60
             AND (rotations.intent_fingerprint COLLATE "C")
@@ -3647,6 +3657,188 @@ ALTER TABLE cpk_activity_plans
     for table, name, _kind, ddl, _definition in _POSTGRES_SCHEMA_V17_CONSTRAINTS
 )
 
+_POSTGRES_SCHEMA_V18_DELEGATION_KEY_PURPOSES = (
+    DelegationKeyPurpose.GATEWAY_PROBE,
+    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+)
+_POSTGRES_SCHEMA_V18_LEGACY_PURPOSES = tuple(
+    purpose.value for purpose in _POSTGRES_SCHEMA_V1_DELEGATION_KEY_PURPOSES
+)
+_POSTGRES_SCHEMA_V18_CURRENT_PURPOSES = tuple(
+    purpose.value for purpose in _POSTGRES_SCHEMA_V18_DELEGATION_KEY_PURPOSES
+)
+_POSTGRES_SCHEMA_V18_LEGACY_DEFINITION = _postgres_status_definition(
+    "purpose",
+    _POSTGRES_SCHEMA_V18_LEGACY_PURPOSES,
+)
+_POSTGRES_SCHEMA_V18_CURRENT_DEFINITION = _postgres_status_definition(
+    "purpose",
+    _POSTGRES_SCHEMA_V18_CURRENT_PURPOSES,
+)
+_POSTGRES_SCHEMA_V18_ERROR = "delegation key purpose contract is not accepted"
+_POSTGRES_SCHEMA_V18_PREFLIGHT_SQL = f"""
+LOCK TABLE cpk_delegation_signing_keys IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE cpk_gateway_key_rotations IN ACCESS EXCLUSIVE MODE;
+
+DO $cpk$
+DECLARE
+  column_count bigint;
+  column_relation_count bigint;
+  columns_are_accepted boolean;
+  constraint_count bigint;
+  constraint_identity_count bigint;
+  constraint_relation_count bigint;
+  constraint_name_count bigint;
+  constraints_are_accepted boolean;
+BEGIN
+  SELECT count(*), count(DISTINCT table_name),
+         COALESCE(
+           bool_and(
+             data_type = 'text'
+             AND is_nullable = 'NO'
+             AND column_default IS NULL
+           ),
+           false
+         )
+    INTO column_count, column_relation_count, columns_are_accepted
+  FROM information_schema.columns
+  WHERE table_schema = current_schema()
+    AND column_name = 'purpose'
+    AND table_name IN (
+      'cpk_delegation_signing_keys',
+      'cpk_gateway_key_rotations'
+    );
+
+  IF column_count <> 2
+    OR column_relation_count <> 2
+    OR columns_are_accepted IS NOT TRUE
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V18_ERROR}';
+  END IF;
+
+  WITH accepted(relation_name, constraint_name, definition) AS (
+    VALUES
+      (
+        'cpk_delegation_signing_keys',
+        'cpk_delegation_signing_keys_purpose_check',
+        {_postgres_text_literal(_POSTGRES_SCHEMA_V18_LEGACY_DEFINITION)}
+      ),
+      (
+        'cpk_gateway_key_rotations',
+        'cpk_gateway_key_rotations_purpose_check',
+        {_postgres_text_literal(_POSTGRES_SCHEMA_V18_LEGACY_DEFINITION)}
+      )
+  )
+  SELECT count(*),
+         count(DISTINCT constraints.oid),
+         count(DISTINCT relation.relname),
+         count(DISTINCT constraints.conname),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND NOT constraints.condeferrable
+             AND NOT constraints.condeferred
+             AND NOT constraints.connoinherit
+             AND ARRAY(
+               SELECT attribute.attname
+               FROM unnest(constraints.conkey) WITH ORDINALITY
+                    AS key(attnum, position)
+               JOIN pg_attribute AS attribute
+                 ON attribute.attrelid = constraints.conrelid
+                AND attribute.attnum = key.attnum
+               ORDER BY key.position
+             ) = ARRAY['purpose'::name]
+             AND pg_get_constraintdef(constraints.oid, false)
+                   = accepted.definition
+           ),
+           false
+         )
+    INTO constraint_count, constraint_identity_count,
+         constraint_relation_count, constraint_name_count,
+         constraints_are_accepted
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN accepted
+    ON accepted.relation_name = relation.relname
+   AND accepted.constraint_name = constraints.conname
+  WHERE namespace.nspname = current_schema();
+
+  IF constraint_count <> 2
+    OR constraint_identity_count <> 2
+    OR constraint_relation_count <> 2
+    OR constraint_name_count <> 2
+    OR constraints_are_accepted IS NOT TRUE
+  THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V18_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+_POSTGRES_SCHEMA_V18_VALUES_SQL = _postgres_status_values(
+    _POSTGRES_SCHEMA_V18_CURRENT_PURPOSES
+)
+_POSTGRES_SCHEMA_V18_CONVERGE_SQL = f"""
+ALTER TABLE cpk_delegation_signing_keys
+  DROP CONSTRAINT cpk_delegation_signing_keys_purpose_check,
+  ADD CONSTRAINT cpk_delegation_signing_keys_purpose_check
+  CHECK (purpose IN ({_POSTGRES_SCHEMA_V18_VALUES_SQL}));
+
+ALTER TABLE cpk_gateway_key_rotations
+  DROP CONSTRAINT cpk_gateway_key_rotations_purpose_check,
+  ADD CONSTRAINT cpk_gateway_key_rotations_purpose_check
+  CHECK (purpose IN ({_POSTGRES_SCHEMA_V18_VALUES_SQL}));
+
+DO $cpk$
+DECLARE
+  constraint_count bigint;
+  constraints_are_current boolean;
+BEGIN
+  WITH expected(relation_name, constraint_name) AS (
+    VALUES
+      (
+        'cpk_delegation_signing_keys',
+        'cpk_delegation_signing_keys_purpose_check'
+      ),
+      (
+        'cpk_gateway_key_rotations',
+        'cpk_gateway_key_rotations_purpose_check'
+      )
+  )
+  SELECT count(*),
+         COALESCE(
+           bool_and(
+             constraints.contype = 'c'
+             AND constraints.convalidated
+             AND pg_get_constraintdef(constraints.oid, false) =
+                 {_postgres_text_literal(_POSTGRES_SCHEMA_V18_CURRENT_DEFINITION)}
+           ),
+           false
+         )
+    INTO constraint_count, constraints_are_current
+  FROM pg_constraint AS constraints
+  JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN expected
+    ON expected.relation_name = relation.relname
+   AND expected.constraint_name = constraints.conname
+  WHERE namespace.nspname = current_schema();
+
+  IF constraint_count <> 2 OR constraints_are_current IS NOT TRUE THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1110',
+      MESSAGE = '{_POSTGRES_SCHEMA_V18_ERROR}';
+  END IF;
+END
+$cpk$;
+"""
+
 POSTGRES_SCHEMA_V1_SHA256 = (
     "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 )
@@ -3921,6 +4113,23 @@ if _POSTGRES_SCHEMA_V17.checksum_sha256 != _POSTGRES_SCHEMA_V17_SHA256:
         f"expected {_POSTGRES_SCHEMA_V17_SHA256}, "
         f"observed {_POSTGRES_SCHEMA_V17.checksum_sha256}"
     )
+_POSTGRES_SCHEMA_V18 = SchemaMigration(
+    version=18,
+    name="delegation-key-surface-read-purpose",
+    steps=(
+        SqlMigrationStep(_POSTGRES_SCHEMA_V18_PREFLIGHT_SQL),
+        SqlMigrationStep(_POSTGRES_SCHEMA_V18_CONVERGE_SQL),
+    ),
+)
+_POSTGRES_SCHEMA_V18_SHA256 = (
+    "9f47d96f3b866cf88489f254f422108ee4a4685f22fc45599db0223d4bf9d3b4"
+)
+if _POSTGRES_SCHEMA_V18.checksum_sha256 != _POSTGRES_SCHEMA_V18_SHA256:
+    raise SchemaMigrationError(
+        "delegation key surface-read purpose V18 differs from its pinned checksum: "
+        f"expected {_POSTGRES_SCHEMA_V18_SHA256}, "
+        f"observed {_POSTGRES_SCHEMA_V18.checksum_sha256}"
+    )
 POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
     (
         _POSTGRES_SCHEMA_V1,
@@ -3940,6 +4149,7 @@ POSTGRES_SCHEMA_MIGRATIONS = SchemaMigrationRegistry(
         _POSTGRES_SCHEMA_V15,
         _POSTGRES_SCHEMA_V16,
         _POSTGRES_SCHEMA_V17,
+        _POSTGRES_SCHEMA_V18,
     )
 )
 

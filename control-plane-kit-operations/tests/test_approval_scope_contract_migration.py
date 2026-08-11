@@ -47,7 +47,8 @@ _V15_HISTORY = (
     (15, "approval-subject-evidence"),
 )
 _V16_IDENTITY = (16, "approval-scope-contracts")
-_CURRENT_IDENTITY = (17, "graph-lineage-compatibility")
+_V17_IDENTITY = (17, "graph-lineage-compatibility")
+_CURRENT_IDENTITY = (18, "delegation-key-surface-read-purpose")
 _V16_SHA256 = "301c05458431939355d7c835bbdd05dad221a8370a7fb6ed6b95cd086162497e"
 _V16_STEP_SHA256 = (
     "9fa1ec3c562647985a4a0cd83af9cda2d34194df6fe0601a9b87453ec5b16fe9",
@@ -144,10 +145,10 @@ class ApprovalScopeContractMigrationTests(unittest.TestCase):
             getattr(schema_module, "_POSTGRES_SCHEMA_V16_CURRENT_SCOPES"),
             _CURRENT_SCOPES,
         )
-        self.assertEqual(registry.target_version, 17)
+        self.assertEqual(registry.target_version, 18)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V15_HISTORY, _V16_IDENTITY, _CURRENT_IDENTITY),
+            (*_V15_HISTORY, _V16_IDENTITY, _V17_IDENTITY, _CURRENT_IDENTITY),
         )
         migration = registry.migrations[15]
         self.assertIsNone(migration.sql)

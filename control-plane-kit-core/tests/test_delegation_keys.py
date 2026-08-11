@@ -45,7 +45,20 @@ class DelegationPublicKeyTests(unittest.TestCase):
             )
 
     def test_purpose_is_provider_neutral(self) -> None:
-        self.assertEqual(DelegationKeyPurpose.GATEWAY_PROBE.value, "gateway-probe")
+        self.assertEqual(
+            tuple(purpose.value for purpose in DelegationKeyPurpose),
+            (
+                "gateway-probe",
+                "workload-node-control",
+                "workload-node-control-surface-read",
+            ),
+        )
+        self.assertEqual(
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ.value,
+            "workload-node-control-surface-read",
+        )
+        with self.assertRaises(ValueError):
+            DelegationKeyPurpose("private-unknown-purpose")
 
     def test_generation_authority_is_distinct_from_registration_and_use(self) -> None:
         self.assertEqual(

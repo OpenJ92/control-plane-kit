@@ -111,6 +111,36 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
                 (),
             )
 
+    def test_surface_read_purpose_uses_the_existing_durable_key_lifecycle(self) -> None:
+        purpose = getattr(
+            DelegationKeyPurpose,
+            "WORKLOAD_NODE_CONTROL_SURFACE_READ",
+            None,
+        )
+        self.assertIsNotNone(purpose)
+        service = self.service()
+        registered = service.register(replace(self.command(), purpose=purpose))
+
+        self.assertIs(registered.purpose, purpose)
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.delegation_signing_keys.get(
+                    "workspace-a",
+                    purpose,
+                    "cpk-server",
+                    "gateway-a",
+                ),
+                registered,
+            )
+            self.assertEqual(
+                unit_of_work.stores.delegation_signing_keys.list_for_verification(
+                    "workspace-a",
+                    purpose,
+                    "cpk-server",
+                ),
+                (registered,),
+            )
+
     def test_changed_identity_under_same_key_id_fails_closed(self) -> None:
         service = self.service()
         service.register(self.command())

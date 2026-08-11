@@ -33,7 +33,17 @@ _CURRENT_HISTORY = [
     (15, "approval-subject-evidence"),
     (16, "approval-scope-contracts"),
     (17, "graph-lineage-compatibility"),
+    (18, "delegation-key-surface-read-purpose"),
 ]
+_CURRENT_PURPOSE_CONSTRAINTS = {
+    "cpk_delegation_signing_keys_purpose_check",
+    "cpk_gateway_key_rotations_purpose_check",
+}
+_CURRENT_PURPOSE_DEFINITION = (
+    "CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, "
+    "'workload-node-control'::text, "
+    "'workload-node-control-surface-read'::text])))"
+)
 
 
 class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
@@ -67,6 +77,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
             self.assertEqual(
                 tuple(action.kind for action in plan.actions),
                 (
+                    postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
                     postgres.SchemaMigrationActionKind.APPLY,
@@ -159,8 +170,10 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 "cpk_cloudflare_ingress_resources_removed_evidence_check",
                 "cpk_operation_sessions_closed_check",
                 "cpk_delegation_signing_keys_activation_evidence_check",
+                "cpk_delegation_signing_keys_purpose_check",
                 "cpk_delegation_signing_keys_retirement_evidence_check",
                 "cpk_delegation_signing_keys_revocation_evidence_check",
+                "cpk_gateway_key_rotations_purpose_check",
                 "cpk_secret_providers_revocation_evidence_check",
                 "cpk_secret_references_revocation_evidence_check",
             }
@@ -182,6 +195,11 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                             after_definition,
                             'CHECK (((review_digest COLLATE "C") ~ '
                             "'^[0-9a-f]{64}$'::text))",
+                        )
+                    elif constraint in _CURRENT_PURPOSE_CONSTRAINTS:
+                        self.assertEqual(
+                            after_definition,
+                            _CURRENT_PURPOSE_DEFINITION,
                         )
                     else:
                         self.assertEqual(after_definition, definition)
@@ -418,7 +436,7 @@ class PostgresSchemaMigrationRunnerTests(unittest.TestCase):
                 schema_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,
             )
-            self.assertEqual(production_registry.target_version, 17)
+            self.assertEqual(production_registry.target_version, 18)
             self.assertIs(
                 runner_module.POSTGRES_SCHEMA_MIGRATIONS,
                 production_registry,
