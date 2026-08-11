@@ -1314,10 +1314,24 @@ public contract shape:
   The workload route set declares `GET /__control/capabilities` and
   `GET /__control/status` under the least-privilege
   `node-control-surface:read` scope. Core does not implement HTTP or inspect a
-  registry. Result variants and structural registry coverage belong to #1548;
-  signed-envelope admission belongs to #1542; the FastAPI adapter and proof
-  that reported identities came from a maintained live registry belong to
-  #1507. Language-neutral declaration/request vectors live in
+  registry.
+
+  `NodeControlSurfaceCapabilitiesResult` and
+  `NodeControlSurfaceStatusResult` form a disjoint nominal result sum under the
+  common `workload-node-control-surface-read-result.v1` profile. Both retain the
+  exact request and declaration context while their wire carries only request
+  ID/digest, read kind, declaration identity, and variant data. Capabilities
+  echoes the exact declaration. Status carries a canonical installed-variable
+  subset and derives `NodeControlSurfaceRegistryCoverage` as exactly
+  `none|partial|complete`; wire coverage is checked against that derivation and
+  is never trusted as live registry truth. The strict codec admits mappings no
+  larger than the reachable 16,902-byte capability or 4,811-byte status ceiling
+  and applies the smaller exact context ceiling before nested interpretation.
+
+  Signed-envelope admission belongs to #1542. The FastAPI adapter, raw HTTP
+  byte admission, and proof that reported identities came from a maintained
+  live registry without variable invocation belong to #1507. Language-neutral
+  declaration, request, and result vectors live in
   `control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json`
   and are described by `control-plane-kit-core/docs/NODE_CONTROL_CANONICAL_WIRE.md`.
 

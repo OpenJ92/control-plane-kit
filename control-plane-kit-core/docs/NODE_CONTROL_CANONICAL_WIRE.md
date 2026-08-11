@@ -2,7 +2,7 @@
 
 Status: public contract for `jcs-rfc8785.v1`.
 
-Issues: OpenJ92/control-plane-kit#1452 and #1547.
+Issues: OpenJ92/control-plane-kit#1452, #1547, and #1548.
 
 ## Purpose
 
@@ -54,6 +54,21 @@ Public node-control payload and result bounds are measured from the same RFC
 8785 UTF-8 representation used by request digests. Size validation and grant
 binding therefore cannot disagree because they used different serializers.
 
+Surface-read results have distinct reachable global ceilings:
+
+```text
+capabilities result  16,902 bytes
+status result         4,811 bytes
+```
+
+The capabilities ceiling contains the exact 16,453-byte maximum declaration.
+The status ceiling is the reachable maximum under the accepted 16,384-byte
+surface, variable-count, identifier, and descriptor laws; it is not the loose
+and unreachable product of independent name-count and name-length limits.
+Result codecs also derive a smaller ceiling from the exact expected request and
+declaration before interpreting nested values. Raw HTTP admission before JSON
+parsing remains an SDK/adapter responsibility.
+
 ## Golden Vectors
 
 The language-neutral fixture is:
@@ -78,13 +93,19 @@ It pins the complete
 `workload-node-control-surface-declaration.v1` envelope, its exact canonical
 UTF-8 text and SHA-256 identity, and one complete
 `workload-node-control-surface-read-request.v1` descriptor with exact canonical
-UTF-8 text and SHA-256 request digest. SDK implementations must consume these
+UTF-8 text and SHA-256 request digest. It also pins the common
+`workload-node-control-surface-read-result.v1` profile, an exact capability
+result, the separate status declaration and request preimages, and exact
+`none|partial|complete` status vectors. SDK implementations must consume these
 vectors before claiming surface-read compatibility.
 
 ## Scope
 
 This contract covers workload node-control command requests, static surface
-declarations, and surface-read requests. It does not change gateway-probe
-digests or another package's existing canonical material. It does not sign
-requests, verify signatures, store replay state, log canonical bytes, or
-perform network or runtime effects.
+declarations, surface-read requests, and their request-bound capability/status
+results. Status coverage proves only that canonical installed names form the
+claimed subset of the expected declaration. It does not prove that those names
+came from a maintained live registry. This contract does not change
+gateway-probe digests or another package's existing canonical material. It does
+not sign requests, verify signatures, store replay state, log canonical bytes,
+inspect a registry, or perform network or runtime effects.
