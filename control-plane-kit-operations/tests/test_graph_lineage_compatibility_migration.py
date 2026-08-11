@@ -29,6 +29,7 @@ from tests.graph_lineage_fixture import seed_historical_graph_lineage_constraint
 
 
 _V17_IDENTITY = (17, "graph-lineage-compatibility")
+_CURRENT_IDENTITY = (18, "delegation-key-surface-read-purpose")
 _CATEGORICAL_ERROR = "graph lineage compatibility is not accepted"
 _LINEAGE_CONSTRAINTS = {
     "cpk_realized_graph_projection_workspace_identity",
@@ -77,12 +78,12 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
     def test_registry_appends_closed_three_step_v17_and_retires_live_helper(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 17)
+        self.assertEqual(registry.target_version, 18)
         self.assertEqual(
-            (registry.migrations[-1].version, registry.migrations[-1].name),
+            (registry.migrations[16].version, registry.migrations[16].name),
             _V17_IDENTITY,
         )
-        migration = registry.migrations[-1]
+        migration = registry.migrations[16]
         self.assertEqual(len(migration.steps), 3)
         self.assertIs(type(migration.steps[0]), postgres.SqlMigrationStep)
         self.assertIs(type(migration.steps[1]), postgres.DeterministicBackfillStep)
@@ -118,12 +119,12 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8",
         )
 
-    def test_v16_to_v17_has_no_post_ledger_replay(self) -> None:
+    def test_v16_to_current_has_no_post_ledger_replay(self) -> None:
         connection = self._connection()
-        submitted_after_v17: list[str] = []
+        submitted_after_current: list[str] = []
 
         class RecordingConnection:
-            v17_recorded = False
+            current_recorded = False
 
             @property
             def autocommit(self):
@@ -133,8 +134,8 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 return connection.transaction()
 
             def execute(self, query, params=None):
-                if self.v17_recorded:
-                    submitted_after_v17.append(str(query))
+                if self.current_recorded:
+                    submitted_after_current.append(str(query))
                 if params is None:
                     result = connection.execute(query)
                 else:
@@ -142,9 +143,9 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 if (
                     "INSERT INTO cpk_schema_migrations" in str(query)
                     and params is not None
-                    and params[0] == 17
+                    and params[0] == 18
                 ):
-                    self.v17_recorded = True
+                    self.current_recorded = True
                 return result
 
         try:
@@ -152,15 +153,15 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
 
             postgres.install_postgres_schema(RecordingConnection())
 
-            self.assertTrue(submitted_after_v17)
+            self.assertTrue(submitted_after_current)
             self.assertLessEqual(
                 {
                     query.lstrip().split(None, 1)[0].upper()
-                    for query in submitted_after_v17
+                    for query in submitted_after_current
                 },
                 {"LOCK", "SELECT", "WITH"},
             )
-            self.assertEqual(self._history(connection)[-1][:2], _V17_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _CURRENT_IDENTITY)
         finally:
             connection.close()
 
@@ -198,7 +199,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
                 ),
                 {(expected_a.projection_id,), (expected_b.projection_id,)},
             )
-            self.assertEqual(self._history(connection)[-1][:2], _V17_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _CURRENT_IDENTITY)
             self.assertEqual(
                 connection.execute(
                     "SELECT column_name, is_nullable "
@@ -989,7 +990,7 @@ class GraphLineageCompatibilityMigrationTests(unittest.TestCase):
             before = self._snapshot(connection)
 
             postgres.install_postgres_schema(connection)
-            self.assertEqual(self._history(connection)[-1][:2], _V17_IDENTITY)
+            self.assertEqual(self._history(connection)[-1][:2], _CURRENT_IDENTITY)
             connection.rollback()
 
             self.assertEqual(self._snapshot(connection), before)

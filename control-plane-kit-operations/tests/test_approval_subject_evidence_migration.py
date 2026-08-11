@@ -50,7 +50,8 @@ _V14_HISTORY = (
 )
 _V15_IDENTITY = (15, "approval-subject-evidence")
 _V16_IDENTITY = (16, "approval-scope-contracts")
-_CURRENT_IDENTITY = (17, "graph-lineage-compatibility")
+_V17_IDENTITY = (17, "graph-lineage-compatibility")
+_CURRENT_IDENTITY = (18, "delegation-key-surface-read-purpose")
 _TABLE = "cpk_approval_requests"
 _DIGEST_CONSTRAINT = "cpk_approval_requests_review_digest_check"
 _CATEGORICAL_ERROR = "approval subject evidence is not accepted"
@@ -98,10 +99,16 @@ class ApprovalSubjectEvidenceMigrationTests(unittest.TestCase):
 
     def test_registry_appends_exact_three_sql_step_v15_program(self) -> None:
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
-        self.assertEqual(registry.target_version, 17)
+        self.assertEqual(registry.target_version, 18)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
-            (*_V14_HISTORY, _V15_IDENTITY, _V16_IDENTITY, _CURRENT_IDENTITY),
+            (
+                *_V14_HISTORY,
+                _V15_IDENTITY,
+                _V16_IDENTITY,
+                _V17_IDENTITY,
+                _CURRENT_IDENTITY,
+            ),
         )
 
         migration = self._v15()

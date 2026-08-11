@@ -20,6 +20,11 @@ _V17_IDENTITY = (17, "graph-lineage-compatibility")
 _V18_IDENTITY = (18, "delegation-key-surface-read-purpose")
 _V1_SHA256 = "fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8"
 _V15_SHA256 = "215c6a71efd06f699c1d988a7e55435920075726009f030eecbd4a8c0fd91a0b"
+_V18_SHA256 = "9f47d96f3b866cf88489f254f422108ee4a4685f22fc45599db0223d4bf9d3b4"
+_V18_STEP_SHA256 = (
+    "ce046b4dc957d5be8934f6bcbe31d16f4b7f33a10f56873eca89709bdafbe92a",
+    "29df66419ae9d98058347bb2b3b1262dd5d78b4d7405c129e96c42bb41aeee88",
+)
 _ERROR = "delegation key purpose contract is not accepted"
 _OLD_PURPOSES = ("gateway-probe", "workload-node-control")
 _CURRENT_PURPOSES = (*_OLD_PURPOSES, "workload-node-control-surface-read")
@@ -83,6 +88,11 @@ class DelegationKeyPurposeMigrationTests(unittest.TestCase):
         self.assertEqual(len(migration.steps), 2)
         self.assertTrue(
             all(type(step) is postgres.SqlMigrationStep for step in migration.steps)
+        )
+        self.assertEqual(migration.checksum_sha256, _V18_SHA256)
+        self.assertEqual(
+            tuple(step.checksum_sha256 for step in migration.steps),
+            _V18_STEP_SHA256,
         )
         preflight, convergence = (step.sql for step in migration.steps)
         self.assertLess(

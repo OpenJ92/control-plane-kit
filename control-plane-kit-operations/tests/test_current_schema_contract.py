@@ -24,12 +24,12 @@ _EXPECTED_COUNTS = {
     "columns": 357,
     "constraints": 232,
     "indexes": 78,
-    "history": 17,
+    "history": 18,
 }
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
 _EXPECTED_CONTRACT_SHA256 = (
-    "db72f091f5da3cc6f2be6b359899a369c5e27a212b0d71afade1dc5e850d5300"
+    "78964b92340834eaf2afd4bde0a53ea8dd47e5752e1c5939d9bab36573d389e8"
 )
 _EXPECTED_CONSTRAINT_KINDS = {"c": 132, "f": 47, "p": 29, "u": 24}
 _CURRENT_LOCKS = {
@@ -221,7 +221,7 @@ class CurrentSchemaContractValueTests(unittest.TestCase):
             )
         self.assertEqual(
             tuple(identity.version for identity in contract.history),
-            tuple(range(1, 18)),
+            tuple(range(1, 19)),
         )
         self.assertEqual(
             tuple(

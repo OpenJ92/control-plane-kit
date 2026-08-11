@@ -242,6 +242,32 @@ _APPROVAL_SCOPE_CONTRACTS = (
 )
 _APPROVAL_REQUEST_SCOPE_DEFINITION = _approval_scope_definition("required_scope")
 _APPROVAL_DECISION_SCOPE_DEFINITION = _approval_scope_definition("scope")
+_DELEGATION_KEY_PURPOSE_VALUES = (
+    "gateway-probe",
+    "workload-node-control",
+    "workload-node-control-surface-read",
+)
+_DELEGATION_KEY_PURPOSE_DEFINITION = (
+    "CHECK ((purpose = ANY (ARRAY["
+    + ", ".join(f"'{value}'::text" for value in _DELEGATION_KEY_PURPOSE_VALUES)
+    + "])))"
+)
+_DELEGATION_KEY_PURPOSE_CONTRACTS = (
+    (
+        "cpk_delegation_signing_keys",
+        "cpk_delegation_signing_keys_purpose_check",
+        "c",
+        True,
+        True,
+    ),
+    (
+        "cpk_gateway_key_rotations",
+        "cpk_gateway_key_rotations_purpose_check",
+        "c",
+        True,
+        True,
+    ),
+)
 _COORDINATION_TEMPORAL_CONTRACT = (
     ("cpk_activity_events", "occurred_at", "timestamp with time zone", 6, "NO", True),
     ("cpk_activity_plans", "created_at", "timestamp with time zone", 6, "NO", True),
@@ -1510,7 +1536,7 @@ def _verify_current_schema_contract(connection: PostgresConnection) -> None:
                 79,
                 _MAX_MIGRATION_NAME_BYTES,
                 _MIGRATION_CHECKSUM_BYTES,
-                18,
+                19,
                 29,
                 _CURRENT_SCHEMA_RELATIONS_JSON,
                 357,
@@ -1519,7 +1545,7 @@ def _verify_current_schema_contract(connection: PostgresConnection) -> None:
                 _CURRENT_SCHEMA_CONSTRAINTS_JSON,
                 78,
                 _CURRENT_SCHEMA_INDEXES_JSON,
-                17,
+                18,
                 _CURRENT_SCHEMA_HISTORY_JSON,
             ),
         ).fetchall()
@@ -1645,6 +1671,8 @@ def _verify_postgres_schema_under_transaction(
         _verify_approval_scope_contracts(connection)
     if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 17:
         _verify_graph_lineage_contracts(connection)
+    if POSTGRES_SCHEMA_MIGRATIONS.target_version >= 18:
+        _verify_delegation_key_purpose_contracts(connection)
     if _read_coordination_temporal_contract(connection) != (
         _COORDINATION_TEMPORAL_CONTRACT
     ):
@@ -2109,7 +2137,8 @@ def _verify_approval_subject_evidence_contract(
                 AND (rotations.old_key_id COLLATE "C") ~ '^[A-Za-z0-9]'
                 AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
                 AND (rotations.purpose COLLATE "C") IN (
-                  'gateway-probe', 'workload-node-control'
+                  'gateway-probe', 'workload-node-control',
+                  'workload-node-control-surface-read'
                 )
                 AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
                 AND rotations.clock_skew_seconds BETWEEN 0 AND 60
@@ -2207,6 +2236,38 @@ def _verify_approval_scope_contracts(connection: PostgresConnection) -> None:
     )
     if constraint_rows != list(_APPROVAL_SCOPE_CONTRACTS):
         raise SchemaMigrationError("approval scope schema is not current")
+
+
+def _verify_delegation_key_purpose_contracts(
+    connection: PostgresConnection,
+) -> None:
+    constraint_rows = _read_rows(
+        connection,
+        """
+        SELECT relation.relname, constraints.conname,
+               constraints.contype::text, constraints.convalidated,
+               pg_get_constraintdef(constraints.oid, false) = %s
+        FROM pg_constraint AS constraints
+        JOIN pg_class AS relation ON relation.oid = constraints.conrelid
+        JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = current_schema()
+          AND (
+            (relation.relname = 'cpk_delegation_signing_keys'
+             AND constraints.conname =
+               'cpk_delegation_signing_keys_purpose_check')
+            OR
+            (relation.relname = 'cpk_gateway_key_rotations'
+             AND constraints.conname =
+               'cpk_gateway_key_rotations_purpose_check')
+          )
+        ORDER BY relation.relname, constraints.conname, constraints.oid
+        LIMIT 3
+        """,
+        (_DELEGATION_KEY_PURPOSE_DEFINITION,),
+        "delegation key purpose schema read failed",
+    )
+    if constraint_rows != list(_DELEGATION_KEY_PURPOSE_CONTRACTS):
+        raise SchemaMigrationError("delegation key purpose schema is not current")
 
 
 def _verify_graph_lineage_contracts(connection: PostgresConnection) -> None:

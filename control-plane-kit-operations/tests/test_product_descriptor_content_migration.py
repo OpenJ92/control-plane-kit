@@ -111,7 +111,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
             )
             self.assertEqual(
                 self._history(connection)[-1],
-                (17, "graph-lineage-compatibility"),
+                (18, "delegation-key-surface-read-purpose"),
             )
             self._assert_current_contract(connection)
             before = connection.execute(
@@ -482,6 +482,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
                             (15, "approval-subject-evidence"),
                             (16, "approval-scope-contracts"),
                             (17, "graph-lineage-compatibility"),
+                            (18, "delegation-key-surface-read-purpose"),
                         )
                         if outcome == "commit"
                         else _V9_HISTORY
@@ -584,7 +585,7 @@ class ProductDescriptorContentMigrationTests(unittest.TestCase):
         try:
             self.assertEqual(
                 self._history(observer)[-1],
-                (17, "graph-lineage-compatibility"),
+                (18, "delegation-key-surface-read-purpose"),
             )
             self.assertEqual(
                 observer.execute(

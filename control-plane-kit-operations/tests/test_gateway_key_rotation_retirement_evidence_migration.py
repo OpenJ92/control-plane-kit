@@ -32,7 +32,8 @@ _V13_HISTORY = (
 _V14_IDENTITY = (14, "gateway-key-rotation-retirement-evidence")
 _V15_IDENTITY = (15, "approval-subject-evidence")
 _V16_IDENTITY = (16, "approval-scope-contracts")
-_CURRENT_IDENTITY = (17, "graph-lineage-compatibility")
+_V17_IDENTITY = (17, "graph-lineage-compatibility")
+_CURRENT_IDENTITY = (18, "delegation-key-surface-read-purpose")
 _TABLE = "cpk_gateway_key_rotations"
 _CONSTRAINT = "cpk_gateway_key_rotations_retirement_check"
 _CATEGORICAL_ERROR = "gateway key rotation retirement evidence is not accepted"
@@ -81,7 +82,7 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
         self._v14()
         registry = postgres.POSTGRES_SCHEMA_MIGRATIONS
 
-        self.assertEqual(registry.target_version, 17)
+        self.assertEqual(registry.target_version, 18)
         self.assertEqual(
             tuple((migration.version, migration.name) for migration in registry.migrations),
             (
@@ -89,6 +90,7 @@ class GatewayKeyRotationRetirementEvidenceMigrationTests(unittest.TestCase):
                 _V14_IDENTITY,
                 _V15_IDENTITY,
                 _V16_IDENTITY,
+                _V17_IDENTITY,
                 _CURRENT_IDENTITY,
             ),
         )

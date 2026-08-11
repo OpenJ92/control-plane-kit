@@ -98,10 +98,13 @@ class GatewayKeyRotationTests(unittest.TestCase):
             approval.request.subject.descriptor()["purpose"],
             "workload-node-control-surface-read",
         )
-        self.assertEqual(
-            approval.request.subject.review_digest,
-            approval.request.review_digest,
-        )
+        stored_subject, stored_digest = self.connection.execute(
+            "SELECT subject_payload, review_digest FROM cpk_approval_requests "
+            "WHERE request_id = %s",
+            (approval.request.request_id,),
+        ).fetchone()
+        self.assertEqual(stored_subject, approval.request.subject.descriptor())
+        self.assertEqual(stored_digest, approval.request.subject.review_digest)
         postgres.verify_postgres_schema(self.connection)
 
     def test_permissions_and_optimistic_version_are_enforced(self) -> None:

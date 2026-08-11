@@ -97,6 +97,7 @@ _CATEGORICAL_MIGRATION_FAILURES = {
     15: ("approval subject evidence is not accepted", frozenset({"P1110"})),
     16: ("approval scope contract is not accepted", frozenset({"P1110"})),
     17: ("graph lineage compatibility is not accepted", frozenset({"P1110"})),
+    18: ("delegation key purpose contract is not accepted", frozenset({"P1110"})),
 }
 
 
