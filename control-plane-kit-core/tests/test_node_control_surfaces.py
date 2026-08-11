@@ -267,6 +267,15 @@ class WorkloadNodeControlSurfaceTests(unittest.TestCase):
         explicit_empty["control_surfaces"] = []
         with self.assertRaises(ProductRuntimeContractError):
             codec.decode(explicit_empty)
+        oversized = dict(codec.encode(ProductRuntimeContract()))
+        oversized["control_surfaces"] = [object()] * (
+            MAX_NODE_CONTROL_SURFACES + 1
+        )
+        with self.assertRaisesRegex(
+            ProductRuntimeContractError,
+            "too many control surfaces",
+        ):
+            codec.decode(oversized)
         with self.assertRaises(ProductRuntimeContractError):
             codec.decode({**encoded, "future": []})
 

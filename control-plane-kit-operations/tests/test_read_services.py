@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import unittest
 from datetime import datetime, timezone
@@ -415,7 +416,7 @@ class InstanceReadServiceTests(unittest.TestCase):
         declarations = surface["nodes"][0]["control_surfaces"]
 
         self.assertEqual(declarations, [declaration.descriptor()])
-        rendered = repr(declarations)
+        rendered = json.dumps(declarations, sort_keys=True)
         for forbidden in (
             "http://",
             "do-not-disclose",
@@ -424,6 +425,124 @@ class InstanceReadServiceTests(unittest.TestCase):
             '"status"',
         ):
             self.assertNotIn(forbidden, rendered)
+
+    def test_control_surface_rejects_malformed_persisted_declarations_without_disclosure(
+        self,
+    ) -> None:
+        surface_type = getattr(
+            node_control,
+            "WorkloadNodeControlSurfaceDescriptor",
+        )
+        variable = ControlPlaneVariableDescriptor(
+            variable_name=NodeControlGraphReference(
+                NodeControlGraphReferenceRole.VARIABLE,
+                "routing",
+            ),
+            kind=ControlPlaneVariableKind.SCALAR,
+            state_codec=ControlPlaneStateCodec.SCALAR_V1,
+            operation_contracts=(
+                ControlPlaneVariableOperationContract(
+                    NodeControlOperation.READ_STATE,
+                    None,
+                    ControlPlaneResultCodec.STATE_V1,
+                ),
+                ControlPlaneVariableOperationContract(
+                    NodeControlOperation.APPLY_COMMAND,
+                    ControlPlaneCommandCodec.REPLACE_SCALAR_V1,
+                    ControlPlaneResultCodec.TRANSITION_V1,
+                ),
+            ),
+        )
+        declaration = surface_type(
+            provider_socket_name=NodeControlGraphReference(
+                NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                "control",
+            ),
+            variables=(variable,),
+        )
+        current = product_graph("current", control_surfaces=(declaration,))
+
+        def unknown_field(descriptor):
+            descriptor["nodes"]["hello"]["block_spec"]["control_surfaces"][0][
+                "state"
+            ] = "do-not-disclose"
+
+        def excessive_surfaces(descriptor):
+            surfaces = descriptor["nodes"]["hello"]["block_spec"][
+                "control_surfaces"
+            ]
+            descriptor["nodes"]["hello"]["block_spec"]["control_surfaces"] = (
+                surfaces * 17
+            )
+
+        def missing_socket(descriptor):
+            descriptor["nodes"]["hello"]["block_spec"]["control_surfaces"][0][
+                "provider_socket_name"
+            ] = "missing-control"
+
+        def non_http_socket(descriptor):
+            protocol = {
+                "transport": "tcp",
+                "application": "postgres",
+            }
+            descriptor["nodes"]["hello"]["providers"]["control"][
+                "protocol"
+            ] = protocol
+            descriptor["nodes"]["hello"]["endpoints"]["control"][
+                "protocol"
+            ] = protocol
+
+        for mutate in (
+            unknown_field,
+            excessive_surfaces,
+            missing_socket,
+            non_http_socket,
+        ):
+            with self.subTest(mutate=mutate.__name__):
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                self.seed_graphs(current=current)
+                record = PostgresStoreBundle(self.connection).graphs.get(
+                    "graph-current"
+                )
+                valid_descriptor = json.loads(
+                    json.dumps(record.graph_descriptor)
+                )
+                hostile_descriptor = record.graph_descriptor
+                mutate(hostile_descriptor)
+                self.connection.autocommit = False
+                try:
+                    self.connection.execute(
+                        """
+                        UPDATE cpk_graph_versions
+                        SET graph_descriptor = %s
+                        WHERE graph_id = %s
+                        """,
+                        (
+                            psycopg.types.json.Jsonb(hostile_descriptor),
+                            "graph-current",
+                        ),
+                    )
+
+                    with self.assertRaisesRegex(
+                        ReadModelError,
+                        "^control surface graph is invalid$",
+                    ) as raised:
+                        self.service().control_surface("workspace-a")
+
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertIsNone(raised.exception.__context__)
+                    self.assertNotIn("do-not-disclose", str(raised.exception))
+                finally:
+                    self.connection.rollback()
+                    self.connection.autocommit = True
+                    restored = PostgresStoreBundle(
+                        self.connection
+                    ).graphs.get("graph-current")
+                    self.assertEqual(
+                        restored.graph_descriptor,
+                        valid_descriptor,
+                    )
+                    install_schema(self.connection)
 
     def seed_graphs(self, *, current=None) -> None:
         current = product_graph("current") if current is None else current

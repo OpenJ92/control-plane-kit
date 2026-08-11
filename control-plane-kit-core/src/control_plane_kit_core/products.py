@@ -634,6 +634,10 @@ class ProductRuntimeContractCodec:
                 raise ProductRuntimeContractError(
                     "control_surfaces must be omitted when empty"
                 )
+            if len(raw_control_surfaces) > MAX_NODE_CONTROL_SURFACES:
+                raise ProductRuntimeContractError(
+                    "product runtime contract declares too many control surfaces"
+                )
             return ProductRuntimeContract(
                 sockets=_sockets_from_descriptor(mapping["sockets"]),
                 provider_ports=tuple(

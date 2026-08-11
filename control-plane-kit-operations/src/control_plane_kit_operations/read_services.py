@@ -957,7 +957,20 @@ class InstanceReadService:
         if graph_id is None:
             return ControlSurfaceReadModel(workspace_id, pointer, False)
         record = self._graph_topology_store.get(graph_id)
-        descriptor = _redact_graph_descriptor(record.graph_descriptor)
+        graph = None
+        invalid_graph = False
+        try:
+            graph = self._graph_codec.decode(record.graph_descriptor)
+        except (GraphDescriptorError, KeyError, TypeError, ValueError):
+            invalid_graph = True
+        if graph is not None:
+            invalid_graph = not validate_graph(
+                graph,
+                codec=self._graph_codec,
+            ).valid
+        if invalid_graph or graph is None:
+            raise ReadModelError("control surface graph is invalid")
+        descriptor = _redact_graph_descriptor(self._graph_codec.encode(graph))
         nodes = _mapping(descriptor.get("nodes", {}))
         return ControlSurfaceReadModel(
             workspace_id=workspace_id,
