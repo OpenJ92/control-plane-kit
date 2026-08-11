@@ -730,6 +730,16 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         self.assertNotIn("alpha", representation)
         self.assertNotIn("workspace-1", representation)
 
+        capability_result = capability_codec.capabilities_result()
+        capability_representation = repr(capability_result)
+        self.assertNotIn(
+            capability_result.request_id,
+            capability_representation,
+        )
+        self.assertNotIn("Public mode.", capability_representation)
+        self.assertNotIn("mode", capability_representation)
+        self.assertNotIn("workspace-1", capability_representation)
+
     def test_root_exports_module_inventory_and_import_boundary_are_exact(self) -> None:
         module = self.result_module()
         public_names = (
