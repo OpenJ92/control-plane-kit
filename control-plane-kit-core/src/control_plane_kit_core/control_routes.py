@@ -34,6 +34,7 @@ class ControlRouteScope(StrEnum):
     RUN_LOAD = "load:run"
     READ_DISCOVERY = "discovery:read"
     WRITE_DISCOVERY = "discovery:write"
+    READ_NODE_CONTROL_SURFACE = "node-control-surface:read"
     READ_NODE_CONTROL = "node-control:read"
     APPLY_NODE_CONTROL = "node-control:apply"
 
@@ -352,6 +353,20 @@ DISCOVERY_ROUTES = ControlRouteSet(
 NODE_CONTROL_ROUTES = ControlRouteSet(
     name=ControlRouteSetName.NODE_CONTROL,
     routes=(
+        ControlRoute(
+            name="surface-capabilities",
+            method=ControlRouteMethod.GET,
+            path=control_path("capabilities", prefix=WORKLOAD_CONTROL_PREFIX),
+            scope=ControlRouteScope.READ_NODE_CONTROL_SURFACE,
+            description="Read the static workload node-control surface declaration.",
+        ),
+        ControlRoute(
+            name="surface-status",
+            method=ControlRouteMethod.GET,
+            path=control_path("status", prefix=WORKLOAD_CONTROL_PREFIX),
+            scope=ControlRouteScope.READ_NODE_CONTROL_SURFACE,
+            description="Read bounded workload node-control registry coverage.",
+        ),
         ControlRoute(
             name="read-variable",
             method=ControlRouteMethod.GET,
