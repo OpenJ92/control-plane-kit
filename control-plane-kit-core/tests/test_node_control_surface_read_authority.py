@@ -546,10 +546,10 @@ class NodeControlSurfaceReadAuthorityTests(unittest.TestCase):
             with self.subTest(admitted=value):
                 self.assertEqual(replace(grant, issuer=value).issuer, value)
 
-        for value in fixture["authority_reference_rejected"]:
-            with self.subTest(rejected=value):
-                with self.assertRaises(error_type):
-                    replace(grant, issuer=value)
+        for vector in fixture["authority_reference_rejected"]:
+            with self.subTest(rejected=vector["value"]):
+                with self.assertRaisesRegex(error_type, vector["law"]):
+                    replace(grant, issuer=vector["value"])
 
     def test_codecs_and_constructors_own_strict_bounds_and_temporal_laws(self) -> None:
         error_type = self.contract("NodeControlSurfaceReadContractError")

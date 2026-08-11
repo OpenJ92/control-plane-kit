@@ -183,10 +183,13 @@ class NodeControlPublicMaterialTests(unittest.TestCase):
             with self.subTest(admitted=value):
                 self.assertEqual(replace(grant, issuer=value).issuer, value)
 
-        for value in fixture["authority_reference_rejected"]:
-            with self.subTest(rejected=value):
-                with self.assertRaises(NodeControlContractError):
-                    replace(grant, issuer=value)
+        for vector in fixture["authority_reference_rejected"]:
+            with self.subTest(rejected=vector["value"]):
+                with self.assertRaisesRegex(
+                    NodeControlContractError,
+                    vector["law"],
+                ):
+                    replace(grant, issuer=vector["value"])
 
     def test_failures_never_echo_attacker_material_or_retain_context(self) -> None:
         request = self.request()
