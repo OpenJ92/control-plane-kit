@@ -1284,6 +1284,23 @@ public contract shape:
   codes, never provider errors, signatures, credentials, endpoints, or secret
   values.
 
+  `WorkloadNodeControlSurfaceDescriptor` groups one or more variable
+  descriptors under the exact HTTP provider socket through which they are
+  reached. Product runtime contracts and compiled block specifications retain
+  a canonical `control_surfaces` tuple, so accepted graph truth can answer:
+
+  ```text
+  node x provider socket -> exact declared variable contracts
+  ```
+
+  Surfaces and variables are finite, canonically ordered, and unique in their
+  local identity domains. The same variable name may occur on distinct
+  provider sockets because the full identity is `(provider socket, variable)`.
+  `NODE_CONTROLLABLE` is present exactly when at least one surface is declared.
+  A surface carries no endpoint, credential, current state, version, health,
+  or runtime status. Legacy product and graph descriptors omit the field and
+  retain their canonical bytes; a present empty field is noncanonical.
+
   ```json
   {
     "operation_contracts": [

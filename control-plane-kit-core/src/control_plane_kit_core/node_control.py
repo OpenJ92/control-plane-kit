@@ -24,6 +24,8 @@ from control_plane_kit_core.control_routes import ControlRouteSetName
 MAX_NODE_CONTROL_STATE_ITEMS = 128
 MAX_NODE_CONTROL_PAYLOAD_BYTES = 16_384
 MAX_NODE_CONTROL_EVIDENCE_ITEMS = 1
+MAX_NODE_CONTROL_SURFACES = 16
+MAX_NODE_CONTROL_VARIABLES_PER_SURFACE = 128
 MAX_WORKLOAD_NODE_CONTROL_GRANT_LIFETIME_SECONDS = 300
 
 _MAX_IDENTIFIER = 128
@@ -132,6 +134,7 @@ _VARIABLE_KEYS = frozenset(
         "description",
     }
 )
+_SURFACE_KEYS = frozenset({"provider_socket_name", "variables"})
 
 
 class NodeControlContractError(ValueError):
@@ -1411,6 +1414,111 @@ class ControlPlaneVariableDescriptorCodec:
         )
 
 
+@dataclass(frozen=True, order=True)
+class WorkloadNodeControlSurfaceDescriptor:
+    """Static graph-visible variables exposed through one provider socket."""
+
+    provider_socket_name: NodeControlGraphReference
+    variables: tuple[ControlPlaneVariableDescriptor, ...]
+
+    def __post_init__(self) -> None:
+        _validate_graph_reference(
+            self.provider_socket_name,
+            NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+            "node-control surface provider_socket_name",
+        )
+        if not isinstance(self.variables, tuple):
+            raise NodeControlContractError(
+                "node-control surface variables must be a tuple of descriptors"
+            )
+        if not self.variables:
+            raise NodeControlContractError(
+                "node-control surface requires at least one variable"
+            )
+        if len(self.variables) > MAX_NODE_CONTROL_VARIABLES_PER_SURFACE:
+            raise NodeControlContractError(
+                "node-control surface contains too many variables"
+            )
+        if not all(
+            isinstance(variable, ControlPlaneVariableDescriptor)
+            for variable in self.variables
+        ):
+            raise NodeControlContractError(
+                "node-control surface variables must be a tuple of descriptors"
+            )
+        ordered = tuple(
+            sorted(self.variables, key=lambda variable: variable.variable_name)
+        )
+        names = tuple(variable.variable_name.value for variable in ordered)
+        if len(set(names)) != len(names):
+            raise NodeControlContractError(
+                "node-control surface variable names must be unique"
+            )
+        object.__setattr__(self, "variables", ordered)
+        _validate_descriptor_size(
+            self.descriptor(),
+            "node-control surface descriptor",
+        )
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "provider_socket_name": self.provider_socket_name.value,
+            "variables": [
+                ControlPlaneVariableDescriptorCodec().encode(variable)
+                for variable in self.variables
+            ],
+        }
+
+
+class WorkloadNodeControlSurfaceDescriptorCodec:
+    """Strict codec for one static workload node-control surface."""
+
+    def encode(
+        self,
+        surface: WorkloadNodeControlSurfaceDescriptor,
+    ) -> dict[str, object]:
+        if not isinstance(surface, WorkloadNodeControlSurfaceDescriptor):
+            raise NodeControlContractError(
+                "encode requires WorkloadNodeControlSurfaceDescriptor"
+            )
+        descriptor = surface.descriptor()
+        _validate_descriptor_size(descriptor, "node-control surface descriptor")
+        return descriptor
+
+    def decode(
+        self,
+        descriptor: Mapping[str, object],
+    ) -> WorkloadNodeControlSurfaceDescriptor:
+        mapping = _mapping(descriptor, "node-control surface descriptor")
+        _require_keys(mapping, _SURFACE_KEYS, "node-control surface descriptor")
+        raw_variables = mapping.get("variables")
+        if not isinstance(raw_variables, list):
+            raise NodeControlContractError(
+                "node-control surface variables must be a list"
+            )
+        if len(raw_variables) > MAX_NODE_CONTROL_VARIABLES_PER_SURFACE:
+            raise NodeControlContractError(
+                "node-control surface contains too many variables"
+            )
+        surface = WorkloadNodeControlSurfaceDescriptor(
+            provider_socket_name=NodeControlGraphReference(
+                NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                _text(mapping, "provider_socket_name"),
+            ),
+            variables=tuple(
+                ControlPlaneVariableDescriptorCodec().decode(
+                    _mapping(value, "node-control surface variable")
+                )
+                for value in raw_variables
+            ),
+        )
+        _validate_descriptor_size(
+            surface.descriptor(),
+            "node-control surface descriptor",
+        )
+        return surface
+
+
 _STATE_CODEC_TYPES = {
     ControlPlaneStateCodec.SCALAR_V1: ScalarControlState,
     ControlPlaneStateCodec.MAP_V1: MapControlState,
@@ -1801,6 +1909,8 @@ __all__ = [
     "MAX_NODE_CONTROL_EVIDENCE_ITEMS",
     "MAX_NODE_CONTROL_PAYLOAD_BYTES",
     "MAX_NODE_CONTROL_STATE_ITEMS",
+    "MAX_NODE_CONTROL_SURFACES",
+    "MAX_NODE_CONTROL_VARIABLES_PER_SURFACE",
     "MAX_WORKLOAD_NODE_CONTROL_GRANT_LIFETIME_SECONDS",
     "MapControlState",
     "NodeControlCanonicalization",
@@ -1826,5 +1936,7 @@ __all__ = [
     "WeightedRoutingControlState",
     "WorkloadNodeControlGrantVerificationCode",
     "WorkloadNodeControlGrantVerificationResult",
+    "WorkloadNodeControlSurfaceDescriptor",
+    "WorkloadNodeControlSurfaceDescriptorCodec",
     "verify_workload_node_control_grant",
 ]

@@ -14,6 +14,7 @@ from control_plane_kit_core.topology.codec import (
     GraphDescriptorCodec,
     GraphDescriptorError,
 )
+from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import expected_protocols
 
 
@@ -36,6 +37,7 @@ class ValidationCode(StrEnum):
     EDGE_PROTOCOL = "edge-protocol"
     EDGE_BINDING = "edge-binding"
     CONTROL_ROUTE_SET = "control-route-set"
+    NODE_CONTROL_SURFACE = "node-control-surface"
     DUPLICATE_PROVIDER_SOCKET = "duplicate-provider-socket"
     DUPLICATE_REQUIREMENT_SOCKET = "duplicate-requirement-socket"
     EDGE_ENV_BINDINGS = "edge-env-bindings"
@@ -428,6 +430,32 @@ def validate_graph(
                         ValidationCode.CONTROL_ROUTE_SET,
                         NodeSubject(node_id),
                         f"capability references unknown route set {capability.route_set.value!r}",
+                    )
+                )
+        for surface in node.block_spec.control_surfaces:
+            socket_name = surface.provider_socket_name.value
+            subject = SocketSubject(
+                node_id,
+                socket_name,
+                SocketDirection.PROVIDER,
+            )
+            try:
+                provider = node.provider_socket(socket_name)
+            except KeyError:
+                findings.append(
+                    _error(
+                        ValidationCode.NODE_CONTROL_SURFACE,
+                        subject,
+                        "node-control surface references a missing provider socket",
+                    )
+                )
+                continue
+            if provider.protocol is not Protocol.HTTP:
+                findings.append(
+                    _error(
+                        ValidationCode.NODE_CONTROL_SURFACE,
+                        subject,
+                        "node-control surface provider socket must use HTTP",
                     )
                 )
         for check in node.block_spec.verification.checks:
