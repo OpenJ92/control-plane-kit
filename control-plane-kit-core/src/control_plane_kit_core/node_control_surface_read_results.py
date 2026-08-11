@@ -153,41 +153,10 @@ class NodeControlSurfaceStatusResult:
             raise NodeControlSurfaceReadContractError(
                 "surface-read status result kind requires a status request"
             )
-        if not isinstance(self.installed_variable_names, tuple):
-            raise NodeControlSurfaceReadContractError(
-                "surface-read installed variable names must be a tuple"
-            )
-        if (
-            len(self.installed_variable_names)
-            > MAX_NODE_CONTROL_VARIABLES_PER_SURFACE
-        ):
-            raise NodeControlSurfaceReadContractError(
-                "surface-read result contains too many installed variable names"
-            )
-        if not all(
-            isinstance(name, NodeControlGraphReference)
-            and name.role is NodeControlGraphReferenceRole.VARIABLE
-            for name in self.installed_variable_names
-        ):
-            raise NodeControlSurfaceReadContractError(
-                "surface-read installed variable names must be variable references"
-            )
-        if self.installed_variable_names != tuple(
-            sorted(self.installed_variable_names)
-        ):
-            raise NodeControlSurfaceReadContractError(
-                "surface-read installed variable names must be canonical"
-            )
-        values = tuple(name.value for name in self.installed_variable_names)
-        if len(set(values)) != len(values):
-            raise NodeControlSurfaceReadContractError(
-                "surface-read installed variable names must be unique"
-            )
-        declared = _declared_variable_names(self.declaration)
-        if any(name not in declared for name in self.installed_variable_names):
-            raise NodeControlSurfaceReadContractError(
-                "surface-read installed variable name is undeclared"
-            )
+        _validate_installed_variable_names(
+            self.declaration,
+            self.installed_variable_names,
+        )
         _bounded_canonical_bytes(
             self.descriptor(),
             MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES,
@@ -222,13 +191,10 @@ class NodeControlSurfaceStatusResult:
 
     @property
     def registry_coverage(self) -> NodeControlSurfaceRegistryCoverage:
-        if not self.installed_variable_names:
-            return NodeControlSurfaceRegistryCoverage.NONE
-        if self.installed_variable_names == _declared_variable_names(
-            self.declaration
-        ):
-            return NodeControlSurfaceRegistryCoverage.COMPLETE
-        return NodeControlSurfaceRegistryCoverage.PARTIAL
+        return _derive_registry_coverage(
+            self.declaration,
+            self.installed_variable_names,
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -369,17 +335,24 @@ class NodeControlSurfaceReadResultCodec:
         except NodeControlContractError:
             pass
         else:
-            result = self.status_result(installed)
+            _validate_installed_variable_names(
+                self._declaration,
+                installed,
+            )
             coverage = _enum(
                 NodeControlSurfaceRegistryCoverage,
                 mapping.get("registry_coverage"),
                 "surface-read result registry coverage",
             )
-            if coverage is not result.registry_coverage:
+            expected_coverage = _derive_registry_coverage(
+                self._declaration,
+                installed,
+            )
+            if coverage is not expected_coverage:
                 raise NodeControlSurfaceReadContractError(
                     "surface-read result registry coverage is contradictory"
                 )
-            return result
+            return self.status_result(installed)
         raise NodeControlSurfaceReadContractError(
             "surface-read result installed variable names are malformed"
         )
@@ -495,6 +468,53 @@ def _declared_variable_names(
     return tuple(
         variable.variable_name for variable in declaration.surface.variables
     )
+
+
+def _validate_installed_variable_names(
+    declaration: WorkloadNodeControlSurfaceDeclaration,
+    installed: tuple[NodeControlGraphReference, ...],
+) -> None:
+    if not isinstance(installed, tuple):
+        raise NodeControlSurfaceReadContractError(
+            "surface-read installed variable names must be a tuple"
+        )
+    if len(installed) > MAX_NODE_CONTROL_VARIABLES_PER_SURFACE:
+        raise NodeControlSurfaceReadContractError(
+            "surface-read result contains too many installed variable names"
+        )
+    if not all(
+        isinstance(name, NodeControlGraphReference)
+        and name.role is NodeControlGraphReferenceRole.VARIABLE
+        for name in installed
+    ):
+        raise NodeControlSurfaceReadContractError(
+            "surface-read installed variable names must be variable references"
+        )
+    if installed != tuple(sorted(installed)):
+        raise NodeControlSurfaceReadContractError(
+            "surface-read installed variable names must be canonical"
+        )
+    values = tuple(name.value for name in installed)
+    if len(set(values)) != len(values):
+        raise NodeControlSurfaceReadContractError(
+            "surface-read installed variable names must be unique"
+        )
+    declared = _declared_variable_names(declaration)
+    if any(name not in declared for name in installed):
+        raise NodeControlSurfaceReadContractError(
+            "surface-read installed variable name is undeclared"
+        )
+
+
+def _derive_registry_coverage(
+    declaration: WorkloadNodeControlSurfaceDeclaration,
+    installed: tuple[NodeControlGraphReference, ...],
+) -> NodeControlSurfaceRegistryCoverage:
+    if not installed:
+        return NodeControlSurfaceRegistryCoverage.NONE
+    if installed == _declared_variable_names(declaration):
+        return NodeControlSurfaceRegistryCoverage.COMPLETE
+    return NodeControlSurfaceRegistryCoverage.PARTIAL
 
 
 def _mapping(value: object, name: str) -> Mapping[str, object]:

@@ -1319,10 +1319,11 @@ public contract shape:
   `NodeControlSurfaceCapabilitiesResult` and
   `NodeControlSurfaceStatusResult` form a disjoint nominal result sum under the
   common `workload-node-control-surface-read-result.v1` profile. Both retain the
-  exact request and declaration context while their wire carries only request
-  ID/digest, read kind, declaration identity, and variant data. Capabilities
-  echoes the exact declaration. Status carries a canonical installed-variable
-  subset and derives `NodeControlSurfaceRegistryCoverage` as exactly
+  exact request and declaration context while their wire carries only the
+  common profile and canonicalization, request ID/digest, read kind,
+  declaration identity, and variant data. Capabilities echoes the exact
+  declaration. Status carries a canonical installed-variable subset and
+  derives `NodeControlSurfaceRegistryCoverage` as exactly
   `none|partial|complete`; wire coverage is checked against that derivation and
   is never trusted as live registry truth. The strict codec admits mappings no
   larger than the reachable 16,902-byte capability or 4,811-byte status ceiling
