@@ -49,5 +49,94 @@
     },
     "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"declaration_identity\":\"e9ada911c3087418dbbdefafa7bf58e120832b15abb16d6a0fb453e33181acd2\",\"kind\":\"capabilities\",\"profile\":\"workload-node-control-surface-read-request.v1\",\"request_id\":\"surface-read-1\",\"target\":{\"graph_revision\":\"revision-7\",\"node_id\":\"router\",\"provider_socket_name\":\"control\",\"workspace_id\":\"workspace-1\"}}",
     "sha256": "efba35d7602d45bf78dac53a3ea33c72f9805fcb6c74134beaca97cc038321dc"
+  },
+  "results": {
+    "capabilities": {
+      "descriptor": {
+        "canonicalization": "jcs-rfc8785.v1",
+        "declaration": {
+          "profile": "workload-node-control-surface-declaration.v1",
+          "surface": {
+            "provider_socket_name": "control",
+            "variables": [
+              {
+                "capability": "node-controllable",
+                "description": "Public mode.",
+                "kind": "scalar",
+                "operation_contracts": [
+                  {
+                    "command_codec": null,
+                    "operation": "read-state",
+                    "result_codec": "control.state.v1"
+                  },
+                  {
+                    "command_codec": "control.replace-scalar.v1",
+                    "operation": "apply-command",
+                    "result_codec": "control.transition.v1"
+                  }
+                ],
+                "route_set": "node-control",
+                "state_codec": "control.scalar.v1",
+                "variable_name": "mode"
+              }
+            ]
+          }
+        },
+        "declaration_identity": "e9ada911c3087418dbbdefafa7bf58e120832b15abb16d6a0fb453e33181acd2",
+        "kind": "capabilities",
+        "profile": "workload-node-control-surface-read-result.v1",
+        "request_digest": "efba35d7602d45bf78dac53a3ea33c72f9805fcb6c74134beaca97cc038321dc",
+        "request_id": "surface-read-1"
+      },
+      "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"declaration\":{\"profile\":\"workload-node-control-surface-declaration.v1\",\"surface\":{\"provider_socket_name\":\"control\",\"variables\":[{\"capability\":\"node-controllable\",\"description\":\"Public mode.\",\"kind\":\"scalar\",\"operation_contracts\":[{\"command_codec\":null,\"operation\":\"read-state\",\"result_codec\":\"control.state.v1\"},{\"command_codec\":\"control.replace-scalar.v1\",\"operation\":\"apply-command\",\"result_codec\":\"control.transition.v1\"}],\"route_set\":\"node-control\",\"state_codec\":\"control.scalar.v1\",\"variable_name\":\"mode\"}]}},\"declaration_identity\":\"e9ada911c3087418dbbdefafa7bf58e120832b15abb16d6a0fb453e33181acd2\",\"kind\":\"capabilities\",\"profile\":\"workload-node-control-surface-read-result.v1\",\"request_digest\":\"efba35d7602d45bf78dac53a3ea33c72f9805fcb6c74134beaca97cc038321dc\",\"request_id\":\"surface-read-1\"}",
+      "sha256": "1f9873de1d166e25c07a1284b7ef3afb203e33ceca7ea38e5cd2c57b4c1b8a1d"
+    },
+    "status_none": {
+      "descriptor": {
+        "canonicalization": "jcs-rfc8785.v1",
+        "declaration_identity": "5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2",
+        "installed_variable_names": [],
+        "kind": "status",
+        "profile": "workload-node-control-surface-read-result.v1",
+        "registry_coverage": "none",
+        "request_digest": "3706bad3fddb5580799458721e6dbb33c1e3b45ee6f2961f9af184f6c6abd652",
+        "request_id": "surface-status-1"
+      },
+      "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"declaration_identity\":\"5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2\",\"installed_variable_names\":[],\"kind\":\"status\",\"profile\":\"workload-node-control-surface-read-result.v1\",\"registry_coverage\":\"none\",\"request_digest\":\"3706bad3fddb5580799458721e6dbb33c1e3b45ee6f2961f9af184f6c6abd652\",\"request_id\":\"surface-status-1\"}",
+      "sha256": "63320620ba3f8dd0faa3759dd77a4f004be11562e37d926d18d000fff3adf6cb"
+    },
+    "status_partial": {
+      "descriptor": {
+        "canonicalization": "jcs-rfc8785.v1",
+        "declaration_identity": "5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2",
+        "installed_variable_names": [
+          "alpha"
+        ],
+        "kind": "status",
+        "profile": "workload-node-control-surface-read-result.v1",
+        "registry_coverage": "partial",
+        "request_digest": "3706bad3fddb5580799458721e6dbb33c1e3b45ee6f2961f9af184f6c6abd652",
+        "request_id": "surface-status-1"
+      },
+      "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"declaration_identity\":\"5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2\",\"installed_variable_names\":[\"alpha\"],\"kind\":\"status\",\"profile\":\"workload-node-control-surface-read-result.v1\",\"registry_coverage\":\"partial\",\"request_digest\":\"3706bad3fddb5580799458721e6dbb33c1e3b45ee6f2961f9af184f6c6abd652\",\"request_id\":\"surface-status-1\"}",
+      "sha256": "93fedc5fd43071b489783503d3210cfda565c25be37344b5fd8d3d9b3a635bd3"
+    },
+    "status_complete": {
+      "descriptor": {
+        "canonicalization": "jcs-rfc8785.v1",
+        "declaration_identity": "5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2",
+        "installed_variable_names": [
+          "alpha",
+          "beta"
+        ],
+        "kind": "status",
+        "profile": "workload-node-control-surface-read-result.v1",
+        "registry_coverage": "complete",
+        "request_digest": "3706bad3fddb5580799458721e6dbb33c1e3b45ee6f2961f9af184f6c6abd652",
+        "request_id": "surface-status-1"
+      },
+      "canonical_utf8": "{\"canonicalization\":\"jcs-rfc8785.v1\",\"declaration_identity\":\"5dbd2a61e195477472bbfb852da438020884b6ae1158f76e0f8bad1e3ec2abf2\",\"installed_variable_names\":[\"alpha\",\"beta\"],\"kind\":\"status\",\"profile\":\"workload-node-control-surface-read-result.v1\",\"registry_coverage\":\"complete\",\"request_digest\":\"3706bad3fddb5580799458721e6dbb33c1e3b45ee6f2961f9af184f6c6abd652\",\"request_id\":\"surface-status-1\"}",
+      "sha256": "14672ee4512356d42bddda32d79c85e2765158f01a4747120ad25ec5a0b8f971"
+    }
   }
 }
