@@ -15,6 +15,36 @@
     "router.internal:8080suffix",
     "localhost:70000"
   ],
+  "authority_reference_accepted": [
+    "router.internal",
+    "secret-agent",
+    "bearer-capacity",
+    "token-count",
+    "sketch-target",
+    "sg-routing",
+    "router.internal:0",
+    "router.internal:65536",
+    "router.internal:8080suffix",
+    "localhost:70000"
+  ],
+  "authority_reference_rejected": [
+    "sk-abc12345",
+    "SG.abc12345",
+    "https://router.internal/control",
+    "custom+tcp://router.internal",
+    "//router.internal/control",
+    "router.internal:1",
+    "router.internal:8080",
+    "router.internal:65535",
+    "[2001:db8::1]:443",
+    "192.0.2.10",
+    "2001:db8::1",
+    "localhost",
+    "LOCALHOST.",
+    "api.localhost",
+    "localhost:443",
+    "api.localhost:8443"
+  ],
   "rejected": [
     {"law": "credential-envelope", "value": "Authorization: Bearer abc123"},
     {"law": "credential-envelope", "value": "authorization \t: \tBasic abc123"},

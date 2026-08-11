@@ -1301,6 +1301,26 @@ public contract shape:
   or runtime status. Legacy product and graph descriptors omit the field and
   retain their canonical bytes; a present empty field is noncanonical.
 
+  `WorkloadNodeControlSurfaceDeclaration` wraps that static descriptor in the
+  versioned `workload-node-control-surface-declaration.v1` identity domain.
+  `NodeControlSurfaceReadRequest` binds one exact graph target, declaration
+  identity, request id, and the closed `capabilities|status` read kind under
+  `jcs-rfc8785.v1`. `DelegatedWorkloadNodeControlSurfaceReadGrant` binds the
+  request digest plus issuer, key, audience, bounded time window, JTI, and the
+  distinct `workload-node-control-surface-read` key purpose. Its pure verifier
+  compares claims only; this unsigned value is not authentication or authority
+  until the server SDK verifies its signed envelope and durable key policy.
+
+  The workload route set declares `GET /__control/capabilities` and
+  `GET /__control/status` under the least-privilege
+  `node-control-surface:read` scope. Core does not implement HTTP or inspect a
+  registry. Result variants and structural registry coverage belong to #1548;
+  signed-envelope admission belongs to #1542; the FastAPI adapter and proof
+  that reported identities came from a maintained live registry belong to
+  #1507. Language-neutral declaration/request vectors live in
+  `control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json`
+  and are described by `control-plane-kit-core/docs/NODE_CONTROL_CANONICAL_WIRE.md`.
+
   ```json
   {
     "operation_contracts": [

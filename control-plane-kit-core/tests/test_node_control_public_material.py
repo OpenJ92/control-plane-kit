@@ -1,3 +1,4 @@
+from dataclasses import replace
 import json
 from pathlib import Path
 import unittest
@@ -176,18 +177,16 @@ class NodeControlPublicMaterialTests(unittest.TestCase):
 
     def test_authority_references_reject_endpoints_but_accept_bare_dns(self) -> None:
         request = self.request()
-        self.assertEqual(self.grant(request, "router.internal").issuer, "router.internal")
+        fixture = self.fixture()
+        grant = self.grant(request, "grant-1")
+        for value in fixture["authority_reference_accepted"]:
+            with self.subTest(admitted=value):
+                self.assertEqual(replace(grant, issuer=value).issuer, value)
 
-        for value in (
-            "https://router.internal/control",
-            "router.internal:443",
-        ):
+        for value in fixture["authority_reference_rejected"]:
             with self.subTest(rejected=value):
-                with self.assertRaisesRegex(
-                    NodeControlContractError,
-                    "endpoint-envelope",
-                ):
-                    self.grant(request, value)
+                with self.assertRaises(NodeControlContractError):
+                    replace(grant, issuer=value)
 
     def test_failures_never_echo_attacker_material_or_retain_context(self) -> None:
         request = self.request()

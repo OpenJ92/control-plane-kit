@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import ast
+from copy import deepcopy
 from dataclasses import fields, replace
 import hashlib
 import importlib
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 
@@ -43,25 +45,13 @@ from control_plane_kit_core.node_control import (
 from control_plane_kit_core.runtime_effects import GatewayTargetId
 
 
-DECLARATION_BYTES = (
-    b'{"profile":"workload-node-control-surface-declaration.v1","surface":'
-    b'{"provider_socket_name":"control","variables":['
-    b'{"capability":"node-controllable","description":"Public mode.",'
-    b'"kind":"scalar","operation_contracts":['
-    b'{"command_codec":null,"operation":"read-state","result_codec":"control.state.v1"},'
-    b'{"command_codec":"control.replace-scalar.v1","operation":"apply-command",'
-    b'"result_codec":"control.transition.v1"}],"route_set":"node-control",'
-    b'"state_codec":"control.scalar.v1","variable_name":"mode"}]}}'
-)
-DECLARATION_SHA256 = "e9ada911c3087418dbbdefafa7bf58e120832b15abb16d6a0fb453e33181acd2"
-REQUEST_BYTES = (
-    b'{"canonicalization":"jcs-rfc8785.v1","declaration_identity":"'
-    b'e9ada911c3087418dbbdefafa7bf58e120832b15abb16d6a0fb453e33181acd2",'
-    b'"kind":"capabilities","profile":"workload-node-control-surface-read-request.v1",'
-    b'"request_id":"surface-read-1","target":{"graph_revision":"revision-7",'
-    b'"node_id":"router","provider_socket_name":"control","workspace_id":"workspace-1"}}'
-)
-REQUEST_SHA256 = "efba35d7602d45bf78dac53a3ea33c72f9805fcb6c74134beaca97cc038321dc"
+FIXTURE_ROOT = Path(__file__).parent / "fixtures"
+CANONICAL_FIXTURE = FIXTURE_ROOT / "node_control_surface_read_canonical_wire_v1.json"
+PUBLIC_MATERIAL_FIXTURE = FIXTURE_ROOT / "node_control_public_material_v1.json"
+
+
+def load_fixture(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 class NodeControlSurfaceReadAuthorityTests(unittest.TestCase):
@@ -202,10 +192,14 @@ class NodeControlSurfaceReadAuthorityTests(unittest.TestCase):
         module = self.contract_module()
         declaration = self.declaration()
         codec = self.contract("WorkloadNodeControlSurfaceDeclarationCodec")()
+        vector = load_fixture(CANONICAL_FIXTURE)["declaration"]
+        expected_bytes = vector["canonical_utf8"].encode("utf-8")
+        expected_sha256 = vector["sha256"]
 
-        self.assertEqual(declaration.canonical_bytes(), DECLARATION_BYTES)
-        self.assertEqual(hashlib.sha256(DECLARATION_BYTES).hexdigest(), DECLARATION_SHA256)
-        self.assertEqual(declaration.identity().value, DECLARATION_SHA256)
+        self.assertEqual(codec.encode(declaration), vector["descriptor"])
+        self.assertEqual(declaration.canonical_bytes(), expected_bytes)
+        self.assertEqual(hashlib.sha256(expected_bytes).hexdigest(), expected_sha256)
+        self.assertEqual(declaration.identity().value, expected_sha256)
         self.assertEqual(codec.decode(codec.encode(declaration)), declaration)
         self.assertEqual(module.MAX_NODE_CONTROL_SURFACE_DECLARATION_BYTES, 16_453)
 
@@ -228,10 +222,14 @@ class NodeControlSurfaceReadAuthorityTests(unittest.TestCase):
         module = self.contract_module()
         request = self.request()
         codec = self.contract("NodeControlSurfaceReadRequestCodec")()
+        vector = load_fixture(CANONICAL_FIXTURE)["request"]
+        expected_bytes = vector["canonical_utf8"].encode("utf-8")
+        expected_sha256 = vector["sha256"]
 
-        self.assertEqual(request.canonical_bytes(), REQUEST_BYTES)
-        self.assertEqual(hashlib.sha256(REQUEST_BYTES).hexdigest(), REQUEST_SHA256)
-        self.assertEqual(request.canonical_digest().value, REQUEST_SHA256)
+        self.assertEqual(codec.encode(request), vector["descriptor"])
+        self.assertEqual(request.canonical_bytes(), expected_bytes)
+        self.assertEqual(hashlib.sha256(expected_bytes).hexdigest(), expected_sha256)
+        self.assertEqual(request.canonical_digest().value, expected_sha256)
         self.assertEqual(codec.decode(codec.encode(request)), request)
         self.assertEqual(module.MAX_NODE_CONTROL_SURFACE_READ_REQUEST_BYTES, 951)
 
@@ -246,6 +244,33 @@ class NodeControlSurfaceReadAuthorityTests(unittest.TestCase):
                     workspace_id=self.reference(
                         NodeControlGraphReferenceRole.WORKSPACE,
                         "workspace-2",
+                    )
+                ),
+            ),
+            replace(
+                request,
+                target=self.target(
+                    graph_revision=self.reference(
+                        NodeControlGraphReferenceRole.GRAPH_REVISION,
+                        "revision-8",
+                    )
+                ),
+            ),
+            replace(
+                request,
+                target=self.target(
+                    node_id=self.reference(
+                        NodeControlGraphReferenceRole.NODE,
+                        "router-2",
+                    )
+                ),
+            ),
+            replace(
+                request,
+                target=self.target(
+                    provider_socket_name=self.reference(
+                        NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                        "control-2",
                     )
                 ),
             ),
@@ -364,17 +389,22 @@ class NodeControlSurfaceReadAuthorityTests(unittest.TestCase):
         verify = self.contract("verify_workload_node_control_surface_read_grant")
         code = self.contract("WorkloadNodeControlSurfaceReadGrantVerificationCode")
 
-        def result(candidate):
+        def result(candidate, now: int = 150):
             return verify(
                 candidate,
                 request,
                 expected_issuer="cpk-server",
                 expected_key_id="surface-read-key-1",
                 expected_audience="workload:router:control",
-                now=150,
+                now=now,
             )
 
         self.assertTrue(result(grant).is_accepted)
+        self.assertTrue(result(grant, now=grant.not_before).is_accepted)
+        self.assertIs(
+            result(grant, now=grant.expires_at).code,
+            code.TEMPORALLY_INVALID,
+        )
         other_target = self.target(
             workspace_id=self.reference(NodeControlGraphReferenceRole.WORKSPACE, "workspace-2"),
             graph_revision=self.reference(NodeControlGraphReferenceRole.GRAPH_REVISION, "revision-8"),
@@ -510,21 +540,126 @@ class NodeControlSurfaceReadAuthorityTests(unittest.TestCase):
         error_type = self.contract("NodeControlSurfaceReadContractError")
         request = self.request()
         grant = self.grant(request)
-        unsafe = (
-            lambda: replace(request, request_id="sk-secret-value"),
-            lambda: replace(grant, issuer="127.0.0.1"),
-            lambda: replace(grant, audience="localhost"),
-            lambda: replace(grant, jti="sg.secret-value"),
+        fixture = load_fixture(PUBLIC_MATERIAL_FIXTURE)
+
+        for value in fixture["authority_reference_accepted"]:
+            with self.subTest(admitted=value):
+                self.assertEqual(replace(grant, issuer=value).issuer, value)
+
+        for value in fixture["authority_reference_rejected"]:
+            with self.subTest(rejected=value):
+                with self.assertRaises(error_type):
+                    replace(grant, issuer=value)
+
+    def test_codecs_and_constructors_own_strict_bounds_and_temporal_laws(self) -> None:
+        error_type = self.contract("NodeControlSurfaceReadContractError")
+        declaration_codec = self.contract(
+            "WorkloadNodeControlSurfaceDeclarationCodec"
+        )()
+        request_codec = self.contract("NodeControlSurfaceReadRequestCodec")()
+        grant_codec = self.contract(
+            "DelegatedWorkloadNodeControlSurfaceReadGrantCodec"
+        )()
+        declaration = declaration_codec.encode(self.declaration())
+        request = request_codec.encode(self.request())
+        grant_value = self.grant()
+        grant = grant_codec.encode(grant_value)
+
+        for codec, descriptor in (
+            (declaration_codec, declaration),
+            (request_codec, request),
+            (grant_codec, grant),
+        ):
+            for key in descriptor:
+                with self.subTest(codec=type(codec).__name__, missing=key):
+                    candidate = dict(descriptor)
+                    candidate.pop(key)
+                    with self.assertRaises(error_type):
+                        codec.decode(candidate)
+                with self.subTest(codec=type(codec).__name__, wrong_type=key):
+                    with self.assertRaises(error_type):
+                        codec.decode({**descriptor, key: None})
+
+        for codec, descriptor in (
+            (request_codec, request),
+            (grant_codec, grant),
+        ):
+            for key in descriptor["target"]:
+                with self.subTest(codec=type(codec).__name__, target_missing=key):
+                    candidate = deepcopy(descriptor)
+                    candidate["target"].pop(key)
+                    with self.assertRaises(error_type):
+                        codec.decode(candidate)
+                with self.subTest(codec=type(codec).__name__, target_type=key):
+                    candidate = deepcopy(descriptor)
+                    candidate["target"][key] = None
+                    with self.assertRaises(error_type):
+                        codec.decode(candidate)
+
+        malformed_versions = (
+            (declaration_codec, {**declaration, "profile": "unknown"}),
+            (request_codec, {**request, "profile": "unknown"}),
+            (request_codec, {**request, "canonicalization": "unknown"}),
+            (grant_codec, {**grant, "profile": "unknown"}),
+            (grant_codec, {**grant, "canonicalization": "unknown"}),
         )
-        for factory in unsafe:
+        for codec, candidate in malformed_versions:
+            with self.subTest(codec=type(codec).__name__):
+                with self.assertRaises(error_type) as caught:
+                    codec.decode(candidate)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+
+        nested_declaration = deepcopy(declaration)
+        nested_declaration["surface"]["provider_socket_name"] = "sk-secret"
+        nested_request = deepcopy(request)
+        nested_request["target"]["node_id"] = "sk-secret"
+        nested_grant = deepcopy(grant)
+        nested_grant["target"]["node_id"] = "sk-secret"
+        for codec, candidate in (
+            (declaration_codec, nested_declaration),
+            (request_codec, nested_request),
+            (grant_codec, nested_grant),
+        ):
+            with self.subTest(nested=type(codec).__name__):
+                with self.assertRaises(error_type) as caught:
+                    codec.decode(candidate)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+
+        identity_type = self.contract(
+            "WorkloadNodeControlSurfaceDeclarationIdentity"
+        )
+        digest_type = self.contract("NodeControlSurfaceReadRequestDigest")
+        invalid_values = (
+            lambda: identity_type("a" * 63),
+            lambda: identity_type("A" * 64),
+            lambda: digest_type("a" * 65),
+            lambda: replace(self.request(), request_id="a" * 129),
+            lambda: replace(grant_value, issuer="a" * 257),
+            lambda: replace(grant_value, key_id="a" * 129),
+            lambda: replace(grant_value, audience="a" * 257),
+            lambda: replace(grant_value, jti="a" * 129),
+            lambda: replace(grant_value, issued_at=-1),
+            lambda: replace(grant_value, issued_at=2**53),
+            lambda: replace(grant_value, not_before=99),
+            lambda: replace(grant_value, not_before=201),
+            lambda: replace(grant_value, expires_at=100),
+            lambda: replace(grant_value, expires_at=401),
+            lambda: replace(grant_value, expires_at=2**53),
+        )
+        for factory in invalid_values:
             with self.subTest(factory=factory):
                 with self.assertRaises(error_type):
                     factory()
 
-        self.assertEqual(
-            replace(grant, issuer="cpk.example.internal").issuer,
-            "cpk.example.internal",
+        boundary = replace(
+            grant_value,
+            issued_at=9_007_199_254_740_691,
+            not_before=9_007_199_254_740_691,
+            expires_at=9_007_199_254_740_991,
         )
+        self.assertEqual(boundary.expires_at - boundary.issued_at, 300)
 
     def test_routes_root_exports_and_module_imports_preserve_pure_ownership(self) -> None:
         scope = getattr(ControlRouteScope, "READ_NODE_CONTROL_SURFACE", None)
