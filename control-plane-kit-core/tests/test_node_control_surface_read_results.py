@@ -729,6 +729,9 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         self.assertNotIn("Public alpha.", representation)
         self.assertNotIn("alpha", representation)
         self.assertNotIn("workspace-1", representation)
+        self.assertNotIn("revision-7", representation)
+        self.assertNotIn("router", representation)
+        self.assertNotIn("control", representation)
 
         capability_result = capability_codec.capabilities_result()
         capability_representation = repr(capability_result)
@@ -739,6 +742,9 @@ class NodeControlSurfaceReadResultTests(unittest.TestCase):
         self.assertNotIn("Public mode.", capability_representation)
         self.assertNotIn("mode", capability_representation)
         self.assertNotIn("workspace-1", capability_representation)
+        self.assertNotIn("revision-7", capability_representation)
+        self.assertNotIn("router", capability_representation)
+        self.assertNotIn("control", capability_representation)
 
     def test_root_exports_module_inventory_and_import_boundary_are_exact(self) -> None:
         module = self.result_module()
