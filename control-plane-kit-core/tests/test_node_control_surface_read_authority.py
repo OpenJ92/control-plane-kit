@@ -506,6 +506,26 @@ class NodeControlSurfaceReadAuthorityTests(unittest.TestCase):
                 else:
                     self.fail("malformed public wire material was accepted")
 
+    def test_open_authority_material_rejects_credentials_and_runtime_endpoints(self) -> None:
+        error_type = self.contract("NodeControlSurfaceReadContractError")
+        request = self.request()
+        grant = self.grant(request)
+        unsafe = (
+            lambda: replace(request, request_id="sk-secret-value"),
+            lambda: replace(grant, issuer="127.0.0.1"),
+            lambda: replace(grant, audience="localhost"),
+            lambda: replace(grant, jti="sg.secret-value"),
+        )
+        for factory in unsafe:
+            with self.subTest(factory=factory):
+                with self.assertRaises(error_type):
+                    factory()
+
+        self.assertEqual(
+            replace(grant, issuer="cpk.example.internal").issuer,
+            "cpk.example.internal",
+        )
+
     def test_routes_root_exports_and_module_imports_preserve_pure_ownership(self) -> None:
         scope = getattr(ControlRouteScope, "READ_NODE_CONTROL_SURFACE", None)
         self.assertIsNotNone(scope, "READ_NODE_CONTROL_SURFACE is not implemented")
