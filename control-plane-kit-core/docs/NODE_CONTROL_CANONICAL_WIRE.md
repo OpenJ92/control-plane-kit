@@ -2,7 +2,7 @@
 
 Status: public contract for `jcs-rfc8785.v1`.
 
-Issues: OpenJ92/control-plane-kit#1452, #1547, #1548, and #1554.
+Issues: OpenJ92/control-plane-kit#1452, #1547, #1548, #1554, and #1578.
 
 ## Purpose
 
@@ -51,6 +51,11 @@ Node-control JSON numbers use the RFC 8785/I-JSON interoperable domain:
 Versions and epoch seconds are nonnegative safe integers. Weighted-routing
 integer inputs are safe-bounded before conversion to binary64, so conversion
 cannot leak an overflow exception or silently lose integer precision.
+Strict raw decoders preserve RFC 8785 integer-looking spellings that represent
+accepted binary64 values, such as `100000000000000000000` for `1e20`. An
+integer token outside the safe-integer domain is first observed as binary64;
+exact-integer fields then reject it, while scalar fields must still reproduce
+the input byte-for-byte when canonically re-encoded.
 
 ## Size Law
 
@@ -86,6 +91,18 @@ generic reference and is never caller-selected constructor truth. Raw transit
 bytes are bounded before UTF-8/JSON parsing, reject duplicate keys recursively,
 and must equal the RFC 8785 encoding of their decoded value.
 
+Workload node-control grants have one exact reachable ceiling:
+
+```text
+workload grant  2,111 bytes
+```
+
+`DelegatedWorkloadNodeControlGrant` exposes those exact bytes and a nominal
+`WorkloadNodeControlGrantDigest`. Request and workload-grant raw inputs are
+bounded before UTF-8/JSON parsing, reject duplicate keys recursively, and must
+equal the RFC 8785 encoding of their decoded value. Request, workload, transit,
+surface-read, and gateway-probe authority remain nominally non-substitutable.
+
 ## Golden Vectors
 
 The language-neutral fixture is:
@@ -94,11 +111,12 @@ The language-neutral fixture is:
 tests/fixtures/node_control_canonical_wire_v1.json
 ```
 
-It contains request descriptors, exact canonical UTF-8 text and hexadecimal
-bytes, SHA-256 digests, and selected RFC 8785 Appendix B number vectors. Python
-tests consume it in this distribution. Java and C++ SDKs must consume the same
-fixture before claiming compatibility; they must not regenerate expected bytes
-from their own serializer and call that interoperability evidence.
+It contains request and workload-grant descriptors, exact canonical UTF-8 text
+and hexadecimal bytes, SHA-256 digests, and selected RFC 8785 Appendix B number
+vectors. Python tests consume it in this distribution. Java and C++ SDKs must
+consume the same fixture before claiming compatibility; they must not
+regenerate expected bytes from their own serializer and call that
+interoperability evidence.
 
 The surface-read fixture is:
 
@@ -138,4 +156,6 @@ It does not prove that those names came from a maintained live registry. This
 contract does not change gateway-probe digests or another package's existing
 canonical material. It does not sign requests, verify signatures, store replay
 state, log canonical bytes, inspect a registry, or perform network or runtime
-effects.
+effects. #1555 may persist the exact admitted bytes and nominal digests as
+durable intended-attempt evidence; that later Operations boundary must not
+reinterpret or reconstruct the wire.

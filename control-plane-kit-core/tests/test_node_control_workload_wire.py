@@ -346,9 +346,12 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
 
         for key in ("issued_at", "not_before", "expires_at"):
             with self.subTest(raw_unsafe_grant_epoch=key):
-                candidate = rfc8785.dumps(
-                    {**grant_descriptor, key: MAX_SAFE_INTEGER + 1}
+                token = f'"{key}":{grant_descriptor[key]}'.encode("ascii")
+                unsafe_token = f'"{key}":{MAX_SAFE_INTEGER + 1}'.encode(
+                    "ascii"
                 )
+                candidate = grant_bytes.replace(token, unsafe_token, 1)
+                self.assertNotEqual(candidate, grant_bytes)
                 with self.assertRaises(NodeControlContractError) as caught:
                     grant_decoder(candidate)
                 self.assertLessEqual(len(str(caught.exception)), 128)
