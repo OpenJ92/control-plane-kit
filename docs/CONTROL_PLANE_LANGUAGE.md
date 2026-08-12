@@ -1284,6 +1284,58 @@ public contract shape:
   codes, never provider errors, signatures, credentials, endpoints, or secret
   values.
 
+  `WorkloadNodeControlSurfaceDescriptor` groups one or more variable
+  descriptors under the exact HTTP provider socket through which they are
+  reached. Product runtime contracts and compiled block specifications retain
+  a canonical `control_surfaces` tuple, so accepted graph truth can answer:
+
+  ```text
+  node x provider socket -> exact declared variable contracts
+  ```
+
+  Surfaces and variables are finite, canonically ordered, and unique in their
+  local identity domains. The same variable name may occur on distinct
+  provider sockets because the full identity is `(provider socket, variable)`.
+  `NODE_CONTROLLABLE` is present exactly when at least one surface is declared.
+  A surface carries no endpoint, credential, current state, version, health,
+  or runtime status. Legacy product and graph descriptors omit the field and
+  retain their canonical bytes; a present empty field is noncanonical.
+
+  `WorkloadNodeControlSurfaceDeclaration` wraps that static descriptor in the
+  versioned `workload-node-control-surface-declaration.v1` identity domain.
+  `NodeControlSurfaceReadRequest` binds one exact graph target, declaration
+  identity, request id, and the closed `capabilities|status` read kind under
+  `jcs-rfc8785.v1`. `DelegatedWorkloadNodeControlSurfaceReadGrant` binds the
+  request digest plus issuer, key, audience, bounded time window, JTI, and the
+  distinct `workload-node-control-surface-read` key purpose. Its pure verifier
+  compares claims only; this unsigned value is not authentication or authority
+  until the server SDK verifies its signed envelope and durable key policy.
+
+  The workload route set declares `GET /__control/capabilities` and
+  `GET /__control/status` under the least-privilege
+  `node-control-surface:read` scope. Core does not implement HTTP or inspect a
+  registry.
+
+  `NodeControlSurfaceCapabilitiesResult` and
+  `NodeControlSurfaceStatusResult` form a disjoint nominal result sum under the
+  common `workload-node-control-surface-read-result.v1` profile. Both retain the
+  exact request and declaration context while their wire carries only the
+  common profile and canonicalization, request ID/digest, read kind,
+  declaration identity, and variant data. Capabilities echoes the exact
+  declaration. Status carries a canonical installed-variable subset and
+  derives `NodeControlSurfaceRegistryCoverage` as exactly
+  `none|partial|complete`; wire coverage is checked against that derivation and
+  is never trusted as live registry truth. The strict codec admits mappings no
+  larger than the reachable 16,902-byte capability or 4,811-byte status ceiling
+  and applies the smaller exact context ceiling before nested interpretation.
+
+  Signed-envelope admission belongs to #1542. The FastAPI adapter, raw HTTP
+  byte admission, and proof that reported identities came from a maintained
+  live registry without variable invocation belong to #1507. Language-neutral
+  declaration, request, and result vectors live in
+  `control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json`
+  and are described by `control-plane-kit-core/docs/NODE_CONTROL_CANONICAL_WIRE.md`.
+
   ```json
   {
     "operation_contracts": [

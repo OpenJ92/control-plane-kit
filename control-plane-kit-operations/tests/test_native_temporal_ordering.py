@@ -74,8 +74,8 @@ class NativeTemporalOrderingTests(unittest.TestCase):
         self.connection.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
         self.connection.close()
 
-    def test_v2_changes_text_order_into_native_instant_order(self) -> None:
-        self.connection.execute(postgres.POSTGRES_SCHEMA)
+    def test_current_schema_orders_native_instants(self) -> None:
+        postgres.install_schema(self.connection)
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -94,10 +94,9 @@ class NativeTemporalOrderingTests(unittest.TestCase):
             [row[0] for row in self.connection.execute(
                 "SELECT session_id FROM cpk_operation_sessions ORDER BY created_at"
             ).fetchall()],
-            ["session-micro", "session-second"],
+            ["session-second", "session-micro"],
         )
 
-        postgres.install_postgres_schema(self.connection)
         self.connection.execute("SET TIME ZONE 'America/New_York'")
         records = PostgresActivityHistoryStore(
             self.connection
@@ -111,8 +110,8 @@ class NativeTemporalOrderingTests(unittest.TestCase):
             ],
         )
 
-    def test_v2_public_selectors_use_native_time_then_documented_identity(self) -> None:
-        postgres.install_postgres_schema(self.connection)
+    def test_public_selectors_use_native_time_then_documented_identity(self) -> None:
+        postgres.install_schema(self.connection)
         self.connection.execute("SET TIME ZONE 'Asia/Tokyo'")
         self.connection.execute(
             """
@@ -273,8 +272,8 @@ class NativeTemporalOrderingTests(unittest.TestCase):
             ),
         )
 
-    def test_v3_authority_gets_apply_status_time_and_identity_precedence(self) -> None:
-        postgres.install_postgres_schema(self.connection)
+    def test_authority_gets_apply_status_time_and_identity_precedence(self) -> None:
+        postgres.install_schema(self.connection)
         self.connection.execute("SET TIME ZONE 'Pacific/Honolulu'")
         self.connection.execute(
             """

@@ -9,6 +9,10 @@ from typing import Protocol as TypingProtocol, TypeAlias
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.delegation_authority import DelegationAuthorityBinding
 from control_plane_kit_core.lifecycle import EXTERNAL_RETAINED, OWNED_EPHEMERAL, ResourceLifecycle
+from control_plane_kit_core.node_control import (
+    MAX_NODE_CONTROL_SURFACES,
+    WorkloadNodeControlSurfaceDescriptor,
+)
 from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.secrets import (
@@ -139,10 +143,41 @@ class BlockSpec:
     capabilities: tuple[CapabilityName, ...] = ()
     verification: VerificationContract = field(default_factory=VerificationContract)
     metadata: dict[str, str] = field(default_factory=dict)
+    control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.control_surfaces, tuple):
+            raise TypeError(
+                "block control surfaces must be WorkloadNodeControlSurfaceDescriptor values"
+            )
+        if len(self.control_surfaces) > MAX_NODE_CONTROL_SURFACES:
+            raise ValueError("block declares too many node-control surfaces")
+        if not all(
+            isinstance(surface, WorkloadNodeControlSurfaceDescriptor)
+            for surface in self.control_surfaces
+        ):
+            raise TypeError(
+                "block control surfaces must be WorkloadNodeControlSurfaceDescriptor values"
+            )
+        surfaces = tuple(
+            sorted(
+                self.control_surfaces,
+                key=lambda surface: surface.provider_socket_name,
+            )
+        )
+        socket_names = tuple(
+            surface.provider_socket_name.value for surface in surfaces
+        )
+        if len(set(socket_names)) != len(socket_names):
+            raise ValueError("block control surface sockets must be unique")
+        node_controllable = CapabilityName.NODE_CONTROLLABLE in self.capabilities
+        if node_controllable != bool(surfaces):
+            raise ValueError(
+                "node-controllable capability and control surfaces must agree"
+            )
         if not isinstance(self.verification, VerificationContract):
             raise TypeError("block verification must be VerificationContract")
+        object.__setattr__(self, "control_surfaces", surfaces)
 
 
 class RuntimeImplementation(TypingProtocol):

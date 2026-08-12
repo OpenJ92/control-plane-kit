@@ -77,31 +77,11 @@ class IndexContract:
 
 
 @dataclass(frozen=True, slots=True)
-class MigrationIdentity:
-    version: int
-    name: str
-    checksum_sha256: str
-
-
-@dataclass(frozen=True, slots=True)
-class RelationLock:
-    relation: str
-    mode: str
-
-
-@dataclass(frozen=True, slots=True)
-class SchemaLockPlan:
-    path: str
-    relations: tuple[RelationLock, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class CurrentSchemaContract:
     relations: tuple[RelationContract, ...]
     columns: tuple[ColumnContract, ...]
     constraints: tuple[ConstraintContract, ...]
     indexes: tuple[IndexContract, ...]
-    history: tuple[MigrationIdentity, ...]
 
 
 CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
@@ -130,7 +110,6 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
         RelationContract(name='cpk_registered_products', kind='r', persistence='p', access_method='heap', replica_identity='d', is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
         RelationContract(name='cpk_runtime_authorities', kind='r', persistence='p', access_method='heap', replica_identity='d', is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
         RelationContract(name='cpk_runtime_authority_deliveries', kind='r', persistence='p', access_method='heap', replica_identity='d', is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
-        RelationContract(name='cpk_schema_migrations', kind='r', persistence='p', access_method='heap', replica_identity='d', is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
         RelationContract(name='cpk_secret_providers', kind='r', persistence='p', access_method='heap', replica_identity='d', is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
         RelationContract(name='cpk_secret_references', kind='r', persistence='p', access_method='heap', replica_identity='d', is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
         RelationContract(name='cpk_secret_use_authorizations', kind='r', persistence='p', access_method='heap', replica_identity='d', is_partition=False, row_security=False, force_row_security=False, non_internal_triggers=0, policies=0, user_rules=0),
@@ -437,10 +416,6 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
         ColumnContract(relation='cpk_runtime_authority_deliveries', name='secret_references', type_namespace='pg_catalog', formatted_type='jsonb', not_null=True, identity='', generated='', collation_namespace=None, collation_name=None, default_expression="'[]'::jsonb"),
         ColumnContract(relation='cpk_runtime_authority_deliveries', name='status', type_namespace='pg_catalog', formatted_type='text', not_null=True, identity='', generated='', collation_namespace='pg_catalog', collation_name='default', default_expression=None),
         ColumnContract(relation='cpk_runtime_authority_deliveries', name='workspace_id', type_namespace='pg_catalog', formatted_type='text', not_null=True, identity='', generated='', collation_namespace='pg_catalog', collation_name='default', default_expression=None),
-        ColumnContract(relation='cpk_schema_migrations', name='applied_at', type_namespace='pg_catalog', formatted_type='timestamp with time zone', not_null=True, identity='', generated='', collation_namespace=None, collation_name=None, default_expression='clock_timestamp()'),
-        ColumnContract(relation='cpk_schema_migrations', name='checksum_sha256', type_namespace='pg_catalog', formatted_type='text', not_null=True, identity='', generated='', collation_namespace='pg_catalog', collation_name='default', default_expression=None),
-        ColumnContract(relation='cpk_schema_migrations', name='name', type_namespace='pg_catalog', formatted_type='text', not_null=True, identity='', generated='', collation_namespace='pg_catalog', collation_name='default', default_expression=None),
-        ColumnContract(relation='cpk_schema_migrations', name='version', type_namespace='pg_catalog', formatted_type='integer', not_null=True, identity='', generated='', collation_namespace=None, collation_name=None, default_expression=None),
         ColumnContract(relation='cpk_secret_providers', name='admitted_at', type_namespace='pg_catalog', formatted_type='timestamp(6) with time zone', not_null=True, identity='', generated='', collation_namespace=None, collation_name=None, default_expression=None),
         ColumnContract(relation='cpk_secret_providers', name='admitted_by', type_namespace='pg_catalog', formatted_type='text', not_null=True, identity='', generated='', collation_namespace='pg_catalog', collation_name='default', default_expression=None),
         ColumnContract(relation='cpk_secret_providers', name='allowed_intents', type_namespace='pg_catalog', formatted_type='jsonb', not_null=True, identity='', generated='', collation_namespace=None, collation_name=None, default_expression=None),
@@ -547,7 +522,7 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
         ConstraintContract(relation='cpk_delegation_signing_keys', name='cpk_delegation_signing_keys_key_id_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('key_id',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(key_id ~ '^[a-z][a-z0-9._-]{0,127}$'::text)"),
         ConstraintContract(relation='cpk_delegation_signing_keys', name='cpk_delegation_signing_keys_pkey', kind='p', validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=('registration_id',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression=None),
         ConstraintContract(relation='cpk_delegation_signing_keys', name='cpk_delegation_signing_keys_private_reference_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('private_key_reference',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(private_key_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)"),
-        ConstraintContract(relation='cpk_delegation_signing_keys', name='cpk_delegation_signing_keys_purpose_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('purpose',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text]))"),
+        ConstraintContract(relation='cpk_delegation_signing_keys', name='cpk_delegation_signing_keys_purpose_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('purpose',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text]))"),
         ConstraintContract(relation='cpk_delegation_signing_keys', name='cpk_delegation_signing_keys_registration_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('registration_id',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(registration_id ~ '^dkey_[0-9a-f]{64}$'::text)"),
         ConstraintContract(relation='cpk_delegation_signing_keys', name='cpk_delegation_signing_keys_registration_id_workspace_id_key', kind='u', validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=('registration_id', 'workspace_id'), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression=None),
         ConstraintContract(relation='cpk_delegation_signing_keys', name='cpk_delegation_signing_keys_retirement_evidence_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('retired_by', 'retired_at'), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression='((retired_by IS NULL) = (retired_at IS NULL))'),
@@ -591,7 +566,7 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
         ConstraintContract(relation='cpk_gateway_key_rotations', name='cpk_gateway_key_rotations_generation_provider_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('generation_provider_registration_id',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression='((generation_provider_registration_id IS NULL) OR (((octet_length(generation_provider_registration_id) >= 1) AND (octet_length(generation_provider_registration_id) <= 200)) AND ((generation_provider_registration_id COLLATE "C") ~ \'^[A-Za-z0-9]\'::text) AND ((generation_provider_registration_id COLLATE "C") !~ \'[^A-Za-z0-9._:-]\'::text)))'),
         ConstraintContract(relation='cpk_gateway_key_rotations', name='cpk_gateway_key_rotations_lifetime_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('maximum_grant_lifetime_seconds',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression='((maximum_grant_lifetime_seconds >= 1) AND (maximum_grant_lifetime_seconds <= 300))'),
         ConstraintContract(relation='cpk_gateway_key_rotations', name='cpk_gateway_key_rotations_pkey', kind='p', validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=('rotation_id',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression=None),
-        ConstraintContract(relation='cpk_gateway_key_rotations', name='cpk_gateway_key_rotations_purpose_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('purpose',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text]))"),
+        ConstraintContract(relation='cpk_gateway_key_rotations', name='cpk_gateway_key_rotations_purpose_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('purpose',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text]))"),
         ConstraintContract(relation='cpk_gateway_key_rotations', name='cpk_gateway_key_rotations_retirement_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('old_secret_revoked_at', 'old_key_retired_at'), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression='((old_secret_revoked_at IS NULL) OR (old_key_retired_at IS NOT NULL))'),
         ConstraintContract(relation='cpk_gateway_key_rotations', name='cpk_gateway_key_rotations_secret_version_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('new_key_id', 'new_secret_version_id', 'new_secret_version_number'), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression='(((new_key_id IS NULL) = (new_secret_version_id IS NULL)) AND ((new_secret_version_id IS NULL) = (new_secret_version_number IS NULL)))'),
         ConstraintContract(relation='cpk_gateway_key_rotations', name='cpk_gateway_key_rotations_skew_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('clock_skew_seconds',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression='((clock_skew_seconds >= 0) AND (clock_skew_seconds <= 60))'),
@@ -677,7 +652,6 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
         ConstraintContract(relation='cpk_runtime_authority_deliveries', name='cpk_runtime_authority_deliveries_secret_refs_shape_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('secret_references',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(jsonb_typeof(secret_references) = 'array'::text)"),
         ConstraintContract(relation='cpk_runtime_authority_deliveries', name='cpk_runtime_authority_deliveries_status_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('status',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(status = ANY (ARRAY['active'::text, 'revoked'::text]))"),
         ConstraintContract(relation='cpk_runtime_authority_deliveries', name='cpk_runtime_authority_deliveries_workspace_id_fkey', kind='f', validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=('workspace_id',), referenced_relation='cpk_workspaces', referenced_columns=('workspace_id',), update_action='a', delete_action='a', match_type='s', check_expression=None),
-        ConstraintContract(relation='cpk_schema_migrations', name='cpk_schema_migrations_pkey', kind='p', validated=True, deferrable=False, deferred=False, no_inherit=True, local_columns=('version',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression=None),
         ConstraintContract(relation='cpk_secret_providers', name='cpk_secret_providers_credential_reference_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('credential_reference',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(credential_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)"),
         ConstraintContract(relation='cpk_secret_providers', name='cpk_secret_providers_endpoint_reference_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('endpoint_reference',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(endpoint_reference ~ '^[a-z][a-z0-9._-]{0,127}$'::text)"),
         ConstraintContract(relation='cpk_secret_providers', name='cpk_secret_providers_id_check', kind='c', validated=True, deferrable=False, deferred=False, no_inherit=False, local_columns=('provider_id',), referenced_relation=None, referenced_columns=None, update_action=None, delete_action=None, match_type=None, check_expression="(provider_id ~ '^[a-z][a-z0-9-]{0,62}$'::text)"),
@@ -794,7 +768,6 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
         IndexContract(relation='cpk_runtime_authorities', name='cpk_runtime_authorities_pkey', owning_constraint='cpk_runtime_authorities_pkey', access_method='btree', unique=True, primary=True, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('registration_id',), include_entries=(), opclasses=('pg_catalog.text_ops',), collations=('pg_catalog.default',), options=(0,), predicate=None, expressions=None),
         IndexContract(relation='cpk_runtime_authority_deliveries', name='cpk_runtime_authority_deliveries_active_ref', owning_constraint=None, access_method='btree', unique=True, primary=False, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('workspace_id', 'authority_ref'), include_entries=(), opclasses=('pg_catalog.text_ops', 'pg_catalog.text_ops'), collations=('pg_catalog.default', 'pg_catalog.default'), options=(0, 0), predicate="(status = 'active'::text)", expressions=None),
         IndexContract(relation='cpk_runtime_authority_deliveries', name='cpk_runtime_authority_deliveries_pkey', owning_constraint='cpk_runtime_authority_deliveries_pkey', access_method='btree', unique=True, primary=True, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('delivery_id',), include_entries=(), opclasses=('pg_catalog.text_ops',), collations=('pg_catalog.default',), options=(0,), predicate=None, expressions=None),
-        IndexContract(relation='cpk_schema_migrations', name='cpk_schema_migrations_pkey', owning_constraint='cpk_schema_migrations_pkey', access_method='btree', unique=True, primary=True, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('version',), include_entries=(), opclasses=('pg_catalog.int4_ops',), collations=(None,), options=(0,), predicate=None, expressions=None),
         IndexContract(relation='cpk_secret_providers', name='cpk_secret_providers_active_identity', owning_constraint=None, access_method='btree', unique=True, primary=False, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('workspace_id', 'provider_id'), include_entries=(), opclasses=('pg_catalog.text_ops', 'pg_catalog.text_ops'), collations=('pg_catalog.default', 'pg_catalog.default'), options=(0, 0), predicate="(status = 'active'::text)", expressions=None),
         IndexContract(relation='cpk_secret_providers', name='cpk_secret_providers_history', owning_constraint=None, access_method='btree', unique=False, primary=False, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('workspace_id', 'provider_id', 'admitted_at', 'registration_id'), include_entries=(), opclasses=('pg_catalog.text_ops', 'pg_catalog.text_ops', 'pg_catalog.timestamptz_ops', 'pg_catalog.text_ops'), collations=('pg_catalog.default', 'pg_catalog.default', None, 'pg_catalog.default'), options=(0, 0, 0, 0), predicate=None, expressions=None),
         IndexContract(relation='cpk_secret_providers', name='cpk_secret_providers_pkey', owning_constraint='cpk_secret_providers_pkey', access_method='btree', unique=True, primary=True, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('registration_id',), include_entries=(), opclasses=('pg_catalog.text_ops',), collations=('pg_catalog.default',), options=(0,), predicate=None, expressions=None),
@@ -809,95 +782,6 @@ CURRENT_POSTGRES_SCHEMA_CONTRACT = CurrentSchemaContract(
         IndexContract(relation='cpk_secret_use_authorizations', name='cpk_secret_use_authorizations_workspace_id_correlation_id_key', owning_constraint='cpk_secret_use_authorizations_workspace_id_correlation_id_key', access_method='btree', unique=True, primary=False, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('workspace_id', 'correlation_id'), include_entries=(), opclasses=('pg_catalog.text_ops', 'pg_catalog.text_ops'), collations=('pg_catalog.default', 'pg_catalog.default'), options=(0, 0), predicate=None, expressions=None),
         IndexContract(relation='cpk_workspaces', name='cpk_workspaces_pkey', owning_constraint='cpk_workspaces_pkey', access_method='btree', unique=True, primary=True, valid=True, ready=True, live=True, immediate=True, clustered=False, replica_identity=False, nulls_not_distinct=False, key_entries=('workspace_id',), include_entries=(), opclasses=('pg_catalog.text_ops',), collations=('pg_catalog.default',), options=(0,), predicate=None, expressions=None),
     ),
-    history=(
-        MigrationIdentity(version=1, name='operations-baseline', checksum_sha256='fc9b5547fc51ec681130c41facea785dbd24649049417455b184ea05886beed8'),
-        MigrationIdentity(version=2, name='coordination-timestamps', checksum_sha256='95c7782cf66875a3f70c6354b86054ec4ca86f45dca7d2ccb4d971920162c329'),
-        MigrationIdentity(version=3, name='graph-product-authority-timestamps', checksum_sha256='1f4cf8704affd90ab2ceb17d2a00a62a91e265d2c8c1f49a77c9a6e446cdbdfa'),
-        MigrationIdentity(version=4, name='secret-registration-timestamps', checksum_sha256='523fb7528d544ce9214181b9886adb5d96130341561c44613f038caee42b99c1'),
-        MigrationIdentity(version=5, name='delegation-signing-key-timestamps', checksum_sha256='c2dbe9c058c97a7c365804c2d0760af2a740352c3a3a9fc9b4fc88503fc2a203'),
-        MigrationIdentity(version=6, name='gateway-probe-timestamps', checksum_sha256='ae60d9014fdc65167daa7750417fb9f3b59ebc6a2a98903d74cde21e09d473cb'),
-        MigrationIdentity(version=7, name='gateway-key-rotation-timestamps', checksum_sha256='65c0309b51e82e4ad313f113cd5df266f61e6c8b98aa5d5ff7194b53b6e5a775'),
-        MigrationIdentity(version=8, name='ingress-evidence-timestamps', checksum_sha256='3e7cb7c70c64511d76be9406588d2edc24fa3c9a62d95fd42d7a84fb3946069c'),
-        MigrationIdentity(version=9, name='secret-use-authorization-timestamps', checksum_sha256='51e322bc4c578bef768cd516b63fd0018cfeb658bd4b9bfd6eed118666d50adb'),
-        MigrationIdentity(version=10, name='product-descriptor-content', checksum_sha256='279a103c28d13b4b68cab0433fa3001d6ea8a88195d99f911bc79cbb3bd24ccd'),
-        MigrationIdentity(version=11, name='gateway-probe-access-path', checksum_sha256='8cda9a35e7cd8733708e09f96ee897ec30b142841f3baed80c7c279894dc42c8'),
-        MigrationIdentity(version=12, name='gateway-key-rotation-generation-evidence', checksum_sha256='a9d5c552480172e7415def95df8a5ae44b03cd7023710ef13c975de90923732a'),
-        MigrationIdentity(version=13, name='gateway-key-rotation-status-contracts', checksum_sha256='101b76750e72d449928d9d236e05ada77708be667b30a9f490092b124d82c319'),
-        MigrationIdentity(version=14, name='gateway-key-rotation-retirement-evidence', checksum_sha256='3cb2bade92c299c0d397f9d3462c526d768233fc064df51d6db9b43c3089ea90'),
-        MigrationIdentity(version=15, name='approval-subject-evidence', checksum_sha256='215c6a71efd06f699c1d988a7e55435920075726009f030eecbd4a8c0fd91a0b'),
-        MigrationIdentity(version=16, name='approval-scope-contracts', checksum_sha256='301c05458431939355d7c835bbdd05dad221a8370a7fb6ed6b95cd086162497e'),
-        MigrationIdentity(version=17, name='graph-lineage-compatibility', checksum_sha256='7b84050a532d04ad9b54408640ad0f0c9c6b456ca7e9c522fcda9d3e32b696b6'),
-    ),
 )
 
-CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = 'db72f091f5da3cc6f2be6b359899a369c5e27a212b0d71afade1dc5e850d5300'
-
-CURRENT_SCHEMA_LOCK_PLAN = SchemaLockPlan(
-    path='current',
-    relations=(
-        RelationLock(relation='cpk_activity_events', mode='SHARE UPDATE EXCLUSIVE'),
-        RelationLock(relation='cpk_activity_plans', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_activity_runs', mode='SHARE'),
-        RelationLock(relation='cpk_approval_decisions', mode='SHARE'),
-        RelationLock(relation='cpk_approval_requests', mode='SHARE'),
-        RelationLock(relation='cpk_cloudflare_ingress_resources', mode='SHARE'),
-        RelationLock(relation='cpk_delegation_signing_keys', mode='SHARE'),
-        RelationLock(relation='cpk_execution_requests', mode='SHARE'),
-        RelationLock(relation='cpk_gateway_key_rotation_deployments', mode='SHARE UPDATE EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_key_rotation_revocations', mode='SHARE UPDATE EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_key_rotation_transitions', mode='SHARE UPDATE EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_key_rotations', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_probe_attempts', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_generated_ingress_secret_references', mode='SHARE'),
-        RelationLock(relation='cpk_graph_versions', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_image_pull_authorities', mode='SHARE'),
-        RelationLock(relation='cpk_ingress_authorities', mode='SHARE'),
-        RelationLock(relation='cpk_observations', mode='SHARE'),
-        RelationLock(relation='cpk_operation_actions', mode='SHARE'),
-        RelationLock(relation='cpk_operation_sessions', mode='SHARE'),
-        RelationLock(relation='cpk_realized_graph_projections', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_registered_products', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_runtime_authorities', mode='SHARE'),
-        RelationLock(relation='cpk_runtime_authority_deliveries', mode='SHARE'),
-        RelationLock(relation='cpk_schema_migrations', mode='SHARE'),
-        RelationLock(relation='cpk_secret_providers', mode='SHARE'),
-        RelationLock(relation='cpk_secret_references', mode='SHARE'),
-        RelationLock(relation='cpk_secret_use_authorizations', mode='SHARE'),
-        RelationLock(relation='cpk_workspaces', mode='ACCESS EXCLUSIVE'),
-    ),
-)
-
-PENDING_SCHEMA_LOCK_PLAN = SchemaLockPlan(
-    path='pending',
-    relations=(
-        RelationLock(relation='cpk_activity_events', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_activity_plans', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_activity_runs', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_approval_decisions', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_approval_requests', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_cloudflare_ingress_resources', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_delegation_signing_keys', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_execution_requests', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_key_rotation_deployments', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_key_rotation_revocations', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_key_rotation_transitions', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_key_rotations', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_gateway_probe_attempts', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_generated_ingress_secret_references', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_graph_versions', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_image_pull_authorities', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_ingress_authorities', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_observations', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_operation_actions', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_operation_sessions', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_realized_graph_projections', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_registered_products', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_runtime_authorities', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_runtime_authority_deliveries', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_schema_migrations', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_secret_providers', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_secret_references', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_secret_use_authorizations', mode='ACCESS EXCLUSIVE'),
-        RelationLock(relation='cpk_workspaces', mode='ACCESS EXCLUSIVE'),
-    ),
-)
+CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256 = '597f12a64e7a9503397210c1e5c171251558b063b857ab9bde950f908cb80841'

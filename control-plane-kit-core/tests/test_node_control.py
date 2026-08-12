@@ -483,6 +483,8 @@ class NodeControlContractTests(unittest.TestCase):
         self.assertEqual(
             [(route.method.value, route.path, route.scope) for route in route_set.routes],
             [
+                ("GET", "/__control/capabilities", ControlRouteScope.READ_NODE_CONTROL_SURFACE),
+                ("GET", "/__control/status", ControlRouteScope.READ_NODE_CONTROL_SURFACE),
                 ("GET", "/__control/variables/{variable_name}", ControlRouteScope.READ_NODE_CONTROL),
                 ("POST", "/__control/variables/{variable_name}/commands", ControlRouteScope.APPLY_NODE_CONTROL),
             ],

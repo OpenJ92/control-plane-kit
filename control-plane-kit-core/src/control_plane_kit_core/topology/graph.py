@@ -212,18 +212,24 @@ class Node:
         }
 
     def descriptor(self) -> dict[str, object]:
+        block_spec_descriptor: dict[str, object] = {
+            "variant": "block",
+            "role_id": self.block_spec.role_id,
+            "display_name": self.block_spec.display_name,
+            "health_path": self.block_spec.health_path,
+            "capabilities": [value.value for value in self.block_spec.capabilities],
+            "verification": self.block_spec.verification.descriptor(),
+            "metadata": dict(sorted(self.block_spec.metadata.items())),
+        }
+        if self.block_spec.control_surfaces:
+            block_spec_descriptor["control_surfaces"] = [
+                surface.descriptor()
+                for surface in self.block_spec.control_surfaces
+            ]
         descriptor: dict[str, object] = {
             "node_id": self.node_id,
             "block_family": self.block_family.value,
-            "block_spec": {
-                "variant": "block",
-                "role_id": self.block_spec.role_id,
-                "display_name": self.block_spec.display_name,
-                "health_path": self.block_spec.health_path,
-                "capabilities": [value.value for value in self.block_spec.capabilities],
-                "verification": self.block_spec.verification.descriptor(),
-                "metadata": dict(sorted(self.block_spec.metadata.items())),
-            },
+            "block_spec": block_spec_descriptor,
             "kind": self.kind,
             "runtime_id": self.runtime_id,
             "endpoints": {key: value.descriptor() for key, value in sorted(self.endpoints.items())},

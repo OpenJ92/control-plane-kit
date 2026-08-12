@@ -22,6 +22,8 @@ EXPECTED_MODULES = {
     "identity",
     "lifecycle",
     "node_control",
+    "node_control_surface_read_results",
+    "node_control_surface_reads",
     "operations.__init__",
     "operations.commands",
     "operations.execution",

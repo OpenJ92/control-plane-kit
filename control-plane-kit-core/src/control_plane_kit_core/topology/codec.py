@@ -38,6 +38,10 @@ from control_plane_kit_core.lifecycle import (
     ResourceOwnership,
     ResourcePersistence,
 )
+from control_plane_kit_core.node_control import (
+    MAX_NODE_CONTROL_SURFACES,
+    WorkloadNodeControlSurfaceDescriptorCodec,
+)
 from control_plane_kit_core.public_ingress import NamedPublicIngressCodec
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference,
@@ -101,7 +105,7 @@ class GenericBlockSpecCodec:
     spec_type = BlockSpec
 
     def encode(self, spec: BlockSpec) -> Mapping[str, object]:
-        return {
+        descriptor = {
             "variant": self.variant,
             "role_id": spec.role_id,
             "display_name": spec.display_name,
@@ -110,8 +114,37 @@ class GenericBlockSpecCodec:
             "verification": spec.verification.descriptor(),
             "metadata": dict(sorted(spec.metadata.items())),
         }
+        if spec.control_surfaces:
+            descriptor["control_surfaces"] = [
+                WorkloadNodeControlSurfaceDescriptorCodec().encode(surface)
+                for surface in spec.control_surfaces
+            ]
+        return descriptor
 
     def decode(self, descriptor: Mapping[str, object]) -> BlockSpec:
+        legacy_keys = {
+            "variant",
+            "role_id",
+            "display_name",
+            "health_path",
+            "capabilities",
+            "verification",
+            "metadata",
+        }
+        expected_keys = (
+            legacy_keys | {"control_surfaces"}
+            if "control_surfaces" in descriptor
+            else legacy_keys
+        )
+        if set(descriptor) != expected_keys:
+            raise UnknownGraphVariant("invalid generic block spec fields")
+        raw_control_surfaces = _list(descriptor.get("control_surfaces", []))
+        if "control_surfaces" in descriptor and not raw_control_surfaces:
+            raise UnknownGraphVariant(
+                "control_surfaces must be omitted when empty"
+            )
+        if len(raw_control_surfaces) > MAX_NODE_CONTROL_SURFACES:
+            raise UnknownGraphVariant("too many control surfaces")
         try:
             capabilities = tuple(
                 CapabilityName(str(value)) for value in _list(descriptor.get("capabilities", []))
@@ -123,6 +156,12 @@ class GenericBlockSpecCodec:
             display_name=_optional_text(descriptor, "display_name"),
             health_path=_optional_text(descriptor, "health_path"),
             capabilities=capabilities,
+            control_surfaces=tuple(
+                WorkloadNodeControlSurfaceDescriptorCodec().decode(
+                    _mapping(value, "control surface")
+                )
+                for value in raw_control_surfaces
+            ),
             verification=VerificationContract.from_descriptor(
                 descriptor.get("verification")
             ),

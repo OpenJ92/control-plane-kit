@@ -169,6 +169,31 @@ graph truth nor guesses that it is an endpoint. Adding a self-attested
 `provenance` wire tag would not strengthen authority and would change the
 grant-bound canonical request bytes, so no such tag is published.
 
+## Static Workload Control Surfaces
+
+Accepted graph truth declares workload variables before any runtime request:
+
+```text
+WorkloadNodeControlSurfaceDescriptor
+  = provider-socket reference
+  x nonempty canonical tuple of ControlPlaneVariableDescriptor
+```
+
+`ProductRuntimeContract.control_surfaces` is copied into
+`BlockSpec.control_surfaces`, then preserved by graph codecs and structural
+diffs. Operations may project that accepted declaration without consulting the
+workload. It is not dynamic discovery and contains no current state.
+
+The provider socket must exist and use HTTP. `NODE_CONTROLLABLE` is a truthful
+biconditional: it is present if and only if the declaration tuple is nonempty.
+Surface sockets are unique and canonically ordered. Variable names are unique
+inside one surface but may repeat across sockets because the full graph-bound
+identity is `(provider socket, variable)`.
+
+Legacy product and graph descriptor shapes remain canonical when no surface is
+declared. New descriptors add a nonempty `control_surfaces` field. An explicit
+empty field and every unknown field are rejected rather than normalized.
+
 ## ControlPlaneVariable Extension Model
 
 There is one public extension model:
