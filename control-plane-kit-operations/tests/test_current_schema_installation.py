@@ -191,10 +191,55 @@ _TARGET_CONSTRAINTS = {
         _OLD_INTENT_EXPRESSION,
     ),
 }
-_APPROVAL_CONSTRAINTS = (
-    "cpk_approval_decisions_scope_check",
-    "cpk_approval_requests_scope_check",
+_APPROVAL_SCOPE_VALUES = (
+    "hub:instance:create",
+    "hub:instance:read",
+    "instance:workspace:read",
+    "instance:workspace:edit",
+    "plan:request",
+    "plan:approve",
+    "plan:approve-destructive",
+    "plan:execute",
+    "execution:operate",
+    "runtime-authority:register",
+    "runtime-authority:read",
+    "runtime-authority:revoke",
+    "runtime-authority:use",
+    "runtime-authority-delivery:register",
+    "runtime-authority-delivery:read",
+    "runtime-authority-delivery:revoke",
+    "ingress-authority:register",
+    "ingress-authority:read",
+    "ingress-authority:revoke",
+    "ingress-authority:use",
+    "secret-provider:register",
+    "secret-provider:read",
+    "secret-provider:use",
+    "secret-provider:revoke",
+    "delegation-key:generate",
+    "delegation-key:register",
+    "delegation-key:read",
+    "delegation-key:activate",
+    "delegation-key:retire",
+    "delegation-key:revoke",
+    "delegation-key:use",
+    "delegation-key:rotate",
+    "delegation-key:rotate-approve",
+    "gateway-probe:use",
 )
+
+
+def _approval_scope_expression(column: str) -> str:
+    values = ", ".join(f"'{value}'::text" for value in _APPROVAL_SCOPE_VALUES)
+    return f"({column} = ANY (ARRAY[{values}]))"
+
+
+_APPROVAL_CONSTRAINTS = {
+    "cpk_approval_decisions_scope_check": _approval_scope_expression("scope"),
+    "cpk_approval_requests_scope_check": _approval_scope_expression(
+        "required_scope"
+    ),
+}
 _NODE_CONTROL_SCOPES = (
     "node-control:read",
     "node-control:apply",
@@ -344,12 +389,16 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                     1,
                 )
 
-        for name in _APPROVAL_CONSTRAINTS:
+        for name, expected_expression in _APPROVAL_CONSTRAINTS.items():
             with self.subTest(approval_constraint=name):
                 expression = constraints[name].check_expression
-                self.assertIsNotNone(expression)
-                for scope in _NODE_CONTROL_SCOPES:
-                    self.assertNotIn(scope, expression)
+                self.assertEqual(expression, expected_expression)
+                self.assertEqual(
+                    schema._CURRENT_SCHEMA_SQL.count(
+                        f"CONSTRAINT {name} CHECK ({expected_expression})"
+                    ),
+                    1,
+                )
 
         payload = json.dumps(
             {
