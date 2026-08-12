@@ -89,8 +89,7 @@ class QueryPathIndexContractTests(unittest.TestCase):
                     f"({', '.join(keys)})"
                 )
                 if predicate is not None:
-                    sql_predicate = predicate.replace("::text", "")
-                    declaration += f" WHERE {sql_predicate}"
+                    declaration += f" WHERE {predicate}"
                 self.assertEqual(sql.count(declaration + ";"), 1)
 
         pending = _EXPECTED_QUERY_PATH_INDEXES[
