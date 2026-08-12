@@ -81,6 +81,40 @@ def _event_row(event_id: str, ordinal: int) -> tuple[object, ...]:
 
 
 class OrdinalPageSqlShapeTests(unittest.TestCase):
+    def test_first_action_page_is_parent_bounded_by_limit_plus_one(self) -> None:
+        connection = _RecordingConnection((_action_row("action-a", 1),))
+        request = ReadPageRequest(
+            ReadCollection.SESSION_ACTIONS,
+            SessionReadScope("workspace-a", "session-a"),
+            3,
+        )
+
+        PostgresActivityHistoryStore(connection).action_page(request)
+
+        query, parameters = connection.calls[0]
+        normalized = " ".join(query.split())
+        self.assertNotIn("(ordinal, action_id) >", normalized)
+        self.assertIn("ORDER BY ordinal ASC, action_id ASC", normalized)
+        self.assertIn("LIMIT %s", normalized)
+        self.assertEqual(parameters, ("session-a", 4))
+
+    def test_first_event_page_is_parent_bounded_by_limit_plus_one(self) -> None:
+        connection = _RecordingConnection((_event_row("event-a", 1),))
+        request = ReadPageRequest(
+            ReadCollection.RUN_EVENTS,
+            RunReadScope("workspace-a", "run-a"),
+            3,
+        )
+
+        PostgresExecutionStore(connection).event_page(request)
+
+        query, parameters = connection.calls[0]
+        normalized = " ".join(query.split())
+        self.assertNotIn("(ordinal, event_id) >", normalized)
+        self.assertIn("ORDER BY ordinal ASC, event_id ASC", normalized)
+        self.assertIn("LIMIT %s", normalized)
+        self.assertEqual(parameters, ("run-a", 4))
+
     def test_action_page_uses_strict_tuple_seek_and_limit_plus_one(self) -> None:
         connection = _RecordingConnection(
             (_action_row("action-b", 2), _action_row("action-c", 3))
@@ -245,36 +279,40 @@ class CommittedOrdinalAppendTests(unittest.TestCase):
         self.assertNotIn("actions", session)
         self.assertNotIn("events", session["plans"][0]["runs"][0])
 
-    def test_run_event_page_rejects_foreign_request_before_event_query(self) -> None:
+    def test_run_event_page_masks_all_containment_failures_before_event_query(self) -> None:
         delegate = PostgresStoreBundle(self.connection).execution
-        queries: list[str] = []
+        for failure in ("missing-run", "missing-request", "foreign-request"):
+            with self.subTest(failure=failure):
+                queries: list[str] = []
 
-        class ForeignExecutionStore:
-            def get_run(self, run_id):
-                return delegate.get_run(run_id)
+                class FailingExecutionStore:
+                    def get_run(self, run_id):
+                        if failure == "missing-run":
+                            raise KeyError(run_id)
+                        return delegate.get_run(run_id)
 
-            def get_request(self, request_id):
-                return SimpleNamespace(
-                    identity=SimpleNamespace(workspace_id="workspace-b")
-                )
+                    def get_request(self, request_id):
+                        if failure == "missing-request":
+                            raise KeyError(request_id)
+                        return SimpleNamespace(
+                            identity=SimpleNamespace(workspace_id="workspace-b")
+                        )
 
-            def event_page(self, request):
-                queries.append(request.scope.run_id)
-                return delegate.event_page(request)
+                    def event_page(self, request):
+                        queries.append(request.scope.run_id)
+                        return delegate.event_page(request)
 
-        store = ForeignExecutionStore()
-        service = self._service(execution_store=store)
+                service = self._service(execution_store=FailingExecutionStore())
+                with self.assertRaisesRegex(ReadModelError, "missing run in workspace"):
+                    service.run_events(
+                        ReadPageRequest(
+                            ReadCollection.RUN_EVENTS,
+                            RunReadScope("workspace-a", "run-a"),
+                            2,
+                        )
+                    )
 
-        with self.assertRaisesRegex(ReadModelError, "missing run in workspace"):
-            service.run_events(
-                ReadPageRequest(
-                    ReadCollection.RUN_EVENTS,
-                    RunReadScope("workspace-a", "run-a"),
-                    2,
-                )
-            )
-
-        self.assertEqual(queries, [])
+                self.assertEqual(queries, [])
 
     def _service(self, *, execution_store=None) -> InstanceReadService:
         stores = PostgresStoreBundle(self.connection)

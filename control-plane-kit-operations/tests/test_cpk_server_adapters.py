@@ -243,6 +243,42 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
+    def seed_run_event(self) -> None:
+        self.seed_reviewable_plan()
+        self.connection.execute(
+            """
+            INSERT INTO cpk_approval_requests
+              (request_id, session_id, plan_id, subject_kind, subject_payload,
+               review_digest, requested_by, requested_at,
+               required_scope, max_risk, destructive)
+            VALUES ('approval-a', 'session-a', 'plan-a', 'activity-plan',
+                    '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
+                    encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
+                    'operator-a', '2026-07-22T10:04:00Z',
+                    'plan:approve', 'low', false);
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at)
+            VALUES ('decision-a', 'approval-a', 'manager-a', 'approved',
+                    'plan:approve', '2026-07-22T10:05:00Z');
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint)
+            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
+                    'operator-a', '2026-07-22T10:06:00Z', 'approval-a',
+                    'decision-a', 'execute-a', 'fingerprint-a');
+            INSERT INTO cpk_activity_runs
+              (run_id, plan_id, request_id, attempt, status, created_at, metadata)
+            VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed',
+                    '2026-07-22T10:07:00Z', '{}'::jsonb);
+            INSERT INTO cpk_activity_events
+              (event_id, run_id, ordinal, event_type, occurred_at, payload)
+            VALUES ('event-a', 'run-a', 1, 'run_started',
+                    '2026-07-22T10:08:00Z',
+                    '{"evidence":{"note":"ok"}}'::jsonb);
+            """
+        )
+
     def seed_reviewable_plan(self) -> None:
         self.seed_workspace()
         with self.unit_of_work() as unit_of_work:
@@ -518,6 +554,33 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         )
         self.assertEqual(http["items"][0]["payload"]["api_token"], "<redacted>")
 
+    def test_http_and_mcp_run_event_pages_are_identical(self) -> None:
+        self.seed_run_event()
+        service = CpkServerReadService(self.unit_of_work)
+
+        http = service.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.run-events",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={"workspace_id": "workspace-a", "run_id": "run-a"},
+                payload={"limit": 1},
+            )
+        )
+        mcp = service.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.run-events",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={"workspace_id": "workspace-a", "run_id": "run-a", "limit": 1},
+            )
+        )
+
+        self.assertEqual(http, mcp)
+        self.assertEqual(set(http), {"workspace_id", "kind", "limit", "items", "next_cursor"})
+        self.assertEqual(http["items"][0]["payload"]["note"], "ok")
+
     def test_journal_routes_reject_ambiguous_or_unbounded_arguments_before_uow(self) -> None:
         entered = False
 
@@ -532,6 +595,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             ({"workspace_id": "workspace-a", "session_id": "session-a"}, {"offset": 0}),
             ({"workspace_id": "workspace-a", "session_id": "session-a"}, {"direction": "ascending"}),
             ({"workspace_id": "workspace-a", "session_id": "session-a"}, {"unknown": True}),
+            ({"workspace_id": "workspace-a", "session_id": "session-a"}, {"cursor": {}}),
         )
         for path, payload in cases:
             with self.subTest(payload=payload):
@@ -616,7 +680,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                                 "workspace_id": "workspace-a",
                                 "session_id": "session-a",
                             },
-                            payload={"cursor": cursor},
+                            payload={"after": cursor},
                         )
                     )
                 self.assertEqual(raised.exception.status, 400)
@@ -640,7 +704,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         "workspace_id": "workspace-a",
                         "session_id": "session-a",
                     },
-                    payload={"cursor": {"api_token": "do-not-disclose"}},
+                    payload={"after": {"api_token": "do-not-disclose"}},
                     principal=operator_principal(workspace_ids=("workspace-b",)),
                 )
             )
@@ -661,7 +725,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         "workspace_id": "workspace-a",
                         "session_id": "session-a",
                     },
-                    payload={"cursor": {"api_token": "do-not-disclose"}},
+                    payload={"after": {"api_token": "do-not-disclose"}},
                 )
             )
 
