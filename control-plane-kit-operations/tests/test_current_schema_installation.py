@@ -686,6 +686,40 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             [("workspace-a", "Workspace A", "created", None)],
         )
 
+    def test_query_path_index_drift_is_reset_required_without_repair(self) -> None:
+        for drift in ("missing", "wrong-keys"):
+            with self.subTest(drift=drift):
+                self._reset_owned_schema()
+                postgres.install_schema(self.connection)
+                self.connection.execute(
+                    "INSERT INTO cpk_workspaces "
+                    "(workspace_id, name, lifecycle) "
+                    "VALUES ('workspace-a', 'Workspace A', 'created')"
+                )
+                self.connection.execute(
+                    "DROP INDEX cpk_operation_sessions_workspace_timeline"
+                )
+                if drift == "wrong-keys":
+                    self.connection.execute(
+                        "CREATE INDEX cpk_operation_sessions_workspace_timeline "
+                        "ON cpk_operation_sessions (workspace_id, session_id)"
+                    )
+                before = self._object_identities()
+
+                error = _captured_install_error(self.connection)
+
+                self._assert_install_error(
+                    error,
+                    "operations schema reset is required",
+                )
+                self.assertEqual(self._object_identities(), before)
+                self.assertEqual(
+                    self.connection.execute(
+                        "SELECT workspace_id FROM cpk_workspaces"
+                    ).fetchall(),
+                    [("workspace-a",)],
+                )
+
     def test_expected_relation_replaced_by_view_rejects_before_relation_lock(self) -> None:
         postgres.install_schema(self.connection)
         self.connection.execute("DROP TABLE cpk_observations CASCADE")

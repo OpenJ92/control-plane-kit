@@ -296,11 +296,19 @@ class QueryPathPlannerTests(unittest.TestCase):
                         if "Index Name" in node
                     },
                 )
-                self._assert_plan_qualifications(plan, qualification_fields)
+                for expected_index in expected_indexes:
+                    self._assert_index_qualifications(
+                        plan,
+                        expected_index,
+                        qualification_fields,
+                    )
 
     def test_pending_approvals_adapt_between_sparse_and_dense_tenants(self) -> None:
         self._seed_pending_approvals(target_count=201, foreign_count=20_000)
-        sparse = self._pending_plan()
+        sparse = self._pending_plan(
+            instant="2026-08-12T00:16:40.000000Z",
+            item_id="approval-target-1",
+        )
         sparse_indexes = {
             node["Index Name"]
             for node in _plan_nodes(sparse)
@@ -317,11 +325,24 @@ class QueryPathPlannerTests(unittest.TestCase):
             "cpk_approval_requests_pending_timeline",
             sparse_indexes,
         )
+        self._assert_index_qualifications(
+            sparse,
+            "cpk_operation_sessions_workspace_timeline",
+            ("workspace_id",),
+        )
+        self._assert_index_qualifications(
+            sparse,
+            "cpk_approval_requests_session_timeline",
+            ("session_id", "requested_at", "request_id"),
+        )
         self.assertLessEqual(sparse["Actual Rows"], 101)
 
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self._seed_pending_approvals(target_count=20_000, foreign_count=20_000)
-        dense = self._pending_plan()
+        dense = self._pending_plan(
+            instant="2026-08-12T00:01:40.000000Z",
+            item_id="approval-target-100",
+        )
         dense_indexes = {
             node["Index Name"]
             for node in _plan_nodes(dense)
@@ -330,6 +351,15 @@ class QueryPathPlannerTests(unittest.TestCase):
         self.assertIn(
             "cpk_approval_requests_pending_timeline",
             dense_indexes,
+        )
+        self._assert_index_qualifications(
+            dense,
+            "cpk_approval_requests_pending_timeline",
+            ("requested_at", "request_id"),
+        )
+        self.assertLessEqual(
+            self._index_work(dense, "cpk_approval_requests_pending_timeline"),
+            3 * 101,
         )
         self.assertLessEqual(dense["Actual Rows"], 101)
 
@@ -409,7 +439,7 @@ class QueryPathPlannerTests(unittest.TestCase):
                             ReadCollection.DELEGATION_SIGNING_KEYS,
                             WorkspaceReadScope("workspace-target"),
                             DelegationKeyPurpose.GATEWAY_PROBE,
-                            "issuer-0",
+                            "issuer-99",
                             "key-000100",
                         ),
                     )
@@ -455,15 +485,31 @@ class QueryPathPlannerTests(unittest.TestCase):
                         if "Index Name" in node
                     },
                 )
-                self._assert_plan_qualifications(plan, qualification_fields)
+                self._assert_index_qualifications(
+                    plan,
+                    expected_index,
+                    qualification_fields,
+                )
 
-    def _pending_plan(self) -> dict[str, object]:
+    def _pending_plan(
+        self,
+        *,
+        instant: str,
+        item_id: str,
+    ) -> dict[str, object]:
+        scope = WorkspaceReadScope("workspace-target")
         observed = _ObservingConnection()
         page = PostgresActivityHistoryStore(observed).pending_approval_page(
             ReadPageRequest(
                 ReadCollection.PENDING_APPROVALS,
-                WorkspaceReadScope("workspace-target"),
+                scope,
                 100,
+                TemporalReadCursor(
+                    ReadCollection.PENDING_APPROVALS,
+                    scope,
+                    instant,
+                    item_id,
+                ),
             )
         )
         self.assertEqual(page.items, ())
@@ -485,20 +531,39 @@ class QueryPathPlannerTests(unittest.TestCase):
         self.assertIsNotNone(row)
         return row[0][0]["Plan"]
 
-    def _assert_plan_qualifications(
+    def _assert_index_qualifications(
         self,
         plan: dict[str, object],
+        index_name: str,
         fields: tuple[str, ...],
     ) -> None:
+        matching_nodes = tuple(
+            node
+            for node in _plan_nodes(plan)
+            if node.get("Index Name") == index_name
+        )
+        self.assertTrue(matching_nodes, index_name)
         condition_text = " ".join(
             str(node[key])
-            for node in _plan_nodes(plan)
+            for node in matching_nodes
             for key in ("Index Cond", "Recheck Cond", "Filter")
             if key in node
         )
         for field in fields:
             with self.subTest(qualification=field):
                 self.assertIn(field, condition_text)
+
+    def _index_work(self, plan: dict[str, object], index_name: str) -> float:
+        matching_nodes = tuple(
+            node
+            for node in _plan_nodes(plan)
+            if node.get("Index Name") == index_name
+        )
+        self.assertTrue(matching_nodes, index_name)
+        return sum(
+            float(node["Actual Rows"]) * float(node["Actual Loops"])
+            for node in matching_nodes
+        )
 
     def _workspace(self, workspace_id: str) -> None:
         self.connection.execute(
