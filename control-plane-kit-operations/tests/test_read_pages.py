@@ -272,10 +272,17 @@ class ReadPageContractTests(unittest.TestCase):
         self.assertFalse(hostile.touched)
 
         valid = self.action_cursor().descriptor()
+        for missing_key in valid:
+            candidate = {
+                key: value for key, value in valid.items() if key != missing_key
+            }
+            with self.subTest(missing_top_level=missing_key):
+                self.assert_bounded_error(
+                    lambda value=candidate: read_cursor_from_mapping(value)
+                )
         malformed = (
             MappingProxyType(valid),
             {**valid, "unknown": "candidate-do-not-retain"},
-            {key: value for key, value in valid.items() if key != "position"},
             {**valid, "format_version": True},
             {**valid, "format_version": "1"},
             {**valid, "format_version": 0},
