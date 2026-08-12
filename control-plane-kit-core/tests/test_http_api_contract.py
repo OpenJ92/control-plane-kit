@@ -40,6 +40,7 @@ class HttpApiContractTests(unittest.TestCase):
                 ("GET", "/workspaces/{workspace_id}/observed-state"),
                 ("GET", "/workspaces/{workspace_id}/operator-graph"),
                 ("GET", "/workspaces/{workspace_id}/plans/{plan_id}"),
+                ("GET", "/workspaces/{workspace_id}/runs/{run_id}/events"),
                 ("GET", "/workspaces/{workspace_id}/runtime-authorities"),
                 ("GET", "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}"),
                 ("GET", "/workspaces/{workspace_id}/runtime-authority-deliveries"),
@@ -59,6 +60,10 @@ class HttpApiContractTests(unittest.TestCase):
                 ),
                 ("GET", "/workspaces/{workspace_id}/sessions"),
                 ("GET", "/workspaces/{workspace_id}/sessions/{session_id}"),
+                (
+                    "GET",
+                    "/workspaces/{workspace_id}/sessions/{session_id}/actions",
+                ),
             ],
         )
         self.assertEqual(
@@ -134,6 +139,7 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/observed-state",
                 "/workspaces/{workspace_id}/operator-graph",
                 "/workspaces/{workspace_id}/plans/{plan_id}",
+                "/workspaces/{workspace_id}/runs/{run_id}/events",
                 "/workspaces/{workspace_id}/runtime-authorities",
                 "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}",
                 "/workspaces/{workspace_id}/runtime-authority-deliveries",
@@ -144,6 +150,7 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/secret-references/{registration_id}",
                 "/workspaces/{workspace_id}/sessions",
                 "/workspaces/{workspace_id}/sessions/{session_id}",
+                "/workspaces/{workspace_id}/sessions/{session_id}/actions",
             ],
         )
         self.assertEqual(HttpApiContract.from_descriptor(descriptor), contract)

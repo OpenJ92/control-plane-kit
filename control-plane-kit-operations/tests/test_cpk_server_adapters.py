@@ -13,6 +13,7 @@ from control_plane_kit_core.operations import (
     operator_command_http_routes,
     operator_read_http_routes,
 )
+from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.identity import (
     AuthenticatedPrincipal,
     PrincipalIdentity,
@@ -81,6 +82,7 @@ from control_plane_kit_operations.records import (
     ActivityPlanStatus,
     BoundedEvidence,
     GraphVersionRecord,
+    OperationActionRecord,
     OperationSessionRecord,
     OperationSessionStatus,
     WorkspaceRecord,
@@ -212,6 +214,32 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             unit_of_work.stores.workspaces.set_current_graph(
                 "workspace-a",
                 "graph-current",
+            )
+            unit_of_work.commit()
+
+    def seed_session_action(self) -> None:
+        self.seed_workspace()
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.activity_history.add_session(
+                OperationSessionRecord(
+                    session_id="session-a",
+                    workspace_id="workspace-a",
+                    actor_id="operator-a",
+                    title="Demo",
+                    status=OperationSessionStatus.OPEN,
+                    created_at="2026-07-22T11:00:00Z",
+                )
+            )
+            unit_of_work.stores.activity_history.add_action(
+                OperationActionRecord(
+                    action_id="action-a",
+                    session_id="session-a",
+                    ordinal=1,
+                    action_type=OperatorCommandKind.SET_DESIRED_GRAPH,
+                    actor_id="operator-a",
+                    payload={"api_token": "do-not-disclose", "note": "ok"},
+                    created_at="2026-07-22T11:01:00Z",
+                )
             )
             unit_of_work.commit()
 
@@ -452,6 +480,123 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
 
         self.assertEqual(result["workspace"]["workspace_id"], "workspace-a")
         self.assertEqual(result["current_graph"]["graph_id"], "graph-current")
+
+    def test_http_and_mcp_session_action_pages_are_identical(self) -> None:
+        self.seed_session_action()
+        service = CpkServerReadService(self.unit_of_work)
+
+        http = service.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.session-actions",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "session_id": "session-a",
+                },
+                payload={"limit": 1},
+            )
+        )
+        mcp = service.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.session-actions",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "session_id": "session-a",
+                    "limit": 1,
+                },
+            )
+        )
+
+        self.assertEqual(http, mcp)
+        self.assertEqual(
+            set(http),
+            {"workspace_id", "kind", "limit", "items", "next_cursor"},
+        )
+        self.assertEqual(http["items"][0]["payload"]["api_token"], "<redacted>")
+
+    def test_journal_routes_reject_ambiguous_or_unbounded_arguments_before_uow(self) -> None:
+        entered = False
+
+        def forbidden_unit_of_work():
+            nonlocal entered
+            entered = True
+            raise AssertionError("invalid journal arguments must precede store access")
+
+        service = CpkServerReadService(forbidden_unit_of_work)
+        cases = (
+            ({"workspace_id": "workspace-a", "session_id": "session-a"}, {"workspace_id": "workspace-a"}),
+            ({"workspace_id": "workspace-a", "session_id": "session-a"}, {"offset": 0}),
+            ({"workspace_id": "workspace-a", "session_id": "session-a"}, {"direction": "ascending"}),
+            ({"workspace_id": "workspace-a", "session_id": "session-a"}, {"unknown": True}),
+        )
+        for path, payload in cases:
+            with self.subTest(payload=payload):
+                with self.assertRaises(CpkServerApplicationError) as raised:
+                    service.handle(
+                        RouteRequest(
+                            surface="http",
+                            route_id="read.session-actions",
+                            service_role=ControlPlaneServiceRole.READS,
+                            path_parameters=path,
+                            payload=payload,
+                        )
+                    )
+                self.assertEqual(raised.exception.status, 400)
+        self.assertFalse(entered)
+
+    def test_journal_authorization_precedes_cursor_decoding(self) -> None:
+        entered = False
+
+        def forbidden_unit_of_work():
+            nonlocal entered
+            entered = True
+            raise AssertionError("authorization must precede store access")
+
+        service = CpkServerReadService(forbidden_unit_of_work)
+        with self.assertRaises(CpkServerApplicationError) as raised:
+            service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.session-actions",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "session_id": "session-a",
+                    },
+                    payload={"cursor": {"api_token": "do-not-disclose"}},
+                    principal=operator_principal(workspace_ids=("workspace-b",)),
+                )
+            )
+
+        self.assertEqual(raised.exception.status, 403)
+        self.assertFalse(entered)
+
+    def test_journal_cursor_errors_are_bounded_and_cause_free(self) -> None:
+        service = CpkServerReadService(self.unit_of_work)
+
+        with self.assertRaises(CpkServerApplicationError) as raised:
+            service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.session-actions",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "session_id": "session-a",
+                    },
+                    payload={"cursor": {"api_token": "do-not-disclose"}},
+                )
+            )
+
+        self.assertEqual(raised.exception.status, 400)
+        self.assertNotIn("api_token", str(raised.exception))
+        self.assertNotIn("do-not-disclose", repr(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+        self.assertIsNone(raised.exception.__context__)
 
     def test_read_errors_are_bounded_without_sql_or_secret_leakage(self) -> None:
         service = CpkServerReadService(self.unit_of_work)
