@@ -105,21 +105,25 @@ class ExecutionStore(Protocol):
 
 class ObservedStateStore(Protocol):
     def latest_for_workspace(self, workspace_id: str) -> tuple[ObservationRecord, ...]: ...
+    def latest_page(self, request: ReadPageRequest) -> ReadPage[ObservationRecord]: ...
 
 
 class RuntimeAuthorityStore(Protocol):
     def get(self, workspace_id: str, authority_ref: RuntimeAuthorityReference) -> object: ...
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
+    def active_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
 
 
 class RuntimeAuthorityDeliveryStore(Protocol):
     def get(self, workspace_id: str, authority_ref: RuntimeAuthorityReference) -> object: ...
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
+    def active_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
 
 
 class IngressAuthorityStore(Protocol):
     def get(self, workspace_id: str, authority_ref: IngressAuthorityReference) -> object: ...
     def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
+    def active_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
 
 
 class SecretProviderStore(Protocol):
@@ -132,6 +136,10 @@ class SecretProviderStore(Protocol):
         self,
         workspace_id: str,
     ) -> tuple[RegisteredSecretProvider, ...]: ...
+    def active_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredSecretProvider]: ...
 
 
 class SecretReferenceStore(Protocol):
@@ -144,6 +152,10 @@ class SecretReferenceStore(Protocol):
         self,
         workspace_id: str,
     ) -> tuple[RegisteredSecretReference, ...]: ...
+    def active_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredSecretReference]: ...
 
 
 class GatewayProbeStore(Protocol):
@@ -163,6 +175,10 @@ class DelegationSigningKeyStore(Protocol):
         self,
         workspace_id: str,
     ) -> tuple[RegisteredDelegationSigningKey, ...]: ...
+    def workspace_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredDelegationSigningKey]: ...
 
     def require_unambiguous_active(
         self,
@@ -283,58 +299,6 @@ class FocusedDetailReadModel:
             "workspace_id": self.workspace_id,
             "kind": self.kind,
             **dict(self.payload),
-        }
-
-
-@dataclass(frozen=True)
-class ObservedStateReadModel:
-    workspace_id: str
-    observations: tuple[Mapping[str, object], ...]
-
-    def descriptor(self) -> dict[str, object]:
-        return {
-            "workspace_id": self.workspace_id,
-            "observations": [dict(observation) for observation in self.observations],
-        }
-
-
-@dataclass(frozen=True)
-class RuntimeAuthorityCollectionReadModel:
-    workspace_id: str
-    items: tuple[Mapping[str, object], ...]
-
-    def descriptor(self) -> dict[str, object]:
-        return {
-            "workspace_id": self.workspace_id,
-            "items": [dict(item) for item in self.items],
-        }
-
-
-@dataclass(frozen=True)
-class IngressAuthorityCollectionReadModel:
-    workspace_id: str
-    items: tuple[Mapping[str, object], ...]
-
-    def descriptor(self) -> dict[str, object]:
-        return {
-            "workspace_id": self.workspace_id,
-            "items": [dict(item) for item in self.items],
-        }
-
-
-@dataclass(frozen=True)
-class SecretMetadataCollectionReadModel:
-    """Secret-free provider or handle registration metadata."""
-
-    workspace_id: str
-    kind: str
-    items: tuple[Mapping[str, object], ...]
-
-    def descriptor(self) -> dict[str, object]:
-        return {
-            "workspace_id": self.workspace_id,
-            "kind": self.kind,
-            "items": [dict(item) for item in self.items],
         }
 
 
@@ -622,13 +586,17 @@ class InstanceReadService:
             payload=detail,
         )
 
-    def observed_state(self, workspace_id: str) -> ObservedStateReadModel:
+    def observed_state(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        workspace_id = request.scope.workspace_id
         workspace = self._workspace(workspace_id)
         as_of = self._clock()
         if not isinstance(as_of, datetime) or as_of.tzinfo is None:
             raise ReadModelError("read-service clock must return a timezone-aware datetime")
-        observations = tuple(
-            _observation_descriptor(
+        return self._observed_state().latest_page(request).map(
+            lambda record: _observation_descriptor(
                 project_observation(
                     record,
                     current_graph_id=workspace.current_graph_id,
@@ -636,23 +604,18 @@ class InstanceReadService:
                     policy=self._observation_freshness,
                 )
             )
-            for record in self._observed_state().latest_for_workspace(workspace_id)
         )
-        return ObservedStateReadModel(workspace_id=workspace_id, observations=observations)
 
     def runtime_authorities(
         self,
-        workspace_id: str,
-    ) -> RuntimeAuthorityCollectionReadModel:
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        workspace_id = request.scope.workspace_id
         self._workspace(workspace_id)
         if self._runtime_authority_store is None:
             raise ReadModelError("runtime authority store is not configured")
-        return RuntimeAuthorityCollectionReadModel(
-            workspace_id=workspace_id,
-            items=tuple(
-                _redacted_runtime_authority(value)
-                for value in self._runtime_authority_store.list_active(workspace_id)
-            ),
+        return self._runtime_authority_store.active_page(request).map(
+            lambda value: dict(_redacted_runtime_authority(value))
         )
 
     def runtime_authority_detail(
@@ -677,19 +640,14 @@ class InstanceReadService:
 
     def runtime_authority_deliveries(
         self,
-        workspace_id: str,
-    ) -> RuntimeAuthorityCollectionReadModel:
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        workspace_id = request.scope.workspace_id
         self._workspace(workspace_id)
         if self._runtime_authority_delivery_store is None:
             raise ReadModelError("runtime authority delivery store is not configured")
-        return RuntimeAuthorityCollectionReadModel(
-            workspace_id=workspace_id,
-            items=tuple(
-                _redacted_runtime_authority_delivery(value)
-                for value in self._runtime_authority_delivery_store.list_active(
-                    workspace_id
-                )
-            ),
+        return self._runtime_authority_delivery_store.active_page(request).map(
+            lambda value: dict(_redacted_runtime_authority_delivery(value))
         )
 
     def runtime_authority_delivery_detail(
@@ -721,17 +679,14 @@ class InstanceReadService:
 
     def ingress_authorities(
         self,
-        workspace_id: str,
-    ) -> IngressAuthorityCollectionReadModel:
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        workspace_id = request.scope.workspace_id
         self._workspace(workspace_id)
         if self._ingress_authority_store is None:
             raise ReadModelError("ingress authority store is not configured")
-        return IngressAuthorityCollectionReadModel(
-            workspace_id=workspace_id,
-            items=tuple(
-                _redacted_ingress_authority(value)
-                for value in self._ingress_authority_store.list_active(workspace_id)
-            ),
+        return self._ingress_authority_store.active_page(request).map(
+            lambda value: dict(_redacted_ingress_authority(value))
         )
 
     def ingress_authority_detail(
@@ -756,18 +711,14 @@ class InstanceReadService:
 
     def secret_providers(
         self,
-        workspace_id: str,
-    ) -> SecretMetadataCollectionReadModel:
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        workspace_id = request.scope.workspace_id
         self._workspace(workspace_id)
         if self._secret_provider_store is None:
             raise ReadModelError("secret provider store is not configured")
-        return SecretMetadataCollectionReadModel(
-            workspace_id=workspace_id,
-            kind="secret-providers",
-            items=tuple(
-                _public_secret_provider(value)
-                for value in self._secret_provider_store.list_active(workspace_id)
-            ),
+        return self._secret_provider_store.active_page(request).map(
+            lambda value: dict(_public_secret_provider(value))
         )
 
     def secret_provider_detail(
@@ -793,18 +744,14 @@ class InstanceReadService:
 
     def secret_references(
         self,
-        workspace_id: str,
-    ) -> SecretMetadataCollectionReadModel:
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        workspace_id = request.scope.workspace_id
         self._workspace(workspace_id)
         if self._secret_reference_store is None:
             raise ReadModelError("secret reference store is not configured")
-        return SecretMetadataCollectionReadModel(
-            workspace_id=workspace_id,
-            kind="secret-references",
-            items=tuple(
-                _public_secret_reference(value)
-                for value in self._secret_reference_store.list_active(workspace_id)
-            ),
+        return self._secret_reference_store.active_page(request).map(
+            lambda value: dict(_public_secret_reference(value))
         )
 
     def secret_reference_detail(
@@ -875,20 +822,14 @@ class InstanceReadService:
 
     def delegation_signing_keys(
         self,
-        workspace_id: str,
-    ) -> SecretMetadataCollectionReadModel:
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        workspace_id = request.scope.workspace_id
         self._workspace(workspace_id)
         if self._delegation_signing_key_store is None:
             raise ReadModelError("delegation signing key store is not configured")
-        return SecretMetadataCollectionReadModel(
-            workspace_id=workspace_id,
-            kind="delegation-signing-keys",
-            items=tuple(
-                value.descriptor()
-                for value in self._delegation_signing_key_store.list_workspace(
-                    workspace_id
-                )
-            ),
+        return self._delegation_signing_key_store.workspace_page(request).map(
+            _public_delegation_signing_key
         )
 
     def gateway_verifier_configuration(
@@ -1297,6 +1238,31 @@ def _public_secret_reference(
     if not isinstance(value, RegisteredSecretReference):
         raise ReadModelError("secret reference record cannot be projected")
     return value.descriptor()
+
+
+def _public_delegation_signing_key(
+    value: RegisteredDelegationSigningKey,
+) -> dict[str, object]:
+    if not isinstance(value, RegisteredDelegationSigningKey):
+        raise ReadModelError("delegation signing key record cannot be projected")
+    return {
+        "registration_id": value.registration_id,
+        "workspace_id": value.workspace_id,
+        "purpose": value.purpose.value,
+        "issuer": value.issuer,
+        "key_id": value.public_key.key_id,
+        "algorithm": value.public_key.algorithm.value,
+        "fingerprint_sha256": value.public_key.fingerprint_sha256,
+        "admitted_by": value.admitted_by,
+        "admitted_at": value.admitted_at,
+        "status": value.status.value,
+        "activated_by": value.activated_by,
+        "activated_at": value.activated_at,
+        "retired_by": value.retired_by,
+        "retired_at": value.retired_at,
+        "revoked_by": value.revoked_by,
+        "revoked_at": value.revoked_at,
+    }
 
 
 def _mapping(value: object) -> Mapping[str, object]:

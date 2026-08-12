@@ -293,6 +293,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.DELEGATION_KEYS,
         "DelegationSigningKeyCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_DELEGATION_KEY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.gateway-verifier-configuration",
@@ -351,6 +353,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.INGRESS_AUTHORITIES,
         "IngressAuthorityCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_INGRESS_AUTHORITY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.ingress-authority-detail",
@@ -363,6 +367,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.OBSERVED_STATE,
         "ObservedStateReadResponse",
         ReadProjectionPolicy.OBSERVED_STATE_EVIDENCE,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.run-events",
@@ -377,6 +383,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.RUNTIME_AUTHORITIES,
         "RuntimeAuthorityCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.runtime-authority-detail",
@@ -389,6 +397,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.RUNTIME_AUTHORITY_DELIVERIES,
         "RuntimeAuthorityDeliveryCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY_DELIVERY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.runtime-authority-delivery-detail",
@@ -401,6 +411,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.SECRET_PROVIDERS,
         "SecretProviderCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_SECRET_PROVIDER,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.secret-provider-detail",
@@ -413,6 +425,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.SECRET_REFERENCES,
         "SecretReferenceCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_SECRET_REFERENCE,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.secret-reference-detail",

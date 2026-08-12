@@ -341,17 +341,23 @@ class InstanceReadServiceTests(unittest.TestCase):
             workspace = unit_of_work.stores.workspaces.get("workspace-a")
             unit_of_work.commit()
 
-        model = self.service().observed_state("workspace-a").descriptor()
+        model = self.service().observed_state(
+            ReadPageRequest(
+                ReadCollection.LATEST_OBSERVATIONS,
+                WorkspaceReadScope("workspace-a"),
+                100,
+            )
+        ).descriptor()
 
         self.assertEqual(workspace.current_graph_id, "graph-current")
         self.assertEqual(
-            [item["observation_id"] for item in model["observations"]],
+            [item["observation_id"] for item in model["items"]],
             ["obs-new", "obs-other"],
         )
-        self.assertEqual(model["observations"][0]["freshness"], "fresh")
-        self.assertEqual(model["observations"][0]["payload"]["url"], "<redacted>")
-        self.assertEqual(model["observations"][1]["freshness"], "stale")
-        self.assertEqual(model["observations"][1]["stale_reason"], "graph-changed")
+        self.assertEqual(model["items"][0]["freshness"], "fresh")
+        self.assertEqual(model["items"][0]["payload"]["url"], "<redacted>")
+        self.assertEqual(model["items"][1]["freshness"], "stale")
+        self.assertEqual(model["items"][1]["stale_reason"], "graph-changed")
 
     def test_explicit_stale_observation_stays_stale(self) -> None:
         self.seed_graphs()
@@ -365,10 +371,12 @@ class InstanceReadServiceTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
-        model = self.service().observed_state("workspace-a").descriptor()
+        model = self.service().observed_state(
+            ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, WorkspaceReadScope("workspace-a"), 100)
+        ).descriptor()
 
-        self.assertEqual(model["observations"][0]["freshness"], "stale")
-        self.assertEqual(model["observations"][0]["stale_reason"], "recorded-stale")
+        self.assertEqual(model["items"][0]["freshness"], "stale")
+        self.assertEqual(model["items"][0]["stale_reason"], "recorded-stale")
 
     def test_exact_clock_boundary_is_fresh_then_expires(self) -> None:
         self.seed_graphs()
@@ -378,7 +386,8 @@ class InstanceReadServiceTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
-        boundary = self.service().observed_state("workspace-a").descriptor()
+        request = ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, WorkspaceReadScope("workspace-a"), 100)
+        boundary = self.service().observed_state(request).descriptor()
         expired = self.service(
             clock=lambda: datetime(
                 2026,
@@ -390,11 +399,11 @@ class InstanceReadServiceTests(unittest.TestCase):
                 1,
                 tzinfo=timezone.utc,
             )
-        ).observed_state("workspace-a").descriptor()
+        ).observed_state(request).descriptor()
 
-        self.assertEqual(boundary["observations"][0]["freshness"], "fresh")
-        self.assertEqual(expired["observations"][0]["freshness"], "stale")
-        self.assertEqual(expired["observations"][0]["stale_reason"], "expired")
+        self.assertEqual(boundary["items"][0]["freshness"], "fresh")
+        self.assertEqual(expired["items"][0]["freshness"], "stale")
+        self.assertEqual(expired["items"][0]["stale_reason"], "expired")
 
     def test_malformed_timestamp_is_rejected_before_persistence(self) -> None:
         self.seed_graphs()
@@ -403,9 +412,11 @@ class InstanceReadServiceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "canonical UTC"):
                 unit_of_work.stores.observed_state.put(record)
 
-        model = self.service().observed_state("workspace-a").descriptor()
+        model = self.service().observed_state(
+            ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, WorkspaceReadScope("workspace-a"), 100)
+        ).descriptor()
 
-        self.assertEqual(model["observations"], [])
+        self.assertEqual(model["items"], [])
         self.assertEqual(record.observed_at, "not-a-timestamp")
         self.assertIs(record.freshness, ObservationFreshness.FRESH)
 
@@ -417,9 +428,11 @@ class InstanceReadServiceTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
-        model = self.service().observed_state("workspace-a").descriptor()
+        model = self.service().observed_state(
+            ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, WorkspaceReadScope("workspace-a"), 100)
+        ).descriptor()
 
-        self.assertEqual(model["observations"][0]["stale_reason"], "future-timestamp")
+        self.assertEqual(model["items"][0]["stale_reason"], "future-timestamp")
 
     def test_correlated_record_requires_complete_typed_probe_identity(self) -> None:
         with self.assertRaisesRegex(

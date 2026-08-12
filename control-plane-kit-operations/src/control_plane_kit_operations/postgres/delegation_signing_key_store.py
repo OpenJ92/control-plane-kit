@@ -21,6 +21,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    DelegationKeyReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 
 
 _SELECT = """
@@ -175,6 +183,55 @@ class DelegationSigningKeyStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row(row) for row in rows)
+
+    def workspace_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredDelegationSigningKey]:
+        if request.collection is not ReadCollection.DELEGATION_SIGNING_KEYS:
+            raise ReadPageError("delegation key page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND (purpose, issuer, key_id) > (%s, %s, %s)"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.purpose.value,
+                cursor.issuer,
+                cursor.key_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            {_SELECT}
+            WHERE workspace_id = %s
+              {seek}
+            ORDER BY purpose ASC, issuer ASC, key_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _row(row),
+                    DelegationKeyReadCursor(
+                        ReadCollection.DELEGATION_SIGNING_KEYS,
+                        request.scope,
+                        DelegationKeyPurpose(row[2]),
+                        row[3],
+                        row[4],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def list_for_verification(
         self,

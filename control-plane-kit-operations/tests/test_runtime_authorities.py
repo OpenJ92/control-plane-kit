@@ -17,6 +17,11 @@ from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.postgres import PostgresStoreBundle
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.read_services import InstanceReadService
+from control_plane_kit_operations.read_pages import (
+    ReadCollection,
+    ReadPageRequest,
+    WorkspaceReadScope,
+)
 from control_plane_kit_operations.runtime_authorities import (
     DockerRuntimeAuthorityCodec,
     LocalDockerSocketAuthority,
@@ -519,7 +524,13 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
             ).runtime_authorities,
         )
 
-        descriptor = read_service.runtime_authorities("workspace-a").descriptor()
+        descriptor = read_service.runtime_authorities(
+            ReadPageRequest(
+                ReadCollection.RUNTIME_AUTHORITIES,
+                WorkspaceReadScope("workspace-a"),
+                100,
+            )
+        ).descriptor()
 
         self.assertEqual(descriptor["workspace_id"], "workspace-a")
         self.assertEqual(descriptor["items"][0]["authority_ref"], "mac-mini-docker")
@@ -557,7 +568,11 @@ class RuntimeAuthorityStoreTests(unittest.TestCase):
         )
 
         descriptor = read_service.runtime_authority_deliveries(
-            "workspace-a"
+            ReadPageRequest(
+                ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                WorkspaceReadScope("workspace-a"),
+                100,
+            )
         ).descriptor()
 
         self.assertEqual(descriptor["workspace_id"], "workspace-a")
