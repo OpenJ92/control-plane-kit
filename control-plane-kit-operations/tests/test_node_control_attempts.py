@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from dataclasses import replace
 import threading
+import time
 import unittest
 
 import psycopg
@@ -73,11 +74,48 @@ _ATTEMPT_KEY_CONSTRAINTS = {
         "u", ("workspace_id", "request_id"),
     ),
     "cpk_node_control_attempts_transit_jti_key": (
-        "u", ("workspace_id", "transit_issuer", "transit_jti"),
+        "u", ("transit_issuer", "transit_jti"),
     ),
     "cpk_node_control_attempts_workload_jti_key": (
-        "u", ("workspace_id", "workload_issuer", "workload_jti"),
+        "u", ("workload_issuer", "workload_jti"),
     ),
+}
+
+_ATTEMPT_SUPPORTING_INDEXES = {
+    "cpk_node_control_attempts_projection_source_idx": (
+        "current_realized_projection_id", "current_graph_id",
+    ),
+    "cpk_node_control_attempts_projection_workspace_idx": (
+        "current_realized_projection_id", "workspace_id",
+    ),
+    "cpk_node_control_attempts_transit_key_workspace_idx": (
+        "transit_key_registration_id", "workspace_id",
+    ),
+    "cpk_node_control_attempts_workload_key_workspace_idx": (
+        "workload_key_registration_id", "workspace_id",
+    ),
+    "cpk_node_control_attempts_transit_authorization_workspace_idx": (
+        "transit_authorization_id", "workspace_id",
+    ),
+    "cpk_node_control_attempts_workload_authorization_workspace_idx": (
+        "workload_authorization_id", "workspace_id",
+    ),
+}
+
+_ATTEMPT_CHECK_CONSTRAINTS = {
+    f"cpk_node_control_attempts_{name}_check"
+    for name in (
+        "attempt_id", "workspace_id", "request_id", "actor_subject",
+        "current_graph_id", "current_realized_projection_id",
+        "gateway_runtime_id", "transit_key_registration_id",
+        "workload_key_registration_id", "transit_authorization_id",
+        "workload_authorization_id", "transit_correlation_id",
+        "workload_correlation_id", "request_bytes", "request_digest",
+        "transit_grant_bytes", "transit_grant_digest", "workload_grant_bytes",
+        "workload_grant_digest", "transit_issuer", "transit_key_id",
+        "transit_jti", "workload_issuer", "workload_key_id", "workload_jti",
+        "intent_fingerprint",
+    )
 }
 
 _ATTEMPT_FOREIGN_KEYS = {
@@ -382,6 +420,26 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
             NodeControlGraphReferenceRole.VARIABLE,
             "other-variable",
         )
+        other_workspace_target = replace(
+            attempt.request.target,
+            workspace_id=self.reference(
+                NodeControlGraphReferenceRole.WORKSPACE,
+                "workspace-b",
+            ),
+        )
+        other_revision_target = replace(
+            attempt.request.target,
+            graph_revision=self.reference(
+                NodeControlGraphReferenceRole.GRAPH_REVISION,
+                "graph-other",
+            ),
+        )
+        other_workspace_transit = self.grants(
+            replace(attempt.request, target=other_workspace_target)
+        )[0]
+        other_revision_transit = self.grants(
+            replace(attempt.request, target=other_revision_target)
+        )[0]
         mismatches = (
             lambda: replace(
                 attempt,
@@ -423,6 +481,20 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
                 attempt,
                 workload_grant=replace(
                     attempt.workload_grant,
+                    request_id="request-b",
+                ),
+            ),
+            lambda: replace(
+                attempt,
+                transit_grant=replace(
+                    attempt.transit_grant,
+                    idempotency_key="idempotency-b",
+                ),
+            ),
+            lambda: replace(
+                attempt,
+                workload_grant=replace(
+                    attempt.workload_grant,
                     idempotency_key="idempotency-b",
                 ),
             ),
@@ -433,6 +505,31 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
                     request_digest=self.request(2).canonical_digest(),
                 ),
             ),
+            lambda: replace(
+                attempt,
+                workload_grant=replace(
+                    attempt.workload_grant,
+                    request_digest=self.request(2).canonical_digest(),
+                ),
+            ),
+            lambda: replace(attempt, transit_grant=transit),
+            lambda: replace(attempt, workload_grant=workload),
+            lambda: replace(
+                attempt,
+                transit_grant=replace(
+                    attempt.transit_grant,
+                    command_codec=ControlPlaneCommandCodec.REPLACE_MAP_V1,
+                ),
+            ),
+            lambda: replace(
+                attempt,
+                workload_grant=replace(
+                    attempt.workload_grant,
+                    command_codec=ControlPlaneCommandCodec.REPLACE_MAP_V1,
+                ),
+            ),
+            lambda: replace(attempt, transit_grant=other_workspace_transit),
+            lambda: replace(attempt, transit_grant=other_revision_transit),
         )
         for index, mismatch in enumerate(mismatches):
             with self.subTest(mismatch=index):
@@ -521,8 +618,14 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
             )
         )
         checks = tuple(value for value in constraints.values() if value.kind == "c")
-        self.assertGreaterEqual(len(checks), 20)
+        self.assertEqual({value.name for value in checks}, _ATTEMPT_CHECK_CONSTRAINTS)
         self.assertTrue(all(value.validated for value in checks))
+        self.assertEqual(
+            set(constraints),
+            _ATTEMPT_CHECK_CONSTRAINTS
+            | set(_ATTEMPT_KEY_CONSTRAINTS)
+            | set(_ATTEMPT_FOREIGN_KEYS),
+        )
         check_text = "\n".join(value.check_expression or "" for value in checks)
         for required in (
             "octet_length(request_bytes)", "16384", "request_digest",
@@ -540,11 +643,20 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
             for value in contract.indexes
             if value.relation == "cpk_node_control_attempts"
         }
-        self.assertEqual(set(indexes), set(_ATTEMPT_KEY_CONSTRAINTS))
-        self.assertTrue(
-            all(value.owning_constraint == value.name for value in indexes.values())
+        self.assertEqual(
+            set(indexes),
+            set(_ATTEMPT_KEY_CONSTRAINTS) | set(_ATTEMPT_SUPPORTING_INDEXES),
         )
+        for name in _ATTEMPT_KEY_CONSTRAINTS:
+            self.assertEqual(indexes[name].owning_constraint, name)
+        for name, entries in _ATTEMPT_SUPPORTING_INDEXES.items():
+            with self.subTest(supporting_index=name):
+                self.assertIsNone(indexes[name].owning_constraint)
+                self.assertEqual(indexes[name].key_entries, entries)
+                self.assertFalse(indexes[name].unique)
+                self.assertIsNone(indexes[name].predicate)
         self.assertFalse(any("time" in value.name for value in indexes.values()))
+        self.assertFalse(any("digest" in value.name for value in indexes.values()))
 
     def test_atlas_and_package_boundaries_explain_one_insert_only_truth(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -752,14 +864,63 @@ class NodeControlAttemptPostgresTests(
                 ),
             )
 
-    def _assert_corrupt(self, store, *, forbidden: str = "") -> None:
+    def _assert_corrupt(self, store, *, forbidden: str | None = None) -> None:
         with self.assertRaises(self.contract("NodeControlAttemptCorrupt")) as caught:
             store.get("attempt-a")
         rendered = str(caught.exception)
         self.assertLessEqual(len(rendered), 128)
-        self.assertNotIn(forbidden, rendered)
+        rendered_repr = repr(caught.exception)
+        self.assertLessEqual(len(rendered_repr), 160)
+        if forbidden is not None:
+            self.assertNotIn(forbidden, rendered)
+            self.assertNotIn(forbidden, rendered_repr)
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
+
+    def _attempt_catalog_snapshot(self, connection) -> tuple[tuple[object, ...], ...]:
+        return tuple(
+            connection.execute(
+                """
+                SELECT 'relation', relation.relname, relation.relkind::text,
+                       relation.relpersistence::text
+                FROM pg_class AS relation
+                JOIN pg_namespace AS namespace
+                  ON namespace.oid = relation.relnamespace
+                WHERE namespace.nspname = current_schema()
+                  AND relation.relname = 'cpk_node_control_attempts'
+                UNION ALL
+                SELECT 'column', attribute.attname,
+                       format_type(attribute.atttypid, attribute.atttypmod),
+                       attribute.attnotnull::text
+                FROM pg_attribute AS attribute
+                JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+                JOIN pg_namespace AS namespace
+                  ON namespace.oid = relation.relnamespace
+                WHERE namespace.nspname = current_schema()
+                  AND relation.relname = 'cpk_node_control_attempts'
+                  AND attribute.attnum > 0 AND NOT attribute.attisdropped
+                UNION ALL
+                SELECT 'constraint', owned.conname,
+                       owned.contype::text, pg_get_constraintdef(owned.oid, false)
+                FROM pg_constraint AS owned
+                JOIN pg_class AS relation ON relation.oid = owned.conrelid
+                JOIN pg_namespace AS namespace
+                  ON namespace.oid = relation.relnamespace
+                WHERE namespace.nspname = current_schema()
+                  AND relation.relname = 'cpk_node_control_attempts'
+                UNION ALL
+                SELECT 'index', indexed.relname, '', pg_get_indexdef(indexed.oid)
+                FROM pg_index AS owned
+                JOIN pg_class AS relation ON relation.oid = owned.indrelid
+                JOIN pg_class AS indexed ON indexed.oid = owned.indexrelid
+                JOIN pg_namespace AS namespace
+                  ON namespace.oid = relation.relnamespace
+                WHERE namespace.nspname = current_schema()
+                  AND relation.relname = 'cpk_node_control_attempts'
+                ORDER BY 1, 2, 3, 4
+                """
+            ).fetchall()
+        )
 
     def test_restart_round_trip_and_byte_corruption_are_exact(self) -> None:
         attempt = self.attempt(1e20)
@@ -790,6 +951,41 @@ class NodeControlAttemptPostgresTests(
                 self.connection.execute("TRUNCATE cpk_node_control_attempts")
                 store.add(attempt)
 
+        strict_candidates = (
+            (
+                "request_bytes", "request_digest",
+                attempt.request_bytes + b" ",
+                self.request(2).canonical_bytes(),
+            ),
+            (
+                "transit_grant_bytes", "transit_grant_digest",
+                attempt.transit_grant_bytes + b" ",
+                self.grants(self.request(2))[0].canonical_bytes(),
+            ),
+            (
+                "workload_grant_bytes", "workload_grant_digest",
+                attempt.workload_grant_bytes + b" ",
+                self.grants(self.request(2))[1].canonical_bytes(),
+            ),
+        )
+        for bytes_column, digest_column, noncanonical, different in strict_candidates:
+            for candidate_kind, candidate in (
+                ("noncanonical", noncanonical),
+                ("different-canonical", different),
+            ):
+                with self.subTest(wire=bytes_column, candidate=candidate_kind):
+                    digest = hashlib.sha256(candidate).hexdigest()
+                    self.connection.execute(
+                        f"""
+                        UPDATE cpk_node_control_attempts
+                        SET {bytes_column}=%s, {digest_column}=%s
+                        """,
+                        (candidate, digest),
+                    )
+                    self._assert_corrupt(store, forbidden=digest)
+                    self.connection.execute("TRUNCATE cpk_node_control_attempts")
+                    store.add(attempt)
+
         for column in (
             "request_digest",
             "transit_grant_digest",
@@ -803,6 +999,23 @@ class NodeControlAttemptPostgresTests(
                 self._assert_corrupt(store, forbidden="0" * 64)
                 self.connection.execute("TRUNCATE cpk_node_control_attempts")
                 store.add(attempt)
+
+        for column, candidate in (
+            ("transit_issuer", "other-server"),
+            ("transit_key_id", "other-transit-key"),
+            ("transit_jti", "other-transit-jti"),
+            ("workload_issuer", "other-server"),
+            ("workload_key_id", "other-workload-key"),
+            ("workload_jti", "other-workload-jti"),
+        ):
+            with self.subTest(duplicate_scalar=column):
+                self.connection.execute(
+                    f"UPDATE cpk_node_control_attempts SET {column}=%s",
+                    (candidate,),
+                )
+                self._assert_corrupt(store, forbidden=candidate)
+                self.connection.execute("TRUNCATE cpk_node_control_attempts")
+                store.add(attempt)
         self.connection.execute("TRUNCATE cpk_node_control_attempts")
 
     def test_prior_attempt_shape_requires_reset_without_repair(self) -> None:
@@ -811,11 +1024,13 @@ class NodeControlAttemptPostgresTests(
             drift.execute(
                 "ALTER TABLE cpk_node_control_attempts ADD COLUMN forbidden text"
             )
+            before = self._attempt_catalog_snapshot(drift)
             with self.assertRaisesRegex(
                 SchemaInstallationError,
                 "operations schema reset is required",
             ):
                 install_schema(drift)
+            self.assertEqual(self._attempt_catalog_snapshot(drift), before)
             observed = drift.execute(
                 """
                 SELECT count(*)
@@ -829,6 +1044,30 @@ class NodeControlAttemptPostgresTests(
             drift.rollback()
         finally:
             drift.close()
+
+    def test_exact_current_reentry_preserves_catalog_and_rows(self) -> None:
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-reentry', 'Workspace Reentry', 'created')
+            """
+        )
+        before_catalog = self._attempt_catalog_snapshot(self.connection)
+        before_rows = self.connection.execute(
+            "SELECT * FROM cpk_workspaces WHERE workspace_id='workspace-reentry'"
+        ).fetchall()
+        install_schema(self.connection)
+        self.assertEqual(
+            self._attempt_catalog_snapshot(self.connection),
+            before_catalog,
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT * FROM cpk_workspaces WHERE workspace_id='workspace-reentry'"
+            ).fetchall(),
+            before_rows,
+        )
 
     def test_wrong_same_workspace_key_and_authorization_fail_closed(self) -> None:
         store = self.store_type(self.connection)
@@ -1027,9 +1266,25 @@ class NodeControlAttemptPostgresTests(
             thread = threading.Thread(target=acquire)
             thread.start()
             self.assertTrue(ready.wait(timeout=2))
-            self.assertFalse(acquired.wait(timeout=0.2))
+            deadline = time.monotonic() + 2
+            observed_wait = False
+            while time.monotonic() < deadline:
+                row = self.connection.execute(
+                    """
+                    SELECT state, wait_event_type, wait_event
+                    FROM pg_stat_activity
+                    WHERE pid=%s
+                    """,
+                    (second.info.backend_pid,),
+                ).fetchone()
+                if row is not None and row[0] == "active" and row[1] == "Lock":
+                    observed_wait = True
+                    break
+                time.sleep(0.01)
+            self.assertTrue(observed_wait)
+            self.assertFalse(acquired.is_set())
             first.commit()
-            thread.join(timeout=2)
+            thread.join(timeout=5)
             self.assertFalse(thread.is_alive())
             self.assertEqual(errors, [])
             self.assertTrue(acquired.is_set())
@@ -1037,9 +1292,15 @@ class NodeControlAttemptPostgresTests(
         finally:
             first.commit()
             if thread is not None and thread.is_alive():
-                thread.join(timeout=2)
+                thread.join(timeout=5)
+            if thread is not None and thread.is_alive():
+                second.cancel()
+                thread.join(timeout=5)
             first.close()
-            if thread is None or not thread.is_alive():
+            if thread is not None and thread.is_alive():
+                second.close()
+                thread.join(timeout=5)
+            elif not second.closed:
                 second.rollback()
                 second.close()
 
