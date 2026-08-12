@@ -110,6 +110,7 @@ from control_plane_kit_operations.read_pages import (
     ReadCollection,
     ReadPageError,
     ReadPageRequest,
+    ReadScope,
     RunReadScope,
     SessionReadScope,
     WorkspaceReadScope,
@@ -1521,7 +1522,7 @@ def _read_page_request(
     values: Mapping[str, object],
     *,
     collection: ReadCollection,
-    scope: SessionReadScope | RunReadScope,
+    scope: ReadScope,
 ) -> ReadPageRequest:
     raw_cursor = values.get("after")
     cursor = None if raw_cursor is None else read_cursor_from_mapping(raw_cursor)
