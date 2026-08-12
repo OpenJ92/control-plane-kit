@@ -694,6 +694,39 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
                 self.assertNotIn("secret://", str(caught.exception))
                 self.assert_no_intent_rows()
 
+    def test_corrupt_retained_key_is_a_bounded_nominal_conflict(self) -> None:
+        candidate = "candidate-key-material-must-not-escape"
+        self.connection.execute(
+            "UPDATE cpk_delegation_signing_keys SET public_key_pem=%s "
+            "WHERE purpose=%s",
+            (
+                candidate,
+                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT.value,
+            ),
+        )
+        conflict = self.contract("NodeControlIntentConflict")
+        with self.assertRaises(conflict) as caught:
+            self.service().execute(self.command())
+        self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertNotIn(candidate, str(caught.exception))
+        self.assertNotIn(candidate, repr(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+        self.assert_no_intent_rows()
+
+    def test_core_valid_non_persistence_actor_is_bounded_before_uow(self) -> None:
+        error_type = self.contract("NodeControlIntentError")
+        entries_before = self.tracker.entries
+        with self.assertRaises(error_type) as caught:
+            self.service().execute(
+                self.command(context=self.context(actor="Operator A"))
+            )
+        self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+        self.assertEqual(self.tracker.entries, entries_before)
+        self.assert_no_intent_rows()
+
     def test_same_request_serializes_to_one_winner_and_exact_replay(self) -> None:
         entered = threading.Barrier(2)
 
