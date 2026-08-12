@@ -21,7 +21,6 @@ classifiers = [
 ]
 dependencies = [
     "control-plane-kit-core>=0.1.0",
-    "Jinja2>=3.1",
     "psycopg[binary]>=3.2",
 ]
 
@@ -31,3 +30,6 @@ Homepage = "https://github.com/OpenJ92/control-plane-kit"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["control_plane_kit_operations*"]
+
+[tool.setuptools.package-data]
+control_plane_kit_operations = ["postgres/current_schema.sql"]

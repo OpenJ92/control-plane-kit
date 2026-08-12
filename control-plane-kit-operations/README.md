@@ -57,26 +57,16 @@ The Postgres store bundle owns operational records for:
 
 Stores expose persistence operations but never commit independently.
 
-## Schema Migration Language
+## Current Schema Installation
 
-Operations owns a small migration language for its own Postgres schema:
+Operations owns one exact current Postgres schema. `install_schema()` creates
+that schema only when CPK's owned namespace is object-free. An already-current
+namespace is verified without mutation. Any other owned state fails with a
+bounded reset-required error; CPK does not infer or execute a repair.
 
-```text
-SchemaMigrationRegistry x ObservedSchemaState
-  -> SchemaMigrationPlan
-    -> Postgres interpreter
-```
-
-A migration has a positive version, stable name, exact SQL content, and a
-SHA-256 checksum over those exact UTF-8 SQL bytes. Applied history must be an
-exact registry prefix. Empty, recognized current-baseline, and versioned stores
-therefore produce inspectable `apply` or `record-baseline` actions before any
-database mutation occurs.
-
-This language is deliberately package-local. It evolves CPK's durable
-operations tables; it does not plan or perform migrations for applications
-deployed by CPK. Application owners remain responsible for making their data
-compatible before directing CPK to switch access.
+This is deliberately package-local. It creates and verifies CPK's durable
+operations tables; it does not inspect, reset, or modify application schemas
+deployed by CPK.
 
 ## Transaction Law
 
@@ -148,34 +138,19 @@ authenticated HTTP or MCP request
 HTTP and MCP must enforce the same operation identity, scopes, approval policy,
 idempotency policy, bounded errors, and transaction behavior.
 
-## Schema Migration Inspection
+## Schema Verification
 
-The Postgres package freezes the accepted V1 table/column structure and reads
-database catalogs into the same migration values used by pure planning:
+Installation and verification share one caller-aware transaction and one
+schema-scoped advisory lock. Autocommit connections receive an installer-owned
+transaction; non-autocommit connections retain authority over their enclosing
+transaction. Current verification takes a fixed relation-lock set, compares
+bounded catalog observations with the frozen semantic contract, and checks
+retained graph-lineage and approval-subject truth. It submits no DDL or row
+mutation.
 
-```text
-bounded Postgres catalog + ledger reads
-  -> ObservedSchemaState
-    -> SchemaMigrationRegistry.plan(...)
-```
-
-`inspect_postgres_schema()` recognizes only an empty schema, the exact
-unversioned V1 baseline, or canonical versioned ledger history.
-`verify_postgres_schema()` additionally requires exact current structure and no
-pending migration action. Both functions are read-only.
-
-`plan_postgres_schema_install()` exposes the canonical preview. The mutation
-interpreter then re-inspects and re-plans under one transaction-scoped advisory
-lock. Autocommit connections receive one interpreter-owned transaction;
-non-autocommit connections retain caller commit and rollback authority. Only
-package-owned registry actions may execute, and migration SQL, ledger identity,
-the closed historical V1 compatibility reconciliation, and final verification
-share that transaction. `install_schema()` delegates to this interpreter.
-
-Compatibility admits only canonical V1 column order or the exact append orders
-produced by named historical `ADD COLUMN` repairs. It does not treat arbitrary
-column permutations as current structure. #1110 owns replacing these temporary
-repairs with later explicit migrations.
+There is intentionally no upgrade, version, ledger, backfill, or compatibility
+API. Operators must deliberately reset a noncurrent owned namespace after
+separately preserving any data they value.
 
 ## Package Map
 

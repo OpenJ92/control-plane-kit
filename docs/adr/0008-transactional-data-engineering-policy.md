@@ -27,7 +27,7 @@ Some transitions are safely atomic inside one database. Others cross process,
 runtime, network, or infrastructure boundaries and cannot be made ACID by wish.
 
 The package therefore needs a concrete data-engineering policy for atomicity,
-idempotency, concurrency, partial failure, migrations, and auditability.
+idempotency, concurrency, partial failure, schema change, and auditability.
 
 ## Decision
 
@@ -270,7 +270,7 @@ Some activities require stronger approval than ordinary graph edits:
 
 - destroying runtime resources,
 - deleting retained state,
-- destructive database migrations,
+- destructive database resets or data transformations,
 - secret rotation with old-value discard,
 - external irreversible messages,
 - production traffic switches,
@@ -332,20 +332,19 @@ secret ref failed validation
 
 It is not acceptable to return the secret value.
 
-## Migration Discipline
+## Schema Change Discipline
 
-Once relational persistence exists, schema changes require migrations.
+CPK installs one exact current operations schema into an object-free owned
+namespace. It verifies an existing current namespace without mutation and
+rejects every other owned state with reset-required guidance. CPK does not
+infer, plan, or execute an in-place schema upgrade.
 
-Migration work must specify:
-
-- forward migration,
-- rollback or compensation story,
-- behavior for empty databases,
-- behavior for existing databases,
-- expected locks or downtime,
-- and tests or smoke checks.
-
-Manual schema drift is not acceptable.
+A schema-changing PR must specify the new exact baseline, empty-install and
+current-verification behavior, transaction and lock effects, fresh-store tests,
+and operator-facing reset consequences. Valuable data must be preserved through
+an explicit, separately reviewed export/reset/import procedure; the installer
+must not improvise that procedure from catalog drift. Manual schema drift is
+not accepted as current truth.
 
 ## Store Interfaces And Future Extraction
 
@@ -379,7 +378,7 @@ answer:
 - What approval is required?
 - What audit record remains?
 - Are secrets redacted?
-- Is a migration required?
+- Does an exact schema change require an operator reset?
 
 ## Consequences
 
@@ -399,4 +398,4 @@ answer:
 - This ADR does not require perfect rollback.
 - This ADR does not require every demo block to implement production-grade
   durability.
-- This ADR does not choose Postgres migrations tooling yet.
+- This ADR does not define an automated Postgres upgrade path.
