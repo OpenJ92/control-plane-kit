@@ -49,6 +49,197 @@ Self-references express retry ancestry for activity runs and supersession chains
 for provider and secret-reference registrations. Restore roots before their
 descendants and reject missing or cyclic application-level histories.
 
+## Deterministic Assembly And Logical Restore
+
+### Fresh install
+
+The installer serializes installation, proves the owned namespace contains no
+objects, executes the checked-in current SQL in its fixed statement order, and
+verifies the complete current contract before commit. Table creation, indexes,
+and the later `ALTER TABLE ... ADD CONSTRAINT` statements are one atomic
+assembly. A failed statement or failed verification rolls the entire assembly
+back. An existing exact schema is verification-only; any other existing shape
+is reset-required and receives no DDL.
+
+### Logical data restore
+
+The deterministic whole-database restore order is staged to respect every
+foreign key and the accepted lineage cycle:
+
+1. Insert bare `cpk_workspaces` rows with both graph/projection heads null.
+2. Restore workspace-owned roots: `cpk_graph_versions`,
+   `cpk_registered_products`, `cpk_image_pull_authorities`,
+   `cpk_ingress_authorities`, `cpk_runtime_authorities`,
+   `cpk_runtime_authority_deliveries`, `cpk_delegation_signing_keys`,
+   `cpk_gateway_key_rotations`, `cpk_observations`,
+   `cpk_operation_sessions`, and root `cpk_secret_providers`.
+3. Restore `cpk_realized_graph_projections`, provider supersession descendants,
+   then root and descendant `cpk_secret_references`.
+4. Set each workspace's paired current/desired graph and projection heads and
+   desired revision after every selected projection exists.
+5. Restore session actions and plans; gateway probe attempts; rotation
+   transitions and revocations; and approval requests.
+6. Restore approval decisions, then execution requests.
+7. Restore root activity runs before retry descendants, then restore activity
+   events in run/ordinal order.
+8. Restore secret-use authorizations, rotation deployments,
+   `cpk_cloudflare_ingress_resources`, and
+   `cpk_generated_ingress_secret_references` after any optional
+   operation/session/run/activity/effect/probe or graph/approval/execution
+   provenance they retain, even where only aggregate ownership is enforced by
+   foreign key.
+
+Within each phase, preserve primary, candidate, ordinal, revision, and
+supersession identities exactly. This is a logical ordering account, not a
+database import command: validation and one caller-controlled transaction are
+still required, and externally held custody or provider state is not recreated
+from these rows.
+
+## Aggregate Views
+
+### Workspace-centered truth
+
+`cpk_workspaces` is the ownership root for almost every durable aggregate. Its
+row directly owns lifecycle and the current/desired lineage heads. Authored
+graphs and realized projections form the lineage aggregate around it. Product,
+authority, ingress, secret-reference, delegation-key, probe, rotation,
+observation, and operation-session rows are independently identified children,
+not fields of the workspace document. Activity events and runs are indirect
+workspace descendants through requests, plans, and sessions; their lack of a
+repeated workspace FK is deliberate because that path already has composite
+workspace/session/plan proofs.
+
+### Activity, operation, and history
+
+The main intent-to-evidence chain is:
+
+`workspace -> operation session -> action and plan -> approval request ->`
+`approval decision -> execution request -> activity run -> activity event`.
+
+Plans additionally pin base and desired graph projections. Execution requests
+use composite candidate keys to prove that workspace, session, plan, approval
+request, and decision agree. Runs append retry attempts; events append ordered
+evidence. `cpk_observations` is a separate observed-state stream because it
+describes runtime subjects and freshness, not execution history. Gateway probe
+attempts are likewise a dedicated authorization/result aggregate with their
+own request and JTI replay boundaries.
+
+### Authority, policy, key, secret-reference, and rotation truth
+
+Authority declarations are separated by domain: image pull, ingress, runtime,
+runtime delivery, delegation signing, secret provider, and secret reference.
+The tables persist registrations and opaque references, never resolved private
+material. `cpk_secret_use_authorizations` binds one workspace, provider,
+reference, intent, and correlation before provider I/O. Delegation keys retain
+public verification material plus an opaque private-key reference. Compact
+grants and signatures are not durable operations-table truth.
+
+Gateway rotation is its own aggregate: `cpk_gateway_key_rotations` owns current
+state and compare-and-set version; deployments and revocation rows are exact
+phase evidence; transitions are the append-only lifecycle log. Approval rows
+may point at a rotation, but provider custody remains external and secret use
+still requires a separate committed authorization.
+
+### Graph, projection, plan, runtime, and descriptor truth
+
+`cpk_registered_products` preserves admitted descriptor artifacts. Authored
+`cpk_graph_versions` compose those declarations into immutable workspace
+topology. `cpk_realized_graph_projections` preserve exact realized forms of an
+authored graph and may legitimately be non-identity projections. Workspaces
+select current and desired projections; plans snapshot base and desired
+lineage. Runtime and ingress authority/delivery registrations tell
+interpreters which admitted public declarations and opaque references may be
+used, while actual provider/runtime resources remain outside this database.
+
+## Factoring Review
+
+The schema is substantially factored around durable identities and
+relationships. Separate tables exist where facts have independent lifecycle,
+cardinality, concurrency, retention, or audit meaning. The following apparent
+duplication is intentional:
+
+- Workspace IDs recur on independently owned aggregates to enforce tenant
+  ownership without decoding JSON. Composite candidate keys such as
+  `(session_id, workspace_id)`, `(projection_id, workspace_id)`, and
+  `(registration_id, workspace_id)` let FKs prove cross-table agreement.
+- Graph/projection pairs recur on workspaces and plans as lineage witnesses.
+  They pin the projection's authored source and workspace, preventing coherent
+  source rebinding through direct SQL and preserving one-row workspace CAS.
+- Request/decision, request/plan, plan/session, and provider/reference pairs
+  are repeated witnesses that make substitution errors relationally
+  impossible. They are not independently editable copies of the same fact.
+- Correlation, idempotency, JTI, ordinal, version, and semantic descriptor keys
+  are candidate identities. Their unique constraints define replay,
+  sequencing, or content identity in the owning aggregate; primary keys alone
+  would not express those laws.
+
+JSONB remains an intentional leaf where one closed algebra value is validated
+and consumed atomically:
+
+- topology and descriptor leaves: workspace metadata, authored/realized graph
+  descriptors, product reference/source/descriptor documents, and metadata;
+- authority leaves: image-pull, ingress, runtime, and runtime-delivery
+  declarations, credential/secret-reference lists, and metadata;
+- intent and evidence leaves: session metadata, action and plan payloads, run
+  metadata, activity-event payloads, approval subject payloads, observations,
+  gateway-probe evidence, ingress metadata, and secret allowed-intent/prefix
+  policy.
+
+Relational decomposition stops at those leaves because their inner fields are
+versioned domain-language structure with no independently mutable row identity.
+Extracting them would duplicate domain codecs, fragment atomic values, and turn
+descriptor evolution into table ownership. Fields that participate in joins,
+ownership, lifecycle, replay, or concurrency remain relational instead.
+
+The genuine normalization questions are visible rather than hidden:
+
+- The workspace/graph/projection cycle is deliberate denormalization for
+  pinned lineage and one-row CAS. #1564/#1565 evaluated extracting it and were
+  closed without changes because the alternatives weakened the source pin or
+  moved the same aggregate complexity elsewhere.
+- Rotation phase rows repeat graph, approval, plan, request, run, provider, and
+  secret-reference witnesses but do not FK every witness. Their identity
+  witnesses are stable while guarded status/acceptance fields may advance.
+  Ingress and generated secret provenance, observations' graph identity, and
+  authority-reference columns make similar retention-decoupled references.
+  These are immutable evidence snapshots or cross-domain opaque identities,
+  but direct SQL could make them semantically inconsistent. A future issue
+  should add an FK only if stronger database enforcement outweighs tighter
+  retention coupling; the atlas does not claim constraints that do not exist.
+- JSON leaves are not efficiently relationally queryable below their typed
+  boundary. That is accepted while stores read whole values; a real need for
+  independently indexed subfacts would justify a new table and owner, not an
+  ad hoc projection of every JSON field.
+
+No unresolved defect is inferred from this review. The current shape favors
+explicit aggregate invariants and immutable evidence over maximal normal form,
+and the exact contract makes every future factoring change visible.
+
+## Future Impact Map
+
+- **#1564 and #1565:** closed not planned. The proposed workspace graph-state
+  extraction and its proof child made no table, store, record, or API change;
+  the accepted lineage aggregate remains documented here.
+- **Rewritten #1553:** adds closed node-control scopes, signing purpose, and
+  secret-use intent to the direct current constraints. It adds no table and
+  must leave approval scopes independently owned.
+- **#1554:** adds pure transit grant language and verification. It adds no
+  operations table and persists no compact grant or signature.
+- **Rewritten #1555:** is expected to add one durable node-control attempt table
+  unless its dry run proves a smaller exact persistence shape. It must reuse,
+  not parallel, workspace lineage, operation history, replay, and secret-use
+  authorization truth.
+- **#1556:** composes graph-bound authorization and operations workflow. No new
+  table is expected beyond the accepted #1555 persistence shape.
+- **#1243:** interprets gateway transit and relay outside operations
+  persistence; no operations table is expected.
+- **#1244:** may fold terminal attempt/result evidence into the #1555-owned
+  persistence, but must not invent a second activity or command-history system.
+- **Secrets-provider admission/provisioning child:** the unnumbered pre-#1244
+  handoff recorded on #1242 owns provider contract, key provisioning, and
+  custody. That truth remains outside operations; these tables may retain only
+  opaque registrations, references, and committed use authorization.
+
 <!-- foreign-key-graph:start -->
 ```mermaid
 flowchart LR
@@ -166,11 +357,11 @@ order is semantically significant for every composite identity.
 - **Identity and cardinality:** `event_id` is primary; `(run_id, ordinal)` permits exactly one event at each run position.
 - **Outgoing foreign keys:** `run_id` requires the owning `cpk_activity_runs` row.
 - **Inbound dependents:** Generated ingress-secret records may cite event identifiers as provenance, but no database foreign key couples that external provenance tuple.
-- **Writers and transactions:** Execution appends events in the caller's run transaction; an existing identity must reproduce the same event rather than change history.
+- **Writers and transactions:** `PostgresExecutionStore.add_event` performs one direct insert in the caller's run transaction; it does not compare an existing event for replay equivalence.
 - **Readers and projections:** Activity-history queries read events by run and ordinal for operator-facing execution narratives.
-- **Mutation, locks, retries, and idempotency:** Inserts are append-only; the unique run ordinal and event identity make repeated recording deterministic.
+- **Mutation, locks, retries, and idempotency:** Inserts are append-only; duplicate `event_id` or `(run_id, ordinal)` is rejected by PostgreSQL, while command/workflow idempotency is owned outside this row.
 - **Lifecycle, retention, deletion, and restore:** Restore runs before events and preserve ordinal order; restrictive ownership prevents deleting a run with events.
-- **JSON boundary:** `payload` is validated structured event evidence and is decoded through the activity event codec.
+- **JSON boundary:** `_activity_event` requires an object and reconstructs `ActivityEventRecord`, `BoundedEvidence`, and optional `FailureEvidence` directly from `payload`.
 - **Sensitive material:** Payloads must remain bounded and redacted; they may describe effects but must not contain private keys, credentials, or secret values.
 - **Future impact:** Node-control dispatch in #1555 and #1556 may add event kinds, but must preserve ordered secret-free history.
 
@@ -181,7 +372,7 @@ order is semantically significant for every composite identity.
 - **Inbound dependents:** Approval requests and execution requests retain plan identity; activity runs reach the plan through their execution request.
 - **Writers and transactions:** Planning inserts one immutable plan inside the operation unit of work after graph lineage validation.
 - **Readers and projections:** Approval, execution, history, and planner services read the plan payload and exact graph pointers.
-- **Mutation, locks, retries, and idempotency:** Plan identity and payload are immutable; duplicate intent must observe the same plan or fail categorically.
+- **Mutation, locks, retries, and idempotency:** `add_plan` directly inserts immutable plan material; duplicate primary/composite identity is rejected, while session/workflow idempotency is owned outside this table.
 - **Lifecycle, retention, deletion, and restore:** Restore sessions and graph projections before plans, then approvals and execution records; retained plans prevent removal of their lineage.
 - **JSON boundary:** `payload` is the canonical activity plan document; graph pointers remain relational rather than inferred from it.
 - **Sensitive material:** Plans expose intended operational actions, so payloads are bounded and secret-free even when they reference later protected effects.
@@ -257,7 +448,7 @@ order is semantically significant for every composite identity.
 - **Identity and cardinality:** `request_id` is primary; workspace idempotency is unique; `(request_id, plan_id)` binds downstream runs.
 - **Outgoing foreign keys:** The workspace, session, plan, approval request, and approval decision must all agree through composite identities.
 - **Inbound dependents:** Activity runs bind the exact `(request_id, plan_id)` pair.
-- **Writers and transactions:** Request creation, worker claim, lease update, and settlement run in explicit short transactions.
+- **Writers and transactions:** Request creation and the guarded queued-to-claimed transition run in explicit short transactions; run settlement belongs to `cpk_activity_runs`.
 - **Readers and projections:** Workers query claimable requests; history projections expose bounded status and ownership facts.
 - **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; claim leases use guarded updates so one worker owns an attempt.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, session, plan, request, decision, then execution request and runs; settled requests remain durable history.
@@ -272,7 +463,7 @@ order is semantically significant for every composite identity.
 - **Inbound dependents:** No current relation references deployments; rotation workflows read them as phase evidence.
 - **Writers and transactions:** Preparation and acceptance evidence is committed atomically with the corresponding rotation transition.
 - **Readers and projections:** Rotation orchestration and status projections compare authored graphs, realized projections, revision, approvals, requests, and runs.
-- **Mutation, locks, retries, and idempotency:** A phase row is immutable evidence; repeated writes must exactly match or reject conflict.
+- **Mutation, locks, retries, and idempotency:** Identity witnesses remain fixed; a guarded upsert may advance prepared status to accepted and add accepted graph/time evidence, while changed identity rejects conflict.
 - **Lifecycle, retention, deletion, and restore:** Restore rotations before phase evidence and retain records after completion or failure.
 - **JSON boundary:** None; graph and operation identities are explicit bounded scalar columns.
 - **Sensitive material:** Approval and execution identifiers are operationally sensitive; no graph document, credential, or private key is stored.
@@ -326,7 +517,7 @@ order is semantically significant for every composite identity.
 - **Readers and projections:** Probe services and history views inspect exact target, gateway, graph, grant, timing, and result category.
 - **Mutation, locks, retries, and idempotency:** Unique request and JTI identities distinguish same-intent observation from conflict and prevent double admission.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace and graph before attempts; intended, completed, and failed attempts remain durable audit facts.
-- **JSON boundary:** `evidence` is a bounded, redacted probe result document interpreted by the probe result codec.
+- **JSON boundary:** `_row_to_attempt` reconstructs `GatewayProbeAttempt` directly and validates `evidence` with `BoundedEvidence.from_mapping`.
 - **Sensitive material:** Access path, authority identifiers, and evidence are protected; no raw response body, token, credential, or private address disclosure is allowed.
 - **Future impact:** #1244 owns gateway ambiguity and relay outcomes; #1555 should reuse the durable-before-I/O posture without conflating probe and command replay.
 
@@ -504,7 +695,7 @@ order is semantically significant for every composite identity.
 - **Identity and cardinality:** `authorization_id` is primary; workspace correlation is unique; `(authorization_id, workspace_id)` preserves exact audit identity.
 - **Outgoing foreign keys:** Workspace, provider registration, and secret-reference registration must exist and agree on workspace.
 - **Inbound dependents:** No current relation references authorizations; effects consume the committed record by service contract.
-- **Writers and transactions:** Authorization is recorded atomically with the durable operation intent before any secret resolution or external effect.
+- **Writers and transactions:** Authorization commits in its own authorization unit of work before resolution or external I/O; optional operation/session/run/activity/effect/probe columns retain correlation provenance without an atomic owning-intent insert.
 - **Readers and projections:** Secret policy, effect execution, and audit projections read intent, references, actor, correlation, and operation provenance.
 - **Mutation, locks, retries, and idempotency:** Authorizations are immutable; workspace correlation and intent fingerprint distinguish replay from conflicting secret use.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, provider, and reference first; authorizations remain durable even after referenced registrations are revoked.
