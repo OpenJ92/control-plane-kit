@@ -107,10 +107,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "969bcd9ac0634a5a6a43856c6aea3215f741db9a99244d3f80066b0dbb9eede9"
+    "60227521dfacd39473c01bac53f062158ee7f9b50f7a287c22faf17a842834fe"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "f27de4f9dc52526ded64b32e7056a4ad2a1b9ebb2ecfd9d12361b87509908193"
+    "65c3730e8005315c2798cd8d8cb6de98c27513d7fde27d86fc9bd5291012cf35"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -348,7 +348,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         self.assertEqual(len(contract.relations), 29)
         self.assertEqual(len(contract.columns), 380)
         self.assertEqual(len(contract.constraints), 268)
-        self.assertEqual(len(contract.indexes), 87)
+        self.assertEqual(len(contract.indexes), 94)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -474,7 +474,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (29, 380, 268, 87))
+        self.assertEqual(self._catalog_counts(), (29, 380, 268, 94))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -768,7 +768,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (29, 380, 268, 87))
+        self.assertEqual(self._catalog_counts(), (29, 380, 268, 94))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

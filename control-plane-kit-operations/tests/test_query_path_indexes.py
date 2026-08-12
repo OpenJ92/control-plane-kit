@@ -9,7 +9,14 @@ from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
+from control_plane_kit_operations.postgres.delegation_signing_key_store import (
+    DelegationSigningKeyStore,
+)
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
+from control_plane_kit_operations.postgres.observed_state import (
+    PostgresObservedStateStore,
+)
 from control_plane_kit_operations.postgres.secret_provider_store import (
     SecretReferenceStore,
 )
@@ -19,6 +26,7 @@ from control_plane_kit_operations.read_pages import (
     PlanReadScope,
     ReadCollection,
     ReadPageRequest,
+    RunReadScope,
     SessionReadScope,
     WorkspaceReadScope,
 )
@@ -277,6 +285,94 @@ class QueryPathPlannerTests(unittest.TestCase):
         )
         self.assertLessEqual(dense["Actual Rows"], 101)
 
+    def test_existing_indexes_remain_control_witnesses(self) -> None:
+        cases = (
+            (
+                "session-actions",
+                self._seed_actions,
+                lambda connection: PostgresActivityHistoryStore(
+                    connection
+                ).action_page(
+                    ReadPageRequest(
+                        ReadCollection.SESSION_ACTIONS,
+                        SessionReadScope("workspace-target", "session-target"),
+                        100,
+                    )
+                ),
+                "cpk_operation_actions_session_id_ordinal_key",
+            ),
+            (
+                "run-events",
+                self._seed_events,
+                lambda connection: PostgresExecutionStore(connection).event_page(
+                    ReadPageRequest(
+                        ReadCollection.RUN_EVENTS,
+                        RunReadScope("workspace-target", "run-target"),
+                        100,
+                    )
+                ),
+                "cpk_activity_events_run_id_ordinal_key",
+            ),
+            (
+                "latest-observations",
+                self._seed_observations,
+                lambda connection: PostgresObservedStateStore(
+                    connection
+                ).latest_page(
+                    ReadPageRequest(
+                        ReadCollection.LATEST_OBSERVATIONS,
+                        WorkspaceReadScope("workspace-target"),
+                        100,
+                    )
+                ),
+                "cpk_observations_latest_subject",
+            ),
+            (
+                "delegation-signing-keys",
+                self._seed_delegation_keys,
+                lambda connection: DelegationSigningKeyStore(
+                    connection
+                ).workspace_page(
+                    ReadPageRequest(
+                        ReadCollection.DELEGATION_SIGNING_KEYS,
+                        WorkspaceReadScope("workspace-target"),
+                        100,
+                    )
+                ),
+                "cpk_delegation_signing_keys_workspace_id_purpose_issuer_key_key",
+            ),
+            (
+                "gateway-probes",
+                self._seed_gateway_probes,
+                lambda connection: GatewayProbeStore(connection).page(
+                    ReadPageRequest(
+                        ReadCollection.GATEWAY_PROBES,
+                        WorkspaceReadScope("workspace-target"),
+                        100,
+                    )
+                ),
+                "cpk_gateway_probe_workspace_timeline",
+            ),
+        )
+
+        for name, seed, invoke, expected_index in cases:
+            with self.subTest(case=name):
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                seed()
+                observed = _ObservingConnection()
+                page = invoke(observed)
+                self.assertEqual(page.items, ())
+                plan = self._explain_observed(observed)
+                self.assertLessEqual(plan["Actual Rows"], 101)
+                self.assertIn(
+                    expected_index,
+                    {
+                        node["Index Name"]
+                        for node in _plan_nodes(plan)
+                        if "Index Name" in node
+                    },
+                )
+
     def _pending_plan(self) -> dict[str, object]:
         observed = _ObservingConnection()
         page = PostgresActivityHistoryStore(observed).pending_approval_page(
@@ -354,17 +450,43 @@ class QueryPathPlannerTests(unittest.TestCase):
         self._analyze("cpk_activity_plans")
 
     def _seed_session_approvals(self) -> None:
+        self._workspace("workspace-target")
+        self._workspace("workspace-foreign")
+        self.connection.execute(
+            """
+            INSERT INTO cpk_operation_sessions
+              (session_id, workspace_id, actor_id, title, status, created_at)
+            VALUES ('session-target', 'workspace-target', 'operator', 'Target',
+                    'open', '2026-08-12T00:00:00Z');
+            INSERT INTO cpk_operation_sessions
+              (session_id, workspace_id, actor_id, title, status, created_at)
+            SELECT 'session-foreign-' || value, 'workspace-foreign', 'operator',
+                   'Foreign', 'open', '2026-08-12T00:00:00Z'::timestamptz
+                     + value * interval '1 second'
+            FROM generate_series(1, 1000) AS value
+            """
+        )
         self.connection.execute("SET session_replication_role = replica")
         try:
             self._insert_approvals(
+                prefix="foreign",
+                session_expression="'session-foreign-' || (((value - 1) % 1000) + 1)",
+                count=20_000,
+                offset_seconds=1,
+            )
+            self._insert_approvals(
                 prefix="target",
                 session_expression="'session-target'",
-                count=10_000,
-                offset_seconds=0,
+                count=201,
+                offset_seconds=100,
             )
         finally:
             self.connection.execute("SET session_replication_role = origin")
-        self._analyze("cpk_approval_requests", "cpk_approval_decisions")
+        self._analyze(
+            "cpk_operation_sessions",
+            "cpk_approval_requests",
+            "cpk_approval_decisions",
+        )
 
     def _seed_pending_approvals(
         self,
@@ -374,14 +496,30 @@ class QueryPathPlannerTests(unittest.TestCase):
     ) -> None:
         self._workspace("workspace-target")
         self._workspace("workspace-foreign")
-        self.connection.execute(
-            """
-            INSERT INTO cpk_operation_sessions
-              (session_id, workspace_id, actor_id, title, status, created_at)
-            VALUES ('session-target', 'workspace-target', 'operator', 'Target',
-                    'open', '2026-08-12T00:00:00Z')
-            """
-        )
+        if target_count == 201:
+            self.connection.execute(
+                """
+                INSERT INTO cpk_operation_sessions
+                  (session_id, workspace_id, actor_id, title, status, created_at)
+                VALUES ('session-target', 'workspace-target', 'operator', 'Target',
+                        'open', '2026-08-12T00:00:00Z')
+                """
+            )
+            target_session_expression = "'session-target'"
+        else:
+            self.connection.execute(
+                """
+                INSERT INTO cpk_operation_sessions
+                  (session_id, workspace_id, actor_id, title, status, created_at)
+                SELECT 'session-target-' || value, 'workspace-target', 'operator',
+                       'Target', 'open', '2026-08-12T00:00:00Z'::timestamptz
+                         + value * interval '1 second'
+                FROM generate_series(1, 1000) AS value
+                """
+            )
+            target_session_expression = (
+                "'session-target-' || (((value - 1) % 1000) + 1)"
+            )
         self.connection.execute(
             """
             INSERT INTO cpk_operation_sessions
@@ -403,7 +541,7 @@ class QueryPathPlannerTests(unittest.TestCase):
             target_scale = 1000 if target_count == 201 else 1
             self._insert_approvals(
                 prefix="target",
-                session_expression="'session-target'",
+                session_expression=target_session_expression,
                 count=target_count,
                 offset_seconds=target_scale,
             )
@@ -508,18 +646,146 @@ class QueryPathPlannerTests(unittest.TestCase):
                   (registration_id, workspace_id, secret_reference,
                    provider_registration_id, allowed_intents, admitted_by,
                    admitted_at, status)
-                SELECT 'registration-' || value, 'workspace-target',
-                       'secret://local/reference-' || value,
+                SELECT 'registration-' || lpad(value::text, 8, '0') || '-foreign',
+                       'workspace-foreign',
+                       'secret://local/foreign-' || value,
+                       'provider-foreign', '[]'::jsonb, 'operator',
+                       '2026-08-12T00:00:00Z'::timestamptz
+                         + value * interval '1 second',
+                       'active'
+                FROM generate_series(1, 20000) AS value;
+                INSERT INTO cpk_secret_references
+                  (registration_id, workspace_id, secret_reference,
+                   provider_registration_id, allowed_intents, admitted_by,
+                   admitted_at, status)
+                SELECT 'registration-' || lpad((value * 100)::text, 8, '0')
+                         || '-target',
+                       'workspace-target',
+                       'secret://local/target-' || value,
                        'provider-target', '[]'::jsonb, 'operator',
                        '2026-08-12T00:00:00Z'::timestamptz
                          + value * interval '1 second',
                        'active'
-                FROM generate_series(1, 10000) AS value
+                FROM generate_series(1, 201) AS value
                 """
             )
         finally:
             self.connection.execute("SET session_replication_role = origin")
         self._analyze("cpk_secret_references")
+
+    def _seed_actions(self) -> None:
+        self.connection.execute("SET session_replication_role = replica")
+        try:
+            self.connection.execute(
+                """
+                INSERT INTO cpk_operation_actions
+                  (action_id, session_id, ordinal, action_type, actor_id,
+                   payload, created_at)
+                SELECT 'action-' || value, 'session-target', value,
+                       'record-operation-action', 'operator', '{}'::jsonb,
+                       '2026-08-12T00:00:00Z'::timestamptz
+                         + value * interval '1 second'
+                FROM generate_series(1, 10000) AS value
+                """
+            )
+        finally:
+            self.connection.execute("SET session_replication_role = origin")
+        self._analyze("cpk_operation_actions")
+
+    def _seed_events(self) -> None:
+        self.connection.execute("SET session_replication_role = replica")
+        try:
+            self.connection.execute(
+                """
+                INSERT INTO cpk_activity_events
+                  (event_id, run_id, ordinal, event_type, occurred_at, payload)
+                SELECT 'event-' || value, 'run-target', value, 'run_started',
+                       '2026-08-12T00:00:00Z'::timestamptz
+                         + value * interval '1 second',
+                       '{}'::jsonb
+                FROM generate_series(1, 10000) AS value
+                """
+            )
+        finally:
+            self.connection.execute("SET session_replication_role = origin")
+        self._analyze("cpk_activity_events")
+
+    def _seed_observations(self) -> None:
+        self.connection.execute("SET session_replication_role = replica")
+        try:
+            self.connection.execute(
+                """
+                INSERT INTO cpk_observations
+                  (observation_id, workspace_id, subject_id, status, observed_at,
+                   evidence, freshness)
+                SELECT 'observation-' || subject || '-' || revision,
+                       'workspace-target',
+                       'subject-' || lpad(subject::text, 6, '0'),
+                       'healthy',
+                       '2026-08-12T00:00:00Z'::timestamptz
+                         + revision * interval '1 second',
+                       '{}'::jsonb, 'fresh'
+                FROM generate_series(1, 5000) AS subject
+                CROSS JOIN generate_series(1, 3) AS revision
+                """
+            )
+        finally:
+            self.connection.execute("SET session_replication_role = origin")
+        self._analyze("cpk_observations")
+
+    def _seed_delegation_keys(self) -> None:
+        self.connection.execute("SET session_replication_role = replica")
+        try:
+            self.connection.execute(
+                """
+                INSERT INTO cpk_delegation_signing_keys
+                  (registration_id, workspace_id, purpose, issuer, key_id,
+                   algorithm, public_key_pem, public_fingerprint_sha256,
+                   private_key_reference, admitted_by, admitted_at, status)
+                SELECT 'dkey_' || encode(
+                         sha256(convert_to('key-' || value, 'UTF8')), 'hex'
+                       ),
+                       'workspace-target', 'gateway-probe',
+                       'issuer-' || ((value - 1) % 100),
+                       'key-' || lpad(value::text, 6, '0'), 'ed25519',
+                       'public-key',
+                       encode(sha256(convert_to('public-' || value, 'UTF8')), 'hex'),
+                       'secret://local/private-' || value,
+                       'operator', '2026-08-12T00:00:00Z', 'verify-only'
+                FROM generate_series(1, 10000) AS value
+                """
+            )
+        finally:
+            self.connection.execute("SET session_replication_role = origin")
+        self._analyze("cpk_delegation_signing_keys")
+
+    def _seed_gateway_probes(self) -> None:
+        self.connection.execute("SET session_replication_role = replica")
+        try:
+            self.connection.execute(
+                """
+                INSERT INTO cpk_gateway_probe_attempts
+                  (probe_id, workspace_id, request_id, actor_id, current_graph_id,
+                   gateway_node_id, gateway_runtime_id, access_path, probe_kind,
+                   target_id, request_digest, issuer, key_id, audience, grant_jti,
+                   issued_at, expires_at, status, requested_at, intent_fingerprint,
+                   evidence)
+                SELECT 'probe-' || value, 'workspace-target',
+                       'request-' || value, 'operator', 'graph-target',
+                       'gateway-node', 'gateway-runtime', 'runtime-private',
+                       'http-status', 'target-' || value,
+                       encode(sha256(convert_to('request-' || value, 'UTF8')), 'hex'),
+                       'issuer', 'key', 'gateway', 'grant-' || value,
+                       value, value + 300, 'intended',
+                       '2026-08-12T00:00:00Z'::timestamptz
+                         + value * interval '1 second',
+                       'fingerprint-' || value, '{}'::jsonb
+                FROM generate_series(1, 10000) AS value
+                """
+            )
+        finally:
+            self.connection.execute("SET session_replication_role = origin")
+        self._analyze("cpk_gateway_probe_attempts")
 
 
 if __name__ == "__main__":

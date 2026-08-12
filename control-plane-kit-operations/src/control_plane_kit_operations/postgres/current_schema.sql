@@ -788,7 +788,11 @@ ALTER TABLE ONLY cpk_secret_use_authorizations
 ALTER TABLE ONLY cpk_workspaces
     ADD CONSTRAINT cpk_workspaces_pkey PRIMARY KEY (workspace_id);
 
+CREATE INDEX cpk_activity_plans_session_timeline ON cpk_activity_plans USING btree (session_id, created_at, plan_id);
+
 CREATE UNIQUE INDEX cpk_activity_runs_active_request ON cpk_activity_runs USING btree (request_id) WHERE (status = ANY (ARRAY['claimed'::text, 'running'::text, 'paused'::text, 'compensating'::text]));
+
+CREATE INDEX cpk_activity_runs_plan_timeline ON cpk_activity_runs USING btree (plan_id, created_at, run_id);
 
 CREATE INDEX cpk_node_control_attempts_projection_source_idx ON cpk_node_control_attempts (current_realized_projection_id, current_graph_id);
 CREATE INDEX cpk_node_control_attempts_projection_workspace_idx ON cpk_node_control_attempts (current_realized_projection_id, workspace_id);
@@ -803,7 +807,11 @@ CREATE UNIQUE INDEX cpk_approval_decisions_idempotency ON cpk_approval_decisions
 
 CREATE UNIQUE INDEX cpk_approval_requests_idempotency ON cpk_approval_requests USING btree (session_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 
+CREATE INDEX cpk_approval_requests_pending_timeline ON cpk_approval_requests USING btree (requested_at, request_id);
+
 CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity ON cpk_approval_requests USING btree (rotation_id) WHERE (rotation_id IS NOT NULL);
+
+CREATE INDEX cpk_approval_requests_session_timeline ON cpk_approval_requests USING btree (session_id, requested_at, request_id);
 
 CREATE UNIQUE INDEX cpk_cloudflare_ingress_resources_active_key ON cpk_cloudflare_ingress_resources USING btree (workspace_id, ingress_id) WHERE (status = ANY (ARRAY['allocating'::text, 'active'::text, 'removing'::text]));
 
@@ -831,6 +839,10 @@ CREATE UNIQUE INDEX cpk_operation_actions_idempotency ON cpk_operation_actions U
 
 CREATE UNIQUE INDEX cpk_operation_sessions_idempotency ON cpk_operation_sessions USING btree (workspace_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 
+CREATE INDEX cpk_operation_sessions_open_timeline ON cpk_operation_sessions USING btree (workspace_id, created_at, session_id) WHERE (status = 'open'::text);
+
+CREATE INDEX cpk_operation_sessions_workspace_timeline ON cpk_operation_sessions USING btree (workspace_id, created_at, session_id);
+
 CREATE UNIQUE INDEX cpk_runtime_authorities_active_ref ON cpk_runtime_authorities USING btree (workspace_id, authority_ref) WHERE (status = 'active'::text);
 
 CREATE UNIQUE INDEX cpk_runtime_authority_deliveries_active_ref ON cpk_runtime_authority_deliveries USING btree (workspace_id, authority_ref) WHERE (status = 'active'::text);
@@ -840,6 +852,8 @@ CREATE UNIQUE INDEX cpk_secret_providers_active_identity ON cpk_secret_providers
 CREATE INDEX cpk_secret_providers_history ON cpk_secret_providers USING btree (workspace_id, provider_id, admitted_at, registration_id);
 
 CREATE UNIQUE INDEX cpk_secret_references_active_reference ON cpk_secret_references USING btree (workspace_id, secret_reference) WHERE (status = 'active'::text);
+
+CREATE INDEX cpk_secret_references_active_registration ON cpk_secret_references USING btree (workspace_id, registration_id) WHERE (status = 'active'::text);
 
 CREATE INDEX cpk_secret_references_history ON cpk_secret_references USING btree (workspace_id, secret_reference, admitted_at, registration_id);
 
