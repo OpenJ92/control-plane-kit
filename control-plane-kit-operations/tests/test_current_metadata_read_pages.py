@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from inspect import getsource, signature
+import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 import uuid
@@ -320,6 +322,32 @@ class CurrentMetadataPageContractTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 self.assertFalse(hasattr(read_services, name))
+
+    def test_module_inventory_does_not_advertise_retired_wrappers(self) -> None:
+        inventory_path = Path(
+            os.environ.get(
+                "CPK_PACKAGE_MODULE_INVENTORY",
+                Path(__file__).resolve().parents[2]
+                / "docs"
+                / "architecture"
+                / "package-module-inventory.json",
+            )
+        )
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        read_services = next(
+            module
+            for module in inventory["modules"]
+            if module["module"] == "control_plane_kit.read_services"
+        )
+
+        self.assertTrue(
+            {
+                "ObservedStateReadModel",
+                "RuntimeAuthorityCollectionReadModel",
+                "IngressAuthorityCollectionReadModel",
+                "SecretMetadataCollectionReadModel",
+            }.isdisjoint(read_services["canonical_public_exports"])
+        )
 
 
 _PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
@@ -916,6 +944,27 @@ class CurrentMetadataAdapterParityTests(unittest.TestCase):
                 )
                 self.assertEqual(http, mcp)
                 self.assertIsNotNone(http["next_cursor"])
+
+                http_after = service.handle(
+                    _RouteRequest(
+                        surface="http",
+                        route_id=route_id,
+                        payload={"limit": 1, "after": http["next_cursor"]},
+                    )
+                )
+                mcp_after = service.handle(
+                    _RouteRequest(
+                        surface="mcp",
+                        route_id=route_id,
+                        path_parameters={},
+                        payload={
+                            "workspace_id": "workspace-a",
+                            "limit": 1,
+                            "after": mcp["next_cursor"],
+                        },
+                    )
+                )
+                self.assertEqual(http_after, mcp_after)
 
 
 if __name__ == "__main__":
