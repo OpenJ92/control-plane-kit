@@ -26,6 +26,22 @@ from control_plane_kit_core.types import WorkspaceLifecycle
 
 
 class PolicyDecisionTests(unittest.TestCase):
+    def test_node_control_scopes_are_closed_nominal_authority(self) -> None:
+        expected = (
+            "node-control:read",
+            "node-control:apply",
+            "node-control:execute",
+        )
+
+        self.assertEqual(
+            tuple(scope.value for scope in PolicyScope)[-len(expected) :],
+            expected,
+        )
+        self.assertEqual(len(set(expected)), len(expected))
+        self.assertFalse(any("destruct" in value for value in expected))
+        with self.assertRaises(ValueError):
+            PolicyScope("node-control:destroy")
+
     def test_hub_access_policy_returns_decisions_not_effects(self) -> None:
         policy = HubAccessPolicy()
 
