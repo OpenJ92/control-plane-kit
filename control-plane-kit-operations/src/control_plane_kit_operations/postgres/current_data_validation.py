@@ -1,4 +1,4 @@
-"""Closed V1 interpreter for retained graph identity lineage."""
+"""Bounded semantic validation for retained current-schema rows."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from typing import Any, Protocol
 
 from psycopg.types.json import Jsonb
 
-from control_plane_kit_operations.postgres.migrations import SchemaMigrationError
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
@@ -25,12 +24,6 @@ class _Connection(Protocol):
 _BATCH_SIZE = 64
 _TEXT_TRANSPORT_BYTES = 2_048
 _GRAPH_DESCRIPTOR_TRANSPORT_BYTES = 1_048_576
-_LOCKS = """
-LOCK TABLE cpk_workspaces IN ACCESS EXCLUSIVE MODE;
-LOCK TABLE cpk_graph_versions IN ACCESS EXCLUSIVE MODE;
-LOCK TABLE cpk_realized_graph_projections IN ACCESS EXCLUSIVE MODE;
-LOCK TABLE cpk_activity_plans IN ACCESS EXCLUSIVE MODE;
-"""
 _SELECT_BATCH = """
 WITH referenced(graph_id) AS (
   SELECT current_graph_id FROM cpk_workspaces WHERE current_graph_id IS NOT NULL
@@ -85,13 +78,6 @@ WHERE projection_id = %s
      AND projection_kind = %s
      AND projection_key = %s
    )
-"""
-_INSERT_PROJECTION = """
-INSERT INTO cpk_realized_graph_projections (
-  projection_id, workspace_id, source_authored_graph_id, projection_kind,
-  projection_key, projection_digest, graph_descriptor, created_by, created_at
-) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-ON CONFLICT DO NOTHING
 """
 _VERIFY_REFERENCES = """
 SELECT NOT EXISTS (
@@ -155,49 +141,117 @@ SELECT NOT EXISTS (
 )
 """
 
+_VERIFY_APPROVAL_SUBJECTS = """
+SELECT NOT EXISTS (
+  SELECT 1
+  FROM cpk_approval_requests AS approvals
+  LEFT JOIN cpk_gateway_key_rotations AS rotations
+    ON rotations.rotation_id = approvals.rotation_id
+  WHERE
+    (approvals.review_digest COLLATE "C") !~ '^[0-9a-f]{64}$'
+    OR CASE
+      WHEN (approvals.subject_kind COLLATE "C") = 'activity-plan' THEN NOT (
+        approvals.plan_id IS NOT NULL
+        AND approvals.rotation_id IS NULL
+        AND octet_length(approvals.plan_id) BETWEEN 1 AND 200
+        AND (approvals.plan_id COLLATE "C") ~ '^[A-Za-z0-9]'
+        AND (approvals.plan_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+        AND approvals.subject_payload = jsonb_build_object(
+          'kind', 'activity-plan', 'plan_id', approvals.plan_id
+        )
+        AND (approvals.review_digest COLLATE "C") = encode(
+          sha256(convert_to('activity-plan:' || approvals.plan_id, 'UTF8')),
+          'hex'
+        )
+      )
+      WHEN (approvals.subject_kind COLLATE "C") =
+           'gateway-key-rotation' THEN NOT (
+        approvals.plan_id IS NULL
+        AND approvals.rotation_id IS NOT NULL
+        AND rotations.rotation_id IS NOT NULL
+        AND octet_length(rotations.rotation_id) BETWEEN 1 AND 200
+        AND (rotations.rotation_id COLLATE "C") ~ '^[A-Za-z0-9]'
+        AND (rotations.rotation_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+        AND octet_length(rotations.workspace_id) BETWEEN 1 AND 200
+        AND (rotations.workspace_id COLLATE "C") ~ '^[A-Za-z0-9]'
+        AND (rotations.workspace_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+        AND octet_length(rotations.gateway_node_id) BETWEEN 1 AND 200
+        AND (rotations.gateway_node_id COLLATE "C") ~ '^[A-Za-z0-9]'
+        AND (rotations.gateway_node_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+        AND octet_length(rotations.issuer) BETWEEN 1 AND 200
+        AND (rotations.issuer COLLATE "C") ~ '^[A-Za-z0-9]'
+        AND (rotations.issuer COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+        AND octet_length(rotations.old_key_id) BETWEEN 1 AND 200
+        AND (rotations.old_key_id COLLATE "C") ~ '^[A-Za-z0-9]'
+        AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
+        AND (rotations.purpose COLLATE "C") IN (
+          'gateway-probe', 'workload-node-control',
+          'workload-node-control-surface-read'
+        )
+        AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
+        AND rotations.clock_skew_seconds BETWEEN 0 AND 60
+        AND (rotations.intent_fingerprint COLLATE "C") ~ '^[0-9a-f]{64}$'
+        AND approvals.subject_payload = jsonb_build_object(
+          'kind', 'gateway-key-rotation',
+          'rotation_id', rotations.rotation_id,
+          'workspace_id', rotations.workspace_id,
+          'gateway_node_id', rotations.gateway_node_id,
+          'purpose', rotations.purpose,
+          'issuer', rotations.issuer,
+          'old_key_id', rotations.old_key_id,
+          'overlap_verifier_roles', jsonb_build_array('old', 'new'),
+          'retirement_verifier_roles', jsonb_build_array('new'),
+          'maximum_grant_lifetime_seconds',
+            rotations.maximum_grant_lifetime_seconds,
+          'clock_skew_seconds', rotations.clock_skew_seconds,
+          'rotation_intent_digest', rotations.intent_fingerprint
+        )
+        AND (approvals.review_digest COLLATE "C") = encode(
+          sha256(convert_to(
+            '{"clock_skew_seconds":' || rotations.clock_skew_seconds::text ||
+            ',"gateway_node_id":' || to_jsonb(rotations.gateway_node_id)::text ||
+            ',"issuer":' || to_jsonb(rotations.issuer)::text ||
+            ',"kind":"gateway-key-rotation"' ||
+            ',"maximum_grant_lifetime_seconds":' ||
+              rotations.maximum_grant_lifetime_seconds::text ||
+            ',"old_key_id":' || to_jsonb(rotations.old_key_id)::text ||
+            ',"overlap_verifier_roles":["old","new"]' ||
+            ',"purpose":' || to_jsonb(rotations.purpose)::text ||
+            ',"retirement_verifier_roles":["new"]' ||
+            ',"rotation_id":' || to_jsonb(rotations.rotation_id)::text ||
+            ',"rotation_intent_digest":' ||
+              to_jsonb(rotations.intent_fingerprint)::text ||
+            ',"workspace_id":' || to_jsonb(rotations.workspace_id)::text || '}',
+            'UTF8'
+          )),
+          'hex'
+        )
+      )
+      ELSE true
+    END
+)
+"""
 
-def backfill_graph_lineage_v1(connection: _Connection) -> None:
-    """Validate all retained lineage, then materialize only missing identities."""
 
-    failed = False
+def validate_current_rows(connection: _Connection) -> None:
     try:
-        _scan(connection, insert_missing=False)
-        _scan(connection, insert_missing=True)
-    except Exception:
-        failed = True
-    if failed:
-        _raise_backfill_failure()
+        _scan(connection)
+    except (TypeError, ValueError):
+        raise CurrentRowDrift from None
+    rows = connection.execute(_VERIFY_REFERENCES).fetchall()
+    if rows != [(True,)]:
+        raise CurrentRowDrift
+    approval_rows = connection.execute(_VERIFY_APPROVAL_SUBJECTS).fetchall()
+    if approval_rows != [(True,)]:
+        raise CurrentRowDrift
 
 
-def verify_graph_lineage_v1(connection: _Connection) -> None:
-    """Observe exact current graph lineage under a stable relation lock set."""
-
-    failed = False
-    try:
-        lock_graph_lineage_v1(connection)
-        _scan(connection, insert_missing=False)
-        rows = connection.execute(_VERIFY_REFERENCES).fetchall()
-        if rows != [(True,)]:
-            raise ValueError("reference mismatch")
-    except Exception:
-        failed = True
-    if failed:
-        raise SchemaMigrationError("graph lineage schema is not current")
-
-
-def lock_graph_lineage_v1(connection: _Connection) -> None:
-    """Acquire the closed graph-lineage relation set in canonical order."""
-
-    try:
-        connection.execute(_LOCKS)
-    except Exception:
-        raise SchemaMigrationError("graph lineage schema is not current") from None
+class CurrentRowDrift(Exception):
+    pass
 
 
 def _scan(
     connection: _Connection,
-    *,
-    insert_missing: bool,
 ) -> None:
     last_graph_id = ""
     while True:
@@ -225,11 +279,7 @@ def _scan(
             expected = RealizedGraphProjectionRecord.identity_for_authored(
                 authored_record=authored
             )
-            exists = _projection_is_exact(connection, expected)
-            if insert_missing and not exists:
-                connection.execute(_INSERT_PROJECTION, _projection_parameters(expected))
-                if not _projection_is_exact(connection, expected):
-                    raise ValueError("projection insert mismatch")
+            _projection_is_exact(connection, expected)
             last_graph_id = authored.graph_id
         if len(rows) < _BATCH_SIZE:
             return
@@ -309,10 +359,6 @@ def _projection_parameters(
         record.created_by,
         encode_postgres_timestamp(record.created_at),
     )
-
-
-def _raise_backfill_failure() -> None:
-    raise SchemaMigrationError("graph lineage compatibility is not accepted")
 
 
 __all__ = []
