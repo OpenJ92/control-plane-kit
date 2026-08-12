@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from inspect import getsource, signature
 import os
+from types import SimpleNamespace
 import unittest
 import uuid
 
@@ -42,6 +44,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
 )
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
+    RegisteredIngressAuthority,
 )
 from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.cpk_server import (
@@ -72,6 +75,8 @@ from control_plane_kit_operations.read_pages import (
     DelegationKeyReadCursor,
     IdentityReadCursor,
     ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
     ReadPageRequest,
     WorkspaceReadScope,
 )
@@ -79,9 +84,12 @@ from control_plane_kit_operations.read_services import InstanceReadService
 from control_plane_kit_operations.records import (
     ObservationRecord,
     ObservationStatus,
+    WorkspaceRecord,
 )
 from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority,
+    RegisteredRuntimeAuthority,
+    RegisteredRuntimeAuthorityDelivery,
 )
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand,
@@ -497,6 +505,111 @@ class CurrentMetadataPostgresPageTests(unittest.TestCase):
             ],
         )
 
+    def test_live_revocation_is_evaluated_independently_on_each_page(self) -> None:
+        providers = SecretProviderStore(self.connection)
+        for identity in ("b", "d", "f"):
+            providers.register(self._provider(identity).candidate())
+
+        scope = WorkspaceReadScope("workspace-a")
+        first = providers.active_page(
+            ReadPageRequest(ReadCollection.SECRET_PROVIDERS, scope, 2)
+        )
+        providers.revoke_active(
+            "workspace-a",
+            SecretProviderId("provider-b"),
+            revoked_by="operator-a",
+            revoked_at="2026-08-12T12:10:00Z",
+        )
+        providers.revoke_active(
+            "workspace-a",
+            SecretProviderId("provider-f"),
+            revoked_by="operator-a",
+            revoked_at="2026-08-12T12:10:00Z",
+        )
+        providers.register(self._provider("e").candidate())
+
+        second = providers.active_page(
+            ReadPageRequest(
+                ReadCollection.SECRET_PROVIDERS,
+                scope,
+                2,
+                first.next_cursor,
+            )
+        )
+        self.assertEqual(
+            [value.provider_id.value for value in first.items],
+            ["provider-b", "provider-d"],
+        )
+        self.assertEqual(
+            [value.provider_id.value for value in second.items],
+            ["provider-e"],
+        )
+        self.assertEqual(
+            self._traverse(
+                ReadCollection.SECRET_PROVIDERS,
+                providers.active_page,
+                lambda value: value.provider_id.value,
+            ),
+            ["provider-d", "provider-e"],
+        )
+
+    def test_latest_observation_replacement_obeys_live_subject_position(self) -> None:
+        observed = PostgresObservedStateStore(self.connection)
+        for identity in ("b", "d", "f"):
+            observed.put(
+                ObservationRecord(
+                    observation_id=f"old-{identity}",
+                    workspace_id="workspace-a",
+                    subject_id=f"subject-{identity}",
+                    status=ObservationStatus.STARTING,
+                    observed_at="2026-08-12T12:00:00Z",
+                )
+            )
+
+        scope = WorkspaceReadScope("workspace-a")
+        first = observed.latest_page(
+            ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, scope, 2)
+        )
+        for identity in ("b", "f"):
+            observed.put(
+                ObservationRecord(
+                    observation_id=f"new-{identity}",
+                    workspace_id="workspace-a",
+                    subject_id=f"subject-{identity}",
+                    status=ObservationStatus.HEALTHY,
+                    observed_at="2026-08-12T12:11:00Z",
+                )
+            )
+
+        second = observed.latest_page(
+            ReadPageRequest(
+                ReadCollection.LATEST_OBSERVATIONS,
+                scope,
+                2,
+                first.next_cursor,
+            )
+        )
+        self.assertEqual(
+            [(value.subject_id, value.observation_id) for value in first.items],
+            [("subject-b", "old-b"), ("subject-d", "old-d")],
+        )
+        self.assertEqual(
+            [(value.subject_id, value.observation_id) for value in second.items],
+            [("subject-f", "new-f")],
+        )
+        self.assertEqual(
+            self._traverse(
+                ReadCollection.LATEST_OBSERVATIONS,
+                observed.latest_page,
+                lambda value: (value.subject_id, value.observation_id),
+            ),
+            [
+                ("subject-b", "new-b"),
+                ("subject-d", "old-d"),
+                ("subject-f", "new-f"),
+            ],
+        )
+
     @staticmethod
     def _traverse(collection, fetch_page, identity):
         scope = WorkspaceReadScope("workspace-a")
@@ -641,6 +754,168 @@ class ReadAdapterOrderingTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.status, 403)
         self.assertEqual(calls, [])
+
+
+class _WorkspaceStore:
+    def get(self, workspace_id: str) -> WorkspaceRecord:
+        if workspace_id != "workspace-a":
+            raise KeyError(workspace_id)
+        return WorkspaceRecord("workspace-a", "Workspace A")
+
+
+class _OnePageStore:
+    def __init__(self, item: object) -> None:
+        self._item = item
+
+    def latest_page(self, request: ReadPageRequest):
+        return self._page(request)
+
+    def active_page(self, request: ReadPageRequest):
+        return self._page(request)
+
+    def workspace_page(self, request: ReadPageRequest):
+        return self._page(request)
+
+    def _page(self, request: ReadPageRequest):
+        if request.collection is ReadCollection.DELEGATION_SIGNING_KEYS:
+            cursor = DelegationKeyReadCursor(
+                request.collection,
+                request.scope,
+                self._item.purpose,
+                self._item.issuer,
+                self._item.key_id,
+            )
+        else:
+            cursor = IdentityReadCursor(
+                request.collection,
+                request.scope,
+                _identity_for_item(request.collection, self._item),
+            )
+        candidate = ReadPageCandidate(self._item, cursor)
+        return ReadPage.from_candidates(
+            request,
+            (candidate, candidate),
+        )
+
+
+def _identity_for_item(collection: ReadCollection, item: object) -> str:
+    if collection is ReadCollection.LATEST_OBSERVATIONS:
+        return item.subject_id
+    if collection in {
+        ReadCollection.RUNTIME_AUTHORITIES,
+        ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+        ReadCollection.INGRESS_AUTHORITIES,
+    }:
+        return item.authority_ref.reference_id
+    if collection is ReadCollection.SECRET_PROVIDERS:
+        return item.provider_id.value
+    if collection is ReadCollection.SECRET_REFERENCES:
+        return item.registration_id
+    raise AssertionError("identity collection is unsupported")
+
+
+class _ReadUnitOfWork:
+    def __init__(self, stores: object) -> None:
+        self.stores = stores
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def commit(self) -> None:
+        return None
+
+
+class CurrentMetadataAdapterParityTests(unittest.TestCase):
+    def test_http_and_mcp_return_identical_pages_for_all_seven_routes(self) -> None:
+        provider = CurrentMetadataPostgresPageTests._provider("a").candidate()
+        reference = CurrentMetadataPostgresPageTests._reference(
+            "a",
+            provider.registration_id,
+        ).candidate()
+        runtime = RegisteredRuntimeAuthority.from_authority(
+            workspace_id="workspace-a",
+            authority_ref=RuntimeAuthorityReference("runtime-a"),
+            runtime_kind=RuntimeKind.DOCKER,
+            authority=LocalDockerSocketAuthority(),
+            admitted_by="operator-a",
+            admitted_at="2026-08-12T12:01:00Z",
+        )
+        delivery = RegisteredRuntimeAuthorityDelivery.from_delivery(
+            workspace_id="workspace-a",
+            delivery=RuntimeAuthorityAccessDelivery(
+                RuntimeAuthorityReference("runtime-a"),
+                RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+            ),
+            admitted_by="operator-a",
+            admitted_at="2026-08-12T12:02:00Z",
+        )
+        ingress = RegisteredIngressAuthority.from_authority(
+            workspace_id="workspace-a",
+            authority_ref=IngressAuthorityReference("ingress-a"),
+            authority=CurrentMetadataPostgresPageTests._ingress_authority("a"),
+            admitted_by="operator-a",
+            admitted_at="2026-08-12T12:03:00Z",
+        )
+        items = {
+            "observed_state": ObservationRecord(
+                observation_id="observation-a",
+                workspace_id="workspace-a",
+                subject_id="subject-a",
+                status=ObservationStatus.HEALTHY,
+                observed_at="2026-08-12T12:00:00Z",
+            ),
+            "runtime_authorities": runtime,
+            "runtime_authority_deliveries": delivery,
+            "ingress_authorities": ingress,
+            "secret_providers": provider,
+            "secret_references": reference,
+            "delegation_signing_keys": (
+                CurrentMetadataPostgresPageTests._delegation_key("a").candidate()
+            ),
+        }
+        stores = SimpleNamespace(
+            workspaces=_WorkspaceStore(),
+            graphs=object(),
+            activity_history=object(),
+            execution=object(),
+            gateway_probes=object(),
+            **{name: _OnePageStore(item) for name, item in items.items()},
+        )
+        service = CpkServerReadService(
+            lambda: _ReadUnitOfWork(stores),
+            clock=lambda: datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+        )
+        route_ids = (
+            "read.observed-state",
+            "read.runtime-authorities",
+            "read.runtime-authority-deliveries",
+            "read.ingress-authorities",
+            "read.secret-providers",
+            "read.secret-references",
+            "read.delegation-keys",
+        )
+        for route_id in route_ids:
+            with self.subTest(route_id=route_id):
+                http = service.handle(
+                    _RouteRequest(
+                        surface="http",
+                        route_id=route_id,
+                        payload={"limit": 1},
+                    )
+                )
+                mcp = service.handle(
+                    _RouteRequest(
+                        surface="mcp",
+                        route_id=route_id,
+                        path_parameters={},
+                        payload={"workspace_id": "workspace-a", "limit": 1},
+                    )
+                )
+                self.assertEqual(http, mcp)
+                self.assertIsNotNone(http["next_cursor"])
 
 
 if __name__ == "__main__":

@@ -4696,7 +4696,6 @@
         "GraphPointerReadModel",
         "InstanceReadService",
         "NodeControlSurfaceReadModel",
-        "ObservedStateReadModel",
         "ReadModelError",
         "WorkspaceReadModel",
         "WorkspaceSummary"
@@ -4746,7 +4745,6 @@
         "ActivityTimelineReadModel",
         "FocusedCollectionReadModel",
         "FocusedDetailReadModel",
-        "ObservedStateReadModel",
         "NodeControlSurfaceReadModel",
         "ControlSurfaceReadModel",
         "InstanceReadService"
