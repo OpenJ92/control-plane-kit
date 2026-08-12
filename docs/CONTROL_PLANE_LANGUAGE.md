@@ -1284,11 +1284,12 @@ public contract shape:
   are nominally non-substitutable. Transit authority does not authorize the
   workload command: the workload still requires its distinct end-to-end grant.
 
-  #1555 owns durable intended transit bytes, #1556 owns graph-authorized
-  construction and a reference-only deferred signing request, and #1243 owns
-  downstream signing, gateway admission, replay protection, relay, and
-  workload response handling. No canonical field is re-encoded or separately
-  treated as a generic reference at those handoffs.
+  #1555 owns durable intended transit bytes and #1556 owns graph-authorized
+  construction plus a reference-only deferred signing request. Post-commit
+  signing consumes that deferred request; #1243 consumes the signed transit
+  grant and owns gateway admission, replay protection, relay, and workload
+  response handling. No canonical field is re-encoded or separately treated as
+  a generic reference at those handoffs.
   `ControlPlaneVariableDescriptor` names one scalar, map, or atomic
   weighted-routing state codec and an exact operation index. `read-state` has
   no command codec and returns `control.state.v1`; `apply-command` names the
