@@ -27,9 +27,18 @@ from control_plane_kit_core.node_control import (
     NodeControlTarget,
     ScalarControlState,
 )
+from control_plane_kit_core.node_control_transit import (
+    DelegatedGatewayNodeControlTransitGrantCodec,
+    GatewayNodeControlTransitContractError,
+)
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "node_control_canonical_wire_v1.json"
+TRANSIT_FIXTURE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "node_control_transit_canonical_wire_v1.json"
+)
 MAX_SAFE_INTEGER = 2**53 - 1
 
 
@@ -115,6 +124,15 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
         self.assertEqual(rfc8785.dumps(vector["descriptor"]), encoded)
         self.assertEqual(encoded.hex(), vector["canonical_utf8_hex"])
         self.assertEqual(hashlib.sha256(encoded).hexdigest(), vector["sha256"])
+        weighted = next(
+            request
+            for request in fixture["requests"]
+            if request["name"] == "weighted-exponents"
+        )
+        self.assertEqual(
+            vector["descriptor"]["request_digest"],
+            weighted["sha256"],
+        )
 
         constant = getattr(
             node_control,
@@ -165,6 +183,7 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
 
         codec = DelegatedWorkloadNodeControlGrantCodec()
         descriptor = codec.encode(maximum)
+        self.assertEqual(maximum_bytes, rfc8785.dumps(descriptor))
         for key in ("key_id", "request_id", "idempotency_key", "jti"):
             with self.subTest(identifier=key):
                 with self.assertRaises(NodeControlContractError):
@@ -175,12 +194,18 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
                     codec.decode({**descriptor, key: "a" * 257})
         with self.assertRaises(NodeControlContractError):
             codec.decode({**descriptor, "request_digest": "a" * 65})
+        with self.assertRaises(NodeControlContractError):
+            codec.decode({**descriptor, "variable_name": "a" * 129})
         for key in descriptor["target"]:
             with self.subTest(target=key):
                 candidate = deepcopy(descriptor)
                 candidate["target"][key] = "a" * 129
                 with self.assertRaises(NodeControlContractError):
                     codec.decode(candidate)
+        for key in ("issued_at", "not_before", "expires_at"):
+            with self.subTest(epoch=key):
+                with self.assertRaises(NodeControlContractError):
+                    codec.decode({**descriptor, key: MAX_SAFE_INTEGER + 1})
 
     def test_request_and_grant_strict_raw_round_trips(self) -> None:
         fixture = self.fixture()
@@ -224,7 +249,14 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
             canonical.replace(b"100000000000000000000", b"1e20"),
             canonical.replace(b"100000000000000000000", b"-0"),
             canonical.replace(b"100000000000000000000", b"1e400"),
-            canonical.replace(b'"expected_version":4', b'"expected_version":9007199254740992'),
+            canonical.replace(
+                b'"expected_version":4',
+                b'"expected_version":9007199254740992',
+            ),
+            self.scalar_request(1).canonical_bytes().replace(
+                b'"value":1',
+                b'"value":1.0',
+            ),
         )
         for candidate in candidates:
             with self.subTest(candidate=candidate[-96:]):
@@ -238,6 +270,8 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
         grant_decoder = getattr(grant_codec, "decode_canonical_bytes")
         request_bytes = self.scalar_request(1).canonical_bytes()
         grant_bytes = self.grant().canonical_bytes()
+        request_descriptor = request_codec.encode(self.scalar_request(1))
+        grant_descriptor = grant_codec.encode(self.grant())
         duplicate_request = request_bytes.replace(
             b'{"canonicalization":"jcs-rfc8785.v1",',
             b'{"canonicalization":"jcs-rfc8785.v1","canonicalization":"jcs-rfc8785.v1",',
@@ -248,36 +282,122 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
             b'{"graph_revision":"revision-7","node_id":"router","node_id":"other",',
             1,
         )
+        missing_request = dict(request_descriptor)
+        missing_request.pop("request_id")
+        unknown_grant = {**grant_descriptor, "unknown": "candidate-secret"}
+        reordered_request = json.dumps(
+            request_descriptor,
+            separators=(",", ":"),
+            sort_keys=False,
+        ).encode("utf-8")
         cases = (
             (request_decoder, b"x" * 16_385),
             (grant_decoder, b"x" * 2_112),
+            (request_decoder, bytearray(request_bytes)),
+            (grant_decoder, grant_bytes.decode("utf-8")),
             (request_decoder, b"\xff"),
             (request_decoder, b"{"),
             (request_decoder, b"[]"),
+            (request_decoder, b"0"),
+            (request_decoder, b'{"value":NaN}'),
+            (request_decoder, b'{"value":Infinity}'),
             (request_decoder, duplicate_request),
             (grant_decoder, duplicate_grant_target),
             (request_decoder, b" " + request_bytes),
             (grant_decoder, grant_bytes + b" "),
-            (request_decoder, grant_bytes),
-            (grant_decoder, request_bytes),
+            (request_decoder, request_bytes + b"{}"),
+            (request_decoder, rfc8785.dumps(missing_request)),
+            (grant_decoder, rfc8785.dumps(unknown_grant)),
+            (request_decoder, reordered_request),
         )
         for decoder, candidate in cases:
-            with self.subTest(decoder=decoder, candidate=candidate[:24]):
+            with self.subTest(decoder=decoder, candidate=repr(candidate)[:48]):
                 with self.assertRaises(NodeControlContractError) as caught:
                     decoder(candidate)
                 self.assertLessEqual(len(str(caught.exception)), 128)
-                self.assertNotIn("workload-key-1", str(caught.exception))
+                for projection in (str(caught.exception), repr(caught.exception)):
+                    for fragment in (
+                        "candidate-secret",
+                        "workload-key-1",
+                        "http://attacker",
+                    ):
+                        self.assertNotIn(fragment, projection)
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
+
+    def test_request_workload_and_transit_are_pairwise_non_substitutable(self) -> None:
+        fixture = self.fixture()
+        request_codec = NodeControlCommandRequestCodec()
+        workload_codec = DelegatedWorkloadNodeControlGrantCodec()
+        transit_codec = DelegatedGatewayNodeControlTransitGrantCodec()
+        request = request_codec.decode(fixture["requests"][0]["descriptor"])
+        workload = workload_codec.decode(fixture["workload_grants"][0]["descriptor"])
+        transit_fixture = json.loads(TRANSIT_FIXTURE.read_text(encoding="utf-8"))
+        transit = transit_codec.decode(transit_fixture["grant"]["descriptor"])
+
+        object_codecs = {
+            "request": (request_codec, NodeControlContractError),
+            "workload": (workload_codec, NodeControlContractError),
+            "transit": (transit_codec, GatewayNodeControlTransitContractError),
+        }
+        values = {
+            "request": request,
+            "workload": workload,
+            "transit": transit,
+        }
+        for destination, (codec, error_type) in object_codecs.items():
+            for source, value in values.items():
+                if destination == source:
+                    continue
+                with self.subTest(
+                    seam="object",
+                    destination=destination,
+                    source=source,
+                ):
+                    with self.assertRaises(error_type):
+                        codec.encode(value)
+
+        raw_codecs = {
+            "request": getattr(request_codec, "decode_canonical_bytes"),
+            "workload": getattr(workload_codec, "decode_canonical_bytes"),
+            "transit": transit_codec.decode_canonical_bytes,
+        }
+        raw_values = {
+            "request": fixture["requests"][0]["canonical_utf8"].encode("utf-8"),
+            "workload": fixture["workload_grants"][0]["canonical_utf8"].encode(
+                "utf-8"
+            ),
+            "transit": transit_fixture["grant"]["canonical_utf8"].encode("utf-8"),
+        }
+        for destination, decoder in raw_codecs.items():
+            for source, encoded in raw_values.items():
+                if destination == source:
+                    continue
+                error_type = (
+                    GatewayNodeControlTransitContractError
+                    if destination == "transit"
+                    else NodeControlContractError
+                )
+                with self.subTest(
+                    seam="raw",
+                    destination=destination,
+                    source=source,
+                ):
+                    with self.assertRaises(error_type):
+                        decoder(encoded)
 
     def test_recursion_failure_is_nominal_and_runtime_state_is_restored(self) -> None:
         decoder = getattr(NodeControlCommandRequestCodec(), "decode_canonical_bytes")
         previous_limit = sys.getrecursionlimit()
         try:
-            sys.setrecursionlimit(120)
-            candidate = b"[" * 100 + b"0" + b"]" * 100
+            sys.setrecursionlimit(200)
+            candidate = b"[" * 300 + b"0" + b"]" * 300
             with self.assertRaises(NodeControlContractError) as caught:
                 decoder(candidate)
+            self.assertEqual(
+                str(caught.exception),
+                "node-control request bytes are malformed",
+            )
             self.assertIsNone(caught.exception.__cause__)
             self.assertIsNone(caught.exception.__context__)
         finally:
