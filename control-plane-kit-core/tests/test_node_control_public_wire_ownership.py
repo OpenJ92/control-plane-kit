@@ -85,7 +85,7 @@ class NodeControlPublicWireOwnershipTests(unittest.TestCase):
             with self.subTest(reference_shape=value):
                 self.assertIs(reference(value), code.REFERENCE_SHAPE)
         self.assertIs(reference("http://router"), code.ENDPOINT_ENVELOPE)
-        self.assertIs(reference("token=abc123"), code.CREDENTIAL_ENVELOPE)
+        self.assertIs(reference("sk-abc12345"), code.CREDENTIAL_ENVELOPE)
 
         self.assertIsNone(digest("a" * 64))
         for value in (None, "a" * 63, "A" * 64, "g" * 64):
