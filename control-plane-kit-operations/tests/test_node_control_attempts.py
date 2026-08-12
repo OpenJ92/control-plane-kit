@@ -512,8 +512,22 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
                     request_digest=self.request(2).canonical_digest(),
                 ),
             ),
-            lambda: replace(attempt, transit_grant=transit),
-            lambda: replace(attempt, workload_grant=workload),
+            lambda: replace(
+                attempt,
+                transit_grant=replace(
+                    attempt.transit_grant,
+                    operation=NodeControlOperation.READ_STATE,
+                    command_codec=None,
+                ),
+            ),
+            lambda: replace(
+                attempt,
+                workload_grant=replace(
+                    attempt.workload_grant,
+                    operation=NodeControlOperation.READ_STATE,
+                    command_codec=None,
+                ),
+            ),
             lambda: replace(
                 attempt,
                 transit_grant=replace(
@@ -703,7 +717,10 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
                 "control_plane_kit_interpreters",
             }
         )
-        self.assertEqual(calls & {"commit", "rollback"}, set())
+        self.assertEqual(
+            calls & {"commit", "rollback", "transaction", "connect"},
+            set(),
+        )
 
 
 class NodeControlAttemptPostgresTests(
@@ -864,9 +881,15 @@ class NodeControlAttemptPostgresTests(
                 ),
             )
 
-    def _assert_corrupt(self, store, *, forbidden: str | None = None) -> None:
+    def _assert_corrupt(
+        self,
+        store,
+        *,
+        attempt_id: str = "attempt-a",
+        forbidden: str | None = None,
+    ) -> None:
         with self.assertRaises(self.contract("NodeControlAttemptCorrupt")) as caught:
-            store.get("attempt-a")
+            store.get(attempt_id)
         rendered = str(caught.exception)
         self.assertLessEqual(len(rendered), 128)
         rendered_repr = repr(caught.exception)
@@ -1016,6 +1039,49 @@ class NodeControlAttemptPostgresTests(
                 self._assert_corrupt(store, forbidden=candidate)
                 self.connection.execute("TRUNCATE cpk_node_control_attempts")
                 store.add(attempt)
+
+        self.connection.execute(
+            "UPDATE cpk_node_control_attempts SET request_id='request-b'"
+        )
+        self._assert_corrupt(store, forbidden="request-b")
+        self.connection.execute("TRUNCATE cpk_node_control_attempts")
+        store.add(attempt)
+
+        self.connection.execute(
+            "UPDATE cpk_node_control_attempts SET attempt_id='attempt-b'"
+        )
+        self._assert_corrupt(store, attempt_id="attempt-b", forbidden="attempt-b")
+        self.connection.execute("TRUNCATE cpk_node_control_attempts")
+        store.add(attempt)
+
+        self.connection.execute(
+            """
+            INSERT INTO cpk_graph_versions
+              (graph_id, workspace_id, version, graph_descriptor, created_by,
+               created_at, metadata)
+            VALUES ('graph-other', 'workspace-a', 2, '{}', 'operator-a',
+                    '2027-01-15T09:00:00Z', '{}')
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_realized_graph_projections
+              (projection_id, workspace_id, source_authored_graph_id,
+               projection_kind, projection_key, projection_digest,
+               graph_descriptor, created_by, created_at)
+            VALUES ('projection-other', 'workspace-a', 'graph-other', 'identity',
+                    'other', %s, '{}', 'operator-a', '2027-01-15T09:00:00Z')
+            """,
+            ("3" * 64,),
+        )
+        self.connection.execute(
+            """
+            UPDATE cpk_node_control_attempts
+            SET current_graph_id='graph-other',
+                current_realized_projection_id='projection-other'
+            """
+        )
+        self._assert_corrupt(store, forbidden="graph-other")
         self.connection.execute("TRUNCATE cpk_node_control_attempts")
 
     def test_prior_attempt_shape_requires_reset_without_repair(self) -> None:
@@ -1046,17 +1112,19 @@ class NodeControlAttemptPostgresTests(
             drift.close()
 
     def test_exact_current_reentry_preserves_catalog_and_rows(self) -> None:
-        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
-        self.connection.execute(
-            """
-            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
-            VALUES ('workspace-reentry', 'Workspace Reentry', 'created')
-            """
-        )
+        attempt = self.attempt(1e20)
+        self.store_type(self.connection).add(attempt)
         before_catalog = self._attempt_catalog_snapshot(self.connection)
         before_rows = self.connection.execute(
-            "SELECT * FROM cpk_workspaces WHERE workspace_id='workspace-reentry'"
+            "SELECT * FROM cpk_node_control_attempts WHERE attempt_id='attempt-a'"
         ).fetchall()
+        self.connection.execute(
+            """
+            UPDATE cpk_workspaces
+            SET current_graph_id=NULL, current_realized_projection_id=NULL
+            WHERE workspace_id='workspace-a'
+            """
+        )
         install_schema(self.connection)
         self.assertEqual(
             self._attempt_catalog_snapshot(self.connection),
@@ -1064,10 +1132,11 @@ class NodeControlAttemptPostgresTests(
         )
         self.assertEqual(
             self.connection.execute(
-                "SELECT * FROM cpk_workspaces WHERE workspace_id='workspace-reentry'"
+                "SELECT * FROM cpk_node_control_attempts WHERE attempt_id='attempt-a'"
             ).fetchall(),
             before_rows,
         )
+        self.assertEqual(self.store_type(self.connection).get("attempt-a"), attempt)
 
     def test_wrong_same_workspace_key_and_authorization_fail_closed(self) -> None:
         store = self.store_type(self.connection)
