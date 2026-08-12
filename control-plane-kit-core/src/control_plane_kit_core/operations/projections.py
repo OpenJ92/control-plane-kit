@@ -25,7 +25,10 @@ class ReadProjectionKind(StrEnum):
     OPEN_SESSIONS = "open-sessions"
     SESSION_DETAIL = "session-detail"
     SESSION_ACTIONS = "session-actions"
+    SESSION_PLANS = "session-plans"
+    SESSION_APPROVALS = "session-approvals"
     RUN_EVENTS = "run-events"
+    PLAN_RUNS = "plan-runs"
     PLAN_DETAIL = "plan-detail"
     APPROVAL_DETAIL = "approval-detail"
     PENDING_APPROVALS = "pending-approvals"
@@ -323,7 +326,7 @@ _CANONICAL_PROJECTIONS = (
         "ActivityTimelineReadResponse",
         ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
         paged=True,
-        max_page_size=200,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.control-surface",
@@ -423,7 +426,7 @@ _CANONICAL_PROJECTIONS = (
         "OpenSessionsReadResponse",
         ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
         paged=True,
-        max_page_size=200,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.operator-graph",
@@ -437,7 +440,7 @@ _CANONICAL_PROJECTIONS = (
         "PendingApprovalsReadResponse",
         ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
         paged=True,
-        max_page_size=200,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.plan-detail",
@@ -449,6 +452,30 @@ _CANONICAL_PROJECTIONS = (
         "read.session-actions",
         ReadProjectionKind.SESSION_ACTIONS,
         "SessionActionsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.session-approvals",
+        ReadProjectionKind.SESSION_APPROVALS,
+        "SessionApprovalsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.session-plans",
+        ReadProjectionKind.SESSION_PLANS,
+        "SessionPlansReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.plan-runs",
+        ReadProjectionKind.PLAN_RUNS,
+        "PlanRunsReadResponse",
         ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
         paged=True,
         max_page_size=100,

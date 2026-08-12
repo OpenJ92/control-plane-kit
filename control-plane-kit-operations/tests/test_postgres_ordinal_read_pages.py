@@ -28,6 +28,7 @@ from control_plane_kit_operations.read_pages import (
     ReadPageRequest,
     RunReadScope,
     SessionReadScope,
+    WorkspaceReadScope,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -269,15 +270,22 @@ class CommittedOrdinalAppendTests(unittest.TestCase):
                 2,
             )
         ).descriptor()
-        timeline = service.activity_timeline("workspace-a").descriptor()
+        timeline = service.activity_sessions(
+            ReadPageRequest(
+                ReadCollection.ACTIVITY_SESSIONS,
+                WorkspaceReadScope("workspace-a"),
+                50,
+            )
+        ).descriptor()
 
         self.assertEqual(set(actions), {"workspace_id", "kind", "limit", "items", "next_cursor"})
         self.assertEqual(set(events), {"workspace_id", "kind", "limit", "items", "next_cursor"})
         self.assertEqual(actions["items"][0]["payload"]["api_token"], "<redacted>")
         self.assertEqual(events["items"][0]["payload"]["note"], "event-1")
-        session = timeline["sessions"][0]
+        session = timeline["items"][0]
         self.assertNotIn("actions", session)
-        self.assertNotIn("events", session["plans"][0]["runs"][0])
+        self.assertNotIn("plans", session)
+        self.assertNotIn("approvals", session)
 
     def test_run_event_page_masks_all_containment_failures_before_event_query(self) -> None:
         delegate = PostgresStoreBundle(self.connection).execution

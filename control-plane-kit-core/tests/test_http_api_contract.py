@@ -40,6 +40,7 @@ class HttpApiContractTests(unittest.TestCase):
                 ("GET", "/workspaces/{workspace_id}/observed-state"),
                 ("GET", "/workspaces/{workspace_id}/operator-graph"),
                 ("GET", "/workspaces/{workspace_id}/plans/{plan_id}"),
+                ("GET", "/workspaces/{workspace_id}/plans/{plan_id}/runs"),
                 ("GET", "/workspaces/{workspace_id}/runs/{run_id}/events"),
                 ("GET", "/workspaces/{workspace_id}/runtime-authorities"),
                 ("GET", "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}"),
@@ -63,6 +64,14 @@ class HttpApiContractTests(unittest.TestCase):
                 (
                     "GET",
                     "/workspaces/{workspace_id}/sessions/{session_id}/actions",
+                ),
+                (
+                    "GET",
+                    "/workspaces/{workspace_id}/sessions/{session_id}/approvals",
+                ),
+                (
+                    "GET",
+                    "/workspaces/{workspace_id}/sessions/{session_id}/plans",
                 ),
             ],
         )
@@ -139,6 +148,7 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/observed-state",
                 "/workspaces/{workspace_id}/operator-graph",
                 "/workspaces/{workspace_id}/plans/{plan_id}",
+                "/workspaces/{workspace_id}/plans/{plan_id}/runs",
                 "/workspaces/{workspace_id}/runs/{run_id}/events",
                 "/workspaces/{workspace_id}/runtime-authorities",
                 "/workspaces/{workspace_id}/runtime-authorities/{authority_ref}",
@@ -151,6 +161,8 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/sessions",
                 "/workspaces/{workspace_id}/sessions/{session_id}",
                 "/workspaces/{workspace_id}/sessions/{session_id}/actions",
+                "/workspaces/{workspace_id}/sessions/{session_id}/approvals",
+                "/workspaces/{workspace_id}/sessions/{session_id}/plans",
             ],
         )
         self.assertEqual(HttpApiContract.from_descriptor(descriptor), contract)

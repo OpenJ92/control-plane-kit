@@ -106,11 +106,14 @@ from control_plane_kit_operations.products import (
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
 from control_plane_kit_operations.read_pages import (
+    PlanReadScope,
     ReadCollection,
     ReadPageError,
     ReadPageRequest,
+    ReadScope,
     RunReadScope,
     SessionReadScope,
+    WorkspaceReadScope,
     read_cursor_from_mapping,
 )
 from control_plane_kit_operations.records import ApprovalDecisionKind
@@ -238,7 +241,10 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.sessions": _WORKSPACE_READ,
     "read.session-detail": _WORKSPACE_READ,
     "read.session-actions": _WORKSPACE_READ,
+    "read.session-plans": _WORKSPACE_READ,
+    "read.session-approvals": _WORKSPACE_READ,
     "read.run-events": _WORKSPACE_READ,
+    "read.plan-runs": _WORKSPACE_READ,
     "read.plan-detail": _WORKSPACE_READ,
     "read.approval-detail": _WORKSPACE_READ,
     "read.pending-approvals": _WORKSPACE_READ,
@@ -400,12 +406,12 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
-        journal_arguments = (
-            _journal_arguments(request)
-            if request.route_id in {"read.session-actions", "read.run-events"}
+        read_arguments = (
+            _closed_read_arguments(request)
+            if request.route_id in _CLOSED_READ_ARGUMENTS
             else None
         )
-        _trusted_context(request, values=journal_arguments)
+        _trusted_context(request, values=read_arguments)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -429,7 +435,7 @@ class CpkServerReadService:
             service = InstanceReadService(**kwargs)
             failure: tuple[int, str] | None = None
             try:
-                model = _read_model(service, request, arguments=journal_arguments)
+                model = _read_model(service, request, arguments=read_arguments)
             except (ReadModelError, ReadPageError) as error:
                 status = 400 if isinstance(error, ReadPageError) else _read_error_status(error)
                 failure = (status, str(error))
@@ -1303,25 +1309,29 @@ def _read_model(
             pointer=_optional_text(args, "pointer") or "current",
         )
     if route_id == "read.activity":
-        return service.activity_timeline(
-            _workspace_id(args),
-            limit=_positive_int(args, "limit", default=50),
+        return service.activity_sessions(
+            _read_page_request(
+                args,
+                collection=ReadCollection.ACTIVITY_SESSIONS,
+                scope=WorkspaceReadScope(_workspace_id(args)),
+            )
         )
     if route_id == "read.sessions":
         return service.open_sessions(
-            _workspace_id(args),
-            limit=_positive_int(args, "limit", default=50),
-            offset=_non_negative_int(args, "offset", default=0),
+            _read_page_request(
+                args,
+                collection=ReadCollection.OPEN_SESSIONS,
+                scope=WorkspaceReadScope(_workspace_id(args)),
+            )
         )
     if route_id == "read.session-detail":
         return service.session_detail(
             _workspace_id(args),
             _text(args, "session_id"),
-            limit=_positive_int(args, "limit", default=50),
         )
     if route_id == "read.session-actions":
         return service.session_actions(
-            _journal_page_request(
+            _read_page_request(
                 args,
                 collection=ReadCollection.SESSION_ACTIONS,
                 scope=SessionReadScope(
@@ -1330,9 +1340,31 @@ def _read_model(
                 ),
             )
         )
+    if route_id == "read.session-plans":
+        return service.session_plans(
+            _read_page_request(
+                args,
+                collection=ReadCollection.SESSION_PLANS,
+                scope=SessionReadScope(
+                    _workspace_id(args),
+                    _text(args, "session_id"),
+                ),
+            )
+        )
+    if route_id == "read.session-approvals":
+        return service.session_approvals(
+            _read_page_request(
+                args,
+                collection=ReadCollection.SESSION_APPROVALS,
+                scope=SessionReadScope(
+                    _workspace_id(args),
+                    _text(args, "session_id"),
+                ),
+            )
+        )
     if route_id == "read.run-events":
         return service.run_events(
-            _journal_page_request(
+            _read_page_request(
                 args,
                 collection=ReadCollection.RUN_EVENTS,
                 scope=RunReadScope(
@@ -1345,19 +1377,30 @@ def _read_model(
         return service.plan_detail(
             _workspace_id(args),
             _text(args, "plan_id"),
-            limit=_positive_int(args, "limit", default=50),
+        )
+    if route_id == "read.plan-runs":
+        return service.plan_runs(
+            _read_page_request(
+                args,
+                collection=ReadCollection.PLAN_RUNS,
+                scope=PlanReadScope(
+                    _workspace_id(args),
+                    _text(args, "plan_id"),
+                ),
+            )
         )
     if route_id == "read.approval-detail":
         return service.approval_detail(
             _workspace_id(args),
             _text(args, "approval_id"),
-            limit=_positive_int(args, "limit", default=50),
         )
     if route_id == "read.pending-approvals":
         return service.pending_approvals(
-            _workspace_id(args),
-            limit=_positive_int(args, "limit", default=50),
-            offset=_non_negative_int(args, "offset", default=0),
+            _read_page_request(
+                args,
+                collection=ReadCollection.PENDING_APPROVALS,
+                scope=WorkspaceReadScope(_workspace_id(args)),
+            )
         )
     if route_id == "read.observed-state":
         return service.observed_state(_workspace_id(args))
@@ -1441,14 +1484,27 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     }
 
 
-def _journal_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
+_CLOSED_READ_ARGUMENTS = {
+    "read.activity": (None, True),
+    "read.sessions": (None, True),
+    "read.session-actions": ("session_id", True),
+    "read.session-plans": ("session_id", True),
+    "read.session-approvals": ("session_id", True),
+    "read.pending-approvals": (None, True),
+    "read.plan-runs": ("plan_id", True),
+    "read.run-events": ("run_id", True),
+    "read.session-detail": ("session_id", False),
+    "read.plan-detail": ("plan_id", False),
+    "read.approval-detail": ("approval_id", False),
+}
+
+
+def _closed_read_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     if type(request.path_parameters) is not dict or type(request.payload) is not dict:
-        raise CpkServerApplicationError(400, "journal arguments are malformed")
-    parent = (
-        "session_id" if request.route_id == "read.session-actions" else "run_id"
-    )
-    required = {"workspace_id", parent}
-    optional = {"limit", "after"}
+        raise CpkServerApplicationError(400, "read arguments are malformed")
+    parent, paged = _CLOSED_READ_ARGUMENTS[request.route_id]
+    required = {"workspace_id"} | (set() if parent is None else {parent})
+    optional = {"limit", "after"} if paged else set()
     path = dict(request.path_parameters)
     payload = dict(request.payload)
     if request.surface == "http":
@@ -1458,15 +1514,15 @@ def _journal_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     else:
         valid = False
     if not valid or set(path) & set(payload):
-        raise CpkServerApplicationError(400, "journal arguments are malformed")
+        raise CpkServerApplicationError(400, "read arguments are malformed")
     return {**path, **payload}
 
 
-def _journal_page_request(
+def _read_page_request(
     values: Mapping[str, object],
     *,
     collection: ReadCollection,
-    scope: SessionReadScope | RunReadScope,
+    scope: ReadScope,
 ) -> ReadPageRequest:
     raw_cursor = values.get("after")
     cursor = None if raw_cursor is None else read_cursor_from_mapping(raw_cursor)

@@ -908,10 +908,28 @@ _OPERATOR_READ_PROJECTIONS = (
         "SessionActionsReadResponse",
     ),
     (
+        "read.session-approvals",
+        "read.session-approvals",
+        "list_session_approvals",
+        "SessionApprovalsReadResponse",
+    ),
+    (
+        "read.session-plans",
+        "read.session-plans",
+        "list_session_plans",
+        "SessionPlansReadResponse",
+    ),
+    (
         "read.plan-detail",
         "read.plan-detail",
         "get_plan_detail",
         "PlanDetailReadResponse",
+    ),
+    (
+        "read.plan-runs",
+        "read.plan-runs",
+        "list_plan_runs",
+        "PlanRunsReadResponse",
     ),
     (
         "read.run-events",

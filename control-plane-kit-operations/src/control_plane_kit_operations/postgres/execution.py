@@ -13,7 +13,9 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_cursor_timestamp,
     decode_postgres_timestamp,
+    encode_postgres_cursor_timestamp,
     encode_postgres_timestamp,
 )
 from control_plane_kit_operations.read_pages import (
@@ -23,6 +25,7 @@ from control_plane_kit_operations.read_pages import (
     ReadPageCandidate,
     ReadPageError,
     ReadPageRequest,
+    TemporalReadCursor,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -284,6 +287,64 @@ class PostgresExecutionStore:
             (plan_id,),
         ).fetchall()
         return tuple(_activity_run(row) for row in rows)
+
+    def run_page(self, request: ReadPageRequest) -> ReadPage[ActivityRunRecord]:
+        if request.collection is not ReadCollection.PLAN_RUNS:
+            raise ReadPageError("run page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        parameters: tuple[object, ...]
+        if cursor is None:
+            parameters = (
+                request.scope.workspace_id,
+                request.scope.plan_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND (run.created_at, run.run_id) > (%s, %s)"
+            parameters = (
+                request.scope.workspace_id,
+                request.scope.plan_id,
+                encode_postgres_cursor_timestamp(cursor.instant),
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT run.run_id, run.plan_id, run.request_id, run.attempt,
+                   run.prior_run_id, run.status, run.created_at, run.started_at,
+                   run.settled_at, run.metadata
+            FROM cpk_activity_runs AS run
+            JOIN cpk_execution_requests AS request
+              ON request.request_id = run.request_id
+             AND request.plan_id = run.plan_id
+            JOIN cpk_activity_plans AS plan
+              ON plan.plan_id = run.plan_id
+             AND plan.session_id = request.session_id
+            JOIN cpk_operation_sessions AS session
+              ON session.session_id = plan.session_id
+             AND session.workspace_id = request.workspace_id
+            WHERE request.workspace_id = %s
+              AND run.plan_id = %s
+              {seek}
+            ORDER BY run.created_at ASC, run.run_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        candidates = tuple(
+            ReadPageCandidate(
+                item=_activity_run(row),
+                cursor_after_item=TemporalReadCursor(
+                    ReadCollection.PLAN_RUNS,
+                    request.scope,
+                    decode_postgres_cursor_timestamp(row[6]),
+                    row[0],
+                ),
+            )
+            for row in rows
+        )
+        return ReadPage.from_candidates(request, candidates)
 
     def add_event(self, record: ActivityEventRecord) -> ActivityEventRecord:
         payload = {

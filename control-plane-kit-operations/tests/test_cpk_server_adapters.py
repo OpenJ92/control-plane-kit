@@ -581,6 +581,57 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         self.assertEqual(set(http), {"workspace_id", "kind", "limit", "items", "next_cursor"})
         self.assertEqual(http["items"][0]["payload"]["note"], "ok")
 
+    def test_http_and_mcp_temporal_history_pages_are_identical(self) -> None:
+        self.seed_run_event()
+        service = CpkServerReadService(self.unit_of_work)
+        cases = (
+            ("read.activity", {}, None),
+            ("read.sessions", {}, None),
+            ("read.session-plans", {"session_id": "session-a"}, "plan-a"),
+            (
+                "read.session-approvals",
+                {"session_id": "session-a"},
+                "approval-a",
+            ),
+            ("read.pending-approvals", {}, None),
+            ("read.plan-runs", {"plan_id": "plan-a"}, "run-a"),
+        )
+
+        for route_id, parent, expected_id in cases:
+            with self.subTest(route_id=route_id):
+                http = service.handle(
+                    RouteRequest(
+                        surface="http",
+                        route_id=route_id,
+                        service_role=ControlPlaneServiceRole.READS,
+                        path_parameters={"workspace_id": "workspace-a", **parent},
+                        payload={"limit": 10},
+                    )
+                )
+                mcp = service.handle(
+                    RouteRequest(
+                        surface="mcp",
+                        route_id=route_id,
+                        service_role=ControlPlaneServiceRole.READS,
+                        path_parameters={},
+                        payload={"workspace_id": "workspace-a", **parent, "limit": 10},
+                    )
+                )
+
+                self.assertEqual(http, mcp)
+                self.assertEqual(
+                    set(http),
+                    {"workspace_id", "kind", "limit", "items", "next_cursor"},
+                )
+                if expected_id is not None:
+                    identities = {
+                        str(value)
+                        for item in http["items"]
+                        for key, value in item.items()
+                        if key in {"plan_id", "request_id", "run_id"}
+                    }
+                    self.assertIn(expected_id, identities)
+
     def test_journal_routes_reject_ambiguous_or_unbounded_arguments_before_uow(self) -> None:
         entered = False
 
@@ -610,6 +661,67 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                         )
                     )
                 self.assertEqual(raised.exception.status, 400)
+        self.assertFalse(entered)
+
+    def test_temporal_pages_and_scalar_details_reject_stale_arguments_before_uow(self) -> None:
+        entered = False
+
+        def forbidden_unit_of_work():
+            nonlocal entered
+            entered = True
+            raise AssertionError("invalid read arguments must precede store access")
+
+        service = CpkServerReadService(forbidden_unit_of_work)
+        cases = (
+            ("read.activity", {"workspace_id": "workspace-a"}, {"offset": 0}),
+            ("read.sessions", {"workspace_id": "workspace-a"}, {"direction": "ascending"}),
+            (
+                "read.session-plans",
+                {"workspace_id": "workspace-a", "session_id": "session-a"},
+                {"unknown": True},
+            ),
+            (
+                "read.session-approvals",
+                {"workspace_id": "workspace-a", "session_id": "session-a"},
+                {"cursor": {}},
+            ),
+            ("read.pending-approvals", {"workspace_id": "workspace-a"}, {"offset": 0}),
+            (
+                "read.plan-runs",
+                {"workspace_id": "workspace-a", "plan_id": "plan-a"},
+                {"direction": "ascending"},
+            ),
+            (
+                "read.session-detail",
+                {"workspace_id": "workspace-a", "session_id": "session-a"},
+                {"limit": 1},
+            ),
+            (
+                "read.plan-detail",
+                {"workspace_id": "workspace-a", "plan_id": "plan-a"},
+                {"after": {}},
+            ),
+            (
+                "read.approval-detail",
+                {"workspace_id": "workspace-a", "approval_id": "approval-a"},
+                {"offset": 0},
+            ),
+        )
+
+        for route_id, path, payload in cases:
+            with self.subTest(route_id=route_id, payload=payload):
+                with self.assertRaises(CpkServerApplicationError) as raised:
+                    service.handle(
+                        RouteRequest(
+                            surface="http",
+                            route_id=route_id,
+                            service_role=ControlPlaneServiceRole.READS,
+                            path_parameters=path,
+                            payload=payload,
+                        )
+                    )
+                self.assertEqual(raised.exception.status, 400)
+
         self.assertFalse(entered)
 
     def test_journal_routes_reject_hostile_mapping_subclasses_without_iteration(self) -> None:
@@ -1158,7 +1270,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 route_id="read.pending-approvals",
                 service_role=ControlPlaneServiceRole.READS,
                 path_parameters={"workspace_id": "workspace-a"},
-                payload={"limit": 10, "offset": 0},
+                payload={"limit": 10},
             )
         )
         self.assertEqual(pending["items"][0]["request_id"], "approval-a")
@@ -1398,7 +1510,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 route_id="read.pending-approvals",
                 service_role=ControlPlaneServiceRole.READS,
                 path_parameters={"workspace_id": "workspace-a"},
-                payload={"limit": 10, "offset": 0},
+                payload={"limit": 10},
             )
         )
         self.assertEqual(pending["items"][0]["request_id"], approval_request_id)

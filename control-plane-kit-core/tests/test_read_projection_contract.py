@@ -165,6 +165,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.plan-runs",
+                    ReadProjectionKind.PLAN_RUNS,
+                    "PlanRunsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
                     "read.run-events",
                     ReadProjectionKind.RUN_EVENTS,
                     "RunEventsReadResponse",
@@ -245,12 +253,28 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 (
+                    "read.session-approvals",
+                    ReadProjectionKind.SESSION_APPROVALS,
+                    "SessionApprovalsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
                     "read.session-detail",
                     ReadProjectionKind.SESSION_DETAIL,
                     "SessionDetailReadResponse",
                     ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
                     True,
                     False,
+                ),
+                (
+                    "read.session-plans",
+                    ReadProjectionKind.SESSION_PLANS,
+                    "SessionPlansReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
                 ),
                 (
                     "read.workspace",
