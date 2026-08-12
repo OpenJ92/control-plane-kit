@@ -334,20 +334,28 @@ class CurrentMetadataPageContractTests(unittest.TestCase):
             )
         )
         inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
-        read_services = next(
+        read_service_modules = [
             module
             for module in inventory["modules"]
-            if module["module"] == "control_plane_kit.read_services"
-        )
+            if module["module"]
+            in {
+                "control_plane_kit.read_services",
+                "control_plane_kit.read_services.instance",
+            }
+        ]
 
-        self.assertTrue(
-            {
-                "ObservedStateReadModel",
-                "RuntimeAuthorityCollectionReadModel",
-                "IngressAuthorityCollectionReadModel",
-                "SecretMetadataCollectionReadModel",
-            }.isdisjoint(read_services["canonical_public_exports"])
-        )
+        self.assertEqual(len(read_service_modules), 2)
+        retired = {
+            "ObservedStateReadModel",
+            "RuntimeAuthorityCollectionReadModel",
+            "IngressAuthorityCollectionReadModel",
+            "SecretMetadataCollectionReadModel",
+        }
+        for module in read_service_modules:
+            with self.subTest(module=module["module"]):
+                self.assertTrue(
+                    retired.isdisjoint(module["canonical_public_exports"])
+                )
 
 
 _PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
@@ -791,9 +799,10 @@ class _WorkspaceStore:
         return WorkspaceRecord("workspace-a", "Workspace A")
 
 
-class _OnePageStore:
-    def __init__(self, item: object) -> None:
-        self._item = item
+class _TwoPageStore:
+    def __init__(self, collection: ReadCollection, items: tuple[object, object]) -> None:
+        self._collection = collection
+        self._items = items
 
     def latest_page(self, request: ReadPageRequest):
         return self._page(request)
@@ -805,25 +814,37 @@ class _OnePageStore:
         return self._page(request)
 
     def _page(self, request: ReadPageRequest):
+        if request.collection is not self._collection:
+            raise AssertionError("route selected the wrong collection store")
+        if request.scope != WorkspaceReadScope("workspace-a"):
+            raise AssertionError("route selected the wrong workspace scope")
+
+        candidates = tuple(self._candidate(request, item) for item in self._items)
+        if request.cursor is None:
+            selected = candidates
+        else:
+            if request.cursor != candidates[0].cursor_after_item:
+                raise AssertionError("route decoded the wrong continuation cursor")
+            selected = candidates[1:]
+        return ReadPage.from_candidates(request, selected)
+
+    @staticmethod
+    def _candidate(request: ReadPageRequest, item: object) -> ReadPageCandidate:
         if request.collection is ReadCollection.DELEGATION_SIGNING_KEYS:
             cursor = DelegationKeyReadCursor(
                 request.collection,
                 request.scope,
-                self._item.purpose,
-                self._item.issuer,
-                self._item.key_id,
+                item.purpose,
+                item.issuer,
+                item.key_id,
             )
         else:
             cursor = IdentityReadCursor(
                 request.collection,
                 request.scope,
-                _identity_for_item(request.collection, self._item),
+                _identity_for_item(request.collection, item),
             )
-        candidate = ReadPageCandidate(self._item, cursor)
-        return ReadPage.from_candidates(
-            request,
-            (candidate, candidate),
-        )
+        return ReadPageCandidate(item, cursor)
 
 
 def _identity_for_item(collection: ReadCollection, item: object) -> str:
@@ -858,51 +879,81 @@ class _ReadUnitOfWork:
 
 class CurrentMetadataAdapterParityTests(unittest.TestCase):
     def test_http_and_mcp_return_identical_pages_for_all_seven_routes(self) -> None:
-        provider = CurrentMetadataPostgresPageTests._provider("a").candidate()
-        reference = CurrentMetadataPostgresPageTests._reference(
-            "a",
-            provider.registration_id,
-        ).candidate()
-        runtime = RegisteredRuntimeAuthority.from_authority(
-            workspace_id="workspace-a",
-            authority_ref=RuntimeAuthorityReference("runtime-a"),
-            runtime_kind=RuntimeKind.DOCKER,
-            authority=LocalDockerSocketAuthority(),
-            admitted_by="operator-a",
-            admitted_at="2026-08-12T12:01:00Z",
+        providers = tuple(
+            CurrentMetadataPostgresPageTests._provider(identity).candidate()
+            for identity in ("a", "b")
         )
-        delivery = RegisteredRuntimeAuthorityDelivery.from_delivery(
-            workspace_id="workspace-a",
-            delivery=RuntimeAuthorityAccessDelivery(
-                RuntimeAuthorityReference("runtime-a"),
-                RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
-            ),
-            admitted_by="operator-a",
-            admitted_at="2026-08-12T12:02:00Z",
+        references = tuple(
+            CurrentMetadataPostgresPageTests._reference(
+                identity,
+                provider.registration_id,
+            ).candidate()
+            for identity, provider in zip(("a", "b"), providers, strict=True)
         )
-        ingress = RegisteredIngressAuthority.from_authority(
-            workspace_id="workspace-a",
-            authority_ref=IngressAuthorityReference("ingress-a"),
-            authority=CurrentMetadataPostgresPageTests._ingress_authority("a"),
-            admitted_by="operator-a",
-            admitted_at="2026-08-12T12:03:00Z",
+        runtimes = tuple(
+            RegisteredRuntimeAuthority.from_authority(
+                workspace_id="workspace-a",
+                authority_ref=RuntimeAuthorityReference(f"runtime-{identity}"),
+                runtime_kind=RuntimeKind.DOCKER,
+                authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a",
+                admitted_at="2026-08-12T12:01:00Z",
+            )
+            for identity in ("a", "b")
+        )
+        deliveries = tuple(
+            RegisteredRuntimeAuthorityDelivery.from_delivery(
+                workspace_id="workspace-a",
+                delivery=RuntimeAuthorityAccessDelivery(
+                    RuntimeAuthorityReference(f"runtime-{identity}"),
+                    RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+                ),
+                admitted_by="operator-a",
+                admitted_at="2026-08-12T12:02:00Z",
+            )
+            for identity in ("a", "b")
+        )
+        ingresses = tuple(
+            RegisteredIngressAuthority.from_authority(
+                workspace_id="workspace-a",
+                authority_ref=IngressAuthorityReference(f"ingress-{identity}"),
+                authority=CurrentMetadataPostgresPageTests._ingress_authority(identity),
+                admitted_by="operator-a",
+                admitted_at="2026-08-12T12:03:00Z",
+            )
+            for identity in ("a", "b")
         )
         items = {
-            "observed_state": ObservationRecord(
-                observation_id="observation-a",
-                workspace_id="workspace-a",
-                subject_id="subject-a",
-                status=ObservationStatus.HEALTHY,
-                observed_at="2026-08-12T12:00:00Z",
+            "observed_state": tuple(
+                ObservationRecord(
+                    observation_id=f"observation-{identity}",
+                    workspace_id="workspace-a",
+                    subject_id=f"subject-{identity}",
+                    status=ObservationStatus.HEALTHY,
+                    observed_at="2026-08-12T12:00:00Z",
+                )
+                for identity in ("a", "b")
             ),
-            "runtime_authorities": runtime,
-            "runtime_authority_deliveries": delivery,
-            "ingress_authorities": ingress,
-            "secret_providers": provider,
-            "secret_references": reference,
-            "delegation_signing_keys": (
-                CurrentMetadataPostgresPageTests._delegation_key("a").candidate()
+            "runtime_authorities": runtimes,
+            "runtime_authority_deliveries": deliveries,
+            "ingress_authorities": ingresses,
+            "secret_providers": providers,
+            "secret_references": references,
+            "delegation_signing_keys": tuple(
+                CurrentMetadataPostgresPageTests._delegation_key(identity).candidate()
+                for identity in ("a", "b")
             ),
+        }
+        collections = {
+            "observed_state": ReadCollection.LATEST_OBSERVATIONS,
+            "runtime_authorities": ReadCollection.RUNTIME_AUTHORITIES,
+            "runtime_authority_deliveries": (
+                ReadCollection.RUNTIME_AUTHORITY_DELIVERIES
+            ),
+            "ingress_authorities": ReadCollection.INGRESS_AUTHORITIES,
+            "secret_providers": ReadCollection.SECRET_PROVIDERS,
+            "secret_references": ReadCollection.SECRET_REFERENCES,
+            "delegation_signing_keys": ReadCollection.DELEGATION_SIGNING_KEYS,
         }
         stores = SimpleNamespace(
             workspaces=_WorkspaceStore(),
@@ -910,7 +961,10 @@ class CurrentMetadataAdapterParityTests(unittest.TestCase):
             activity_history=object(),
             execution=object(),
             gateway_probes=object(),
-            **{name: _OnePageStore(item) for name, item in items.items()},
+            **{
+                name: _TwoPageStore(collections[name], item_pair)
+                for name, item_pair in items.items()
+            },
         )
         service = CpkServerReadService(
             lambda: _ReadUnitOfWork(stores),
@@ -965,6 +1019,7 @@ class CurrentMetadataAdapterParityTests(unittest.TestCase):
                     )
                 )
                 self.assertEqual(http_after, mcp_after)
+                self.assertIsNone(http_after["next_cursor"])
 
 
 if __name__ == "__main__":
