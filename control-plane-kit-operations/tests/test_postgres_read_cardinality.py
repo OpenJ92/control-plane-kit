@@ -121,7 +121,11 @@ def _discover() -> tuple[ReadIdentity, ...]:
 
 def _parse_inventory(text: str) -> tuple[dict[str, object], ...]:
     parsed = tomllib.loads(text)
-    if set(parsed) != {"version", "read"} or parsed["version"] != 1:
+    if (
+        set(parsed) != {"version", "read"}
+        or type(parsed["version"]) is not int
+        or parsed["version"] != 1
+    ):
         raise AssertionError("read inventory header is malformed")
     rows = parsed["read"]
     if not isinstance(rows, list):
@@ -144,14 +148,14 @@ def _parse_inventory(text: str) -> tuple[dict[str, object], ...]:
         if not isinstance(selector, str) or _SELECTOR.fullmatch(selector) is None:
             raise AssertionError("read inventory selector is malformed")
         category = raw["category"]
-        if category not in _CATEGORIES:
+        if not isinstance(category, str) or category not in _CATEGORIES:
             raise AssertionError("read inventory category is unsupported")
         for field in ("sql", "consumer"):
             value = raw[field]
             if not isinstance(value, str) or not value.strip():
                 raise AssertionError(f"read inventory {field} is empty")
         consumer_kind = raw["consumer_kind"]
-        if consumer_kind not in _CONSUMER_KINDS:
+        if not isinstance(consumer_kind, str) or consumer_kind not in _CONSUMER_KINDS:
             raise AssertionError("read inventory consumer kind is unsupported")
         if str(raw["consumer"]).strip().lower() in _GENERIC_CONSUMERS:
             raise AssertionError("read inventory consumer is not concrete")
