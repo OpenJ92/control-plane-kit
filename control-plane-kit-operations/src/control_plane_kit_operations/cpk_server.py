@@ -1448,7 +1448,7 @@ def _journal_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
         "session_id" if request.route_id == "read.session-actions" else "run_id"
     )
     required = {"workspace_id", parent}
-    optional = {"limit", "cursor"}
+    optional = {"limit", "after"}
     path = dict(request.path_parameters)
     payload = dict(request.payload)
     if request.surface == "http":
@@ -1468,7 +1468,7 @@ def _journal_page_request(
     collection: ReadCollection,
     scope: SessionReadScope | RunReadScope,
 ) -> ReadPageRequest:
-    raw_cursor = values.get("cursor")
+    raw_cursor = values.get("after")
     cursor = None if raw_cursor is None else read_cursor_from_mapping(raw_cursor)
     return ReadPageRequest(
         collection,
