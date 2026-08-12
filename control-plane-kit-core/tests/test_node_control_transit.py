@@ -17,6 +17,7 @@ from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.gateway_delegation import (
     DelegatedGatewayProbeGrant,
     DelegatedGatewayProbeGrantCodec,
+    GatewayDelegationContractError,
     GatewayProbeCommandKind,
     GatewayProbeRequest,
 )
@@ -28,6 +29,7 @@ from control_plane_kit_core.node_control import (
     MapControlState,
     NodeControlCanonicalization,
     NodeControlCommandRequest,
+    NodeControlContractError,
     NodeControlGraphReference,
     NodeControlGraphReferenceRole,
     NodeControlOperation,
@@ -44,6 +46,7 @@ from control_plane_kit_core.node_control_surface_reads import (
     DelegatedWorkloadNodeControlSurfaceReadGrantCodec,
     DelegatedWorkloadNodeControlSurfaceReadGrantProfile,
     NodeControlSurfaceReadKind,
+    NodeControlSurfaceReadContractError,
     NodeControlSurfaceReadRequest,
     NodeControlSurfaceReadRequestDigest,
     WorkloadNodeControlSurfaceDeclarationIdentity,
@@ -173,6 +176,13 @@ class NodeControlTransitTests(unittest.TestCase):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))["grant"]
         grant = self.grant()
         codec = self.contract("DelegatedGatewayNodeControlTransitGrantCodec")()
+        fixture_bytes = fixture["canonical_utf8"].encode("utf-8")
+
+        self.assertEqual(rfc8785.dumps(fixture["descriptor"]), fixture_bytes)
+        self.assertEqual(
+            hashlib.sha256(fixture_bytes).hexdigest(),
+            fixture["sha256"],
+        )
 
         self.assertEqual(
             grant.profile.value,
@@ -181,7 +191,7 @@ class NodeControlTransitTests(unittest.TestCase):
         self.assertEqual(codec.encode(grant), fixture["descriptor"])
         self.assertEqual(
             codec.encode_canonical_bytes(grant),
-            fixture["canonical_utf8"].encode("utf-8"),
+            fixture_bytes,
         )
         self.assertEqual(grant.canonical_bytes(), codec.encode_canonical_bytes(grant))
         self.assertEqual(grant.canonical_digest().value, fixture["sha256"])
@@ -272,10 +282,56 @@ class NodeControlTransitTests(unittest.TestCase):
         )
 
         codec = self.contract("DelegatedGatewayNodeControlTransitGrantCodec")()
-        with self.assertRaisesRegex(Exception, "aggregate.*bound") as caught:
+        error_type = self.contract("GatewayNodeControlTransitContractError")
+        with self.assertRaisesRegex(error_type, "aggregate.*bound") as caught:
             codec.decode_canonical_bytes(b"x" * 2_835)
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
+
+    def test_every_published_field_bound_is_executable(self) -> None:
+        codec = self.contract("DelegatedGatewayNodeControlTransitGrantCodec")()
+        error_type = self.contract("GatewayNodeControlTransitContractError")
+        descriptor = codec.encode(self.grant())
+        safe_epoch = 9_007_199_254_740_991
+        identifier_fields = (
+            "key_id",
+            "attempt_id",
+            "request_id",
+            "idempotency_key",
+            "jti",
+        )
+
+        for key in identifier_fields:
+            with self.subTest(identifier=key):
+                with self.assertRaises(error_type):
+                    codec.decode({**descriptor, key: "a" * 129})
+        with self.assertRaises(error_type):
+            codec.decode({**descriptor, "issuer": "a" * 257})
+        with self.assertRaises(error_type):
+            codec.decode({**descriptor, "request_digest": "a" * 65})
+
+        for key in ("workspace_id", "graph_revision", "gateway_node_id", "variable_name"):
+            with self.subTest(graph_reference=key):
+                with self.assertRaises(error_type):
+                    codec.decode({**descriptor, key: "a" * 129})
+        for key in descriptor["target"]:
+            with self.subTest(target_reference=key):
+                candidate = deepcopy(descriptor)
+                candidate["target"][key] = "a" * 129
+                with self.assertRaises(error_type):
+                    codec.decode(candidate)
+
+        for key in ("issued_at", "not_before", "expires_at"):
+            with self.subTest(epoch=key):
+                with self.assertRaises(error_type):
+                    codec.decode({**descriptor, key: safe_epoch + 1})
+
+        maximum = self.grant(
+            issued_at=safe_epoch - 300,
+            not_before=safe_epoch - 299,
+            expires_at=safe_epoch,
+        )
+        self.assertEqual(maximum.expires_at, safe_epoch)
 
     def test_strict_raw_byte_decoder_observes_duplicates_and_canonical_form(self) -> None:
         codec = self.contract("DelegatedGatewayNodeControlTransitGrantCodec")()
@@ -388,7 +444,28 @@ class NodeControlTransitTests(unittest.TestCase):
         code = self.contract("GatewayNodeControlTransitGrantVerificationCode")
         grant = self.grant()
         request = self.request()
-        self.assertTrue(self.verify(grant, request).is_accepted)
+        self.assertEqual(
+            tuple(member.value for member in code),
+            (
+                "grant-type-mismatch",
+                "purpose-mismatch",
+                "issuer-mismatch",
+                "key-mismatch",
+                "temporally-invalid",
+                "attempt-mismatch",
+                "workspace-mismatch",
+                "revision-mismatch",
+                "gateway-mismatch",
+                "node-mismatch",
+                "socket-mismatch",
+                "variable-mismatch",
+                "command-mismatch",
+                "request-mismatch",
+            ),
+        )
+        accepted = self.verify(grant, request)
+        self.assertTrue(accepted.is_accepted)
+        self.assertIsNone(accepted.code)
         self.assertTrue(self.verify(grant, request, grant.not_before).is_accepted)
         self.assertIs(
             self.verify(grant, request, grant.expires_at).code,
@@ -580,15 +657,21 @@ class NodeControlTransitTests(unittest.TestCase):
             "surface": surface,
             "probe": probe,
         }
+        errors = {
+            "transit": self.contract("GatewayNodeControlTransitContractError"),
+            "command": NodeControlContractError,
+            "surface": NodeControlSurfaceReadContractError,
+            "probe": GatewayDelegationContractError,
+        }
         for destination, codec in codecs.items():
             for source, foreign in grants.items():
                 if destination == source:
                     continue
                 with self.subTest(destination=destination, source=source, seam="object"):
-                    with self.assertRaises(Exception):
+                    with self.assertRaises(errors[destination]):
                         codec.encode(foreign)
                 with self.subTest(destination=destination, source=source, seam="descriptor"):
-                    with self.assertRaises(Exception):
+                    with self.assertRaises(errors[destination]):
                         codec.decode(codecs[source].encode(foreign))
 
         transit_code = self.contract(
@@ -625,7 +708,59 @@ class NodeControlTransitTests(unittest.TestCase):
     def test_public_material_repr_errors_and_private_ownership_are_bounded(self) -> None:
         module = self.module()
         error_type = self.contract("GatewayNodeControlTransitContractError")
-        grant = self.grant()
+        canaries = {
+            "issuer": "issuer-canary",
+            "key_id": "key-canary",
+            "attempt_id": "attempt-canary",
+            "workspace_id": "workspace-canary",
+            "graph_revision": "revision-canary",
+            "gateway_node_id": "gateway-canary",
+            "node_id": "workload-canary",
+            "provider_socket_name": "socket-canary",
+            "variable_name": "variable-canary",
+            "request_id": "request-canary",
+            "idempotency_key": "idempotency-canary",
+            "request_digest": "d" * 64,
+            "jti": "jti-canary",
+        }
+        target = NodeControlTarget(
+            workspace_id=self.reference(
+                NodeControlGraphReferenceRole.WORKSPACE,
+                canaries["workspace_id"],
+            ),
+            graph_revision=self.reference(
+                NodeControlGraphReferenceRole.GRAPH_REVISION,
+                canaries["graph_revision"],
+            ),
+            node_id=self.reference(
+                NodeControlGraphReferenceRole.NODE,
+                canaries["node_id"],
+            ),
+            provider_socket_name=self.reference(
+                NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                canaries["provider_socket_name"],
+            ),
+        )
+        grant = self.grant(
+            issuer=canaries["issuer"],
+            key_id=canaries["key_id"],
+            attempt_id=canaries["attempt_id"],
+            workspace_id=target.workspace_id,
+            graph_revision=target.graph_revision,
+            gateway_node_id=self.reference(
+                NodeControlGraphReferenceRole.NODE,
+                canaries["gateway_node_id"],
+            ),
+            target=target,
+            variable_name=self.reference(
+                NodeControlGraphReferenceRole.VARIABLE,
+                canaries["variable_name"],
+            ),
+            request_id=canaries["request_id"],
+            idempotency_key=canaries["idempotency_key"],
+            request_digest=NodeControlRequestDigest(canaries["request_digest"]),
+            jti=canaries["jti"],
+        )
         grant_fields = {item.name: item for item in fields(type(grant))}
         for name in (
             "issuer",
@@ -639,6 +774,10 @@ class NodeControlTransitTests(unittest.TestCase):
                 self.assertFalse(grant_fields[name].repr)
                 self.assertNotIn(getattr(grant, name), repr(grant))
         self.assertNotIn(grant.audience, repr(grant))
+        rendered = repr(grant)
+        for name, canary in canaries.items():
+            with self.subTest(topology_redacted=name):
+                self.assertNotIn(canary, rendered)
 
         codec = self.contract("DelegatedGatewayNodeControlTransitGrantCodec")()
         descriptor = codec.encode(grant)
@@ -663,20 +802,23 @@ class NodeControlTransitTests(unittest.TestCase):
 
         source = Path(module.__file__).read_text(encoding="utf-8")
         tree = ast.parse(source)
-        imports = {
-            node.module.split(".", 1)[0]
+        imported_modules = {
+            node.module
             for node in ast.walk(tree)
             if isinstance(node, ast.ImportFrom) and node.module
         }
-        imports.update(
-            alias.name.split(".", 1)[0]
+        imported_modules.update(
+            alias.name
             for node in ast.walk(tree)
             if isinstance(node, ast.Import)
             for alias in node.names
         )
-        self.assertTrue({"control_plane_kit_core"}.issubset(imports))
+        self.assertIn(
+            "control_plane_kit_core._node_control_public_wire",
+            imported_modules,
+        )
         self.assertTrue(
-            imports.isdisjoint(
+            imported_modules.isdisjoint(
                 {
                     "control_plane_kit",
                     "control_plane_kit_operations",
@@ -686,8 +828,28 @@ class NodeControlTransitTests(unittest.TestCase):
                     "mcp",
                     "psycopg",
                     "requests",
+                    "rfc8785",
+                    "ipaddress",
+                    "re",
                     "socket",
                     "uvicorn",
+                }
+            )
+        )
+        definitions = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        }
+        self.assertTrue(
+            definitions.isdisjoint(
+                {
+                    "canonical_json_bytes",
+                    "identifier_violation",
+                    "reference_violation",
+                    "digest_violation",
+                    "epoch_violation",
+                    "public_material_violation",
                 }
             )
         )
