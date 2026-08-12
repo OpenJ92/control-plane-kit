@@ -161,6 +161,27 @@ class SecretProviderStore:
             )
         return provider
 
+    def require_active_registration_for_update(
+        self,
+        workspace_id: str,
+        registration_id: str,
+    ) -> RegisteredSecretProvider:
+        """Lock one exact active provider registration through caller commit."""
+
+        provider = self._get_by_registration_or_none(
+            workspace_id,
+            registration_id,
+            for_update=True,
+        )
+        if (
+            provider is None
+            or provider.status is not RegisteredSecretProviderStatus.ACTIVE
+        ):
+            raise SecretProviderNotFound(
+                "active registered secret provider was not found"
+            )
+        return provider
+
     def get_by_registration(
         self,
         workspace_id: str,
@@ -424,6 +445,24 @@ class SecretReferenceStore:
         reference: SecretReference,
     ) -> RegisteredSecretReference:
         registered = self._get_active_or_none(workspace_id, reference)
+        if registered is None:
+            raise SecretProviderNotFound(
+                "active registered secret reference was not found"
+            )
+        return registered
+
+    def get_active_for_update(
+        self,
+        workspace_id: str,
+        reference: SecretReference,
+    ) -> RegisteredSecretReference:
+        """Lock one exact active reference through caller commit."""
+
+        registered = self._get_active_or_none(
+            workspace_id,
+            reference,
+            for_update=True,
+        )
         if registered is None:
             raise SecretProviderNotFound(
                 "active registered secret reference was not found"

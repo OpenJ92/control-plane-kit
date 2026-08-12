@@ -212,6 +212,7 @@ from control_plane_kit_core.node_control import (
     WorkloadNodeControlSurfaceDescriptor,
     WorkloadNodeControlSurfaceDescriptorCodec,
     verify_workload_node_control_grant,
+    workload_node_control_audience,
 )
 from control_plane_kit_core.node_control_surface_reads import (
     DelegatedWorkloadNodeControlSurfaceReadGrant,
@@ -505,6 +506,7 @@ __all__ = [
     "NodeControlSurfaceRegistryCoverage",
     "NodeControlSurfaceStatusResult",
     "NodeControlTarget",
+    "workload_node_control_audience",
     "NodeControlTransitionSucceeded",
     "ObservationHandoffContract",
     "OperatorCommandContract",
