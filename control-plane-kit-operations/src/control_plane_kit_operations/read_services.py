@@ -55,6 +55,12 @@ from control_plane_kit_operations.gateway_probes import (
     GatewayProbeError,
     GatewayProbeVerifierConfiguration,
 )
+from control_plane_kit_operations.read_pages import (
+    ReadCollection,
+    ReadPage,
+    ReadPageError,
+    ReadPageRequest,
+)
 
 _REDACTED = "<redacted>"
 _SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
@@ -77,6 +83,7 @@ class ActivityHistoryStore(Protocol):
     def get_session(self, session_id: str) -> OperationSessionRecord: ...
     def sessions_for_workspace(self, workspace_id: str) -> tuple[OperationSessionRecord, ...]: ...
     def actions_for_session(self, session_id: str) -> tuple[object, ...]: ...
+    def action_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
     def get_plan(self, plan_id: str) -> ActivityPlanRecord: ...
     def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]: ...
     def get_approval_request(self, request_id: str) -> ApprovalRequestRecord: ...
@@ -86,8 +93,10 @@ class ActivityHistoryStore(Protocol):
 
 class ExecutionStore(Protocol):
     def get_request(self, request_id: str) -> object: ...
+    def get_run(self, run_id: str) -> ActivityRunRecord: ...
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]: ...
     def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]: ...
+    def event_page(self, request: ReadPageRequest) -> ReadPage[ActivityEventRecord]: ...
 
 
 class ObservedStateStore(Protocol):
@@ -524,6 +533,40 @@ class InstanceReadService:
                 )
             },
         )
+
+    def session_actions(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        if request.collection is not ReadCollection.SESSION_ACTIONS:
+            raise ReadPageError("session action request is incongruent")
+        self._workspace(request.scope.workspace_id)
+        store = self._activity_history()
+        _session_in_workspace(
+            store,
+            request.scope.workspace_id,
+            request.scope.session_id,
+        )
+        return store.action_page(request).map(_action_descriptor)
+
+    def run_events(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        if request.collection is not ReadCollection.RUN_EVENTS:
+            raise ReadPageError("run event request is incongruent")
+        workspace_id = request.scope.workspace_id
+        self._workspace(workspace_id)
+        store = self._execution()
+        try:
+            run = store.get_run(request.scope.run_id)
+            execution_request = store.get_request(run.admission.request_id)
+        except KeyError:
+            raise ReadModelError("missing run in workspace") from None
+        identity = getattr(execution_request, "identity", None)
+        if getattr(identity, "workspace_id", None) != workspace_id:
+            raise ReadModelError("missing run in workspace")
+        return store.event_page(request).map(_event_descriptor)
 
     def plan_detail(
         self,
@@ -1333,10 +1376,6 @@ def _session_descriptor(
     session_id = session.session_id
     return {
         **_session_summary_descriptor(session),
-        "actions": [
-            _action_descriptor(action)
-            for action in store.actions_for_session(session_id)[:limit]
-        ],
         "approvals": [
             _approval_descriptor(store, approval)
             for approval in store.approval_requests_for_session(session_id)[:limit]
@@ -1459,10 +1498,6 @@ def _run_descriptor(
         "started_at": run.started_at,
         "settled_at": run.settled_at,
         "metadata": _redact_descriptor_value("metadata", run.metadata.descriptor()),
-        "events": [
-            _event_descriptor(event)
-            for event in store.events_for_run(run.run_id)[:limit]
-        ],
     }
 
 

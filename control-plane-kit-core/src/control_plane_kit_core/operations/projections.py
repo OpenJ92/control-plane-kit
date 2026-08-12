@@ -24,6 +24,8 @@ class ReadProjectionKind(StrEnum):
     ACTIVITY_TIMELINE = "activity-timeline"
     OPEN_SESSIONS = "open-sessions"
     SESSION_DETAIL = "session-detail"
+    SESSION_ACTIONS = "session-actions"
+    RUN_EVENTS = "run-events"
     PLAN_DETAIL = "plan-detail"
     APPROVAL_DETAIL = "approval-detail"
     PENDING_APPROVALS = "pending-approvals"
@@ -360,6 +362,14 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionPolicy.OBSERVED_STATE_EVIDENCE,
     ),
     _ProjectionDefinition(
+        "read.run-events",
+        ReadProjectionKind.RUN_EVENTS,
+        "RunEventsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
         "read.runtime-authorities",
         ReadProjectionKind.RUNTIME_AUTHORITIES,
         "RuntimeAuthorityCollectionReadResponse",
@@ -434,6 +444,14 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.PLAN_DETAIL,
         "PlanDetailReadResponse",
         ReadProjectionPolicy.PINNED_PLAN_AND_RECOVERY,
+    ),
+    _ProjectionDefinition(
+        "read.session-actions",
+        ReadProjectionKind.SESSION_ACTIONS,
+        "SessionActionsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.session-detail",

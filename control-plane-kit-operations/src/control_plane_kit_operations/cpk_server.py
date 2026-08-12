@@ -105,6 +105,14 @@ from control_plane_kit_operations.products import (
     RegisterImagePullAuthorityCommand,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
+from control_plane_kit_operations.read_pages import (
+    ReadCollection,
+    ReadPageError,
+    ReadPageRequest,
+    RunReadScope,
+    SessionReadScope,
+    read_cursor_from_mapping,
+)
 from control_plane_kit_operations.records import ApprovalDecisionKind
 from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority,
@@ -229,6 +237,8 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.activity": _WORKSPACE_READ,
     "read.sessions": _WORKSPACE_READ,
     "read.session-detail": _WORKSPACE_READ,
+    "read.session-actions": _WORKSPACE_READ,
+    "read.run-events": _WORKSPACE_READ,
     "read.plan-detail": _WORKSPACE_READ,
     "read.approval-detail": _WORKSPACE_READ,
     "read.pending-approvals": _WORKSPACE_READ,
@@ -390,7 +400,12 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
-        _trusted_context(request)
+        journal_arguments = (
+            _journal_arguments(request)
+            if request.route_id in {"read.session-actions", "read.run-events"}
+            else None
+        )
+        _trusted_context(request, values=journal_arguments)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -412,10 +427,14 @@ class CpkServerReadService:
             if self._clock is not None:
                 kwargs["clock"] = self._clock
             service = InstanceReadService(**kwargs)
+            failure: tuple[int, str] | None = None
             try:
-                model = _read_model(service, request)
-            except ReadModelError as error:
-                raise CpkServerApplicationError(_read_error_status(error), str(error)) from error
+                model = _read_model(service, request, arguments=journal_arguments)
+            except (ReadModelError, ReadPageError) as error:
+                status = 400 if isinstance(error, ReadPageError) else _read_error_status(error)
+                failure = (status, str(error))
+            if failure is not None:
+                raise CpkServerApplicationError(*failure)
             unit_of_work.commit()
             return model.descriptor()
 
@@ -1264,8 +1283,13 @@ def cpk_server_services(
     }
 
 
-def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) -> Any:
-    args = _arguments(request)
+def _read_model(
+    service: InstanceReadService,
+    request: CpkServerRouteRequest,
+    *,
+    arguments: Mapping[str, object] | None = None,
+) -> Any:
+    args = _arguments(request) if arguments is None else dict(arguments)
     route_id = request.route_id
     if route_id == "read.workspace":
         return service.workspace(_workspace_id(args))
@@ -1294,6 +1318,28 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             _workspace_id(args),
             _text(args, "session_id"),
             limit=_positive_int(args, "limit", default=50),
+        )
+    if route_id == "read.session-actions":
+        return service.session_actions(
+            _journal_page_request(
+                args,
+                collection=ReadCollection.SESSION_ACTIONS,
+                scope=SessionReadScope(
+                    _workspace_id(args),
+                    _text(args, "session_id"),
+                ),
+            )
+        )
+    if route_id == "read.run-events":
+        return service.run_events(
+            _journal_page_request(
+                args,
+                collection=ReadCollection.RUN_EVENTS,
+                scope=RunReadScope(
+                    _workspace_id(args),
+                    _text(args, "run_id"),
+                ),
+            )
         )
     if route_id == "read.plan-detail":
         return service.plan_detail(
@@ -1395,8 +1441,49 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     }
 
 
-def _trusted_context(request: CpkServerRouteRequest) -> TrustedCommandContext:
-    values = _arguments(request)
+def _journal_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
+    if type(request.path_parameters) is not dict or type(request.payload) is not dict:
+        raise CpkServerApplicationError(400, "journal arguments are malformed")
+    parent = (
+        "session_id" if request.route_id == "read.session-actions" else "run_id"
+    )
+    required = {"workspace_id", parent}
+    optional = {"limit", "after"}
+    path = dict(request.path_parameters)
+    payload = dict(request.payload)
+    if request.surface == "http":
+        valid = set(path) == required and set(payload) <= optional
+    elif request.surface == "mcp":
+        valid = not path and required <= set(payload) <= required | optional
+    else:
+        valid = False
+    if not valid or set(path) & set(payload):
+        raise CpkServerApplicationError(400, "journal arguments are malformed")
+    return {**path, **payload}
+
+
+def _journal_page_request(
+    values: Mapping[str, object],
+    *,
+    collection: ReadCollection,
+    scope: SessionReadScope | RunReadScope,
+) -> ReadPageRequest:
+    raw_cursor = values.get("after")
+    cursor = None if raw_cursor is None else read_cursor_from_mapping(raw_cursor)
+    return ReadPageRequest(
+        collection,
+        scope,
+        _positive_int(values, "limit", default=50),
+        cursor,
+    )
+
+
+def _trusted_context(
+    request: CpkServerRouteRequest,
+    *,
+    values: Mapping[str, object] | None = None,
+) -> TrustedCommandContext:
+    values = _arguments(request) if values is None else values
     workspace_id = _workspace_id(values)
     principal = getattr(request, "principal", None)
     if not isinstance(principal, AuthenticatedPrincipal):
@@ -1648,6 +1735,7 @@ def _read_error_status(error: ReadModelError) -> int:
             "missing workspace",
             "missing session",
             "missing plan",
+            "missing run in workspace",
             "missing runtime authority",
             "missing runtime authority delivery",
             "missing ingress authority",

@@ -16,6 +16,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    OrdinalReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityRunRecord,
@@ -349,6 +357,50 @@ class PostgresExecutionStore:
             (run_id,),
         ).fetchall()
         return tuple(_activity_event(row) for row in rows)
+
+    def event_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[ActivityEventRecord]:
+        if request.collection is not ReadCollection.RUN_EVENTS:
+            raise ReadPageError("event page request is incongruent")
+        cursor = request.cursor
+        parameters: tuple[object, ...]
+        seek = ""
+        if cursor is None:
+            parameters = (request.scope.run_id, request.limit + 1)
+        else:
+            seek = "AND (ordinal, event_id) > (%s, %s)"
+            parameters = (
+                request.scope.run_id,
+                cursor.ordinal,
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT event_id, run_id, ordinal, event_type, occurred_at, payload
+            FROM cpk_activity_events
+            WHERE run_id = %s
+              {seek}
+            ORDER BY ordinal ASC, event_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        candidates = tuple(
+            ReadPageCandidate(
+                item=_activity_event(row),
+                cursor_after_item=OrdinalReadCursor(
+                    ReadCollection.RUN_EVENTS,
+                    request.scope,
+                    row[2],
+                    row[0],
+                ),
+            )
+            for row in rows
+        )
+        return ReadPage.from_candidates(request, candidates)
 
 
 def _execution_request(row: tuple[Any, ...]) -> ExecutionRequestRecord:

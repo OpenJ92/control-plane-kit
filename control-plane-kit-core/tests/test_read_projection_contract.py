@@ -165,6 +165,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.run-events",
+                    ReadProjectionKind.RUN_EVENTS,
+                    "RunEventsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
                     "read.runtime-authorities",
                     ReadProjectionKind.RUNTIME_AUTHORITIES,
                     "RuntimeAuthorityCollectionReadResponse",
@@ -227,6 +235,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.REDACTED_SECRET_REFERENCE,
                     True,
                     False,
+                ),
+                (
+                    "read.session-actions",
+                    ReadProjectionKind.SESSION_ACTIONS,
+                    "SessionActionsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
                 ),
                 (
                     "read.session-detail",

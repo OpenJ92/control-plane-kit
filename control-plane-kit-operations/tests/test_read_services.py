@@ -171,13 +171,12 @@ class InstanceReadServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(ReadModelError, "limit must not exceed 100"):
             self.service().open_sessions("workspace-a", limit=101)
 
-    def test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals(self) -> None:
+    def test_activity_timeline_keeps_journals_separate_and_lists_pending_approvals(self) -> None:
         self.seed_activity()
         timeline = self.service().activity_timeline("workspace-a").descriptor()
         approval_page = self.service().pending_approvals("workspace-a").descriptor()
 
-        action = timeline["sessions"][0]["actions"][0]
-        self.assertEqual(action["payload"]["api_token"], "<redacted>")
+        self.assertNotIn("actions", timeline["sessions"][0])
         self.assertEqual(approval_page["items"][0]["request_id"], "approval-a")
         self.assertEqual(approval_page["items"][0]["state"], "pending")
 

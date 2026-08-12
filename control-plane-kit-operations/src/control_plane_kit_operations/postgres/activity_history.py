@@ -21,6 +21,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    OrdinalReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 from control_plane_kit_operations.records import (
     ActivityPlanRecord,
     ActivityPlanStatus,
@@ -234,6 +242,51 @@ class PostgresActivityHistoryStore:
             (session_id,),
         ).fetchall()
         return tuple(_action_record(row) for row in rows)
+
+    def action_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[OperationActionRecord]:
+        if request.collection is not ReadCollection.SESSION_ACTIONS:
+            raise ReadPageError("action page request is incongruent")
+        cursor = request.cursor
+        parameters: tuple[object, ...]
+        seek = ""
+        if cursor is None:
+            parameters = (request.scope.session_id, request.limit + 1)
+        else:
+            seek = "AND (ordinal, action_id) > (%s, %s)"
+            parameters = (
+                request.scope.session_id,
+                cursor.ordinal,
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload,
+                   created_at, idempotency_key, intent_fingerprint
+            FROM cpk_operation_actions
+            WHERE session_id = %s
+              {seek}
+            ORDER BY ordinal ASC, action_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        candidates = tuple(
+            ReadPageCandidate(
+                item=_action_record(row),
+                cursor_after_item=OrdinalReadCursor(
+                    ReadCollection.SESSION_ACTIONS,
+                    request.scope,
+                    row[2],
+                    row[0],
+                ),
+            )
+            for row in rows
+        )
+        return ReadPage.from_candidates(request, candidates)
 
     def add_plan(self, record: ActivityPlanRecord) -> ActivityPlanRecord:
         if (
