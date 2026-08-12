@@ -7,46 +7,27 @@ from types import MappingProxyType
 import unittest
 
 
-try:
-    import control_plane_kit_operations as operations
-    from control_plane_kit_operations import (
-        READ_COLLECTION_SPECS,
-        DelegationKeyReadCursor,
-        IdentityReadCursor,
-        OrdinalReadCursor,
-        PlanReadScope,
-        ReadCollection,
-        ReadOrder,
-        ReadPage,
-        ReadPageCandidate,
-        ReadPageError,
-        ReadPageRequest,
-        RunReadScope,
-        SessionReadScope,
-        TemporalReadCursor,
-        WorkspaceReadScope,
-        read_collection_spec,
-        read_cursor_from_mapping,
-    )
-except ImportError:
-    operations = None
-    READ_COLLECTION_SPECS = None
-    DelegationKeyReadCursor = None
-    IdentityReadCursor = None
-    OrdinalReadCursor = None
-    PlanReadScope = None
-    ReadCollection = None
-    ReadOrder = None
-    ReadPage = None
-    ReadPageCandidate = None
-    ReadPageError = None
-    ReadPageRequest = None
-    RunReadScope = None
-    SessionReadScope = None
-    TemporalReadCursor = None
-    WorkspaceReadScope = None
-    read_collection_spec = None
-    read_cursor_from_mapping = None
+import control_plane_kit_operations as operations
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+
+
+READ_COLLECTION_SPECS = getattr(operations, "READ_COLLECTION_SPECS", None)
+DelegationKeyReadCursor = getattr(operations, "DelegationKeyReadCursor", None)
+IdentityReadCursor = getattr(operations, "IdentityReadCursor", None)
+OrdinalReadCursor = getattr(operations, "OrdinalReadCursor", None)
+PlanReadScope = getattr(operations, "PlanReadScope", None)
+ReadCollection = getattr(operations, "ReadCollection", None)
+ReadOrder = getattr(operations, "ReadOrder", None)
+ReadPage = getattr(operations, "ReadPage", None)
+ReadPageCandidate = getattr(operations, "ReadPageCandidate", None)
+ReadPageError = getattr(operations, "ReadPageError", None)
+ReadPageRequest = getattr(operations, "ReadPageRequest", None)
+RunReadScope = getattr(operations, "RunReadScope", None)
+SessionReadScope = getattr(operations, "SessionReadScope", None)
+TemporalReadCursor = getattr(operations, "TemporalReadCursor", None)
+WorkspaceReadScope = getattr(operations, "WorkspaceReadScope", None)
+read_collection_spec = getattr(operations, "read_collection_spec", None)
+read_cursor_from_mapping = getattr(operations, "read_cursor_from_mapping", None)
 
 
 _INSTANT = "2026-08-12T12:34:56.123456Z"
@@ -66,6 +47,25 @@ class _HostileMapping(Mapping[str, object]):
     def __len__(self) -> int:
         self.touched = True
         raise AssertionError("hostile mapping was interpreted")
+
+
+class _HostileText(str):
+    def __new__(cls, value: str):
+        instance = super().__new__(cls, value)
+        instance.touched = False
+        return instance
+
+    def __len__(self) -> int:
+        self.touched = True
+        raise AssertionError("hostile member was interpreted")
+
+    def __str__(self) -> str:
+        self.touched = True
+        raise AssertionError("hostile member was rendered")
+
+    def __repr__(self) -> str:
+        self.touched = True
+        raise AssertionError("hostile member was rendered")
 
 
 class ReadPageContractTests(unittest.TestCase):
@@ -126,22 +126,22 @@ class ReadPageContractTests(unittest.TestCase):
     def test_literal_collection_table_is_source_pinned(self) -> None:
         self.require_contract()
         rows = (
-            ("ACTIVITY_SESSIONS", "read.activity", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
-            ("OPEN_SESSIONS", "read.sessions", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
-            ("SESSION_ACTIONS", "read.session-actions", SessionReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("ordinal", "action_id")),
-            ("SESSION_PLANS", "read.session-plans", SessionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "plan_id")),
-            ("SESSION_APPROVALS", "read.session-approvals", SessionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("requested_at", "request_id")),
-            ("PENDING_APPROVALS", "read.pending-approvals", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("requested_at", "request_id")),
-            ("PLAN_RUNS", "read.plan-runs", PlanReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "run_id")),
-            ("RUN_EVENTS", "read.run-events", RunReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("ordinal", "event_id")),
-            ("LATEST_OBSERVATIONS", "read.observed-state", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("subject_id",)),
-            ("RUNTIME_AUTHORITIES", "read.runtime-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
-            ("RUNTIME_AUTHORITY_DELIVERIES", "read.runtime-authority-deliveries", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
-            ("INGRESS_AUTHORITIES", "read.ingress-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
-            ("SECRET_PROVIDERS", "read.secret-providers", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("provider_id",)),
-            ("SECRET_REFERENCES", "read.secret-references", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("registration_id",)),
-            ("DELEGATION_SIGNING_KEYS", "read.delegation-keys", WorkspaceReadScope, DelegationKeyReadCursor, ReadOrder.ASCENDING, ("purpose", "issuer", "key_id")),
-            ("GATEWAY_PROBES", "read.gateway-probe-timeline", WorkspaceReadScope, TemporalReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
+            ("ACTIVITY_SESSIONS", "activity-sessions", "read.activity", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
+            ("OPEN_SESSIONS", "open-sessions", "read.sessions", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
+            ("SESSION_ACTIONS", "session-actions", "read.session-actions", SessionReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("ordinal", "action_id")),
+            ("SESSION_PLANS", "session-plans", "read.session-plans", SessionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "plan_id")),
+            ("SESSION_APPROVALS", "session-approvals", "read.session-approvals", SessionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("requested_at", "request_id")),
+            ("PENDING_APPROVALS", "pending-approvals", "read.pending-approvals", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("requested_at", "request_id")),
+            ("PLAN_RUNS", "plan-runs", "read.plan-runs", PlanReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "run_id")),
+            ("RUN_EVENTS", "run-events", "read.run-events", RunReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("ordinal", "event_id")),
+            ("LATEST_OBSERVATIONS", "latest-observations", "read.observed-state", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("subject_id",)),
+            ("RUNTIME_AUTHORITIES", "runtime-authorities", "read.runtime-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
+            ("RUNTIME_AUTHORITY_DELIVERIES", "runtime-authority-deliveries", "read.runtime-authority-deliveries", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
+            ("INGRESS_AUTHORITIES", "ingress-authorities", "read.ingress-authorities", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("authority_ref",)),
+            ("SECRET_PROVIDERS", "secret-providers", "read.secret-providers", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("provider_id",)),
+            ("SECRET_REFERENCES", "secret-references", "read.secret-references", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("registration_id",)),
+            ("DELEGATION_SIGNING_KEYS", "delegation-signing-keys", "read.delegation-keys", WorkspaceReadScope, DelegationKeyReadCursor, ReadOrder.ASCENDING, ("purpose", "issuer", "key_id")),
+            ("GATEWAY_PROBES", "gateway-probes", "read.gateway-probe-timeline", WorkspaceReadScope, TemporalReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
         )
         self.assertEqual(len(READ_COLLECTION_SPECS), 16)
         self.assertEqual(len(ReadCollection), 16)
@@ -149,9 +149,10 @@ class ReadPageContractTests(unittest.TestCase):
             len({spec.route_id for spec in READ_COLLECTION_SPECS}),
             16,
         )
-        for name, route, scope, cursor, order, position in rows:
+        for name, wire, route, scope, cursor, order, position in rows:
             collection = getattr(ReadCollection, name)
             spec = read_collection_spec(collection)
+            self.assertEqual(collection.value, wire)
             self.assertEqual(spec.collection, collection)
             self.assertEqual(spec.route_id, route)
             self.assertIs(spec.scope_type, scope)
@@ -181,28 +182,29 @@ class ReadPageContractTests(unittest.TestCase):
             DelegationKeyReadCursor(
                 ReadCollection.DELEGATION_SIGNING_KEYS,
                 self.workspace(),
-                "gateway-node-control-transit",
+                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
                 "issuer-a",
                 "key-a",
             ),
         )
-        expected_positions = (
-            {"ordinal": 1, "item_id": "action-a"},
-            {"instant": _INSTANT, "item_id": "session-a"},
-            {"item_id": "registration-a"},
-            {
+        expected = (
+            ("session-actions", {"ordinal": 1, "item_id": "action-a"}),
+            ("activity-sessions", {"instant": _INSTANT, "item_id": "session-a"}),
+            ("secret-references", {"item_id": "registration-a"}),
+            ("delegation-signing-keys", {
                 "purpose": "gateway-node-control-transit",
                 "issuer": "issuer-a",
                 "key_id": "key-a",
-            },
+            }),
         )
-        for value, position in zip(values, expected_positions, strict=True):
+        for value, (wire, position) in zip(values, expected, strict=True):
             descriptor = value.descriptor()
             self.assertEqual(
                 set(descriptor),
                 {"format_version", "collection", "scope", "position"},
             )
             self.assertEqual(descriptor["format_version"], 1)
+            self.assertEqual(descriptor["collection"], wire)
             self.assertEqual(descriptor["position"], position)
             self.assertEqual(read_cursor_from_mapping(descriptor), value)
             self.assertNotIn("direction", descriptor)
@@ -289,6 +291,68 @@ class ReadPageContractTests(unittest.TestCase):
                     forbidden="candidate-do-not-retain",
                 )
 
+        variants = (
+            TemporalReadCursor(
+                ReadCollection.ACTIVITY_SESSIONS,
+                self.workspace(),
+                _INSTANT,
+                "session-a",
+            ),
+            self.action_cursor(),
+            IdentityReadCursor(
+                ReadCollection.SECRET_REFERENCES,
+                self.workspace(),
+                "registration-a",
+            ),
+            DelegationKeyReadCursor(
+                ReadCollection.DELEGATION_SIGNING_KEYS,
+                self.workspace(),
+                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+                "issuer-a",
+                "key-a",
+            ),
+        )
+        for cursor in variants:
+            descriptor = cursor.descriptor()
+            for member in ("scope", "position"):
+                nested = descriptor[member]
+                missing_key = next(iter(nested))
+                invalid_nested = (
+                    {key: value for key, value in nested.items() if key != missing_key},
+                    {**nested, "unknown": "candidate-do-not-retain"},
+                )
+                for candidate in invalid_nested:
+                    malformed_descriptor = {**descriptor, member: candidate}
+                    with self.subTest(
+                        collection=descriptor["collection"],
+                        member=member,
+                        keys=tuple(candidate),
+                    ):
+                        self.assert_bounded_error(
+                            lambda value=malformed_descriptor: (
+                                read_cursor_from_mapping(value)
+                            ),
+                            forbidden="candidate-do-not-retain",
+                        )
+
+                hostile = _HostileText("candidate-do-not-retain")
+                text_key = "workspace_id" if member == "scope" else next(
+                    key for key in nested if key in {"item_id", "issuer"}
+                )
+                malformed_descriptor = {
+                    **descriptor,
+                    member: {
+                        **nested,
+                        text_key: hostile,
+                        "unknown": "extra",
+                    },
+                }
+                self.assert_bounded_error(
+                    lambda value=malformed_descriptor: read_cursor_from_mapping(value),
+                    forbidden="candidate-do-not-retain",
+                )
+                self.assertFalse(hostile.touched)
+
     def test_identifier_and_position_boundaries_are_exact(self) -> None:
         self.require_contract()
         accepted = "a" * 512
@@ -303,16 +367,37 @@ class ReadPageContractTests(unittest.TestCase):
             self.workspace(),
             accepted,
         )
+        self.action_cursor(item=accepted)
         DelegationKeyReadCursor(
             ReadCollection.DELEGATION_SIGNING_KEYS,
             self.workspace(),
-            "gateway-node-control-transit",
+            DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
             "i" * 128,
             "k" * 128,
         )
+        for scope_type, parent_field in (
+            (WorkspaceReadScope, None),
+            (SessionReadScope, "session"),
+            (PlanReadScope, "plan"),
+            (RunReadScope, "run"),
+        ):
+            arguments = [accepted]
+            if parent_field is not None:
+                arguments.append(accepted)
+            scope_type(*arguments)
         for build in (
             lambda: WorkspaceReadScope("a" * 513),
+            lambda: SessionReadScope("workspace-a", "s" * 513),
+            lambda: PlanReadScope("workspace-a", "p" * 513),
+            lambda: RunReadScope("workspace-a", "r" * 513),
             lambda: WorkspaceReadScope("line\nbreak"),
+            lambda: TemporalReadCursor(
+                ReadCollection.ACTIVITY_SESSIONS,
+                self.workspace(),
+                _INSTANT,
+                "a" * 513,
+            ),
+            lambda: self.action_cursor(item="a" * 513),
             lambda: IdentityReadCursor(
                 ReadCollection.SECRET_REFERENCES,
                 self.workspace(),
@@ -321,14 +406,35 @@ class ReadPageContractTests(unittest.TestCase):
             lambda: DelegationKeyReadCursor(
                 ReadCollection.DELEGATION_SIGNING_KEYS,
                 self.workspace(),
-                "gateway-node-control-transit",
+                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
                 "i" * 129,
                 "key-a",
             ),
             lambda: DelegationKeyReadCursor(
                 ReadCollection.DELEGATION_SIGNING_KEYS,
                 self.workspace(),
-                "gateway-node-control-transit",
+                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+                "issuer-a",
+                "k" * 129,
+            ),
+            lambda: DelegationKeyReadCursor(
+                ReadCollection.DELEGATION_SIGNING_KEYS,
+                self.workspace(),
+                "not-a-purpose",
+                "issuer-a",
+                "key-a",
+            ),
+            lambda: DelegationKeyReadCursor(
+                ReadCollection.DELEGATION_SIGNING_KEYS,
+                self.workspace(),
+                True,
+                "issuer-a",
+                "key-a",
+            ),
+            lambda: DelegationKeyReadCursor(
+                ReadCollection.DELEGATION_SIGNING_KEYS,
+                self.workspace(),
+                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
                 "issuer-a",
                 "K-not-lowercase",
             ),
@@ -396,6 +502,57 @@ class ReadPageContractTests(unittest.TestCase):
                 wrong,
             )
         )
+        wrong_collection = TemporalReadCursor(
+            ReadCollection.OPEN_SESSIONS,
+            self.workspace(),
+            _INSTANT,
+            "session-a",
+        )
+        self.assert_bounded_error(
+            lambda: ReadPageRequest(
+                ReadCollection.ACTIVITY_SESSIONS,
+                self.workspace(),
+                10,
+                wrong_collection,
+            )
+        )
+
+    def test_exposed_and_hidden_candidate_coordinates_match_request(self) -> None:
+        self.require_contract()
+        request = ReadPageRequest(
+            ReadCollection.ACTIVITY_SESSIONS,
+            self.workspace(),
+            1,
+        )
+        matching = TemporalReadCursor(
+            ReadCollection.ACTIVITY_SESSIONS,
+            self.workspace(),
+            _INSTANT,
+            "session-a",
+        )
+        wrong_collection = TemporalReadCursor(
+            ReadCollection.OPEN_SESSIONS,
+            self.workspace(),
+            _INSTANT,
+            "session-b",
+        )
+        wrong_scope = TemporalReadCursor(
+            ReadCollection.ACTIVITY_SESSIONS,
+            WorkspaceReadScope("workspace-b"),
+            _INSTANT,
+            "session-b",
+        )
+        good = ReadPageCandidate({"session_id": "session-a"}, matching)
+        for candidates in (
+            (ReadPageCandidate({"session_id": "session-b"}, wrong_collection),),
+            (ReadPageCandidate({"session_id": "session-b"}, wrong_scope),),
+            (good, ReadPageCandidate({"session_id": "session-b"}, wrong_collection)),
+            (good, ReadPageCandidate({"session_id": "session-b"}, wrong_scope)),
+        ):
+            with self.subTest(cursors=tuple(value.cursor_after_item for value in candidates)):
+                self.assert_bounded_error(
+                    lambda values=candidates: ReadPage.from_candidates(request, values)
+                )
 
     def test_lookahead_cursor_is_last_exposed_not_hidden(self) -> None:
         self.require_contract()
@@ -417,10 +574,15 @@ class ReadPageContractTests(unittest.TestCase):
         self.assertEqual(page.next_cursor, first)
         descriptor = page.descriptor()
         self.assertEqual(
-            set(descriptor),
-            {"workspace_id", "kind", "limit", "items", "next_cursor"},
+            descriptor,
+            {
+                "workspace_id": "workspace-a",
+                "kind": "session-actions",
+                "limit": 1,
+                "items": [{"action_id": "action-a"}],
+                "next_cursor": first.descriptor(),
+            },
         )
-        self.assertEqual(descriptor["next_cursor"], first.descriptor())
         self.assertNotIn("action-b", repr(descriptor))
         self.assertNotIn(repr(hidden.descriptor()), repr(descriptor))
         self.assertGreater(hidden.ordinal, page.next_cursor.ordinal)
@@ -454,6 +616,32 @@ class ReadPageContractTests(unittest.TestCase):
             lambda: ReadPage.from_candidates(request, overflow)
         )
 
+        activity_request = ReadPageRequest(
+            ReadCollection.ACTIVITY_SESSIONS,
+            self.workspace(),
+            2,
+        )
+        activity_cursor = TemporalReadCursor(
+            ReadCollection.ACTIVITY_SESSIONS,
+            self.workspace(),
+            _INSTANT,
+            "session-a",
+        )
+        activity_page = ReadPage.from_candidates(
+            activity_request,
+            (ReadPageCandidate({"session_id": "session-a"}, activity_cursor),),
+        )
+        self.assertEqual(
+            activity_page.descriptor(),
+            {
+                "workspace_id": "workspace-a",
+                "kind": "activity-sessions",
+                "limit": 2,
+                "items": [{"session_id": "session-a"}],
+                "next_cursor": None,
+            },
+        )
+
     def test_page_map_preserves_order_and_already_derived_cursor(self) -> None:
         self.require_contract()
         request = ReadPageRequest(
@@ -475,6 +663,18 @@ class ReadPageContractTests(unittest.TestCase):
         self.assertEqual(identity, page)
         self.assertEqual(composed, direct)
         self.assertIs(composed.next_cursor, page.next_cursor)
+
+        class MapperFailure(RuntimeError):
+            pass
+
+        failure = MapperFailure("caller mapper failed")
+
+        def fail_mapper(_value):
+            raise failure
+
+        with self.assertRaises(MapperFailure) as caught:
+            page.map(fail_mapper)
+        self.assertIs(caught.exception, failure)
 
     def test_public_descriptor_requires_exact_dict_snapshots(self) -> None:
         self.require_contract()
@@ -534,6 +734,7 @@ class ReadPageContractTests(unittest.TestCase):
         self.assertLessEqual(len(message), 160)
         if forbidden is not None:
             self.assertNotIn(forbidden, message)
+            self.assertNotIn(forbidden, repr(caught.exception))
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
 
