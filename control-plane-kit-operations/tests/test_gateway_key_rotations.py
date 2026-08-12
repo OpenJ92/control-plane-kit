@@ -105,7 +105,7 @@ class GatewayKeyRotationTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(stored_subject, approval.request.subject.descriptor())
         self.assertEqual(stored_digest, approval.request.subject.review_digest)
-        postgres.verify_postgres_schema(self.connection)
+        postgres.install_schema(self.connection)
 
     def test_permissions_and_optimistic_version_are_enforced(self) -> None:
         service = self.service()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from contextlib import contextmanager
+import hashlib
 import os
 from pathlib import Path
 import threading
@@ -101,6 +102,12 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
         "verify_graph_lineage_v1",
         "verify_postgres_schema",
     }
+)
+_CURRENT_CONTRACT_SHA256 = (
+    "597f12a64e7a9503397210c1e5c171251558b063b857ab9bde950f908cb80841"
+)
+_CURRENT_SCHEMA_SQL_SHA256 = (
+    "1dd47004f2f15c1402c5baec26ff3164c394533473ec342b8f34cfd3d19b3339"
 )
 
 
@@ -206,6 +213,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         self.assertNotIn("cpk_schema_migrations", repr(contract))
         self.assertFalse(hasattr(current_schema_contract, "SchemaLockPlan"))
         self.assertFalse(hasattr(current_schema_contract, "PENDING_SCHEMA_LOCK_PLAN"))
+        self.assertEqual(
+            current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256,
+            _CURRENT_CONTRACT_SHA256,
+        )
 
         source = Path(current_schema_contract.__file__).read_text(encoding="utf-8")
         imports = {
@@ -243,6 +254,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
             28,
+        )
+        self.assertEqual(
+            hashlib.sha256(sql.encode("utf-8")).hexdigest(),
+            _CURRENT_SCHEMA_SQL_SHA256,
         )
 
 

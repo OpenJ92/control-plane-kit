@@ -14,8 +14,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.postgres import (
-    POSTGRES_SCHEMA,
-    SchemaMigrationError,
+    SchemaInstallationError,
     install_schema,
 )
 from control_plane_kit_operations.records import (
@@ -45,6 +44,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
     def test_install_is_caller_transactional(self) -> None:
         self.connection.autocommit = False
         try:
+            self.connection.execute("SELECT 1")
             install_schema(self.connection)
             self.connection.rollback()
         finally:
@@ -58,7 +58,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
         )
         self.connection.autocommit = False
         try:
-            with self.assertRaises(SchemaMigrationError):
+            with self.assertRaises(SchemaInstallationError):
                 install_schema(self.connection)
             self.connection.rollback()
         finally:
@@ -100,7 +100,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             ],
         )
 
-    def test_install_rejects_subject_drift_after_v15(self) -> None:
+    def test_install_rejects_approval_subject_drift(self) -> None:
         install_schema(self.connection)
         self._seed_minimal_execution_truth()
         self.connection.execute(
@@ -119,7 +119,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             "ALTER TABLE cpk_approval_requests ALTER COLUMN plan_id SET NOT NULL"
         )
 
-        with self.assertRaises(SchemaMigrationError):
+        with self.assertRaises(SchemaInstallationError):
             install_schema(self.connection)
 
         self.assertEqual(
@@ -138,7 +138,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
             [],
         )
 
-    def test_install_rejects_post_v13_status_drift_without_row_loss_or_repair(
+    def test_install_rejects_rotation_status_drift_without_row_loss_or_repair(
         self,
     ) -> None:
         install_schema(self.connection)
@@ -198,12 +198,12 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
 
         before_rejection = self._constraint_identities()
         for _ in range(2):
-            with self.assertRaises(SchemaMigrationError) as raised:
+            with self.assertRaises(SchemaInstallationError) as raised:
                 install_schema(self.connection)
 
             self.assertEqual(
                 str(raised.exception),
-                "database schema contract is not current",
+                "operations schema reset is required",
             )
             self.assertIsNone(raised.exception.__context__)
             self.assertIsNone(raised.exception.__cause__)
@@ -382,13 +382,6 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                     'operator', '2026-08-07T06:33:00Z')
             """
         )
-
-    def test_schema_text_contains_no_unconditional_destructive_constraint_ddl(self) -> None:
-        normalized = " ".join(POSTGRES_SCHEMA.lower().split())
-
-        self.assertNotIn("drop table", normalized)
-        self.assertNotIn("drop constraint", normalized)
-        self.assertNotIn("truncate table", normalized)
 
     def _seed_minimal_execution_truth(self, *, include_events: bool = True) -> None:
         self.connection.execute(
