@@ -1069,7 +1069,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     route_id="read.ingress-authorities",
                     service_role=ControlPlaneServiceRole.READS,
                     path_parameters={"workspace_id": "workspace-a"},
-                    payload={"actor_scopes": [PolicyScope.PLAN_EXECUTE.value]},
+                    payload={},
                     principal=operator_principal(
                         scopes=(PolicyScope.PLAN_EXECUTE,)
                     ),
@@ -1083,7 +1083,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 route_id="read.ingress-authorities",
                 service_role=ControlPlaneServiceRole.READS,
                 path_parameters={"workspace_id": "workspace-a"},
-                payload={"actor_scopes": [PolicyScope.INGRESS_AUTHORITY_READ.value]},
+                payload={},
             )
         )
         detail = reads.handle(
@@ -1838,7 +1838,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     route_id="read.runtime-authorities",
                     service_role=ControlPlaneServiceRole.READS,
                     path_parameters={"workspace_id": "workspace-a"},
-                    payload={"actor_scopes": [PolicyScope.PLAN_EXECUTE.value]},
+                    payload={},
                     principal=operator_principal(
                         scopes=(PolicyScope.PLAN_EXECUTE,)
                     ),
@@ -1853,7 +1853,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 route_id="read.runtime-authorities",
                 service_role=ControlPlaneServiceRole.READS,
                 path_parameters={"workspace_id": "workspace-a"},
-                payload={"actor_scopes": [PolicyScope.RUNTIME_AUTHORITY_READ.value]},
+                payload={},
             )
         )
         self.assertEqual(listed["items"][0]["authority_ref"], "remote-docker")
@@ -1951,11 +1951,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 route_id="read.runtime-authority-deliveries",
                 service_role=ControlPlaneServiceRole.READS,
                 path_parameters={"workspace_id": "workspace-a"},
-                payload={
-                    "actor_scopes": [
-                        PolicyScope.RUNTIME_AUTHORITY_DELIVERY_READ.value
-                    ]
-                },
+                payload={},
             )
         )
         self.assertEqual(
@@ -2155,7 +2151,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     route_id="read.secret-providers",
                     service_role=ControlPlaneServiceRole.READS,
                     path_parameters={"workspace_id": "workspace-a"},
-                    payload={"actor_scopes": [PolicyScope.SECRET_PROVIDER_READ.value]},
+                    payload={},
                     principal=operator_principal(
                         scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,)
                     ),
@@ -2504,6 +2500,21 @@ MCowBQYDK2VwAyEAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb=
             {item["key_id"]: item["status"] for item in listed["items"]},
             {"key-a": "verify-only", "key-b": "active"},
         )
+        listed_mcp = reads.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.delegation-keys",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={"workspace_id": "workspace-a"},
+                principal=read_principal,
+            )
+        )
+        self.assertEqual(listed_mcp, listed)
+        for rendered in (repr(listed), repr(listed_mcp)):
+            self.assertNotIn("secret://delegation-secrets", rendered)
+            self.assertNotIn("BEGIN PUBLIC KEY", rendered)
+            self.assertNotIn("private_key_reference", rendered)
         configuration = reads.handle(
             RouteRequest(
                 surface="mcp",
