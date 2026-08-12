@@ -350,6 +350,7 @@ class NodeControlTransitTests(unittest.TestCase):
         candidates = (
             b"\xff",
             b"{",
+            b"[" * 1_200 + b"0" + b"]" * 1_200,
             duplicate_top,
             duplicate_nested,
             canonical.replace(b'"issued_at":100', b'"issued_at":NaN'),
