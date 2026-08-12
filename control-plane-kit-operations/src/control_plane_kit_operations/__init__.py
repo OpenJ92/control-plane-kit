@@ -130,6 +130,17 @@ from .node_control_attempts import (
     NodeControlAttemptError,
     NodeControlIntendedAttempt,
 )
+from .node_control_intents import (
+    DeferredGatewayNodeControlTransitSigningRequest,
+    DeferredWorkloadNodeControlSigningRequest,
+    NodeControlIntentAuthorizationDenied,
+    NodeControlIntentAuthorizationService,
+    NodeControlIntentConflict,
+    NodeControlIntentError,
+    NodeControlIntentNotFound,
+    NodeControlIntentPreparation,
+    RequestNodeControlIntent,
+)
 from .postgres.node_control_attempt_store import NodeControlAttemptStore
 from .gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
@@ -633,6 +644,15 @@ __all__ = [
     "NodeControlAttemptError",
     "NodeControlAttemptStore",
     "NodeControlIntendedAttempt",
+    "DeferredGatewayNodeControlTransitSigningRequest",
+    "DeferredWorkloadNodeControlSigningRequest",
+    "NodeControlIntentAuthorizationDenied",
+    "NodeControlIntentAuthorizationService",
+    "NodeControlIntentConflict",
+    "NodeControlIntentError",
+    "NodeControlIntentNotFound",
+    "NodeControlIntentPreparation",
+    "RequestNodeControlIntent",
     "GatewayProbeAuthorizationDenied",
     "GatewayProbeCommandResult",
     "GatewayProbeCommandService",

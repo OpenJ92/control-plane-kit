@@ -11,6 +11,8 @@ import rfc8785
 from control_plane_kit_core.node_control import (
     DelegatedWorkloadNodeControlGrant,
     NodeControlCommandRequest,
+    NodeControlGraphReference,
+    NodeControlGraphReferenceRole,
 )
 from control_plane_kit_core.node_control_transit import (
     DelegatedGatewayNodeControlTransitGrant,
@@ -159,15 +161,40 @@ class NodeControlIntendedAttempt:
 
     @property
     def intent_fingerprint(self) -> str:
-        encoded = rfc8785.dumps(
-            {
-                "profile": "node-control-intent.v1",
-                "actor_subject": self.actor_subject,
-                "gateway_node_id": self.transit_grant.gateway_node_id.value,
-                "request_digest": self.request.canonical_digest().value,
-            }
+        return node_control_intent_fingerprint(
+            actor_subject=self.actor_subject,
+            gateway_node_id=self.transit_grant.gateway_node_id,
+            request=self.request,
         )
-        return hashlib.sha256(encoded).hexdigest()
+
+
+def node_control_intent_fingerprint(
+    *,
+    actor_subject: str,
+    gateway_node_id: NodeControlGraphReference,
+    request: NodeControlCommandRequest,
+) -> str:
+    """Hash replay semantics before clocks, IDs, graph reads, or key selection."""
+
+    if (
+        type(actor_subject) is not str
+        or _ACTOR_SUBJECT.fullmatch(actor_subject) is None
+        or not isinstance(gateway_node_id, NodeControlGraphReference)
+        or gateway_node_id.role is not NodeControlGraphReferenceRole.NODE
+        or not isinstance(request, NodeControlCommandRequest)
+    ):
+        raise NodeControlAttemptError(
+            "node-control intent fingerprint input is malformed"
+        ) from None
+    encoded = rfc8785.dumps(
+        {
+            "profile": "node-control-intent.v1",
+            "actor_subject": actor_subject,
+            "gateway_node_id": gateway_node_id.value,
+            "request_digest": request.canonical_digest().value,
+        }
+    )
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _require_node_control_identifier(value: object) -> str:
@@ -183,4 +210,5 @@ __all__ = [
     "NodeControlAttemptCorrupt",
     "NodeControlAttemptError",
     "NodeControlIntendedAttempt",
+    "node_control_intent_fingerprint",
 ]

@@ -135,6 +135,7 @@ class DelegationSigningKeyStore:
     ) -> RegisteredDelegationSigningKey:
         """Select one workspace-purpose signer without bootstrap issuer input."""
 
+        self._lock_purpose(workspace_id, purpose, shared=True)
         rows = self._connection.execute(
             f"""
             {_SELECT}
@@ -142,6 +143,7 @@ class DelegationSigningKeyStore:
               AND purpose = %s
               AND status = 'active'
             ORDER BY issuer, key_id
+            LIMIT 2
             """,
             (workspace_id, purpose.value),
         ).fetchall()
@@ -150,6 +152,15 @@ class DelegationSigningKeyStore:
                 "exactly one active delegation signing key is required"
             )
         return _row(rows[0])
+
+    def lock_purpose_for_lifecycle(
+        self,
+        workspace_id: str,
+        purpose: DelegationKeyPurpose,
+    ) -> None:
+        """Exclude authority selection before a multi-store lifecycle fold."""
+
+        self._lock_purpose(workspace_id, purpose, shared=False)
 
     def list_workspace(
         self,
@@ -341,9 +352,27 @@ class DelegationSigningKeyStore:
         purpose: DelegationKeyPurpose,
         issuer: str,
     ) -> None:
+        self._lock_purpose(workspace_id, purpose, shared=False)
         self._connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"delegation-key:{workspace_id}:{purpose.value}:{issuer}",),
+        )
+
+    def _lock_purpose(
+        self,
+        workspace_id: str,
+        purpose: DelegationKeyPurpose,
+        *,
+        shared: bool,
+    ) -> None:
+        function = (
+            "pg_advisory_xact_lock_shared"
+            if shared
+            else "pg_advisory_xact_lock"
+        )
+        self._connection.execute(
+            f"SELECT {function}(hashtextextended(%s, 0))",
+            (f"delegation-key-purpose:{workspace_id}:{purpose.value}",),
         )
 
 

@@ -309,6 +309,10 @@ class DelegationKeyGenerationService:
             actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,),
         ).candidate()
         with self._unit_of_work_factory() as unit_of_work:
+            unit_of_work.stores.delegation_signing_keys.lock_purpose_for_lifecycle(
+                command.grant.workspace_id,
+                command.grant.purpose,
+            )
             try:
                 provider = unit_of_work.stores.secret_providers.require_active_registration(
                     command.grant.workspace_id,

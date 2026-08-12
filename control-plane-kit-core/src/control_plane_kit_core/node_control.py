@@ -261,6 +261,21 @@ class NodeControlTarget:
         }
 
 
+def workload_node_control_audience(target: NodeControlTarget) -> str:
+    """Derive the workload verifier audience from one graph-bound surface."""
+
+    if not isinstance(target, NodeControlTarget):
+        raise NodeControlContractError(
+            "workload audience requires NodeControlTarget"
+        )
+    audience = (
+        f"workload:{target.node_id.value}:"
+        f"{target.provider_socket_name.value}"
+    )
+    _require_reference(audience, "workload grant audience")
+    return audience
+
+
 @dataclass(frozen=True, order=True)
 class ControlPlaneTransitionPrecondition:
     """Expected complete-state version for one atomic transition."""
@@ -2011,4 +2026,5 @@ __all__ = [
     "WorkloadNodeControlSurfaceDescriptor",
     "WorkloadNodeControlSurfaceDescriptorCodec",
     "verify_workload_node_control_grant",
+    "workload_node_control_audience",
 ]

@@ -611,7 +611,7 @@ class SecretUseAuthorizationService:
         _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
         validate_canonical_utc_timestamp(command.requested_at)
         with self._unit_of_work_factory() as unit_of_work:
-            authorized, _ = _authorize_secret_use(
+            authorized, _ = authorize_secret_use_in_unit_of_work(
                 unit_of_work,
                 command,
             )
@@ -628,7 +628,7 @@ class SecretUseAuthorizationService:
         _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
         validate_canonical_utc_timestamp(command.requested_at)
         with self._unit_of_work_factory() as unit_of_work:
-            authorized, provider = _authorize_secret_use(
+            authorized, provider = authorize_secret_use_in_unit_of_work(
                 unit_of_work,
                 command,
             )
@@ -640,22 +640,29 @@ class SecretUseAuthorizationService:
             return grant
 
 
-def _authorize_secret_use(
+def authorize_secret_use_in_unit_of_work(
     unit_of_work: Any,
     command: AuthorizeSecretUse,
 ) -> tuple[AuthorizedSecretUse, RegisteredSecretProvider]:
+    """Authorize one use inside a caller-owned transaction without committing."""
+
+    _require_command(command, AuthorizeSecretUse)
+    _require_scope(command.actor_scopes, PolicyScope.SECRET_PROVIDER_USE)
+    validate_canonical_utc_timestamp(command.requested_at)
     store = unit_of_work.stores.secret_use_authorizations
     store.lock_correlation(
         command.workspace_id,
         command.correlation_id,
     )
-    reference = unit_of_work.stores.secret_references.get_active(
+    reference = unit_of_work.stores.secret_references.get_active_for_update(
         command.workspace_id,
         command.reference,
     )
-    provider = unit_of_work.stores.secret_providers.require_active_registration(
-        command.workspace_id,
-        reference.provider_registration_id,
+    provider = (
+        unit_of_work.stores.secret_providers.require_active_registration_for_update(
+            command.workspace_id,
+            reference.provider_registration_id,
+        )
     )
     _validate_reference_admission(reference, provider)
     if command.intent not in reference.allowed_intents:
