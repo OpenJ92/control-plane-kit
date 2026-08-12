@@ -8,6 +8,7 @@ import importlib
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import unittest
 
 import rfc8785
@@ -392,6 +393,22 @@ class NodeControlTransitTests(unittest.TestCase):
         nested["target"]["unknown"] = "candidate-secret"
         with self.assertRaises(error_type):
             codec.decode(nested)
+
+    def test_supported_runtime_recursion_failure_is_nominal_and_cause_free(self) -> None:
+        codec = self.contract("DelegatedGatewayNodeControlTransitGrantCodec")()
+        error_type = self.contract("GatewayNodeControlTransitContractError")
+        previous_limit = sys.getrecursionlimit()
+        try:
+            sys.setrecursionlimit(200)
+            with self.assertRaises(error_type) as caught:
+                codec.decode_canonical_bytes(
+                    b"[" * 300 + b"0" + b"]" * 300
+                )
+        finally:
+            sys.setrecursionlimit(previous_limit)
+        self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
 
     def test_constructor_locks_coordinates_audience_and_temporal_laws(self) -> None:
         error_type = self.contract("GatewayNodeControlTransitContractError")
