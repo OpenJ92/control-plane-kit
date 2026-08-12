@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import ast
+import concurrent.futures
 from dataclasses import fields, replace
 import inspect
 import os
 from pathlib import Path
+import threading
 import unittest
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 import control_plane_kit_core as core
 import control_plane_kit_operations as operations
@@ -37,6 +40,7 @@ from control_plane_kit_core.node_control import (
     ControlPlaneVariableOperationContract,
     ControlPlaneResultCodec,
     ControlPlaneStateCodec,
+    MapControlState,
     NodeControlCommandRequest,
     NodeControlGraphReference,
     NodeControlGraphReferenceRole,
@@ -61,9 +65,17 @@ from control_plane_kit_core.topology import (
 )
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
 from control_plane_kit_operations.delegation_signing_keys import (
+    RegisterDelegationSigningKeyCommand,
     delegation_signing_key_registration_id_for,
 )
-from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.delegation_key_generation import (
+    DelegationKeyGenerationService,
+)
+from control_plane_kit_operations.postgres import (
+    DelegationSigningKeyStore,
+    PostgresUnitOfWork,
+    install_schema,
+)
 from control_plane_kit_operations.records import (
     GraphVersionRecord,
     RealizedGraphProjectionKind,
@@ -71,10 +83,12 @@ from control_plane_kit_operations.records import (
     WorkspaceRecord,
 )
 from control_plane_kit_operations.secret_providers import (
+    AuthorizeSecretUse,
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
     SecretProviderKind,
     SecretProviderRegistrationService,
+    secret_use_correlation_for,
 )
 
 
@@ -92,6 +106,7 @@ class TrackingUnitOfWorkFactory:
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
         self.active = 0
+        self.entries = 0
         self.commits = 0
 
     def __call__(self) -> "TrackingUnitOfWork":
@@ -115,6 +130,7 @@ class TrackingUnitOfWork:
         return self._inner.stores
 
     def __enter__(self) -> "TrackingUnitOfWork":
+        self._factory.entries += 1
         self._factory.active += 1
         self._inner.__enter__()
         return self
@@ -158,15 +174,26 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
             )
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
-        install_schema(self.connection)
+        try:
+            install_schema(self.connection)
+            self._reset_fixture()
+        except BaseException:
+            self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+            self.connection.close()
+            raise
+
+    def tearDown(self) -> None:
+        try:
+            self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        finally:
+            self.connection.close()
+
+    def _reset_fixture(self) -> None:
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self._seed_graph_truth()
         self._seed_signing_authority()
-        self.tracker = TrackingUnitOfWorkFactory(database_url)
+        self.tracker = TrackingUnitOfWorkFactory(self.database_url)
         self.ids = GeneratedIds()
-
-    def tearDown(self) -> None:
-        self.connection.close()
 
     def contract(self, name: str):
         value = getattr(operations, name, None)
@@ -205,8 +232,29 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
                 contract = self.contract(name)
                 self.assertEqual(tuple(field.name for field in fields(contract)), names)
 
-    def test_exact_authority_commits_one_reference_only_preparation(self) -> None:
+    def test_deferred_signing_families_cannot_substitute(self) -> None:
         result = self.service().execute(self.command())
+        error_type = self.contract("NodeControlIntentError")
+        transit_type = self.contract(
+            "DeferredGatewayNodeControlTransitSigningRequest"
+        )
+        workload_type = self.contract("DeferredWorkloadNodeControlSigningRequest")
+        with self.assertRaises(error_type):
+            transit_type(
+                result.transit_signing.key_registration_id,
+                result.transit_signing.authorization_id,
+                result.workload_signing.grant,
+            )
+        with self.assertRaises(error_type):
+            workload_type(
+                result.workload_signing.key_registration_id,
+                result.workload_signing.authorization_id,
+                result.transit_signing.grant,
+            )
+
+    def test_exact_authority_commits_one_reference_only_preparation(self) -> None:
+        command = self.command()
+        result = self.service().execute(command)
 
         self.assertEqual(self.tracker.active, 0)
         self.assertEqual(self.tracker.commits, 1)
@@ -218,6 +266,26 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
         )
         self.assertEqual(result.attempt.gateway_runtime_id, "docker-a")
         self.assertEqual(result.attempt.request, self.request())
+        self.assertEqual(result.attempt.attempt_id, "attempt-a")
+        self.assertEqual(result.attempt.actor_subject, "operator-a")
+        self.assertEqual(result.attempt.transit_grant.attempt_id, "attempt-a")
+        self.assertEqual(result.attempt.transit_grant.gateway_node_id, command.gateway_node_id)
+        self.assertEqual(result.attempt.transit_grant.target, command.request.target)
+        self.assertEqual(result.attempt.transit_grant.variable_name, command.request.variable_name)
+        self.assertIs(result.attempt.transit_grant.operation, command.request.operation)
+        self.assertIs(result.attempt.transit_grant.command_codec, command.request.command_codec)
+        self.assertEqual(result.attempt.transit_grant.request_id, command.request.request_id)
+        self.assertEqual(result.attempt.transit_grant.jti, "transit-jti-a")
+        self.assertEqual(result.attempt.transit_grant.issued_at, 100)
+        self.assertEqual(result.attempt.transit_grant.expires_at, 160)
+        self.assertEqual(result.attempt.workload_grant.target, command.request.target)
+        self.assertEqual(result.attempt.workload_grant.variable_name, command.request.variable_name)
+        self.assertIs(result.attempt.workload_grant.operation, command.request.operation)
+        self.assertIs(result.attempt.workload_grant.command_codec, command.request.command_codec)
+        self.assertEqual(result.attempt.workload_grant.request_id, command.request.request_id)
+        self.assertEqual(result.attempt.workload_grant.jti, "workload-jti-a")
+        self.assertEqual(result.attempt.workload_grant.issued_at, 100)
+        self.assertEqual(result.attempt.workload_grant.expires_at, 160)
         self.assertEqual(
             result.attempt.workload_grant.audience,
             "workload:router:control",
@@ -242,7 +310,8 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
 
         rows = self.connection.execute(
             """
-            SELECT use_intent, actor_subject, correlation_id
+            SELECT use_intent, actor_subject, correlation_id, authorization_id,
+                   secret_reference
             FROM cpk_secret_use_authorizations
             ORDER BY use_intent
             """
@@ -257,6 +326,43 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
         )
         self.assertEqual({row[1] for row in rows}, {"operator-a"})
         self.assertEqual(len({row[2] for row in rows}), 2)
+        by_intent = {row[0]: row for row in rows}
+        expected_correlations = {
+            SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY.value:
+                secret_use_correlation_for(
+                    workspace_id="workspace-a",
+                    reference=SecretReference(
+                        "secret://workspace-secrets/keys/transit"
+                    ),
+                    intent=SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY,
+                    actor_subject="operator-a",
+                    operation_id="attempt-a",
+                ),
+            SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY.value:
+                secret_use_correlation_for(
+                    workspace_id="workspace-a",
+                    reference=SecretReference(
+                        "secret://workspace-secrets/keys/workload"
+                    ),
+                    intent=SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY,
+                    actor_subject="operator-a",
+                    operation_id="attempt-a",
+                ),
+        }
+        for intent, correlation in expected_correlations.items():
+            self.assertEqual(by_intent[intent][2], correlation)
+        self.assertEqual(
+            by_intent[
+                SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY.value
+            ][3],
+            result.transit_signing.authorization_id,
+        )
+        self.assertEqual(
+            by_intent[
+                SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY.value
+            ][3],
+            result.workload_signing.authorization_id,
+        )
         self.assertEqual(
             self.connection.execute(
                 "SELECT count(*) FROM cpk_node_control_attempts"
@@ -283,6 +389,7 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
         for operation, scopes in required.items():
             for missing in scopes:
                 with self.subTest(operation=operation, missing=missing):
+                    entries_before = self.tracker.entries
                     granted = tuple(scope for scope in scopes if scope is not missing)
                     command = self.command(
                         context=self.context(scopes=granted),
@@ -293,6 +400,7 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
                     self.assertLessEqual(len(str(caught.exception)), 128)
                     self.assertIsNone(caught.exception.__cause__)
                     self.assertIsNone(caught.exception.__context__)
+                    self.assertEqual(self.tracker.entries, entries_before)
 
         substitutions = (
             (NodeControlOperation.READ_STATE, PolicyScope.NODE_CONTROL_APPLY),
@@ -314,6 +422,57 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
                             request=self.request(operation=operation),
                         )
                     )
+
+        for substitute in (
+            PolicyScope.INSTANCE_WORKSPACE_EDIT,
+            PolicyScope.PLAN_EXECUTE,
+            PolicyScope.GATEWAY_PROBE_USE,
+        ):
+            with self.subTest(unrelated_substitute=substitute):
+                entries_before = self.tracker.entries
+                with self.assertRaises(denied):
+                    self.service().execute(
+                        self.command(
+                            context=self.context(
+                                scopes=(
+                                    PolicyScope.NODE_CONTROL_APPLY,
+                                    substitute,
+                                    PolicyScope.DELEGATION_KEY_USE,
+                                    PolicyScope.SECRET_PROVIDER_USE,
+                                )
+                            )
+                        )
+                    )
+                self.assertEqual(self.tracker.entries, entries_before)
+
+    def test_read_and_apply_both_authorize_their_exact_declared_contract(self) -> None:
+        apply_result = self.service().execute(self.command())
+        self.assertIs(
+            apply_result.attempt.request.operation,
+            NodeControlOperation.APPLY_COMMAND,
+        )
+
+        self._reset_fixture()
+        read_request = self.request(operation=NodeControlOperation.READ_STATE)
+        read_result = self.service().execute(
+            self.command(
+                context=self.context(
+                    scopes=(
+                        PolicyScope.NODE_CONTROL_READ,
+                        PolicyScope.NODE_CONTROL_EXECUTE,
+                        PolicyScope.DELEGATION_KEY_USE,
+                        PolicyScope.SECRET_PROVIDER_USE,
+                    )
+                ),
+                request=read_request,
+            )
+        )
+        self.assertIs(
+            read_result.attempt.request.operation,
+            NodeControlOperation.READ_STATE,
+        )
+        self.assertIsNone(read_result.attempt.transit_grant.command_codec)
+        self.assertIsNone(read_result.attempt.workload_grant.command_codec)
 
     def test_graph_and_surface_drift_fail_before_durable_authorization(self) -> None:
         not_found = self.contract("NodeControlIntentNotFound")
@@ -379,6 +538,59 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
             ).fetchone(),
             (0,),
         )
+
+    def test_realized_graph_target_map_and_contract_drift_are_closed(self) -> None:
+        with self.assertRaises(core.NodeControlContractError):
+            self._graph(True, include_apply=False)
+        with self.assertRaises(ValueError):
+            self._graph(True, target_protocol=Protocol.TCP).descriptor()
+        with self.assertRaises(ValueError):
+            self._graph(True, include_target_socket=False).descriptor()
+        cases = (
+            ("gateway-protocol", self._graph(True, gateway_protocol=Protocol.TCP)),
+            ("runtime", self._graph(True, same_runtime=False)),
+            ("edge", self._graph(True, include_edge=False)),
+            ("surface", self._graph(True, surface_socket="other")),
+        )
+        not_found = self.contract("NodeControlIntentNotFound")
+        for name, graph in cases:
+            with self.subTest(name=name):
+                self._reset_fixture()
+                self._replace_realized_graph(graph)
+                with self.assertRaises(not_found) as caught:
+                    self.service().execute(self.command())
+                self.assertLessEqual(len(str(caught.exception)), 128)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assert_no_intent_rows()
+
+        self._reset_fixture()
+        missing_socket_request = replace(
+            self.request(),
+            target=replace(
+                self.request().target,
+                provider_socket_name=self.reference(
+                    NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                    "missing-control",
+                ),
+            ),
+        )
+        with self.assertRaises(not_found):
+            self.service().execute(self.command(request=missing_socket_request))
+        self.assert_no_intent_rows()
+
+        self._reset_fixture()
+        map_request = replace(
+            self.request(),
+            command_codec=ControlPlaneCommandCodec.REPLACE_MAP_V1,
+            payload=NodeControlPayload(
+                ControlPlaneCommandCodec.REPLACE_MAP_V1,
+                MapControlState((("route", "blue"),)),
+            ),
+        )
+        with self.assertRaises(not_found):
+            self.service().execute(self.command(request=map_request))
+        self.assert_no_intent_rows()
 
     def test_exact_replay_precedes_clocks_graph_reads_and_key_rebinding(self) -> None:
         first = self.service().execute(self.command())
@@ -455,6 +667,141 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
             (0,),
         )
 
+    def test_dual_signing_authority_rejects_ambiguity_and_substitution(self) -> None:
+        mutations = (
+            "missing-transit",
+            "ambiguous-transit",
+            "purpose-substitution",
+            "reused-public-material",
+            "reused-private-reference",
+            "wrong-reference-intent",
+            "inactive-provider",
+            "cross-paired-references",
+        )
+        conflict = self.contract("NodeControlIntentConflict")
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                self._reset_fixture()
+                self._mutate_signing_authority(mutation)
+                with self.assertRaises(conflict) as caught:
+                    self.service().execute(self.command())
+                self.assertLessEqual(len(str(caught.exception)), 128)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assertNotIn("secret://", str(caught.exception))
+                self.assert_no_intent_rows()
+
+    def test_same_request_serializes_to_one_winner_and_exact_replay(self) -> None:
+        entered = threading.Barrier(2)
+
+        def authorize(suffix: str):
+            ids = iter(
+                (
+                    f"attempt-{suffix}",
+                    f"transit-jti-{suffix}",
+                    f"workload-jti-{suffix}",
+                )
+            )
+            service = self.contract("NodeControlIntentAuthorizationService")(
+                TrackingUnitOfWorkFactory(self.database_url),
+                epoch_clock=lambda: 100,
+                clock=lambda: "2027-01-15T08:00:00Z",
+                id_factory=lambda: next(ids),
+                grant_lifetime_seconds=60,
+            )
+            entered.wait(timeout=5)
+            return service.execute(self.command())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            futures = (pool.submit(authorize, "a"), pool.submit(authorize, "b"))
+            results = tuple(future.result(timeout=15) for future in futures)
+
+        self.assertEqual(sorted(result.replayed for result in results), [False, True])
+        self.assertEqual(results[0].attempt, results[1].attempt)
+        self.assertEqual(results[0].transit_signing, results[1].transit_signing)
+        self.assertEqual(results[0].workload_signing, results[1].workload_signing)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_node_control_attempts"
+            ).fetchone(),
+            (1,),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_secret_use_authorizations"
+            ).fetchone(),
+            (2,),
+        )
+
+    def test_secret_authority_rows_remain_locked_until_transaction_exit(self) -> None:
+        abort = RuntimeError("cancel authorization transaction")
+        with self.assertRaisesRegex(RuntimeError, "cancel authorization"):
+            with PostgresUnitOfWork(
+                lambda: psycopg.connect(self.database_url)
+            ) as unit_of_work:
+                authorize_in_unit_of_work = getattr(
+                    operations.secret_providers,
+                    "authorize_secret_use_in_unit_of_work",
+                    None,
+                )
+                self.assertIsNotNone(authorize_in_unit_of_work)
+                authorize_in_unit_of_work(
+                    unit_of_work,
+                    AuthorizeSecretUse(
+                        workspace_id="workspace-a",
+                        reference=SecretReference(
+                            "secret://workspace-secrets/keys/transit"
+                        ),
+                        intent=(
+                            SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY
+                        ),
+                        actor_subject="operator-a",
+                        correlation_id="node-control-lock-test",
+                        requested_at="2027-01-15T08:00:00Z",
+                        actor_scopes=(PolicyScope.SECRET_PROVIDER_USE,),
+                        operation_id="attempt-lock-test",
+                    ),
+                )
+                for relation, predicate in (
+                    (
+                        "cpk_secret_references",
+                        "secret_reference="
+                        "'secret://workspace-secrets/keys/transit'",
+                    ),
+                    (
+                        "cpk_secret_providers",
+                        "provider_id='workspace-secrets'",
+                    ),
+                ):
+                    contender = psycopg.connect(self.database_url)
+                    try:
+                        contender.execute("SET LOCAL lock_timeout = '250ms'")
+                        with self.assertRaises(psycopg.errors.LockNotAvailable):
+                            contender.execute(
+                                f"UPDATE {relation} SET metadata=metadata "
+                                f"WHERE {predicate}"
+                            )
+                    finally:
+                        contender.rollback()
+                        contender.close()
+                raise abort
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_secret_use_authorizations"
+            ).fetchone(),
+            (0,),
+        )
+        self.connection.execute(
+            "UPDATE cpk_secret_references SET metadata=metadata "
+            "WHERE secret_reference="
+            "'secret://workspace-secrets/keys/transit'"
+        )
+        self.connection.execute(
+            "UPDATE cpk_secret_providers SET metadata=metadata "
+            "WHERE provider_id='workspace-secrets'"
+        )
+
     def test_supporting_store_seams_are_bounded_and_lock_current_authority(self) -> None:
         key_source = inspect.getsource(
             operations.postgres.delegation_signing_key_store.DelegationSigningKeyStore
@@ -473,6 +820,126 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
         self.assertTrue(
             hasattr(provider_store, "require_active_registration_for_update")
         )
+        generated_source = inspect.getsource(
+            DelegationKeyGenerationService.admit_generated
+        )
+        self.assertLess(
+            generated_source.index("lock_purpose_for_lifecycle"),
+            generated_source.index("secret_references.register"),
+        )
+
+    def test_key_lifecycle_and_authority_selection_use_opposite_purpose_locks(
+        self,
+    ) -> None:
+        purpose = DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT
+        self._insert_verify_only_key("activate-key", "rotation-a")
+        self._insert_verify_only_key("retire-key", "rotation-b")
+        candidate = RegisterDelegationSigningKeyCommand(
+            workspace_id="workspace-a",
+            purpose=purpose,
+            issuer="rotation-c",
+            public_key=DelegationPublicKey(
+                key_id="register-key",
+                algorithm=DelegationKeyAlgorithm.ED25519,
+                public_key_pem=PUBLIC_KEY_B,
+            ),
+            private_key_reference=SecretReference(
+                "secret://workspace-secrets/keys/transit"
+            ),
+            admitted_by="operator-a",
+            admitted_at="2027-01-15T08:00:00Z",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,),
+        ).candidate()
+
+        holder = psycopg.connect(self.database_url)
+        try:
+            DelegationSigningKeyStore(holder).require_unambiguous_active(
+                "workspace-a",
+                purpose,
+            )
+            actions = (
+                lambda store: store.register(candidate),
+                lambda store: store.activate(
+                    "workspace-a",
+                    purpose,
+                    "rotation-a",
+                    "activate-key",
+                    activated_by="operator-a",
+                    activated_at="2027-01-15T08:00:00Z",
+                ),
+                lambda store: store.retire(
+                    "workspace-a",
+                    purpose,
+                    "rotation-b",
+                    "retire-key",
+                    retired_by="operator-a",
+                    retired_at="2027-01-15T08:00:00Z",
+                ),
+                lambda store: store.revoke(
+                    "workspace-a",
+                    purpose,
+                    "cpk-server",
+                    "transit-key",
+                    revoked_by="operator-a",
+                    revoked_at="2027-01-15T08:00:00Z",
+                ),
+            )
+            for action in actions:
+                contender = psycopg.connect(self.database_url)
+                try:
+                    contender.execute("SET LOCAL lock_timeout = '250ms'")
+                    with self.assertRaises(psycopg.errors.LockNotAvailable):
+                        action(DelegationSigningKeyStore(contender))
+                finally:
+                    contender.rollback()
+                    contender.close()
+        finally:
+            holder.rollback()
+            holder.close()
+
+        retry = psycopg.connect(self.database_url)
+        try:
+            registered = DelegationSigningKeyStore(retry).register(candidate)
+            retry.commit()
+        finally:
+            retry.close()
+        self.assertEqual(registered.key_id, "register-key")
+        self.connection.execute(
+            "DELETE FROM cpk_delegation_signing_keys WHERE registration_id=%s",
+            (registered.registration_id,),
+        )
+
+        exclusive = psycopg.connect(self.database_url)
+        try:
+            DelegationSigningKeyStore(exclusive).lock_purpose_for_lifecycle(
+                "workspace-a",
+                purpose,
+            )
+            contender = psycopg.connect(self.database_url)
+            try:
+                contender.execute("SET LOCAL lock_timeout = '250ms'")
+                with self.assertRaises(psycopg.errors.LockNotAvailable):
+                    DelegationSigningKeyStore(contender).require_unambiguous_active(
+                        "workspace-a",
+                        purpose,
+                    )
+            finally:
+                contender.rollback()
+                contender.close()
+        finally:
+            exclusive.rollback()
+            exclusive.close()
+
+        retry = psycopg.connect(self.database_url)
+        try:
+            selected = DelegationSigningKeyStore(retry).require_unambiguous_active(
+                "workspace-a",
+                purpose,
+            )
+            retry.rollback()
+        finally:
+            retry.close()
+        self.assertEqual(selected.key_id, "transit-key")
 
     def test_service_has_no_outer_effect_or_framework_boundary(self) -> None:
         module_path = (
@@ -484,6 +951,7 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
             "fastapi", "httpx", "requests", "urllib", "socket",
             "control_plane_kit_server_sdk", "control_plane_kit_interpreters",
         )
+        imported_names: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 names = tuple(alias.name for alias in node.names)
@@ -492,10 +960,27 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
             else:
                 continue
             for name in names:
+                imported_names.add(name)
                 self.assertFalse(
                     any(name == value or name.startswith(value + ".") for value in forbidden),
                     name,
                 )
+        self.assertFalse(
+            any("product" in name or "metadata" in name for name in imported_names)
+        )
+        identifiers = {
+            node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
+        }
+        attributes = {
+            node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+        }
+        for forbidden_name in (
+            "SecretResolutionGrant",
+            "RegisteredProductStore",
+            "registered_products",
+            "metadata",
+        ):
+            self.assertNotIn(forbidden_name, identifiers | attributes)
         service_type = self.contract("NodeControlIntentAuthorizationService")
         parameters = inspect.signature(service_type).parameters
         for name in ("signer", "dispatcher", "resolver", "relay", "client"):
@@ -595,7 +1080,7 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
         return NodeControlGraphReference(role, value)
 
     def _seed_graph_truth(self) -> None:
-        authored = self._graph(with_surface=False)
+        authored = DeploymentGraph("authored-source-without-runtime-truth")
         realized = self._graph(with_surface=True)
         with PostgresUnitOfWork(lambda: psycopg.connect(self.database_url)) as unit:
             unit.stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
@@ -630,7 +1115,36 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
             "VALUES ('workspace-b','Workspace B','created','{}')"
         )
 
-    def _graph(self, *, with_surface: bool) -> DeploymentGraph:
+    def _graph(
+        self,
+        with_surface: bool,
+        *,
+        gateway_protocol: Protocol = Protocol.HTTP,
+        target_protocol: Protocol = Protocol.HTTP,
+        same_runtime: bool = True,
+        include_edge: bool = True,
+        include_target_socket: bool = True,
+        surface_socket: str = "control",
+        include_apply: bool = True,
+        apply_codec: ControlPlaneCommandCodec = (
+            ControlPlaneCommandCodec.REPLACE_SCALAR_V1
+        ),
+    ) -> DeploymentGraph:
+        operation_contracts = [
+            ControlPlaneVariableOperationContract(
+                NodeControlOperation.READ_STATE,
+                None,
+                ControlPlaneResultCodec.STATE_V1,
+            )
+        ]
+        if include_apply:
+            operation_contracts.append(
+                ControlPlaneVariableOperationContract(
+                    NodeControlOperation.APPLY_COMMAND,
+                    apply_codec,
+                    ControlPlaneResultCodec.TRANSITION_V1,
+                )
+            )
         variable = ControlPlaneVariableDescriptor(
             variable_name=self.reference(
                 NodeControlGraphReferenceRole.VARIABLE,
@@ -638,23 +1152,12 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
             ),
             kind=ControlPlaneVariableKind.SCALAR,
             state_codec=ControlPlaneStateCodec.SCALAR_V1,
-            operation_contracts=(
-                ControlPlaneVariableOperationContract(
-                    NodeControlOperation.READ_STATE,
-                    None,
-                    ControlPlaneResultCodec.STATE_V1,
-                ),
-                ControlPlaneVariableOperationContract(
-                    NodeControlOperation.APPLY_COMMAND,
-                    ControlPlaneCommandCodec.REPLACE_SCALAR_V1,
-                    ControlPlaneResultCodec.TRANSITION_V1,
-                ),
-            ),
+            operation_contracts=tuple(operation_contracts),
         )
         surface = WorkloadNodeControlSurfaceDescriptor(
             self.reference(
                 NodeControlGraphReferenceRole.PROVIDER_SOCKET,
-                "control",
+                surface_socket,
             ),
             (variable,),
         )
@@ -672,9 +1175,10 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
                         env_bindings=("ROUTER_CONTROL_URL",),
                     ),
                 ),
-                providers=(ProviderSocket("control", Protocol.HTTP),),
+                providers=(ProviderSocket("control", gateway_protocol),),
             ),
         )
+        target_runtime = "docker-a" if same_runtime else "docker-b"
         router = Node(
             node_id="router",
             block_family=BlockFamily.APPLICATION,
@@ -684,15 +1188,17 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
                 control_surfaces=(surface,) if with_surface else (),
             ),
             kind="container-server",
-            runtime_id="docker-a",
+            runtime_id=target_runtime,
             sockets=BlockSockets(
-                providers=(ProviderSocket("control", Protocol.HTTP),),
+                providers=(
+                    (ProviderSocket("control", target_protocol),)
+                    if include_target_socket
+                    else ()
+                ),
             ),
         )
-        return DeploymentGraph(
-            "node-control",
-            nodes={"gateway": gateway, "router": router},
-            edges={
+        edges = (
+            {
                 "gateway.router-control->router.control": Edge(
                     "gateway.router-control->router.control",
                     provider_role="router",
@@ -702,14 +1208,217 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
                     protocol=Protocol.HTTP,
                     binding=SocketBinding.ENVIRONMENT,
                 )
-            },
-            runtimes={
-                "docker-a": RuntimeRecord(
-                    "docker-a",
-                    RuntimeKind.DOCKER,
-                    ("gateway", "router"),
-                )
-            },
+            }
+            if include_edge
+            else {}
+        )
+        runtimes = {
+            "docker-a": RuntimeRecord(
+                "docker-a",
+                RuntimeKind.DOCKER,
+                ("gateway",) if not same_runtime else ("gateway", "router"),
+            )
+        }
+        if not same_runtime:
+            runtimes["docker-b"] = RuntimeRecord(
+                "docker-b",
+                RuntimeKind.DOCKER,
+                ("router",),
+            )
+        return DeploymentGraph(
+            "node-control",
+            nodes={"gateway": gateway, "router": router},
+            edges=edges,
+            runtimes=runtimes,
+        )
+
+    def _replace_realized_graph(self, graph: DeploymentGraph) -> None:
+        projection = RealizedGraphProjectionRecord.from_graph(
+            projection_id="projection-current",
+            workspace_id="workspace-a",
+            source_authored_graph_id="graph-current",
+            projection_kind=RealizedGraphProjectionKind.DELEGATION_VERIFIER,
+            projection_key="node-control-current",
+            graph=graph,
+            created_by="operator-a",
+            created_at="2027-01-15T07:56:00Z",
+        )
+        self.connection.execute(
+            "UPDATE cpk_realized_graph_projections "
+            "SET projection_digest=%s, graph_descriptor=%s "
+            "WHERE projection_id='projection-current'",
+            (projection.projection_digest, Jsonb(projection.graph_descriptor)),
+        )
+
+    def _mutate_signing_authority(self, mutation: str) -> None:
+        transit = DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT.value
+        workload = DelegationKeyPurpose.WORKLOAD_NODE_CONTROL.value
+        if mutation == "missing-transit":
+            self.connection.execute(
+                "DELETE FROM cpk_delegation_signing_keys WHERE purpose=%s",
+                (transit,),
+            )
+        elif mutation == "ambiguous-transit":
+            self._insert_active_key(
+                purpose=DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+                key_id="transit-key-b",
+                issuer="other-issuer",
+                public_key_pem=PUBLIC_KEY_B,
+                reference=SecretReference(
+                    "secret://workspace-secrets/keys/transit"
+                ),
+            )
+        elif mutation == "purpose-substitution":
+            self.connection.execute(
+                "DELETE FROM cpk_delegation_signing_keys WHERE purpose=%s",
+                (workload,),
+            )
+            self.connection.execute(
+                "UPDATE cpk_delegation_signing_keys SET purpose=%s "
+                "WHERE purpose=%s",
+                (workload, transit),
+            )
+        elif mutation == "reused-public-material":
+            transit_row = self.connection.execute(
+                "SELECT public_key_pem, public_fingerprint_sha256 "
+                "FROM cpk_delegation_signing_keys WHERE purpose=%s",
+                (transit,),
+            ).fetchone()
+            self.connection.execute(
+                "UPDATE cpk_delegation_signing_keys "
+                "SET public_key_pem=%s, public_fingerprint_sha256=%s "
+                "WHERE purpose=%s",
+                (*transit_row, workload),
+            )
+        elif mutation == "reused-private-reference":
+            self.connection.execute(
+                "UPDATE cpk_delegation_signing_keys "
+                "SET private_key_reference="
+                "'secret://workspace-secrets/keys/transit' "
+                "WHERE purpose=%s",
+                (workload,),
+            )
+        elif mutation == "wrong-reference-intent":
+            self.connection.execute(
+                "UPDATE cpk_secret_references SET allowed_intents=%s "
+                "WHERE secret_reference="
+                "'secret://workspace-secrets/keys/workload'",
+                (
+                    Jsonb(
+                        [
+                            SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY.value
+                        ]
+                    ),
+                ),
+            )
+        elif mutation == "inactive-provider":
+            self.connection.execute(
+                "UPDATE cpk_secret_providers SET status='revoked', "
+                "revoked_by='operator-a', revoked_at='2027-01-15T08:00:00Z'"
+            )
+        elif mutation == "cross-paired-references":
+            self.connection.execute(
+                "UPDATE cpk_delegation_signing_keys SET private_key_reference="
+                "CASE purpose WHEN %s THEN "
+                "'secret://workspace-secrets/keys/workload' "
+                "ELSE 'secret://workspace-secrets/keys/transit' END "
+                "WHERE purpose IN (%s,%s)",
+                (transit, transit, workload),
+            )
+        else:
+            raise AssertionError(f"unknown mutation {mutation}")
+
+    def _insert_active_key(
+        self,
+        *,
+        purpose: DelegationKeyPurpose,
+        key_id: str,
+        issuer: str,
+        public_key_pem: str,
+        reference: SecretReference,
+    ) -> None:
+        public_key = DelegationPublicKey(
+            key_id=key_id,
+            algorithm=DelegationKeyAlgorithm.ED25519,
+            public_key_pem=public_key_pem,
+        )
+        registration_id = delegation_signing_key_registration_id_for(
+            workspace_id="workspace-a",
+            purpose=purpose,
+            issuer=issuer,
+            public_key=public_key,
+            private_key_reference=reference,
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_delegation_signing_keys (
+              registration_id, workspace_id, purpose, issuer, key_id, algorithm,
+              public_key_pem, public_fingerprint_sha256, private_key_reference,
+              admitted_by, admitted_at, status, activated_by, activated_at
+            ) VALUES (%s,'workspace-a',%s,%s,%s,%s,%s,%s,%s,'operator-a',
+                      '2027-01-15T07:52:00Z','active','operator-a',
+                      '2027-01-15T07:53:00Z')
+            """,
+            (
+                registration_id,
+                purpose.value,
+                issuer,
+                key_id,
+                public_key.algorithm.value,
+                public_key.public_key_pem,
+                public_key.fingerprint_sha256,
+                reference.reference_id,
+            ),
+        )
+
+    def _insert_verify_only_key(self, key_id: str, issuer: str) -> None:
+        public_key = DelegationPublicKey(
+            key_id=key_id,
+            algorithm=DelegationKeyAlgorithm.ED25519,
+            public_key_pem=PUBLIC_KEY_B,
+        )
+        reference = SecretReference("secret://workspace-secrets/keys/transit")
+        purpose = DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT
+        registration_id = delegation_signing_key_registration_id_for(
+            workspace_id="workspace-a",
+            purpose=purpose,
+            issuer=issuer,
+            public_key=public_key,
+            private_key_reference=reference,
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_delegation_signing_keys (
+              registration_id, workspace_id, purpose, issuer, key_id, algorithm,
+              public_key_pem, public_fingerprint_sha256, private_key_reference,
+              admitted_by, admitted_at, status
+            ) VALUES (%s,'workspace-a',%s,%s,%s,%s,%s,%s,%s,'operator-a',
+                      '2027-01-15T07:52:00Z','verify-only')
+            """,
+            (
+                registration_id,
+                purpose.value,
+                issuer,
+                key_id,
+                public_key.algorithm.value,
+                public_key.public_key_pem,
+                public_key.fingerprint_sha256,
+                reference.reference_id,
+            ),
+        )
+
+    def assert_no_intent_rows(self) -> None:
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_secret_use_authorizations"
+            ).fetchone(),
+            (0,),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_node_control_attempts"
+            ).fetchone(),
+            (0,),
         )
 
     def _seed_signing_authority(self) -> None:
