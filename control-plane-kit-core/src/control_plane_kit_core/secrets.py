@@ -55,6 +55,10 @@ class SecretUseIntent(StrEnum):
     GATEWAY_PROBE_SIGNING_KEY = "gateway.probe-signing-key"
     OCI_PULL_CREDENTIAL = "oci.pull-credential"
     POSTGRES_PASSWORD = "postgres.password"
+    GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY = (
+        "gateway.node-control-transit-signing-key"
+    )
+    WORKLOAD_NODE_CONTROL_SIGNING_KEY = "workload.node-control-signing-key"
 
 
 class SecretCustodyStatus(StrEnum):

@@ -38,8 +38,12 @@ class SecretProviderContractTests(unittest.TestCase):
                 "gateway.probe-signing-key",
                 "oci.pull-credential",
                 "postgres.password",
+                "gateway.node-control-transit-signing-key",
+                "workload.node-control-signing-key",
             ),
         )
+        with self.assertRaises(ValueError):
+            SecretUseIntent("gateway.node-control-unknown-key")
 
     def test_provider_endpoint_reference_is_opaque_identity_not_url(self) -> None:
         reference = SecretProviderEndpointReference("workspace-secrets")

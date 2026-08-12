@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=597f12a64e7a9503397210c1e5c171251558b063b857ab9bde950f908cb80841 relations=28 columns=353 constraints=231 indexes=77 foreign-keys=47 -->
+<!-- current-schema-contract: sha256=b5f56207a526323dc19503968955b1654f3ed34e2a8a2a82ccf9b818cecc5d94 relations=28 columns=353 constraints=231 indexes=77 foreign-keys=47 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -694,7 +694,7 @@ order is semantically significant for every composite identity.
 - **Lifecycle, retention, deletion, and restore:** Restore provider and supersession roots first, then descendants and use authorizations; revoked references remain audit truth.
 - **JSON boundary:** `allowed_intents` and `metadata` are strict bounded documents.
 - **Sensitive material:** `secret_reference` is sensitive even though opaque; no secret value, compact token, credential, or provider response is stored.
-- **Future impact:** #1555 may authorize gateway and workload signing references, while #1556 resolves them only at the immediate effect boundary.
+- **Future impact:** #1556 authorizes gateway and workload signing references in the same command-intent unit of work; later effect work resolves them only after commit.
 
 ### `cpk_secret_use_authorizations`
 - **Durable meaning and owner:** `SecretUseAuthorizationStore` owns committed authorization to use one exact provider/reference pair for one bounded intent.
@@ -707,7 +707,7 @@ order is semantically significant for every composite identity.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, provider, and reference first; authorizations remain durable even after referenced registrations are revoked.
 - **JSON boundary:** None; all authority facts are normalized scalar identities and digests.
 - **Sensitive material:** Provider and secret references are sensitive; the row contains no resolved value, private key, compact token, signature, or provider response.
-- **Future impact:** #1553 defines exact signing-use intents and #1555 commits them with command intent; #1556 performs immediate authorized resolution.
+- **Future impact:** #1553 defines exact signing-use intents; #1556 commits both signing-use authorizations with command intent; later effect work resolves only after commit.
 
 ### `cpk_workspaces`
 - **Durable meaning and owner:** `PostgresWorkspaceStore` owns workspace identity, lifecycle, metadata, and the atomic current/desired graph-lineage heads.

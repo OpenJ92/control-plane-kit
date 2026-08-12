@@ -26,6 +26,61 @@ from control_plane_kit_core.types import WorkspaceLifecycle
 
 
 class PolicyDecisionTests(unittest.TestCase):
+    def test_node_control_scopes_are_closed_nominal_authority(self) -> None:
+        expected = (
+            "hub:instance:create",
+            "hub:instance:read",
+            "instance:workspace:read",
+            "instance:workspace:edit",
+            "plan:request",
+            "plan:approve",
+            "plan:approve-destructive",
+            "plan:execute",
+            "execution:operate",
+            "runtime-authority:register",
+            "runtime-authority:read",
+            "runtime-authority:revoke",
+            "runtime-authority:use",
+            "runtime-authority-delivery:register",
+            "runtime-authority-delivery:read",
+            "runtime-authority-delivery:revoke",
+            "ingress-authority:register",
+            "ingress-authority:read",
+            "ingress-authority:revoke",
+            "ingress-authority:use",
+            "secret-provider:register",
+            "secret-provider:read",
+            "secret-provider:use",
+            "secret-provider:revoke",
+            "delegation-key:generate",
+            "delegation-key:register",
+            "delegation-key:read",
+            "delegation-key:activate",
+            "delegation-key:retire",
+            "delegation-key:revoke",
+            "delegation-key:use",
+            "delegation-key:rotate",
+            "delegation-key:rotate-approve",
+            "gateway-probe:use",
+            "node-control:read",
+            "node-control:apply",
+            "node-control:execute",
+        )
+        node_control = expected[-3:]
+
+        self.assertEqual(
+            tuple(scope.value for scope in PolicyScope),
+            expected,
+        )
+        self.assertEqual(len(set(expected)), len(expected))
+        self.assertEqual(
+            tuple(value for value in expected if value.startswith("node-control:")),
+            node_control,
+        )
+        self.assertFalse(any("destruct" in value for value in node_control))
+        with self.assertRaises(ValueError):
+            PolicyScope("node-control:destroy")
+
     def test_hub_access_policy_returns_decisions_not_effects(self) -> None:
         policy = HubAccessPolicy()
 

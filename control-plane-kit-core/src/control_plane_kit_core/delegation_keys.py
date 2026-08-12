@@ -19,6 +19,7 @@ class DelegationKeyPurpose(StrEnum):
     GATEWAY_PROBE = "gateway-probe"
     WORKLOAD_NODE_CONTROL = "workload-node-control"
     WORKLOAD_NODE_CONTROL_SURFACE_READ = "workload-node-control-surface-read"
+    GATEWAY_NODE_CONTROL_TRANSIT = "gateway-node-control-transit"
 
 
 class DelegationKeyAlgorithm(StrEnum):

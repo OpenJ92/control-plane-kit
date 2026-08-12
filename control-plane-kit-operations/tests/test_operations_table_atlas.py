@@ -400,6 +400,18 @@ class OperationsTableAtlasTests(unittest.TestCase):
         for symbol in _RETIRED_SCHEMA_SYMBOLS:
             with self.subTest(symbol=symbol):
                 self.assertNotIn(symbol, text)
+        for phrase in (
+            "#1556 authorizes gateway and workload signing references",
+            "#1556 commits both signing-use authorizations with command intent",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        for stale in (
+            "#1555 may authorize gateway and workload signing references",
+            "#1555 commits them with command intent",
+        ):
+            with self.subTest(stale=stale):
+                self.assertNotIn(stale, text)
 
 
 if __name__ == "__main__":
