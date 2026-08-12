@@ -243,6 +243,19 @@ from control_plane_kit_core.node_control_surface_read_results import (
     NodeControlSurfaceRegistryCoverage,
     NodeControlSurfaceStatusResult,
 )
+from control_plane_kit_core.node_control_transit import (
+    MAX_DELEGATED_GATEWAY_NODE_CONTROL_TRANSIT_GRANT_BYTES,
+    MAX_GATEWAY_NODE_CONTROL_TRANSIT_AUDIENCE_BYTES,
+    MAX_GATEWAY_NODE_CONTROL_TRANSIT_GRANT_LIFETIME_SECONDS,
+    DelegatedGatewayNodeControlTransitGrant,
+    DelegatedGatewayNodeControlTransitGrantCodec,
+    DelegatedGatewayNodeControlTransitGrantProfile,
+    GatewayNodeControlTransitContractError,
+    GatewayNodeControlTransitGrantDigest,
+    GatewayNodeControlTransitGrantVerificationCode,
+    GatewayNodeControlTransitGrantVerificationResult,
+    verify_gateway_node_control_transit_grant,
+)
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     ContainerServerProductCodec,
@@ -615,4 +628,15 @@ __all__ = [
     "require_unique_product_identities",
     "verify_workload_node_control_grant",
     "verify_workload_node_control_surface_read_grant",
+    "MAX_DELEGATED_GATEWAY_NODE_CONTROL_TRANSIT_GRANT_BYTES",
+    "MAX_GATEWAY_NODE_CONTROL_TRANSIT_AUDIENCE_BYTES",
+    "MAX_GATEWAY_NODE_CONTROL_TRANSIT_GRANT_LIFETIME_SECONDS",
+    "DelegatedGatewayNodeControlTransitGrant",
+    "DelegatedGatewayNodeControlTransitGrantCodec",
+    "DelegatedGatewayNodeControlTransitGrantProfile",
+    "GatewayNodeControlTransitContractError",
+    "GatewayNodeControlTransitGrantDigest",
+    "GatewayNodeControlTransitGrantVerificationCode",
+    "GatewayNodeControlTransitGrantVerificationResult",
+    "verify_gateway_node_control_transit_grant",
 ]
