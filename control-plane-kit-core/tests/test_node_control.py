@@ -3,6 +3,7 @@ import math
 import unittest
 
 import control_plane_kit_core as core
+import control_plane_kit_core.node_control as node_control
 from control_plane_kit_core.capabilities import CapabilityName, capability_named
 from control_plane_kit_core.control_routes import (
     ControlRouteScope,
@@ -51,6 +52,18 @@ from control_plane_kit_core.runtime_effects import GatewayTargetId
 
 
 class NodeControlContractTests(unittest.TestCase):
+    def workload_audience(self):
+        helper = getattr(core, "workload_node_control_audience", None)
+        self.assertIsNotNone(
+            helper,
+            "workload node-control audience derivation is not implemented",
+        )
+        self.assertIs(
+            helper,
+            getattr(node_control, "workload_node_control_audience", None),
+        )
+        return helper
+
     def reference(
         self,
         role: NodeControlGraphReferenceRole,
@@ -323,6 +336,73 @@ class NodeControlContractTests(unittest.TestCase):
                     "https://variable",
                 )
             )
+
+    def test_workload_audience_is_root_exported_and_formula_exact(self) -> None:
+        self.assertEqual(
+            self.workload_audience()(self.target()),
+            "workload:router:control",
+        )
+
+    def test_workload_audience_accepts_the_exact_reference_ceiling(self) -> None:
+        node_id = "n" * 128
+        socket_name = "s" * 118
+        audience = self.workload_audience()(
+            self.target(
+                node_id=self.reference(NodeControlGraphReferenceRole.NODE, node_id),
+                provider_socket_name=self.reference(
+                    NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                    socket_name,
+                ),
+            )
+        )
+        self.assertEqual(audience, f"workload:{node_id}:{socket_name}")
+        self.assertEqual(len(audience.encode("utf-8")), 256)
+
+    def test_workload_audience_rejects_the_next_byte_without_leakage(self) -> None:
+        node_id = "n" * 128
+        socket_name = "s" * 119
+        with self.assertRaises(NodeControlContractError) as caught:
+            self.workload_audience()(
+                self.target(
+                    node_id=self.reference(
+                        NodeControlGraphReferenceRole.NODE,
+                        node_id,
+                    ),
+                    provider_socket_name=self.reference(
+                        NodeControlGraphReferenceRole.PROVIDER_SOCKET,
+                        socket_name,
+                    ),
+                )
+            )
+        self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertNotIn(socket_name, str(caught.exception))
+        self.assertNotIn(socket_name, repr(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+
+    def test_workload_audience_rejects_wrong_target_types(self) -> None:
+        for candidate in (None, "router:control", object()):
+            with self.subTest(candidate_type=type(candidate).__name__):
+                with self.assertRaises(NodeControlContractError) as caught:
+                    self.workload_audience()(candidate)
+                self.assertLessEqual(len(str(caught.exception)), 128)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+
+    def test_workload_audience_does_not_duck_type_unsafe_material(self) -> None:
+        candidate = {
+            "node_id": "token=secret-material",
+            "provider_socket_name": "https://private.internal/control",
+        }
+        with self.assertRaises(NodeControlContractError) as caught:
+            self.workload_audience()(candidate)
+        self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertNotIn("secret-material", str(caught.exception))
+        self.assertNotIn("private.internal", str(caught.exception))
+        self.assertNotIn("secret-material", repr(caught.exception))
+        self.assertNotIn("private.internal", repr(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
 
     def test_grant_binding_is_exact_and_secret_free(self) -> None:
         request = self.request()
