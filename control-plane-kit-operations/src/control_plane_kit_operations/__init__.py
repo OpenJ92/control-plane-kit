@@ -124,6 +124,13 @@ from .gateway_probes import (
     GatewayProbeVerifierConfigurationService,
     RequestGatewayProbe,
 )
+from .node_control_attempts import (
+    NodeControlAttemptConflict,
+    NodeControlAttemptCorrupt,
+    NodeControlAttemptError,
+    NodeControlIntendedAttempt,
+)
+from .postgres.node_control_attempt_store import NodeControlAttemptStore
 from .gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
     GatewayKeyRotation,
@@ -621,6 +628,11 @@ __all__ = [
     "FailureEvidence",
     "GatewayProbeAttempt",
     "GatewayProbeAttemptStatus",
+    "NodeControlAttemptConflict",
+    "NodeControlAttemptCorrupt",
+    "NodeControlAttemptError",
+    "NodeControlAttemptStore",
+    "NodeControlIntendedAttempt",
     "GatewayProbeAuthorizationDenied",
     "GatewayProbeCommandResult",
     "GatewayProbeCommandService",

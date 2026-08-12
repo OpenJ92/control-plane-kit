@@ -1277,8 +1277,18 @@ class NodeControlAttemptPostgresTests(
             retry.rollback()
         finally:
             retry.close()
+        conflicting = self.attempt()
         with self.assertRaises(self.contract("NodeControlAttemptConflict")) as caught:
-            store.add(replace(self.attempt(), attempt_id="attempt-b"))
+            store.add(
+                replace(
+                    conflicting,
+                    attempt_id="attempt-b",
+                    transit_grant=replace(
+                        conflicting.transit_grant,
+                        attempt_id="attempt-b",
+                    ),
+                )
+            )
         self.assertLessEqual(len(str(caught.exception)), 128)
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
