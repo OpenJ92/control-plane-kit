@@ -69,7 +69,10 @@ from control_plane_kit_operations.delegation_signing_keys import (
     delegation_signing_key_registration_id_for,
 )
 from control_plane_kit_operations.delegation_key_generation import (
+    AdmitGeneratedDelegationSigningKey,
+    DelegationKeyGenerationEvidence,
     DelegationKeyGenerationService,
+    GenerateDelegationSigningKey,
 )
 from control_plane_kit_operations.postgres import (
     DelegationSigningKeyStore,
@@ -941,6 +944,84 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
             retry.close()
         self.assertEqual(selected.key_id, "transit-key")
 
+    def test_generated_key_fold_locks_purpose_before_secret_reference(self) -> None:
+        reference = SecretReference(
+            "secret://workspace-secrets/keys/generated-transit"
+        )
+        service = DelegationKeyGenerationService(
+            lambda: PostgresUnitOfWork(
+                lambda: psycopg.connect(self.database_url)
+            )
+        )
+        grant = service.prepare(
+            GenerateDelegationSigningKey(
+                workspace_id="workspace-a",
+                provider_registration_id=self.provider_registration_id,
+                reference=reference,
+                purpose=DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+                issuer="generated-issuer",
+                actor_subject="operator-a",
+                correlation_id="generated-transit-a",
+                requested_at="2027-01-15T08:00:00Z",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_GENERATE,),
+            )
+        )
+        evidence = DelegationKeyGenerationEvidence(
+            workspace_id="workspace-a",
+            reference=reference,
+            purpose=DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+            issuer="generated-issuer",
+            correlation_id="generated-transit-a",
+            version_id="version-generated-a",
+            version_number=1,
+            public_key=DelegationPublicKey(
+                key_id="generated-transit-key",
+                algorithm=DelegationKeyAlgorithm.ED25519,
+                public_key_pem=PUBLIC_KEY_B,
+            ),
+            replayed=False,
+        )
+        command = AdmitGeneratedDelegationSigningKey(
+            grant=grant,
+            evidence=evidence,
+            admitted_by="operator-a",
+            admitted_at="2027-01-15T08:00:01Z",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,),
+        )
+
+        holder = psycopg.connect(self.database_url)
+        try:
+            DelegationSigningKeyStore(holder).require_unambiguous_active(
+                "workspace-a",
+                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+            )
+
+            def timed_connection():
+                connection = psycopg.connect(self.database_url)
+                connection.execute("SET LOCAL lock_timeout = '250ms'")
+                return connection
+
+            timed_service = DelegationKeyGenerationService(
+                lambda: PostgresUnitOfWork(timed_connection)
+            )
+            with self.assertRaises(psycopg.errors.LockNotAvailable):
+                timed_service.admit_generated(command)
+        finally:
+            holder.rollback()
+            holder.close()
+
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_secret_references "
+                "WHERE secret_reference=%s",
+                (reference.reference_id,),
+            ).fetchone(),
+            (0,),
+        )
+        admitted = service.admit_generated(command)
+        self.assertEqual(admitted.secret_reference.reference, reference)
+        self.assertEqual(admitted.signing_key.key_id, "generated-transit-key")
+
     def test_service_has_no_outer_effect_or_framework_boundary(self) -> None:
         module_path = (
             Path(operations.__file__).parent / "node_control_intents.py"
@@ -1425,6 +1506,7 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
         intents = (
             SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY,
             SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY,
+            SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,
         )
         service = SecretProviderRegistrationService(
             lambda: PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
@@ -1448,6 +1530,7 @@ class NodeControlIntentAuthorizationTests(unittest.TestCase):
                 actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
             )
         )
+        self.provider_registration_id = provider.registration_id
         references = (
             (
                 SecretReference("secret://workspace-secrets/keys/transit"),
