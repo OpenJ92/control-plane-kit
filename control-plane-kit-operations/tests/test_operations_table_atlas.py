@@ -119,9 +119,12 @@ def _between(text: str, start: str, end: str) -> str:
 
 
 def _parse_header(text: str) -> dict[str, str | int]:
-    match = _HEADER_PATTERN.search(text)
-    if match is None:
-        raise AssertionError("atlas is missing the exact current-contract header")
+    matches = tuple(_HEADER_PATTERN.finditer(text))
+    if len(matches) != 1:
+        raise AssertionError(
+            "atlas must contain exactly one current-contract header"
+        )
+    match = matches[0]
     values: dict[str, str | int] = {"sha256": match.group("sha256")}
     for name in ("relations", "columns", "constraints", "indexes", "foreign_keys"):
         values[name] = int(match.group(name))
@@ -205,10 +208,14 @@ def _parse_graph_edges(text: str) -> tuple[tuple[str, str, str], ...]:
 
 
 def _parse_marker(text: str, name: str) -> tuple[str, ...]:
-    match = re.search(rf"<!-- {re.escape(name)}: ([a-z0-9_,]+) -->", text)
-    if match is None:
-        raise AssertionError(f"atlas is missing {name} declaration")
-    return tuple(part for part in match.group(1).split(",") if part)
+    matches = tuple(
+        re.finditer(rf"<!-- {re.escape(name)}: ([a-z0-9_,]+) -->", text)
+    )
+    if len(matches) != 1:
+        raise AssertionError(
+            f"atlas must contain exactly one {name} declaration"
+        )
+    return tuple(part for part in matches[0].group(1).split(",") if part)
 
 
 def _schema_graph() -> tuple[dict[str, set[str]], set[str]]:
@@ -276,6 +283,8 @@ class OperationsTableAtlasTests(unittest.TestCase):
 
     def test_package_local_atlas_pins_the_current_contract(self) -> None:
         self.assertEqual(_parse_header(_PARSER_WITNESS)["relations"], 1)
+        with self.assertRaisesRegex(AssertionError, "exactly one"):
+            _parse_header(_PARSER_WITNESS + _PARSER_WITNESS)
         text = self._atlas_text()
         foreign_keys = tuple(
             constraint for constraint in _CONTRACT.constraints if constraint.kind == "f"
@@ -330,6 +339,18 @@ class OperationsTableAtlasTests(unittest.TestCase):
             _parse_marker(_PARSER_WITNESS, "multi-table-scc"),
             ("cpk_child", "cpk_parent"),
         )
+        for marker in ("multi-table-scc", "self-reference"):
+            with self.subTest(duplicate=marker):
+                declaration = re.search(
+                    rf"<!-- {re.escape(marker)}: [a-z0-9_,]+ -->",
+                    _PARSER_WITNESS,
+                )
+                self.assertIsNotNone(declaration)
+                with self.assertRaisesRegex(AssertionError, "exactly one"):
+                    _parse_marker(
+                        _PARSER_WITNESS + "\n" + declaration.group(0),
+                        marker,
+                    )
         text = self._atlas_text()
         expected_edges = tuple(
             (
@@ -359,6 +380,12 @@ class OperationsTableAtlasTests(unittest.TestCase):
             _parse_marker(_PARSER_WITNESS, "future-impact"),
             _FUTURE_ISSUES,
         )
+        with self.assertRaisesRegex(AssertionError, "exactly one"):
+            _parse_marker(
+                _PARSER_WITNESS
+                + "\n<!-- future-impact: 1553,1554,1555,1556,1243,1244 -->",
+                "future-impact",
+            )
         text = self._atlas_text()
 
         self.assertEqual(_parse_marker(text, "future-impact"), _FUTURE_ISSUES)
