@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib
+import inspect
 import json
 import os
 from pathlib import Path
-from dataclasses import fields, replace
+from dataclasses import replace
 import threading
-import time
 import unittest
 
 import psycopg
@@ -32,7 +33,88 @@ from control_plane_kit_core.node_control_transit import (
     DelegatedGatewayNodeControlTransitGrant,
     DelegatedGatewayNodeControlTransitGrantProfile,
 )
-from control_plane_kit_operations.postgres import install_schema
+from control_plane_kit_operations.postgres import SchemaInstallationError, install_schema
+from control_plane_kit_operations.postgres import current_schema_contract
+
+
+_ATTEMPT_COLUMNS = (
+    ("attempt_id", "text", True, None),
+    ("workspace_id", "text", True, None),
+    ("request_id", "text", True, None),
+    ("actor_subject", "text", True, None),
+    ("current_graph_id", "text", True, None),
+    ("current_realized_projection_id", "text", True, None),
+    ("gateway_runtime_id", "text", True, None),
+    ("transit_key_registration_id", "text", True, None),
+    ("workload_key_registration_id", "text", True, None),
+    ("transit_authorization_id", "text", True, None),
+    ("workload_authorization_id", "text", True, None),
+    ("transit_correlation_id", "text", True, None),
+    ("workload_correlation_id", "text", True, None),
+    ("request_bytes", "bytea", True, None),
+    ("request_digest", "text", True, None),
+    ("transit_grant_bytes", "bytea", True, None),
+    ("transit_grant_digest", "text", True, None),
+    ("workload_grant_bytes", "bytea", True, None),
+    ("workload_grant_digest", "text", True, None),
+    ("transit_issuer", "text", True, None),
+    ("transit_key_id", "text", True, None),
+    ("transit_jti", "text", True, None),
+    ("workload_issuer", "text", True, None),
+    ("workload_key_id", "text", True, None),
+    ("workload_jti", "text", True, None),
+    ("intended_at", "timestamp(6) with time zone", True, None),
+    ("intent_fingerprint", "text", True, None),
+)
+
+_ATTEMPT_KEY_CONSTRAINTS = {
+    "cpk_node_control_attempts_pkey": ("p", ("attempt_id",)),
+    "cpk_node_control_attempts_workspace_request_key": (
+        "u", ("workspace_id", "request_id"),
+    ),
+    "cpk_node_control_attempts_transit_jti_key": (
+        "u", ("workspace_id", "transit_issuer", "transit_jti"),
+    ),
+    "cpk_node_control_attempts_workload_jti_key": (
+        "u", ("workspace_id", "workload_issuer", "workload_jti"),
+    ),
+}
+
+_ATTEMPT_FOREIGN_KEYS = {
+    "cpk_node_control_attempts_workspace_id_fkey": (
+        ("workspace_id",), "cpk_workspaces", ("workspace_id",),
+    ),
+    "cpk_node_control_attempts_projection_source_fk": (
+        ("current_realized_projection_id", "current_graph_id"),
+        "cpk_realized_graph_projections",
+        ("projection_id", "source_authored_graph_id"),
+    ),
+    "cpk_node_control_attempts_projection_workspace_fk": (
+        ("current_realized_projection_id", "workspace_id"),
+        "cpk_realized_graph_projections",
+        ("projection_id", "workspace_id"),
+    ),
+    "cpk_node_control_attempts_transit_key_workspace_fk": (
+        ("transit_key_registration_id", "workspace_id"),
+        "cpk_delegation_signing_keys",
+        ("registration_id", "workspace_id"),
+    ),
+    "cpk_node_control_attempts_workload_key_workspace_fk": (
+        ("workload_key_registration_id", "workspace_id"),
+        "cpk_delegation_signing_keys",
+        ("registration_id", "workspace_id"),
+    ),
+    "cpk_node_control_attempts_transit_authorization_workspace_fk": (
+        ("transit_authorization_id", "workspace_id"),
+        "cpk_secret_use_authorizations",
+        ("authorization_id", "workspace_id"),
+    ),
+    "cpk_node_control_attempts_workload_authorization_workspace_fk": (
+        ("workload_authorization_id", "workspace_id"),
+        "cpk_secret_use_authorizations",
+        ("authorization_id", "workspace_id"),
+    ),
+}
 
 
 class _NodeControlAttemptFixture:
@@ -48,7 +130,13 @@ class _NodeControlAttemptFixture:
     ) -> NodeControlGraphReference:
         return NodeControlGraphReference(role, value)
 
-    def request(self, value: int | float = 1) -> NodeControlCommandRequest:
+    def request(
+        self,
+        value: int | float = 1,
+        *,
+        operation: NodeControlOperation = NodeControlOperation.APPLY_COMMAND,
+    ) -> NodeControlCommandRequest:
+        is_apply = operation is NodeControlOperation.APPLY_COMMAND
         return NodeControlCommandRequest(
             target=NodeControlTarget(
                 workspace_id=self.reference(
@@ -72,14 +160,20 @@ class _NodeControlAttemptFixture:
                 NodeControlGraphReferenceRole.VARIABLE,
                 "limit",
             ),
-            operation=NodeControlOperation.APPLY_COMMAND,
+            operation=operation,
             request_id="request-a",
             idempotency_key="idempotency-a",
-            command_codec=ControlPlaneCommandCodec.REPLACE_SCALAR_V1,
-            precondition=ControlPlaneTransitionPrecondition(4),
-            payload=NodeControlPayload(
-                ControlPlaneCommandCodec.REPLACE_SCALAR_V1,
-                ScalarControlState(value),
+            command_codec=(
+                ControlPlaneCommandCodec.REPLACE_SCALAR_V1 if is_apply else None
+            ),
+            precondition=(ControlPlaneTransitionPrecondition(4) if is_apply else None),
+            payload=(
+                NodeControlPayload(
+                    ControlPlaneCommandCodec.REPLACE_SCALAR_V1,
+                    ScalarControlState(value),
+                )
+                if is_apply
+                else None
             ),
         )
 
@@ -148,6 +242,14 @@ class _NodeControlAttemptFixture:
             workload_grant=workload,
         )
 
+    def assert_attempt_error(self, factory) -> None:
+        error_type = self.contract("NodeControlAttemptError")
+        with self.assertRaises(error_type) as caught:
+            factory()
+        self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+
 
 class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
     def test_public_record_derives_exact_wire_and_fingerprint(self) -> None:
@@ -181,9 +283,11 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
     def test_record_rejects_cross_value_and_caller_fingerprint_drift(self) -> None:
         attempt = self.attempt()
         changed = self.request(2)
-        with self.assertRaises(self.contract("NodeControlAttemptError")):
-            replace(attempt, request=changed)
-        self.assertNotIn("intent_fingerprint", {field.name for field in fields(attempt)})
+        self.assert_attempt_error(lambda: replace(attempt, request=changed))
+        self.assertNotIn(
+            "intent_fingerprint",
+            inspect.signature(type(attempt)).parameters,
+        )
         self.assertEqual(
             replace(
                 attempt,
@@ -197,6 +301,143 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
             attempt.intent_fingerprint,
         )
 
+    def test_fingerprint_depends_only_on_actor_gateway_and_request(self) -> None:
+        attempt = self.attempt()
+        changed_identity = replace(
+            attempt,
+            attempt_id="attempt-b",
+            gateway_runtime_id="docker-b",
+            transit_key_registration_id="dkey_" + "e" * 64,
+            workload_key_registration_id="dkey_" + "f" * 64,
+            transit_authorization_id="suse_" + "1" * 64,
+            workload_authorization_id="suse_" + "2" * 64,
+            transit_correlation_id="transit-correlation-b",
+            workload_correlation_id="workload-correlation-b",
+            intended_at="2027-01-15T09:00:00Z",
+            transit_grant=replace(
+                attempt.transit_grant,
+                attempt_id="attempt-b",
+                key_id="transit-key-b",
+                issued_at=101,
+                not_before=101,
+                expires_at=201,
+                jti="transit-jti-b",
+            ),
+            workload_grant=replace(
+                attempt.workload_grant,
+                key_id="workload-key-b",
+                issued_at=101,
+                not_before=101,
+                expires_at=201,
+                jti="workload-jti-b",
+            ),
+        )
+        self.assertEqual(changed_identity.intent_fingerprint, attempt.intent_fingerprint)
+
+        changed_gateway = replace(
+            attempt,
+            transit_grant=replace(
+                attempt.transit_grant,
+                gateway_node_id=self.reference(
+                    NodeControlGraphReferenceRole.NODE,
+                    "gateway-b",
+                ),
+            ),
+        )
+        self.assertNotEqual(
+            changed_gateway.intent_fingerprint,
+            attempt.intent_fingerprint,
+        )
+
+        changed_request = self.request(2)
+        transit, workload = self.grants(changed_request)
+        changed_command = replace(
+            attempt,
+            request=changed_request,
+            transit_grant=transit,
+            workload_grant=workload,
+        )
+        self.assertNotEqual(
+            changed_command.intent_fingerprint,
+            attempt.intent_fingerprint,
+        )
+
+    def test_record_accepts_read_and_apply_and_rejects_each_claim_mismatch(self) -> None:
+        self.attempt()
+        read_request = self.request(operation=NodeControlOperation.READ_STATE)
+        transit, workload = self.grants(read_request)
+        replace(
+            self.attempt(),
+            request=read_request,
+            transit_grant=transit,
+            workload_grant=workload,
+        )
+
+        attempt = self.attempt()
+        other_target = replace(
+            attempt.request.target,
+            node_id=self.reference(NodeControlGraphReferenceRole.NODE, "router-b"),
+        )
+        other_variable = self.reference(
+            NodeControlGraphReferenceRole.VARIABLE,
+            "other-variable",
+        )
+        mismatches = (
+            lambda: replace(
+                attempt,
+                transit_grant=replace(attempt.transit_grant, attempt_id="attempt-b"),
+            ),
+            lambda: replace(attempt, current_graph_id="graph-other"),
+            lambda: replace(
+                attempt,
+                transit_grant=replace(
+                    attempt.transit_grant,
+                    target=other_target,
+                    workspace_id=other_target.workspace_id,
+                    graph_revision=other_target.graph_revision,
+                ),
+            ),
+            lambda: replace(
+                attempt,
+                workload_grant=replace(attempt.workload_grant, target=other_target),
+            ),
+            lambda: replace(
+                attempt,
+                transit_grant=replace(
+                    attempt.transit_grant,
+                    variable_name=other_variable,
+                ),
+            ),
+            lambda: replace(
+                attempt,
+                workload_grant=replace(
+                    attempt.workload_grant,
+                    variable_name=other_variable,
+                ),
+            ),
+            lambda: replace(
+                attempt,
+                transit_grant=replace(attempt.transit_grant, request_id="request-b"),
+            ),
+            lambda: replace(
+                attempt,
+                workload_grant=replace(
+                    attempt.workload_grant,
+                    idempotency_key="idempotency-b",
+                ),
+            ),
+            lambda: replace(
+                attempt,
+                transit_grant=replace(
+                    attempt.transit_grant,
+                    request_digest=self.request(2).canonical_digest(),
+                ),
+            ),
+        )
+        for index, mismatch in enumerate(mismatches):
+            with self.subTest(mismatch=index):
+                self.assert_attempt_error(mismatch)
+
     def test_store_surface_and_schema_are_current_only(self) -> None:
         self.contract("NodeControlAttemptStore")
         self.assertTrue(hasattr(operations, "NodeControlAttemptCorrupt"))
@@ -207,30 +448,103 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
             install_schema(connection)
             columns = connection.execute(
                 """
-                SELECT column_name, data_type
+                SELECT column_name,
+                       CASE WHEN data_type = 'timestamp with time zone'
+                            THEN 'timestamp(' || datetime_precision || ') with time zone'
+                            ELSE data_type END,
+                       is_nullable = 'NO', column_default
                 FROM information_schema.columns
                 WHERE table_schema = current_schema()
                   AND table_name = 'cpk_node_control_attempts'
                 ORDER BY ordinal_position
                 """
             ).fetchall()
-        names = {name for name, _ in columns}
-        self.assertEqual(names, {
-            "attempt_id", "workspace_id", "request_id", "actor_subject",
-            "current_graph_id", "current_realized_projection_id",
-            "gateway_runtime_id", "transit_key_registration_id",
-            "workload_key_registration_id", "transit_authorization_id",
-            "workload_authorization_id", "transit_correlation_id",
-            "workload_correlation_id", "request_bytes", "request_digest",
-            "transit_grant_bytes", "transit_grant_digest", "workload_grant_bytes",
-            "workload_grant_digest", "transit_issuer", "transit_key_id",
-            "transit_jti", "workload_issuer", "workload_key_id", "workload_jti",
-            "intended_at", "intent_fingerprint",
-        })
-        self.assertEqual(
-            dict(columns)["request_bytes"],
-            "bytea",
+        self.assertEqual(tuple(columns), _ATTEMPT_COLUMNS)
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        relation = next(
+            value
+            for value in contract.relations
+            if value.name == "cpk_node_control_attempts"
         )
+        self.assertEqual(
+            (
+                relation.kind,
+                relation.persistence,
+                relation.access_method,
+                relation.is_partition,
+                relation.row_security,
+                relation.force_row_security,
+            ),
+            ("r", "p", "heap", False, False, False),
+        )
+        contract_columns = tuple(
+            (
+                value.name,
+                value.formatted_type,
+                value.not_null,
+                value.default_expression,
+            )
+            for value in contract.columns
+            if value.relation == "cpk_node_control_attempts"
+        )
+        self.assertEqual(contract_columns, tuple(sorted(_ATTEMPT_COLUMNS)))
+
+        constraints = {
+            value.name: value
+            for value in contract.constraints
+            if value.relation == "cpk_node_control_attempts"
+        }
+        for name, (kind, expected_columns) in _ATTEMPT_KEY_CONSTRAINTS.items():
+            with self.subTest(constraint=name):
+                self.assertEqual(constraints[name].kind, kind)
+                self.assertEqual(constraints[name].local_columns, expected_columns)
+        for name, (local, referenced, remote) in _ATTEMPT_FOREIGN_KEYS.items():
+            with self.subTest(foreign_key=name):
+                value = constraints[name]
+                self.assertEqual(value.kind, "f")
+                self.assertEqual(value.local_columns, local)
+                self.assertEqual(value.referenced_relation, referenced)
+                self.assertEqual(value.referenced_columns, remote)
+                self.assertFalse(value.deferrable)
+                self.assertEqual(value.update_action, "a")
+                self.assertEqual(value.delete_action, "a")
+        foreign_keys = tuple(
+            value for value in constraints.values() if value.kind == "f"
+        )
+        self.assertEqual(len(foreign_keys), len(_ATTEMPT_FOREIGN_KEYS))
+        self.assertFalse(
+            any(
+                value.referenced_relation == "cpk_workspaces"
+                and value.referenced_columns != ("workspace_id",)
+                for value in foreign_keys
+            )
+        )
+        checks = tuple(value for value in constraints.values() if value.kind == "c")
+        self.assertGreaterEqual(len(checks), 20)
+        self.assertTrue(all(value.validated for value in checks))
+        check_text = "\n".join(value.check_expression or "" for value in checks)
+        for required in (
+            "octet_length(request_bytes)", "16384", "request_digest",
+            "octet_length(transit_grant_bytes)", "2834", "transit_grant_digest",
+            "octet_length(workload_grant_bytes)", "2111", "workload_grant_digest",
+            "intent_fingerprint", "transit_key_registration_id",
+            "workload_key_registration_id", "transit_authorization_id",
+            "workload_authorization_id",
+        ):
+            with self.subTest(check=required):
+                self.assertIn(required, check_text)
+
+        indexes = {
+            value.name: value
+            for value in contract.indexes
+            if value.relation == "cpk_node_control_attempts"
+        }
+        self.assertEqual(set(indexes), set(_ATTEMPT_KEY_CONSTRAINTS))
+        self.assertTrue(
+            all(value.owning_constraint == value.name for value in indexes.values())
+        )
+        self.assertFalse(any("time" in value.name for value in indexes.values()))
 
     def test_atlas_and_package_boundaries_explain_one_insert_only_truth(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -238,17 +552,46 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
         self.assertIn("### `cpk_node_control_attempts`", atlas)
         self.assertIn("Row membership means only INTENDED", atlas)
         self.assertIn("#1556", atlas)
-        source = "\n".join(
-            path.read_text(encoding="utf-8")
-            for path in (root / "src" / "control_plane_kit_operations").rglob("*.py")
-            if "node_control_attempt" in path.name
-        ).lower()
-        for forbidden in (
-            "fastapi", "httpx", "docker", "jwt", "signature", "compact_token",
-            "schema migration", "backfill", "upgrade",
-        ):
-            with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, source)
+        self.assertIn(
+            current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256,
+            atlas.splitlines()[2],
+        )
+        for name in _ATTEMPT_FOREIGN_KEYS:
+            with self.subTest(atlas_foreign_key=name):
+                self.assertIn(name, atlas)
+        self.assertLess(
+            atlas.index("### `cpk_node_control_attempts`"),
+            atlas.index("### `cpk_realized_graph_projections`"),
+        )
+
+        package = root / "src" / "control_plane_kit_operations"
+        modules = (
+            package / "node_control_attempts.py",
+            package / "postgres" / "node_control_attempt_store.py",
+        )
+        self.assertTrue(all(path.is_file() for path in modules))
+        imports: set[str] = set()
+        calls: set[str] = set()
+        for path in modules:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    imports.add(node.module)
+                elif isinstance(node, ast.Import):
+                    imports.update(alias.name for alias in node.names)
+                elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                    calls.add(node.func.attr)
+        self.assertFalse(
+            imports
+            & {
+                "fastapi",
+                "httpx",
+                "docker",
+                "jwt",
+                "control_plane_kit_interpreters",
+            }
+        )
+        self.assertEqual(calls & {"commit", "rollback"}, set())
 
 
 class NodeControlAttemptPostgresTests(
@@ -409,6 +752,15 @@ class NodeControlAttemptPostgresTests(
                 ),
             )
 
+    def _assert_corrupt(self, store, *, forbidden: str = "") -> None:
+        with self.assertRaises(self.contract("NodeControlAttemptCorrupt")) as caught:
+            store.get("attempt-a")
+        rendered = str(caught.exception)
+        self.assertLessEqual(len(rendered), 128)
+        self.assertNotIn(forbidden, rendered)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+
     def test_restart_round_trip_and_byte_corruption_are_exact(self) -> None:
         attempt = self.attempt(1e20)
         store = self.store_type(self.connection)
@@ -423,16 +775,60 @@ class NodeControlAttemptPostgresTests(
             )
         finally:
             restarted.close()
-        self.connection.execute(
-            "UPDATE cpk_node_control_attempts SET request_bytes = request_bytes || %s",
-            (b" ",),
+        corruptions = (
+            ("request_bytes", b" "),
+            ("transit_grant_bytes", b" "),
+            ("workload_grant_bytes", b" "),
         )
-        with self.assertRaises(self.contract("NodeControlAttemptCorrupt")) as caught:
-            store.get("attempt-a")
-        self.assertLessEqual(len(str(caught.exception)), 128)
-        self.assertIsNone(caught.exception.__cause__)
-        self.assertIsNone(caught.exception.__context__)
+        for column, suffix in corruptions:
+            with self.subTest(bytes=column):
+                self.connection.execute(
+                    f"UPDATE cpk_node_control_attempts SET {column} = {column} || %s",
+                    (suffix,),
+                )
+                self._assert_corrupt(store)
+                self.connection.execute("TRUNCATE cpk_node_control_attempts")
+                store.add(attempt)
+
+        for column in (
+            "request_digest",
+            "transit_grant_digest",
+            "workload_grant_digest",
+        ):
+            with self.subTest(digest=column):
+                self.connection.execute(
+                    f"UPDATE cpk_node_control_attempts SET {column}=%s",
+                    ("0" * 64,),
+                )
+                self._assert_corrupt(store, forbidden="0" * 64)
+                self.connection.execute("TRUNCATE cpk_node_control_attempts")
+                store.add(attempt)
         self.connection.execute("TRUNCATE cpk_node_control_attempts")
+
+    def test_prior_attempt_shape_requires_reset_without_repair(self) -> None:
+        drift = psycopg.connect(self.database_url)
+        try:
+            drift.execute(
+                "ALTER TABLE cpk_node_control_attempts ADD COLUMN forbidden text"
+            )
+            with self.assertRaisesRegex(
+                SchemaInstallationError,
+                "operations schema reset is required",
+            ):
+                install_schema(drift)
+            observed = drift.execute(
+                """
+                SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'cpk_node_control_attempts'
+                  AND column_name = 'forbidden'
+                """
+            ).fetchone()
+            self.assertEqual(observed, (1,))
+            drift.rollback()
+        finally:
+            drift.close()
 
     def test_wrong_same_workspace_key_and_authorization_fail_closed(self) -> None:
         store = self.store_type(self.connection)
@@ -453,6 +849,100 @@ class NodeControlAttemptPostgresTests(
                 self.connection.execute("TRUNCATE cpk_node_control_attempts")
                 store.add(self.attempt())
 
+    def test_each_key_and_authorization_witness_is_checked_independently(self) -> None:
+        store = self.store_type(self.connection)
+        store.add(self.attempt())
+        mutations = (
+            (
+                "cpk_delegation_signing_keys", "dkey_" + "a" * 64,
+                "purpose", "gateway-probe", "gateway-node-control-transit",
+            ),
+            (
+                "cpk_delegation_signing_keys", "dkey_" + "a" * 64,
+                "issuer", "mismatch-server", "cpk-server",
+            ),
+            (
+                "cpk_delegation_signing_keys", "dkey_" + "a" * 64,
+                "key_id", "mismatch-key", "transit-key",
+            ),
+            (
+                "cpk_delegation_signing_keys", "dkey_" + "a" * 64,
+                "private_key_reference", "secret://keys/other",
+                "secret://keys/transit",
+            ),
+            (
+                "cpk_delegation_signing_keys", "dkey_" + "b" * 64,
+                "purpose", "gateway-probe", "workload-node-control",
+            ),
+            (
+                "cpk_delegation_signing_keys", "dkey_" + "b" * 64,
+                "issuer", "mismatch-server", "cpk-server",
+            ),
+            (
+                "cpk_delegation_signing_keys", "dkey_" + "b" * 64,
+                "key_id", "mismatch-key", "workload-key",
+            ),
+            (
+                "cpk_delegation_signing_keys", "dkey_" + "b" * 64,
+                "private_key_reference", "secret://keys/other",
+                "secret://keys/workload",
+            ),
+            (
+                "cpk_secret_use_authorizations", "suse_" + "c" * 64,
+                "use_intent", "workload.node-control-signing-key",
+                "gateway.node-control-transit-signing-key",
+            ),
+            (
+                "cpk_secret_use_authorizations", "suse_" + "c" * 64,
+                "actor_subject", "operator-b", "operator-a",
+            ),
+            (
+                "cpk_secret_use_authorizations", "suse_" + "c" * 64,
+                "correlation_id", "transit-correlation-b",
+                "transit-correlation-a",
+            ),
+            (
+                "cpk_secret_use_authorizations", "suse_" + "c" * 64,
+                "secret_reference", "secret://keys/other",
+                "secret://keys/transit",
+            ),
+            (
+                "cpk_secret_use_authorizations", "suse_" + "d" * 64,
+                "use_intent", "gateway.node-control-transit-signing-key",
+                "workload.node-control-signing-key",
+            ),
+            (
+                "cpk_secret_use_authorizations", "suse_" + "d" * 64,
+                "actor_subject", "operator-b", "operator-a",
+            ),
+            (
+                "cpk_secret_use_authorizations", "suse_" + "d" * 64,
+                "correlation_id", "workload-correlation-b",
+                "workload-correlation-a",
+            ),
+            (
+                "cpk_secret_use_authorizations", "suse_" + "d" * 64,
+                "secret_reference", "secret://keys/other",
+                "secret://keys/workload",
+            ),
+        )
+        for table, identity, column, wrong, original in mutations:
+            with self.subTest(table=table, identity=identity, column=column):
+                identity_column = (
+                    "registration_id"
+                    if table == "cpk_delegation_signing_keys"
+                    else "authorization_id"
+                )
+                self.connection.execute(
+                    f"UPDATE {table} SET {column}=%s WHERE {identity_column}=%s",
+                    (wrong, identity),
+                )
+                self._assert_corrupt(store, forbidden=str(wrong))
+                self.connection.execute(
+                    f"UPDATE {table} SET {column}=%s WHERE {identity_column}=%s",
+                    (original, identity),
+                )
+
     def test_rollback_idempotency_and_graph_advancement(self) -> None:
         connection = psycopg.connect(self.database_url)
         try:
@@ -468,8 +958,22 @@ class NodeControlAttemptPostgresTests(
         )
         store = self.store_type(self.connection)
         store.add(self.attempt())
-        with self.assertRaises(self.contract("NodeControlAttemptConflict")):
+        retry = psycopg.connect(self.database_url)
+        try:
+            retry_store = self.store_type(retry)
+            retry_store.lock_request_id("workspace-a", "request-a")
+            self.assertEqual(
+                retry_store.get_by_request_id("workspace-a", "request-a"),
+                self.attempt(),
+            )
+            retry.rollback()
+        finally:
+            retry.close()
+        with self.assertRaises(self.contract("NodeControlAttemptConflict")) as caught:
             store.add(replace(self.attempt(), attempt_id="attempt-b"))
+        self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
         self.connection.execute(
             """
             INSERT INTO cpk_graph_versions
@@ -502,29 +1006,42 @@ class NodeControlAttemptPostgresTests(
     def test_advisory_request_lock_serializes_two_connections(self) -> None:
         first = psycopg.connect(self.database_url)
         second = psycopg.connect(self.database_url)
+        ready = threading.Event()
         acquired = threading.Event()
+        errors: list[BaseException] = []
         thread = None
         try:
             self.store_type(first).lock_request_id("workspace-a", "request-a")
 
             def acquire() -> None:
-                self.store_type(second).lock_request_id("workspace-a", "request-a")
-                acquired.set()
+                ready.set()
+                try:
+                    self.store_type(second).lock_request_id(
+                        "workspace-a",
+                        "request-a",
+                    )
+                    acquired.set()
+                except BaseException as error:
+                    errors.append(error)
 
             thread = threading.Thread(target=acquire)
             thread.start()
-            time.sleep(0.2)
-            self.assertFalse(acquired.is_set())
+            self.assertTrue(ready.wait(timeout=2))
+            self.assertFalse(acquired.wait(timeout=0.2))
             first.commit()
             thread.join(timeout=2)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(errors, [])
             self.assertTrue(acquired.is_set())
-        finally:
-            first.rollback()
             second.rollback()
-            if thread is not None:
+        finally:
+            first.commit()
+            if thread is not None and thread.is_alive():
                 thread.join(timeout=2)
             first.close()
-            second.close()
+            if thread is None or not thread.is_alive():
+                second.rollback()
+                second.close()
 
 
 if __name__ == "__main__":
