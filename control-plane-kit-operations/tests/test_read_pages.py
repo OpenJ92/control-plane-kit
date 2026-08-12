@@ -299,6 +299,18 @@ class ReadPageContractTests(unittest.TestCase):
                 "session-a",
             ),
             self.action_cursor(),
+            TemporalReadCursor(
+                ReadCollection.PLAN_RUNS,
+                self.plan(),
+                _INSTANT,
+                "run-a",
+            ),
+            OrdinalReadCursor(
+                ReadCollection.RUN_EVENTS,
+                self.run_scope(),
+                1,
+                "event-a",
+            ),
             IdentityReadCursor(
                 ReadCollection.SECRET_REFERENCES,
                 self.workspace(),
@@ -316,24 +328,30 @@ class ReadPageContractTests(unittest.TestCase):
             descriptor = cursor.descriptor()
             for member in ("scope", "position"):
                 nested = descriptor[member]
-                missing_key = next(iter(nested))
-                invalid_nested = (
-                    {key: value for key, value in nested.items() if key != missing_key},
-                    {**nested, "unknown": "candidate-do-not-retain"},
-                )
-                for candidate in invalid_nested:
+                for missing_key in nested:
+                    candidate = {
+                        key: value
+                        for key, value in nested.items()
+                        if key != missing_key
+                    }
                     malformed_descriptor = {**descriptor, member: candidate}
                     with self.subTest(
                         collection=descriptor["collection"],
                         member=member,
-                        keys=tuple(candidate),
+                        missing_key=missing_key,
                     ):
                         self.assert_bounded_error(
                             lambda value=malformed_descriptor: (
                                 read_cursor_from_mapping(value)
-                            ),
-                            forbidden="candidate-do-not-retain",
+                            )
                         )
+
+                candidate = {**nested, "unknown": "candidate-do-not-retain"}
+                malformed_descriptor = {**descriptor, member: candidate}
+                self.assert_bounded_error(
+                    lambda value=malformed_descriptor: read_cursor_from_mapping(value),
+                    forbidden="candidate-do-not-retain",
+                )
 
                 hostile = _HostileText("candidate-do-not-retain")
                 text_key = "workspace_id" if member == "scope" else next(
