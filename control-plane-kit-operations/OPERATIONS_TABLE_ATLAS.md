@@ -165,8 +165,8 @@ duplication is intentional:
 - Graph/projection pairs recur on workspaces and plans as lineage witnesses.
   They pin the projection's authored source and workspace, preventing coherent
   source rebinding through direct SQL and preserving one-row workspace CAS.
-- Request/decision, request/plan, plan/session, and provider/reference pairs
-  are repeated witnesses that make substitution errors relationally
+- Request/decision, request/plan, and plan/session pairs are repeated witnesses
+  whose composite keys and FKs make substitution errors relationally
   impossible. They are not independently editable copies of the same fact.
 - Correlation, idempotency, JTI, ordinal, version, and semantic descriptor keys
   are candidate identities. Their unique constraints define replay,
@@ -206,6 +206,12 @@ The genuine normalization questions are visible rather than hidden:
   but direct SQL could make them semantically inconsistent. A future issue
   should add an FK only if stronger database enforcement outweighs tighter
   retention coupling; the atlas does not claim constraints that do not exist.
+- Secret-use authorizations retain both provider and reference registrations.
+  Independent composite FKs prove that each exact registration exists in the
+  same workspace, but no composite FK proves that the selected reference names
+  the selected provider. `_authorize_secret_use` verifies that association
+  before insert. This is a service-enforced witness and a genuine future
+  normalization question, not a relational impossibility claim.
 - JSON leaves are not efficiently relationally queryable below their typed
   boundary. That is accepted while stores read whole values; a real need for
   independently indexed subfacts would justify a new table and owner, not an
