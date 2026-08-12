@@ -314,7 +314,7 @@ _CANONICAL_PROJECTIONS = (
         "GatewayProbeTimelineReadResponse",
         ReadProjectionPolicy.DELEGATED_GATEWAY_PROBE_EVIDENCE,
         paged=True,
-        max_page_size=200,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.approval-detail",
