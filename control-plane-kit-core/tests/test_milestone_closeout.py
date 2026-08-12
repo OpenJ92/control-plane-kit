@@ -25,6 +25,7 @@ EXPECTED_MODULES = {
     "node_control",
     "node_control_surface_read_results",
     "node_control_surface_reads",
+    "node_control_transit",
     "operations.__init__",
     "operations.commands",
     "operations.execution",
