@@ -5,6 +5,9 @@ import importlib
 import json
 import os
 from pathlib import Path
+from dataclasses import replace
+import threading
+import time
 import unittest
 
 import psycopg
@@ -178,8 +181,9 @@ class NodeControlAttemptTests(unittest.TestCase):
         attempt = self.attempt()
         changed = self.request(2)
         with self.assertRaises(self.contract("NodeControlAttemptError")):
-            record_type(**{**attempt.__dict__, "request": changed})
-        self.assertNotIn("intent_fingerprint", attempt.__dict__)
+            replace(attempt, request=changed)
+        with self.assertRaises(TypeError):
+            record_type(intent_fingerprint="f" * 64)
 
     def test_store_surface_and_schema_are_current_only(self) -> None:
         self.contract("NodeControlAttemptStore")
@@ -230,6 +234,241 @@ class NodeControlAttemptTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, source)
+
+
+class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
+    def setUp(self) -> None:
+        self.store_type = self.contract("NodeControlAttemptStore")
+        database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
+        if not database_url:
+            self.fail("CPK_OPERATIONS_TEST_DATABASE_URL is required")
+        self.database_url = database_url
+        self.connection = psycopg.connect(database_url, autocommit=True)
+        install_schema(self.connection)
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self._seed_truth(self.connection)
+
+    def tearDown(self) -> None:
+        self.connection.close()
+
+    def _seed_truth(self, connection) -> None:
+        connection.execute(
+            "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
+            "VALUES ('workspace-a', 'Workspace A', 'running')"
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_graph_versions
+              (graph_id, workspace_id, version, graph_descriptor, created_by,
+               created_at, metadata)
+            VALUES ('graph-current', 'workspace-a', 1, '{}'::jsonb,
+                    'operator-a', '2027-01-15T07:00:00Z', '{}'::jsonb)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_realized_graph_projections
+              (projection_id, workspace_id, source_authored_graph_id,
+               projection_kind, projection_key, projection_digest,
+               graph_descriptor, created_by, created_at)
+            VALUES ('projection-current', 'workspace-a', 'graph-current',
+                    'identity', 'current', %s, '{}'::jsonb, 'operator-a',
+                    '2027-01-15T07:00:00Z')
+            """,
+            ("1" * 64,),
+        )
+        connection.execute(
+            """
+            UPDATE cpk_workspaces
+            SET current_graph_id='graph-current',
+                current_realized_projection_id='projection-current'
+            WHERE workspace_id='workspace-a'
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_secret_providers
+              (registration_id, workspace_id, provider_id, provider_kind,
+               display_name, endpoint_reference, credential_reference,
+               allowed_reference_prefixes, allowed_intents, admitted_by,
+               admitted_at, status, metadata)
+            VALUES ('sprov_%s', 'workspace-a', 'secrets-a',
+                    'control-plane-kit-secrets', 'Secrets A', 'provider-a',
+                    'secret://bootstrap/provider-token', '["secret://keys/"]',
+                    '["gateway.node-control-transit-signing-key",
+                      "workload.node-control-signing-key"]',
+                    'operator-a', '2027-01-15T07:00:00Z', 'active', '{}')
+            """ % ("e" * 64)
+        )
+        for suffix, reference, intent in (
+            ("a", "secret://keys/transit", "gateway.node-control-transit-signing-key"),
+            ("b", "secret://keys/workload", "workload.node-control-signing-key"),
+            ("f", "secret://keys/other", "gateway.node-control-transit-signing-key"),
+        ):
+            connection.execute(
+                """
+                INSERT INTO cpk_secret_references
+                  (registration_id, workspace_id, secret_reference,
+                   provider_registration_id, allowed_intents, admitted_by,
+                   admitted_at, status, metadata)
+                VALUES (%s, 'workspace-a', %s, %s, %s, 'operator-a',
+                        '2027-01-15T07:00:00Z', 'active', '{}')
+                """,
+                (
+                    "sref_" + suffix * 64,
+                    reference,
+                    "sprov_" + "e" * 64,
+                    json.dumps([intent]),
+                ),
+            )
+        for suffix, purpose, key_id, reference in (
+            ("a", "gateway-node-control-transit", "transit-key", "secret://keys/transit"),
+            ("b", "workload-node-control", "workload-key", "secret://keys/workload"),
+            ("f", "gateway-node-control-transit", "other-key", "secret://keys/other"),
+        ):
+            connection.execute(
+                """
+                INSERT INTO cpk_delegation_signing_keys
+                  (registration_id, workspace_id, purpose, issuer, key_id,
+                   algorithm, public_key_pem, public_fingerprint_sha256,
+                   private_key_reference, admitted_by, admitted_at, status,
+                   activated_by, activated_at)
+                VALUES (%s, 'workspace-a', %s, 'cpk-server', %s, 'ed25519',
+                        '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n',
+                        %s, %s, 'operator-a', '2027-01-15T07:00:00Z',
+                        'active', 'operator-a', '2027-01-15T07:00:00Z')
+                """,
+                ("dkey_" + suffix * 64, purpose, key_id, suffix * 64, reference),
+            )
+        for suffix, reference_suffix, reference, intent, correlation in (
+            ("c", "a", "secret://keys/transit", "gateway.node-control-transit-signing-key", "transit-correlation-a"),
+            ("d", "b", "secret://keys/workload", "workload.node-control-signing-key", "workload-correlation-a"),
+            ("f", "f", "secret://keys/other", "gateway.node-control-transit-signing-key", "other-correlation"),
+        ):
+            connection.execute(
+                """
+                INSERT INTO cpk_secret_use_authorizations
+                  (authorization_id, workspace_id, reference_registration_id,
+                   provider_registration_id, secret_reference, use_intent,
+                   actor_subject, correlation_id, requested_at,
+                   intent_fingerprint)
+                VALUES (%s, 'workspace-a', %s, %s, %s, %s, 'operator-a',
+                        %s, '2027-01-15T08:00:00Z', %s)
+                """,
+                (
+                    "suse_" + suffix * 64,
+                    "sref_" + reference_suffix * 64,
+                    "sprov_" + "e" * 64,
+                    reference,
+                    intent,
+                    correlation,
+                    suffix * 64,
+                ),
+            )
+
+    def test_restart_round_trip_and_byte_corruption_are_exact(self) -> None:
+        attempt = self.attempt(1e20)
+        store = self.store_type(self.connection)
+        self.assertEqual(store.add(attempt), attempt)
+        self.assertEqual(store.get("attempt-a"), attempt)
+        self.assertEqual(
+            store.get_by_request_id("workspace-a", "request-a"),
+            attempt,
+        )
+        self.connection.execute(
+            "UPDATE cpk_node_control_attempts SET request_bytes = request_bytes || %s",
+            (b" ",),
+        )
+        with self.assertRaises(self.contract("NodeControlAttemptCorrupt")) as caught:
+            store.get("attempt-a")
+        self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+
+    def test_wrong_same_workspace_key_and_authorization_fail_closed(self) -> None:
+        store = self.store_type(self.connection)
+        store.add(self.attempt())
+        for column, value in (
+            ("transit_key_registration_id", "dkey_" + "f" * 64),
+            ("transit_authorization_id", "suse_" + "f" * 64),
+        ):
+            with self.subTest(column=column):
+                self.connection.execute(
+                    f"UPDATE cpk_node_control_attempts SET {column}=%s",
+                    (value,),
+                )
+                with self.assertRaises(self.contract("NodeControlAttemptCorrupt")):
+                    store.get("attempt-a")
+                self.connection.execute("TRUNCATE cpk_node_control_attempts")
+                store.add(self.attempt())
+
+    def test_rollback_idempotency_and_graph_advancement(self) -> None:
+        connection = psycopg.connect(self.database_url)
+        try:
+            store = self.store_type(connection)
+            store.add(self.attempt())
+            connection.rollback()
+        finally:
+            connection.close()
+        self.assertIsNone(
+            self.store_type(self.connection).get_by_request_id(
+                "workspace-a", "request-a"
+            )
+        )
+        store = self.store_type(self.connection)
+        store.add(self.attempt())
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            store.add(replace(self.attempt(), attempt_id="attempt-b"))
+        self.connection.execute(
+            """
+            INSERT INTO cpk_graph_versions
+              (graph_id, workspace_id, version, graph_descriptor, created_by,
+               created_at, metadata)
+            VALUES ('graph-next', 'workspace-a', 2, '{}', 'operator-a',
+                    '2027-01-15T09:00:00Z', '{}')
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_realized_graph_projections
+              (projection_id, workspace_id, source_authored_graph_id,
+               projection_kind, projection_key, projection_digest,
+               graph_descriptor, created_by, created_at)
+            VALUES ('projection-next', 'workspace-a', 'graph-next', 'identity',
+                    'next', %s, '{}', 'operator-a', '2027-01-15T09:00:00Z')
+            """,
+            ("2" * 64,),
+        )
+        self.connection.execute(
+            """
+            UPDATE cpk_workspaces SET current_graph_id='graph-next',
+              current_realized_projection_id='projection-next'
+            WHERE workspace_id='workspace-a'
+            """
+        )
+        self.assertEqual(store.get("attempt-a").current_graph_id, "graph-current")
+
+    def test_advisory_request_lock_serializes_two_connections(self) -> None:
+        first = psycopg.connect(self.database_url)
+        second = psycopg.connect(self.database_url)
+        acquired = threading.Event()
+        try:
+            self.store_type(first).lock_request_id("workspace-a", "request-a")
+
+            def acquire() -> None:
+                self.store_type(second).lock_request_id("workspace-a", "request-a")
+                acquired.set()
+
+            thread = threading.Thread(target=acquire)
+            thread.start()
+            time.sleep(0.2)
+            self.assertFalse(acquired.is_set())
+            first.commit()
+            thread.join(timeout=2)
+            self.assertTrue(acquired.is_set())
+        finally:
+            first.close()
+            second.close()
 
 
 if __name__ == "__main__":
