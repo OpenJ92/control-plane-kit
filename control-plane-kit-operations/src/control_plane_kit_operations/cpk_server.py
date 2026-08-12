@@ -1444,9 +1444,7 @@ def _read_model(
         )
     if route_id == "read.gateway-probe-timeline":
         return service.gateway_probe_timeline(
-            _workspace_id(args),
-            limit=_positive_int(args, "limit", default=50),
-            offset=_non_negative_int(args, "offset", default=0),
+            _required_page_request(page_request, ReadCollection.GATEWAY_PROBES)
         )
     if route_id == "read.gateway-probe-detail":
         return service.gateway_probe_detail(
@@ -1493,6 +1491,7 @@ _CLOSED_READ_ARGUMENTS = {
     "read.ingress-authorities": (None, True),
     "read.secret-providers": (None, True),
     "read.secret-references": (None, True),
+    "read.gateway-probe-timeline": (None, True),
     "read.delegation-keys": (None, True),
 }
 
@@ -1511,6 +1510,7 @@ _PAGED_READ_COLLECTIONS = {
     "read.ingress-authorities": ReadCollection.INGRESS_AUTHORITIES,
     "read.secret-providers": ReadCollection.SECRET_PROVIDERS,
     "read.secret-references": ReadCollection.SECRET_REFERENCES,
+    "read.gateway-probe-timeline": ReadCollection.GATEWAY_PROBES,
     "read.delegation-keys": ReadCollection.DELEGATION_SIGNING_KEYS,
 }
 

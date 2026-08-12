@@ -13,6 +13,7 @@ from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 
 READ_COLLECTION_SPECS = getattr(operations, "READ_COLLECTION_SPECS", None)
 DelegationKeyReadCursor = getattr(operations, "DelegationKeyReadCursor", None)
+EpochReadCursor = getattr(operations, "EpochReadCursor", None)
 IdentityReadCursor = getattr(operations, "IdentityReadCursor", None)
 OrdinalReadCursor = getattr(operations, "OrdinalReadCursor", None)
 PlanReadScope = getattr(operations, "PlanReadScope", None)
@@ -31,6 +32,12 @@ read_cursor_from_mapping = getattr(operations, "read_cursor_from_mapping", None)
 
 
 _INSTANT = "2026-08-12T12:34:56.123456Z"
+
+
+def _epoch_cursor(*args: object):
+    if EpochReadCursor is None:
+        raise AssertionError("EpochReadCursor is missing")
+    return EpochReadCursor(*args)
 
 
 class _HostileMapping(Mapping[str, object]):
@@ -103,6 +110,7 @@ class ReadPageContractTests(unittest.TestCase):
         expected = {
             "READ_COLLECTION_SPECS",
             "DelegationKeyReadCursor",
+            "EpochReadCursor",
             "IdentityReadCursor",
             "OrdinalReadCursor",
             "PlanReadScope",
@@ -141,7 +149,7 @@ class ReadPageContractTests(unittest.TestCase):
             ("SECRET_PROVIDERS", "secret-providers", "read.secret-providers", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("provider_id",)),
             ("SECRET_REFERENCES", "secret-references", "read.secret-references", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("registration_id",)),
             ("DELEGATION_SIGNING_KEYS", "delegation-signing-keys", "read.delegation-keys", WorkspaceReadScope, DelegationKeyReadCursor, ReadOrder.ASCENDING, ("purpose", "issuer", "key_id")),
-            ("GATEWAY_PROBES", "gateway-probes", "read.gateway-probe-timeline", WorkspaceReadScope, TemporalReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
+            ("GATEWAY_PROBES", "gateway-probes", "read.gateway-probe-timeline", WorkspaceReadScope, EpochReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
         )
         self.assertEqual(len(READ_COLLECTION_SPECS), 16)
         self.assertEqual(len(ReadCollection), 16)
@@ -187,6 +195,12 @@ class ReadPageContractTests(unittest.TestCase):
                 "issuer-a",
                 "key-a",
             ),
+            _epoch_cursor(
+                ReadCollection.GATEWAY_PROBES,
+                self.workspace(),
+                9_007_199_254_740_993,
+                "probe-a",
+            ),
         )
         expected = (
             ("session-actions", {"ordinal": 1, "item_id": "action-a"}),
@@ -196,6 +210,10 @@ class ReadPageContractTests(unittest.TestCase):
                 "purpose": "gateway-node-control-transit",
                 "issuer": "issuer-a",
                 "key_id": "key-a",
+            }),
+            ("gateway-probes", {
+                "epoch_second": "9007199254740993",
+                "item_id": "probe-a",
             }),
         )
         for value, (wire, position) in zip(values, expected, strict=True):
@@ -331,6 +349,12 @@ class ReadPageContractTests(unittest.TestCase):
                 "issuer-a",
                 "key-a",
             ),
+            _epoch_cursor(
+                ReadCollection.GATEWAY_PROBES,
+                self.workspace(),
+                1_800_000_000,
+                "probe-a",
+            ),
         )
         for cursor in variants:
             descriptor = cursor.descriptor()
@@ -401,6 +425,12 @@ class ReadPageContractTests(unittest.TestCase):
             "i" * 128,
             "k" * 128,
         )
+        _epoch_cursor(
+            ReadCollection.GATEWAY_PROBES,
+            self.workspace(),
+            9_223_372_036_854_775_807,
+            accepted,
+        )
         for scope_type, parent_field in (
             (WorkspaceReadScope, None),
             (SessionReadScope, "session"),
@@ -466,9 +496,83 @@ class ReadPageContractTests(unittest.TestCase):
             ),
             lambda: self.action_cursor(ordinal=True),
             lambda: self.action_cursor(ordinal=0),
+            lambda: _epoch_cursor(
+                ReadCollection.GATEWAY_PROBES,
+                self.workspace(),
+                True,
+                "probe-a",
+            ),
+            lambda: _epoch_cursor(
+                ReadCollection.GATEWAY_PROBES,
+                self.workspace(),
+                -1,
+                "probe-a",
+            ),
+            lambda: _epoch_cursor(
+                ReadCollection.GATEWAY_PROBES,
+                self.workspace(),
+                9_223_372_036_854_775_808,
+                "probe-a",
+            ),
+            lambda: _epoch_cursor(
+                ReadCollection.ACTIVITY_SESSIONS,
+                self.workspace(),
+                1,
+                "session-a",
+            ),
         ):
             with self.subTest(build=build):
                 self.assert_bounded_error(build)
+
+    def test_epoch_cursor_wire_is_canonical_decimal_text_over_exact_int8_domain(self) -> None:
+        self.require_contract()
+        for epoch_second in (0, 9_007_199_254_740_993, 9_223_372_036_854_775_807):
+            with self.subTest(epoch_second=epoch_second):
+                cursor = _epoch_cursor(
+                    ReadCollection.GATEWAY_PROBES,
+                    self.workspace(),
+                    epoch_second,
+                    "probe-a",
+                )
+                descriptor = cursor.descriptor()
+                self.assertEqual(
+                    descriptor["position"],
+                    {"epoch_second": str(epoch_second), "item_id": "probe-a"},
+                )
+                self.assertEqual(read_cursor_from_mapping(descriptor), cursor)
+
+        valid = _epoch_cursor(
+            ReadCollection.GATEWAY_PROBES,
+            self.workspace(),
+            1,
+            "probe-a",
+        ).descriptor()
+        for malformed in (
+            1,
+            True,
+            "",
+            "00",
+            "01",
+            "+1",
+            "-1",
+            " 1",
+            "1 ",
+            "1.0",
+            "1e3",
+            "9223372036854775808",
+            "9" * 512,
+        ):
+            candidate = {
+                **valid,
+                "position": {
+                    **valid["position"],
+                    "epoch_second": malformed,
+                },
+            }
+            with self.subTest(malformed=malformed):
+                self.assert_bounded_error(
+                    lambda value=candidate: read_cursor_from_mapping(value),
+                )
 
     def test_temporal_cursor_requires_canonical_microsecond_utc_text(self) -> None:
         self.require_contract()

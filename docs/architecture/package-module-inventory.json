@@ -4691,7 +4691,6 @@
       "canonical_public_exports": [
         "ActivityTimelineReadModel",
         "ControlSurfaceReadModel",
-        "FocusedCollectionReadModel",
         "FocusedDetailReadModel",
         "GraphPointerReadModel",
         "InstanceReadService",
@@ -4743,7 +4742,6 @@
         "GraphPointerReadModel",
         "WorkspaceReadModel",
         "ActivityTimelineReadModel",
-        "FocusedCollectionReadModel",
         "FocusedDetailReadModel",
         "NodeControlSurfaceReadModel",
         "ControlSurfaceReadModel",

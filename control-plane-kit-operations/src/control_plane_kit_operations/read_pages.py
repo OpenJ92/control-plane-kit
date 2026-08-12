@@ -17,6 +17,8 @@ _DELEGATION_IDENTIFIER = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
 _CANONICAL_INSTANT = re.compile(
     r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z$"
 )
+_CANONICAL_EPOCH_SECOND = re.compile(r"^(?:0|[1-9][0-9]{0,18})$")
+_POSTGRES_INT8_MAX = 9_223_372_036_854_775_807
 _CURSOR_KEYS = frozenset({"format_version", "collection", "scope", "position"})
 
 T = TypeVar("T")
@@ -153,6 +155,29 @@ class TemporalReadCursor:
 
 
 @dataclass(frozen=True, slots=True)
+class EpochReadCursor:
+    collection: ReadCollection
+    scope: ReadScope
+    epoch_second: int
+    item_id: str
+
+    def __post_init__(self) -> None:
+        _cursor_header(self.collection, self.scope, type(self))
+        _epoch_second(self.epoch_second)
+        _general_identifier(self.item_id)
+
+    def descriptor(self) -> dict[str, object]:
+        return _cursor_descriptor(
+            self.collection,
+            self.scope,
+            {
+                "epoch_second": str(self.epoch_second),
+                "item_id": self.item_id,
+            },
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class IdentityReadCursor:
     collection: ReadCollection
     scope: ReadScope
@@ -200,6 +225,7 @@ class DelegationKeyReadCursor:
 ReadCursor = (
     OrdinalReadCursor
     | TemporalReadCursor
+    | EpochReadCursor
     | IdentityReadCursor
     | DelegationKeyReadCursor
 )
@@ -231,7 +257,7 @@ READ_COLLECTION_SPECS = (
     ReadCollectionSpec(ReadCollection.SECRET_PROVIDERS, "read.secret-providers", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("provider_id",)),
     ReadCollectionSpec(ReadCollection.SECRET_REFERENCES, "read.secret-references", WorkspaceReadScope, IdentityReadCursor, ReadOrder.ASCENDING, ("registration_id",)),
     ReadCollectionSpec(ReadCollection.DELEGATION_SIGNING_KEYS, "read.delegation-keys", WorkspaceReadScope, DelegationKeyReadCursor, ReadOrder.ASCENDING, ("purpose", "issuer", "key_id")),
-    ReadCollectionSpec(ReadCollection.GATEWAY_PROBES, "read.gateway-probe-timeline", WorkspaceReadScope, TemporalReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
+    ReadCollectionSpec(ReadCollection.GATEWAY_PROBES, "read.gateway-probe-timeline", WorkspaceReadScope, EpochReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
 )
 _SPEC_BY_COLLECTION = {spec.collection: spec for spec in READ_COLLECTION_SPECS}
 _COLLECTION_BY_VALUE = {collection.value: collection for collection in ReadCollection}
@@ -293,6 +319,7 @@ class ReadPageCandidate(Generic[T]):
             (
                 OrdinalReadCursor,
                 TemporalReadCursor,
+                EpochReadCursor,
                 IdentityReadCursor,
                 DelegationKeyReadCursor,
             ),
@@ -403,6 +430,19 @@ def _canonical_instant(value: object) -> None:
         raise ReadPageError("temporal cursor instant is malformed")
 
 
+def _epoch_second(value: object) -> None:
+    if type(value) is not int or not 0 <= value <= _POSTGRES_INT8_MAX:
+        raise ReadPageError("epoch cursor position is malformed")
+
+
+def _epoch_second_from_wire(value: object) -> int:
+    if type(value) is not str or _CANONICAL_EPOCH_SECOND.fullmatch(value) is None:
+        raise ReadPageError("epoch cursor position is malformed")
+    epoch_second = int(value)
+    _epoch_second(epoch_second)
+    return epoch_second
+
+
 def _cursor_header(
     collection: object,
     scope: object,
@@ -472,6 +512,14 @@ def _position_from_mapping(
             value["instant"],
             value["item_id"],
         )
+    if spec.cursor_type is EpochReadCursor:
+        _exact_keys(value, frozenset({"epoch_second", "item_id"}), "epoch position")
+        return EpochReadCursor(
+            spec.collection,
+            scope,
+            _epoch_second_from_wire(value["epoch_second"]),
+            value["item_id"],
+        )
     if spec.cursor_type is IdentityReadCursor:
         _exact_keys(value, frozenset({"item_id"}), "identity position")
         return IdentityReadCursor(spec.collection, scope, value["item_id"])
@@ -508,6 +556,7 @@ def _matching_cursor(request: ReadPageRequest, cursor: ReadCursor) -> None:
 __all__ = [
     "READ_COLLECTION_SPECS",
     "DelegationKeyReadCursor",
+    "EpochReadCursor",
     "IdentityReadCursor",
     "OrdinalReadCursor",
     "PlanReadScope",

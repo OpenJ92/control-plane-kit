@@ -429,6 +429,7 @@ from .records import (
 from .read_pages import (
     READ_COLLECTION_SPECS,
     DelegationKeyReadCursor,
+    EpochReadCursor,
     IdentityReadCursor,
     OrdinalReadCursor,
     PlanReadScope,
@@ -447,7 +448,6 @@ from .read_pages import (
 )
 from .read_services import (
     ControlSurfaceReadModel,
-    FocusedCollectionReadModel,
     FocusedDetailReadModel,
     GraphPointerReadModel,
     InstanceReadService,
@@ -859,7 +859,7 @@ __all__ = [
     "WorkspaceReadModel",
     "WorkspaceSummary",
     "ControlSurfaceReadModel",
-    "FocusedCollectionReadModel",
+    "EpochReadCursor",
     "FocusedDetailReadModel",
     "GraphPointerReadModel",
     "InstanceReadService",

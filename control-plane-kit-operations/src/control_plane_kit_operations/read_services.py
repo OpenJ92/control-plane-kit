@@ -160,14 +160,7 @@ class SecretReferenceStore(Protocol):
 
 class GatewayProbeStore(Protocol):
     def get(self, probe_id: str) -> object: ...
-    def list_for_workspace(
-        self,
-        workspace_id: str,
-        *,
-        limit: int,
-        offset: int,
-    ) -> tuple[object, ...]: ...
-    def count_for_workspace(self, workspace_id: str) -> int: ...
+    def page(self, request: ReadPageRequest) -> ReadPage[object]: ...
 
 
 class DelegationSigningKeyStore(Protocol):
@@ -264,27 +257,6 @@ class WorkspaceReadModel:
             "workspace": self.workspace.descriptor(),
             "current_graph": self.current_graph.descriptor(),
             "desired_graph": self.desired_graph.descriptor(),
-        }
-
-
-@dataclass(frozen=True)
-class FocusedCollectionReadModel:
-    workspace_id: str
-    kind: str
-    limit: int
-    offset: int
-    total: int
-    items: tuple[Mapping[str, object], ...]
-
-    def descriptor(self) -> dict[str, object]:
-        return {
-            "workspace_id": self.workspace_id,
-            "kind": self.kind,
-            "limit": self.limit,
-            "offset": self.offset,
-            "total": self.total,
-            "has_more": self.offset + len(self.items) < self.total,
-            "items": [dict(item) for item in self.items],
         }
 
 
@@ -777,27 +749,14 @@ class InstanceReadService:
 
     def gateway_probe_timeline(
         self,
-        workspace_id: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> FocusedCollectionReadModel:
-        limit, offset = _page(limit, offset)
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        workspace_id = request.scope.workspace_id
         self._workspace(workspace_id)
         if self._gateway_probe_store is None:
             raise ReadModelError("gateway probe store is not configured")
-        attempts = self._gateway_probe_store.list_for_workspace(
-            workspace_id,
-            limit=limit,
-            offset=offset,
-        )
-        return FocusedCollectionReadModel(
-            workspace_id=workspace_id,
-            kind="gateway-probe-timeline",
-            limit=limit,
-            offset=offset,
-            total=self._gateway_probe_store.count_for_workspace(workspace_id),
-            items=tuple(value.descriptor() for value in attempts),
+        return self._gateway_probe_store.page(request).map(
+            lambda value: dict(value.descriptor())
         )
 
     def gateway_probe_detail(
@@ -1412,26 +1371,6 @@ def _observation_descriptor(projected: ProjectedObservation) -> dict[str, object
         ),
         "payload": _redact_descriptor_value("payload", record.evidence.descriptor()),
     }
-
-
-def _positive_limit(limit: int) -> int:
-    if type(limit) is not int or limit < 1:
-        raise ReadModelError(f"limit must be positive, got {limit}")
-    return limit
-
-
-def _bounded_limit(limit: int) -> int:
-    limit = _positive_limit(limit)
-    if limit > 100:
-        raise ReadModelError(f"limit must not exceed 100, got {limit}")
-    return limit
-
-
-def _page(limit: int, offset: int) -> tuple[int, int]:
-    limit = _bounded_limit(limit)
-    if type(offset) is not int or offset < 0:
-        raise ReadModelError(f"offset must be non-negative, got {offset}")
-    return limit, offset
 
 
 def _session_in_workspace(

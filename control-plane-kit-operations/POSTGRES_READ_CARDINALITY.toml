@@ -212,11 +212,11 @@ consumer = "GatewayKeyRotationStore reconstructs both finite deployment checkpoi
 
 [[read]]
 module = "control_plane_kit_operations.postgres.gateway_probe_store"
-selector = "GatewayProbeStore.list_for_workspace"
-category = "public-unbounded"
-sql = "workspace filter; issued epoch/probe identity descending; offset limit lacks a global public bound"
+selector = "GatewayProbeStore.page"
+category = "public-paged"
+sql = "workspace filter; issued epoch/probe identity descending; strict tuple seek; limit plus one capped at 101"
 consumer_kind = "production"
-consumer = "InstanceReadService gateway-probe timeline pending epoch keyset paging in issue 1594"
+consumer = "InstanceReadService gateway-probe timeline returns one bounded ReadPage"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.image_pull_authority_store"
