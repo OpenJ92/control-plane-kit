@@ -44,10 +44,7 @@ _ENDPOINT_TOKEN_SPLIT = re.compile(r"[\s,;(){}<>\"']+")
 
 
 class NodeControlPublicWireViolation(StrEnum):
-    IDENTIFIER_SHAPE = "identifier-shape"
-    REFERENCE_SHAPE = "reference-shape"
-    DIGEST_SHAPE = "digest-shape"
-    EPOCH_BOUNDS = "epoch-bounds"
+    SHAPE_INVALID = "shape-invalid"
     CREDENTIAL_ENVELOPE = "credential-envelope"
     ENDPOINT_ENVELOPE = "endpoint-envelope"
 
@@ -83,7 +80,7 @@ def identifier_violation(value: object) -> NodeControlPublicWireViolation | None
         or len(value) > _MAX_IDENTIFIER
         or not _IDENTIFIER.fullmatch(value)
     ):
-        return NodeControlPublicWireViolation.IDENTIFIER_SHAPE
+        return NodeControlPublicWireViolation.SHAPE_INVALID
     return public_material_violation(value)
 
 
@@ -93,19 +90,19 @@ def reference_violation(value: object) -> NodeControlPublicWireViolation | None:
         or len(value) > _MAX_REFERENCE
         or not _REFERENCE.fullmatch(value)
     ):
-        return NodeControlPublicWireViolation.REFERENCE_SHAPE
+        return NodeControlPublicWireViolation.SHAPE_INVALID
     return public_material_violation(value)
 
 
 def digest_violation(value: object) -> NodeControlPublicWireViolation | None:
     if not isinstance(value, str) or not _DIGEST.fullmatch(value):
-        return NodeControlPublicWireViolation.DIGEST_SHAPE
+        return NodeControlPublicWireViolation.SHAPE_INVALID
     return None
 
 
 def epoch_violation(value: object) -> NodeControlPublicWireViolation | None:
     if type(value) is not int or value < 0 or value > _MAX_SAFE_INTEGER:
-        return NodeControlPublicWireViolation.EPOCH_BOUNDS
+        return NodeControlPublicWireViolation.SHAPE_INVALID
     return None
 
 

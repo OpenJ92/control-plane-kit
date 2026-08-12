@@ -725,7 +725,7 @@ def _require_digest(value: object, name: str) -> None:
 
 def _require_identifier(value: object, name: str) -> None:
     violation = identifier_violation(value)
-    if violation is NodeControlPublicWireViolation.IDENTIFIER_SHAPE:
+    if violation is NodeControlPublicWireViolation.SHAPE_INVALID:
         raise NodeControlSurfaceReadContractError(
             f"{name} must be a bounded identifier"
         )
@@ -734,7 +734,7 @@ def _require_identifier(value: object, name: str) -> None:
 
 def _require_reference(value: object, name: str) -> None:
     violation = reference_violation(value)
-    if violation is NodeControlPublicWireViolation.REFERENCE_SHAPE:
+    if violation is NodeControlPublicWireViolation.SHAPE_INVALID:
         raise NodeControlSurfaceReadContractError(
             f"{name} must be a bounded reference"
         )
@@ -759,6 +759,10 @@ def _raise_public_material_violation(
     if violation is NodeControlPublicWireViolation.ENDPOINT_ENVELOPE:
         raise NodeControlSurfaceReadContractError(
             f"{name} violates endpoint-envelope public-material law"
+        )
+    if violation is not None:
+        raise NodeControlSurfaceReadContractError(
+            f"{name} violates public-material law"
         )
 
 

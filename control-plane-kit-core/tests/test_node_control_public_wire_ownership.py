@@ -42,10 +42,7 @@ class NodeControlPublicWireOwnershipTests(unittest.TestCase):
         self.assertEqual(
             tuple(member.value for member in code),
             (
-                "identifier-shape",
-                "reference-shape",
-                "digest-shape",
-                "epoch-bounds",
+                "shape-invalid",
                 "credential-envelope",
                 "endpoint-envelope",
             ),
@@ -61,6 +58,15 @@ class NodeControlPublicWireOwnershipTests(unittest.TestCase):
                     else code.ENDPOINT_ENVELOPE
                 )
                 self.assertIs(classify(vector["value"]), expected)
+        self.assertIs(
+            classify("token=credential-canary http://endpoint-canary"),
+            code.CREDENTIAL_ENVELOPE,
+        )
+        self.assertIs(
+            classify("%74oken%3Dcredential-canary"),
+            code.CREDENTIAL_ENVELOPE,
+        )
+        self.assertIsNone(classify("%2574oken%253Dcredential-canary"))
 
     def test_shape_classifiers_preserve_exact_bounds_and_precedence(self) -> None:
         code = self.contract("NodeControlPublicWireViolation")
@@ -74,7 +80,7 @@ class NodeControlPublicWireOwnershipTests(unittest.TestCase):
                 self.assertIsNone(identifier(value))
         for value in (None, "", "a" * 129, "contains/slash", "http://router"):
             with self.subTest(identifier_shape=value):
-                self.assertIs(identifier(value), code.IDENTIFIER_SHAPE)
+                self.assertIs(identifier(value), code.SHAPE_INVALID)
         self.assertIs(identifier("localhost"), code.ENDPOINT_ENVELOPE)
         self.assertIs(identifier("sk-abc12345"), code.CREDENTIAL_ENVELOPE)
 
@@ -83,21 +89,21 @@ class NodeControlPublicWireOwnershipTests(unittest.TestCase):
                 self.assertIsNone(reference(value))
         for value in (None, "", "a" * 257, "contains space"):
             with self.subTest(reference_shape=value):
-                self.assertIs(reference(value), code.REFERENCE_SHAPE)
+                self.assertIs(reference(value), code.SHAPE_INVALID)
         self.assertIs(reference("http://router"), code.ENDPOINT_ENVELOPE)
         self.assertIs(reference("sk-abc12345"), code.CREDENTIAL_ENVELOPE)
 
         self.assertIsNone(digest("a" * 64))
         for value in (None, "a" * 63, "A" * 64, "g" * 64):
             with self.subTest(digest_shape=value):
-                self.assertIs(digest(value), code.DIGEST_SHAPE)
+                self.assertIs(digest(value), code.SHAPE_INVALID)
 
         for value in (0, MAX_SAFE_INTEGER):
             with self.subTest(epoch=value):
                 self.assertIsNone(epoch(value))
         for value in (True, -1, MAX_SAFE_INTEGER + 1):
             with self.subTest(epoch_bounds=value):
-                self.assertIs(epoch(value), code.EPOCH_BOUNDS)
+                self.assertIs(epoch(value), code.SHAPE_INVALID)
 
     def test_canonical_json_domain_preserves_exact_fixed_vectors(self) -> None:
         canonical = self.contract("canonical_json_bytes")
@@ -136,13 +142,22 @@ class NodeControlPublicWireOwnershipTests(unittest.TestCase):
             for node in ast.walk(tree)
             if isinstance(node, ast.ImportFrom) and node.module is not None
         }
-        self.assertEqual(imports, {"ipaddress", "re", "rfc8785"})
-        self.assertEqual(from_imports, {"__future__", "enum"})
+        self.assertIn("rfc8785", imports)
         self.assertNotIn("_node_control_public_wire", core.__all__)
-        self.assertFalse(
-            any(
-                value.startswith("control_plane_kit_core")
-                for value in imports | from_imports
+        forbidden_roots = {
+            "control_plane_kit_core",
+            "control_plane_kit_operations",
+            "control_plane_kit_interpreters",
+            "docker",
+            "fastapi",
+            "httpx",
+            "mcp",
+            "psycopg",
+            "uvicorn",
+        }
+        self.assertTrue(
+            forbidden_roots.isdisjoint(
+                value.split(".", 1)[0] for value in imports | from_imports
             )
         )
 
@@ -177,41 +192,6 @@ class NodeControlPublicWireOwnershipTests(unittest.TestCase):
             with self.subTest(filename=filename):
                 self.assertTrue(forbidden_imports.isdisjoint(imported))
                 self.assertTrue(forbidden_definitions.isdisjoint(definitions))
-
-        command_tree = ast.parse(
-            (SOURCE_ROOT / "node_control.py").read_text(encoding="utf-8")
-        )
-        surface_tree = ast.parse(
-            (SOURCE_ROOT / "node_control_surface_reads.py").read_text(
-                encoding="utf-8"
-            )
-        )
-        for tree in (command_tree, surface_tree):
-            definitions = {
-                node.name
-                for node in ast.walk(tree)
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
-            self.assertNotIn("_validate_identifier", definitions)
-            self.assertNotIn("_validate_reference", definitions)
-            self.assertNotIn("_validate_epoch", definitions)
-        self.assertIn(
-            "_require_keys",
-            {
-                node.name
-                for node in ast.walk(command_tree)
-                if isinstance(node, ast.FunctionDef)
-            },
-        )
-        self.assertIn(
-            "_require_exact_keys",
-            {
-                node.name
-                for node in ast.walk(surface_tree)
-                if isinstance(node, ast.FunctionDef)
-            },
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -1665,14 +1665,14 @@ def _validate_graph_reference(
 
 def _require_identifier(value: object, name: str) -> None:
     violation = identifier_violation(value)
-    if violation is NodeControlPublicWireViolation.IDENTIFIER_SHAPE:
+    if violation is NodeControlPublicWireViolation.SHAPE_INVALID:
         raise NodeControlContractError(f"{name} must be a bounded identifier")
     _raise_public_material_violation(violation, name)
 
 
 def _require_reference(value: object, name: str) -> None:
     violation = reference_violation(value)
-    if violation is NodeControlPublicWireViolation.REFERENCE_SHAPE:
+    if violation is NodeControlPublicWireViolation.SHAPE_INVALID:
         raise NodeControlContractError(f"{name} must be a bounded reference")
     _raise_public_material_violation(violation, name)
 
@@ -1733,6 +1733,8 @@ def _raise_public_material_violation(
         raise NodeControlContractError(
             f"{name} violates endpoint-envelope public-material law"
         )
+    if violation is not None:
+        raise NodeControlContractError(f"{name} violates public-material law")
 
 
 def _validate_descriptor_size(descriptor: object, name: str) -> None:
