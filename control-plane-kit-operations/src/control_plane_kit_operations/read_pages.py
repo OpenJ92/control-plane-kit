@@ -300,19 +300,33 @@ class ReadPageCandidate(Generic[T]):
             raise ReadPageError("read candidate cursor is malformed")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ReadPage(Generic[T]):
     request: ReadPageRequest
     items: tuple[T, ...]
     next_cursor: ReadCursor | None
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.request, ReadPageRequest):
+    def __init__(self) -> None:
+        raise ReadPageError("read pages require ordered candidates")
+
+    @classmethod
+    def _from_parts(
+        cls,
+        request: ReadPageRequest,
+        items: tuple[T, ...],
+        next_cursor: ReadCursor | None,
+    ) -> ReadPage[T]:
+        if type(request) is not ReadPageRequest:
             raise ReadPageError("read page request is malformed")
-        if type(self.items) is not tuple or len(self.items) > self.request.limit:
+        if type(items) is not tuple or len(items) > request.limit:
             raise ReadPageError("read page items are malformed")
-        if self.next_cursor is not None:
-            _matching_cursor(self.request, self.next_cursor)
+        if next_cursor is not None:
+            _matching_cursor(request, next_cursor)
+        page = object.__new__(cls)
+        object.__setattr__(page, "request", request)
+        object.__setattr__(page, "items", items)
+        object.__setattr__(page, "next_cursor", next_cursor)
+        return page
 
     @classmethod
     def from_candidates(
@@ -336,10 +350,14 @@ class ReadPage(Generic[T]):
             if len(candidates) == request.limit + 1
             else None
         )
-        return cls(request, tuple(candidate.item for candidate in exposed), next_cursor)
+        return cls._from_parts(
+            request,
+            tuple(candidate.item for candidate in exposed),
+            next_cursor,
+        )
 
     def map(self, mapper: Callable[[T], U]) -> ReadPage[U]:
-        return ReadPage(
+        return ReadPage._from_parts(
             self.request,
             tuple(mapper(item) for item in self.items),
             self.next_cursor,
