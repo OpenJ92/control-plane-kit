@@ -5,6 +5,7 @@ import unittest
 
 import psycopg
 
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
@@ -23,11 +24,16 @@ from control_plane_kit_operations.postgres.secret_provider_store import (
 from control_plane_kit_operations.postgres import current_schema_contract
 from control_plane_kit_operations.postgres import schema
 from control_plane_kit_operations.read_pages import (
+    DelegationKeyReadCursor,
+    EpochReadCursor,
+    IdentityReadCursor,
+    OrdinalReadCursor,
     PlanReadScope,
     ReadCollection,
     ReadPageRequest,
     RunReadScope,
     SessionReadScope,
+    TemporalReadCursor,
     WorkspaceReadScope,
 )
 
@@ -164,9 +170,16 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.ACTIVITY_SESSIONS,
                         WorkspaceReadScope("workspace-target"),
                         100,
+                        TemporalReadCursor(
+                            ReadCollection.ACTIVITY_SESSIONS,
+                            WorkspaceReadScope("workspace-target"),
+                            "2026-08-12T00:01:40.000000Z",
+                            "session-100",
+                        ),
                     )
                 ),
                 {"cpk_operation_sessions_workspace_timeline"},
+                ("workspace_id", "created_at", "session_id"),
             ),
             (
                 "open-sessions",
@@ -176,9 +189,16 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.OPEN_SESSIONS,
                         WorkspaceReadScope("workspace-target"),
                         100,
+                        TemporalReadCursor(
+                            ReadCollection.OPEN_SESSIONS,
+                            WorkspaceReadScope("workspace-target"),
+                            "2026-08-12T00:01:40.000000Z",
+                            "session-100",
+                        ),
                     )
                 ),
                 {"cpk_operation_sessions_open_timeline"},
+                ("workspace_id", "created_at", "session_id"),
             ),
             (
                 "plans",
@@ -188,9 +208,16 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.SESSION_PLANS,
                         SessionReadScope("workspace-target", "session-target"),
                         100,
+                        TemporalReadCursor(
+                            ReadCollection.SESSION_PLANS,
+                            SessionReadScope("workspace-target", "session-target"),
+                            "2026-08-12T00:01:40.000000Z",
+                            "plan-100",
+                        ),
                     )
                 ),
                 {"cpk_activity_plans_session_timeline"},
+                ("session_id", "created_at", "plan_id"),
             ),
             (
                 "session-approvals",
@@ -202,9 +229,16 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.SESSION_APPROVALS,
                         SessionReadScope("workspace-target", "session-target"),
                         100,
+                        TemporalReadCursor(
+                            ReadCollection.SESSION_APPROVALS,
+                            SessionReadScope("workspace-target", "session-target"),
+                            "2026-08-12T02:46:40.000000Z",
+                            "approval-target-100",
+                        ),
                     )
                 ),
                 {"cpk_approval_requests_session_timeline"},
+                ("session_id", "requested_at", "request_id"),
             ),
             (
                 "plan-runs",
@@ -214,9 +248,16 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.PLAN_RUNS,
                         PlanReadScope("workspace-target", "plan-target"),
                         100,
+                        TemporalReadCursor(
+                            ReadCollection.PLAN_RUNS,
+                            PlanReadScope("workspace-target", "plan-target"),
+                            "2026-08-12T00:01:40.000000Z",
+                            "run-100",
+                        ),
                     )
                 ),
                 {"cpk_activity_runs_plan_timeline"},
+                ("plan_id", "created_at", "run_id"),
             ),
             (
                 "secret-references",
@@ -226,13 +267,19 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.SECRET_REFERENCES,
                         WorkspaceReadScope("workspace-target"),
                         100,
+                        IdentityReadCursor(
+                            ReadCollection.SECRET_REFERENCES,
+                            WorkspaceReadScope("workspace-target"),
+                            "registration-00010000-target",
+                        ),
                     )
                 ),
                 {"cpk_secret_references_active_registration"},
+                ("workspace_id", "registration_id"),
             ),
         )
 
-        for name, seed, invoke, expected_indexes in cases:
+        for name, seed, invoke, expected_indexes, qualification_fields in cases:
             with self.subTest(case=name):
                 self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
                 seed()
@@ -249,6 +296,7 @@ class QueryPathPlannerTests(unittest.TestCase):
                         if "Index Name" in node
                     },
                 )
+                self._assert_plan_qualifications(plan, qualification_fields)
 
     def test_pending_approvals_adapt_between_sparse_and_dense_tenants(self) -> None:
         self._seed_pending_approvals(target_count=201, foreign_count=20_000)
@@ -297,9 +345,16 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.SESSION_ACTIONS,
                         SessionReadScope("workspace-target", "session-target"),
                         100,
+                        OrdinalReadCursor(
+                            ReadCollection.SESSION_ACTIONS,
+                            SessionReadScope("workspace-target", "session-target"),
+                            100,
+                            "action-100",
+                        ),
                     )
                 ),
                 "cpk_operation_actions_session_id_ordinal_key",
+                ("session_id", "ordinal", "action_id"),
             ),
             (
                 "run-events",
@@ -309,9 +364,16 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.RUN_EVENTS,
                         RunReadScope("workspace-target", "run-target"),
                         100,
+                        OrdinalReadCursor(
+                            ReadCollection.RUN_EVENTS,
+                            RunReadScope("workspace-target", "run-target"),
+                            100,
+                            "event-100",
+                        ),
                     )
                 ),
                 "cpk_activity_events_run_id_ordinal_key",
+                ("run_id", "ordinal", "event_id"),
             ),
             (
                 "latest-observations",
@@ -323,9 +385,15 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.LATEST_OBSERVATIONS,
                         WorkspaceReadScope("workspace-target"),
                         100,
+                        IdentityReadCursor(
+                            ReadCollection.LATEST_OBSERVATIONS,
+                            WorkspaceReadScope("workspace-target"),
+                            "subject-000100",
+                        ),
                     )
                 ),
                 "cpk_observations_latest_subject",
+                ("workspace_id", "subject_id"),
             ),
             (
                 "delegation-signing-keys",
@@ -337,9 +405,17 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.DELEGATION_SIGNING_KEYS,
                         WorkspaceReadScope("workspace-target"),
                         100,
+                        DelegationKeyReadCursor(
+                            ReadCollection.DELEGATION_SIGNING_KEYS,
+                            WorkspaceReadScope("workspace-target"),
+                            DelegationKeyPurpose.GATEWAY_PROBE,
+                            "issuer-0",
+                            "key-000100",
+                        ),
                     )
                 ),
                 "cpk_delegation_signing_keys_workspace_id_purpose_issuer_key_key",
+                ("workspace_id", "purpose", "issuer", "key_id"),
             ),
             (
                 "gateway-probes",
@@ -349,13 +425,20 @@ class QueryPathPlannerTests(unittest.TestCase):
                         ReadCollection.GATEWAY_PROBES,
                         WorkspaceReadScope("workspace-target"),
                         100,
+                        EpochReadCursor(
+                            ReadCollection.GATEWAY_PROBES,
+                            WorkspaceReadScope("workspace-target"),
+                            9000,
+                            "probe-9000",
+                        ),
                     )
                 ),
                 "cpk_gateway_probe_workspace_timeline",
+                ("workspace_id", "issued_at", "probe_id"),
             ),
         )
 
-        for name, seed, invoke, expected_index in cases:
+        for name, seed, invoke, expected_index, qualification_fields in cases:
             with self.subTest(case=name):
                 self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
                 seed()
@@ -372,6 +455,7 @@ class QueryPathPlannerTests(unittest.TestCase):
                         if "Index Name" in node
                     },
                 )
+                self._assert_plan_qualifications(plan, qualification_fields)
 
     def _pending_plan(self) -> dict[str, object]:
         observed = _ObservingConnection()
@@ -400,6 +484,21 @@ class QueryPathPlannerTests(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(row)
         return row[0][0]["Plan"]
+
+    def _assert_plan_qualifications(
+        self,
+        plan: dict[str, object],
+        fields: tuple[str, ...],
+    ) -> None:
+        condition_text = " ".join(
+            str(node[key])
+            for node in _plan_nodes(plan)
+            for key in ("Index Cond", "Recheck Cond", "Filter")
+            if key in node
+        )
+        for field in fields:
+            with self.subTest(qualification=field):
+                self.assertIn(field, condition_text)
 
     def _workspace(self, workspace_id: str) -> None:
         self.connection.execute(
