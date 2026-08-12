@@ -10,12 +10,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 import hashlib
-import ipaddress
-import re
 from typing import Mapping
 
-import rfc8785
-
+from control_plane_kit_core._node_control_public_wire import (
+    NodeControlCanonicalDomainError,
+    NodeControlPublicWireViolation,
+    canonical_json_bytes,
+    digest_violation,
+    epoch_violation,
+    identifier_violation,
+    reference_violation,
+)
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.node_control import (
     MAX_NODE_CONTROL_PAYLOAD_BYTES,
@@ -34,38 +39,6 @@ MAX_NODE_CONTROL_SURFACE_READ_REQUEST_BYTES = 951
 MAX_DELEGATED_NODE_CONTROL_SURFACE_READ_GRANT_BYTES = 1_984
 MAX_WORKLOAD_NODE_CONTROL_SURFACE_READ_GRANT_LIFETIME_SECONDS = 300
 
-_MAX_IDENTIFIER = 128
-_MAX_REFERENCE = 256
-_MAX_SAFE_INTEGER = 2**53 - 1
-_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-_REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
-_DIGEST = re.compile(r"^[0-9a-f]{64}$")
-_ASCII_PERCENT_ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
-_AUTHORIZATION_ENVELOPE = re.compile(
-    r"(?i)(?<![A-Za-z0-9_-])(?:"
-    r"authorization[ \t]*:[ \t]*[A-Za-z][A-Za-z0-9._+-]*[ \t]+"
-    r"|bearer[ \t]+"
-    r")[^\s,;]+"
-)
-_CREDENTIAL_ASSIGNMENT = re.compile(
-    r"(?i)(?<![A-Za-z0-9_-])"
-    r"(?:credential|password|secret|signature|token)"
-    r"[ \t]*=[ \t]*[^\s,;]+"
-)
-_PRIVATE_KEY_ARMOR = re.compile(
-    r"(?i)-----begin(?: [A-Za-z0-9]+)* private key-----"
-)
-_COMPACT_TOKEN = re.compile(
-    r"(?i)(?<![A-Za-z0-9])(?:sk-|sg\.)[A-Za-z0-9][A-Za-z0-9._-]*"
-)
-_SCHEME_ENDPOINT = re.compile(r"(?i)[A-Za-z][A-Za-z0-9+.-]*://[^\s/]")
-_PROTOCOL_RELATIVE_ENDPOINT = re.compile(r"(?:^|[\s(\"'=])//[^\s/]")
-_HOST_PORT_ENDPOINT = re.compile(
-    r"(?<![A-Za-z0-9._:\[\]-])"
-    r"(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9][A-Za-z0-9.-]*):(\d{1,5})"
-    r"(?![A-Za-z0-9])"
-)
-_ENDPOINT_TOKEN_SPLIT = re.compile(r"[\s,;(){}<>\"']+")
 
 _DECLARATION_KEYS = frozenset({"profile", "surface"})
 _REQUEST_KEYS = frozenset(
@@ -119,7 +92,7 @@ class WorkloadNodeControlSurfaceDeclarationIdentity:
     value: str
 
     def __post_init__(self) -> None:
-        _validate_digest(self.value, "surface declaration identity")
+        _require_digest(self.value, "surface declaration identity")
 
 
 @dataclass(frozen=True, order=True)
@@ -231,7 +204,7 @@ class NodeControlSurfaceReadRequestDigest:
     value: str
 
     def __post_init__(self) -> None:
-        _validate_digest(self.value, "surface-read request digest")
+        _require_digest(self.value, "surface-read request digest")
 
 
 @dataclass(frozen=True, order=True)
@@ -265,7 +238,7 @@ class NodeControlSurfaceReadRequest:
             raise NodeControlSurfaceReadContractError(
                 "surface-read request declaration identity is malformed"
             )
-        _validate_identifier(self.request_id, "surface-read request_id")
+        _require_identifier(self.request_id, "surface-read request_id")
         if not isinstance(self.profile, NodeControlSurfaceReadRequestProfile):
             raise NodeControlSurfaceReadContractError(
                 "surface-read request profile is unknown"
@@ -389,9 +362,9 @@ class DelegatedWorkloadNodeControlSurfaceReadGrant:
             raise NodeControlSurfaceReadContractError(
                 "surface-read grant purpose is unknown"
             )
-        _validate_reference(self.issuer, "surface-read grant issuer")
-        _validate_identifier(self.key_id, "surface-read grant key_id")
-        _validate_reference(self.audience, "surface-read grant audience")
+        _require_reference(self.issuer, "surface-read grant issuer")
+        _require_identifier(self.key_id, "surface-read grant key_id")
+        _require_reference(self.audience, "surface-read grant audience")
         if not isinstance(self.target, NodeControlTarget):
             raise NodeControlSurfaceReadContractError(
                 "surface-read grant target is malformed"
@@ -407,7 +380,7 @@ class DelegatedWorkloadNodeControlSurfaceReadGrant:
             raise NodeControlSurfaceReadContractError(
                 "surface-read grant declaration identity is malformed"
             )
-        _validate_identifier(self.request_id, "surface-read grant request_id")
+        _require_identifier(self.request_id, "surface-read grant request_id")
         if not isinstance(self.request_digest, NodeControlSurfaceReadRequestDigest):
             raise NodeControlSurfaceReadContractError(
                 "surface-read grant request digest is malformed"
@@ -417,7 +390,7 @@ class DelegatedWorkloadNodeControlSurfaceReadGrant:
             (self.not_before, "surface-read grant not_before"),
             (self.expires_at, "surface-read grant expires_at"),
         ):
-            _validate_epoch(value, name)
+            _require_epoch(value, name)
         if self.not_before < self.issued_at:
             raise NodeControlSurfaceReadContractError(
                 "surface-read grant not_before precedes issued_at"
@@ -433,7 +406,7 @@ class DelegatedWorkloadNodeControlSurfaceReadGrant:
             raise NodeControlSurfaceReadContractError(
                 "surface-read grant lifetime exceeds 300 seconds"
             )
-        _validate_identifier(self.jti, "surface-read grant jti")
+        _require_identifier(self.jti, "surface-read grant jti")
         _bounded_canonical_bytes(
             self.descriptor(),
             MAX_DELEGATED_NODE_CONTROL_SURFACE_READ_GRANT_BYTES,
@@ -597,10 +570,10 @@ def verify_workload_node_control_surface_read_grant(
         raise NodeControlSurfaceReadContractError(
             "surface-read verification requires NodeControlSurfaceReadRequest"
         )
-    _validate_reference(expected_issuer, "expected surface-read issuer")
-    _validate_identifier(expected_key_id, "expected surface-read key_id")
-    _validate_reference(expected_audience, "expected surface-read audience")
-    _validate_epoch(now, "surface-read verification time")
+    _require_reference(expected_issuer, "expected surface-read issuer")
+    _require_identifier(expected_key_id, "expected surface-read key_id")
+    _require_reference(expected_audience, "expected surface-read audience")
+    _require_epoch(now, "surface-read verification time")
 
     reject = WorkloadNodeControlSurfaceReadGrantVerificationResult.reject
     code = WorkloadNodeControlSurfaceReadGrantVerificationCode
@@ -648,8 +621,8 @@ def _bounded_mapping(
 
 def _bounded_canonical_bytes(value: object, maximum: int, name: str) -> bytes:
     try:
-        encoded = rfc8785.dumps(value)
-    except rfc8785.CanonicalizationError:
+        encoded = canonical_json_bytes(value)
+    except NodeControlCanonicalDomainError:
         pass
     else:
         if len(encoded) <= maximum:
@@ -743,111 +716,54 @@ def _enum(enum_type: type[StrEnum], value: object, name: str):
     return member
 
 
-def _validate_digest(value: object, name: str) -> None:
-    if not isinstance(value, str) or not _DIGEST.fullmatch(value):
+def _require_digest(value: object, name: str) -> None:
+    if digest_violation(value) is not None:
         raise NodeControlSurfaceReadContractError(
             f"{name} must be 64 lowercase hex characters"
         )
 
 
-def _validate_identifier(value: object, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) > _MAX_IDENTIFIER
-        or not _IDENTIFIER.fullmatch(value)
-    ):
+def _require_identifier(value: object, name: str) -> None:
+    violation = identifier_violation(value)
+    if violation is NodeControlPublicWireViolation.SHAPE_INVALID:
         raise NodeControlSurfaceReadContractError(
             f"{name} must be a bounded identifier"
         )
-    _reject_prohibited_public_material(value, name)
+    _raise_public_material_violation(violation, name)
 
 
-def _validate_reference(value: object, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) > _MAX_REFERENCE
-        or not _REFERENCE.fullmatch(value)
-    ):
+def _require_reference(value: object, name: str) -> None:
+    violation = reference_violation(value)
+    if violation is NodeControlPublicWireViolation.SHAPE_INVALID:
         raise NodeControlSurfaceReadContractError(
             f"{name} must be a bounded reference"
         )
-    _reject_prohibited_public_material(value, name)
+    _raise_public_material_violation(violation, name)
 
 
-def _validate_epoch(value: object, name: str) -> None:
-    if type(value) is not int or value < 0 or value > _MAX_SAFE_INTEGER:
+def _require_epoch(value: object, name: str) -> None:
+    if epoch_violation(value) is not None:
         raise NodeControlSurfaceReadContractError(
             f"{name} must be a bounded nonnegative integer epoch second"
         )
 
 
-def _reject_prohibited_public_material(value: str, name: str) -> None:
-    projections = (value, _ascii_percent_projection(value))
-    if any(_contains_credential_envelope(candidate) for candidate in projections):
+def _raise_public_material_violation(
+    violation: NodeControlPublicWireViolation | None,
+    name: str,
+) -> None:
+    if violation is NodeControlPublicWireViolation.CREDENTIAL_ENVELOPE:
         raise NodeControlSurfaceReadContractError(
             f"{name} violates credential-envelope public-material law"
         )
-    if any(_contains_endpoint_envelope(candidate) for candidate in projections):
+    if violation is NodeControlPublicWireViolation.ENDPOINT_ENVELOPE:
         raise NodeControlSurfaceReadContractError(
             f"{name} violates endpoint-envelope public-material law"
         )
-
-
-def _ascii_percent_projection(value: str) -> str:
-    def replace(match: re.Match[str]) -> str:
-        decoded = int(match.group(1), 16)
-        return chr(decoded) if decoded <= 0x7F else match.group(0)
-
-    return _ASCII_PERCENT_ESCAPE.sub(replace, value)
-
-
-def _contains_credential_envelope(value: str) -> bool:
-    return any(
-        pattern.search(value) is not None
-        for pattern in (
-            _AUTHORIZATION_ENVELOPE,
-            _CREDENTIAL_ASSIGNMENT,
-            _PRIVATE_KEY_ARMOR,
-            _COMPACT_TOKEN,
+    if violation is not None:
+        raise NodeControlSurfaceReadContractError(
+            f"{name} violates public-material law"
         )
-    )
-
-
-def _contains_endpoint_envelope(value: str) -> bool:
-    if (
-        _SCHEME_ENDPOINT.search(value) is not None
-        or _PROTOCOL_RELATIVE_ENDPOINT.search(value) is not None
-    ):
-        return True
-    for match in _HOST_PORT_ENDPOINT.finditer(value):
-        if 1 <= int(match.group(2)) <= 65_535:
-            return True
-    for token in _ENDPOINT_TOKEN_SPLIT.split(value):
-        atom = token.strip("[]").rstrip(".")
-        if not atom:
-            continue
-        if _is_localhost_endpoint(atom):
-            return True
-        try:
-            ipaddress.ip_address(atom)
-        except ValueError:
-            continue
-        return True
-    return False
-
-
-def _is_localhost_endpoint(atom: str) -> bool:
-    lowered = atom.lower().rstrip(".")
-    if ":" in lowered:
-        host, separator, port = lowered.rpartition(":")
-        if (
-            not separator
-            or not port.isdigit()
-            or not 1 <= int(port) <= 65_535
-        ):
-            return False
-        lowered = host.rstrip(".")
-    return lowered == "localhost" or lowered.endswith(".localhost")
 
 
 __all__ = [

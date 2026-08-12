@@ -10,13 +10,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 import hashlib
-import ipaddress
 import math
-import re
 from typing import Mapping
 
-import rfc8785
-
+from control_plane_kit_core._node_control_public_wire import (
+    NodeControlCanonicalDomainError,
+    NodeControlPublicWireViolation,
+    canonical_json_bytes,
+    digest_violation,
+    epoch_violation,
+    identifier_violation,
+    public_material_violation,
+    reference_violation,
+)
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.control_routes import ControlRouteSetName
 
@@ -28,39 +34,8 @@ MAX_NODE_CONTROL_SURFACES = 16
 MAX_NODE_CONTROL_VARIABLES_PER_SURFACE = 128
 MAX_WORKLOAD_NODE_CONTROL_GRANT_LIFETIME_SECONDS = 300
 
-_MAX_IDENTIFIER = 128
-_MAX_REFERENCE = 256
 _MAX_DESCRIPTION = 512
 _MAX_SAFE_INTEGER = 2**53 - 1
-_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-_REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
-_DIGEST = re.compile(r"^[0-9a-f]{64}$")
-_ASCII_PERCENT_ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
-_AUTHORIZATION_ENVELOPE = re.compile(
-    r"(?i)(?<![A-Za-z0-9_-])(?:"
-    r"authorization[ \t]*:[ \t]*[A-Za-z][A-Za-z0-9._+-]*[ \t]+"
-    r"|bearer[ \t]+"
-    r")[^\s,;]+"
-)
-_CREDENTIAL_ASSIGNMENT = re.compile(
-    r"(?i)(?<![A-Za-z0-9_-])"
-    r"(?:credential|password|secret|signature|token)"
-    r"[ \t]*=[ \t]*[^\s,;]+"
-)
-_PRIVATE_KEY_ARMOR = re.compile(
-    r"(?i)-----begin(?: [A-Za-z0-9]+)* private key-----"
-)
-_COMPACT_TOKEN = re.compile(
-    r"(?i)(?<![A-Za-z0-9])(?:sk-|sg\.)[A-Za-z0-9][A-Za-z0-9._-]*"
-)
-_SCHEME_ENDPOINT = re.compile(r"(?i)[A-Za-z][A-Za-z0-9+.-]*://[^\s/]")
-_PROTOCOL_RELATIVE_ENDPOINT = re.compile(r"(?:^|[\s(\"'=])//[^\s/]")
-_HOST_PORT_ENDPOINT = re.compile(
-    r"(?<![A-Za-z0-9._:\[\]-])"
-    r"(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9][A-Za-z0-9.-]*):(\d{1,5})"
-    r"(?![A-Za-z0-9])"
-)
-_ENDPOINT_TOKEN_SPLIT = re.compile(r"[\s,;(){}<>\"']+")
 
 _TARGET_KEYS = frozenset(
     {"workspace_id", "graph_revision", "node_id", "provider_socket_name"}
@@ -241,7 +216,7 @@ class NodeControlGraphReference:
     def __post_init__(self) -> None:
         if not isinstance(self.role, NodeControlGraphReferenceRole):
             raise NodeControlContractError("node-control graph reference role is unknown")
-        _validate_identifier(self.value, "node-control graph reference")
+        _require_identifier(self.value, "node-control graph reference")
 
 
 @dataclass(frozen=True, order=True)
@@ -330,7 +305,7 @@ class MapControlState:
                     "map state entries must be key/value tuples"
                 )
             key, value = entry
-            _validate_identifier(key, "map state key")
+            _require_identifier(key, "map state key")
             _validate_scalar(value, "map state value")
             normalized.append((key, value))
         keys = tuple(key for key, _ in normalized)
@@ -462,7 +437,7 @@ class NodeControlRequestDigest:
     value: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.value, str) or not _DIGEST.fullmatch(self.value):
+        if digest_violation(self.value) is not None:
             raise NodeControlContractError(
                 "node-control request digest must be 64 lowercase hex characters"
             )
@@ -496,8 +471,8 @@ class NodeControlCommandRequest:
         )
         if not isinstance(self.operation, NodeControlOperation):
             raise NodeControlContractError("node-control operation is unknown")
-        _validate_identifier(self.request_id, "node-control request_id")
-        _validate_identifier(
+        _require_identifier(self.request_id, "node-control request_id")
+        _require_identifier(
             self.idempotency_key,
             "node-control idempotency_key",
         )
@@ -629,9 +604,9 @@ class DelegatedWorkloadNodeControlGrant:
     jti: str = field(repr=False)
 
     def __post_init__(self) -> None:
-        _validate_reference(self.issuer, "workload grant issuer")
-        _validate_identifier(self.key_id, "workload grant key_id")
-        _validate_reference(self.audience, "workload grant audience")
+        _require_reference(self.issuer, "workload grant issuer")
+        _require_identifier(self.key_id, "workload grant key_id")
+        _require_reference(self.audience, "workload grant audience")
         if not isinstance(self.target, NodeControlTarget):
             raise NodeControlContractError(
                 "workload grant target must be NodeControlTarget"
@@ -652,8 +627,8 @@ class DelegatedWorkloadNodeControlGrant:
             raise NodeControlContractError(
                 "apply-command workload grant requires command codec"
             )
-        _validate_identifier(self.request_id, "workload grant request_id")
-        _validate_identifier(
+        _require_identifier(self.request_id, "workload grant request_id")
+        _require_identifier(
             self.idempotency_key,
             "workload grant idempotency_key",
         )
@@ -666,7 +641,7 @@ class DelegatedWorkloadNodeControlGrant:
             (self.not_before, "workload grant not_before"),
             (self.expires_at, "workload grant expires_at"),
         ):
-            _validate_epoch(value, name)
+            _require_epoch(value, name)
         if self.not_before < self.issued_at:
             raise NodeControlContractError(
                 "workload grant not_before must not precede issued_at"
@@ -682,7 +657,7 @@ class DelegatedWorkloadNodeControlGrant:
             raise NodeControlContractError(
                 "workload grant lifetime must not exceed 300 seconds"
             )
-        _validate_identifier(self.jti, "workload grant jti")
+        _require_identifier(self.jti, "workload grant jti")
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -816,9 +791,9 @@ def verify_workload_node_control_grant(
         raise NodeControlContractError(
             "workload grant verification requires NodeControlCommandRequest"
         )
-    _validate_reference(expected_issuer, "expected workload grant issuer")
-    _validate_reference(expected_audience, "expected workload grant audience")
-    _validate_epoch(now, "workload grant verification time")
+    _require_reference(expected_issuer, "expected workload grant issuer")
+    _require_reference(expected_audience, "expected workload grant audience")
+    _require_epoch(now, "workload grant verification time")
     if not isinstance(grant, DelegatedWorkloadNodeControlGrant):
         return WorkloadNodeControlGrantVerificationResult.reject(
             WorkloadNodeControlGrantVerificationCode.GRANT_TYPE_MISMATCH
@@ -897,7 +872,7 @@ class NodeControlReadStateSucceeded:
     state: ControlStateValue
 
     def __post_init__(self) -> None:
-        _validate_identifier(self.request_id, "node-control result request_id")
+        _require_identifier(self.request_id, "node-control result request_id")
         if not isinstance(self.state_codec, ControlPlaneStateCodec):
             raise NodeControlContractError(
                 "node-control read result state codec is unknown"
@@ -943,7 +918,7 @@ class NodeControlTransitionSucceeded:
     evidence: NodeControlEvidence
 
     def __post_init__(self) -> None:
-        _validate_identifier(self.request_id, "node-control result request_id")
+        _require_identifier(self.request_id, "node-control result request_id")
         _validate_version(self.version, "node-control result version")
         if not isinstance(self.evidence, NodeControlEvidence):
             raise NodeControlContractError(
@@ -990,7 +965,7 @@ class NodeControlRejected:
     evidence: NodeControlEvidence
 
     def __post_init__(self) -> None:
-        _validate_identifier(self.request_id, "node-control result request_id")
+        _require_identifier(self.request_id, "node-control result request_id")
         if not isinstance(self.operation, NodeControlOperation):
             raise NodeControlContractError("node-control result operation is unknown")
         if not isinstance(self.evidence, NodeControlEvidence):
@@ -1030,7 +1005,7 @@ class NodeControlFailed:
     operation: NodeControlOperation
 
     def __post_init__(self) -> None:
-        _validate_identifier(self.request_id, "node-control result request_id")
+        _require_identifier(self.request_id, "node-control result request_id")
         if not isinstance(self.operation, NodeControlOperation):
             raise NodeControlContractError("node-control result operation is unknown")
         _validate_descriptor_size(self.descriptor(), "node-control result")
@@ -1688,24 +1663,18 @@ def _validate_graph_reference(
         raise NodeControlContractError(f"{name} must be a nominal {role.value} reference")
 
 
-def _validate_identifier(value: object, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) > _MAX_IDENTIFIER
-        or not _IDENTIFIER.fullmatch(value)
-    ):
+def _require_identifier(value: object, name: str) -> None:
+    violation = identifier_violation(value)
+    if violation is NodeControlPublicWireViolation.SHAPE_INVALID:
         raise NodeControlContractError(f"{name} must be a bounded identifier")
-    _reject_prohibited_public_material(value, name)
+    _raise_public_material_violation(violation, name)
 
 
-def _validate_reference(value: object, name: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) > _MAX_REFERENCE
-        or not _REFERENCE.fullmatch(value)
-    ):
+def _require_reference(value: object, name: str) -> None:
+    violation = reference_violation(value)
+    if violation is NodeControlPublicWireViolation.SHAPE_INVALID:
         raise NodeControlContractError(f"{name} must be a bounded reference")
-    _reject_prohibited_public_material(value, name)
+    _raise_public_material_violation(violation, name)
 
 
 def _validate_public_text(value: object, name: str, *, max_length: int) -> None:
@@ -1716,7 +1685,7 @@ def _validate_public_text(value: object, name: str, *, max_length: int) -> None:
         or "\x00" in value
     ):
         raise NodeControlContractError(f"{name} must be bounded public text")
-    _reject_prohibited_public_material(value, name)
+    _raise_public_material_violation(public_material_violation(value), name)
 
 
 def _validate_scalar(value: object, name: str) -> None:
@@ -1733,7 +1702,7 @@ def _validate_scalar(value: object, name: str) -> None:
             )
         return
     if isinstance(value, str):
-        _validate_identifier(value, name)
+        _require_identifier(value, name)
         return
     raise NodeControlContractError(f"{name} must be a public scalar")
 
@@ -1745,80 +1714,27 @@ def _validate_version(value: object, name: str) -> None:
         )
 
 
-def _validate_epoch(value: object, name: str) -> None:
-    if type(value) is not int or value < 0 or value > _MAX_SAFE_INTEGER:
+def _require_epoch(value: object, name: str) -> None:
+    if epoch_violation(value) is not None:
         raise NodeControlContractError(
             f"{name} must be a bounded nonnegative integer epoch second"
         )
 
 
-def _reject_prohibited_public_material(value: str, name: str) -> None:
-    projections = (value, _ascii_percent_projection(value))
-    if any(_contains_credential_envelope(candidate) for candidate in projections):
+def _raise_public_material_violation(
+    violation: NodeControlPublicWireViolation | None,
+    name: str,
+) -> None:
+    if violation is NodeControlPublicWireViolation.CREDENTIAL_ENVELOPE:
         raise NodeControlContractError(
             f"{name} violates credential-envelope public-material law"
         )
-    if any(_contains_endpoint_envelope(candidate) for candidate in projections):
+    if violation is NodeControlPublicWireViolation.ENDPOINT_ENVELOPE:
         raise NodeControlContractError(
             f"{name} violates endpoint-envelope public-material law"
         )
-
-
-def _ascii_percent_projection(value: str) -> str:
-    def replace(match: re.Match[str]) -> str:
-        decoded = int(match.group(1), 16)
-        return chr(decoded) if decoded <= 0x7F else match.group(0)
-
-    return _ASCII_PERCENT_ESCAPE.sub(replace, value)
-
-
-def _contains_credential_envelope(value: str) -> bool:
-    return any(
-        pattern.search(value) is not None
-        for pattern in (
-            _AUTHORIZATION_ENVELOPE,
-            _CREDENTIAL_ASSIGNMENT,
-            _PRIVATE_KEY_ARMOR,
-            _COMPACT_TOKEN,
-        )
-    )
-
-
-def _contains_endpoint_envelope(value: str) -> bool:
-    if (
-        _SCHEME_ENDPOINT.search(value) is not None
-        or _PROTOCOL_RELATIVE_ENDPOINT.search(value) is not None
-    ):
-        return True
-    for match in _HOST_PORT_ENDPOINT.finditer(value):
-        if 1 <= int(match.group(2)) <= 65_535:
-            return True
-    for token in _ENDPOINT_TOKEN_SPLIT.split(value):
-        atom = token.strip("[]").rstrip(".")
-        if not atom:
-            continue
-        if _is_localhost_endpoint(atom):
-            return True
-        try:
-            ipaddress.ip_address(atom)
-        except ValueError:
-            continue
-        return True
-    return False
-
-
-def _is_localhost_endpoint(atom: str) -> bool:
-    lowered = atom.lower().rstrip(".")
-    if ":" in lowered:
-        host, separator, port = lowered.rpartition(":")
-        if (
-            not separator
-            or not port.isdigit()
-            or not 1 <= int(port) <= 65_535
-        ):
-            return False
-        lowered = host.rstrip(".")
-    return lowered == "localhost" or lowered.endswith(".localhost")
+    if violation is not None:
+        raise NodeControlContractError(f"{name} violates public-material law")
 
 
 def _validate_descriptor_size(descriptor: object, name: str) -> None:
@@ -1829,8 +1745,8 @@ def _validate_descriptor_size(descriptor: object, name: str) -> None:
 
 def _canonical_bytes(descriptor: object, name: str) -> bytes:
     try:
-        encoded = rfc8785.dumps(descriptor)
-    except rfc8785.CanonicalizationError:
+        encoded = canonical_json_bytes(descriptor)
+    except NodeControlCanonicalDomainError:
         pass
     else:
         return encoded
