@@ -16,12 +16,14 @@ from .current_schema_verification import (
 
 
 class PostgresConnection(Protocol):
+    def execute(self, query: str, params: object = ...) -> Any: ...
+
+
+class _SchemaConnection(PostgresConnection, Protocol):
     @property
     def autocommit(self) -> bool: ...
 
     def transaction(self) -> ContextManager[Any]: ...
-
-    def execute(self, query: str, params: object = ...) -> Any: ...
 
 
 class SchemaInstallationError(RuntimeError):
@@ -48,7 +50,7 @@ _CURRENT_RELATION_LOCK_SQL = "\n".join(
 )
 
 
-def install_schema(connection: PostgresConnection) -> None:
+def install_schema(connection: _SchemaConnection) -> None:
     """Create an empty owned namespace or verify exact current truth."""
 
     try:
@@ -72,7 +74,7 @@ def install_schema(connection: PostgresConnection) -> None:
         raise SchemaInstallationError(failure) from None
 
 
-def _install_under_transaction(connection: PostgresConnection) -> None:
+def _install_under_transaction(connection: _SchemaConnection) -> None:
     connection.execute(_ADVISORY_LOCK_SQL)
     if namespace_is_object_free(connection):
         connection.execute(_CURRENT_SCHEMA_SQL)

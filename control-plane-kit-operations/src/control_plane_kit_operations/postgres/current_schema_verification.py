@@ -95,7 +95,7 @@ SELECT count(*) = %s
 FROM pg_class AS relation
 JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
 WHERE namespace.nspname = current_schema()
-  AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
+  AND relation.relkind = 'r'
   AND relation.relname = ANY(%s)
 """
 
