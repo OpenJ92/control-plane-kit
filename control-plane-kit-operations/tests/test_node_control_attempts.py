@@ -5,7 +5,7 @@ import importlib
 import json
 import os
 from pathlib import Path
-from dataclasses import replace
+from dataclasses import fields, replace
 import threading
 import time
 import unittest
@@ -177,13 +177,23 @@ class NodeControlAttemptTests(unittest.TestCase):
         self.assertNotIn("signature", repr(attempt).lower())
 
     def test_record_rejects_cross_value_and_caller_fingerprint_drift(self) -> None:
-        record_type = self.contract("NodeControlIntendedAttempt")
         attempt = self.attempt()
         changed = self.request(2)
         with self.assertRaises(self.contract("NodeControlAttemptError")):
             replace(attempt, request=changed)
-        with self.assertRaises(TypeError):
-            record_type(intent_fingerprint="f" * 64)
+        self.assertNotIn("intent_fingerprint", {field.name for field in fields(attempt)})
+        self.assertEqual(
+            replace(
+                attempt,
+                intended_at="2027-01-15T09:00:00Z",
+                transit_grant=replace(attempt.transit_grant, expires_at=201),
+            ).intent_fingerprint,
+            attempt.intent_fingerprint,
+        )
+        self.assertNotEqual(
+            replace(attempt, actor_subject="operator-b").intent_fingerprint,
+            attempt.intent_fingerprint,
+        )
 
     def test_store_surface_and_schema_are_current_only(self) -> None:
         self.contract("NodeControlAttemptStore")
@@ -203,15 +213,18 @@ class NodeControlAttemptTests(unittest.TestCase):
                 """
             ).fetchall()
         names = {name for name, _ in columns}
-        self.assertTrue({"request_bytes", "transit_grant_bytes", "workload_grant_bytes"} <= names)
-        self.assertEqual(
-            names
-            & {
-                "status", "result", "completed_at", "signature", "compact_token",
-                "endpoint", "private_key_reference", "metadata",
-            },
-            set(),
-        )
+        self.assertEqual(names, {
+            "attempt_id", "workspace_id", "request_id", "actor_subject",
+            "current_graph_id", "current_realized_projection_id",
+            "gateway_runtime_id", "transit_key_registration_id",
+            "workload_key_registration_id", "transit_authorization_id",
+            "workload_authorization_id", "transit_correlation_id",
+            "workload_correlation_id", "request_bytes", "request_digest",
+            "transit_grant_bytes", "transit_grant_digest", "workload_grant_bytes",
+            "workload_grant_digest", "transit_issuer", "transit_key_id",
+            "transit_jti", "workload_issuer", "workload_key_id", "workload_jti",
+            "intended_at", "intent_fingerprint",
+        })
         self.assertEqual(
             dict(columns)["request_bytes"],
             "bytea",
@@ -238,15 +251,19 @@ class NodeControlAttemptTests(unittest.TestCase):
 
 class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
     def setUp(self) -> None:
-        self.store_type = self.contract("NodeControlAttemptStore")
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
             self.fail("CPK_OPERATIONS_TEST_DATABASE_URL is required")
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
-        install_schema(self.connection)
-        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
-        self._seed_truth(self.connection)
+        try:
+            install_schema(self.connection)
+            self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+            self._seed_truth(self.connection)
+            self.store_type = self.contract("NodeControlAttemptStore")
+        except BaseException:
+            self.connection.close()
+            raise
 
     def tearDown(self) -> None:
         self.connection.close()
@@ -321,10 +338,19 @@ class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
                     json.dumps([intent]),
                 ),
             )
-        for suffix, purpose, key_id, reference in (
-            ("a", "gateway-node-control-transit", "transit-key", "secret://keys/transit"),
-            ("b", "workload-node-control", "workload-key", "secret://keys/workload"),
-            ("f", "gateway-node-control-transit", "other-key", "secret://keys/other"),
+        for suffix, purpose, issuer, key_id, reference in (
+            (
+                "a", "gateway-node-control-transit", "cpk-server",
+                "transit-key", "secret://keys/transit",
+            ),
+            (
+                "b", "workload-node-control", "cpk-server",
+                "workload-key", "secret://keys/workload",
+            ),
+            (
+                "f", "gateway-node-control-transit", "other-server",
+                "other-key", "secret://keys/other",
+            ),
         ):
             connection.execute(
                 """
@@ -333,12 +359,19 @@ class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
                    algorithm, public_key_pem, public_fingerprint_sha256,
                    private_key_reference, admitted_by, admitted_at, status,
                    activated_by, activated_at)
-                VALUES (%s, 'workspace-a', %s, 'cpk-server', %s, 'ed25519',
+                VALUES (%s, 'workspace-a', %s, %s, %s, 'ed25519',
                         '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n',
                         %s, %s, 'operator-a', '2027-01-15T07:00:00Z',
                         'active', 'operator-a', '2027-01-15T07:00:00Z')
                 """,
-                ("dkey_" + suffix * 64, purpose, key_id, suffix * 64, reference),
+                (
+                    "dkey_" + suffix * 64,
+                    purpose,
+                    issuer,
+                    key_id,
+                    suffix * 64,
+                    reference,
+                ),
             )
         for suffix, reference_suffix, reference, intent, correlation in (
             ("c", "a", "secret://keys/transit", "gateway.node-control-transit-signing-key", "transit-correlation-a"),
@@ -370,11 +403,16 @@ class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
         attempt = self.attempt(1e20)
         store = self.store_type(self.connection)
         self.assertEqual(store.add(attempt), attempt)
-        self.assertEqual(store.get("attempt-a"), attempt)
-        self.assertEqual(
-            store.get_by_request_id("workspace-a", "request-a"),
-            attempt,
-        )
+        restarted = psycopg.connect(self.database_url, autocommit=True)
+        try:
+            restarted_store = self.store_type(restarted)
+            self.assertEqual(restarted_store.get("attempt-a"), attempt)
+            self.assertEqual(
+                restarted_store.get_by_request_id("workspace-a", "request-a"),
+                attempt,
+            )
+        finally:
+            restarted.close()
         self.connection.execute(
             "UPDATE cpk_node_control_attempts SET request_bytes = request_bytes || %s",
             (b" ",),
@@ -384,6 +422,7 @@ class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
         self.assertLessEqual(len(str(caught.exception)), 128)
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
+        self.connection.execute("TRUNCATE cpk_node_control_attempts")
 
     def test_wrong_same_workspace_key_and_authorization_fail_closed(self) -> None:
         store = self.store_type(self.connection)
@@ -391,6 +430,8 @@ class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
         for column, value in (
             ("transit_key_registration_id", "dkey_" + "f" * 64),
             ("transit_authorization_id", "suse_" + "f" * 64),
+            ("workload_key_registration_id", "dkey_" + "f" * 64),
+            ("workload_authorization_id", "suse_" + "f" * 64),
         ):
             with self.subTest(column=column):
                 self.connection.execute(
@@ -417,7 +458,7 @@ class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
         )
         store = self.store_type(self.connection)
         store.add(self.attempt())
-        with self.assertRaises(psycopg.errors.UniqueViolation):
+        with self.assertRaises(self.contract("NodeControlAttemptConflict")):
             store.add(replace(self.attempt(), attempt_id="attempt-b"))
         self.connection.execute(
             """
@@ -452,6 +493,7 @@ class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
         first = psycopg.connect(self.database_url)
         second = psycopg.connect(self.database_url)
         acquired = threading.Event()
+        thread = None
         try:
             self.store_type(first).lock_request_id("workspace-a", "request-a")
 
@@ -467,6 +509,10 @@ class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
             thread.join(timeout=2)
             self.assertTrue(acquired.is_set())
         finally:
+            first.rollback()
+            second.rollback()
+            if thread is not None:
+                thread.join(timeout=2)
             first.close()
             second.close()
 
