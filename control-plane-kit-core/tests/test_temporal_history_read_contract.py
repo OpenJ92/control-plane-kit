@@ -53,7 +53,7 @@ class TemporalHistoryReadContractTests(unittest.TestCase):
             with self.subTest(operation_id=operation_id):
                 route = routes.route(route_id)
                 projection = projections.projection(operation_id)
-                self.assertEqual(route.path, path)
+                self.assertEqual(route.path_template, path)
                 self.assertIs(route.auth_scope, HttpAuthScope.READ)
                 self.assertIs(route.safety, HttpOperationSafety.READ_ONLY)
                 self.assertIs(projection.kind, kind)

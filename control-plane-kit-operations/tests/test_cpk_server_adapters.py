@@ -581,6 +581,57 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         self.assertEqual(set(http), {"workspace_id", "kind", "limit", "items", "next_cursor"})
         self.assertEqual(http["items"][0]["payload"]["note"], "ok")
 
+    def test_http_and_mcp_temporal_history_pages_are_identical(self) -> None:
+        self.seed_run_event()
+        service = CpkServerReadService(self.unit_of_work)
+        cases = (
+            ("read.activity", {}, None),
+            ("read.sessions", {}, None),
+            ("read.session-plans", {"session_id": "session-a"}, "plan-a"),
+            (
+                "read.session-approvals",
+                {"session_id": "session-a"},
+                "approval-a",
+            ),
+            ("read.pending-approvals", {}, None),
+            ("read.plan-runs", {"plan_id": "plan-a"}, "run-a"),
+        )
+
+        for route_id, parent, expected_id in cases:
+            with self.subTest(route_id=route_id):
+                http = service.handle(
+                    RouteRequest(
+                        surface="http",
+                        route_id=route_id,
+                        service_role=ControlPlaneServiceRole.READS,
+                        path_parameters={"workspace_id": "workspace-a", **parent},
+                        payload={"limit": 10},
+                    )
+                )
+                mcp = service.handle(
+                    RouteRequest(
+                        surface="mcp",
+                        route_id=route_id,
+                        service_role=ControlPlaneServiceRole.READS,
+                        path_parameters={},
+                        payload={"workspace_id": "workspace-a", **parent, "limit": 10},
+                    )
+                )
+
+                self.assertEqual(http, mcp)
+                self.assertEqual(
+                    set(http),
+                    {"workspace_id", "kind", "limit", "items", "next_cursor"},
+                )
+                if expected_id is not None:
+                    identities = {
+                        str(value)
+                        for item in http["items"]
+                        for key, value in item.items()
+                        if key in {"plan_id", "request_id", "run_id"}
+                    }
+                    self.assertIn(expected_id, identities)
+
     def test_journal_routes_reject_ambiguous_or_unbounded_arguments_before_uow(self) -> None:
         entered = False
 

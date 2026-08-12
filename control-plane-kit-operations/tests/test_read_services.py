@@ -211,6 +211,25 @@ class InstanceReadServiceTests(unittest.TestCase):
 
     def test_temporal_child_pages_are_independent_and_parent_details_are_thin(self) -> None:
         self.seed_activity()
+        self.connection.execute(
+            """
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at)
+            VALUES ('decision-a', 'approval-a', 'manager-a', 'approved',
+                    'plan:approve', '2026-07-22T11:04:00Z');
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint)
+            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
+                    'operator-a', '2026-07-22T11:05:00Z', 'approval-a',
+                    'decision-a', 'request-a', 'fingerprint-a');
+            INSERT INTO cpk_activity_runs
+              (run_id, plan_id, request_id, attempt, status, created_at, metadata)
+            VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed',
+                    '2026-07-22T11:06:00Z', '{}'::jsonb)
+            """
+        )
         service = self.service()
 
         plans = service.session_plans(

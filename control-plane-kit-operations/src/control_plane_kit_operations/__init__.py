@@ -446,7 +446,6 @@ from .read_pages import (
     read_cursor_from_mapping,
 )
 from .read_services import (
-    ActivityTimelineReadModel,
     ControlSurfaceReadModel,
     FocusedCollectionReadModel,
     FocusedDetailReadModel,
@@ -867,7 +866,6 @@ __all__ = [
     "WorkspaceCommandService",
     "WorkspaceReadModel",
     "WorkspaceSummary",
-    "ActivityTimelineReadModel",
     "ControlSurfaceReadModel",
     "FocusedCollectionReadModel",
     "FocusedDetailReadModel",

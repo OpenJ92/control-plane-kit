@@ -1,8 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
+import os
 from types import SimpleNamespace
 import unittest
+
+import psycopg
+
+from tests.graph_lineage_fixture import seed_identity_graphs
+
+from control_plane_kit_core.planning import ActivityPlan, DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit_operations.postgres import PostgresStoreBundle, install_schema
 
 from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
@@ -193,6 +202,203 @@ class ThinDetailProtocolTests(unittest.TestCase):
         self.assertNotIn("approvals", descriptor)
         self.assertNotIn("runs", descriptor)
         self.assertNotIn("events", descriptor)
+
+
+class FilteredTemporalMembershipTests(unittest.TestCase):
+    def setUp(self) -> None:
+        database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
+        if not database_url:
+            raise RuntimeError("CPK_OPERATIONS_TEST_DATABASE_URL is required")
+        self.database_url = database_url
+        self.connection = psycopg.connect(database_url, autocommit=True)
+        install_schema(self.connection)
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self._seed_truth()
+
+    def tearDown(self) -> None:
+        self.connection.close()
+
+    def test_open_session_closure_changes_later_statement_membership_without_duplicates(self) -> None:
+        request = ReadPageRequest(
+            ReadCollection.OPEN_SESSIONS,
+            WorkspaceReadScope("workspace-a"),
+            1,
+        )
+        with psycopg.connect(self.database_url) as reader:
+            first = PostgresActivityHistoryStore(reader).session_page(request)
+
+        with psycopg.connect(self.database_url) as writer:
+            writer.execute(
+                "UPDATE cpk_operation_sessions SET status = 'closed', "
+                "closed_at = '2026-08-12T12:05:00Z' WHERE session_id = 'session-b'"
+            )
+
+        with psycopg.connect(self.database_url) as reader:
+            second = PostgresActivityHistoryStore(reader).session_page(
+                ReadPageRequest(
+                    ReadCollection.OPEN_SESSIONS,
+                    WorkspaceReadScope("workspace-a"),
+                    10,
+                    first.next_cursor,
+                )
+            )
+            fresh = PostgresActivityHistoryStore(reader).session_page(
+                ReadPageRequest(
+                    ReadCollection.OPEN_SESSIONS,
+                    WorkspaceReadScope("workspace-a"),
+                    10,
+                )
+            )
+
+        self.assertEqual([item.session_id for item in first.items], ["session-a"])
+        self.assertEqual([item.session_id for item in second.items], ["session-c"])
+        self.assertEqual([item.session_id for item in fresh.items], ["session-a", "session-c"])
+
+    def test_committed_inserts_on_both_sides_obey_strict_live_keyset_semantics(self) -> None:
+        scope = WorkspaceReadScope("workspace-a")
+        with psycopg.connect(self.database_url) as reader:
+            first = PostgresActivityHistoryStore(reader).session_page(
+                ReadPageRequest(ReadCollection.ACTIVITY_SESSIONS, scope, 1)
+            )
+
+        with psycopg.connect(self.database_url) as writer:
+            writer.execute(
+                """
+                INSERT INTO cpk_operation_sessions
+                  (session_id, workspace_id, actor_id, title, status, created_at)
+                VALUES
+                  ('session-0', 'workspace-a', 'operator-a', 'Before', 'open',
+                   '2026-08-12T12:00:00Z'),
+                  ('session-ab', 'workspace-a', 'operator-a', 'After', 'open',
+                   '2026-08-12T12:00:00Z')
+                """
+            )
+
+        with psycopg.connect(self.database_url) as reader:
+            store = PostgresActivityHistoryStore(reader)
+            second = store.session_page(
+                ReadPageRequest(
+                    ReadCollection.ACTIVITY_SESSIONS,
+                    scope,
+                    10,
+                    first.next_cursor,
+                )
+            )
+            fresh = store.session_page(
+                ReadPageRequest(ReadCollection.ACTIVITY_SESSIONS, scope, 10)
+            )
+
+        self.assertEqual([item.session_id for item in first.items], ["session-a"])
+        self.assertEqual(
+            [item.session_id for item in second.items],
+            ["session-ab", "session-b", "session-c"],
+        )
+        self.assertEqual(
+            [item.session_id for item in fresh.items],
+            ["session-0", "session-a", "session-ab", "session-b", "session-c"],
+        )
+
+    def test_pending_decision_changes_later_statement_membership_without_duplicates(self) -> None:
+        request = ReadPageRequest(
+            ReadCollection.PENDING_APPROVALS,
+            WorkspaceReadScope("workspace-a"),
+            1,
+        )
+        with psycopg.connect(self.database_url) as reader:
+            first = PostgresActivityHistoryStore(reader).pending_approval_page(request)
+
+        with psycopg.connect(self.database_url) as writer:
+            writer.execute(
+                """
+                INSERT INTO cpk_approval_decisions
+                  (decision_id, request_id, actor_id, decision, scope, decided_at)
+                VALUES ('decision-b', 'approval-b', 'manager-a', 'approved',
+                        'plan:approve', '2026-08-12T12:06:00Z')
+                """
+            )
+
+        with psycopg.connect(self.database_url) as reader:
+            store = PostgresActivityHistoryStore(reader)
+            second = store.pending_approval_page(
+                ReadPageRequest(
+                    ReadCollection.PENDING_APPROVALS,
+                    WorkspaceReadScope("workspace-a"),
+                    10,
+                    first.next_cursor,
+                )
+            )
+            fresh = store.pending_approval_page(
+                ReadPageRequest(
+                    ReadCollection.PENDING_APPROVALS,
+                    WorkspaceReadScope("workspace-a"),
+                    10,
+                )
+            )
+
+        self.assertEqual([item.request.request_id for item in first.items], ["approval-a"])
+        self.assertEqual([item.request.request_id for item in second.items], ["approval-c"])
+        self.assertEqual(
+            [item.request.request_id for item in fresh.items],
+            ["approval-a", "approval-c"],
+        )
+
+    def _seed_truth(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-a', 'Workspace A', 'created');
+            INSERT INTO cpk_operation_sessions
+              (session_id, workspace_id, actor_id, title, status, created_at)
+            VALUES
+              ('session-a', 'workspace-a', 'operator-a', 'A', 'open',
+               '2026-08-12T12:00:00Z'),
+              ('session-b', 'workspace-a', 'operator-a', 'B', 'open',
+               '2026-08-12T12:01:00Z'),
+              ('session-c', 'workspace-a', 'operator-a', 'C', 'open',
+               '2026-08-12T12:02:00Z')
+            """
+        )
+        lineage = seed_identity_graphs(
+            PostgresStoreBundle(self.connection),
+            workspace_id="workspace-a",
+            graph_ids=("graph-a", "graph-b"),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_activity_plans
+              (plan_id, session_id, base_graph_id, desired_graph_id,
+               base_realized_projection_id, desired_realized_projection_id,
+               status, created_at, payload)
+            VALUES ('plan-a', 'session-a', 'graph-a', 'graph-b', %s, %s,
+                    'planned', '2026-08-12T12:03:00Z', %s::jsonb)
+            """,
+            (
+                lineage["graph-a"],
+                lineage["graph-b"],
+                json.dumps(DEFAULT_ACTIVITY_PLAN_CODEC.encode(ActivityPlan(()))),
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_approval_requests
+              (request_id, session_id, plan_id, subject_kind, subject_payload,
+               review_digest, requested_by, requested_at, required_scope,
+               max_risk, destructive)
+            VALUES
+              ('approval-a', 'session-a', 'plan-a', 'activity-plan',
+               '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
+               encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
+               'operator-a', '2026-08-12T12:03:00Z', 'plan:approve', 'low', false),
+              ('approval-b', 'session-a', 'plan-a', 'activity-plan',
+               '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
+               encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
+               'operator-a', '2026-08-12T12:04:00Z', 'plan:approve', 'low', false),
+              ('approval-c', 'session-a', 'plan-a', 'activity-plan',
+               '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
+               encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
+               'operator-a', '2026-08-12T12:05:00Z', 'plan:approve', 'low', false)
+            """
+        )
 
 
 if __name__ == "__main__":

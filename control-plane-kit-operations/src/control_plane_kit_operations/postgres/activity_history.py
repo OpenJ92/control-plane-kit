@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -18,7 +19,9 @@ from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
+    decode_postgres_cursor_timestamp,
     decode_postgres_timestamp,
+    encode_postgres_cursor_timestamp,
     encode_postgres_timestamp,
 )
 from control_plane_kit_operations.read_pages import (
@@ -28,6 +31,7 @@ from control_plane_kit_operations.read_pages import (
     ReadPageCandidate,
     ReadPageError,
     ReadPageRequest,
+    TemporalReadCursor,
 )
 from control_plane_kit_operations.records import (
     ActivityPlanRecord,
@@ -149,6 +153,60 @@ class PostgresActivityHistoryStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_session_record(row) for row in rows)
+
+    def session_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[OperationSessionRecord]:
+        if request.collection not in {
+            ReadCollection.ACTIVITY_SESSIONS,
+            ReadCollection.OPEN_SESSIONS,
+        }:
+            raise ReadPageError("session page request is incongruent")
+        open_filter = (
+            "AND status = 'open'"
+            if request.collection is ReadCollection.OPEN_SESSIONS
+            else ""
+        )
+        cursor = request.cursor
+        seek = ""
+        parameters: tuple[object, ...]
+        if cursor is None:
+            parameters = (request.scope.workspace_id, request.limit + 1)
+        else:
+            seek = "AND (created_at, session_id) > (%s, %s)"
+            parameters = (
+                request.scope.workspace_id,
+                encode_postgres_cursor_timestamp(cursor.instant),
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT session_id, workspace_id, actor_id, title, status, created_at,
+                   closed_at, metadata, idempotency_key, intent_fingerprint
+            FROM cpk_operation_sessions
+            WHERE workspace_id = %s
+              {open_filter}
+              {seek}
+            ORDER BY created_at ASC, session_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        candidates = tuple(
+            ReadPageCandidate(
+                item=_session_record(row),
+                cursor_after_item=TemporalReadCursor(
+                    request.collection,
+                    request.scope,
+                    decode_postgres_cursor_timestamp(row[5]),
+                    row[0],
+                ),
+            )
+            for row in rows
+        )
+        return ReadPage.from_candidates(request, candidates)
 
     def transition_open_session(
         self,
@@ -380,6 +438,49 @@ class PostgresActivityHistoryStore:
         ).fetchall()
         return tuple(_plan_record(row) for row in rows)
 
+    def plan_page(self, request: ReadPageRequest) -> ReadPage[ActivityPlanRecord]:
+        if request.collection is not ReadCollection.SESSION_PLANS:
+            raise ReadPageError("plan page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        parameters: tuple[object, ...]
+        if cursor is None:
+            parameters = (request.scope.session_id, request.limit + 1)
+        else:
+            seek = "AND (created_at, plan_id) > (%s, %s)"
+            parameters = (
+                request.scope.session_id,
+                encode_postgres_cursor_timestamp(cursor.instant),
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT plan_id, session_id, base_graph_id, desired_graph_id,
+                   base_realized_projection_id, desired_realized_projection_id,
+                   desired_graph_revision, status, created_at, payload
+            FROM cpk_activity_plans
+            WHERE session_id = %s
+              {seek}
+            ORDER BY created_at ASC, plan_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        candidates = tuple(
+            ReadPageCandidate(
+                item=_plan_record(row),
+                cursor_after_item=TemporalReadCursor(
+                    ReadCollection.SESSION_PLANS,
+                    request.scope,
+                    decode_postgres_cursor_timestamp(row[8]),
+                    row[0],
+                ),
+            )
+            for row in rows
+        )
+        return ReadPage.from_candidates(request, candidates)
+
     def add_approval_request(
         self,
         record: ApprovalRequestRecord,
@@ -465,6 +566,90 @@ class PostgresActivityHistoryStore:
         ).fetchall()
         return tuple(_approval_request_record(row) for row in rows)
 
+    def approval_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[_ApprovalReadProjection]:
+        if request.collection is not ReadCollection.SESSION_APPROVALS:
+            raise ReadPageError("approval page request is incongruent")
+        return self._approval_projection_page(request, pending_only=False)
+
+    def pending_approval_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[_ApprovalReadProjection]:
+        if request.collection is not ReadCollection.PENDING_APPROVALS:
+            raise ReadPageError("pending approval page request is incongruent")
+        return self._approval_projection_page(request, pending_only=True)
+
+    def _approval_projection_page(
+        self,
+        request: ReadPageRequest,
+        *,
+        pending_only: bool,
+    ) -> ReadPage[_ApprovalReadProjection]:
+        cursor = request.cursor
+        seek = ""
+        parent = (
+            "session.workspace_id = %s"
+            if pending_only
+            else "request.session_id = %s"
+        )
+        pending = "AND decision.request_id IS NULL" if pending_only else ""
+        parent_id = (
+            request.scope.workspace_id if pending_only else request.scope.session_id
+        )
+        parameters: tuple[object, ...]
+        if cursor is None:
+            parameters = (parent_id, request.limit + 1)
+        else:
+            seek = "AND (request.requested_at, request.request_id) > (%s, %s)"
+            parameters = (
+                parent_id,
+                encode_postgres_cursor_timestamp(cursor.instant),
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT request.request_id, request.session_id, request.plan_id,
+                   request.rotation_id, request.subject_kind,
+                   request.subject_payload, request.review_digest,
+                   request.requested_by, request.requested_at,
+                   request.required_scope, request.max_risk, request.destructive,
+                   request.comment, request.idempotency_key,
+                   request.intent_fingerprint,
+                   decision.decision_id, decision.request_id, decision.actor_id,
+                   decision.decision, decision.scope, decision.decided_at,
+                   decision.comment, decision.idempotency_key,
+                   decision.intent_fingerprint
+            FROM cpk_approval_requests AS request
+            JOIN cpk_operation_sessions AS session
+              ON session.session_id = request.session_id
+            LEFT JOIN cpk_approval_decisions AS decision
+              ON decision.request_id = request.request_id
+            WHERE {parent}
+              {pending}
+              {seek}
+            ORDER BY request.requested_at ASC, request.request_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        candidates = tuple(
+            ReadPageCandidate(
+                item=_approval_read_projection(row),
+                cursor_after_item=TemporalReadCursor(
+                    request.collection,
+                    request.scope,
+                    decode_postgres_cursor_timestamp(row[8]),
+                    row[0],
+                ),
+            )
+            for row in rows
+        )
+        return ReadPage.from_candidates(request, candidates)
+
     def approval_request_for_rotation(
         self,
         rotation_id: str,
@@ -537,6 +722,17 @@ class PostgresActivityHistoryStore:
             (request_id, idempotency_key),
         ).fetchone()
         return None if row is None else _approval_decision_record(row)
+
+
+@dataclass(frozen=True, slots=True)
+class _ApprovalReadProjection:
+    request: ApprovalRequestRecord
+    decision: ApprovalDecisionRecord | None
+
+
+def _approval_read_projection(row: tuple[Any, ...]) -> _ApprovalReadProjection:
+    decision = None if row[15] is None else _approval_decision_record(row[15:24])
+    return _ApprovalReadProjection(_approval_request_record(row[:15]), decision)
 
 
 def _session_record(row: tuple[Any, ...]) -> OperationSessionRecord:

@@ -36,7 +36,6 @@ from control_plane_kit_operations.records import (
     ObservationRecord,
     ObservationStaleReason,
     OperationSessionRecord,
-    OperationSessionStatus,
     WorkspaceRecord,
 )
 from control_plane_kit_operations.runtime_authorities import RuntimeAuthorityNotFound
@@ -82,12 +81,16 @@ class GraphTopologyStore(Protocol):
 class ActivityHistoryStore(Protocol):
     def get_session(self, session_id: str) -> OperationSessionRecord: ...
     def sessions_for_workspace(self, workspace_id: str) -> tuple[OperationSessionRecord, ...]: ...
+    def session_page(self, request: ReadPageRequest) -> ReadPage[OperationSessionRecord]: ...
     def actions_for_session(self, session_id: str) -> tuple[object, ...]: ...
     def action_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
     def get_plan(self, plan_id: str) -> ActivityPlanRecord: ...
     def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]: ...
+    def plan_page(self, request: ReadPageRequest) -> ReadPage[ActivityPlanRecord]: ...
     def get_approval_request(self, request_id: str) -> ApprovalRequestRecord: ...
     def approval_requests_for_session(self, session_id: str) -> tuple[ApprovalRequestRecord, ...]: ...
+    def approval_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
+    def pending_approval_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
     def approval_decision_for_request(self, request_id: str) -> object | None: ...
 
 
@@ -95,6 +98,7 @@ class ExecutionStore(Protocol):
     def get_request(self, request_id: str) -> object: ...
     def get_run(self, run_id: str) -> ActivityRunRecord: ...
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]: ...
+    def run_page(self, request: ReadPageRequest) -> ReadPage[ActivityRunRecord]: ...
     def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]: ...
     def event_page(self, request: ReadPageRequest) -> ReadPage[ActivityEventRecord]: ...
 
@@ -244,20 +248,6 @@ class WorkspaceReadModel:
             "workspace": self.workspace.descriptor(),
             "current_graph": self.current_graph.descriptor(),
             "desired_graph": self.desired_graph.descriptor(),
-        }
-
-
-@dataclass(frozen=True)
-class ActivityTimelineReadModel:
-    workspace_id: str
-    limit: int
-    sessions: tuple[Mapping[str, object], ...]
-
-    def descriptor(self) -> dict[str, object]:
-        return {
-            "workspace_id": self.workspace_id,
-            "limit": self.limit,
-            "sessions": [dict(session) for session in self.sessions],
         }
 
 
@@ -464,60 +454,33 @@ class InstanceReadService:
             include_operator_graph=True,
         )
 
-    def activity_timeline(
+    def activity_sessions(
         self,
-        workspace_id: str,
-        *,
-        limit: int = 50,
-    ) -> ActivityTimelineReadModel:
-        limit = _positive_limit(limit)
-        self._workspace(workspace_id)
-        store = self._activity_history()
-        execution = self._execution()
-        sessions = store.sessions_for_workspace(workspace_id)[:limit]
-        return ActivityTimelineReadModel(
-            workspace_id=workspace_id,
-            limit=limit,
-            sessions=tuple(
-                _session_descriptor(store, execution, session, limit=limit)
-                for session in sessions
-            ),
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        if request.collection is not ReadCollection.ACTIVITY_SESSIONS:
+            raise ReadPageError("activity session request is incongruent")
+        self._workspace(request.scope.workspace_id)
+        return self._activity_history().session_page(request).map(
+            _session_summary_descriptor
         )
 
     def open_sessions(
         self,
-        workspace_id: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> FocusedCollectionReadModel:
-        limit, offset = _page(limit, offset)
-        self._workspace(workspace_id)
-        sessions = tuple(
-            session
-            for session in self._activity_history().sessions_for_workspace(workspace_id)
-            if session.status is OperationSessionStatus.OPEN
-        )
-        return FocusedCollectionReadModel(
-            workspace_id=workspace_id,
-            kind="open-sessions",
-            limit=limit,
-            offset=offset,
-            total=len(sessions),
-            items=tuple(
-                _session_summary_descriptor(session)
-                for session in sessions[offset : offset + limit]
-            ),
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        if request.collection is not ReadCollection.OPEN_SESSIONS:
+            raise ReadPageError("open session request is incongruent")
+        self._workspace(request.scope.workspace_id)
+        return self._activity_history().session_page(request).map(
+            _session_summary_descriptor
         )
 
     def session_detail(
         self,
         workspace_id: str,
         session_id: str,
-        *,
-        limit: int = 50,
     ) -> FocusedDetailReadModel:
-        limit = _bounded_limit(limit)
         self._workspace(workspace_id)
         store = self._activity_history()
         session = _session_in_workspace(store, workspace_id, session_id)
@@ -525,12 +488,7 @@ class InstanceReadService:
             workspace_id=workspace_id,
             kind="session-detail",
             payload={
-                "session": _session_descriptor(
-                    store,
-                    self._execution(),
-                    session,
-                    limit=limit,
-                )
+                "session": _session_summary_descriptor(session)
             },
         )
 
@@ -568,24 +526,39 @@ class InstanceReadService:
             raise ReadModelError("missing run in workspace")
         return store.event_page(request).map(_event_descriptor)
 
+    def session_plans(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        if request.collection is not ReadCollection.SESSION_PLANS:
+            raise ReadPageError("session plan request is incongruent")
+        self._workspace(request.scope.workspace_id)
+        store = self._activity_history()
+        _session_in_workspace(store, request.scope.workspace_id, request.scope.session_id)
+        return store.plan_page(request).map(_plan_summary_descriptor)
+
+    def session_approvals(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        if request.collection is not ReadCollection.SESSION_APPROVALS:
+            raise ReadPageError("session approval request is incongruent")
+        self._workspace(request.scope.workspace_id)
+        store = self._activity_history()
+        _session_in_workspace(store, request.scope.workspace_id, request.scope.session_id)
+        return store.approval_page(request).map(
+            lambda item: _approval_descriptor(item.request, item.decision)
+        )
+
     def plan_detail(
         self,
         workspace_id: str,
         plan_id: str,
-        *,
-        limit: int = 50,
     ) -> FocusedDetailReadModel:
-        limit = _bounded_limit(limit)
         self._workspace(workspace_id)
         store = self._activity_history()
         plan = _plan_in_workspace(store, workspace_id, plan_id)
-        payload = _plan_descriptor(
-            store,
-            self._execution(),
-            plan,
-            workspace_id=workspace_id,
-            limit=limit,
-        )
+        payload = _plan_summary_descriptor(plan)
         payload["risk_summary"] = _risk_summary(plan)
         payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
         return FocusedDetailReadModel(
@@ -596,47 +569,40 @@ class InstanceReadService:
 
     def pending_approvals(
         self,
-        workspace_id: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> FocusedCollectionReadModel:
-        limit, offset = _page(limit, offset)
-        self._workspace(workspace_id)
-        store = self._activity_history()
-        pending: list[ApprovalRequestRecord] = []
-        for session in store.sessions_for_workspace(workspace_id):
-            pending.extend(
-                request
-                for request in store.approval_requests_for_session(session.session_id)
-                if store.approval_decision_for_request(request.request_id) is None
-            )
-        pending.sort(key=lambda value: (value.requested_at, value.request_id))
-        return FocusedCollectionReadModel(
-            workspace_id=workspace_id,
-            kind="pending-approvals",
-            limit=limit,
-            offset=offset,
-            total=len(pending),
-            items=tuple(
-                _approval_descriptor(store, request)
-                for request in pending[offset : offset + limit]
-            ),
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        if request.collection is not ReadCollection.PENDING_APPROVALS:
+            raise ReadPageError("pending approval request is incongruent")
+        self._workspace(request.scope.workspace_id)
+        return self._activity_history().pending_approval_page(request).map(
+            lambda item: _approval_descriptor(item.request, item.decision)
         )
+
+    def plan_runs(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[dict[str, object]]:
+        if request.collection is not ReadCollection.PLAN_RUNS:
+            raise ReadPageError("plan run request is incongruent")
+        self._workspace(request.scope.workspace_id)
+        _plan_in_workspace(
+            self._activity_history(),
+            request.scope.workspace_id,
+            request.scope.plan_id,
+        )
+        return self._execution().run_page(request).map(_run_summary_descriptor)
 
     def approval_detail(
         self,
         workspace_id: str,
         approval_request_id: str,
-        *,
-        limit: int = 50,
     ) -> FocusedDetailReadModel:
-        limit = _bounded_limit(limit)
         self._workspace(workspace_id)
         store = self._activity_history()
         approval = _approval_in_workspace(store, workspace_id, approval_request_id)
+        decision = store.approval_decision_for_request(approval.request_id)
         detail: dict[str, object] = {
-            "approval": _approval_descriptor(store, approval)
+            "approval": _approval_descriptor(approval, decision)
         }
         if isinstance(approval.subject, ActivityPlanApprovalSubject):
             plan = _plan_in_workspace(store, workspace_id, approval.subject.plan_id)
@@ -644,13 +610,7 @@ class InstanceReadService:
                 raise ReadModelError(
                     f"approval {approval_request_id!r} references plan truth outside its session"
                 )
-            payload = _plan_descriptor(
-                store,
-                self._execution(),
-                plan,
-                workspace_id=workspace_id,
-                limit=limit,
-            )
+            payload = _plan_summary_descriptor(plan)
             payload["risk_summary"] = _risk_summary(plan)
             payload["recovery"] = self._recovery_for_plan(workspace_id, plan)
             detail["plan"] = payload
@@ -1366,33 +1326,6 @@ def _session_summary_descriptor(session: OperationSessionRecord) -> dict[str, ob
     }
 
 
-def _session_descriptor(
-    store: ActivityHistoryStore,
-    execution: ExecutionStore,
-    session: OperationSessionRecord,
-    *,
-    limit: int,
-) -> dict[str, object]:
-    session_id = session.session_id
-    return {
-        **_session_summary_descriptor(session),
-        "approvals": [
-            _approval_descriptor(store, approval)
-            for approval in store.approval_requests_for_session(session_id)[:limit]
-        ],
-        "plans": [
-            _plan_descriptor(
-                store,
-                execution,
-                plan,
-                workspace_id=session.workspace_id,
-                limit=limit,
-            )
-            for plan in store.plans_for_session(session_id)[:limit]
-        ],
-    }
-
-
 def _action_descriptor(action: object) -> dict[str, object]:
     return {
         "action_id": getattr(action, "action_id"),
@@ -1406,10 +1339,9 @@ def _action_descriptor(action: object) -> dict[str, object]:
 
 
 def _approval_descriptor(
-    store: ActivityHistoryStore,
     approval: ApprovalRequestRecord,
+    decision: object | None,
 ) -> dict[str, object]:
-    decision = store.approval_decision_for_request(approval.request_id)
     descriptor = {
         "request_id": approval.request_id,
         "session_id": approval.session_id,
@@ -1437,17 +1369,9 @@ def _approval_descriptor(
     return descriptor
 
 
-def _plan_descriptor(
-    store: ActivityHistoryStore,
-    execution: ExecutionStore,
-    plan: ActivityPlanRecord,
-    *,
-    workspace_id: str,
-    limit: int,
-) -> dict[str, object]:
-    plan_id = plan.plan_id
+def _plan_summary_descriptor(plan: ActivityPlanRecord) -> dict[str, object]:
     return {
-        "plan_id": plan_id,
+        "plan_id": plan.plan_id,
         "session_id": plan.session_id,
         "base_graph_id": plan.base_graph_id,
         "desired_graph_id": plan.desired_graph_id,
@@ -1457,36 +1381,10 @@ def _plan_descriptor(
         "status": plan.status.value,
         "created_at": plan.created_at,
         "payload": DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan.plan),
-        "runs": [
-            _run_descriptor(execution, plan, run, workspace_id=workspace_id, limit=limit)
-            for run in execution.runs_for_plan(plan_id)[:limit]
-        ],
     }
 
 
-def _run_descriptor(
-    store: ExecutionStore,
-    plan: ActivityPlanRecord,
-    run: ActivityRunRecord,
-    *,
-    workspace_id: str,
-    limit: int,
-) -> dict[str, object]:
-    try:
-        request = store.get_request(run.admission.request_id)
-    except KeyError as exc:
-        raise ReadModelError(
-            f"run {run.run_id!r} references missing execution request"
-        ) from exc
-    identity = getattr(request, "identity")
-    if (
-        identity.workspace_id != workspace_id
-        or identity.session_id != plan.session_id
-        or identity.plan_id != plan.plan_id
-    ):
-        raise ReadModelError(
-            f"run {run.run_id!r} references execution truth outside its plan workspace"
-        )
+def _run_summary_descriptor(run: ActivityRunRecord) -> dict[str, object]:
     return {
         "run_id": run.run_id,
         "plan_id": run.plan_id,
