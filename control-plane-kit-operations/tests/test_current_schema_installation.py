@@ -106,10 +106,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "597f12a64e7a9503397210c1e5c171251558b063b857ab9bde950f908cb80841"
+    "b5f56207a526323dc19503968955b1654f3ed34e2a8a2a82ccf9b818cecc5d94"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "1dd47004f2f15c1402c5baec26ff3164c394533473ec342b8f34cfd3d19b3339"
+    "552a47f2cf569029f70213a60d94390d58b19650dc758b9c811f1c9ac3edf4c8"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -466,7 +466,6 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
         self._assert_target_constraints()
         self._seed_authority_vocabulary_rows()
-        self._seed_approval_subject()
         before_objects = self._object_identities()
         before_rows = self._authority_rows()
         recorder = _RecordingConnection(self.connection)
@@ -476,6 +475,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertEqual(self._object_identities(), before_objects)
         self.assertEqual(self._authority_rows(), before_rows)
         self._assert_calls_are_read_only(recorder.calls)
+        self._seed_approval_subject()
         self._assert_node_control_scopes_are_not_approval_scopes()
 
     def test_authority_constraint_drift_is_reset_required_without_repair(
@@ -873,11 +873,24 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             "'Node control approval boundary', 'open', '2026-08-11T00:00:00Z')"
         )
         self.connection.execute(
+            "INSERT INTO cpk_gateway_key_rotations ("
+            "rotation_id, workspace_id, gateway_node_id, purpose, issuer, "
+            "old_key_id, new_secret_reference, key_generation_correlation, "
+            "maximum_grant_lifetime_seconds, clock_skew_seconds, correlation_id, "
+            "requested_by, requested_at, intent_fingerprint, status, version"
+            ") VALUES ('rotation-approval', 'workspace-a', 'gateway-a', "
+            "'gateway-probe', 'issuer-a', 'key-a', "
+            "'secret://provider-a/signing/key-c', 'generate-key-c', 120, 10, "
+            "'rotate-key-approval', 'operator-a', '2026-08-11T00:00:00Z', "
+            "%s, 'requested', 1)",
+            ("3" * 64,),
+        )
+        self.connection.execute(
             "INSERT INTO cpk_approval_requests ("
             "request_id, session_id, rotation_id, subject_kind, subject_payload, "
             "review_digest, requested_by, requested_at, required_scope, "
             "max_risk, destructive"
-            ") VALUES ('approval-valid', 'session-a', 'rotation-1', "
+            ") VALUES ('approval-valid', 'session-a', 'rotation-approval', "
             "'gateway-key-rotation', '{}', %s, 'operator-a', "
             "'2026-08-11T00:00:00Z', 'delegation-key:rotate-approve', "
             "'medium', false)",
@@ -893,7 +906,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                         "request_id, session_id, rotation_id, subject_kind, "
                         "subject_payload, review_digest, requested_by, requested_at, "
                         "required_scope, max_risk, destructive"
-                        ") VALUES (%s, 'session-a', 'rotation-1', "
+                        ") VALUES (%s, 'session-a', 'rotation-approval', "
                         "'gateway-key-rotation', '{}', %s, 'operator-a', "
                         "'2026-08-11T00:00:00Z', %s, 'medium', false)",
                         (f"approval-invalid-{index}", "e" * 64, scope),

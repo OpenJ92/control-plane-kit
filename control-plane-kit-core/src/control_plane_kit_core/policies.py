@@ -56,6 +56,9 @@ class PolicyScope(StrEnum):
     DELEGATION_KEY_ROTATE = "delegation-key:rotate"
     DELEGATION_KEY_ROTATE_APPROVE = "delegation-key:rotate-approve"
     GATEWAY_PROBE_USE = "gateway-probe:use"
+    NODE_CONTROL_READ = "node-control:read"
+    NODE_CONTROL_APPLY = "node-control:apply"
+    NODE_CONTROL_EXECUTE = "node-control:execute"
 
 
 class DestructiveApprovalSeparation(StrEnum):
