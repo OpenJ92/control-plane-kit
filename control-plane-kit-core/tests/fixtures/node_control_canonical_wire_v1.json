@@ -97,6 +97,35 @@
       "sha256": "f53bf99f0b1f4533958d4a0e9df129635ed941586ec3cb2612a82e65db7c3eec"
     }
   ],
+  "workload_grants": [
+    {
+      "name": "weighted-routing-command",
+      "descriptor": {
+        "issuer": "cpk-server",
+        "key_id": "workload-key-1",
+        "audience": "workload:router:control",
+        "target": {
+          "workspace_id": "workspace-1",
+          "graph_revision": "revision-7",
+          "node_id": "router",
+          "provider_socket_name": "control"
+        },
+        "variable_name": "routing",
+        "operation": "apply-command",
+        "command_codec": "control.replace-weighted-routing.v1",
+        "request_id": "request-weighted-1",
+        "idempotency_key": "routing-change-1",
+        "request_digest": "f53bf99f0b1f4533958d4a0e9df129635ed941586ec3cb2612a82e65db7c3eec",
+        "issued_at": 100,
+        "not_before": 100,
+        "expires_at": 200,
+        "jti": "workload-grant-1"
+      },
+      "canonical_utf8": "{\"audience\":\"workload:router:control\",\"command_codec\":\"control.replace-weighted-routing.v1\",\"expires_at\":200,\"idempotency_key\":\"routing-change-1\",\"issued_at\":100,\"issuer\":\"cpk-server\",\"jti\":\"workload-grant-1\",\"key_id\":\"workload-key-1\",\"not_before\":100,\"operation\":\"apply-command\",\"request_digest\":\"f53bf99f0b1f4533958d4a0e9df129635ed941586ec3cb2612a82e65db7c3eec\",\"request_id\":\"request-weighted-1\",\"target\":{\"graph_revision\":\"revision-7\",\"node_id\":\"router\",\"provider_socket_name\":\"control\",\"workspace_id\":\"workspace-1\"},\"variable_name\":\"routing\"}",
+      "canonical_utf8_hex": "7b2261756469656e6365223a22776f726b6c6f61643a726f757465723a636f6e74726f6c222c22636f6d6d616e645f636f646563223a22636f6e74726f6c2e7265706c6163652d77656967687465642d726f7574696e672e7631222c22657870697265735f6174223a3230302c226964656d706f74656e63795f6b6579223a22726f7574696e672d6368616e67652d31222c226973737565645f6174223a3130302c22697373756572223a2263706b2d736572766572222c226a7469223a22776f726b6c6f61642d6772616e742d31222c226b65795f6964223a22776f726b6c6f61642d6b65792d31222c226e6f745f6265666f7265223a3130302c226f7065726174696f6e223a226170706c792d636f6d6d616e64222c22726571756573745f646967657374223a2266353362663939663062316634353333393538643461306539646631323936333565643934313538366563336362323631326138326536356462376333656563222c22726571756573745f6964223a22726571756573742d77656967687465642d31222c22746172676574223a7b2267726170685f7265766973696f6e223a227265766973696f6e2d37222c226e6f64655f6964223a22726f75746572222c2270726f76696465725f736f636b65745f6e616d65223a22636f6e74726f6c222c22776f726b73706163655f6964223a22776f726b73706163652d31227d2c227661726961626c655f6e616d65223a22726f7574696e67227d",
+      "sha256": "4396c4f7c62ffa860b2b8cd7ea65a59f00bea0d229ec8cedd3f3fbbbc67b5ba7"
+    }
+  ],
   "rfc8785_number_vectors": [
     {
       "ieee754_hex": "0000000000000000",

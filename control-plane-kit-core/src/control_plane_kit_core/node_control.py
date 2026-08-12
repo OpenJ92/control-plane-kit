@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 import hashlib
+import json
 import math
 from typing import Mapping
 
@@ -32,6 +33,7 @@ MAX_NODE_CONTROL_PAYLOAD_BYTES = 16_384
 MAX_NODE_CONTROL_EVIDENCE_ITEMS = 1
 MAX_NODE_CONTROL_SURFACES = 16
 MAX_NODE_CONTROL_VARIABLES_PER_SURFACE = 128
+MAX_DELEGATED_WORKLOAD_NODE_CONTROL_GRANT_BYTES = 2_111
 MAX_WORKLOAD_NODE_CONTROL_GRANT_LIFETIME_SECONDS = 300
 
 _MAX_DESCRIPTION = 512
@@ -444,6 +446,19 @@ class NodeControlRequestDigest:
 
 
 @dataclass(frozen=True, order=True)
+class WorkloadNodeControlGrantDigest:
+    """Canonical digest of one complete workload node-control grant."""
+
+    value: str
+
+    def __post_init__(self) -> None:
+        if digest_violation(self.value) is not None:
+            raise NodeControlContractError(
+                "workload node-control grant digest must be 64 lowercase hex characters"
+            )
+
+
+@dataclass(frozen=True, order=True)
 class NodeControlCommandRequest:
     """One exact semantic read or state-transition request."""
 
@@ -583,6 +598,31 @@ class NodeControlCommandRequestCodec:
             payload=payload,
         )
 
+    def encode_canonical_bytes(self, request: NodeControlCommandRequest) -> bytes:
+        if not isinstance(request, NodeControlCommandRequest):
+            raise NodeControlContractError(
+                "canonical encoding requires NodeControlCommandRequest"
+            )
+        return request.canonical_bytes()
+
+    def decode_canonical_bytes(self, encoded: bytes) -> NodeControlCommandRequest:
+        if type(encoded) is not bytes:
+            raise NodeControlContractError(
+                "canonical node-control request input must be bytes"
+            )
+        if len(encoded) > MAX_NODE_CONTROL_PAYLOAD_BYTES:
+            raise NodeControlContractError(
+                "node-control request exceeds the public size bound"
+            )
+        request = self.decode(
+            _parse_json_object(encoded, "node-control request")
+        )
+        if request.canonical_bytes() != encoded:
+            raise NodeControlContractError(
+                "node-control request bytes are not canonical"
+            )
+        return request
+
 
 @dataclass(frozen=True, order=True)
 class DelegatedWorkloadNodeControlGrant:
@@ -658,6 +698,11 @@ class DelegatedWorkloadNodeControlGrant:
                 "workload grant lifetime must not exceed 300 seconds"
             )
         _require_identifier(self.jti, "workload grant jti")
+        _bounded_canonical_bytes(
+            self.descriptor(),
+            MAX_DELEGATED_WORKLOAD_NODE_CONTROL_GRANT_BYTES,
+            "workload node-control grant",
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -678,6 +723,18 @@ class DelegatedWorkloadNodeControlGrant:
             "expires_at": self.expires_at,
             "jti": self.jti,
         }
+
+    def canonical_bytes(self) -> bytes:
+        return _bounded_canonical_bytes(
+            self.descriptor(),
+            MAX_DELEGATED_WORKLOAD_NODE_CONTROL_GRANT_BYTES,
+            "workload node-control grant",
+        )
+
+    def canonical_digest(self) -> WorkloadNodeControlGrantDigest:
+        return WorkloadNodeControlGrantDigest(
+            hashlib.sha256(self.canonical_bytes()).hexdigest()
+        )
 
 
 class DelegatedWorkloadNodeControlGrantCodec:
@@ -733,6 +790,37 @@ class DelegatedWorkloadNodeControlGrantCodec:
             expires_at=_integer(mapping, "expires_at"),
             jti=_text(mapping, "jti"),
         )
+
+    def encode_canonical_bytes(
+        self,
+        grant: DelegatedWorkloadNodeControlGrant,
+    ) -> bytes:
+        if not isinstance(grant, DelegatedWorkloadNodeControlGrant):
+            raise NodeControlContractError(
+                "canonical encoding requires DelegatedWorkloadNodeControlGrant"
+            )
+        return grant.canonical_bytes()
+
+    def decode_canonical_bytes(
+        self,
+        encoded: bytes,
+    ) -> DelegatedWorkloadNodeControlGrant:
+        if type(encoded) is not bytes:
+            raise NodeControlContractError(
+                "canonical workload node-control grant input must be bytes"
+            )
+        if len(encoded) > MAX_DELEGATED_WORKLOAD_NODE_CONTROL_GRANT_BYTES:
+            raise NodeControlContractError(
+                "workload node-control grant exceeds the public size bound"
+            )
+        grant = self.decode(
+            _parse_json_object(encoded, "workload node-control grant")
+        )
+        if grant.canonical_bytes() != encoded:
+            raise NodeControlContractError(
+                "workload node-control grant bytes are not canonical"
+            )
+        return grant
 
 
 @dataclass(frozen=True)
@@ -1743,6 +1831,17 @@ def _validate_descriptor_size(descriptor: object, name: str) -> None:
         raise NodeControlContractError(f"{name} exceeds the public size bound")
 
 
+def _bounded_canonical_bytes(
+    descriptor: object,
+    maximum: int,
+    name: str,
+) -> bytes:
+    encoded = _canonical_bytes(descriptor, name)
+    if len(encoded) > maximum:
+        raise NodeControlContractError(f"{name} exceeds the public size bound")
+    return encoded
+
+
 def _canonical_bytes(descriptor: object, name: str) -> bytes:
     try:
         encoded = canonical_json_bytes(descriptor)
@@ -1751,6 +1850,61 @@ def _canonical_bytes(descriptor: object, name: str) -> bytes:
     else:
         return encoded
     raise NodeControlContractError(f"{name} is outside the canonical JSON domain")
+
+
+class _DuplicateJsonKey(ValueError):
+    pass
+
+
+def _parse_json_object(encoded: bytes, name: str) -> Mapping[str, object]:
+    parsed: object | None = None
+    failed = False
+    try:
+        parsed = json.loads(
+            encoded.decode("utf-8"),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_json_constant,
+            parse_int=_parse_jcs_integer_token,
+        )
+        _observe_json_containers(parsed)
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        _DuplicateJsonKey,
+        RecursionError,
+        ValueError,
+    ):
+        failed = True
+    if failed:
+        raise NodeControlContractError(f"{name} bytes are malformed")
+    return _mapping(parsed, name)
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateJsonKey
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(_value: str) -> object:
+    raise ValueError
+
+
+def _observe_json_containers(value: object) -> None:
+    if isinstance(value, Mapping):
+        for item in value.values():
+            _observe_json_containers(item)
+    elif isinstance(value, list):
+        for item in value:
+            _observe_json_containers(item)
+
+
+def _parse_jcs_integer_token(token: str) -> int | float:
+    value = int(token)
+    return value if abs(value) <= _MAX_SAFE_INTEGER else float(token)
 
 
 def _is_negative_zero(value: float) -> bool:
@@ -1822,6 +1976,7 @@ __all__ = [
     "ControlPlaneVariableKind",
     "DelegatedWorkloadNodeControlGrant",
     "DelegatedWorkloadNodeControlGrantCodec",
+    "MAX_DELEGATED_WORKLOAD_NODE_CONTROL_GRANT_BYTES",
     "MAX_NODE_CONTROL_EVIDENCE_ITEMS",
     "MAX_NODE_CONTROL_PAYLOAD_BYTES",
     "MAX_NODE_CONTROL_STATE_ITEMS",
@@ -1852,6 +2007,7 @@ __all__ = [
     "WeightedRoutingControlState",
     "WorkloadNodeControlGrantVerificationCode",
     "WorkloadNodeControlGrantVerificationResult",
+    "WorkloadNodeControlGrantDigest",
     "WorkloadNodeControlSurfaceDescriptor",
     "WorkloadNodeControlSurfaceDescriptorCodec",
     "verify_workload_node_control_grant",
