@@ -167,6 +167,13 @@ def _captured_install_error(connection) -> BaseException:
 
 
 class CurrentSchemaStaticLawTests(unittest.TestCase):
+    def test_public_postgres_connection_is_execute_only(self) -> None:
+        connection_members = set(postgres.PostgresConnection.__dict__)
+
+        self.assertIn("execute", connection_members)
+        self.assertNotIn("autocommit", connection_members)
+        self.assertNotIn("transaction", connection_members)
+
     def test_public_and_source_residue_is_exactly_removed(self) -> None:
         self.assertTrue(hasattr(postgres, "SchemaInstallationError"))
         for name in _FORBIDDEN_EXPORTS:
@@ -381,6 +388,35 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             [("workspace-a", "Workspace A", "created", None)],
         )
 
+    def test_expected_relation_replaced_by_view_rejects_before_relation_lock(self) -> None:
+        postgres.install_schema(self.connection)
+        self.connection.execute("DROP TABLE cpk_observations CASCADE")
+        self.connection.execute(
+            "CREATE VIEW cpk_observations AS SELECT NULL::text AS workspace_id "
+            "WHERE false"
+        )
+        before = self._object_identities()
+        recorder = _RecordingConnection(self.connection)
+
+        error = _captured_install_error(recorder)
+
+        self._assert_install_error(error, "operations schema reset is required")
+        self.assertEqual(self._object_identities(), before)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT relkind FROM pg_class AS relation "
+                "JOIN pg_namespace AS namespace "
+                "ON namespace.oid=relation.relnamespace "
+                "WHERE namespace.nspname=current_schema() "
+                "AND relation.relname='cpk_observations'"
+            ).fetchone(),
+            ("v",),
+        )
+        self.assertFalse(
+            any("LOCK TABLE ONLY" in call for call in recorder.calls),
+            recorder.calls,
+        )
+
     def test_empty_install_failure_rolls_back_every_schema_effect(self) -> None:
         failing = _FailingConnection(self.connection, fail_on=5)
 
@@ -435,6 +471,53 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
         self.assertEqual(self._catalog_counts(), (28, 353, 231, 77))
+
+    def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
+        postgres.install_schema(self.connection)
+        self.connection.execute(
+            "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
+            "VALUES ('workspace-a', 'Workspace A', 'created')"
+        )
+        before = self._object_identities()
+        blocker = psycopg.connect(self.database_url, autocommit=False)
+        contender = psycopg.connect(self.database_url, autocommit=True)
+        try:
+            blocker.execute(f'SET search_path TO "{self.schema}"')
+            contender.execute(f'SET search_path TO "{self.schema}"')
+            contender.execute("SET lock_timeout = '500ms'")
+            blocker.execute(
+                "LOCK TABLE ONLY cpk_activity_events IN ACCESS EXCLUSIVE MODE"
+            )
+            recorder = _RecordingConnection(contender)
+
+            error = _captured_install_error(recorder)
+
+            self._assert_install_error(
+                error,
+                "operations schema installation failed",
+            )
+            self.assertNotIn("reset", str(error).lower())
+            for call in recorder.calls:
+                self.assertNotRegex(
+                    " ".join(call.lower().split()),
+                    r"\b(create|alter|drop|truncate|insert|update|delete)\b",
+                )
+
+            blocker.rollback()
+            postgres.install_schema(contender)
+
+            self.assertEqual(self._object_identities(), before)
+            self.assertEqual(
+                self.connection.execute(
+                    "SELECT workspace_id, name, lifecycle FROM cpk_workspaces"
+                ).fetchall(),
+                [("workspace-a", "Workspace A", "created")],
+            )
+        finally:
+            if blocker.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+                blocker.rollback()
+            blocker.close()
+            contender.close()
 
     def test_driver_failure_is_not_reset_advice_and_is_redacted(self) -> None:
         error = _captured_install_error(_AlwaysFailingConnection())
