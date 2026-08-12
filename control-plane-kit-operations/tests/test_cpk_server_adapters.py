@@ -612,6 +612,67 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 self.assertEqual(raised.exception.status, 400)
         self.assertFalse(entered)
 
+    def test_temporal_pages_and_scalar_details_reject_stale_arguments_before_uow(self) -> None:
+        entered = False
+
+        def forbidden_unit_of_work():
+            nonlocal entered
+            entered = True
+            raise AssertionError("invalid read arguments must precede store access")
+
+        service = CpkServerReadService(forbidden_unit_of_work)
+        cases = (
+            ("read.activity", {"workspace_id": "workspace-a"}, {"offset": 0}),
+            ("read.sessions", {"workspace_id": "workspace-a"}, {"direction": "ascending"}),
+            (
+                "read.session-plans",
+                {"workspace_id": "workspace-a", "session_id": "session-a"},
+                {"unknown": True},
+            ),
+            (
+                "read.session-approvals",
+                {"workspace_id": "workspace-a", "session_id": "session-a"},
+                {"cursor": {}},
+            ),
+            ("read.pending-approvals", {"workspace_id": "workspace-a"}, {"offset": 0}),
+            (
+                "read.plan-runs",
+                {"workspace_id": "workspace-a", "plan_id": "plan-a"},
+                {"direction": "ascending"},
+            ),
+            (
+                "read.session-detail",
+                {"workspace_id": "workspace-a", "session_id": "session-a"},
+                {"limit": 1},
+            ),
+            (
+                "read.plan-detail",
+                {"workspace_id": "workspace-a", "plan_id": "plan-a"},
+                {"after": {}},
+            ),
+            (
+                "read.approval-detail",
+                {"workspace_id": "workspace-a", "approval_id": "approval-a"},
+                {"offset": 0},
+            ),
+        )
+
+        for route_id, path, payload in cases:
+            with self.subTest(route_id=route_id, payload=payload):
+                with self.assertRaises(CpkServerApplicationError) as raised:
+                    service.handle(
+                        RouteRequest(
+                            surface="http",
+                            route_id=route_id,
+                            service_role=ControlPlaneServiceRole.READS,
+                            path_parameters=path,
+                            payload=payload,
+                        )
+                    )
+                self.assertEqual(raised.exception.status, 400)
+
+        self.assertFalse(entered)
+
     def test_journal_routes_reject_hostile_mapping_subclasses_without_iteration(self) -> None:
         class HostileDict(dict):
             def __iter__(self):
@@ -1158,7 +1219,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 route_id="read.pending-approvals",
                 service_role=ControlPlaneServiceRole.READS,
                 path_parameters={"workspace_id": "workspace-a"},
-                payload={"limit": 10, "offset": 0},
+                payload={"limit": 10},
             )
         )
         self.assertEqual(pending["items"][0]["request_id"], "approval-a")
@@ -1398,7 +1459,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 route_id="read.pending-approvals",
                 service_role=ControlPlaneServiceRole.READS,
                 path_parameters={"workspace_id": "workspace-a"},
-                payload={"limit": 10, "offset": 0},
+                payload={"limit": 10},
             )
         )
         self.assertEqual(pending["items"][0]["request_id"], approval_request_id)
