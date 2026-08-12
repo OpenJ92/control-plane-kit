@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from inspect import getsource, signature
+import os
 import unittest
+import uuid
 
-from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+import psycopg
+
+from control_plane_kit_core.delegation_keys import (
+    DelegationKeyAlgorithm,
+    DelegationKeyPurpose,
+    DelegationPublicKey,
+)
 from control_plane_kit_core.identity import (
     AuthenticatedPrincipal,
     PrincipalIdentity,
@@ -16,6 +24,26 @@ from control_plane_kit_core.operations import (
     canonical_operator_read_projection_set,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.public_ingress import IngressAuthorityReference
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDelivery,
+    RuntimeAuthorityAccessDeliveryKind,
+    RuntimeAuthorityReference,
+)
+from control_plane_kit_core.secrets import (
+    SecretProviderEndpointReference,
+    SecretProviderId,
+    SecretReference,
+    SecretUseIntent,
+)
+from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_operations.delegation_signing_keys import (
+    RegisterDelegationSigningKeyCommand,
+)
+from control_plane_kit_operations.ingress_authorities import (
+    CloudflareZoneIngressAuthority,
+)
+from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.cpk_server import (
     CpkServerApplicationError,
     CpkServerReadService,
@@ -48,6 +76,18 @@ from control_plane_kit_operations.read_pages import (
     WorkspaceReadScope,
 )
 from control_plane_kit_operations.read_services import InstanceReadService
+from control_plane_kit_operations.records import (
+    ObservationRecord,
+    ObservationStatus,
+)
+from control_plane_kit_operations.runtime_authorities import (
+    LocalDockerSocketAuthority,
+)
+from control_plane_kit_operations.secret_providers import (
+    RegisterSecretProviderCommand,
+    RegisterSecretReferenceCommand,
+    SecretProviderKind,
+)
 
 
 _PAGED_OPERATIONS = frozenset(
@@ -272,6 +312,276 @@ class CurrentMetadataPageContractTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 self.assertFalse(hasattr(read_services, name))
+
+
+_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+-----END PUBLIC KEY-----
+"""
+
+
+class CurrentMetadataPostgresPageTests(unittest.TestCase):
+    def setUp(self) -> None:
+        database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
+        if not database_url:
+            raise RuntimeError(
+                "CPK_OPERATIONS_TEST_DATABASE_URL is required; use Docker-first tests"
+            )
+        self.schema = f"metadata_pages_{uuid.uuid4().hex}"
+        self.connection = psycopg.connect(database_url, autocommit=True)
+        self.connection.execute(f'CREATE SCHEMA "{self.schema}"')
+        self.connection.execute(f'SET search_path TO "{self.schema}"')
+        install_schema(self.connection)
+        self.connection.execute(
+            """
+            INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
+            VALUES ('workspace-a', 'Workspace A', 'created')
+            """
+        )
+
+    def tearDown(self) -> None:
+        self.connection.execute("SET search_path TO public")
+        self.connection.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
+        self.connection.close()
+
+    def test_all_seven_collections_traverse_real_rows_without_duplicate_or_skip(
+        self,
+    ) -> None:
+        observed = PostgresObservedStateStore(self.connection)
+        runtimes = RuntimeAuthorityStore(self.connection)
+        deliveries = RuntimeAuthorityDeliveryStore(self.connection)
+        ingresses = IngressAuthorityStore(self.connection)
+        providers = SecretProviderStore(self.connection)
+        references = SecretReferenceStore(self.connection)
+        keys = DelegationSigningKeyStore(self.connection)
+
+        for identity in ("a", "b", "c"):
+            observed.put(
+                ObservationRecord(
+                    observation_id=f"observation-{identity}",
+                    workspace_id="workspace-a",
+                    subject_id=f"subject-{identity}",
+                    status=ObservationStatus.HEALTHY,
+                    observed_at="2026-08-12T12:00:00Z",
+                )
+            )
+            runtimes.register(
+                workspace_id="workspace-a",
+                authority_ref=RuntimeAuthorityReference(f"runtime-{identity}"),
+                runtime_kind=RuntimeKind.DOCKER,
+                authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a",
+                admitted_at="2026-08-12T12:01:00Z",
+            )
+            deliveries.register(
+                workspace_id="workspace-a",
+                delivery=RuntimeAuthorityAccessDelivery(
+                    RuntimeAuthorityReference(f"runtime-{identity}"),
+                    RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+                ),
+                admitted_by="operator-a",
+                admitted_at="2026-08-12T12:02:00Z",
+            )
+            ingresses.register(
+                workspace_id="workspace-a",
+                authority_ref=IngressAuthorityReference(f"ingress-{identity}"),
+                authority=self._ingress_authority(identity),
+                admitted_by="operator-a",
+                admitted_at="2026-08-12T12:03:00Z",
+            )
+            provider = providers.register(self._provider(identity).candidate())
+            references.register(
+                self._reference(identity, provider.registration_id).candidate()
+            )
+            keys.register(self._delegation_key(identity).candidate())
+
+        cases = (
+            (
+                ReadCollection.LATEST_OBSERVATIONS,
+                observed.latest_page,
+                lambda value: value.subject_id,
+                ["subject-a", "subject-b", "subject-c"],
+            ),
+            (
+                ReadCollection.RUNTIME_AUTHORITIES,
+                runtimes.active_page,
+                lambda value: value.authority_ref.reference_id,
+                ["runtime-a", "runtime-b", "runtime-c"],
+            ),
+            (
+                ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                deliveries.active_page,
+                lambda value: value.authority_ref.reference_id,
+                ["runtime-a", "runtime-b", "runtime-c"],
+            ),
+            (
+                ReadCollection.INGRESS_AUTHORITIES,
+                ingresses.active_page,
+                lambda value: value.authority_ref.reference_id,
+                ["ingress-a", "ingress-b", "ingress-c"],
+            ),
+            (
+                ReadCollection.SECRET_PROVIDERS,
+                providers.active_page,
+                lambda value: value.provider_id.value,
+                ["provider-a", "provider-b", "provider-c"],
+            ),
+            (
+                ReadCollection.SECRET_REFERENCES,
+                references.active_page,
+                lambda value: value.registration_id,
+                sorted(
+                    value[0]
+                    for value in self.connection.execute(
+                        "SELECT registration_id FROM cpk_secret_references"
+                    ).fetchall()
+                ),
+            ),
+            (
+                ReadCollection.DELEGATION_SIGNING_KEYS,
+                keys.workspace_page,
+                lambda value: (value.purpose.value, value.issuer, value.key_id),
+                [
+                    ("gateway-probe", "issuer-a", "key-a"),
+                    ("gateway-probe", "issuer-a", "key-b"),
+                    ("gateway-probe", "issuer-a", "key-c"),
+                ],
+            ),
+        )
+        for collection, fetch_page, identity, expected in cases:
+            with self.subTest(collection=collection.value):
+                actual = self._traverse(collection, fetch_page, identity)
+                self.assertEqual(actual, expected)
+                self.assertEqual(len(actual), len(set(actual)))
+
+    def test_live_membership_behind_cursor_waits_for_fresh_traversal(self) -> None:
+        providers = SecretProviderStore(self.connection)
+        for identity in ("b", "d", "f"):
+            providers.register(self._provider(identity).candidate())
+
+        scope = WorkspaceReadScope("workspace-a")
+        first = providers.active_page(
+            ReadPageRequest(ReadCollection.SECRET_PROVIDERS, scope, 2)
+        )
+        self.assertEqual(
+            [value.provider_id.value for value in first.items],
+            ["provider-b", "provider-d"],
+        )
+
+        providers.register(self._provider("a").candidate())
+        providers.register(self._provider("e").candidate())
+        second = providers.active_page(
+            ReadPageRequest(
+                ReadCollection.SECRET_PROVIDERS,
+                scope,
+                2,
+                first.next_cursor,
+            )
+        )
+        self.assertEqual(
+            [value.provider_id.value for value in second.items],
+            ["provider-e", "provider-f"],
+        )
+        self.assertEqual(
+            self._traverse(
+                ReadCollection.SECRET_PROVIDERS,
+                providers.active_page,
+                lambda value: value.provider_id.value,
+            ),
+            [
+                "provider-a",
+                "provider-b",
+                "provider-d",
+                "provider-e",
+                "provider-f",
+            ],
+        )
+
+    @staticmethod
+    def _traverse(collection, fetch_page, identity):
+        scope = WorkspaceReadScope("workspace-a")
+        cursor = None
+        values = []
+        while True:
+            page = fetch_page(ReadPageRequest(collection, scope, 2, cursor))
+            values.extend(identity(value) for value in page.items)
+            if page.next_cursor is None:
+                return values
+            cursor = page.next_cursor
+
+    @staticmethod
+    def _provider(identity: str) -> RegisterSecretProviderCommand:
+        return RegisterSecretProviderCommand(
+            workspace_id="workspace-a",
+            provider_id=SecretProviderId(f"provider-{identity}"),
+            provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
+            display_name=f"Provider {identity}",
+            endpoint_reference=SecretProviderEndpointReference(
+                f"endpoint-{identity}"
+            ),
+            credential_reference=SecretReference(
+                f"secret://bootstrap/provider-{identity}/token"
+            ),
+            allowed_reference_prefixes=(
+                SecretReference(f"secret://provider-{identity}/workspace-a"),
+            ),
+            allowed_intents=(SecretUseIntent.POSTGRES_PASSWORD,),
+            admitted_by="operator-a",
+            admitted_at="2026-08-12T12:04:00Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+        )
+
+    @staticmethod
+    def _reference(
+        identity: str,
+        provider_registration_id: str,
+    ) -> RegisterSecretReferenceCommand:
+        return RegisterSecretReferenceCommand(
+            workspace_id="workspace-a",
+            reference=SecretReference(
+                f"secret://provider-{identity}/workspace-a/password"
+            ),
+            provider_registration_id=provider_registration_id,
+            allowed_intents=(SecretUseIntent.POSTGRES_PASSWORD,),
+            admitted_by="operator-a",
+            admitted_at="2026-08-12T12:05:00Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+        )
+
+    @staticmethod
+    def _delegation_key(identity: str) -> RegisterDelegationSigningKeyCommand:
+        return RegisterDelegationSigningKeyCommand(
+            workspace_id="workspace-a",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="issuer-a",
+            public_key=DelegationPublicKey(
+                key_id=f"key-{identity}",
+                algorithm=DelegationKeyAlgorithm.ED25519,
+                public_key_pem=_PUBLIC_KEY,
+            ),
+            private_key_reference=SecretReference(
+                f"secret://private-canary/key-{identity}"
+            ),
+            admitted_by="operator-a",
+            admitted_at="2026-08-12T12:06:00Z",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,),
+        )
+
+    @staticmethod
+    def _ingress_authority(identity: str) -> CloudflareZoneIngressAuthority:
+        return CloudflareZoneIngressAuthority(
+            account_id=f"account-{identity}",
+            zone_id=f"zone-{identity}",
+            zone_name="openj92.dev",
+            api_token_ref=SecretReference(
+                f"secret://cloudflare/{identity}/api-token"
+            ),
+            allowed_hostname_pattern="cpk-gateway-*.openj92.dev",
+            generated_secret_provider_registration_id=f"provider-{identity}",
+            generated_secret_reference_prefix=SecretReference(
+                f"secret://generated/{identity}/ingress"
+            ),
+        )
 
 
 def _principal(*, authorized: bool) -> AuthenticatedPrincipal:

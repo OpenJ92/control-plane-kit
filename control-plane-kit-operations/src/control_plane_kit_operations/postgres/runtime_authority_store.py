@@ -17,6 +17,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    IdentityReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 from control_plane_kit_operations.runtime_authorities import (
     DockerRuntimeAuthority,
     DockerRuntimeAuthorityCodec,
@@ -151,6 +159,54 @@ class RuntimeAuthorityStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_authority(row) for row in rows)
+
+    def active_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredRuntimeAuthority]:
+        if request.collection is not ReadCollection.RUNTIME_AUTHORITIES:
+            raise ReadPageError("runtime authority page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND authority_ref > %s"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT registration_id, workspace_id, authority_ref, runtime_kind,
+                   authority, admitted_by, admitted_at, status, metadata
+            FROM cpk_runtime_authorities
+            WHERE workspace_id = %s
+              AND status = 'active'
+              {seek}
+            ORDER BY authority_ref ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _row_to_authority(row),
+                    IdentityReadCursor(
+                        ReadCollection.RUNTIME_AUTHORITIES,
+                        request.scope,
+                        row[2],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def revoke(
         self,
@@ -339,6 +395,54 @@ class RuntimeAuthorityDeliveryStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_delivery(row) for row in rows)
+
+    def active_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredRuntimeAuthorityDelivery]:
+        if request.collection is not ReadCollection.RUNTIME_AUTHORITY_DELIVERIES:
+            raise ReadPageError("runtime delivery page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND authority_ref > %s"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT delivery_id, workspace_id, delivery, admitted_by,
+                   admitted_at, status, metadata, authority_ref
+            FROM cpk_runtime_authority_deliveries
+            WHERE workspace_id = %s
+              AND status = 'active'
+              {seek}
+            ORDER BY authority_ref ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _row_to_delivery(row[:7]),
+                    IdentityReadCursor(
+                        ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                        request.scope,
+                        row[7],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def revoke(
         self,

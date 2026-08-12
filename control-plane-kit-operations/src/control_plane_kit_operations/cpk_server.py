@@ -412,6 +412,18 @@ class CpkServerReadService:
             else None
         )
         _trusted_context(request, values=read_arguments)
+        page_request = None
+        if request.route_id in _PAGED_READ_COLLECTIONS:
+            page_failure = False
+            try:
+                page_request = _read_page_request_for_route(
+                    request.route_id,
+                    read_arguments or {},
+                )
+            except ReadPageError:
+                page_failure = True
+            if page_failure:
+                raise CpkServerApplicationError(400, "read page request is malformed")
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -435,7 +447,12 @@ class CpkServerReadService:
             service = InstanceReadService(**kwargs)
             failure: tuple[int, str] | None = None
             try:
-                model = _read_model(service, request, arguments=read_arguments)
+                model = _read_model(
+                    service,
+                    request,
+                    arguments=read_arguments,
+                    page_request=page_request,
+                )
             except (ReadModelError, ReadPageError) as error:
                 status = 400 if isinstance(error, ReadPageError) else _read_error_status(error)
                 failure = (status, str(error))
@@ -1294,6 +1311,7 @@ def _read_model(
     request: CpkServerRouteRequest,
     *,
     arguments: Mapping[str, object] | None = None,
+    page_request: ReadPageRequest | None = None,
 ) -> Any:
     args = _arguments(request) if arguments is None else dict(arguments)
     route_id = request.route_id
@@ -1310,19 +1328,11 @@ def _read_model(
         )
     if route_id == "read.activity":
         return service.activity_sessions(
-            _read_page_request(
-                args,
-                collection=ReadCollection.ACTIVITY_SESSIONS,
-                scope=WorkspaceReadScope(_workspace_id(args)),
-            )
+            _required_page_request(page_request, ReadCollection.ACTIVITY_SESSIONS)
         )
     if route_id == "read.sessions":
         return service.open_sessions(
-            _read_page_request(
-                args,
-                collection=ReadCollection.OPEN_SESSIONS,
-                scope=WorkspaceReadScope(_workspace_id(args)),
-            )
+            _required_page_request(page_request, ReadCollection.OPEN_SESSIONS)
         )
     if route_id == "read.session-detail":
         return service.session_detail(
@@ -1331,47 +1341,19 @@ def _read_model(
         )
     if route_id == "read.session-actions":
         return service.session_actions(
-            _read_page_request(
-                args,
-                collection=ReadCollection.SESSION_ACTIONS,
-                scope=SessionReadScope(
-                    _workspace_id(args),
-                    _text(args, "session_id"),
-                ),
-            )
+            _required_page_request(page_request, ReadCollection.SESSION_ACTIONS)
         )
     if route_id == "read.session-plans":
         return service.session_plans(
-            _read_page_request(
-                args,
-                collection=ReadCollection.SESSION_PLANS,
-                scope=SessionReadScope(
-                    _workspace_id(args),
-                    _text(args, "session_id"),
-                ),
-            )
+            _required_page_request(page_request, ReadCollection.SESSION_PLANS)
         )
     if route_id == "read.session-approvals":
         return service.session_approvals(
-            _read_page_request(
-                args,
-                collection=ReadCollection.SESSION_APPROVALS,
-                scope=SessionReadScope(
-                    _workspace_id(args),
-                    _text(args, "session_id"),
-                ),
-            )
+            _required_page_request(page_request, ReadCollection.SESSION_APPROVALS)
         )
     if route_id == "read.run-events":
         return service.run_events(
-            _read_page_request(
-                args,
-                collection=ReadCollection.RUN_EVENTS,
-                scope=RunReadScope(
-                    _workspace_id(args),
-                    _text(args, "run_id"),
-                ),
-            )
+            _required_page_request(page_request, ReadCollection.RUN_EVENTS)
         )
     if route_id == "read.plan-detail":
         return service.plan_detail(
@@ -1380,14 +1362,7 @@ def _read_model(
         )
     if route_id == "read.plan-runs":
         return service.plan_runs(
-            _read_page_request(
-                args,
-                collection=ReadCollection.PLAN_RUNS,
-                scope=PlanReadScope(
-                    _workspace_id(args),
-                    _text(args, "plan_id"),
-                ),
-            )
+            _required_page_request(page_request, ReadCollection.PLAN_RUNS)
         )
     if route_id == "read.approval-detail":
         return service.approval_detail(
@@ -1396,21 +1371,21 @@ def _read_model(
         )
     if route_id == "read.pending-approvals":
         return service.pending_approvals(
-            _read_page_request(
-                args,
-                collection=ReadCollection.PENDING_APPROVALS,
-                scope=WorkspaceReadScope(_workspace_id(args)),
-            )
+            _required_page_request(page_request, ReadCollection.PENDING_APPROVALS)
         )
     if route_id == "read.observed-state":
-        return service.observed_state(_workspace_id(args))
+        return service.observed_state(
+            _required_page_request(page_request, ReadCollection.LATEST_OBSERVATIONS)
+        )
     if route_id == "read.control-surface":
         return service.control_surface(
             _workspace_id(args),
             pointer=_optional_text(args, "pointer") or "current",
         )
     if route_id == "read.runtime-authorities":
-        return service.runtime_authorities(_workspace_id(args))
+        return service.runtime_authorities(
+            _required_page_request(page_request, ReadCollection.RUNTIME_AUTHORITIES)
+        )
     if route_id == "read.runtime-authority-detail":
         return service.runtime_authority_detail(
             _workspace_id(args),
@@ -1419,7 +1394,12 @@ def _read_model(
             ),
         )
     if route_id == "read.runtime-authority-deliveries":
-        return service.runtime_authority_deliveries(_workspace_id(args))
+        return service.runtime_authority_deliveries(
+            _required_page_request(
+                page_request,
+                ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+            )
+        )
     if route_id == "read.runtime-authority-delivery-detail":
         return service.runtime_authority_delivery_detail(
             _workspace_id(args),
@@ -1428,7 +1408,9 @@ def _read_model(
             ),
         )
     if route_id == "read.ingress-authorities":
-        return service.ingress_authorities(_workspace_id(args))
+        return service.ingress_authorities(
+            _required_page_request(page_request, ReadCollection.INGRESS_AUTHORITIES)
+        )
     if route_id == "read.ingress-authority-detail":
         return service.ingress_authority_detail(
             _workspace_id(args),
@@ -1437,7 +1419,9 @@ def _read_model(
             ),
         )
     if route_id == "read.secret-providers":
-        return service.secret_providers(_workspace_id(args))
+        return service.secret_providers(
+            _required_page_request(page_request, ReadCollection.SECRET_PROVIDERS)
+        )
     if route_id == "read.secret-provider-detail":
         return service.secret_provider_detail(
             _workspace_id(args),
@@ -1446,7 +1430,9 @@ def _read_model(
             ),
         )
     if route_id == "read.secret-references":
-        return service.secret_references(_workspace_id(args))
+        return service.secret_references(
+            _required_page_request(page_request, ReadCollection.SECRET_REFERENCES)
+        )
     if route_id == "read.secret-reference-detail":
         return service.secret_reference_detail(
             _workspace_id(args),
@@ -1468,7 +1454,12 @@ def _read_model(
             _text(args, "probe_id"),
         )
     if route_id == "read.delegation-keys":
-        return service.delegation_signing_keys(_workspace_id(args))
+        return service.delegation_signing_keys(
+            _required_page_request(
+                page_request,
+                ReadCollection.DELEGATION_SIGNING_KEYS,
+            )
+        )
     if route_id == "read.gateway-verifier-configuration":
         return service.gateway_verifier_configuration(
             _workspace_id(args),
@@ -1496,6 +1487,31 @@ _CLOSED_READ_ARGUMENTS = {
     "read.session-detail": ("session_id", False),
     "read.plan-detail": ("plan_id", False),
     "read.approval-detail": ("approval_id", False),
+    "read.observed-state": (None, True),
+    "read.runtime-authorities": (None, True),
+    "read.runtime-authority-deliveries": (None, True),
+    "read.ingress-authorities": (None, True),
+    "read.secret-providers": (None, True),
+    "read.secret-references": (None, True),
+    "read.delegation-keys": (None, True),
+}
+
+_PAGED_READ_COLLECTIONS = {
+    "read.activity": ReadCollection.ACTIVITY_SESSIONS,
+    "read.sessions": ReadCollection.OPEN_SESSIONS,
+    "read.session-actions": ReadCollection.SESSION_ACTIONS,
+    "read.session-plans": ReadCollection.SESSION_PLANS,
+    "read.session-approvals": ReadCollection.SESSION_APPROVALS,
+    "read.pending-approvals": ReadCollection.PENDING_APPROVALS,
+    "read.plan-runs": ReadCollection.PLAN_RUNS,
+    "read.run-events": ReadCollection.RUN_EVENTS,
+    "read.observed-state": ReadCollection.LATEST_OBSERVATIONS,
+    "read.runtime-authorities": ReadCollection.RUNTIME_AUTHORITIES,
+    "read.runtime-authority-deliveries": ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+    "read.ingress-authorities": ReadCollection.INGRESS_AUTHORITIES,
+    "read.secret-providers": ReadCollection.SECRET_PROVIDERS,
+    "read.secret-references": ReadCollection.SECRET_REFERENCES,
+    "read.delegation-keys": ReadCollection.DELEGATION_SIGNING_KEYS,
 }
 
 
@@ -1532,6 +1548,39 @@ def _read_page_request(
         _positive_int(values, "limit", default=50),
         cursor,
     )
+
+
+def _read_page_request_for_route(
+    route_id: str,
+    values: Mapping[str, object],
+) -> ReadPageRequest:
+    collection = _PAGED_READ_COLLECTIONS[route_id]
+    workspace_id = _workspace_id(values)
+    if collection in {
+        ReadCollection.SESSION_ACTIONS,
+        ReadCollection.SESSION_PLANS,
+        ReadCollection.SESSION_APPROVALS,
+    }:
+        scope: ReadScope = SessionReadScope(
+            workspace_id,
+            _text(values, "session_id"),
+        )
+    elif collection is ReadCollection.PLAN_RUNS:
+        scope = PlanReadScope(workspace_id, _text(values, "plan_id"))
+    elif collection is ReadCollection.RUN_EVENTS:
+        scope = RunReadScope(workspace_id, _text(values, "run_id"))
+    else:
+        scope = WorkspaceReadScope(workspace_id)
+    return _read_page_request(values, collection=collection, scope=scope)
+
+
+def _required_page_request(
+    request: ReadPageRequest | None,
+    collection: ReadCollection,
+) -> ReadPageRequest:
+    if request is None or request.collection is not collection:
+        raise ReadPageError("prepared read page request is incongruent")
+    return request
 
 
 def _trusted_context(

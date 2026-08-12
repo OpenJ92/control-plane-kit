@@ -133,7 +133,6 @@ class OperationsPackageBoundaryTests(unittest.TestCase):
             {
                 "AuthorizeSecretUse",
                 "AuthorizedSecretUse",
-                "SecretMetadataCollectionReadModel",
                 "SecretProviderRegistrationService",
                 "SecretUseAuthorizationConflict",
                 "SecretUseAuthorizationService",

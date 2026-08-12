@@ -173,10 +173,18 @@ consumer = "gateway probe signing and delegation-key generation require one acti
 [[read]]
 module = "control_plane_kit_operations.postgres.delegation_signing_key_store"
 selector = "DelegationSigningKeyStore.list_workspace"
-category = "public-unbounded"
-sql = "workspace filter; purpose/issuer/key identity ascending; currently complete"
+category = "internal-complete"
+sql = "workspace filter; purpose/issuer/key identity ascending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "delegation store tests preserve complete workspace-key retrieval laws"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.delegation_signing_key_store"
+selector = "DelegationSigningKeyStore.workspace_page"
+category = "public-paged"
+sql = "workspace filter; purpose/issuer/key tuple keyset; LIMIT limit plus one"
 consumer_kind = "production"
-consumer = "InstanceReadService delegation-key collection pending keyset paging in issue 1593"
+consumer = "InstanceReadService delegation-key page projection"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.delegation_signing_key_store"
@@ -221,10 +229,18 @@ consumer = "ExecutionCoordinator resolves the complete admitted image-pull autho
 [[read]]
 module = "control_plane_kit_operations.postgres.ingress_authority_store"
 selector = "IngressAuthorityStore.list_active"
-category = "public-unbounded"
-sql = "workspace active filter; authority identity ascending; currently complete"
+category = "internal-complete"
+sql = "workspace active filter; authority identity ascending; intentionally complete"
 consumer_kind = "production"
-consumer = "InstanceReadService ingress-authority collection pending keyset paging in issue 1593"
+consumer = "ExecutionCoordinator resolves the complete active ingress-authority catalogue"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.ingress_authority_store"
+selector = "IngressAuthorityStore.active_page"
+category = "public-paged"
+sql = "workspace active filter; authority identity keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService ingress-authority page projection"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.ingress_authority_store"
@@ -245,10 +261,18 @@ consumer = "ExecutionCoordinator reconstructs every generated ingress-secret ref
 [[read]]
 module = "control_plane_kit_operations.postgres.observed_state"
 selector = "PostgresObservedStateStore.latest_for_workspace"
-category = "public-unbounded"
-sql = "workspace latest-per-subject projection; subject identity ascending; currently complete"
+category = "internal-complete"
+sql = "workspace latest-per-subject projection; subject identity ascending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "observed-state store tests preserve complete latest-per-subject laws"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.observed_state"
+selector = "PostgresObservedStateStore.latest_page"
+category = "public-paged"
+sql = "workspace latest-per-subject projection; subject identity keyset; LIMIT limit plus one"
 consumer_kind = "production"
-consumer = "InstanceReadService observed-state collection pending keyset paging in issue 1593"
+consumer = "InstanceReadService observed-state page projection"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.observed_state"
@@ -269,26 +293,50 @@ consumer = "GraphAuthoringService ExecutionCoordinator and GatewayProbeCommandSe
 [[read]]
 module = "control_plane_kit_operations.postgres.runtime_authority_store"
 selector = "RuntimeAuthorityStore.list_active"
-category = "public-unbounded"
-sql = "workspace active filter; authority identity ascending; currently complete"
+category = "internal-complete"
+sql = "workspace active filter; authority identity ascending; intentionally complete"
 consumer_kind = "production"
-consumer = "InstanceReadService runtime-authority collection pending keyset paging in issue 1593"
+consumer = "ExecutionCoordinator resolves the complete active runtime-authority catalogue"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_authority_store"
+selector = "RuntimeAuthorityStore.active_page"
+category = "public-paged"
+sql = "workspace active filter; authority identity keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService runtime-authority page projection"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.runtime_authority_store"
 selector = "RuntimeAuthorityDeliveryStore.list_active"
-category = "public-unbounded"
-sql = "workspace active filter; authority identity ascending; currently complete"
+category = "internal-complete"
+sql = "workspace active filter; authority identity ascending; intentionally complete"
 consumer_kind = "production"
-consumer = "InstanceReadService runtime-authority-delivery collection pending keyset paging in issue 1593"
+consumer = "ExecutionCoordinator resolves the complete runtime-authority delivery catalogue"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_authority_store"
+selector = "RuntimeAuthorityDeliveryStore.active_page"
+category = "public-paged"
+sql = "workspace active filter; authority identity keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService runtime-authority-delivery page projection"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.secret_provider_store"
 selector = "SecretProviderStore.list_active"
-category = "public-unbounded"
-sql = "workspace active filter; provider identity ascending; currently complete"
+category = "internal-complete"
+sql = "workspace active filter; provider identity ascending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "secret-provider store tests preserve complete active-provider laws"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "SecretProviderStore.active_page"
+category = "public-paged"
+sql = "workspace active filter; provider identity keyset; LIMIT limit plus one"
 consumer_kind = "production"
-consumer = "InstanceReadService secret-provider collection pending keyset paging in issue 1593"
+consumer = "InstanceReadService secret-provider page projection"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.secret_provider_store"
@@ -301,10 +349,18 @@ consumer = "SecretProviderStore validates replacement and revocation against com
 [[read]]
 module = "control_plane_kit_operations.postgres.secret_provider_store"
 selector = "SecretReferenceStore.list_active"
-category = "public-unbounded"
-sql = "workspace active filter; secret-reference identity ascending; currently complete"
+category = "internal-complete"
+sql = "workspace active filter; secret-reference identity ascending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "secret-reference store tests preserve complete active-reference laws"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "SecretReferenceStore.active_page"
+category = "public-paged"
+sql = "workspace active filter; registration identity keyset; LIMIT limit plus one"
 consumer_kind = "production"
-consumer = "InstanceReadService secret-reference collection pending registration keyset paging in issue 1593"
+consumer = "InstanceReadService secret-reference page projection"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.secret_provider_store"

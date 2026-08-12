@@ -17,6 +17,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    IdentityReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 from control_plane_kit_operations.secret_providers import (
     AuthorizedSecretUse,
     RegisteredSecretProvider,
@@ -211,6 +219,52 @@ class SecretProviderStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_provider(row) for row in rows)
+
+    def active_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredSecretProvider]:
+        if request.collection is not ReadCollection.SECRET_PROVIDERS:
+            raise ReadPageError("secret provider page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND provider_id > %s"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            {_PROVIDER_SELECT}
+            WHERE workspace_id = %s
+              AND status = 'active'
+              {seek}
+            ORDER BY provider_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _row_to_provider(row),
+                    IdentityReadCursor(
+                        ReadCollection.SECRET_PROVIDERS,
+                        request.scope,
+                        row[2],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def list_history(
         self,
@@ -483,6 +537,52 @@ class SecretReferenceStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_reference(row) for row in rows)
+
+    def active_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredSecretReference]:
+        if request.collection is not ReadCollection.SECRET_REFERENCES:
+            raise ReadPageError("secret reference page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND registration_id > %s"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            {_REFERENCE_SELECT}
+            WHERE workspace_id = %s
+              AND status = 'active'
+              {seek}
+            ORDER BY registration_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _row_to_reference(row),
+                    IdentityReadCursor(
+                        ReadCollection.SECRET_REFERENCES,
+                        request.scope,
+                        row[0],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def list_history(
         self,
