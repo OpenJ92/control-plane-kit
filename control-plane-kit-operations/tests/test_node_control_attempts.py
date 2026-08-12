@@ -280,11 +280,15 @@ class _NodeControlAttemptFixture:
             workload_grant=workload,
         )
 
-    def assert_attempt_error(self, factory) -> None:
+    def assert_attempt_error(self, factory, *, forbidden: str | None = None) -> None:
         error_type = self.contract("NodeControlAttemptError")
         with self.assertRaises(error_type) as caught:
             factory()
         self.assertLessEqual(len(str(caught.exception)), 128)
+        self.assertLessEqual(len(repr(caught.exception)), 160)
+        if forbidden is not None:
+            self.assertNotIn(forbidden, str(caught.exception))
+            self.assertNotIn(forbidden, repr(caught.exception))
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
 
@@ -672,12 +676,93 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
         self.assertFalse(any("time" in value.name for value in indexes.values()))
         self.assertFalse(any("digest" in value.name for value in indexes.values()))
 
+    def test_public_scalars_and_store_selectors_fail_before_sql(self) -> None:
+        attempt = self.attempt()
+        candidates = (
+            ("Operator/A", lambda value: replace(attempt, actor_subject=value)),
+            (
+                "projection/current",
+                lambda value: replace(
+                    attempt,
+                    current_realized_projection_id=value,
+                ),
+            ),
+            (
+                "docker current",
+                lambda value: replace(attempt, gateway_runtime_id=value),
+            ),
+            (
+                "not-a-key-registration",
+                lambda value: replace(
+                    attempt,
+                    transit_key_registration_id=value,
+                ),
+            ),
+            (
+                "not-an-authorization",
+                lambda value: replace(
+                    attempt,
+                    workload_authorization_id=value,
+                ),
+            ),
+            (
+                "correlation with spaces",
+                lambda value: replace(
+                    attempt,
+                    transit_correlation_id=value,
+                ),
+            ),
+            (
+                "CPK/SERVER",
+                lambda value: replace(
+                    attempt,
+                    transit_grant=replace(attempt.transit_grant, issuer=value),
+                ),
+            ),
+            (
+                "WORKLOAD/SERVER",
+                lambda value: replace(
+                    attempt,
+                    workload_grant=replace(attempt.workload_grant, issuer=value),
+                ),
+            ),
+        )
+        for candidate, factory in candidates:
+            with self.subTest(candidate=candidate):
+                self.assert_attempt_error(
+                    lambda factory=factory, candidate=candidate: factory(candidate),
+                    forbidden=candidate,
+                )
+
+        class UnexpectedSqlConnection:
+            def execute(self, *_args, **_kwargs):
+                raise AssertionError("invalid selector reached SQL")
+
+        store = self.contract("NodeControlAttemptStore")(UnexpectedSqlConnection())
+        invalid = "selector/" + "x" * 256
+        selectors = (
+            lambda: store.lock_request_id(invalid, "request-a"),
+            lambda: store.lock_request_id("workspace-a", invalid),
+            lambda: store.get(invalid),
+            lambda: store.get_by_request_id(invalid, "request-a"),
+            lambda: store.get_by_request_id("workspace-a", invalid),
+        )
+        for index, call in enumerate(selectors):
+            with self.subTest(selector=index):
+                self.assert_attempt_error(call, forbidden=invalid)
+
     def test_atlas_and_package_boundaries_explain_one_insert_only_truth(self) -> None:
         root = Path(__file__).resolve().parents[1]
         atlas = (root / "OPERATIONS_TABLE_ATLAS.md").read_text(encoding="utf-8")
         self.assertIn("### `cpk_node_control_attempts`", atlas)
         self.assertIn("Row membership means only INTENDED", atlas)
         self.assertIn("#1556", atlas)
+        attempt_section = atlas.split("### `cpk_node_control_attempts`", 1)[1].split(
+            "### `cpk_observations`",
+            1,
+        )[0]
+        self.assertIn("unsigned", attempt_section.lower())
+        self.assertNotIn("signed grants", attempt_section.lower())
         self.assertIn(
             current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256,
             atlas.splitlines()[2],
@@ -1320,6 +1405,20 @@ class NodeControlAttemptPostgresTests(
             """
         )
         self.assertEqual(store.get("attempt-a").current_graph_id, "graph-current")
+
+    def test_invalid_relational_witness_is_bounded_and_candidate_free(self) -> None:
+        candidate = "dkey_" + "9" * 64
+        invalid = replace(
+            self.attempt(),
+            transit_key_registration_id=candidate,
+        )
+        with self.assertRaises(self.contract("NodeControlAttemptError")) as caught:
+            self.store_type(self.connection).add(invalid)
+        for rendered in (str(caught.exception), repr(caught.exception)):
+            self.assertLessEqual(len(rendered), 160)
+            self.assertNotIn(candidate, rendered)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
 
     def test_advisory_request_lock_serializes_two_connections(self) -> None:
         first = psycopg.connect(self.database_url)
