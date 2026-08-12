@@ -84,6 +84,11 @@ from control_plane_kit_operations.delegation_signing_keys import (
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
 from control_plane_kit_operations.products import InlineDescriptorSource
+from control_plane_kit_operations.read_pages import (
+    ReadCollection,
+    ReadPageRequest,
+    WorkspaceReadScope,
+)
 from control_plane_kit_operations.records import BoundedEvidence, GraphVersionRecord, WorkspaceRecord
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
@@ -570,7 +575,13 @@ class GatewayProbeCommandServiceTests(unittest.TestCase):
 
         by_id = store.get(settled.probe_id)
         by_request = store.get_by_request_id("workspace-a", intended.request_id)
-        listed = store.list_for_workspace("workspace-a")
+        listed = store.page(
+            ReadPageRequest(
+                ReadCollection.GATEWAY_PROBES,
+                WorkspaceReadScope("workspace-a"),
+                50,
+            )
+        ).items
 
         self.assertEqual(by_id.requested_at, "2027-01-15T08:00:00Z")
         self.assertEqual(by_id.completed_at, "2027-01-15T08:00:00.000001Z")

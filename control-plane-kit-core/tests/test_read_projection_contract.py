@@ -20,6 +20,14 @@ from control_plane_kit_core.operations import (
 
 
 class ReadProjectionContractTests(unittest.TestCase):
+    def test_gateway_probe_timeline_uses_the_common_page_bound(self) -> None:
+        projection = canonical_operator_read_projection_set().projection(
+            "read.gateway-probe-timeline"
+        )
+
+        self.assertTrue(projection.paged)
+        self.assertEqual(projection.max_page_size, 100)
+
     def test_canonical_projection_set_is_closed_bounded_and_read_only(self) -> None:
         projections = canonical_operator_read_projection_set()
 

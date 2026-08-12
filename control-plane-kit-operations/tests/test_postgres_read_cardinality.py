@@ -35,8 +35,8 @@ _CATEGORIES = frozenset(
 )
 _CONSUMER_KINDS = frozenset({"production", "test-only"})
 _CATEGORY_COUNTS = {
-    "public-paged": 13,
-    "public-unbounded": 1,
+    "public-paged": 14,
+    "public-unbounded": 0,
     "fixed-cardinality": 1,
     "closed-finite": 2,
     "internal-complete": 22,

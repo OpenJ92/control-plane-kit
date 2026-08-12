@@ -319,6 +319,7 @@ class CurrentMetadataPageContractTests(unittest.TestCase):
             "RuntimeAuthorityCollectionReadModel",
             "IngressAuthorityCollectionReadModel",
             "SecretMetadataCollectionReadModel",
+            "FocusedCollectionReadModel",
         ):
             with self.subTest(name=name):
                 self.assertFalse(hasattr(read_services, name))
@@ -350,6 +351,7 @@ class CurrentMetadataPageContractTests(unittest.TestCase):
             "RuntimeAuthorityCollectionReadModel",
             "IngressAuthorityCollectionReadModel",
             "SecretMetadataCollectionReadModel",
+            "FocusedCollectionReadModel",
         }
         for module in read_service_modules:
             with self.subTest(module=module["module"]):
