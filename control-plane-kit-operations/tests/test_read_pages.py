@@ -159,6 +159,7 @@ class ReadPageContractTests(unittest.TestCase):
             self.assertIs(spec.cursor_type, cursor)
             self.assertEqual(spec.order, order)
             self.assertEqual(spec.position_fields, position)
+            self.assertFalse(hasattr(spec, "__dict__"))
         self.assertEqual(
             {spec.collection for spec in READ_COLLECTION_SPECS},
             set(ReadCollection),
@@ -588,6 +589,8 @@ class ReadPageContractTests(unittest.TestCase):
         )
         first = self.action_cursor("action-a", 1)
         hidden = self.action_cursor("action-b", 2)
+        with self.assertRaises(TypeError):
+            ReadPage(request, (), first)
         page = ReadPage.from_candidates(
             request,
             (
