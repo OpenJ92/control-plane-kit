@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=b5f56207a526323dc19503968955b1654f3ed34e2a8a2a82ccf9b818cecc5d94 relations=28 columns=353 constraints=231 indexes=77 foreign-keys=47 -->
+<!-- current-schema-contract: sha256=969bcd9ac0634a5a6a43856c6aea3215f741db9a99244d3f80066b0dbb9eede9 relations=29 columns=380 constraints=268 indexes=87 foreign-keys=54 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -88,6 +88,9 @@ foreign key and the accepted lineage cycle:
    operation/session/run/activity/effect/probe or graph/approval/execution
    provenance they retain, even where only aggregate ownership is enforced by
    foreign key.
+9. Restore `cpk_node_control_attempts` only after its exact graph projection,
+   transit and workload signing-key registrations, and transit and workload
+   secret-use authorizations exist.
 
 Within each phase, preserve primary, candidate, ordinal, revision, and
 supersession identities exactly. This is a logical ordering account, not a
@@ -231,10 +234,10 @@ and the exact contract makes every future factoring change visible.
   must leave approval scopes independently owned.
 - **#1554:** adds pure transit grant language and verification. It adds no
   operations table and persists no compact grant or signature.
-- **Rewritten #1555:** is expected to add one durable node-control attempt table
-  unless its dry run proves a smaller exact persistence shape. It must reuse,
-  not parallel, workspace lineage, operation history, replay, and secret-use
-  authorization truth.
+- **Rewritten #1555:** adds one insert-only durable node-control intended-attempt
+  table. It reuses workspace lineage, delegation-key registration, and
+  secret-use authorization truth without adding result, status, completion, or
+  mutable-workspace-head ownership.
 - **#1556:** composes graph-bound authorization and operations workflow. No new
   table is expected beyond the accepted #1555 persistence shape.
 - **#1243:** interprets gateway transit and relay outside operations
@@ -276,6 +279,13 @@ cpk_generated_ingress_secret_references -->|cpk_generated_ingress_secret_referen
 cpk_graph_versions -->|cpk_graph_versions_workspace_id_fkey| cpk_workspaces
 cpk_image_pull_authorities -->|cpk_image_pull_authorities_workspace_id_fkey| cpk_workspaces
 cpk_ingress_authorities -->|cpk_ingress_authorities_workspace_id_fkey| cpk_workspaces
+cpk_node_control_attempts -->|cpk_node_control_attempts_projection_source_fk| cpk_realized_graph_projections
+cpk_node_control_attempts -->|cpk_node_control_attempts_projection_workspace_fk| cpk_realized_graph_projections
+cpk_node_control_attempts -->|cpk_node_control_attempts_transit_authorization_workspace_fk| cpk_secret_use_authorizations
+cpk_node_control_attempts -->|cpk_node_control_attempts_transit_key_workspace_fk| cpk_delegation_signing_keys
+cpk_node_control_attempts -->|cpk_node_control_attempts_workload_authorization_workspace_fk| cpk_secret_use_authorizations
+cpk_node_control_attempts -->|cpk_node_control_attempts_workload_key_workspace_fk| cpk_delegation_signing_keys
+cpk_node_control_attempts -->|cpk_node_control_attempts_workspace_id_fkey| cpk_workspaces
 cpk_observations -->|cpk_observations_workspace_id_fkey| cpk_workspaces
 cpk_operation_actions -->|cpk_operation_actions_session_id_fkey| cpk_operation_sessions
 cpk_operation_sessions -->|cpk_operation_sessions_workspace_id_fkey| cpk_workspaces
@@ -334,6 +344,13 @@ order is semantically significant for every composite identity.
 | `cpk_graph_versions_workspace_id_fkey` | `cpk_graph_versions` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every authored graph belongs to one workspace. |
 | `cpk_image_pull_authorities_workspace_id_fkey` | `cpk_image_pull_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Image-pull authority registrations are workspace scoped. |
 | `cpk_ingress_authorities_workspace_id_fkey` | `cpk_ingress_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Ingress authority registrations are workspace scoped. |
+| `cpk_node_control_attempts_projection_source_fk` | `cpk_node_control_attempts` | `current_realized_projection_id, current_graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The intended command is pinned to the exact accepted graph realized by its projection. |
+| `cpk_node_control_attempts_projection_workspace_fk` | `cpk_node_control_attempts` | `current_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The selected projection belongs to the intended command's workspace. |
+| `cpk_node_control_attempts_transit_authorization_workspace_fk` | `cpk_node_control_attempts` | `transit_authorization_id, workspace_id` | `cpk_secret_use_authorizations` | `authorization_id, workspace_id` | Transit signing custody was authorized in the same workspace before intent became durable. |
+| `cpk_node_control_attempts_transit_key_workspace_fk` | `cpk_node_control_attempts` | `transit_key_registration_id, workspace_id` | `cpk_delegation_signing_keys` | `registration_id, workspace_id` | The exact transit signing-key registration belongs to the intended command's workspace. |
+| `cpk_node_control_attempts_workload_authorization_workspace_fk` | `cpk_node_control_attempts` | `workload_authorization_id, workspace_id` | `cpk_secret_use_authorizations` | `authorization_id, workspace_id` | Workload signing custody was authorized in the same workspace before intent became durable. |
+| `cpk_node_control_attempts_workload_key_workspace_fk` | `cpk_node_control_attempts` | `workload_key_registration_id, workspace_id` | `cpk_delegation_signing_keys` | `registration_id, workspace_id` | The exact workload signing-key registration belongs to the intended command's workspace. |
+| `cpk_node_control_attempts_workspace_id_fkey` | `cpk_node_control_attempts` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every intended node-control command belongs to one durable workspace. |
 | `cpk_observations_workspace_id_fkey` | `cpk_observations` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime observations are workspace scoped. |
 | `cpk_operation_actions_session_id_fkey` | `cpk_operation_actions` | `session_id` | `cpk_operation_sessions` | `session_id` | Every recorded action belongs to an operation session. |
 | `cpk_operation_sessions_workspace_id_fkey` | `cpk_operation_sessions` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every operation session belongs to one workspace. |
@@ -578,6 +595,19 @@ order is semantically significant for every composite identity.
 - **JSON boundary:** `authority`, `credential_references`, and `metadata` are strict bounded documents.
 - **Sensitive material:** Credential references and allowed hostnames are protected routing metadata; no credential body or provider token is persisted.
 - **Future impact:** #1243 may interpret an accepted ingress authority for gateway relay but cannot accept caller-selected host, path, or URL truth.
+
+### `cpk_node_control_attempts`
+- **Durable meaning and owner:** `NodeControlAttemptStore` owns the immutable statement that one exact graph-bound node-control request, transit grant, workload grant, and custody authorization set became intended before external relay.
+- **Identity and cardinality:** `attempt_id` is primary; `(workspace_id, request_id)`, transit `(issuer, jti)`, and workload `(issuer, jti)` are independently unique. Row membership means only INTENDED; it does not mean relayed, accepted, applied, observed, completed, or failed.
+- **Outgoing foreign keys:** The workspace, exact `(projection, source graph)`, exact `(projection, workspace)`, both same-workspace signing-key registrations, and both same-workspace secret-use authorizations must already exist. No foreign key points at mutable workspace heads.
+- **Inbound dependents:** No current relation references an intended attempt. #1556 may use `attempt_id` as the durable handoff into orchestration; #1244 owns any later terminal result or ambiguity evidence.
+- **Writers and transactions:** `NodeControlAttemptStore.add` performs one insert in the caller-owned transaction after graph, key, authorization, canonical-wire, digest, and cross-value validation. The transaction must commit before any gateway or workload I/O.
+- **Readers and projections:** Exact identity and `(workspace_id, request_id)` reads reconstruct all three canonical language values and revalidate every digest, duplicate scalar, signing purpose, issuer/key identity, authorization intent, actor, correlation, and private-reference association.
+- **Mutation, locks, retries, and idempotency:** A transaction-scoped advisory lock serializes one workspace/request identity; immutable uniqueness rejects conflicting request or JTI reuse. There is no update, status transition, completion marker, retry counter, or deletion method in this store.
+- **Lifecycle, retention, deletion, and restore:** Restore all referenced graph, key, and authorization truth first. Restrictive foreign keys retain the evidence while referenced authority exists; physical removal requires a separate future retention decision and is not part of dispatch.
+- **JSON boundary:** None. The request and both grants are bounded canonical RFC 8785 byte strings with independent SHA-256 digests, then decoded through their strict public codecs on read.
+- **Sensitive material:** Canonical request and unsigned grants are protected command material. The row stores only opaque key and authorization registrations, never private references, private keys, secret values, resolved credentials, endpoint addresses, signatures, or transport responses.
+- **Future impact:** #1556 must compose authorization and durable intent before relay without treating row presence as success. #1244 may add disjoint result evidence, but must not mutate INTENDED into an overloaded lifecycle row or create a parallel command-history language.
 
 ### `cpk_observations`
 - **Durable meaning and owner:** `PostgresObservedStateStore` owns bounded observations of runtime subjects against a workspace graph.
