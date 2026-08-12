@@ -1273,6 +1273,22 @@ public contract shape:
   `DelegatedWorkloadNodeControlGrant` binds that canonical request digest under
   a distinct `workload-node-control` key purpose; gateway probe grants are a
   different type and are rejected at this boundary.
+  `DelegatedGatewayNodeControlTransitGrant` is the separate, unsigned authority
+  for one selected graph gateway to relay that exact request. Its audience is
+  derived as `gateway:{workspace_id}:{gateway_node_id}` from nominal graph
+  references, not accepted as caller-selected truth. The complete 21-field RFC
+  8785 value is bounded to 2,834 bytes and is the transit signing payload; its
+  verifier compares purpose, issuer/key, attempt, graph coordinates, gateway,
+  request, and time without performing signature verification or IO. Gateway
+  transit, gateway probe, workload command, and workload surface-read grants
+  are nominally non-substitutable. Transit authority does not authorize the
+  workload command: the workload still requires its distinct end-to-end grant.
+
+  #1555 owns durable intended transit bytes, #1556 owns graph-authorized
+  construction and a reference-only deferred signing request, and #1243 owns
+  downstream signing, gateway admission, replay protection, relay, and
+  workload response handling. No canonical field is re-encoded or separately
+  treated as a generic reference at those handoffs.
   `ControlPlaneVariableDescriptor` names one scalar, map, or atomic
   weighted-routing state codec and an exact operation index. `read-state` has
   no command codec and returns `control.state.v1`; `apply-command` names the

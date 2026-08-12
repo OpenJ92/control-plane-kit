@@ -524,7 +524,13 @@ def _parse_json_object(encoded: bytes) -> Mapping[str, object]:
             object_pairs_hook=_unique_object,
             parse_constant=_reject_json_constant,
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, _DuplicateJsonKey, ValueError):
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        _DuplicateJsonKey,
+        RecursionError,
+        ValueError,
+    ):
         failed = True
     if failed:
         raise GatewayNodeControlTransitContractError(
