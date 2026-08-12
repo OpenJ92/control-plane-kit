@@ -1,0 +1,315 @@
+version = 1
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.sessions_for_workspace"
+category = "internal-complete"
+sql = "workspace filter; created_at/session_id ascending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "test_workflows and test_native_temporal_ordering complete session-store laws"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.session_page"
+category = "public-paged"
+sql = "workspace and optional open-status filter; temporal keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService activity and open-session page projections"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.actions_for_session"
+category = "internal-complete"
+sql = "session filter; ordinal ascending; intentionally complete"
+consumer_kind = "production"
+consumer = "ExecutionAdmissionService evaluates complete operator intent history"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.action_page"
+category = "public-paged"
+sql = "session filter; ordinal/action identity keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService session-action page projection"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.plans_for_session"
+category = "internal-complete"
+sql = "session filter; created_at/plan identity ascending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "test_planning_commands and test_native_temporal_ordering complete plan-store laws"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.plan_page"
+category = "public-paged"
+sql = "session filter; temporal keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService session-plan page projection"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.approval_requests_for_session"
+category = "internal-complete"
+sql = "session filter; requested_at/request identity ascending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "test_approvals and test_native_temporal_ordering complete approval-store laws"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore._approval_projection_page"
+category = "public-paged"
+sql = "session or pending-workspace filter; temporal keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService session-approval and pending-approval page projections"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.runs_for_request"
+category = "internal-complete"
+sql = "execution-request filter; attempt ascending; intentionally complete existence history"
+consumer_kind = "production"
+consumer = "RunLifecycleService enforces execution-request lifecycle idempotency"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.runs_for_plan"
+category = "internal-complete"
+sql = "plan filter; created_at/run identity ascending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "test_native_temporal_ordering complete plan-run store law"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.run_page"
+category = "public-paged"
+sql = "plan filter; temporal keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService plan-run page projection"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.events_for_run"
+category = "internal-complete"
+sql = "run filter; ordinal ascending; intentionally complete execution evidence"
+consumer_kind = "production"
+consumer = "ExecutionCoordinator and CurrentGraphAdvancementService reconstruct complete run evidence"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.event_page"
+category = "public-paged"
+sql = "run filter; ordinal/event identity keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService run-event page projection"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.current_data_validation"
+selector = "validate_current_rows"
+occurrence = 1
+category = "exact-verifier"
+sql = "one exact aggregate boolean row over current reference relationships"
+consumer_kind = "production"
+consumer = "current-backend admission verifies all owned reference relationships"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.current_data_validation"
+selector = "validate_current_rows"
+occurrence = 2
+category = "exact-verifier"
+sql = "one exact aggregate boolean row over approval subjects"
+consumer_kind = "production"
+consumer = "current-backend admission verifies all owned approval-subject rows"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.current_data_validation"
+selector = "_scan"
+category = "exact-verifier"
+sql = "graph_id keyset batches bounded by fixed batch size until exact exhaustion"
+consumer_kind = "production"
+consumer = "current-backend admission verifies every authored and realized graph row"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.current_schema_verification"
+selector = "namespace_is_object_free"
+category = "exact-verifier"
+sql = "one exact aggregate boolean row over the owned namespace"
+consumer_kind = "production"
+consumer = "current-backend schema admission rejects unowned namespace objects"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.current_schema_verification"
+selector = "expected_relations_are_present"
+category = "exact-verifier"
+sql = "one exact aggregate boolean row over the closed relation manifest"
+consumer_kind = "production"
+consumer = "current-backend schema admission verifies exact owned relations"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.current_schema_verification"
+selector = "current_namespace_adjuncts_are_exact"
+category = "exact-verifier"
+sql = "one exact aggregate boolean row over namespace adjuncts"
+consumer_kind = "production"
+consumer = "current-backend schema admission verifies exact namespace adjuncts"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.current_schema_verification"
+selector = "current_schema_contract_is_exact"
+category = "exact-verifier"
+sql = "one fixed-cardinality semantic aggregate over relations columns constraints and indexes"
+consumer_kind = "production"
+consumer = "current-backend schema admission verifies the complete checked schema contract"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.delegation_signing_key_store"
+selector = "DelegationSigningKeyStore.require_unambiguous_active"
+category = "fixed-cardinality"
+sql = "workspace/purpose active filter; LIMIT two enforces exactly one signer"
+consumer_kind = "production"
+consumer = "gateway probe signing and delegation-key generation require one active signer"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.delegation_signing_key_store"
+selector = "DelegationSigningKeyStore.list_workspace"
+category = "public-unbounded"
+sql = "workspace filter; purpose/issuer/key identity ascending; currently complete"
+consumer_kind = "production"
+consumer = "InstanceReadService delegation-key collection pending keyset paging in issue 1593"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.delegation_signing_key_store"
+selector = "DelegationSigningKeyStore.list_for_verification"
+category = "internal-complete"
+sql = "workspace/purpose/issuer verification-status filter; key identity ascending; intentionally complete verifier set"
+consumer_kind = "production"
+consumer = "GatewayProbeVerifierConfigurationService and gateway rotation projection require every verification key"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.gateway_key_rotation_store"
+selector = "GatewayKeyRotationStore.transitions"
+category = "closed-finite"
+sql = "rotation filter; monotonically unique to_version; closed acyclic lifecycle"
+consumer_kind = "production"
+consumer = "gateway key-rotation programs reconstruct the complete finite transition fold"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.gateway_key_rotation_store"
+selector = "GatewayKeyRotationStore._checkpoints"
+category = "closed-finite"
+sql = "rotation filter; primary key over the closed two-value deployment phase"
+consumer_kind = "production"
+consumer = "GatewayKeyRotationStore reconstructs both finite deployment checkpoints"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.gateway_probe_store"
+selector = "GatewayProbeStore.list_for_workspace"
+category = "public-unbounded"
+sql = "workspace filter; issued epoch/probe identity descending; offset limit lacks a global public bound"
+consumer_kind = "production"
+consumer = "InstanceReadService gateway-probe timeline pending epoch keyset paging in issue 1594"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.image_pull_authority_store"
+selector = "ImagePullAuthorityStore.list_active"
+category = "internal-complete"
+sql = "workspace active filter; registry/repository/authority identity ascending; intentionally complete"
+consumer_kind = "production"
+consumer = "ExecutionCoordinator resolves the complete admitted image-pull authority catalogue"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.ingress_authority_store"
+selector = "IngressAuthorityStore.list_active"
+category = "public-unbounded"
+sql = "workspace active filter; authority identity ascending; currently complete"
+consumer_kind = "production"
+consumer = "InstanceReadService ingress-authority collection pending keyset paging in issue 1593"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.ingress_authority_store"
+selector = "IngressResourceStore.list_cloudflare"
+category = "internal-complete"
+sql = "workspace filter; ingress identity/epoch ascending; intentionally complete ownership evidence"
+consumer_kind = "production"
+consumer = "ExecutionCoordinator reconstructs every owned Cloudflare ingress resource"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.ingress_authority_store"
+selector = "GeneratedIngressSecretReferenceStore.list_for_workspace"
+category = "internal-complete"
+sql = "workspace filter; ingress identity/epoch ascending; intentionally complete custody evidence"
+consumer_kind = "production"
+consumer = "ExecutionCoordinator reconstructs every generated ingress-secret reference"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.observed_state"
+selector = "PostgresObservedStateStore.latest_for_workspace"
+category = "public-unbounded"
+sql = "workspace latest-per-subject projection; subject identity ascending; currently complete"
+consumer_kind = "production"
+consumer = "InstanceReadService observed-state collection pending keyset paging in issue 1593"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.observed_state"
+selector = "PostgresObservedStateStore.history"
+category = "internal-complete"
+sql = "workspace/subject filter; native chronology descending; intentionally complete"
+consumer_kind = "test-only"
+consumer = "test_native_temporal_ordering complete observation-history store law"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.product_store"
+selector = "RegisteredProductStore.list_active"
+category = "internal-complete"
+sql = "workspace active filter; descriptor digest ascending; intentionally complete catalogue"
+consumer_kind = "production"
+consumer = "GraphAuthoringService ExecutionCoordinator and GatewayProbeCommandService require every active product"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_authority_store"
+selector = "RuntimeAuthorityStore.list_active"
+category = "public-unbounded"
+sql = "workspace active filter; authority identity ascending; currently complete"
+consumer_kind = "production"
+consumer = "InstanceReadService runtime-authority collection pending keyset paging in issue 1593"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_authority_store"
+selector = "RuntimeAuthorityDeliveryStore.list_active"
+category = "public-unbounded"
+sql = "workspace active filter; authority identity ascending; currently complete"
+consumer_kind = "production"
+consumer = "InstanceReadService runtime-authority-delivery collection pending keyset paging in issue 1593"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "SecretProviderStore.list_active"
+category = "public-unbounded"
+sql = "workspace active filter; provider identity ascending; currently complete"
+consumer_kind = "production"
+consumer = "InstanceReadService secret-provider collection pending keyset paging in issue 1593"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "SecretProviderStore.list_history"
+category = "internal-complete"
+sql = "workspace/provider filter; admission chronology ascending; intentionally complete supersession chain"
+consumer_kind = "production"
+consumer = "SecretProviderStore validates replacement and revocation against complete provider history"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "SecretReferenceStore.list_active"
+category = "public-unbounded"
+sql = "workspace active filter; secret-reference identity ascending; currently complete"
+consumer_kind = "production"
+consumer = "InstanceReadService secret-reference collection pending registration keyset paging in issue 1593"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.secret_provider_store"
+selector = "SecretReferenceStore.list_history"
+category = "internal-complete"
+sql = "workspace/reference filter; admission chronology ascending; intentionally complete supersession chain"
+consumer_kind = "production"
+consumer = "SecretReferenceStore validates replacement and revocation against complete reference history"

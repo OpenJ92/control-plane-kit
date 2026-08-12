@@ -203,27 +203,17 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
 
         self.assertEqual(len(identities), 39)
         self.assertEqual(len(set(identities)), 39)
-        repeated = defaultdict(list)
+        grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")
             self.assertNotRegex(identity.selector, r":\d+$")
-            repeated[(identity.module, identity.selector)].append(identity.occurrence)
-        repeated = {key: values for key, values in repeated.items() if len(values) > 1}
+            grouped[(identity.module, identity.selector)].append(identity.occurrence)
+        repeated = {key: values for key, values in grouped.items() if len(values) > 1}
         self.assertEqual(len(repeated), 1)
         self.assertEqual(next(iter(repeated.values())), [1, 2])
-        self.assertTrue(
-            all(
-                values == [None]
-                for key, values in defaultdict(list, {
-                    key: values
-                    for key, values in (
-                        ((identity.module, identity.selector), [identity.occurrence])
-                        for identity in identities
-                        if (identity.module, identity.selector) not in repeated
-                    )
-                }).items()
-            )
-        )
+        for key, values in grouped.items():
+            if key not in repeated:
+                self.assertEqual(values, [None])
 
     def test_inventory_parser_closes_shape_identity_and_consumer_kind(self) -> None:
         valid = (
