@@ -235,8 +235,11 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
         self.assertEqual(len(_parse_inventory(valid)), 3)
 
         invalid = (
+            valid.replace("version = 1", "version = true", 1),
             valid.replace('category = "internal-complete"', 'category = "unknown"', 1),
+            valid.replace('category = "internal-complete"', "category = []", 1),
             valid.replace('consumer_kind = "test-only"', 'consumer_kind = "maybe"', 1),
+            valid.replace('consumer_kind = "test-only"', "consumer_kind = {}", 1),
             valid.replace(
                 'consumer = "test_postgres_example exact store ordering law"',
                 'consumer = "tests"',
@@ -273,6 +276,54 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
 
         for status in GatewayKeyRotationStatus:
             self.assertTrue(reachable(status, frozenset()) <= terminal)
+
+        rotation_path = SOURCE_ROOT / "gateway_key_rotations.py"
+        rotation_tree = ast.parse(
+            rotation_path.read_text(encoding="utf-8"), filename=str(rotation_path)
+        )
+        add_transition_calls: list[tuple[str, int]] = []
+        transition_call_lines: list[int] = []
+        legal_guard_scopes: list[str] = []
+
+        class RotationWriterVisitor(ast.NodeVisitor):
+            def __init__(self) -> None:
+                self.scope: list[str] = []
+
+            def visit_ClassDef(self, node: ast.ClassDef) -> None:
+                self.scope.append(node.name)
+                self.generic_visit(node)
+                self.scope.pop()
+
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                self.scope.append(node.name)
+                self.generic_visit(node)
+                self.scope.pop()
+
+            def visit_Call(self, node: ast.Call) -> None:
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "add_transition":
+                    add_transition_calls.append((".".join(self.scope), node.lineno))
+                if isinstance(node.func, ast.Name) and node.func.id == "_transition":
+                    transition_call_lines.append(node.lineno)
+                self.generic_visit(node)
+
+            def visit_If(self, node: ast.If) -> None:
+                if any(
+                    isinstance(value, ast.Name) and value.id == "_LEGAL"
+                    for value in ast.walk(node.test)
+                ) and any(
+                    isinstance(value, ast.Raise) for value in ast.walk(node)
+                ):
+                    legal_guard_scopes.append(".".join(self.scope))
+                self.generic_visit(node)
+
+        RotationWriterVisitor().visit(rotation_tree)
+        self.assertEqual(
+            [scope for scope, _line in add_transition_calls],
+            ["GatewayKeyRotationService.advance"],
+        )
+        self.assertEqual(len(transition_call_lines), 1)
+        self.assertEqual(legal_guard_scopes, ["_transition"])
+        self.assertLess(transition_call_lines[0], add_transition_calls[0][1])
 
         constraints = {
             constraint.name: constraint
