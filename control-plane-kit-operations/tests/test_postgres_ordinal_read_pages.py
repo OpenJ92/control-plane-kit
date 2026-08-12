@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import os
 from types import SimpleNamespace
 import unittest
@@ -11,6 +12,7 @@ from tests.graph_lineage_fixture import seed_identity_graphs
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
+from control_plane_kit_core.planning import ActivityPlan, DEFAULT_ACTIVITY_PLAN_CODEC
 from control_plane_kit_operations.postgres import (
     PostgresStoreBundle,
     PostgresUnitOfWork,
@@ -238,7 +240,7 @@ class CommittedOrdinalAppendTests(unittest.TestCase):
         self.assertEqual(set(actions), {"workspace_id", "kind", "limit", "items", "next_cursor"})
         self.assertEqual(set(events), {"workspace_id", "kind", "limit", "items", "next_cursor"})
         self.assertEqual(actions["items"][0]["payload"]["api_token"], "<redacted>")
-        self.assertEqual(events["items"][0]["evidence"]["note"], "event-1")
+        self.assertEqual(events["items"][0]["payload"]["note"], "event-1")
         session = timeline["sessions"][0]
         self.assertNotIn("actions", session)
         self.assertNotIn("events", session["plans"][0]["runs"][0])
@@ -311,9 +313,13 @@ class CommittedOrdinalAppendTests(unittest.TestCase):
                base_realized_projection_id, desired_realized_projection_id,
                status, created_at, payload)
             VALUES ('plan-a', 'session-a', 'graph-current', 'graph-desired',
-                    %s, %s, 'planned', '2026-08-12T12:10:00Z', '{}'::jsonb);
+                    %s, %s, 'planned', '2026-08-12T12:10:00Z', %s::jsonb);
             """,
-            (lineage["graph-current"], lineage["graph-desired"]),
+            (
+                lineage["graph-current"],
+                lineage["graph-desired"],
+                json.dumps(DEFAULT_ACTIVITY_PLAN_CODEC.encode(ActivityPlan(()))),
+            ),
         )
         self.connection.execute(
             """

@@ -548,6 +548,79 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 self.assertEqual(raised.exception.status, 400)
         self.assertFalse(entered)
 
+    def test_journal_routes_reject_hostile_mapping_subclasses_without_iteration(self) -> None:
+        class HostileDict(dict):
+            def __iter__(self):
+                raise AssertionError("hostile mapping must not be iterated")
+
+        service = CpkServerReadService(
+            lambda: (_ for _ in ()).throw(
+                AssertionError("hostile arguments must precede store access")
+            )
+        )
+
+        with self.assertRaises(CpkServerApplicationError) as raised:
+            service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.session-actions",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "session_id": "session-a",
+                    },
+                    payload=HostileDict(),
+                )
+            )
+
+        self.assertEqual(raised.exception.status, 400)
+
+    def test_journal_cursor_scope_and_collection_must_match_route(self) -> None:
+        service = CpkServerReadService(self.unit_of_work)
+        cursors = (
+            {
+                "format_version": 1,
+                "collection": "session-actions",
+                "scope": {
+                    "workspace_id": "workspace-b",
+                    "session_id": "session-a",
+                },
+                "position": {"ordinal": 1, "item_id": "action-a"},
+            },
+            {
+                "format_version": 1,
+                "collection": "session-actions",
+                "scope": {
+                    "workspace_id": "workspace-a",
+                    "session_id": "session-b",
+                },
+                "position": {"ordinal": 1, "item_id": "action-a"},
+            },
+            {
+                "format_version": 1,
+                "collection": "run-events",
+                "scope": {"workspace_id": "workspace-a", "run_id": "run-a"},
+                "position": {"ordinal": 1, "item_id": "event-a"},
+            },
+        )
+
+        for cursor in cursors:
+            with self.subTest(cursor=cursor):
+                with self.assertRaises(CpkServerApplicationError) as raised:
+                    service.handle(
+                        RouteRequest(
+                            surface="http",
+                            route_id="read.session-actions",
+                            service_role=ControlPlaneServiceRole.READS,
+                            path_parameters={
+                                "workspace_id": "workspace-a",
+                                "session_id": "session-a",
+                            },
+                            payload={"cursor": cursor},
+                        )
+                    )
+                self.assertEqual(raised.exception.status, 400)
+
     def test_journal_authorization_precedes_cursor_decoding(self) -> None:
         entered = False
 
