@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from psycopg import IntegrityError
 from psycopg.errors import UniqueViolation
 
 from control_plane_kit_core.node_control import (
@@ -17,7 +18,9 @@ from control_plane_kit_core.node_control_transit import (
 from control_plane_kit_operations.node_control_attempts import (
     NodeControlAttemptConflict,
     NodeControlAttemptCorrupt,
+    NodeControlAttemptError,
     NodeControlIntendedAttempt,
+    _require_node_control_identifier,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
@@ -33,6 +36,8 @@ class NodeControlAttemptStore:
         self._connection = connection
 
     def lock_request_id(self, workspace_id: str, request_id: str) -> None:
+        workspace_id = _require_node_control_identifier(workspace_id)
+        request_id = _require_node_control_identifier(request_id)
         self._connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"node-control-attempt:{workspace_id}:{request_id}",),
@@ -40,6 +45,7 @@ class NodeControlAttemptStore:
 
     def add(self, value: NodeControlIntendedAttempt) -> NodeControlIntendedAttempt:
         conflict = False
+        invalid = False
         try:
             self._connection.execute(
                 f"INSERT INTO cpk_node_control_attempts ({_COLUMNS}) VALUES ({_VALUES})",
@@ -47,13 +53,20 @@ class NodeControlAttemptStore:
             )
         except UniqueViolation:
             conflict = True
+        except IntegrityError:
+            invalid = True
         if conflict:
             raise NodeControlAttemptConflict(
                 "node-control attempt replay conflicts with durable intent"
             ) from None
+        if invalid:
+            raise NodeControlAttemptError(
+                "node-control attempt references are unavailable"
+            ) from None
         return value
 
     def get(self, attempt_id: str) -> NodeControlIntendedAttempt:
+        attempt_id = _require_node_control_identifier(attempt_id)
         row = self._connection.execute(
             f"{_SELECT} WHERE attempt.attempt_id=%s",
             (attempt_id,),
@@ -67,6 +80,8 @@ class NodeControlAttemptStore:
         workspace_id: str,
         request_id: str,
     ) -> NodeControlIntendedAttempt | None:
+        workspace_id = _require_node_control_identifier(workspace_id)
+        request_id = _require_node_control_identifier(request_id)
         row = self._connection.execute(
             f"{_SELECT} WHERE attempt.workspace_id=%s AND attempt.request_id=%s",
             (workspace_id, request_id),

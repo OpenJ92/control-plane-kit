@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import hashlib
+import re
 
 import rfc8785
 
@@ -29,6 +30,13 @@ class NodeControlAttemptCorrupt(NodeControlAttemptError):
     """Raised when retained intended evidence cannot be reconstructed exactly."""
 
 
+_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
+_ACTOR_SUBJECT = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
+_KEY_REGISTRATION = re.compile(r"dkey_[0-9a-f]{64}\Z")
+_AUTHORIZATION = re.compile(r"suse_[0-9a-f]{64}\Z")
+_ISSUER = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
+
+
 @dataclass(frozen=True, slots=True)
 class NodeControlIntendedAttempt:
     """One exact command intent and the public authority values supporting it."""
@@ -52,18 +60,6 @@ class NodeControlIntendedAttempt:
     def __post_init__(self) -> None:
         failed = False
         try:
-            for value in (
-                self.attempt_id, self.actor_subject, self.current_graph_id,
-                self.current_realized_projection_id, self.gateway_runtime_id,
-                self.transit_key_registration_id,
-                self.workload_key_registration_id,
-                self.transit_authorization_id,
-                self.workload_authorization_id,
-                self.transit_correlation_id,
-                self.workload_correlation_id,
-            ):
-                if type(value) is not str or not value or len(value.encode()) > 200:
-                    raise ValueError
             validate_canonical_utc_timestamp(self.intended_at)
             if not isinstance(self.request, NodeControlCommandRequest):
                 raise ValueError
@@ -76,6 +72,38 @@ class NodeControlIntendedAttempt:
             request = self.request
             transit = self.transit_grant
             workload = self.workload_grant
+            patterns = (
+                (self.attempt_id, _IDENTIFIER),
+                (self.actor_subject, _ACTOR_SUBJECT),
+                (self.current_graph_id, _IDENTIFIER),
+                (self.current_realized_projection_id, _IDENTIFIER),
+                (self.gateway_runtime_id, _IDENTIFIER),
+                (self.transit_key_registration_id, _KEY_REGISTRATION),
+                (self.workload_key_registration_id, _KEY_REGISTRATION),
+                (self.transit_authorization_id, _AUTHORIZATION),
+                (self.workload_authorization_id, _AUTHORIZATION),
+                (self.transit_correlation_id, _IDENTIFIER),
+                (self.workload_correlation_id, _IDENTIFIER),
+                (request.target.workspace_id.value, _IDENTIFIER),
+                (request.request_id, _IDENTIFIER),
+                (transit.issuer, _ISSUER),
+                (transit.key_id, _IDENTIFIER),
+                (transit.jti, _IDENTIFIER),
+                (workload.issuer, _ISSUER),
+                (workload.key_id, _IDENTIFIER),
+                (workload.jti, _IDENTIFIER),
+            )
+            if not all(
+                type(value) is str and pattern.fullmatch(value)
+                for value, pattern in patterns
+            ):
+                raise ValueError
+            if not (
+                1 <= len(request.canonical_bytes()) <= 16384
+                and 1 <= len(transit.canonical_bytes()) <= 2834
+                and 1 <= len(workload.canonical_bytes()) <= 2111
+            ):
+                raise ValueError
             common = (
                 request.target,
                 request.variable_name,
@@ -140,6 +168,14 @@ class NodeControlIntendedAttempt:
             }
         )
         return hashlib.sha256(encoded).hexdigest()
+
+
+def _require_node_control_identifier(value: object) -> str:
+    if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
+        raise NodeControlAttemptError(
+            "node-control attempt selector is malformed"
+        ) from None
+    return value
 
 
 __all__ = [

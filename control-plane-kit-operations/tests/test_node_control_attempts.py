@@ -7,6 +7,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+import re
 from dataclasses import replace
 import threading
 import time
@@ -762,7 +763,9 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
             1,
         )[0]
         self.assertIn("unsigned", attempt_section.lower())
-        self.assertNotIn("signed grants", attempt_section.lower())
+        self.assertIsNone(
+            re.search(r"\bsigned grants\b", attempt_section.lower())
+        )
         self.assertIn(
             current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256,
             atlas.splitlines()[2],
