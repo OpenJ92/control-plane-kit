@@ -26,6 +26,7 @@ from control_plane_kit_core.secrets import SecretUseIntent
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, Node
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.delegation_signing_keys import (
+    DelegationSigningKeyConflict,
     DelegationSigningKeyNotFound,
     RegisteredDelegationSigningKey,
 )
@@ -198,11 +199,21 @@ class NodeControlIntentAuthorizationService:
                 "execute requires RequestNodeControlIntent"
             ) from None
         _require_scopes(command)
-        fingerprint = node_control_intent_fingerprint(
-            actor_subject=command.context.actor_id,
-            gateway_node_id=command.gateway_node_id,
-            request=command.request,
-        )
+        try:
+            fingerprint = node_control_intent_fingerprint(
+                actor_subject=command.context.actor_id,
+                gateway_node_id=command.gateway_node_id,
+                request=command.request,
+            )
+        except NodeControlAttemptError:
+            invalid_fingerprint = True
+            fingerprint = None
+        else:
+            invalid_fingerprint = False
+        if invalid_fingerprint or fingerprint is None:
+            raise NodeControlIntentError(
+                "node-control intent identity is malformed"
+            ) from None
 
         prepared_attempt: NodeControlIntendedAttempt | None = None
         replayed = False
@@ -535,7 +546,11 @@ def _select_key(
             workspace_id,
             purpose,
         )
-    except DelegationSigningKeyNotFound:
+    except (
+        DelegationSigningKeyConflict,
+        DelegationSigningKeyNotFound,
+        ValueError,
+    ):
         missing = True
         selected = None
     else:
