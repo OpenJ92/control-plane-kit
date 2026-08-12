@@ -281,17 +281,17 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
         for status in GatewayKeyRotationStatus:
             self.assertTrue(reachable(status, frozenset()) <= terminal)
 
-        rotation_path = SOURCE_ROOT / "gateway_key_rotations.py"
-        rotation_tree = ast.parse(
-            rotation_path.read_text(encoding="utf-8"), filename=str(rotation_path)
-        )
         add_transition_calls: list[tuple[str, int]] = []
-        transition_call_lines: list[int] = []
+        transition_calls: list[tuple[str, int]] = []
         legal_guard_scopes: list[str] = []
 
         class RotationWriterVisitor(ast.NodeVisitor):
-            def __init__(self) -> None:
+            def __init__(self, module: str) -> None:
+                self.module = module
                 self.scope: list[str] = []
+
+            def qualified_scope(self) -> str:
+                return ".".join((self.module, *self.scope))
 
             def visit_ClassDef(self, node: ast.ClassDef) -> None:
                 self.scope.append(node.name)
@@ -305,9 +305,9 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
 
             def visit_Call(self, node: ast.Call) -> None:
                 if isinstance(node.func, ast.Attribute) and node.func.attr == "add_transition":
-                    add_transition_calls.append((".".join(self.scope), node.lineno))
+                    add_transition_calls.append((self.qualified_scope(), node.lineno))
                 if isinstance(node.func, ast.Name) and node.func.id == "_transition":
-                    transition_call_lines.append(node.lineno)
+                    transition_calls.append((self.qualified_scope(), node.lineno))
                 self.generic_visit(node)
 
             def visit_If(self, node: ast.If) -> None:
@@ -317,17 +317,30 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
                 ) and any(
                     isinstance(value, ast.Raise) for value in ast.walk(node)
                 ):
-                    legal_guard_scopes.append(".".join(self.scope))
+                    legal_guard_scopes.append(self.qualified_scope())
                 self.generic_visit(node)
 
-        RotationWriterVisitor().visit(rotation_tree)
+        for path in sorted(SOURCE_ROOT.rglob("*.py")):
+            relative = path.relative_to(SOURCE_ROOT).with_suffix("")
+            module = "control_plane_kit_operations." + ".".join(relative.parts)
+            RotationWriterVisitor(module).visit(
+                ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            )
+
+        advance_scope = (
+            "control_plane_kit_operations.gateway_key_rotations."
+            "GatewayKeyRotationService.advance"
+        )
         self.assertEqual(
             [scope for scope, _line in add_transition_calls],
-            ["GatewayKeyRotationService.advance"],
+            [advance_scope],
         )
-        self.assertEqual(len(transition_call_lines), 1)
-        self.assertEqual(legal_guard_scopes, ["_transition"])
-        self.assertLess(transition_call_lines[0], add_transition_calls[0][1])
+        self.assertEqual([scope for scope, _line in transition_calls], [advance_scope])
+        self.assertEqual(
+            legal_guard_scopes,
+            ["control_plane_kit_operations.gateway_key_rotations._transition"],
+        )
+        self.assertLess(transition_calls[0][1], add_transition_calls[0][1])
 
         constraints = {
             constraint.name: constraint
