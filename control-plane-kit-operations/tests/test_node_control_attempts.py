@@ -35,7 +35,7 @@ from control_plane_kit_core.node_control_transit import (
 from control_plane_kit_operations.postgres import install_schema
 
 
-class NodeControlAttemptTests(unittest.TestCase):
+class _NodeControlAttemptFixture:
     def contract(self, name: str):
         value = getattr(operations, name, None)
         self.assertIsNotNone(value, f"{name} is not implemented")
@@ -148,6 +148,8 @@ class NodeControlAttemptTests(unittest.TestCase):
             workload_grant=workload,
         )
 
+
+class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
     def test_public_record_derives_exact_wire_and_fingerprint(self) -> None:
         attempt = self.attempt(1e20)
         expected = rfc8785.dumps(
@@ -249,23 +251,31 @@ class NodeControlAttemptTests(unittest.TestCase):
                 self.assertNotIn(forbidden, source)
 
 
-class NodeControlAttemptPostgresTests(NodeControlAttemptTests):
+class NodeControlAttemptPostgresTests(
+    _NodeControlAttemptFixture,
+    unittest.TestCase,
+):
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
             self.fail("CPK_OPERATIONS_TEST_DATABASE_URL is required")
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
+        schema_installed = False
         try:
             install_schema(self.connection)
+            schema_installed = True
             self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
             self._seed_truth(self.connection)
             self.store_type = self.contract("NodeControlAttemptStore")
         except BaseException:
+            if schema_installed:
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
             self.connection.close()
             raise
 
     def tearDown(self) -> None:
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.connection.close()
 
     def _seed_truth(self, connection) -> None:
