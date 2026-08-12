@@ -11,6 +11,14 @@ import rfc8785
 
 import control_plane_kit_core as core
 import control_plane_kit_core.node_control as node_control
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.gateway_delegation import (
+    DelegatedGatewayProbeGrant,
+    DelegatedGatewayProbeGrantCodec,
+    GatewayDelegationContractError,
+    GatewayProbeCommandKind,
+    GatewayProbeRequest,
+)
 from control_plane_kit_core.node_control import (
     ControlPlaneCommandCodec,
     ControlPlaneTransitionPrecondition,
@@ -18,6 +26,7 @@ from control_plane_kit_core.node_control import (
     DelegatedWorkloadNodeControlGrantCodec,
     NodeControlCommandRequest,
     NodeControlCommandRequestCodec,
+    NodeControlCanonicalization,
     NodeControlContractError,
     NodeControlGraphReference,
     NodeControlGraphReferenceRole,
@@ -31,6 +40,16 @@ from control_plane_kit_core.node_control_transit import (
     DelegatedGatewayNodeControlTransitGrantCodec,
     GatewayNodeControlTransitContractError,
 )
+from control_plane_kit_core.node_control_surface_reads import (
+    DelegatedWorkloadNodeControlSurfaceReadGrant,
+    DelegatedWorkloadNodeControlSurfaceReadGrantCodec,
+    DelegatedWorkloadNodeControlSurfaceReadGrantProfile,
+    NodeControlSurfaceReadContractError,
+    NodeControlSurfaceReadKind,
+    NodeControlSurfaceReadRequest,
+    WorkloadNodeControlSurfaceDeclarationIdentity,
+)
+from control_plane_kit_core.runtime_effects import GatewayTargetId
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "node_control_canonical_wire_v1.json"
@@ -325,6 +344,17 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
 
+        for key in ("issued_at", "not_before", "expires_at"):
+            with self.subTest(raw_unsafe_grant_epoch=key):
+                candidate = rfc8785.dumps(
+                    {**grant_descriptor, key: MAX_SAFE_INTEGER + 1}
+                )
+                with self.assertRaises(NodeControlContractError) as caught:
+                    grant_decoder(candidate)
+                self.assertLessEqual(len(str(caught.exception)), 128)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+
     def test_request_workload_and_transit_are_pairwise_non_substitutable(self) -> None:
         fixture = self.fixture()
         request_codec = NodeControlCommandRequestCodec()
@@ -334,16 +364,71 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
         workload = workload_codec.decode(fixture["workload_grants"][0]["descriptor"])
         transit_fixture = json.loads(TRANSIT_FIXTURE.read_text(encoding="utf-8"))
         transit = transit_codec.decode(transit_fixture["grant"]["descriptor"])
+        surface_request = NodeControlSurfaceReadRequest(
+            target=request.target,
+            kind=NodeControlSurfaceReadKind.CAPABILITIES,
+            declaration_identity=WorkloadNodeControlSurfaceDeclarationIdentity(
+                "a" * 64
+            ),
+            request_id="surface-read-1",
+        )
+        surface = DelegatedWorkloadNodeControlSurfaceReadGrant(
+            profile=DelegatedWorkloadNodeControlSurfaceReadGrantProfile.V1,
+            canonicalization=NodeControlCanonicalization.JCS_RFC8785_V1,
+            purpose=DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+            issuer="cpk-server",
+            key_id="surface-key-1",
+            audience="workload:router:control",
+            target=surface_request.target,
+            kind=surface_request.kind,
+            declaration_identity=surface_request.declaration_identity,
+            request_id=surface_request.request_id,
+            request_digest=surface_request.canonical_digest(),
+            issued_at=100,
+            not_before=100,
+            expires_at=200,
+            jti="surface-grant-1",
+        )
+        probe_request = GatewayProbeRequest(
+            GatewayProbeCommandKind.HTTP_STATUS,
+            GatewayTargetId("router.internal"),
+            "/health",
+        )
+        probe = DelegatedGatewayProbeGrant(
+            issuer="cpk-server",
+            key_id="probe-key-1",
+            audience="gateway",
+            workspace_id="workspace-1",
+            operation_id="operation-1",
+            request_id="probe-1",
+            gateway_node_id="gateway-1",
+            probe_kind=probe_request.kind,
+            target_id=probe_request.target_id,
+            request_digest=probe_request.canonical_digest(),
+            issued_at=100,
+            expires_at=200,
+            jti="probe-grant-1",
+        )
 
         object_codecs = {
             "request": (request_codec, NodeControlContractError),
             "workload": (workload_codec, NodeControlContractError),
             "transit": (transit_codec, GatewayNodeControlTransitContractError),
+            "surface": (
+                DelegatedWorkloadNodeControlSurfaceReadGrantCodec(),
+                NodeControlSurfaceReadContractError,
+            ),
+            "probe": (
+                DelegatedGatewayProbeGrantCodec(),
+                GatewayDelegationContractError,
+            ),
         }
         values = {
             "request": request,
             "workload": workload,
             "transit": transit,
+            "surface": surface,
+            "probe": probe,
         }
         for destination, (codec, error_type) in object_codecs.items():
             for source, value in values.items():
@@ -356,6 +441,14 @@ class NodeControlWorkloadWireTests(unittest.TestCase):
                 ):
                     with self.assertRaises(error_type):
                         codec.encode(value)
+                with self.subTest(
+                    seam="descriptor",
+                    destination=destination,
+                    source=source,
+                ):
+                    source_codec = object_codecs[source][0]
+                    with self.assertRaises(error_type):
+                        codec.decode(source_codec.encode(value))
 
         raw_codecs = {
             "request": getattr(request_codec, "decode_canonical_bytes"),
