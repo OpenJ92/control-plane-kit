@@ -30,6 +30,7 @@ from control_plane_kit_core.topology import (
     LiteralAddress,
     RuntimeRecord,
     compile_topology,
+    diff_graphs,
     validate_graph,
 )
 from control_plane_kit_core.topology.validation import ValidatedGraph
@@ -192,6 +193,20 @@ class DeploymentTransitionTests(unittest.TestCase):
         empty = _empty()
         blue = _runtime_graph("service", owner="blue")
         green = _runtime_graph("service", owner="green")
+        valid = (
+            (operations.InitialDeployment, empty, blue),
+            (operations.UpdateDeployment, blue, green),
+            (operations.TeardownDeployment, blue, empty),
+            (operations.NoOpDeployment, blue, blue),
+        )
+        forged = GraphDiff("forged-current", "forged-desired", ())
+        for variant, current, desired in valid:
+            with self.subTest(variant=variant.__name__, case="computed-diff"):
+                transition = variant(current, desired)
+                self.assertEqual(transition.diff, diff_graphs(current, desired))
+                with self.assertRaises(TypeError):
+                    variant(current, desired, diff=forged)
+
         invalid = (
             (operations.InitialDeployment, blue, green),
             (operations.UpdateDeployment, empty, blue),
@@ -251,14 +266,14 @@ class DeploymentTransitionTests(unittest.TestCase):
         graphs = (
             _runtime_graph("runtime-only", owner="platform"),
             _validated(
-                replace(
-                    _gateway_graph("ingress-only-change"),
+                DeploymentGraph(
+                    "ingress-only-change",
                     public_ingresses=(ingress,),
                 )
             ),
             _validated(
-                replace(
-                    _gateway_graph("authority-only-change"),
+                DeploymentGraph(
+                    "authority-only-change",
                     delegation_authorities=(authority,),
                 )
             ),
