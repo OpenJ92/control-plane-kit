@@ -48,6 +48,24 @@ _INTERNAL_PROTOCOLS = {
 
 _FOUNDATION_LEAVES = {"_redaction", "errors", "models", "protocols"}
 
+_EXPECTED_FOUNDATION_IMPORTS = {
+    "_redaction": {"__future__", "typing"},
+    "errors": set(),
+    "models": {"__future__", "dataclasses", "typing"},
+    "protocols": {
+        "__future__",
+        "typing",
+        "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.public_ingress",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_operations.delegation_signing_keys",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.secret_providers",
+    },
+}
+
 
 class ReadServicesPackageTests(unittest.TestCase):
     def test_current_read_services_subtree_is_exact(self) -> None:
@@ -91,34 +109,54 @@ class ReadServicesPackageTests(unittest.TestCase):
         self.assertEqual(len(paths), 1, "read_services must be one installed package")
         package_path = Path(paths[0])
 
+        imports: dict[str, set[str]] = {}
         local_imports: dict[str, set[str]] = {}
         for module_name in _FOUNDATION_LEAVES:
             tree = ast.parse(
                 (package_path / f"{module_name}.py").read_text(encoding="utf-8")
             )
             imported: set[str] = set()
+            local: set[str] = set()
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom):
-                    if node.level and node.module:
-                        imported.add(node.module.split(".", 1)[0])
-                    elif node.module and node.module.startswith(
+                    if node.level:
+                        if node.module:
+                            local.add(node.module.split(".", 1)[0])
+                    elif node.module:
+                        imported.add(node.module)
+                    if node.module and node.module.startswith(
                         "control_plane_kit_operations.read_services."
                     ):
-                        imported.add(node.module.rsplit(".", 1)[-1])
+                        local.add(node.module.rsplit(".", 1)[-1])
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
+                        imported.add(alias.name)
                         prefix = "control_plane_kit_operations.read_services."
                         if alias.name.startswith(prefix):
-                            imported.add(alias.name.removeprefix(prefix).split(".", 1)[0])
-            local_imports[module_name] = imported & _EXPECTED_MODULES
+                            local.add(
+                                alias.name.removeprefix(prefix).split(".", 1)[0]
+                            )
+            imports[module_name] = imported
+            local_imports[module_name] = local & _EXPECTED_MODULES
 
-        self.assertEqual(local_imports["errors"], set())
-        self.assertEqual(local_imports["_redaction"], set())
-        self.assertNotIn("instance", local_imports["models"])
-        self.assertNotIn("instance", local_imports["protocols"])
+        self.assertEqual(imports, _EXPECTED_FOUNDATION_IMPORTS)
 
-        for module_name in _FOUNDATION_LEAVES:
-            self.assertNotIn(module_name, local_imports[module_name])
+        for start in _FOUNDATION_LEAVES:
+            reachable = list(local_imports[start] & _FOUNDATION_LEAVES)
+            visited: set[str] = set()
+            while reachable:
+                candidate = reachable.pop()
+                self.assertNotEqual(
+                    candidate,
+                    start,
+                    f"foundation import cycle returns to {start}",
+                )
+                if candidate in visited:
+                    continue
+                visited.add(candidate)
+                reachable.extend(
+                    local_imports[candidate] & _FOUNDATION_LEAVES
+                )
 
 
 if __name__ == "__main__":
