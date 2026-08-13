@@ -89,6 +89,14 @@ class _Clock:
         return self._value
 
 
+class _HostileClockValue:
+    def __str__(self) -> str:
+        return "secret://clock-string-canary"
+
+    def __repr__(self) -> str:
+        return "clock-address-canary-10.0.0.9"
+
+
 class _ObservationStore:
     def __init__(
         self,
@@ -238,7 +246,10 @@ class ObservationReadProjectionTests(unittest.TestCase):
                 self.assertIs(caught.exception, workspace_failure)
                 self.assertEqual(trace, [("workspace", "workspace-a")])
 
-        for invalid_clock in (object(), datetime(2026, 8, 13, 12, 5)):
+        for invalid_clock in (
+            _HostileClockValue(),
+            datetime(2026, 8, 13, 12, 5),
+        ):
             trace = []
             projection = self.module._ObservationReadProjection(
                 _WorkspaceCapability(trace),
@@ -252,6 +263,16 @@ class ObservationReadProjectionTests(unittest.TestCase):
                     "read-service clock must return a timezone-aware datetime",
                 ) as caught:
                     projection.observed_state(request)
+                message = "read-service clock must return a timezone-aware datetime"
+                self.assertEqual(str(caught.exception), message)
+                self.assertEqual(repr(caught.exception), f"ReadModelError({message!r})")
+                for canary in (
+                    "clock-string-canary",
+                    "clock-address-canary",
+                    "10.0.0.9",
+                ):
+                    self.assertNotIn(canary, str(caught.exception))
+                    self.assertNotIn(canary, repr(caught.exception))
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
                 self.assertEqual(trace, [("workspace", "workspace-a"), "clock"])
@@ -268,6 +289,9 @@ class ObservationReadProjectionTests(unittest.TestCase):
             "observed state store is not configured",
         ) as caught:
             projection.observed_state(request)
+        message = "observed state store is not configured"
+        self.assertEqual(str(caught.exception), message)
+        self.assertEqual(repr(caught.exception), f"ReadModelError({message!r})")
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
         self.assertEqual(trace, [("workspace", "workspace-a"), "clock"])
@@ -440,6 +464,12 @@ class ObservationReadProjectionStructureTests(unittest.TestCase):
         self.assertEqual(function.attr, "observed_state")
         self.assertIsInstance(function.value, ast.Attribute)
         self.assertEqual(function.value.attr, "_observations")
+        self.assertIsInstance(function.value.value, ast.Name)
+        self.assertEqual(function.value.value.id, "self")
+        self.assertEqual(len(returned.value.args), 1)
+        self.assertIsInstance(returned.value.args[0], ast.Name)
+        self.assertEqual(returned.value.args[0].id, "request")
+        self.assertEqual(returned.value.keywords, [])
 
         initializer = methods["__init__"]
         assigned = {
