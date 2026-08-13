@@ -15,6 +15,7 @@ from tests.large_read_history_fixture import (
     seed_large_read_history,
 )
 
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_operations.postgres import PostgresStoreBundle, install_schema
 from control_plane_kit_operations.read_pages import (
     DelegationKeyReadCursor,
@@ -629,7 +630,9 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 DelegationKeyReadCursor(
                     ReadCollection.DELEGATION_SIGNING_KEYS,
                     delegation_scope,
-                    *delegation_expected[-1],
+                    DelegationKeyPurpose.GATEWAY_PROBE,
+                    delegation_expected[-1][1],
+                    delegation_expected[-1][2],
                 ),
             )
         )

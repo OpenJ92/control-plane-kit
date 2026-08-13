@@ -508,7 +508,9 @@ def _seed_current_metadata(
                'control-plane-kit-secrets', 'Synthetic provider',
                'synthetic-endpoint-' || lpad(value::text, 4, '0'),
                'secret://synthetic/provider/credential-' || value,
-               jsonb_build_array('secret://synthetic/workspace'),
+               jsonb_build_array(
+                 'secret://provider-' || lpad(value::text, 4, '0') || '/workspace'
+               ),
                jsonb_build_array('postgres.password'), 'operator',
                %s::timestamptz, 'active', '{}'::jsonb
         FROM generate_series(1, %s) AS value
