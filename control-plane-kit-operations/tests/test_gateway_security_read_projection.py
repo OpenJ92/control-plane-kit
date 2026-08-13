@@ -69,7 +69,7 @@ def _probe(probe_id: str = "probe-a", *, workspace_id: str = "workspace-a"):
         grant_jti=f"grant-{probe_id}",
         issued_at=100,
         expires_at=160,
-        status=GatewayProbeAttemptStatus.SUCCEEDED,
+        status=GatewayProbeAttemptStatus.INTENDED,
         requested_at="2026-08-13T12:00:00Z",
         intent_fingerprint="2" * 64,
         evidence=BoundedEvidence(),
