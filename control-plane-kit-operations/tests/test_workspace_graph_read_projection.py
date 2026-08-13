@@ -163,13 +163,32 @@ class WorkspaceGraphReadProjectionTests(unittest.TestCase):
                 self.assertIsInstance(function.value, ast.Attribute)
                 self.assertEqual(function.value.attr, "_workspace_graph")
 
-        private = methods["_workspace"]
-        self.assertEqual(len(private.body), 1)
-        returned = private.body[0]
-        self.assertIsInstance(returned, ast.Return)
-        self.assertIsInstance(returned.value, ast.Call)
-        self.assertEqual(returned.value.func.attr, "require_workspace")
-        self.assertEqual(returned.value.func.value.attr, "_workspace_graph")
+        self.assertNotIn("_workspace", methods)
+        constructor = methods["__init__"]
+        projection_attributes = {
+            "_operations_history",
+            "_observations",
+            "_authority_secrets",
+            "_gateway_security",
+        }
+        wired: set[str] = set()
+        for statement in constructor.body:
+            if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+                continue
+            target = statement.targets[0]
+            if (
+                not isinstance(target, ast.Attribute)
+                or target.attr not in projection_attributes
+                or not isinstance(statement.value, ast.Call)
+            ):
+                continue
+            capability = statement.value.args[0]
+            self.assertIsInstance(capability, ast.Attribute)
+            self.assertEqual(capability.attr, "require_workspace")
+            self.assertIsInstance(capability.value, ast.Attribute)
+            self.assertEqual(capability.value.attr, "_workspace_graph")
+            wired.add(target.attr)
+        self.assertEqual(wired, projection_attributes)
 
     def test_non_graph_facade_uses_the_shared_workspace_lookup(self) -> None:
         session = OperationSessionRecord(
