@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 import importlib
+from inspect import signature
+import json
 from pathlib import Path
 import unittest
 
@@ -28,8 +30,8 @@ from control_plane_kit_operations.gateway_probes import (
     GatewayProbeError,
 )
 from control_plane_kit_operations.read_pages import (
+    DelegationKeyReadCursor,
     EpochReadCursor,
-    IdentityReadCursor,
     ReadCollection,
     ReadPage,
     ReadPageCandidate,
@@ -161,12 +163,30 @@ class _ProbeStore:
         return self._attempt
 
 
+class _MalformedProbe:
+    def __init__(self, failure: BaseException) -> None:
+        self._failure = failure
+        self.workspace_id = "workspace-a"
+
+    def descriptor(self) -> object:
+        raise self._failure
+
+
+class _MalformedKeyRecord:
+    registration_id = "registration-malformed"
+    purpose = DelegationKeyPurpose.GATEWAY_PROBE
+    issuer = "cpk-server-a"
+    key_id = "malformed"
+
+
 class _KeyStore:
     def __init__(
         self,
         trace: list[object],
         keys: tuple[RegisteredDelegationSigningKey, ...] | None = None,
         *,
+        active: RegisteredDelegationSigningKey | None = None,
+        verification_keys: tuple[RegisteredDelegationSigningKey, ...] | None = None,
         failure: BaseException | None = None,
     ) -> None:
         self._trace = trace
@@ -174,6 +194,8 @@ class _KeyStore:
             _key("key-a", RegisteredDelegationSigningKeyStatus.VERIFY_ONLY),
             _key("key-b", RegisteredDelegationSigningKeyStatus.ACTIVE),
         )
+        self._active = active
+        self._verification_keys = verification_keys
         self._failure = failure
 
     def _result(self) -> tuple[RegisteredDelegationSigningKey, ...]:
@@ -192,10 +214,12 @@ class _KeyStore:
             tuple(
                 ReadPageCandidate(
                     value,
-                    IdentityReadCursor(
+                    DelegationKeyReadCursor(
                         request.collection,
                         request.scope,
-                        value.registration_id,
+                        value.purpose,
+                        value.issuer,
+                        value.key_id,
                     ),
                 )
                 for value in values[:1]
@@ -209,6 +233,8 @@ class _KeyStore:
     ) -> RegisteredDelegationSigningKey:
         self._trace.append(("key-active", workspace_id, purpose))
         values = self._result()
+        if self._active is not None:
+            return self._active
         return next(
             value
             for value in values
@@ -222,12 +248,66 @@ class _KeyStore:
         issuer: str,
     ) -> tuple[RegisteredDelegationSigningKey, ...]:
         self._trace.append(("key-verification", workspace_id, purpose, issuer))
-        return self._result()
+        values = self._result()
+        return self._verification_keys if self._verification_keys is not None else values
 
 
 class _ForbiddenStore:
     def __getattr__(self, name: str) -> object:
         raise AssertionError(f"unrelated store capability was acquired: {name}")
+
+
+def _absolute_module_imports(tree: ast.AST) -> set[str]:
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+            continue
+        imported.add(node.module)
+        if node.module == "control_plane_kit_operations":
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+    return imported
+
+
+class _GatewaySecuritySpy:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, ...]] = []
+        self.results = {
+            "gateway_probe_timeline": object(),
+            "gateway_probe_detail": object(),
+            "delegation_signing_keys": object(),
+            "gateway_verifier_configuration": object(),
+        }
+
+    def gateway_probe_timeline(self, request: object) -> object:
+        self.calls.append(("gateway_probe_timeline", request))
+        return self.results["gateway_probe_timeline"]
+
+    def gateway_probe_detail(self, workspace_id: str, probe_id: str) -> object:
+        self.calls.append(("gateway_probe_detail", workspace_id, probe_id))
+        return self.results["gateway_probe_detail"]
+
+    def delegation_signing_keys(self, request: object) -> object:
+        self.calls.append(("delegation_signing_keys", request))
+        return self.results["delegation_signing_keys"]
+
+    def gateway_verifier_configuration(
+        self,
+        workspace_id: str,
+        gateway_node_id: str,
+    ) -> object:
+        self.calls.append(
+            (
+                "gateway_verifier_configuration",
+                workspace_id,
+                gateway_node_id,
+            )
+        )
+        return self.results["gateway_verifier_configuration"]
 
 
 class GatewaySecurityReadProjectionTests(unittest.TestCase):
@@ -275,8 +355,8 @@ class GatewaySecurityReadProjectionTests(unittest.TestCase):
     def test_key_inventory_and_verifier_work_without_probe_store(self) -> None:
         trace: list[object] = []
         keys = (
-            _key("key-b", RegisteredDelegationSigningKeyStatus.ACTIVE),
             _key("key-a", RegisteredDelegationSigningKeyStatus.VERIFY_ONLY),
+            _key("key-b", RegisteredDelegationSigningKeyStatus.ACTIVE),
         )
         projection = self._projection(trace, key_store=_KeyStore(trace, keys))
         request = _request(ReadCollection.DELEGATION_SIGNING_KEYS)
@@ -288,27 +368,90 @@ class GatewaySecurityReadProjectionTests(unittest.TestCase):
         )
 
         inventory = page.items[0]
-        self.assertEqual(inventory["key_id"], "key-b")
-        self.assertNotIn("private_key_reference", inventory)
-        self.assertNotIn("public_key_pem", inventory)
-        self.assertNotIn("BEGIN PUBLIC KEY", repr(inventory))
+        self.assertEqual(
+            inventory,
+            {
+                "registration_id": "registration-key-a",
+                "workspace_id": "workspace-a",
+                "purpose": "gateway-probe",
+                "issuer": "cpk-server-a",
+                "key_id": "key-a",
+                "algorithm": "ed25519",
+                "fingerprint_sha256": keys[0].public_key.fingerprint_sha256,
+                "admitted_by": "operator-a",
+                "admitted_at": "2026-08-13T12:00:00Z",
+                "status": "verify-only",
+                "activated_by": None,
+                "activated_at": None,
+                "retired_by": None,
+                "retired_at": None,
+                "revoked_by": None,
+                "revoked_at": None,
+            },
+        )
 
         configuration = detail.payload["gateway_verifier_configuration"]
-        self.assertEqual(configuration["issuer"], "cpk-server-a")
-        self.assertEqual(configuration["audience"], "gateway:workspace-a:gateway-a")
-        self.assertEqual(configuration["gateway_node_id"], "gateway-a")
         self.assertEqual(
-            [value["key_id"] for value in configuration["public_keys"]],
-            ["key-a", "key-b"],
+            configuration,
+            {
+                "issuer": "cpk-server-a",
+                "audience": "gateway:workspace-a:gateway-a",
+                "gateway_node_id": "gateway-a",
+                "public_keys": [
+                    {
+                        **value.public_key.descriptor(),
+                        "public_key_pem": value.public_key.public_key_pem,
+                    }
+                    for value in keys
+                ],
+                "public_environment": [
+                    {
+                        "kind": "public-static",
+                        "name": "CPK_GATEWAY_PROBE_AUDIENCE",
+                        "value": "gateway:workspace-a:gateway-a",
+                    },
+                    {
+                        "kind": "public-static",
+                        "name": "CPK_GATEWAY_PROBE_ISSUER",
+                        "value": "cpk-server-a",
+                    },
+                    {
+                        "kind": "public-static",
+                        "name": "CPK_GATEWAY_PROBE_NODE_ID",
+                        "value": "gateway-a",
+                    },
+                    {
+                        "kind": "public-static",
+                        "name": "CPK_GATEWAY_PROBE_VERIFICATION_KEYS_JSON",
+                        "value": json.dumps(
+                            {
+                                value.key_id: value.public_key.public_key_pem
+                                for value in keys
+                            },
+                            ensure_ascii=True,
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                    },
+                    {
+                        "kind": "public-static",
+                        "name": "CPK_GATEWAY_PROBE_VERIFIER",
+                        "value": "ed25519",
+                    },
+                ],
+            },
         )
-        self.assertTrue(
-            all("BEGIN PUBLIC KEY" in value["public_key_pem"] for value in configuration["public_keys"])
-        )
-        self.assertEqual(
-            [binding["name"] for binding in configuration["public_environment"]],
-            sorted(binding["name"] for binding in configuration["public_environment"]),
-        )
-        self.assertNotIn("private_key_reference", repr(configuration))
+        for private_reference in (
+            "secret://delegation-private/workspace-a/key-a",
+            "secret://delegation-private/workspace-a/key-b",
+        ):
+            for rendered in (
+                str(inventory),
+                repr(inventory),
+                str(configuration),
+                repr(configuration),
+            ):
+                self.assertNotIn(private_reference, rendered)
         self.assertEqual(
             trace,
             [
@@ -428,6 +571,67 @@ class GatewaySecurityReadProjectionTests(unittest.TestCase):
                 )
                 self.assertNotIn("candidate-private", str(caught.exception))
 
+    def test_verifier_rejects_a_verification_set_without_an_active_member(
+        self,
+    ) -> None:
+        active = _key("key-b", RegisteredDelegationSigningKeyStatus.ACTIVE)
+        verification_keys = (
+            _key("key-a", RegisteredDelegationSigningKeyStatus.VERIFY_ONLY),
+            _key("key-c", RegisteredDelegationSigningKeyStatus.VERIFY_ONLY),
+        )
+        projection = self._projection(
+            [],
+            key_store=_KeyStore(
+                [],
+                (active,),
+                active=active,
+                verification_keys=verification_keys,
+            ),
+        )
+
+        with self.assertRaises(operations.ReadModelError) as caught:
+            projection.gateway_verifier_configuration(
+                "workspace-a",
+                "gateway-a",
+            )
+
+        self.assertEqual(
+            str(caught.exception),
+            "gateway verifier configuration is unavailable",
+        )
+        self.assertIs(type(caught.exception.__cause__), GatewayProbeError)
+        self.assertEqual(
+            str(caught.exception.__cause__),
+            "gateway verifier set has no active key",
+        )
+        self.assertIs(caught.exception.__context__, caught.exception.__cause__)
+
+    def test_malformed_inventory_is_bounded_and_unexpected_probe_failure_is_raw(
+        self,
+    ) -> None:
+        malformed_key_store = _KeyStore([], (_MalformedKeyRecord(),))
+        projection = self._projection([], key_store=malformed_key_store)
+        with self.assertRaises(operations.ReadModelError) as caught:
+            projection.delegation_signing_keys(
+                _request(ReadCollection.DELEGATION_SIGNING_KEYS)
+            )
+        self.assertEqual(
+            str(caught.exception),
+            "delegation signing key record cannot be projected",
+        )
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+        self.assertNotIn("registration-malformed", repr(caught.exception))
+
+        failure = RuntimeError("unexpected-probe-descriptor-failure")
+        projection = self._projection(
+            [],
+            probe_store=_ProbeStore([], _MalformedProbe(failure)),
+        )
+        with self.assertRaises(RuntimeError) as raw:
+            projection.gateway_probe_detail("workspace-a", "probe-a")
+        self.assertIs(raw.exception, failure)
+
 
 class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
     def _module(self) -> object:
@@ -439,12 +643,16 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
     def test_owner_and_facade_have_exact_method_partition(self) -> None:
         module = self._module()
         owner = module._GatewaySecurityReadProjection
-        methods = (
-            "gateway_probe_timeline",
-            "gateway_probe_detail",
-            "delegation_signing_keys",
-            "gateway_verifier_configuration",
-        )
+        methods = {
+            "gateway_probe_timeline": ("self", "request"),
+            "gateway_probe_detail": ("self", "workspace_id", "probe_id"),
+            "delegation_signing_keys": ("self", "request"),
+            "gateway_verifier_configuration": (
+                "self",
+                "workspace_id",
+                "gateway_node_id",
+            ),
+        }
         self.assertEqual(
             {name for name in vars(owner) if not name.startswith("_")},
             set(methods),
@@ -458,7 +666,19 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
             for node in tree.body
             if isinstance(node, ast.ClassDef) and node.name == "InstanceReadService"
         )
-        for method_name in methods:
+        for method_name, parameters in methods.items():
+            self.assertEqual(
+                tuple(signature(getattr(owner, method_name)).parameters),
+                parameters,
+            )
+            self.assertEqual(
+                tuple(
+                    signature(
+                        getattr(operations.InstanceReadService, method_name)
+                    ).parameters
+                ),
+                parameters,
+            )
             method = next(
                 node
                 for node in facade.body
@@ -471,6 +691,26 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
             self.assertEqual(call.func.attr, method_name)
             self.assertIsInstance(call.func.value, ast.Attribute)
             self.assertEqual(call.func.value.attr, "_gateway_security")
+
+    def test_facade_preserves_exact_argument_and_return_identity(self) -> None:
+        facade = object.__new__(operations.InstanceReadService)
+        spy = _GatewaySecuritySpy()
+        facade._gateway_security = spy
+        request = object()
+        cases = (
+            ("gateway_probe_timeline", (request,)),
+            ("gateway_probe_detail", ("workspace-a", "probe-a")),
+            ("delegation_signing_keys", (request,)),
+            (
+                "gateway_verifier_configuration",
+                ("workspace-a", "gateway-a"),
+            ),
+        )
+        for method_name, arguments in cases:
+            with self.subTest(method=method_name):
+                result = getattr(facade, method_name)(*arguments)
+                self.assertIs(result, spy.results[method_name])
+                self.assertEqual(spy.calls[-1], (method_name, *arguments))
 
     def test_facade_retains_owner_not_raw_security_stores(self) -> None:
         instance = operations.InstanceReadService(
@@ -498,11 +738,25 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
             _local_module_imports(tree, module_names),
             {"errors", "models", "protocols"},
         )
-        imported = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module
-        }
+        hostile_imports = (
+            (
+                "import control_plane_kit_operations.postgres.stores as stores\n",
+                "control_plane_kit_operations.postgres.stores",
+            ),
+            (
+                "from control_plane_kit_operations import cpk_server as server\n",
+                "control_plane_kit_operations.cpk_server",
+            ),
+            (
+                "from control_plane_kit_operations.postgres import stores\n",
+                "control_plane_kit_operations.postgres",
+            ),
+        )
+        for source, expected in hostile_imports:
+            with self.subTest(source=source):
+                self.assertIn(expected, _absolute_module_imports(ast.parse(source)))
+
+        imported = _absolute_module_imports(tree)
         for forbidden in (
             "control_plane_kit_operations.cpk_server",
             "control_plane_kit_operations.postgres",
