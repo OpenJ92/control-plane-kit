@@ -17,6 +17,7 @@ from control_plane_kit_core.delegation_keys import (
     DelegationPublicKey,
 )
 from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.delegation_signing_keys import (
     delegation_signing_key_registration_id_for,
 )
@@ -27,6 +28,10 @@ from control_plane_kit_operations.postgres import (
 )
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
+)
+from control_plane_kit_operations.records import (
+    GraphVersionRecord,
+    RealizedGraphProjectionRecord,
 )
 
 import test_node_control_signing_authority as contract_tests
@@ -96,6 +101,9 @@ class NodeControlSigningAuthorityPostgresTests(
     def attempt(self, **changes):
         return replace(
             super().attempt(**changes),
+            current_realized_projection_id=(
+                self._current_projection().projection_id
+            ),
             transit_key_registration_id=self._retained_key_registration_id(
                 DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT
             ),
@@ -104,7 +112,26 @@ class NodeControlSigningAuthorityPostgresTests(
             ),
         )
 
+    @staticmethod
+    def _current_graph() -> GraphVersionRecord:
+        return GraphVersionRecord.from_graph(
+            graph_id="graph-current",
+            workspace_id="workspace-a",
+            version=1,
+            graph=DeploymentGraph("graph-current"),
+            created_by="operator-a",
+            created_at="2027-01-15T07:00:00Z",
+        )
+
+    @classmethod
+    def _current_projection(cls) -> RealizedGraphProjectionRecord:
+        return RealizedGraphProjectionRecord.identity_for_authored(
+            authored_record=cls._current_graph()
+        )
+
     def _seed_truth(self) -> None:
+        graph = self._current_graph()
+        projection = self._current_projection()
         self.connection.execute(
             "INSERT INTO cpk_workspaces (workspace_id,name,lifecycle) "
             "VALUES ('workspace-a','Workspace A','running')"
@@ -113,27 +140,42 @@ class NodeControlSigningAuthorityPostgresTests(
             """
             INSERT INTO cpk_graph_versions
               (graph_id,workspace_id,version,graph_descriptor,created_by,created_at,metadata)
-            VALUES ('graph-current','workspace-a',1,'{}'::jsonb,'operator-a',
-                    '2027-01-15T07:00:00Z','{}'::jsonb)
-            """
+            VALUES (%s,%s,%s,%s,%s,%s,'{}'::jsonb)
+            """,
+            (
+                graph.graph_id,
+                graph.workspace_id,
+                graph.version,
+                Jsonb(graph.graph_descriptor),
+                graph.created_by,
+                graph.created_at,
+            ),
         )
         self.connection.execute(
             """
             INSERT INTO cpk_realized_graph_projections
               (projection_id,workspace_id,source_authored_graph_id,projection_kind,
                projection_key,projection_digest,graph_descriptor,created_by,created_at)
-            VALUES ('projection-current','workspace-a','graph-current','identity',
-                    'current',%s,'{}'::jsonb,'operator-a','2027-01-15T07:00:00Z')
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
-            ("1" * 64,),
+            (
+                projection.projection_id,
+                projection.workspace_id,
+                projection.source_authored_graph_id,
+                projection.projection_kind.value,
+                projection.projection_key,
+                projection.projection_digest,
+                Jsonb(projection.graph_descriptor),
+                projection.created_by,
+                projection.created_at,
+            ),
         )
         self.connection.execute(
             """
-            UPDATE cpk_workspaces
-            SET current_graph_id='graph-current',
-                current_realized_projection_id='projection-current'
-            WHERE workspace_id='workspace-a'
-            """
+            UPDATE cpk_workspaces SET current_graph_id=%s,
+                current_realized_projection_id=%s WHERE workspace_id=%s
+            """,
+            (graph.graph_id, projection.projection_id, graph.workspace_id),
         )
         self.connection.execute(
             """
@@ -435,7 +477,10 @@ class NodeControlSigningAuthorityPostgresTests(
         for family in ("transit", "workload"):
             for edge, replacement in (
                 ("not-before", {"not_before": 101}),
-                ("expires", {"not_before": 99, "expires_at": 100}),
+                (
+                    "expires",
+                    {"issued_at": 99, "not_before": 99, "expires_at": 100},
+                ),
             ):
                 with self.subTest(family=family, edge=edge):
                     self.connection.execute("TRUNCATE cpk_node_control_attempts")
