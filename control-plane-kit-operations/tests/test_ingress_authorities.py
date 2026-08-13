@@ -40,6 +40,11 @@ from control_plane_kit_operations.postgres import (
     install_schema,
 )
 from control_plane_kit_operations.read_services import InstanceReadService
+from control_plane_kit_operations.read_pages import (
+    ReadCollection,
+    ReadPageRequest,
+    WorkspaceReadScope,
+)
 
 
 class IngressAuthorityValueTests(unittest.TestCase):
@@ -583,7 +588,13 @@ class IngressAuthorityStoreTests(unittest.TestCase):
         )
         read_service = self.read_service()
 
-        listed = read_service.ingress_authorities("workspace-a").descriptor()
+        listed = read_service.ingress_authorities(
+            ReadPageRequest(
+                ReadCollection.INGRESS_AUTHORITIES,
+                WorkspaceReadScope("workspace-a"),
+                100,
+            )
+        ).descriptor()
         detail = read_service.ingress_authority_detail(
             "workspace-a",
             IngressAuthorityReference("openj92-public-ingress"),

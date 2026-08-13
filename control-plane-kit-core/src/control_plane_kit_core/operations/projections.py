@@ -24,6 +24,11 @@ class ReadProjectionKind(StrEnum):
     ACTIVITY_TIMELINE = "activity-timeline"
     OPEN_SESSIONS = "open-sessions"
     SESSION_DETAIL = "session-detail"
+    SESSION_ACTIONS = "session-actions"
+    SESSION_PLANS = "session-plans"
+    SESSION_APPROVALS = "session-approvals"
+    RUN_EVENTS = "run-events"
+    PLAN_RUNS = "plan-runs"
     PLAN_DETAIL = "plan-detail"
     APPROVAL_DETAIL = "approval-detail"
     PENDING_APPROVALS = "pending-approvals"
@@ -288,6 +293,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.DELEGATION_KEYS,
         "DelegationSigningKeyCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_DELEGATION_KEY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.gateway-verifier-configuration",
@@ -307,7 +314,7 @@ _CANONICAL_PROJECTIONS = (
         "GatewayProbeTimelineReadResponse",
         ReadProjectionPolicy.DELEGATED_GATEWAY_PROBE_EVIDENCE,
         paged=True,
-        max_page_size=200,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.approval-detail",
@@ -321,7 +328,7 @@ _CANONICAL_PROJECTIONS = (
         "ActivityTimelineReadResponse",
         ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
         paged=True,
-        max_page_size=200,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.control-surface",
@@ -346,6 +353,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.INGRESS_AUTHORITIES,
         "IngressAuthorityCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_INGRESS_AUTHORITY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.ingress-authority-detail",
@@ -358,12 +367,24 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.OBSERVED_STATE,
         "ObservedStateReadResponse",
         ReadProjectionPolicy.OBSERVED_STATE_EVIDENCE,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.run-events",
+        ReadProjectionKind.RUN_EVENTS,
+        "RunEventsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.runtime-authorities",
         ReadProjectionKind.RUNTIME_AUTHORITIES,
         "RuntimeAuthorityCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.runtime-authority-detail",
@@ -376,6 +397,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.RUNTIME_AUTHORITY_DELIVERIES,
         "RuntimeAuthorityDeliveryCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY_DELIVERY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.runtime-authority-delivery-detail",
@@ -388,6 +411,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.SECRET_PROVIDERS,
         "SecretProviderCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_SECRET_PROVIDER,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.secret-provider-detail",
@@ -400,6 +425,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.SECRET_REFERENCES,
         "SecretReferenceCollectionReadResponse",
         ReadProjectionPolicy.REDACTED_SECRET_REFERENCE,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.secret-reference-detail",
@@ -413,7 +440,7 @@ _CANONICAL_PROJECTIONS = (
         "OpenSessionsReadResponse",
         ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
         paged=True,
-        max_page_size=200,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.operator-graph",
@@ -427,13 +454,45 @@ _CANONICAL_PROJECTIONS = (
         "PendingApprovalsReadResponse",
         ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
         paged=True,
-        max_page_size=200,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.plan-detail",
         ReadProjectionKind.PLAN_DETAIL,
         "PlanDetailReadResponse",
         ReadProjectionPolicy.PINNED_PLAN_AND_RECOVERY,
+    ),
+    _ProjectionDefinition(
+        "read.session-actions",
+        ReadProjectionKind.SESSION_ACTIONS,
+        "SessionActionsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.session-approvals",
+        ReadProjectionKind.SESSION_APPROVALS,
+        "SessionApprovalsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.session-plans",
+        ReadProjectionKind.SESSION_PLANS,
+        "SessionPlansReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.plan-runs",
+        ReadProjectionKind.PLAN_RUNS,
+        "PlanRunsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.session-detail",

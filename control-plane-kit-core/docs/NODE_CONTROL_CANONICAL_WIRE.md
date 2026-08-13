@@ -2,7 +2,7 @@
 
 Status: public contract for `jcs-rfc8785.v1`.
 
-Issues: OpenJ92/control-plane-kit#1452, #1547, and #1548.
+Issues: OpenJ92/control-plane-kit#1452, #1547, #1548, #1554, and #1578.
 
 ## Purpose
 
@@ -13,6 +13,10 @@ the same request value.
 Surface discovery additionally binds one exact static declaration identity and
 one exact capabilities or status request digest. Those values use the same
 cross-language canonicalization law without sharing the command request type.
+
+Gateway transit authority binds the same exact semantic command request to one
+selected graph gateway. It is a separate unsigned authority language and does
+not replace the workload's end-to-end command grant.
 
 ## Canonicalization Identity
 
@@ -47,6 +51,11 @@ Node-control JSON numbers use the RFC 8785/I-JSON interoperable domain:
 Versions and epoch seconds are nonnegative safe integers. Weighted-routing
 integer inputs are safe-bounded before conversion to binary64, so conversion
 cannot leak an overflow exception or silently lose integer precision.
+Strict raw decoders preserve RFC 8785 integer-looking spellings that represent
+accepted binary64 values, such as `100000000000000000000` for `1e20`. An
+integer token outside the safe-integer domain is first observed as binary64;
+exact-integer fields then reject it, while scalar fields must still reproduce
+the input byte-for-byte when canonically re-encoded.
 
 ## Size Law
 
@@ -69,6 +78,31 @@ Result codecs also derive a smaller ceiling from the exact expected request and
 declaration before interpreting nested values. Raw HTTP admission before JSON
 parsing remains an SDK/adapter responsibility.
 
+Gateway node-control transit grants have one exact reachable ceiling:
+
+```text
+transit grant  2,834 bytes
+```
+
+Their descriptor-visible audience is derived from bounded graph identifiers as
+`gateway:{workspace_id}:{gateway_node_id}` and reaches at most 265 ASCII bytes.
+The generic public-reference bound remains 256 bytes; transit audience is not a
+generic reference and is never caller-selected constructor truth. Raw transit
+bytes are bounded before UTF-8/JSON parsing, reject duplicate keys recursively,
+and must equal the RFC 8785 encoding of their decoded value.
+
+Workload node-control grants have one exact reachable ceiling:
+
+```text
+workload grant  2,111 bytes
+```
+
+`DelegatedWorkloadNodeControlGrant` exposes those exact bytes and a nominal
+`WorkloadNodeControlGrantDigest`. Request and workload-grant raw inputs are
+bounded before UTF-8/JSON parsing, reject duplicate keys recursively, and must
+equal the RFC 8785 encoding of their decoded value. Request, workload, transit,
+surface-read, and gateway-probe authority remain nominally non-substitutable.
+
 ## Golden Vectors
 
 The language-neutral fixture is:
@@ -77,11 +111,12 @@ The language-neutral fixture is:
 tests/fixtures/node_control_canonical_wire_v1.json
 ```
 
-It contains request descriptors, exact canonical UTF-8 text and hexadecimal
-bytes, SHA-256 digests, and selected RFC 8785 Appendix B number vectors. Python
-tests consume it in this distribution. Java and C++ SDKs must consume the same
-fixture before claiming compatibility; they must not regenerate expected bytes
-from their own serializer and call that interoperability evidence.
+It contains request and workload-grant descriptors, exact canonical UTF-8 text
+and hexadecimal bytes, SHA-256 digests, and selected RFC 8785 Appendix B number
+vectors. Python tests consume it in this distribution. Java and C++ SDKs must
+consume the same fixture before claiming compatibility; they must not
+regenerate expected bytes from their own serializer and call that
+interoperability evidence.
 
 The surface-read fixture is:
 
@@ -99,13 +134,28 @@ result, the separate status declaration and request preimages, and exact
 `none|partial|complete` status vectors. SDK implementations must consume these
 vectors before claiming surface-read compatibility.
 
+The gateway-transit fixture is:
+
+```text
+tests/fixtures/node_control_transit_canonical_wire_v1.json
+```
+
+It pins the complete `gateway-node-control-transit-grant.v1` descriptor, exact
+canonical UTF-8 signing payload, and SHA-256 grant identity. Transit, gateway
+probe, workload command, and workload surface-read authority remain nominally
+non-substitutable. Consumers must sign or verify the complete canonical bytes;
+they must not re-encode individual fields at the signing boundary.
+
 ## Scope
 
-This contract covers workload node-control command requests, static surface
-declarations, surface-read requests, and their request-bound capability/status
-results. Status coverage proves only that canonical installed names form the
-claimed subset of the expected declaration. It does not prove that those names
-came from a maintained live registry. This contract does not change
-gateway-probe digests or another package's existing canonical material. It does
-not sign requests, verify signatures, store replay state, log canonical bytes,
-inspect a registry, or perform network or runtime effects.
+This contract covers workload node-control command requests, gateway transit
+grants, static surface declarations, surface-read requests, and their
+request-bound capability/status results. Status coverage proves only that
+canonical installed names form the claimed subset of the expected declaration.
+It does not prove that those names came from a maintained live registry. This
+contract does not change gateway-probe digests or another package's existing
+canonical material. It does not sign requests, verify signatures, store replay
+state, log canonical bytes, inspect a registry, or perform network or runtime
+effects. #1555 may persist the exact admitted bytes and nominal digests as
+durable intended-attempt evidence; that later Operations boundary must not
+reinterpret or reconstruct the wire.

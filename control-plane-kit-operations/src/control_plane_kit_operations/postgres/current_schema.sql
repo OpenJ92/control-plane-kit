@@ -135,7 +135,7 @@ CREATE TABLE cpk_delegation_signing_keys (
     CONSTRAINT cpk_delegation_signing_keys_issuer_check CHECK ((issuer ~ '^[a-z][a-z0-9._-]{0,127}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_key_id_check CHECK ((key_id ~ '^[a-z][a-z0-9._-]{0,127}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_private_reference_check CHECK ((private_key_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
-    CONSTRAINT cpk_delegation_signing_keys_purpose_check CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text]))),
+    CONSTRAINT cpk_delegation_signing_keys_purpose_check CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text, 'gateway-node-control-transit'::text]))),
     CONSTRAINT cpk_delegation_signing_keys_registration_check CHECK ((registration_id ~ '^dkey_[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_retirement_evidence_check CHECK (((retired_by IS NULL) = (retired_at IS NULL))),
     CONSTRAINT cpk_delegation_signing_keys_revocation_evidence_check CHECK (((revoked_by IS NULL) = (revoked_at IS NULL))),
@@ -256,7 +256,7 @@ CREATE TABLE cpk_gateway_key_rotations (
     CONSTRAINT cpk_gateway_key_rotations_generation_digest_check CHECK (((generation_action_digest IS NULL) OR ((generation_action_digest COLLATE "C") ~ '^[0-9a-f]{64}$'::text))),
     CONSTRAINT cpk_gateway_key_rotations_generation_provider_check CHECK (((generation_provider_registration_id IS NULL) OR ((octet_length(generation_provider_registration_id) BETWEEN 1 AND 200) AND ((generation_provider_registration_id COLLATE "C") ~ '^[A-Za-z0-9]'::text) AND ((generation_provider_registration_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'::text)))),
     CONSTRAINT cpk_gateway_key_rotations_lifetime_check CHECK (((maximum_grant_lifetime_seconds >= 1) AND (maximum_grant_lifetime_seconds <= 300))),
-    CONSTRAINT cpk_gateway_key_rotations_purpose_check CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text]))),
+    CONSTRAINT cpk_gateway_key_rotations_purpose_check CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text, 'gateway-node-control-transit'::text]))),
     CONSTRAINT cpk_gateway_key_rotations_retirement_check CHECK (((old_secret_revoked_at IS NULL) OR (old_key_retired_at IS NOT NULL))),
     CONSTRAINT cpk_gateway_key_rotations_secret_version_check CHECK ((((new_key_id IS NULL) = (new_secret_version_id IS NULL)) AND ((new_secret_version_id IS NULL) = (new_secret_version_number IS NULL)))),
     CONSTRAINT cpk_gateway_key_rotations_skew_check CHECK (((clock_skew_seconds >= 0) AND (clock_skew_seconds <= 60))),
@@ -405,6 +405,62 @@ CREATE TABLE cpk_operation_sessions (
     CONSTRAINT cpk_operation_sessions_status_check CHECK ((status = ANY (ARRAY['open'::text, 'closed'::text, 'cancelled'::text])))
 );
 
+CREATE TABLE cpk_node_control_attempts (
+    attempt_id text NOT NULL,
+    workspace_id text NOT NULL,
+    request_id text NOT NULL,
+    actor_subject text NOT NULL,
+    current_graph_id text NOT NULL,
+    current_realized_projection_id text NOT NULL,
+    gateway_runtime_id text NOT NULL,
+    transit_key_registration_id text NOT NULL,
+    workload_key_registration_id text NOT NULL,
+    transit_authorization_id text NOT NULL,
+    workload_authorization_id text NOT NULL,
+    transit_correlation_id text NOT NULL,
+    workload_correlation_id text NOT NULL,
+    request_bytes bytea NOT NULL,
+    request_digest text NOT NULL,
+    transit_grant_bytes bytea NOT NULL,
+    transit_grant_digest text NOT NULL,
+    workload_grant_bytes bytea NOT NULL,
+    workload_grant_digest text NOT NULL,
+    transit_issuer text NOT NULL,
+    transit_key_id text NOT NULL,
+    transit_jti text NOT NULL,
+    workload_issuer text NOT NULL,
+    workload_key_id text NOT NULL,
+    workload_jti text NOT NULL,
+    intended_at timestamp(6) with time zone NOT NULL,
+    intent_fingerprint text NOT NULL,
+    CONSTRAINT cpk_node_control_attempts_attempt_id_check CHECK (attempt_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_workspace_id_check CHECK (workspace_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_request_id_check CHECK (request_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_actor_subject_check CHECK (actor_subject ~ '^[a-z][a-z0-9._-]{0,127}$'),
+    CONSTRAINT cpk_node_control_attempts_current_graph_id_check CHECK (current_graph_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_current_realized_projection_id_check CHECK (current_realized_projection_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_gateway_runtime_id_check CHECK (gateway_runtime_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_transit_key_registration_id_check CHECK (transit_key_registration_id ~ '^dkey_[0-9a-f]{64}$'),
+    CONSTRAINT cpk_node_control_attempts_workload_key_registration_id_check CHECK (workload_key_registration_id ~ '^dkey_[0-9a-f]{64}$'),
+    CONSTRAINT cpk_node_control_attempts_transit_authorization_id_check CHECK (transit_authorization_id ~ '^suse_[0-9a-f]{64}$'),
+    CONSTRAINT cpk_node_control_attempts_workload_authorization_id_check CHECK (workload_authorization_id ~ '^suse_[0-9a-f]{64}$'),
+    CONSTRAINT cpk_node_control_attempts_transit_correlation_id_check CHECK (transit_correlation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_workload_correlation_id_check CHECK (workload_correlation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_request_bytes_check CHECK (octet_length(request_bytes) BETWEEN 1 AND 16384),
+    CONSTRAINT cpk_node_control_attempts_request_digest_check CHECK (request_digest ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_node_control_attempts_transit_grant_bytes_check CHECK (octet_length(transit_grant_bytes) BETWEEN 1 AND 2834),
+    CONSTRAINT cpk_node_control_attempts_transit_grant_digest_check CHECK (transit_grant_digest ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_node_control_attempts_workload_grant_bytes_check CHECK (octet_length(workload_grant_bytes) BETWEEN 1 AND 2111),
+    CONSTRAINT cpk_node_control_attempts_workload_grant_digest_check CHECK (workload_grant_digest ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT cpk_node_control_attempts_transit_issuer_check CHECK (transit_issuer ~ '^[a-z][a-z0-9._-]{0,127}$'),
+    CONSTRAINT cpk_node_control_attempts_transit_key_id_check CHECK (transit_key_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_transit_jti_check CHECK (transit_jti ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_workload_issuer_check CHECK (workload_issuer ~ '^[a-z][a-z0-9._-]{0,127}$'),
+    CONSTRAINT cpk_node_control_attempts_workload_key_id_check CHECK (workload_key_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_workload_jti_check CHECK (workload_jti ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'),
+    CONSTRAINT cpk_node_control_attempts_intent_fingerprint_check CHECK (intent_fingerprint ~ '^[0-9a-f]{64}$')
+);
+
 CREATE TABLE cpk_realized_graph_projections (
     projection_id text NOT NULL,
     workspace_id text NOT NULL,
@@ -543,7 +599,7 @@ CREATE TABLE cpk_secret_use_authorizations (
     CONSTRAINT cpk_secret_use_authorizations_effect_check CHECK (((effect_id IS NULL) OR (effect_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_fingerprint_check CHECK ((intent_fingerprint ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_secret_use_authorizations_id_check CHECK ((authorization_id ~ '^suse_[0-9a-f]{64}$'::text)),
-    CONSTRAINT cpk_secret_use_authorizations_intent_check CHECK ((use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text]))),
+    CONSTRAINT cpk_secret_use_authorizations_intent_check CHECK ((use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text, 'gateway.node-control-transit-signing-key'::text, 'workload.node-control-signing-key'::text]))),
     CONSTRAINT cpk_secret_use_authorizations_operation_check CHECK (((operation_id IS NULL) OR (operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_probe_check CHECK (((probe_id IS NULL) OR (probe_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_reference_check CHECK ((secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
@@ -675,6 +731,15 @@ ALTER TABLE ONLY cpk_operation_sessions
 ALTER TABLE ONLY cpk_operation_sessions
     ADD CONSTRAINT cpk_operation_sessions_workspace_identity UNIQUE (session_id, workspace_id);
 
+ALTER TABLE ONLY cpk_node_control_attempts
+    ADD CONSTRAINT cpk_node_control_attempts_pkey PRIMARY KEY (attempt_id);
+ALTER TABLE ONLY cpk_node_control_attempts
+    ADD CONSTRAINT cpk_node_control_attempts_workspace_request_key UNIQUE (workspace_id, request_id);
+ALTER TABLE ONLY cpk_node_control_attempts
+    ADD CONSTRAINT cpk_node_control_attempts_transit_jti_key UNIQUE (transit_issuer, transit_jti);
+ALTER TABLE ONLY cpk_node_control_attempts
+    ADD CONSTRAINT cpk_node_control_attempts_workload_jti_key UNIQUE (workload_issuer, workload_jti);
+
 ALTER TABLE ONLY cpk_realized_graph_projections
     ADD CONSTRAINT cpk_realized_graph_projection_identity UNIQUE (workspace_id, source_authored_graph_id, projection_kind, projection_key);
 
@@ -723,7 +788,18 @@ ALTER TABLE ONLY cpk_secret_use_authorizations
 ALTER TABLE ONLY cpk_workspaces
     ADD CONSTRAINT cpk_workspaces_pkey PRIMARY KEY (workspace_id);
 
+CREATE INDEX cpk_activity_plans_session_timeline ON cpk_activity_plans USING btree (session_id, created_at, plan_id);
+
 CREATE UNIQUE INDEX cpk_activity_runs_active_request ON cpk_activity_runs USING btree (request_id) WHERE (status = ANY (ARRAY['claimed'::text, 'running'::text, 'paused'::text, 'compensating'::text]));
+
+CREATE INDEX cpk_activity_runs_plan_timeline ON cpk_activity_runs USING btree (plan_id, created_at, run_id);
+
+CREATE INDEX cpk_node_control_attempts_projection_source_idx ON cpk_node_control_attempts (current_realized_projection_id, current_graph_id);
+CREATE INDEX cpk_node_control_attempts_projection_workspace_idx ON cpk_node_control_attempts (current_realized_projection_id, workspace_id);
+CREATE INDEX cpk_node_control_attempts_transit_key_workspace_idx ON cpk_node_control_attempts (transit_key_registration_id, workspace_id);
+CREATE INDEX cpk_node_control_attempts_workload_key_workspace_idx ON cpk_node_control_attempts (workload_key_registration_id, workspace_id);
+CREATE INDEX cpk_node_control_attempts_transit_authorization_workspace_idx ON cpk_node_control_attempts (transit_authorization_id, workspace_id);
+CREATE INDEX cpk_node_control_attempts_workload_authorization_workspace_idx ON cpk_node_control_attempts (workload_authorization_id, workspace_id);
 
 CREATE UNIQUE INDEX cpk_activity_runs_request_attempt ON cpk_activity_runs USING btree (request_id, attempt);
 
@@ -731,7 +807,11 @@ CREATE UNIQUE INDEX cpk_approval_decisions_idempotency ON cpk_approval_decisions
 
 CREATE UNIQUE INDEX cpk_approval_requests_idempotency ON cpk_approval_requests USING btree (session_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 
+CREATE INDEX cpk_approval_requests_pending_timeline ON cpk_approval_requests USING btree (requested_at, request_id);
+
 CREATE UNIQUE INDEX cpk_approval_requests_rotation_identity ON cpk_approval_requests USING btree (rotation_id) WHERE (rotation_id IS NOT NULL);
+
+CREATE INDEX cpk_approval_requests_session_timeline ON cpk_approval_requests USING btree (session_id, requested_at, request_id);
 
 CREATE UNIQUE INDEX cpk_cloudflare_ingress_resources_active_key ON cpk_cloudflare_ingress_resources USING btree (workspace_id, ingress_id) WHERE (status = ANY (ARRAY['allocating'::text, 'active'::text, 'removing'::text]));
 
@@ -759,6 +839,10 @@ CREATE UNIQUE INDEX cpk_operation_actions_idempotency ON cpk_operation_actions U
 
 CREATE UNIQUE INDEX cpk_operation_sessions_idempotency ON cpk_operation_sessions USING btree (workspace_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 
+CREATE INDEX cpk_operation_sessions_open_timeline ON cpk_operation_sessions USING btree (workspace_id, created_at, session_id) WHERE (status = 'open'::text);
+
+CREATE INDEX cpk_operation_sessions_workspace_timeline ON cpk_operation_sessions USING btree (workspace_id, created_at, session_id);
+
 CREATE UNIQUE INDEX cpk_runtime_authorities_active_ref ON cpk_runtime_authorities USING btree (workspace_id, authority_ref) WHERE (status = 'active'::text);
 
 CREATE UNIQUE INDEX cpk_runtime_authority_deliveries_active_ref ON cpk_runtime_authority_deliveries USING btree (workspace_id, authority_ref) WHERE (status = 'active'::text);
@@ -768,6 +852,8 @@ CREATE UNIQUE INDEX cpk_secret_providers_active_identity ON cpk_secret_providers
 CREATE INDEX cpk_secret_providers_history ON cpk_secret_providers USING btree (workspace_id, provider_id, admitted_at, registration_id);
 
 CREATE UNIQUE INDEX cpk_secret_references_active_reference ON cpk_secret_references USING btree (workspace_id, secret_reference) WHERE (status = 'active'::text);
+
+CREATE INDEX cpk_secret_references_active_registration ON cpk_secret_references USING btree (workspace_id, registration_id) WHERE (status = 'active'::text);
 
 CREATE INDEX cpk_secret_references_history ON cpk_secret_references USING btree (workspace_id, secret_reference, admitted_at, registration_id);
 
@@ -862,6 +948,14 @@ ALTER TABLE ONLY cpk_operation_actions
 
 ALTER TABLE ONLY cpk_operation_sessions
     ADD CONSTRAINT cpk_operation_sessions_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id);
+
+ALTER TABLE ONLY cpk_node_control_attempts ADD CONSTRAINT cpk_node_control_attempts_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id);
+ALTER TABLE ONLY cpk_node_control_attempts ADD CONSTRAINT cpk_node_control_attempts_projection_source_fk FOREIGN KEY (current_realized_projection_id, current_graph_id) REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id);
+ALTER TABLE ONLY cpk_node_control_attempts ADD CONSTRAINT cpk_node_control_attempts_projection_workspace_fk FOREIGN KEY (current_realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+ALTER TABLE ONLY cpk_node_control_attempts ADD CONSTRAINT cpk_node_control_attempts_transit_key_workspace_fk FOREIGN KEY (transit_key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys(registration_id, workspace_id);
+ALTER TABLE ONLY cpk_node_control_attempts ADD CONSTRAINT cpk_node_control_attempts_workload_key_workspace_fk FOREIGN KEY (workload_key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys(registration_id, workspace_id);
+ALTER TABLE ONLY cpk_node_control_attempts ADD CONSTRAINT cpk_node_control_attempts_transit_authorization_workspace_fk FOREIGN KEY (transit_authorization_id, workspace_id) REFERENCES cpk_secret_use_authorizations(authorization_id, workspace_id);
+ALTER TABLE ONLY cpk_node_control_attempts ADD CONSTRAINT cpk_node_control_attempts_workload_authorization_workspace_fk FOREIGN KEY (workload_authorization_id, workspace_id) REFERENCES cpk_secret_use_authorizations(authorization_id, workspace_id);
 
 ALTER TABLE ONLY cpk_realized_graph_projections
     ADD CONSTRAINT cpk_realized_graph_projection_source FOREIGN KEY (source_authored_graph_id, workspace_id) REFERENCES cpk_graph_versions(graph_id, workspace_id);

@@ -339,9 +339,34 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "SessionDetailReadResponse",
             ),
             (
+                "read.session-actions",
+                "/workspaces/{workspace_id}/sessions/{session_id}/actions",
+                "SessionActionsReadResponse",
+            ),
+            (
+                "read.session-plans",
+                "/workspaces/{workspace_id}/sessions/{session_id}/plans",
+                "SessionPlansReadResponse",
+            ),
+            (
+                "read.session-approvals",
+                "/workspaces/{workspace_id}/sessions/{session_id}/approvals",
+                "SessionApprovalsReadResponse",
+            ),
+            (
                 "read.plan-detail",
                 "/workspaces/{workspace_id}/plans/{plan_id}",
                 "PlanDetailReadResponse",
+            ),
+            (
+                "read.plan-runs",
+                "/workspaces/{workspace_id}/plans/{plan_id}/runs",
+                "PlanRunsReadResponse",
+            ),
+            (
+                "read.run-events",
+                "/workspaces/{workspace_id}/runs/{run_id}/events",
+                "RunEventsReadResponse",
             ),
             (
                 "read.approval-detail",

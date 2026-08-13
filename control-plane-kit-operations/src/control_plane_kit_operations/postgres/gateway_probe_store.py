@@ -20,6 +20,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    EpochReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 from control_plane_kit_operations.records import BoundedEvidence
 
 
@@ -84,34 +92,52 @@ class GatewayProbeStore:
         ).fetchone()
         return None if row is None else _row_to_attempt(row)
 
-    def list_for_workspace(
+    def page(
         self,
-        workspace_id: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> tuple[GatewayProbeAttempt, ...]:
+        request: ReadPageRequest,
+    ) -> ReadPage[GatewayProbeAttempt]:
+        if request.collection is not ReadCollection.GATEWAY_PROBES:
+            raise ReadPageError("gateway probe page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND (issued_at, probe_id) < (%s, %s)"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.epoch_second,
+                cursor.item_id,
+                request.limit + 1,
+            )
         rows = self._connection.execute(
             f"""
             {_SELECT}
             WHERE workspace_id = %s
+              {seek}
             ORDER BY issued_at DESC, probe_id DESC
-            LIMIT %s OFFSET %s
+            LIMIT %s
             """,
-            (workspace_id, limit, offset),
+            parameters,
         ).fetchall()
-        return tuple(_row_to_attempt(row) for row in rows)
-
-    def count_for_workspace(self, workspace_id: str) -> int:
-        row = self._connection.execute(
-            """
-            SELECT COUNT(*)
-            FROM cpk_gateway_probe_attempts
-            WHERE workspace_id = %s
-            """,
-            (workspace_id,),
-        ).fetchone()
-        return int(row[0])
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _row_to_attempt(row),
+                    EpochReadCursor(
+                        ReadCollection.GATEWAY_PROBES,
+                        request.scope,
+                        row[15],
+                        row[0],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def complete(
         self,

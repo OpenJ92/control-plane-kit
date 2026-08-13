@@ -126,6 +126,18 @@ class AdapterParityContractTests(unittest.TestCase):
                     "PlanDetailReadResponse",
                 ),
                 (
+                    "read.plan-runs",
+                    "read.plan-runs",
+                    "list_plan_runs",
+                    "PlanRunsReadResponse",
+                ),
+                (
+                    "read.run-events",
+                    "read.run-events",
+                    "list_run_events",
+                    "RunEventsReadResponse",
+                ),
+                (
                     "read.runtime-authorities",
                     "read.runtime-authorities",
                     "list_runtime_authorities",
@@ -174,10 +186,28 @@ class AdapterParityContractTests(unittest.TestCase):
                     "SecretReferenceCollectionReadResponse",
                 ),
                 (
+                    "read.session-actions",
+                    "read.session-actions",
+                    "list_session_actions",
+                    "SessionActionsReadResponse",
+                ),
+                (
+                    "read.session-approvals",
+                    "read.session-approvals",
+                    "list_session_approvals",
+                    "SessionApprovalsReadResponse",
+                ),
+                (
                     "read.session-detail",
                     "read.session-detail",
                     "get_session_detail",
                     "SessionDetailReadResponse",
+                ),
+                (
+                    "read.session-plans",
+                    "read.session-plans",
+                    "list_session_plans",
+                    "SessionPlansReadResponse",
                 ),
                 (
                     "read.workspace",

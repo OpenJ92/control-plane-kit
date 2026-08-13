@@ -16,6 +16,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    IdentityReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 from control_plane_kit_operations.records import (
     BoundedEvidence,
     ObservationFreshness,
@@ -90,6 +98,52 @@ class PostgresObservedStateStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_observation_record(row) for row in rows)
+
+    def latest_page(self, request: ReadPageRequest) -> ReadPage[ObservationRecord]:
+        if request.collection is not ReadCollection.LATEST_OBSERVATIONS:
+            raise ReadPageError("observation page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND subject_id > %s"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT DISTINCT ON (subject_id)
+                   observation_id, workspace_id, subject_id, status, observed_at,
+                   evidence, freshness, graph_id, probe_kind, probe_outcome,
+                   endpoint_context
+            FROM cpk_observations
+            WHERE workspace_id = %s
+              {seek}
+            ORDER BY subject_id ASC, observed_at DESC, observation_id DESC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _observation_record(row),
+                    IdentityReadCursor(
+                        ReadCollection.LATEST_OBSERVATIONS,
+                        request.scope,
+                        row[2],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def history(
         self,

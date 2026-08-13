@@ -71,6 +71,13 @@ from control_plane_kit_operations import (
     ReadModelError,
     WorkspaceRecord,
 )
+from control_plane_kit_operations.read_pages import (
+    PlanReadScope,
+    ReadCollection,
+    ReadPageRequest,
+    SessionReadScope,
+    WorkspaceReadScope,
+)
 from control_plane_kit_operations.postgres import (
     PostgresStoreBundle,
     PostgresUnitOfWork,
@@ -158,28 +165,105 @@ class InstanceReadServiceTests(unittest.TestCase):
     def test_open_sessions_are_paged_and_unknown_workspace_fails_readably(self) -> None:
         self.seed_activity()
         page = self.service().open_sessions(
-            "workspace-a",
-            limit=1,
-            offset=0,
+            ReadPageRequest(
+                ReadCollection.OPEN_SESSIONS,
+                WorkspaceReadScope("workspace-a"),
+                1,
+            )
         ).descriptor()
 
-        self.assertEqual(page["total"], 1)
-        self.assertFalse(page["has_more"])
+        self.assertEqual(
+            set(page),
+            {"workspace_id", "kind", "limit", "items", "next_cursor"},
+        )
         self.assertEqual(page["items"][0]["session_id"], "session-a")
         with self.assertRaisesRegex(ReadModelError, "missing workspace 'missing'"):
-            self.service().open_sessions("missing")
-        with self.assertRaisesRegex(ReadModelError, "limit must not exceed 100"):
-            self.service().open_sessions("workspace-a", limit=101)
+            self.service().open_sessions(
+                ReadPageRequest(
+                    ReadCollection.OPEN_SESSIONS,
+                    WorkspaceReadScope("missing"),
+                    1,
+                )
+            )
 
-    def test_activity_timeline_redacts_action_payloads_and_lists_pending_approvals(self) -> None:
+    def test_activity_timeline_keeps_journals_separate_and_lists_pending_approvals(self) -> None:
         self.seed_activity()
-        timeline = self.service().activity_timeline("workspace-a").descriptor()
-        approval_page = self.service().pending_approvals("workspace-a").descriptor()
+        timeline = self.service().activity_sessions(
+            ReadPageRequest(
+                ReadCollection.ACTIVITY_SESSIONS,
+                WorkspaceReadScope("workspace-a"),
+                50,
+            )
+        ).descriptor()
+        approval_page = self.service().pending_approvals(
+            ReadPageRequest(
+                ReadCollection.PENDING_APPROVALS,
+                WorkspaceReadScope("workspace-a"),
+                50,
+            )
+        ).descriptor()
 
-        action = timeline["sessions"][0]["actions"][0]
-        self.assertEqual(action["payload"]["api_token"], "<redacted>")
+        self.assertNotIn("actions", timeline["items"][0])
+        self.assertNotIn("plans", timeline["items"][0])
+        self.assertNotIn("approvals", timeline["items"][0])
         self.assertEqual(approval_page["items"][0]["request_id"], "approval-a")
         self.assertEqual(approval_page["items"][0]["state"], "pending")
+
+    def test_temporal_child_pages_are_independent_and_parent_details_are_thin(self) -> None:
+        self.seed_activity()
+        self.connection.execute(
+            """
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at)
+            VALUES ('decision-a', 'approval-a', 'manager-a', 'approved',
+                    'plan:approve', '2026-07-22T11:04:00Z');
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint)
+            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
+                    'operator-a', '2026-07-22T11:05:00Z', 'approval-a',
+                    'decision-a', 'request-a', 'fingerprint-a');
+            INSERT INTO cpk_activity_runs
+              (run_id, plan_id, request_id, attempt, status, created_at, metadata)
+            VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed',
+                    '2026-07-22T11:06:00Z', '{}'::jsonb)
+            """
+        )
+        service = self.service()
+
+        plans = service.session_plans(
+            ReadPageRequest(
+                ReadCollection.SESSION_PLANS,
+                SessionReadScope("workspace-a", "session-a"),
+                10,
+            )
+        ).descriptor()
+        approvals = service.session_approvals(
+            ReadPageRequest(
+                ReadCollection.SESSION_APPROVALS,
+                SessionReadScope("workspace-a", "session-a"),
+                10,
+            )
+        ).descriptor()
+        runs = service.plan_runs(
+            ReadPageRequest(
+                ReadCollection.PLAN_RUNS,
+                PlanReadScope("workspace-a", "plan-a"),
+                10,
+            )
+        ).descriptor()
+        session = service.session_detail("workspace-a", "session-a").descriptor()
+        plan = service.plan_detail("workspace-a", "plan-a").descriptor()
+        approval = service.approval_detail("workspace-a", "approval-a").descriptor()
+
+        self.assertEqual(plans["items"][0]["plan_id"], "plan-a")
+        self.assertEqual(approvals["items"][0]["request_id"], "approval-a")
+        self.assertEqual(runs["items"][0]["run_id"], "run-a")
+        self.assertNotIn("plans", session["session"])
+        self.assertNotIn("approvals", session["session"])
+        self.assertNotIn("runs", plan["plan"])
+        self.assertNotIn("runs", approval["plan"])
 
     def test_plan_detail_uses_pinned_graph_truth_and_core_plan_codec(self) -> None:
         self.seed_activity()
@@ -257,17 +341,23 @@ class InstanceReadServiceTests(unittest.TestCase):
             workspace = unit_of_work.stores.workspaces.get("workspace-a")
             unit_of_work.commit()
 
-        model = self.service().observed_state("workspace-a").descriptor()
+        model = self.service().observed_state(
+            ReadPageRequest(
+                ReadCollection.LATEST_OBSERVATIONS,
+                WorkspaceReadScope("workspace-a"),
+                100,
+            )
+        ).descriptor()
 
         self.assertEqual(workspace.current_graph_id, "graph-current")
         self.assertEqual(
-            [item["observation_id"] for item in model["observations"]],
+            [item["observation_id"] for item in model["items"]],
             ["obs-new", "obs-other"],
         )
-        self.assertEqual(model["observations"][0]["freshness"], "fresh")
-        self.assertEqual(model["observations"][0]["payload"]["url"], "<redacted>")
-        self.assertEqual(model["observations"][1]["freshness"], "stale")
-        self.assertEqual(model["observations"][1]["stale_reason"], "graph-changed")
+        self.assertEqual(model["items"][0]["freshness"], "fresh")
+        self.assertEqual(model["items"][0]["payload"]["url"], "<redacted>")
+        self.assertEqual(model["items"][1]["freshness"], "stale")
+        self.assertEqual(model["items"][1]["stale_reason"], "graph-changed")
 
     def test_explicit_stale_observation_stays_stale(self) -> None:
         self.seed_graphs()
@@ -281,10 +371,12 @@ class InstanceReadServiceTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
-        model = self.service().observed_state("workspace-a").descriptor()
+        model = self.service().observed_state(
+            ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, WorkspaceReadScope("workspace-a"), 100)
+        ).descriptor()
 
-        self.assertEqual(model["observations"][0]["freshness"], "stale")
-        self.assertEqual(model["observations"][0]["stale_reason"], "recorded-stale")
+        self.assertEqual(model["items"][0]["freshness"], "stale")
+        self.assertEqual(model["items"][0]["stale_reason"], "recorded-stale")
 
     def test_exact_clock_boundary_is_fresh_then_expires(self) -> None:
         self.seed_graphs()
@@ -294,7 +386,8 @@ class InstanceReadServiceTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
-        boundary = self.service().observed_state("workspace-a").descriptor()
+        request = ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, WorkspaceReadScope("workspace-a"), 100)
+        boundary = self.service().observed_state(request).descriptor()
         expired = self.service(
             clock=lambda: datetime(
                 2026,
@@ -306,11 +399,11 @@ class InstanceReadServiceTests(unittest.TestCase):
                 1,
                 tzinfo=timezone.utc,
             )
-        ).observed_state("workspace-a").descriptor()
+        ).observed_state(request).descriptor()
 
-        self.assertEqual(boundary["observations"][0]["freshness"], "fresh")
-        self.assertEqual(expired["observations"][0]["freshness"], "stale")
-        self.assertEqual(expired["observations"][0]["stale_reason"], "expired")
+        self.assertEqual(boundary["items"][0]["freshness"], "fresh")
+        self.assertEqual(expired["items"][0]["freshness"], "stale")
+        self.assertEqual(expired["items"][0]["stale_reason"], "expired")
 
     def test_malformed_timestamp_is_rejected_before_persistence(self) -> None:
         self.seed_graphs()
@@ -319,9 +412,11 @@ class InstanceReadServiceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "canonical UTC"):
                 unit_of_work.stores.observed_state.put(record)
 
-        model = self.service().observed_state("workspace-a").descriptor()
+        model = self.service().observed_state(
+            ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, WorkspaceReadScope("workspace-a"), 100)
+        ).descriptor()
 
-        self.assertEqual(model["observations"], [])
+        self.assertEqual(model["items"], [])
         self.assertEqual(record.observed_at, "not-a-timestamp")
         self.assertIs(record.freshness, ObservationFreshness.FRESH)
 
@@ -333,9 +428,11 @@ class InstanceReadServiceTests(unittest.TestCase):
             )
             unit_of_work.commit()
 
-        model = self.service().observed_state("workspace-a").descriptor()
+        model = self.service().observed_state(
+            ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, WorkspaceReadScope("workspace-a"), 100)
+        ).descriptor()
 
-        self.assertEqual(model["observations"][0]["stale_reason"], "future-timestamp")
+        self.assertEqual(model["items"][0]["stale_reason"], "future-timestamp")
 
     def test_correlated_record_requires_complete_typed_probe_identity(self) -> None:
         with self.assertRaisesRegex(
@@ -525,7 +622,7 @@ class InstanceReadServiceTests(unittest.TestCase):
 
                     with self.assertRaisesRegex(
                         ReadModelError,
-                        "^control surface graph is invalid$",
+                        "^invalid stored graph descriptor$",
                     ) as raised:
                         self.service().control_surface("workspace-a")
 

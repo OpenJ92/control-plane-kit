@@ -19,6 +19,9 @@ from control_plane_kit_operations.postgres.graph_store import (
     RealizedGraphProjectionConflict,
 )
 from control_plane_kit_operations.postgres.gateway_probe_store import GatewayProbeStore
+from control_plane_kit_operations.postgres.node_control_attempt_store import (
+    NodeControlAttemptStore,
+)
 from control_plane_kit_operations.postgres.gateway_key_rotation_store import (
     GatewayKeyRotationStore,
 )
@@ -59,6 +62,7 @@ __all__ = [
     "PostgresRealizedGraphProjectionStore",
     "RealizedGraphProjectionConflict",
     "GatewayProbeStore",
+    "NodeControlAttemptStore",
     "GatewayKeyRotationStore",
     "ImagePullAuthorityStore",
     "GeneratedIngressSecretReferenceStore",

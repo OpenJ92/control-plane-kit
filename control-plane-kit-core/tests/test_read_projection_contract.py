@@ -20,6 +20,14 @@ from control_plane_kit_core.operations import (
 
 
 class ReadProjectionContractTests(unittest.TestCase):
+    def test_gateway_probe_timeline_uses_the_common_page_bound(self) -> None:
+        projection = canonical_operator_read_projection_set().projection(
+            "read.gateway-probe-timeline"
+        )
+
+        self.assertTrue(projection.paged)
+        self.assertEqual(projection.max_page_size, 100)
+
     def test_canonical_projection_set_is_closed_bounded_and_read_only(self) -> None:
         projections = canonical_operator_read_projection_set()
 
@@ -74,7 +82,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     "DelegationSigningKeyCollectionReadResponse",
                     ReadProjectionPolicy.REDACTED_DELEGATION_KEY,
                     True,
-                    False,
+                    True,
                 ),
                 (
                     "read.desired-graph",
@@ -114,7 +122,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     "IngressAuthorityCollectionReadResponse",
                     ReadProjectionPolicy.REDACTED_INGRESS_AUTHORITY,
                     True,
-                    False,
+                    True,
                 ),
                 (
                     "read.ingress-authority-detail",
@@ -130,7 +138,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     "ObservedStateReadResponse",
                     ReadProjectionPolicy.OBSERVED_STATE_EVIDENCE,
                     True,
-                    False,
+                    True,
                 ),
                 (
                     "read.open-sessions",
@@ -165,12 +173,28 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.plan-runs",
+                    ReadProjectionKind.PLAN_RUNS,
+                    "PlanRunsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
+                    "read.run-events",
+                    ReadProjectionKind.RUN_EVENTS,
+                    "RunEventsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
                     "read.runtime-authorities",
                     ReadProjectionKind.RUNTIME_AUTHORITIES,
                     "RuntimeAuthorityCollectionReadResponse",
                     ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY,
                     True,
-                    False,
+                    True,
                 ),
                 (
                     "read.runtime-authority-deliveries",
@@ -178,7 +202,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     "RuntimeAuthorityDeliveryCollectionReadResponse",
                     ReadProjectionPolicy.REDACTED_RUNTIME_AUTHORITY_DELIVERY,
                     True,
-                    False,
+                    True,
                 ),
                 (
                     "read.runtime-authority-delivery-detail",
@@ -210,7 +234,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     "SecretProviderCollectionReadResponse",
                     ReadProjectionPolicy.REDACTED_SECRET_PROVIDER,
                     True,
-                    False,
+                    True,
                 ),
                 (
                     "read.secret-reference-detail",
@@ -226,7 +250,23 @@ class ReadProjectionContractTests(unittest.TestCase):
                     "SecretReferenceCollectionReadResponse",
                     ReadProjectionPolicy.REDACTED_SECRET_REFERENCE,
                     True,
-                    False,
+                    True,
+                ),
+                (
+                    "read.session-actions",
+                    ReadProjectionKind.SESSION_ACTIONS,
+                    "SessionActionsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
+                    "read.session-approvals",
+                    ReadProjectionKind.SESSION_APPROVALS,
+                    "SessionApprovalsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
                 ),
                 (
                     "read.session-detail",
@@ -235,6 +275,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
                     True,
                     False,
+                ),
+                (
+                    "read.session-plans",
+                    ReadProjectionKind.SESSION_PLANS,
+                    "SessionPlansReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
                 ),
                 (
                     "read.workspace",

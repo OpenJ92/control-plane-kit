@@ -33,6 +33,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    IdentityReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 
 
 _BLOCKING_INGRESS_RESOURCE_STATUSES = (
@@ -160,6 +168,54 @@ class IngressAuthorityStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row_to_authority(row) for row in rows)
+
+    def active_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredIngressAuthority]:
+        if request.collection is not ReadCollection.INGRESS_AUTHORITIES:
+            raise ReadPageError("ingress authority page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND authority_ref > %s"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.item_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            SELECT registration_id, workspace_id, authority_ref, authority,
+                   admitted_by, admitted_at, status, metadata
+            FROM cpk_ingress_authorities
+            WHERE workspace_id = %s
+              AND status = 'active'
+              {seek}
+            ORDER BY authority_ref ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _row_to_authority(row),
+                    IdentityReadCursor(
+                        ReadCollection.INGRESS_AUTHORITIES,
+                        request.scope,
+                        row[2],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def revoke(
         self,

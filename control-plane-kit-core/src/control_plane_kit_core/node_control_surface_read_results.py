@@ -11,8 +11,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Mapping
 
-import rfc8785
-
+from control_plane_kit_core._node_control_public_wire import (
+    NodeControlCanonicalDomainError,
+    canonical_json_bytes,
+)
 from control_plane_kit_core.node_control import (
     MAX_NODE_CONTROL_VARIABLES_PER_SURFACE,
     NodeControlCanonicalization,
@@ -527,8 +529,8 @@ def _mapping(value: object, name: str) -> Mapping[str, object]:
 
 def _bounded_canonical_bytes(value: object, maximum: int, name: str) -> bytes:
     try:
-        encoded = rfc8785.dumps(value)
-    except rfc8785.CanonicalizationError:
+        encoded = canonical_json_bytes(value)
+    except NodeControlCanonicalDomainError:
         pass
     else:
         if len(encoded) <= maximum:

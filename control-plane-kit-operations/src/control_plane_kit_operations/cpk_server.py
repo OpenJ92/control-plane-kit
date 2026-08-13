@@ -105,6 +105,17 @@ from control_plane_kit_operations.products import (
     RegisterImagePullAuthorityCommand,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
+from control_plane_kit_operations.read_pages import (
+    PlanReadScope,
+    ReadCollection,
+    ReadPageError,
+    ReadPageRequest,
+    ReadScope,
+    RunReadScope,
+    SessionReadScope,
+    WorkspaceReadScope,
+    read_cursor_from_mapping,
+)
 from control_plane_kit_operations.records import ApprovalDecisionKind
 from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority,
@@ -229,6 +240,11 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.activity": _WORKSPACE_READ,
     "read.sessions": _WORKSPACE_READ,
     "read.session-detail": _WORKSPACE_READ,
+    "read.session-actions": _WORKSPACE_READ,
+    "read.session-plans": _WORKSPACE_READ,
+    "read.session-approvals": _WORKSPACE_READ,
+    "read.run-events": _WORKSPACE_READ,
+    "read.plan-runs": _WORKSPACE_READ,
     "read.plan-detail": _WORKSPACE_READ,
     "read.approval-detail": _WORKSPACE_READ,
     "read.pending-approvals": _WORKSPACE_READ,
@@ -390,7 +406,24 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
-        _trusted_context(request)
+        read_arguments = (
+            _closed_read_arguments(request)
+            if request.route_id in _CLOSED_READ_ARGUMENTS
+            else None
+        )
+        _trusted_context(request, values=read_arguments)
+        page_request = None
+        if request.route_id in _PAGED_READ_COLLECTIONS:
+            page_failure = False
+            try:
+                page_request = _read_page_request_for_route(
+                    request.route_id,
+                    read_arguments or {},
+                )
+            except ReadPageError:
+                page_failure = True
+            if page_failure:
+                raise CpkServerApplicationError(400, "read page request is malformed")
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -412,10 +445,19 @@ class CpkServerReadService:
             if self._clock is not None:
                 kwargs["clock"] = self._clock
             service = InstanceReadService(**kwargs)
+            failure: tuple[int, str] | None = None
             try:
-                model = _read_model(service, request)
-            except ReadModelError as error:
-                raise CpkServerApplicationError(_read_error_status(error), str(error)) from error
+                model = _read_model(
+                    service,
+                    request,
+                    arguments=read_arguments,
+                    page_request=page_request,
+                )
+            except (ReadModelError, ReadPageError) as error:
+                status = 400 if isinstance(error, ReadPageError) else _read_error_status(error)
+                failure = (status, str(error))
+            if failure is not None:
+                raise CpkServerApplicationError(*failure)
             unit_of_work.commit()
             return model.descriptor()
 
@@ -1264,8 +1306,14 @@ def cpk_server_services(
     }
 
 
-def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) -> Any:
-    args = _arguments(request)
+def _read_model(
+    service: InstanceReadService,
+    request: CpkServerRouteRequest,
+    *,
+    arguments: Mapping[str, object] | None = None,
+    page_request: ReadPageRequest | None = None,
+) -> Any:
+    args = _arguments(request) if arguments is None else dict(arguments)
     route_id = request.route_id
     if route_id == "read.workspace":
         return service.workspace(_workspace_id(args))
@@ -1279,49 +1327,65 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             pointer=_optional_text(args, "pointer") or "current",
         )
     if route_id == "read.activity":
-        return service.activity_timeline(
-            _workspace_id(args),
-            limit=_positive_int(args, "limit", default=50),
+        return service.activity_sessions(
+            _required_page_request(page_request, ReadCollection.ACTIVITY_SESSIONS)
         )
     if route_id == "read.sessions":
         return service.open_sessions(
-            _workspace_id(args),
-            limit=_positive_int(args, "limit", default=50),
-            offset=_non_negative_int(args, "offset", default=0),
+            _required_page_request(page_request, ReadCollection.OPEN_SESSIONS)
         )
     if route_id == "read.session-detail":
         return service.session_detail(
             _workspace_id(args),
             _text(args, "session_id"),
-            limit=_positive_int(args, "limit", default=50),
+        )
+    if route_id == "read.session-actions":
+        return service.session_actions(
+            _required_page_request(page_request, ReadCollection.SESSION_ACTIONS)
+        )
+    if route_id == "read.session-plans":
+        return service.session_plans(
+            _required_page_request(page_request, ReadCollection.SESSION_PLANS)
+        )
+    if route_id == "read.session-approvals":
+        return service.session_approvals(
+            _required_page_request(page_request, ReadCollection.SESSION_APPROVALS)
+        )
+    if route_id == "read.run-events":
+        return service.run_events(
+            _required_page_request(page_request, ReadCollection.RUN_EVENTS)
         )
     if route_id == "read.plan-detail":
         return service.plan_detail(
             _workspace_id(args),
             _text(args, "plan_id"),
-            limit=_positive_int(args, "limit", default=50),
+        )
+    if route_id == "read.plan-runs":
+        return service.plan_runs(
+            _required_page_request(page_request, ReadCollection.PLAN_RUNS)
         )
     if route_id == "read.approval-detail":
         return service.approval_detail(
             _workspace_id(args),
             _text(args, "approval_id"),
-            limit=_positive_int(args, "limit", default=50),
         )
     if route_id == "read.pending-approvals":
         return service.pending_approvals(
-            _workspace_id(args),
-            limit=_positive_int(args, "limit", default=50),
-            offset=_non_negative_int(args, "offset", default=0),
+            _required_page_request(page_request, ReadCollection.PENDING_APPROVALS)
         )
     if route_id == "read.observed-state":
-        return service.observed_state(_workspace_id(args))
+        return service.observed_state(
+            _required_page_request(page_request, ReadCollection.LATEST_OBSERVATIONS)
+        )
     if route_id == "read.control-surface":
         return service.control_surface(
             _workspace_id(args),
             pointer=_optional_text(args, "pointer") or "current",
         )
     if route_id == "read.runtime-authorities":
-        return service.runtime_authorities(_workspace_id(args))
+        return service.runtime_authorities(
+            _required_page_request(page_request, ReadCollection.RUNTIME_AUTHORITIES)
+        )
     if route_id == "read.runtime-authority-detail":
         return service.runtime_authority_detail(
             _workspace_id(args),
@@ -1330,7 +1394,12 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             ),
         )
     if route_id == "read.runtime-authority-deliveries":
-        return service.runtime_authority_deliveries(_workspace_id(args))
+        return service.runtime_authority_deliveries(
+            _required_page_request(
+                page_request,
+                ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+            )
+        )
     if route_id == "read.runtime-authority-delivery-detail":
         return service.runtime_authority_delivery_detail(
             _workspace_id(args),
@@ -1339,7 +1408,9 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             ),
         )
     if route_id == "read.ingress-authorities":
-        return service.ingress_authorities(_workspace_id(args))
+        return service.ingress_authorities(
+            _required_page_request(page_request, ReadCollection.INGRESS_AUTHORITIES)
+        )
     if route_id == "read.ingress-authority-detail":
         return service.ingress_authority_detail(
             _workspace_id(args),
@@ -1348,7 +1419,9 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             ),
         )
     if route_id == "read.secret-providers":
-        return service.secret_providers(_workspace_id(args))
+        return service.secret_providers(
+            _required_page_request(page_request, ReadCollection.SECRET_PROVIDERS)
+        )
     if route_id == "read.secret-provider-detail":
         return service.secret_provider_detail(
             _workspace_id(args),
@@ -1357,7 +1430,9 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             ),
         )
     if route_id == "read.secret-references":
-        return service.secret_references(_workspace_id(args))
+        return service.secret_references(
+            _required_page_request(page_request, ReadCollection.SECRET_REFERENCES)
+        )
     if route_id == "read.secret-reference-detail":
         return service.secret_reference_detail(
             _workspace_id(args),
@@ -1369,9 +1444,7 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
         )
     if route_id == "read.gateway-probe-timeline":
         return service.gateway_probe_timeline(
-            _workspace_id(args),
-            limit=_positive_int(args, "limit", default=50),
-            offset=_non_negative_int(args, "offset", default=0),
+            _required_page_request(page_request, ReadCollection.GATEWAY_PROBES)
         )
     if route_id == "read.gateway-probe-detail":
         return service.gateway_probe_detail(
@@ -1379,7 +1452,12 @@ def _read_model(service: InstanceReadService, request: CpkServerRouteRequest) ->
             _text(args, "probe_id"),
         )
     if route_id == "read.delegation-keys":
-        return service.delegation_signing_keys(_workspace_id(args))
+        return service.delegation_signing_keys(
+            _required_page_request(
+                page_request,
+                ReadCollection.DELEGATION_SIGNING_KEYS,
+            )
+        )
     if route_id == "read.gateway-verifier-configuration":
         return service.gateway_verifier_configuration(
             _workspace_id(args),
@@ -1395,16 +1473,133 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     }
 
 
-def _trusted_context(request: CpkServerRouteRequest) -> TrustedCommandContext:
-    values = _arguments(request)
+_CLOSED_READ_ARGUMENTS = {
+    "read.activity": (None, True),
+    "read.sessions": (None, True),
+    "read.session-actions": ("session_id", True),
+    "read.session-plans": ("session_id", True),
+    "read.session-approvals": ("session_id", True),
+    "read.pending-approvals": (None, True),
+    "read.plan-runs": ("plan_id", True),
+    "read.run-events": ("run_id", True),
+    "read.session-detail": ("session_id", False),
+    "read.plan-detail": ("plan_id", False),
+    "read.approval-detail": ("approval_id", False),
+    "read.observed-state": (None, True),
+    "read.runtime-authorities": (None, True),
+    "read.runtime-authority-deliveries": (None, True),
+    "read.ingress-authorities": (None, True),
+    "read.secret-providers": (None, True),
+    "read.secret-references": (None, True),
+    "read.gateway-probe-timeline": (None, True),
+    "read.delegation-keys": (None, True),
+}
+
+_PAGED_READ_COLLECTIONS = {
+    "read.activity": ReadCollection.ACTIVITY_SESSIONS,
+    "read.sessions": ReadCollection.OPEN_SESSIONS,
+    "read.session-actions": ReadCollection.SESSION_ACTIONS,
+    "read.session-plans": ReadCollection.SESSION_PLANS,
+    "read.session-approvals": ReadCollection.SESSION_APPROVALS,
+    "read.pending-approvals": ReadCollection.PENDING_APPROVALS,
+    "read.plan-runs": ReadCollection.PLAN_RUNS,
+    "read.run-events": ReadCollection.RUN_EVENTS,
+    "read.observed-state": ReadCollection.LATEST_OBSERVATIONS,
+    "read.runtime-authorities": ReadCollection.RUNTIME_AUTHORITIES,
+    "read.runtime-authority-deliveries": ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+    "read.ingress-authorities": ReadCollection.INGRESS_AUTHORITIES,
+    "read.secret-providers": ReadCollection.SECRET_PROVIDERS,
+    "read.secret-references": ReadCollection.SECRET_REFERENCES,
+    "read.gateway-probe-timeline": ReadCollection.GATEWAY_PROBES,
+    "read.delegation-keys": ReadCollection.DELEGATION_SIGNING_KEYS,
+}
+
+
+def _closed_read_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
+    if type(request.path_parameters) is not dict or type(request.payload) is not dict:
+        raise CpkServerApplicationError(400, "read arguments are malformed")
+    parent, paged = _CLOSED_READ_ARGUMENTS[request.route_id]
+    required = {"workspace_id"} | (set() if parent is None else {parent})
+    optional = {"limit", "after"} if paged else set()
+    path = dict(request.path_parameters)
+    payload = dict(request.payload)
+    if request.surface == "http":
+        valid = set(path) == required and set(payload) <= optional
+    elif request.surface == "mcp":
+        valid = not path and required <= set(payload) <= required | optional
+    else:
+        valid = False
+    if not valid or set(path) & set(payload):
+        raise CpkServerApplicationError(400, "read arguments are malformed")
+    return {**path, **payload}
+
+
+def _read_page_request(
+    values: Mapping[str, object],
+    *,
+    collection: ReadCollection,
+    scope: ReadScope,
+) -> ReadPageRequest:
+    raw_cursor = values.get("after")
+    cursor = None if raw_cursor is None else read_cursor_from_mapping(raw_cursor)
+    return ReadPageRequest(
+        collection,
+        scope,
+        _positive_int(values, "limit", default=50),
+        cursor,
+    )
+
+
+def _read_page_request_for_route(
+    route_id: str,
+    values: Mapping[str, object],
+) -> ReadPageRequest:
+    collection = _PAGED_READ_COLLECTIONS[route_id]
+    workspace_id = _workspace_id(values)
+    if collection in {
+        ReadCollection.SESSION_ACTIONS,
+        ReadCollection.SESSION_PLANS,
+        ReadCollection.SESSION_APPROVALS,
+    }:
+        scope: ReadScope = SessionReadScope(
+            workspace_id,
+            _text(values, "session_id"),
+        )
+    elif collection is ReadCollection.PLAN_RUNS:
+        scope = PlanReadScope(workspace_id, _text(values, "plan_id"))
+    elif collection is ReadCollection.RUN_EVENTS:
+        scope = RunReadScope(workspace_id, _text(values, "run_id"))
+    else:
+        scope = WorkspaceReadScope(workspace_id)
+    return _read_page_request(values, collection=collection, scope=scope)
+
+
+def _required_page_request(
+    request: ReadPageRequest | None,
+    collection: ReadCollection,
+) -> ReadPageRequest:
+    if request is None or request.collection is not collection:
+        raise ReadPageError("prepared read page request is incongruent")
+    return request
+
+
+def _trusted_context(
+    request: CpkServerRouteRequest,
+    *,
+    values: Mapping[str, object] | None = None,
+) -> TrustedCommandContext:
+    values = _arguments(request) if values is None else values
     workspace_id = _workspace_id(values)
     principal = getattr(request, "principal", None)
     if not isinstance(principal, AuthenticatedPrincipal):
         raise CpkServerApplicationError(403, "authenticated principal is required")
+    workspace_denied = False
     try:
         context = principal.command_context(workspace_id)
-    except IdentityContractError as error:
-        raise CpkServerApplicationError(403, "workspace access is denied") from error
+    except IdentityContractError:
+        workspace_denied = True
+    if workspace_denied:
+        raise CpkServerApplicationError(403, "workspace access is denied")
     try:
         policy = _ROUTE_AUTHORIZATION_POLICIES[request.route_id]
     except KeyError as error:
@@ -1648,6 +1843,7 @@ def _read_error_status(error: ReadModelError) -> int:
             "missing workspace",
             "missing session",
             "missing plan",
+            "missing run in workspace",
             "missing runtime authority",
             "missing runtime authority delivery",
             "missing ingress authority",

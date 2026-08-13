@@ -21,6 +21,14 @@ from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
 )
+from control_plane_kit_operations.read_pages import (
+    DelegationKeyReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageError,
+    ReadPageRequest,
+)
 
 
 _SELECT = """
@@ -135,6 +143,7 @@ class DelegationSigningKeyStore:
     ) -> RegisteredDelegationSigningKey:
         """Select one workspace-purpose signer without bootstrap issuer input."""
 
+        self._lock_purpose(workspace_id, purpose, shared=True)
         rows = self._connection.execute(
             f"""
             {_SELECT}
@@ -142,6 +151,7 @@ class DelegationSigningKeyStore:
               AND purpose = %s
               AND status = 'active'
             ORDER BY issuer, key_id
+            LIMIT 2
             """,
             (workspace_id, purpose.value),
         ).fetchall()
@@ -150,6 +160,15 @@ class DelegationSigningKeyStore:
                 "exactly one active delegation signing key is required"
             )
         return _row(rows[0])
+
+    def lock_purpose_for_lifecycle(
+        self,
+        workspace_id: str,
+        purpose: DelegationKeyPurpose,
+    ) -> None:
+        """Exclude authority selection before a multi-store lifecycle fold."""
+
+        self._lock_purpose(workspace_id, purpose, shared=False)
 
     def list_workspace(
         self,
@@ -164,6 +183,55 @@ class DelegationSigningKeyStore:
             (workspace_id,),
         ).fetchall()
         return tuple(_row(row) for row in rows)
+
+    def workspace_page(
+        self,
+        request: ReadPageRequest,
+    ) -> ReadPage[RegisteredDelegationSigningKey]:
+        if request.collection is not ReadCollection.DELEGATION_SIGNING_KEYS:
+            raise ReadPageError("delegation key page request is incongruent")
+        cursor = request.cursor
+        seek = ""
+        if cursor is None:
+            parameters: tuple[object, ...] = (
+                request.scope.workspace_id,
+                request.limit + 1,
+            )
+        else:
+            seek = "AND (purpose, issuer, key_id) > (%s, %s, %s)"
+            parameters = (
+                request.scope.workspace_id,
+                cursor.purpose.value,
+                cursor.issuer,
+                cursor.key_id,
+                request.limit + 1,
+            )
+        rows = self._connection.execute(
+            f"""
+            {_SELECT}
+            WHERE workspace_id = %s
+              {seek}
+            ORDER BY purpose ASC, issuer ASC, key_id ASC
+            LIMIT %s
+            """,
+            parameters,
+        ).fetchall()
+        return ReadPage.from_candidates(
+            request,
+            tuple(
+                ReadPageCandidate(
+                    _row(row),
+                    DelegationKeyReadCursor(
+                        ReadCollection.DELEGATION_SIGNING_KEYS,
+                        request.scope,
+                        DelegationKeyPurpose(row[2]),
+                        row[3],
+                        row[4],
+                    ),
+                )
+                for row in rows
+            ),
+        )
 
     def list_for_verification(
         self,
@@ -341,9 +409,27 @@ class DelegationSigningKeyStore:
         purpose: DelegationKeyPurpose,
         issuer: str,
     ) -> None:
+        self._lock_purpose(workspace_id, purpose, shared=False)
         self._connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"delegation-key:{workspace_id}:{purpose.value}:{issuer}",),
+        )
+
+    def _lock_purpose(
+        self,
+        workspace_id: str,
+        purpose: DelegationKeyPurpose,
+        *,
+        shared: bool,
+    ) -> None:
+        function = (
+            "pg_advisory_xact_lock_shared"
+            if shared
+            else "pg_advisory_xact_lock"
+        )
+        self._connection.execute(
+            f"SELECT {function}(hashtextextended(%s, 0))",
+            (f"delegation-key-purpose:{workspace_id}:{purpose.value}",),
         )
 
 
