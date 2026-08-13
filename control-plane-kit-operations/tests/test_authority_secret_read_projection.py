@@ -15,6 +15,9 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_operations import ReadModelError
+from control_plane_kit_operations.ingress_authorities import (
+    IngressAuthorityNotFound,
+)
 from control_plane_kit_operations.read_pages import (
     IdentityReadCursor,
     ReadCollection,
@@ -24,10 +27,14 @@ from control_plane_kit_operations.read_pages import (
     WorkspaceReadScope,
 )
 from control_plane_kit_operations.records import WorkspaceRecord
+from control_plane_kit_operations.runtime_authorities import (
+    RuntimeAuthorityNotFound,
+)
 from control_plane_kit_operations.secret_providers import (
     RegisteredSecretProvider,
     RegisteredSecretReference,
     SecretProviderKind,
+    SecretProviderNotFound,
 )
 
 from test_read_services_package import _local_module_imports
@@ -114,21 +121,33 @@ class _WorkspaceCapability:
 
 
 class _FamilyStore:
-    def __init__(self, trace: list[object], value: object) -> None:
+    def __init__(
+        self,
+        trace: list[object],
+        value: object,
+        *,
+        failure: BaseException | None = None,
+    ) -> None:
         self._trace = trace
         self._value = value
+        self._failure = failure
+
+    def _result(self) -> object:
+        if self._failure is not None:
+            raise self._failure
+        return self._value
 
     def active_page(self, request: ReadPageRequest) -> ReadPage[object]:
         self._trace.append(("active_page", request))
-        return _page(request, self._value)
+        return _page(request, self._result())
 
     def get(self, workspace_id: str, reference: object) -> object:
         self._trace.append(("get", workspace_id, reference))
-        return self._value
+        return self._result()
 
     def get_active(self, workspace_id: str, provider_id: object) -> object:
         self._trace.append(("get_active", workspace_id, provider_id))
-        return self._value
+        return self._result()
 
     def get_by_registration(
         self,
@@ -138,7 +157,7 @@ class _FamilyStore:
         self._trace.append(
             ("get_by_registration", workspace_id, registration_id)
         )
-        return self._value
+        return self._result()
 
 
 _STORE_PARAMETERS = (
@@ -235,6 +254,7 @@ class AuthoritySecretReadProjectionTests(unittest.TestCase):
                         "<redacted>",
                     )
                 else:
+                    self.assertEqual(rendered, value.descriptor())
                     self.assertEqual(rendered["registration_id"], identity)
 
     def test_each_configured_detail_capability_works_with_all_siblings_absent(
@@ -327,10 +347,126 @@ class AuthoritySecretReadProjectionTests(unittest.TestCase):
                         "<redacted>",
                     )
                 else:
-                    self.assertEqual(
-                        rendered["registration_id"],
-                        value.registration_id,
-                    )
+                    self.assertEqual(rendered, value.descriptor())
+
+    def test_configured_detail_missing_records_preserve_categorical_errors(
+        self,
+    ) -> None:
+        runtime_reference = RuntimeAuthorityReference("runtime-a")
+        ingress_reference = IngressAuthorityReference("ingress-a")
+        provider_id = SecretProviderId("workspace-secrets")
+        cases = (
+            (
+                "runtime_authority_store",
+                "runtime_authority_detail",
+                ("workspace-a", runtime_reference),
+                RuntimeAuthorityNotFound("runtime-store-candidate"),
+                "missing runtime authority 'runtime-a'",
+            ),
+            (
+                "runtime_authority_delivery_store",
+                "runtime_authority_delivery_detail",
+                ("workspace-a", runtime_reference),
+                RuntimeAuthorityNotFound("delivery-store-candidate"),
+                "missing runtime authority delivery 'runtime-a'",
+            ),
+            (
+                "ingress_authority_store",
+                "ingress_authority_detail",
+                ("workspace-a", ingress_reference),
+                IngressAuthorityNotFound("ingress-store-candidate"),
+                "missing ingress authority 'ingress-a'",
+            ),
+            (
+                "secret_provider_store",
+                "secret_provider_detail",
+                ("workspace-a", provider_id),
+                SecretProviderNotFound("provider-store-candidate"),
+                "missing secret provider",
+            ),
+            (
+                "secret_reference_store",
+                "secret_reference_detail",
+                ("workspace-a", "reference-registration-a"),
+                SecretProviderNotFound("reference-store-candidate"),
+                "missing secret reference",
+            ),
+        )
+        for store_name, method_name, arguments, failure, message in cases:
+            with self.subTest(method=method_name):
+                trace: list[object] = []
+                projection = self._projection(
+                    trace,
+                    **{
+                        store_name: _FamilyStore(
+                            trace,
+                            object(),
+                            failure=failure,
+                        )
+                    },
+                )
+
+                with self.assertRaises(ReadModelError) as caught:
+                    getattr(projection, method_name)(*arguments)
+
+                self.assertEqual(str(caught.exception), message)
+                self.assertIs(caught.exception.__cause__, failure)
+                self.assertIs(caught.exception.__context__, failure)
+                if method_name.startswith("secret_"):
+                    self.assertNotIn("store-candidate", str(caught.exception))
+
+    def test_configured_malformed_records_keep_family_specific_errors(self) -> None:
+        cases = (
+            (
+                "runtime_authority_store",
+                "runtime_authorities",
+                ReadCollection.RUNTIME_AUTHORITIES,
+                "runtime authority record cannot be projected",
+            ),
+            (
+                "runtime_authority_delivery_store",
+                "runtime_authority_deliveries",
+                ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                "runtime authority delivery record cannot be projected",
+            ),
+            (
+                "ingress_authority_store",
+                "ingress_authorities",
+                ReadCollection.INGRESS_AUTHORITIES,
+                "ingress authority record cannot be projected",
+            ),
+            (
+                "secret_provider_store",
+                "secret_providers",
+                ReadCollection.SECRET_PROVIDERS,
+                "secret provider record cannot be projected",
+            ),
+            (
+                "secret_reference_store",
+                "secret_references",
+                ReadCollection.SECRET_REFERENCES,
+                "secret reference record cannot be projected",
+            ),
+        )
+        for store_name, method_name, collection, message in cases:
+            with self.subTest(method=method_name):
+                trace: list[object] = []
+                request = _request(collection)
+                projection = self._projection(
+                    trace,
+                    **{store_name: _FamilyStore(trace, object())},
+                )
+
+                with self.assertRaises(ReadModelError) as caught:
+                    getattr(projection, method_name)(request)
+
+                self.assertEqual(str(caught.exception), message)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assertEqual(
+                    trace,
+                    [("workspace", "workspace-a"), ("active_page", request)],
+                )
 
     def test_each_absent_store_keeps_its_exact_independent_error(self) -> None:
         cases = (
@@ -418,7 +554,7 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
         owner_classes = {
             node.name for node in owner.body if isinstance(node, ast.ClassDef)
         }
-        self.assertEqual(owner_classes, {"_AuthoritySecretReadProjection"})
+        self.assertIn("_AuthoritySecretReadProjection", owner_classes)
         projection = next(
             node
             for node in owner.body
@@ -429,6 +565,7 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
             node.name
             for node in projection.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and not node.name.startswith("_")
         }
         moved_methods = {
             "runtime_authorities",
@@ -442,7 +579,7 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
             "secret_references",
             "secret_reference_detail",
         }
-        self.assertEqual(methods, {"__init__"} | moved_methods)
+        self.assertEqual(methods, moved_methods)
 
         service = next(
             node
@@ -541,6 +678,27 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
             "gateway_security",
         }
         self.assertEqual(_local_module_imports(owner, forbidden), set())
+
+        imported_modules = {
+            node.module or ""
+            for node in ast.walk(owner)
+            if isinstance(node, ast.ImportFrom) and not node.level
+        } | {
+            alias.name
+            for node in ast.walk(owner)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        forbidden_external_prefixes = (
+            "control_plane_kit_operations.postgres",
+            "control_plane_kit_operations.cpk_server",
+        )
+        for imported in imported_modules:
+            with self.subTest(imported=imported):
+                self.assertFalse(
+                    imported.startswith(forbidden_external_prefixes),
+                    f"authority/secret projection imports outer module {imported}",
+                )
 
 
 if __name__ == "__main__":
