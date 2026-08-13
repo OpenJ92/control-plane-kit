@@ -16,18 +16,19 @@ _EXPECTED_MODULES = {
     "instance",
     "models",
     "protocols",
+    "workspace_graph",
 }
 
 _PUBLIC_OWNERS = {
-    "ControlSurfaceReadModel": "instance",
+    "ControlSurfaceReadModel": "workspace_graph",
     "FocusedDetailReadModel": "models",
-    "GraphPointerReadModel": "instance",
+    "GraphPointerReadModel": "workspace_graph",
     "InstanceReadService": "instance",
     "ObservationFreshnessPolicy": "instance",
     "ProjectedObservation": "instance",
     "ReadModelError": "errors",
-    "WorkspaceReadModel": "instance",
-    "WorkspaceSummary": "instance",
+    "WorkspaceReadModel": "workspace_graph",
+    "WorkspaceSummary": "workspace_graph",
     "project_observation": "instance",
 }
 
@@ -85,7 +86,13 @@ class ReadServicesPackageTests(unittest.TestCase):
                 name: importlib.import_module(
                     f"control_plane_kit_operations.read_services.{name}"
                 )
-                for name in {"errors", "instance", "models", "protocols"}
+                for name in {
+                    "errors",
+                    "instance",
+                    "models",
+                    "protocols",
+                    "workspace_graph",
+                }
             }
         except ModuleNotFoundError as error:
             self.fail(f"read-services package leaves are missing: {error.name}")
@@ -101,6 +108,142 @@ class ReadServicesPackageTests(unittest.TestCase):
                 self.assertTrue(hasattr(modules["protocols"], protocol_name))
                 self.assertFalse(hasattr(read_services, protocol_name))
                 self.assertFalse(hasattr(operations_root, protocol_name))
+
+    def test_workspace_graph_owns_exact_family_without_a_facade_edge(self) -> None:
+        paths = tuple(getattr(read_services, "__path__", ()))
+        self.assertEqual(len(paths), 1, "read_services must be one installed package")
+        package_path = Path(paths[0])
+        for module_name in _EXPECTED_MODULES - {"__init__"}:
+            self.assertTrue(
+                (package_path / f"{module_name}.py").is_file(),
+                f"read-services module {module_name!r} is absent",
+            )
+
+        trees = {
+            module_name: ast.parse(
+                (package_path / f"{module_name}.py").read_text(encoding="utf-8")
+            )
+            for module_name in _EXPECTED_MODULES - {"__init__"}
+        }
+        instance_classes = {
+            node.name
+            for node in trees["instance"].body
+            if isinstance(node, ast.ClassDef)
+        }
+        workspace_classes = {
+            node.name
+            for node in trees["workspace_graph"].body
+            if isinstance(node, ast.ClassDef)
+        }
+        moved = {
+            "ControlSurfaceReadModel",
+            "GraphPointerReadModel",
+            "WorkspaceReadModel",
+            "WorkspaceSummary",
+        }
+        self.assertTrue(moved <= workspace_classes)
+        self.assertTrue(moved.isdisjoint(instance_classes))
+
+        workspace_functions = {
+            node.name
+            for node in trees["workspace_graph"].body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        instance_functions = {
+            node.name
+            for node in trees["instance"].body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        self.assertIn("_list", workspace_functions)
+        self.assertNotIn("_list", instance_functions)
+        self.assertIn("_mapping", workspace_functions)
+        self.assertIn("_mapping", instance_functions)
+        self.assertNotIn("_recovery_for_plan", workspace_functions)
+
+        projection = next(
+            node
+            for node in trees["workspace_graph"].body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "_WorkspaceGraphReadProjection"
+        )
+        self.assertEqual(
+            {
+                node.name
+                for node in projection.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            },
+            {
+                "__init__",
+                "workspace",
+                "current_graph",
+                "desired_graph",
+                "operator_graph",
+                "control_surface",
+                "require_workspace",
+                "_graph_pointer",
+            },
+        )
+
+        imported = {
+            node.module or ""
+            for node in ast.walk(trees["workspace_graph"])
+            if isinstance(node, ast.ImportFrom)
+        } | {
+            alias.name
+            for node in ast.walk(trees["workspace_graph"])
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        self.assertFalse(
+            any(name.endswith(".instance") or name == "instance" for name in imported)
+        )
+        self.assertFalse(any("planning" in name for name in imported))
+
+    def test_current_local_module_graph_is_acyclic(self) -> None:
+        paths = tuple(getattr(read_services, "__path__", ()))
+        self.assertEqual(len(paths), 1, "read_services must be one installed package")
+        package_path = Path(paths[0])
+        module_names = _EXPECTED_MODULES - {"__init__"}
+        for module_name in module_names:
+            self.assertTrue(
+                (package_path / f"{module_name}.py").is_file(),
+                f"read-services module {module_name!r} is absent",
+            )
+        edges: dict[str, set[str]] = {name: set() for name in module_names}
+        prefix = "control_plane_kit_operations.read_services."
+
+        for module_name in module_names:
+            tree = ast.parse(
+                (package_path / f"{module_name}.py").read_text(encoding="utf-8")
+            )
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    if node.level and node.module:
+                        candidate = node.module.split(".", 1)[0]
+                        if candidate in module_names:
+                            edges[module_name].add(candidate)
+                    elif node.module and node.module.startswith(prefix):
+                        candidate = node.module.removeprefix(prefix).split(".", 1)[0]
+                        if candidate in module_names:
+                            edges[module_name].add(candidate)
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.startswith(prefix):
+                            candidate = alias.name.removeprefix(prefix).split(".", 1)[0]
+                            if candidate in module_names:
+                                edges[module_name].add(candidate)
+
+        self.assertNotIn("instance", edges["workspace_graph"])
+        for start in module_names:
+            pending = list(edges[start])
+            visited: set[str] = set()
+            while pending:
+                candidate = pending.pop()
+                self.assertNotEqual(candidate, start, f"import cycle returns to {start}")
+                if candidate in visited:
+                    continue
+                visited.add(candidate)
+                pending.extend(edges[candidate])
 
     def test_foundation_leaves_do_not_import_the_service_or_each_other_cyclically(
         self,
