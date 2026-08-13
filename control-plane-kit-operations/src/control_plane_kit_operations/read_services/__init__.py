@@ -2,16 +2,18 @@
 
 from .errors import ReadModelError
 from .instance import (
-    ControlSurfaceReadModel,
-    GraphPointerReadModel,
     InstanceReadService,
     ObservationFreshnessPolicy,
     ProjectedObservation,
-    WorkspaceReadModel,
-    WorkspaceSummary,
     project_observation,
 )
 from .models import FocusedDetailReadModel
+from .workspace_graph import (
+    ControlSurfaceReadModel,
+    GraphPointerReadModel,
+    WorkspaceReadModel,
+    WorkspaceSummary,
+)
 
 __all__ = [
     "ControlSurfaceReadModel",
