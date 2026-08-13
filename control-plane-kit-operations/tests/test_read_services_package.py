@@ -68,6 +68,38 @@ _EXPECTED_FOUNDATION_IMPORTS = {
 }
 
 
+def _local_module_imports(
+    tree: ast.AST,
+    module_names: set[str],
+) -> set[str]:
+    local: set[str] = set()
+    prefix = "control_plane_kit_operations.read_services."
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.level:
+                candidates = (
+                    (node.module.split(".", 1)[0],)
+                    if node.module
+                    else tuple(alias.name.split(".", 1)[0] for alias in node.names)
+                )
+                local.update(
+                    candidate
+                    for candidate in candidates
+                    if candidate in module_names
+                )
+            elif node.module and node.module.startswith(prefix):
+                candidate = node.module.removeprefix(prefix).split(".", 1)[0]
+                if candidate in module_names:
+                    local.add(candidate)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith(prefix):
+                    candidate = alias.name.removeprefix(prefix).split(".", 1)[0]
+                    if candidate in module_names:
+                        local.add(candidate)
+    return local
+
+
 class ReadServicesPackageTests(unittest.TestCase):
     def test_current_read_services_subtree_is_exact(self) -> None:
         paths = tuple(getattr(read_services, "__path__", ()))
@@ -199,6 +231,13 @@ class ReadServicesPackageTests(unittest.TestCase):
         )
         self.assertFalse(any("planning" in name for name in imported))
 
+    def test_local_import_parser_resolves_from_dot_import_form(self) -> None:
+        tree = ast.parse("from . import instance\n")
+        self.assertEqual(
+            _local_module_imports(tree, {"instance", "workspace_graph"}),
+            {"instance"},
+        )
+
     def test_current_local_module_graph_is_acyclic(self) -> None:
         paths = tuple(getattr(read_services, "__path__", ()))
         self.assertEqual(len(paths), 1, "read_services must be one installed package")
@@ -210,28 +249,11 @@ class ReadServicesPackageTests(unittest.TestCase):
                 f"read-services module {module_name!r} is absent",
             )
         edges: dict[str, set[str]] = {name: set() for name in module_names}
-        prefix = "control_plane_kit_operations.read_services."
-
         for module_name in module_names:
             tree = ast.parse(
                 (package_path / f"{module_name}.py").read_text(encoding="utf-8")
             )
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom):
-                    if node.level and node.module:
-                        candidate = node.module.split(".", 1)[0]
-                        if candidate in module_names:
-                            edges[module_name].add(candidate)
-                    elif node.module and node.module.startswith(prefix):
-                        candidate = node.module.removeprefix(prefix).split(".", 1)[0]
-                        if candidate in module_names:
-                            edges[module_name].add(candidate)
-                elif isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if alias.name.startswith(prefix):
-                            candidate = alias.name.removeprefix(prefix).split(".", 1)[0]
-                            if candidate in module_names:
-                                edges[module_name].add(candidate)
+            edges[module_name] = _local_module_imports(tree, module_names)
 
         self.assertNotIn("instance", edges["workspace_graph"])
         for start in module_names:
@@ -259,28 +281,18 @@ class ReadServicesPackageTests(unittest.TestCase):
                 (package_path / f"{module_name}.py").read_text(encoding="utf-8")
             )
             imported: set[str] = set()
-            local: set[str] = set()
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom):
-                    if node.level:
-                        if node.module:
-                            local.add(node.module.split(".", 1)[0])
-                    elif node.module:
+                    if not node.level and node.module:
                         imported.add(node.module)
-                    if node.module and node.module.startswith(
-                        "control_plane_kit_operations.read_services."
-                    ):
-                        local.add(node.module.rsplit(".", 1)[-1])
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
                         imported.add(alias.name)
-                        prefix = "control_plane_kit_operations.read_services."
-                        if alias.name.startswith(prefix):
-                            local.add(
-                                alias.name.removeprefix(prefix).split(".", 1)[0]
-                            )
             imports[module_name] = imported
-            local_imports[module_name] = local & _EXPECTED_MODULES
+            local_imports[module_name] = _local_module_imports(
+                tree,
+                _EXPECTED_MODULES,
+            )
 
         self.assertEqual(imports, _EXPECTED_FOUNDATION_IMPORTS)
 
