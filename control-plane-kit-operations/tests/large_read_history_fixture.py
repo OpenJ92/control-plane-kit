@@ -484,14 +484,15 @@ def _seed_current_metadata(
                  'provider_kind', 'cloudflare', 'account_id', 'synthetic-account',
                  'zone_id', 'synthetic-zone', 'zone_name', 'invalid.test',
                  'api_token_ref', 'secret://synthetic/cloudflare/token',
-                 'allowed_hostname_pattern', '*.invalid.test',
+                 'allowed_hostname_pattern', 'cpk-*.invalid.test',
                  'generated_secret_provider_registration_id', 'synthetic-provider',
                  'generated_secret_reference_prefix', 'secret://synthetic/ingress'
                ),
                jsonb_build_object(
                  'api_token_ref', 'secret://synthetic/cloudflare/token'
                ),
-               '*.invalid.test', 'operator', %s::timestamptz, 'active', '{}'::jsonb
+               'cpk-*.invalid.test', 'operator', %s::timestamptz, 'active',
+               '{}'::jsonb
         FROM generate_series(1, %s) AS value
         """,
         (handles.ingress_authorities_workspace_id, _INSTANT, count),
