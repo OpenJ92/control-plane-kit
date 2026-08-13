@@ -182,7 +182,7 @@ class ThinDetailProtocolTests(unittest.TestCase):
                 self.assertNotIn("limit", signature(getattr(InstanceReadService, name)).parameters)
 
     def test_detail_projection_helpers_do_not_require_collection_stores(self) -> None:
-        from control_plane_kit_operations import read_services
+        from control_plane_kit_operations import InstanceReadService
 
         session = SimpleNamespace(
             session_id="session-a",
@@ -195,7 +195,19 @@ class ThinDetailProtocolTests(unittest.TestCase):
             metadata={},
         )
 
-        descriptor = read_services._session_summary_descriptor(session)
+        service = InstanceReadService(
+            workspace_store=SimpleNamespace(
+                get=lambda workspace_id: SimpleNamespace(workspace_id=workspace_id)
+            ),
+            graph_topology_store=SimpleNamespace(),
+            activity_history_store=SimpleNamespace(
+                get_session=lambda session_id: session
+            ),
+        )
+        descriptor = service.session_detail(
+            "workspace-a",
+            "session-a",
+        ).descriptor()["session"]
 
         self.assertNotIn("actions", descriptor)
         self.assertNotIn("plans", descriptor)

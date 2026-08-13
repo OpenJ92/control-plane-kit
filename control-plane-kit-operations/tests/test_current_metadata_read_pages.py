@@ -83,6 +83,15 @@ from control_plane_kit_operations.read_pages import (
     WorkspaceReadScope,
 )
 from control_plane_kit_operations.read_services import InstanceReadService
+from control_plane_kit_operations.read_services.authority_secrets import (
+    _AuthoritySecretReadProjection,
+)
+from control_plane_kit_operations.read_services.gateway_security import (
+    _GatewaySecurityReadProjection,
+)
+from control_plane_kit_operations.read_services.observations import (
+    _ObservationReadProjection,
+)
 from control_plane_kit_operations.records import (
     ObservationRecord,
     ObservationStatus,
@@ -288,7 +297,7 @@ class CurrentMetadataPageContractTests(unittest.TestCase):
             ("workspace_id", "purpose", "issuer", "key_id"),
         )
 
-    def test_public_read_service_owns_only_page_selectors(self) -> None:
+    def test_read_projections_own_only_page_selectors(self) -> None:
         expected = {
             "observed_state": "latest_page",
             "runtime_authorities": "active_page",
@@ -303,11 +312,21 @@ class CurrentMetadataPageContractTests(unittest.TestCase):
             "list_active",
             "list_workspace",
         }
+        owners = {
+            "observed_state": _ObservationReadProjection,
+            "runtime_authorities": _AuthoritySecretReadProjection,
+            "runtime_authority_deliveries": _AuthoritySecretReadProjection,
+            "ingress_authorities": _AuthoritySecretReadProjection,
+            "secret_providers": _AuthoritySecretReadProjection,
+            "secret_references": _AuthoritySecretReadProjection,
+            "delegation_signing_keys": _GatewaySecurityReadProjection,
+        }
         for method_name, selector in expected.items():
             with self.subTest(method=method_name):
                 method = getattr(InstanceReadService, method_name)
                 self.assertEqual(tuple(signature(method).parameters), ("self", "request"))
-                source = getsource(method)
+                owner = owners.get(method_name, InstanceReadService)
+                source = getsource(getattr(owner, method_name))
                 self.assertIn(f".{selector}(", source)
                 self.assertTrue(all(f".{name}(" not in source for name in forbidden))
 
