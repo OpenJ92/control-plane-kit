@@ -73,6 +73,7 @@ def _local_module_imports(
     module_names: set[str],
 ) -> set[str]:
     local: set[str] = set()
+    package = "control_plane_kit_operations.read_services"
     prefix = "control_plane_kit_operations.read_services."
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -86,6 +87,12 @@ def _local_module_imports(
                     candidate
                     for candidate in candidates
                     if candidate in module_names
+                )
+            elif node.module == package:
+                local.update(
+                    alias.name.split(".", 1)[0]
+                    for alias in node.names
+                    if alias.name.split(".", 1)[0] in module_names
                 )
             elif node.module and node.module.startswith(prefix):
                 candidate = node.module.removeprefix(prefix).split(".", 1)[0]
@@ -231,12 +238,29 @@ class ReadServicesPackageTests(unittest.TestCase):
         )
         self.assertFalse(any("planning" in name for name in imported))
 
-    def test_local_import_parser_resolves_from_dot_import_form(self) -> None:
-        tree = ast.parse("from . import instance\n")
-        self.assertEqual(
-            _local_module_imports(tree, {"instance", "workspace_graph"}),
-            {"instance"},
+    def test_local_import_parser_resolves_alias_import_forms(self) -> None:
+        candidates = (
+            "from .instance import InstanceReadService\n",
+            "from . import instance\n",
+            (
+                "from control_plane_kit_operations.read_services.instance "
+                "import InstanceReadService\n"
+            ),
+            (
+                "from control_plane_kit_operations.read_services "
+                "import instance\n"
+            ),
+            "import control_plane_kit_operations.read_services.instance\n",
         )
+        for source in candidates:
+            with self.subTest(source=source):
+                self.assertEqual(
+                    _local_module_imports(
+                        ast.parse(source),
+                        {"instance", "workspace_graph"},
+                    ),
+                    {"instance"},
+                )
 
     def test_current_local_module_graph_is_acyclic(self) -> None:
         paths = tuple(getattr(read_services, "__path__", ()))
