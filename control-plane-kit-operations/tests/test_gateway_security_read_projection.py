@@ -257,7 +257,7 @@ class _ForbiddenStore:
         raise AssertionError(f"unrelated store capability was acquired: {name}")
 
 
-def _absolute_module_imports(tree: ast.AST) -> set[str]:
+def _resolved_module_imports(tree: ast.AST) -> set[str]:
     imported = {
         alias.name
         for node in ast.walk(tree)
@@ -265,7 +265,18 @@ def _absolute_module_imports(tree: ast.AST) -> set[str]:
         for alias in node.names
     }
     for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level:
+            package = ("control_plane_kit_operations", "read_services")
+            retained = len(package) - node.level + 1
+            base = ".".join(package[:retained])
+            resolved = f"{base}.{node.module}" if node.module else base
+            imported.add(resolved)
+            if not node.module:
+                imported.update(f"{base}.{alias.name}" for alias in node.names)
+            continue
+        if not node.module:
             continue
         imported.add(node.module)
         if node.module == "control_plane_kit_operations":
@@ -640,6 +651,41 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
         except ModuleNotFoundError as error:
             self.fail(f"gateway security read projection is absent: {error.name}")
 
+    def test_import_parser_resolves_absolute_and_relative_forms(self) -> None:
+        hostile_imports = (
+            (
+                "import control_plane_kit_operations.postgres.stores as stores\n",
+                "control_plane_kit_operations.postgres.stores",
+            ),
+            (
+                "from control_plane_kit_operations import cpk_server as server\n",
+                "control_plane_kit_operations.cpk_server",
+            ),
+            (
+                "from control_plane_kit_operations.postgres import stores\n",
+                "control_plane_kit_operations.postgres",
+            ),
+            (
+                "from .. import postgres as stores\n",
+                "control_plane_kit_operations.postgres",
+            ),
+            (
+                "from .. import cpk_server as server\n",
+                "control_plane_kit_operations.cpk_server",
+            ),
+            (
+                "from ..postgres import stores\n",
+                "control_plane_kit_operations.postgres",
+            ),
+            (
+                "from . import instance as facade\n",
+                "control_plane_kit_operations.read_services.instance",
+            ),
+        )
+        for source, expected in hostile_imports:
+            with self.subTest(source=source):
+                self.assertIn(expected, _resolved_module_imports(ast.parse(source)))
+
     def test_owner_and_facade_have_exact_method_partition(self) -> None:
         module = self._module()
         owner = module._GatewaySecurityReadProjection
@@ -738,25 +784,7 @@ class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
             _local_module_imports(tree, module_names),
             {"errors", "models", "protocols"},
         )
-        hostile_imports = (
-            (
-                "import control_plane_kit_operations.postgres.stores as stores\n",
-                "control_plane_kit_operations.postgres.stores",
-            ),
-            (
-                "from control_plane_kit_operations import cpk_server as server\n",
-                "control_plane_kit_operations.cpk_server",
-            ),
-            (
-                "from control_plane_kit_operations.postgres import stores\n",
-                "control_plane_kit_operations.postgres",
-            ),
-        )
-        for source, expected in hostile_imports:
-            with self.subTest(source=source):
-                self.assertIn(expected, _absolute_module_imports(ast.parse(source)))
-
-        imported = _absolute_module_imports(tree)
+        imported = _resolved_module_imports(tree)
         for forbidden in (
             "control_plane_kit_operations.cpk_server",
             "control_plane_kit_operations.postgres",
