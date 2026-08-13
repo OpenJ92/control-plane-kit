@@ -1,8 +1,8 @@
 """Read-only projections over durable operations truth."""
 
 from .errors import ReadModelError
-from .instance import (
-    InstanceReadService,
+from .instance import InstanceReadService
+from .observations import (
     ObservationFreshnessPolicy,
     ProjectedObservation,
     project_observation,
