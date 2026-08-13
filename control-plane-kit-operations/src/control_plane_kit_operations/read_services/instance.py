@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Mapping
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
@@ -14,13 +13,7 @@ from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
 )
-from control_plane_kit_operations.records import (
-    BoundedEvidence,
-    ObservationFreshness,
-    ObservationRecord,
-    ObservationStaleReason,
-    WorkspaceRecord,
-)
+from control_plane_kit_operations.records import WorkspaceRecord
 from control_plane_kit_operations.runtime_authorities import RuntimeAuthorityNotFound
 from control_plane_kit_operations.ingress_authorities import IngressAuthorityNotFound
 from control_plane_kit_operations.secret_providers import (
@@ -45,6 +38,10 @@ from control_plane_kit_operations.read_pages import (
 from ._redaction import _redact_descriptor_value
 from .errors import ReadModelError
 from .models import FocusedDetailReadModel
+from .observations import (
+    ObservationFreshnessPolicy,
+    _ObservationReadProjection,
+)
 from .operations_history import _OperationsHistoryReadProjection
 from .protocols import (
     ActivityHistoryStore,
@@ -67,26 +64,6 @@ from .workspace_graph import (
     WorkspaceSummary,
     _WorkspaceGraphReadProjection,
 )
-
-
-@dataclass(frozen=True)
-class ObservationFreshnessPolicy:
-    """Maximum age for evidence to describe the current graph."""
-
-    maximum_age: timedelta = timedelta(minutes=5)
-
-    def __post_init__(self) -> None:
-        if self.maximum_age <= timedelta(0):
-            raise ValueError("observation maximum age must be positive")
-
-
-@dataclass(frozen=True)
-class ProjectedObservation:
-    """Observation interpreted at one explicit read instant."""
-
-    record: ObservationRecord
-    freshness: ObservationFreshness
-    stale_reason: ObservationStaleReason | None
 
 
 class InstanceReadService:
@@ -123,7 +100,12 @@ class InstanceReadService:
             execution_store,
             graph_codec=graph_codec,
         )
-        self._observed_state_store = observed_state_store
+        self._observations = _ObservationReadProjection(
+            self._workspace_graph.require_workspace,
+            observed_state_store,
+            clock=clock,
+            freshness=observation_freshness,
+        )
         self._runtime_authority_store = runtime_authority_store
         self._runtime_authority_delivery_store = runtime_authority_delivery_store
         self._ingress_authority_store = ingress_authority_store
@@ -131,8 +113,6 @@ class InstanceReadService:
         self._secret_reference_store = secret_reference_store
         self._gateway_probe_store = gateway_probe_store
         self._delegation_signing_key_store = delegation_signing_key_store
-        self._clock = clock
-        self._observation_freshness = observation_freshness
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         return self._workspace_graph.workspace(workspace_id)
@@ -227,21 +207,7 @@ class InstanceReadService:
         self,
         request: ReadPageRequest,
     ) -> ReadPage[dict[str, object]]:
-        workspace_id = request.scope.workspace_id
-        workspace = self._workspace(workspace_id)
-        as_of = self._clock()
-        if not isinstance(as_of, datetime) or as_of.tzinfo is None:
-            raise ReadModelError("read-service clock must return a timezone-aware datetime")
-        return self._observed_state().latest_page(request).map(
-            lambda record: _observation_descriptor(
-                project_observation(
-                    record,
-                    current_graph_id=workspace.current_graph_id,
-                    as_of=as_of,
-                    policy=self._observation_freshness,
-                )
-            )
-        )
+        return self._observations.observed_state(request)
 
     def runtime_authorities(
         self,
@@ -525,51 +491,6 @@ class InstanceReadService:
     def _workspace(self, workspace_id: str) -> WorkspaceRecord:
         return self._workspace_graph.require_workspace(workspace_id)
 
-    def _observed_state(self) -> ObservedStateStore:
-        if self._observed_state_store is None:
-            raise ReadModelError("observed state store is not configured")
-        return self._observed_state_store
-
-
-def project_observation(
-    record: ObservationRecord,
-    *,
-    current_graph_id: str | None,
-    as_of: datetime,
-    policy: ObservationFreshnessPolicy,
-) -> ProjectedObservation:
-    """Derive usability without rewriting durable observation evidence."""
-
-    if as_of.tzinfo is None:
-        raise ValueError("observation projection clock must be timezone-aware")
-    if record.freshness is ObservationFreshness.STALE:
-        return _stale(record, ObservationStaleReason.RECORDED_STALE)
-    if record.graph_id is None:
-        return _stale(record, ObservationStaleReason.UNCORRELATED)
-    if current_graph_id != record.graph_id:
-        return _stale(record, ObservationStaleReason.GRAPH_CHANGED)
-    try:
-        observed_at = datetime.fromisoformat(record.observed_at.replace("Z", "+00:00"))
-    except ValueError:
-        return _stale(record, ObservationStaleReason.MALFORMED_TIMESTAMP)
-    if observed_at.tzinfo is None:
-        return _stale(record, ObservationStaleReason.MALFORMED_TIMESTAMP)
-    normalized_as_of = as_of.astimezone(timezone.utc)
-    normalized_observed_at = observed_at.astimezone(timezone.utc)
-    if normalized_observed_at > normalized_as_of:
-        return _stale(record, ObservationStaleReason.FUTURE_TIMESTAMP)
-    if normalized_as_of - normalized_observed_at > policy.maximum_age:
-        return _stale(record, ObservationStaleReason.EXPIRED)
-    return ProjectedObservation(record, ObservationFreshness.FRESH, None)
-
-
-def _stale(
-    record: ObservationRecord,
-    reason: ObservationStaleReason,
-) -> ProjectedObservation:
-    return ProjectedObservation(record, ObservationFreshness.STALE, reason)
-
-
 def _redacted_runtime_authority(value: object) -> Mapping[str, object]:
     descriptor_method = getattr(value, "descriptor", None)
     if not callable(descriptor_method):
@@ -639,28 +560,3 @@ def _mapping(value: object) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ReadModelError("expected mapping in graph descriptor")
     return value
-
-
-def _observation_descriptor(projected: ProjectedObservation) -> dict[str, object]:
-    record = projected.record
-    return {
-        "observation_id": record.observation_id,
-        "workspace_id": record.workspace_id,
-        "subject_id": record.subject_id,
-        "status": record.status.value,
-        "observed_at": record.observed_at,
-        "graph_id": record.graph_id,
-        "probe_kind": None if record.probe_kind is None else record.probe_kind.value,
-        "probe_outcome": (
-            None if record.probe_outcome is None else record.probe_outcome.value
-        ),
-        "endpoint_context": (
-            None if record.endpoint_context is None else record.endpoint_context.value
-        ),
-        "freshness": projected.freshness.value,
-        "stale": projected.freshness is ObservationFreshness.STALE,
-        "stale_reason": (
-            None if projected.stale_reason is None else projected.stale_reason.value
-        ),
-        "payload": _redact_descriptor_value("payload", record.evidence.descriptor()),
-    }
