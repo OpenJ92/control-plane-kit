@@ -237,7 +237,9 @@ def _approval_requests(
            max_risk, destructive)
         SELECT %s || '-' || lpad(value::text, 4, '0'), %s, %s,
                'activity-plan',
-               jsonb_build_object('kind', 'activity-plan', 'plan_id', %s),
+               jsonb_build_object(
+                 'kind', 'activity-plan', 'plan_id', %s::text
+               ),
                repeat('a', 64), 'operator', %s::timestamptz,
                'plan:approve', 'low', false
         FROM generate_series(1, %s) AS value
