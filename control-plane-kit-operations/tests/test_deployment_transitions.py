@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import importlib
 from pathlib import Path
 import unittest
@@ -16,6 +16,7 @@ from control_plane_kit_core.algebra import (
 )
 from control_plane_kit_core.delegation_authority import DelegationAuthorityBinding
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     NamedPublicIngress,
@@ -23,8 +24,10 @@ from control_plane_kit_core.public_ingress import (
 )
 from control_plane_kit_core.topology import (
     DeploymentGraph,
+    Endpoint,
     GraphDiff,
     GraphValidationError,
+    LiteralAddress,
     RuntimeRecord,
     compile_topology,
     validate_graph,
@@ -101,13 +104,42 @@ def _gateway_graph(name: str = "gateway") -> DeploymentGraph:
     )
 
 
-class _PureImplementation:
-    def __init__(self, kind: str, endpoints: dict[str, str]) -> None:
-        self.kind = kind
-        self.endpoints = endpoints
+@dataclass(frozen=True)
+class _MaterializedBlock:
+    kind: str
+    endpoints: dict[str, Endpoint]
+    public_environment: tuple[object, ...] = ()
+    metadata: dict[str, object] | None = None
+    lifecycle: object = OWNED_EPHEMERAL
+    configuration_artifacts: tuple[object, ...] = ()
+    secret_deliveries: tuple[object, ...] = ()
 
-    def descriptor(self) -> dict[str, object]:
-        return {"kind": self.kind, "endpoints": dict(self.endpoints)}
+    def __post_init__(self) -> None:
+        if self.metadata is None:
+            object.__setattr__(self, "metadata", {})
+
+
+@dataclass(frozen=True)
+class _PureImplementation:
+    kind: str
+    endpoints: dict[str, str]
+
+    def materialize(
+        self,
+        block_id: str,
+        sockets: BlockSockets,
+        runtime: object,
+    ) -> _MaterializedBlock:
+        return _MaterializedBlock(
+            self.kind,
+            {
+                name: Endpoint(
+                    LiteralAddress(address),
+                    sockets.provider(name).protocol,
+                )
+                for name, address in self.endpoints.items()
+            },
+        )
 
 
 class DeploymentTransitionTests(unittest.TestCase):
@@ -199,7 +231,7 @@ class DeploymentTransitionTests(unittest.TestCase):
         self.assertFalse(transition.diff.empty)
         self.assertEqual(
             transition.diff.descriptor()["changes"][0]["subject"],
-            {"kind": "graph", "field": "graph-name"},
+            {"owner": {"kind": "graph"}, "field": "graph-name"},
         )
 
     def test_legacy_and_modern_graph_owned_surfaces_cross_empty_boundary(self) -> None:
