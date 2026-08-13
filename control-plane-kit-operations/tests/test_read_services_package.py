@@ -197,10 +197,16 @@ class ReadServicesPackageTests(unittest.TestCase):
             for node in trees["instance"].body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
+        authority_functions = {
+            node.name
+            for node in trees["authority_secrets"].body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
         self.assertIn("_list", workspace_functions)
         self.assertNotIn("_list", instance_functions)
         self.assertIn("_mapping", workspace_functions)
-        self.assertIn("_mapping", instance_functions)
+        self.assertIn("_mapping", authority_functions)
+        self.assertNotIn("_mapping", instance_functions)
         self.assertNotIn("_recovery_for_plan", workspace_functions)
 
         projection = next(
