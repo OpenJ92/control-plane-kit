@@ -172,6 +172,10 @@ class _MalformedProbe:
         raise self._failure
 
 
+class _WorkspaceLessProbe:
+    pass
+
+
 class _MalformedKeyRecord:
     registration_id = "registration-malformed"
     purpose = DelegationKeyPurpose.GATEWAY_PROBE
@@ -642,6 +646,13 @@ class GatewaySecurityReadProjectionTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as raw:
             projection.gateway_probe_detail("workspace-a", "probe-a")
         self.assertIs(raw.exception, failure)
+
+        projection = self._projection(
+            [],
+            probe_store=_ProbeStore([], _WorkspaceLessProbe()),
+        )
+        with self.assertRaises(AttributeError):
+            projection.gateway_probe_detail("workspace-a", "probe-a")
 
 
 class GatewaySecurityReadProjectionStructureTests(unittest.TestCase):
