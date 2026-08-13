@@ -15,6 +15,7 @@ _EXPECTED_MODULES = {
     "errors",
     "instance",
     "models",
+    "operations_history",
     "protocols",
     "workspace_graph",
 }
