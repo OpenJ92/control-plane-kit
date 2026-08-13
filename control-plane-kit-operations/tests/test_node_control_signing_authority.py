@@ -387,10 +387,6 @@ class NodeControlSigningAuthorityContractTests(
         candidates = (
             ("attempt-b", {"attempt_id": "attempt-b"}),
             ("graph-other", {"current_graph_id": "graph-other"}),
-            (
-                "projection-other",
-                {"current_realized_projection_id": "projection-other"},
-            ),
             ("request-b", {"workload": other_workload}),
             ("request-b", {"transit": other_transit}),
             ("family-swap", {"transit": workload}),

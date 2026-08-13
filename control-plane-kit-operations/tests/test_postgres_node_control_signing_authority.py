@@ -20,7 +20,11 @@ from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.delegation_signing_keys import (
     delegation_signing_key_registration_id_for,
 )
-from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres import (
+    PostgresStoreBundle,
+    PostgresUnitOfWork,
+    install_schema,
+)
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
 )
@@ -431,7 +435,7 @@ class NodeControlSigningAuthorityPostgresTests(
         for family in ("transit", "workload"):
             for edge, replacement in (
                 ("not-before", {"not_before": 101}),
-                ("expires", {"expires_at": 100}),
+                ("expires", {"not_before": 99, "expires_at": 100}),
             ):
                 with self.subTest(family=family, edge=edge):
                     self.connection.execute("TRUNCATE cpk_node_control_attempts")
@@ -655,7 +659,7 @@ class NodeControlSigningAuthorityPostgresTests(
         for token in ("INSERT ", "UPDATE ", "DELETE ", "ALTER ", "CREATE "):
             self.assertNotIn(token, source.upper())
         self.assertIn("FOR SHARE", source.upper())
-        bundle_fields = operations.PostgresStoreBundle.__dataclass_fields__
+        bundle_fields = PostgresStoreBundle.__dataclass_fields__
         self.assertIn("node_control_signing_authority", bundle_fields)
         before = self.connection.execute(
             "SELECT count(*) FROM information_schema.tables "
