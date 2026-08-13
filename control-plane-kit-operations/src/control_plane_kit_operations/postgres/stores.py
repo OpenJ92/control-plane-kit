@@ -20,6 +20,9 @@ from control_plane_kit_operations.postgres.gateway_probe_store import GatewayPro
 from control_plane_kit_operations.postgres.node_control_attempt_store import (
     NodeControlAttemptStore,
 )
+from control_plane_kit_operations.postgres.node_control_signing_authority_store import (
+    _NodeControlSigningAuthorityStore,
+)
 from control_plane_kit_operations.postgres.gateway_key_rotation_store import (
     GatewayKeyRotationStore,
 )
@@ -75,6 +78,9 @@ class PostgresStoreBundle:
     observed_state: PostgresObservedStateStore = field(init=False)
     gateway_probes: GatewayProbeStore = field(init=False)
     node_control_attempts: NodeControlAttemptStore = field(init=False)
+    node_control_signing_authority: _NodeControlSigningAuthorityStore = field(
+        init=False
+    )
     delegation_signing_keys: DelegationSigningKeyStore = field(init=False)
     gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
 
@@ -168,6 +174,11 @@ class PostgresStoreBundle:
             self,
             "node_control_attempts",
             NodeControlAttemptStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "node_control_signing_authority",
+            _NodeControlSigningAuthorityStore(self.connection),
         )
         object.__setattr__(
             self,

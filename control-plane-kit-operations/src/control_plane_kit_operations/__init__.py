@@ -141,6 +141,16 @@ from .node_control_intents import (
     NodeControlIntentPreparation,
     RequestNodeControlIntent,
 )
+from .node_control_signing_authority import (
+    DeferredNodeControlSigningRequest,
+    GatewayNodeControlTransitSigningAuthority,
+    NodeControlSigningAuthorityError,
+    NodeControlSigningAuthorityPair,
+    NodeControlSigningAuthorityReloadService,
+    NodeControlSigningAuthorityUnavailable,
+    ReloadNodeControlSigningAuthority,
+    WorkloadNodeControlSigningAuthority,
+)
 from .postgres.node_control_attempt_store import NodeControlAttemptStore
 from .gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
@@ -684,6 +694,14 @@ __all__ = [
     "NodeControlIntentNotFound",
     "NodeControlIntentPreparation",
     "RequestNodeControlIntent",
+    "DeferredNodeControlSigningRequest",
+    "GatewayNodeControlTransitSigningAuthority",
+    "NodeControlSigningAuthorityError",
+    "NodeControlSigningAuthorityPair",
+    "NodeControlSigningAuthorityReloadService",
+    "NodeControlSigningAuthorityUnavailable",
+    "ReloadNodeControlSigningAuthority",
+    "WorkloadNodeControlSigningAuthority",
     "GatewayProbeAuthorizationDenied",
     "GatewayProbeCommandResult",
     "GatewayProbeCommandService",
