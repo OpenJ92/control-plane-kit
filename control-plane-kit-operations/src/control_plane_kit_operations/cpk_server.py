@@ -1593,10 +1593,13 @@ def _trusted_context(
     principal = getattr(request, "principal", None)
     if not isinstance(principal, AuthenticatedPrincipal):
         raise CpkServerApplicationError(403, "authenticated principal is required")
+    workspace_denied = False
     try:
         context = principal.command_context(workspace_id)
-    except IdentityContractError as error:
-        raise CpkServerApplicationError(403, "workspace access is denied") from error
+    except IdentityContractError:
+        workspace_denied = True
+    if workspace_denied:
+        raise CpkServerApplicationError(403, "workspace access is denied")
     try:
         policy = _ROUTE_AUTHORIZATION_POLICIES[request.route_id]
     except KeyError as error:
