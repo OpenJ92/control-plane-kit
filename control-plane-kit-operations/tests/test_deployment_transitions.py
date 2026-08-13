@@ -24,6 +24,7 @@ from control_plane_kit_core.public_ingress import (
 )
 from control_plane_kit_core.topology import (
     DeploymentGraph,
+    Edge,
     Endpoint,
     GraphDiff,
     GraphValidationError,
@@ -34,7 +35,7 @@ from control_plane_kit_core.topology import (
     validate_graph,
 )
 from control_plane_kit_core.topology.validation import ValidatedGraph
-from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.types import Protocol, RuntimeKind, SocketBinding
 
 
 EXPECTED_EXPORTS = (
@@ -266,14 +267,14 @@ class DeploymentTransitionTests(unittest.TestCase):
         graphs = (
             _runtime_graph("runtime-only", owner="platform"),
             _validated(
-                DeploymentGraph(
-                    "ingress-only-change",
+                replace(
+                    _gateway_graph("ingress-only-change"),
                     public_ingresses=(ingress,),
                 )
             ),
             _validated(
-                DeploymentGraph(
-                    "authority-only-change",
+                replace(
+                    _gateway_graph("authority-only-change"),
                     delegation_authorities=(authority,),
                 )
             ),
@@ -285,6 +286,43 @@ class DeploymentTransitionTests(unittest.TestCase):
                     operations.Deploy(_empty(desired.graph.name), desired),
                     operations.InitialDeployment,
                 )
+
+    def test_structural_emptiness_predicate_names_all_five_collections(self) -> None:
+        _, module = _contract()
+        gateway = _gateway_graph("predicate-witness")
+        ingress = NamedPublicIngress(
+            ingress_id="gateway-public",
+            authority_ref=IngressAuthorityReference("public-ingress-authority"),
+            target=PublicIngressTarget("gateway", "control"),
+            connector_node_id="connector",
+            hostname="gateway.example.test",
+        )
+        authority = DelegationAuthorityBinding(
+            delegate_node_id="gateway",
+            purpose=DelegationKeyPurpose.GATEWAY_PROBE,
+            issuer="gateway-probe-issuer",
+        )
+        edge = Edge(
+            "provider:control->consumer:control",
+            "provider",
+            "control",
+            "consumer",
+            "control",
+            Protocol.HTTP,
+            SocketBinding.RUNTIME_CONTROL,
+        )
+        witnesses = (
+            DeploymentGraph("node-only", nodes=gateway.nodes),
+            DeploymentGraph("edge-only", edges={edge.edge_id: edge}),
+            DeploymentGraph("runtime-only", runtimes=gateway.runtimes),
+            DeploymentGraph("ingress-only", public_ingresses=(ingress,)),
+            DeploymentGraph("authority-only", delegation_authorities=(authority,)),
+        )
+
+        self.assertTrue(module._structurally_empty(DeploymentGraph("empty")))
+        for graph in witnesses:
+            with self.subTest(graph=graph.name):
+                self.assertFalse(module._structurally_empty(graph))
 
     def test_modern_surface_only_diffs_are_updates(self) -> None:
         operations, _ = _contract()
