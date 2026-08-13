@@ -628,17 +628,38 @@ class NodeControlSigningAuthorityPostgresTests(
             contenders = (
                 (
                     "workspace",
-                    "UPDATE cpk_workspaces SET metadata=metadata "
+                    "UPDATE cpk_workspaces "
+                    "SET metadata=metadata || '{\"lock_probe\":true}'::jsonb "
                     "WHERE workspace_id='workspace-a'",
                 ),
                 (
-                    "reference",
-                    "UPDATE cpk_secret_references SET metadata=metadata "
+                    "transit-authorization",
+                    "UPDATE cpk_secret_use_authorizations "
+                    "SET session_id='lock-proof-transit' "
+                    "WHERE authorization_id='suse_" + "c" * 64 + "'",
+                ),
+                (
+                    "workload-authorization",
+                    "UPDATE cpk_secret_use_authorizations "
+                    "SET session_id='lock-proof-workload' "
+                    "WHERE authorization_id='suse_" + "d" * 64 + "'",
+                ),
+                (
+                    "transit-reference",
+                    "UPDATE cpk_secret_references "
+                    "SET metadata=metadata || '{\"lock_probe\":true}'::jsonb "
                     "WHERE registration_id='sref_" + "a" * 64 + "'",
                 ),
                 (
+                    "workload-reference",
+                    "UPDATE cpk_secret_references "
+                    "SET metadata=metadata || '{\"lock_probe\":true}'::jsonb "
+                    "WHERE registration_id='sref_" + "b" * 64 + "'",
+                ),
+                (
                     "provider",
-                    "UPDATE cpk_secret_providers SET metadata=metadata "
+                    "UPDATE cpk_secret_providers "
+                    "SET metadata=metadata || '{\"lock_probe\":true}'::jsonb "
                     "WHERE registration_id='sprov_" + "e" * 64 + "'",
                 ),
             )
@@ -653,21 +674,34 @@ class NodeControlSigningAuthorityPostgresTests(
                         contender.rollback()
                         contender.close()
 
-            contender = psycopg.connect(self.database_url)
-            try:
-                contender.execute("SET LOCAL lock_timeout='250ms'")
-                with self.assertRaises(psycopg.errors.LockNotAvailable):
-                    DelegationSigningKeyStore(contender).revoke(
-                        "workspace-a",
-                        DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
-                        "cpk-server",
-                        "transit-key",
-                        revoked_by="operator-a",
-                        revoked_at="2027-01-15T09:00:00Z",
-                    )
-            finally:
-                contender.rollback()
-                contender.close()
+            for name, purpose, key_id in (
+                (
+                    "transit-purpose-key",
+                    DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+                    "transit-key",
+                ),
+                (
+                    "workload-purpose-key",
+                    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+                    "workload-key",
+                ),
+            ):
+                with self.subTest(lock=name):
+                    contender = psycopg.connect(self.database_url)
+                    try:
+                        contender.execute("SET LOCAL lock_timeout='250ms'")
+                        with self.assertRaises(psycopg.errors.LockNotAvailable):
+                            DelegationSigningKeyStore(contender).revoke(
+                                "workspace-a",
+                                purpose,
+                                "cpk-server",
+                                key_id,
+                                revoked_by="operator-a",
+                                revoked_at="2027-01-15T09:00:00Z",
+                            )
+                    finally:
+                        contender.rollback()
+                        contender.close()
         finally:
             release.set()
             thread.join(5)
@@ -677,18 +711,54 @@ class NodeControlSigningAuthorityPostgresTests(
         self.assertEqual(len(result), 1)
         retry = psycopg.connect(self.database_url)
         try:
-            revoked = DelegationSigningKeyStore(retry).revoke(
-                "workspace-a",
-                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
-                "cpk-server",
-                "transit-key",
-                revoked_by="operator-a",
-                revoked_at="2027-01-15T09:00:00Z",
+            for name, statement in contenders:
+                with self.subTest(released=name):
+                    self.assertEqual(retry.execute(statement).rowcount, 1)
+            revoked = tuple(
+                DelegationSigningKeyStore(retry).revoke(
+                    "workspace-a",
+                    purpose,
+                    "cpk-server",
+                    key_id,
+                    revoked_by="operator-a",
+                    revoked_at="2027-01-15T09:00:00Z",
+                )
+                for purpose, key_id in (
+                    (
+                        DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+                        "transit-key",
+                    ),
+                    (
+                        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+                        "workload-key",
+                    ),
+                )
             )
             retry.commit()
         finally:
             retry.close()
-        self.assertEqual(revoked.status.value, "revoked")
+        self.assertEqual(tuple(key.status.value for key in revoked), ("revoked",) * 2)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT session_id FROM cpk_secret_use_authorizations "
+                "ORDER BY authorization_id"
+            ).fetchall(),
+            [("lock-proof-transit",), ("lock-proof-workload",)],
+        )
+        for relation, expected_count in (
+            ("cpk_workspaces", 1),
+            ("cpk_secret_references", 2),
+            ("cpk_secret_providers", 1),
+        ):
+            with self.subTest(released_state=relation):
+                metadata = self.connection.execute(
+                    f"SELECT metadata FROM {relation} "
+                    "WHERE metadata ? 'lock_probe'"
+                ).fetchall()
+                self.assertEqual(len(metadata), expected_count)
+                self.assertTrue(
+                    all(row[0].get("lock_probe") is True for row in metadata)
+                )
 
 
 if __name__ == "__main__":
