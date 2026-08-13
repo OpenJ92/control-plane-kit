@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Mapping, Protocol
+from typing import Mapping
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.planning import (
@@ -61,130 +61,23 @@ from control_plane_kit_operations.read_pages import (
     ReadPageRequest,
 )
 
-_REDACTED = "<redacted>"
-_SECRET_MARKERS = ("secret", "token", "password", "private_key", "credential", "api_key")
-_ADDRESS_KEYS = ("address", "url", "environment", "env_assignments")
-
-
-class ReadModelError(ValueError):
-    """Raised when durable truth cannot support a requested read model."""
-
-
-class WorkspaceStore(Protocol):
-    def get(self, workspace_id: str) -> WorkspaceRecord: ...
-
-
-class GraphTopologyStore(Protocol):
-    def get(self, graph_id: str) -> GraphVersionRecord: ...
-
-
-class ActivityHistoryStore(Protocol):
-    def get_session(self, session_id: str) -> OperationSessionRecord: ...
-    def sessions_for_workspace(self, workspace_id: str) -> tuple[OperationSessionRecord, ...]: ...
-    def session_page(self, request: ReadPageRequest) -> ReadPage[OperationSessionRecord]: ...
-    def actions_for_session(self, session_id: str) -> tuple[object, ...]: ...
-    def action_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
-    def get_plan(self, plan_id: str) -> ActivityPlanRecord: ...
-    def plans_for_session(self, session_id: str) -> tuple[ActivityPlanRecord, ...]: ...
-    def plan_page(self, request: ReadPageRequest) -> ReadPage[ActivityPlanRecord]: ...
-    def get_approval_request(self, request_id: str) -> ApprovalRequestRecord: ...
-    def approval_requests_for_session(self, session_id: str) -> tuple[ApprovalRequestRecord, ...]: ...
-    def approval_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
-    def pending_approval_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
-    def approval_decision_for_request(self, request_id: str) -> object | None: ...
-
-
-class ExecutionStore(Protocol):
-    def get_request(self, request_id: str) -> object: ...
-    def get_run(self, run_id: str) -> ActivityRunRecord: ...
-    def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]: ...
-    def run_page(self, request: ReadPageRequest) -> ReadPage[ActivityRunRecord]: ...
-    def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]: ...
-    def event_page(self, request: ReadPageRequest) -> ReadPage[ActivityEventRecord]: ...
-
-
-class ObservedStateStore(Protocol):
-    def latest_for_workspace(self, workspace_id: str) -> tuple[ObservationRecord, ...]: ...
-    def latest_page(self, request: ReadPageRequest) -> ReadPage[ObservationRecord]: ...
-
-
-class RuntimeAuthorityStore(Protocol):
-    def get(self, workspace_id: str, authority_ref: RuntimeAuthorityReference) -> object: ...
-    def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
-    def active_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
-
-
-class RuntimeAuthorityDeliveryStore(Protocol):
-    def get(self, workspace_id: str, authority_ref: RuntimeAuthorityReference) -> object: ...
-    def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
-    def active_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
-
-
-class IngressAuthorityStore(Protocol):
-    def get(self, workspace_id: str, authority_ref: IngressAuthorityReference) -> object: ...
-    def list_active(self, workspace_id: str) -> tuple[object, ...]: ...
-    def active_page(self, request: ReadPageRequest) -> ReadPage[object]: ...
-
-
-class SecretProviderStore(Protocol):
-    def get_active(
-        self,
-        workspace_id: str,
-        provider_id: SecretProviderId,
-    ) -> RegisteredSecretProvider: ...
-    def list_active(
-        self,
-        workspace_id: str,
-    ) -> tuple[RegisteredSecretProvider, ...]: ...
-    def active_page(
-        self,
-        request: ReadPageRequest,
-    ) -> ReadPage[RegisteredSecretProvider]: ...
-
-
-class SecretReferenceStore(Protocol):
-    def get_by_registration(
-        self,
-        workspace_id: str,
-        registration_id: str,
-    ) -> RegisteredSecretReference: ...
-    def list_active(
-        self,
-        workspace_id: str,
-    ) -> tuple[RegisteredSecretReference, ...]: ...
-    def active_page(
-        self,
-        request: ReadPageRequest,
-    ) -> ReadPage[RegisteredSecretReference]: ...
-
-
-class GatewayProbeStore(Protocol):
-    def get(self, probe_id: str) -> object: ...
-    def page(self, request: ReadPageRequest) -> ReadPage[object]: ...
-
-
-class DelegationSigningKeyStore(Protocol):
-    def list_workspace(
-        self,
-        workspace_id: str,
-    ) -> tuple[RegisteredDelegationSigningKey, ...]: ...
-    def workspace_page(
-        self,
-        request: ReadPageRequest,
-    ) -> ReadPage[RegisteredDelegationSigningKey]: ...
-
-    def require_unambiguous_active(
-        self,
-        workspace_id: str,
-        purpose: DelegationKeyPurpose,
-    ) -> RegisteredDelegationSigningKey: ...
-
-    def list_for_verification(
-        self,
-        workspace_id: str,
-        purpose: DelegationKeyPurpose,
-        issuer: str,
-    ) -> tuple[RegisteredDelegationSigningKey, ...]: ...
+from ._redaction import _redact_descriptor_value
+from .errors import ReadModelError
+from .models import FocusedDetailReadModel
+from .protocols import (
+    ActivityHistoryStore,
+    DelegationSigningKeyStore,
+    ExecutionStore,
+    GatewayProbeStore,
+    GraphTopologyStore,
+    IngressAuthorityStore,
+    ObservedStateStore,
+    RuntimeAuthorityDeliveryStore,
+    RuntimeAuthorityStore,
+    SecretProviderStore,
+    SecretReferenceStore,
+    WorkspaceStore,
+)
 
 
 @dataclass(frozen=True)
@@ -257,20 +150,6 @@ class WorkspaceReadModel:
             "workspace": self.workspace.descriptor(),
             "current_graph": self.current_graph.descriptor(),
             "desired_graph": self.desired_graph.descriptor(),
-        }
-
-
-@dataclass(frozen=True)
-class FocusedDetailReadModel:
-    workspace_id: str
-    kind: str
-    payload: Mapping[str, object]
-
-    def descriptor(self) -> dict[str, object]:
-        return {
-            "workspace_id": self.workspace_id,
-            "kind": self.kind,
-            **dict(self.payload),
         }
 
 
@@ -1462,50 +1341,3 @@ def _redact_graph_descriptor(descriptor: Mapping[str, object]) -> dict[str, obje
         str(key): _redact_descriptor_value(str(key), value)
         for key, value in sorted(descriptor.items())
     }
-
-
-def _redact_descriptor_value(key: str, value: object) -> object:
-    if key.lower().replace("-", "_") == "environment_bindings":
-        return _redact_environment_bindings(value)
-    if _looks_sensitive_key(key):
-        return _REDACTED
-    if isinstance(value, Mapping):
-        return {
-            str(child_key): _redact_descriptor_value(str(child_key), child_value)
-            for child_key, child_value in sorted(value.items())
-        }
-    if isinstance(value, list):
-        return [_redact_descriptor_value(key, child) for child in value]
-    if isinstance(value, tuple):
-        return tuple(_redact_descriptor_value(key, child) for child in value)
-    return value
-
-
-def _redact_environment_bindings(value: object) -> object:
-    if not isinstance(value, (list, tuple)):
-        return _REDACTED
-    redacted: list[object] = []
-    for binding in value:
-        if not isinstance(binding, Mapping):
-            redacted.append(_REDACTED)
-            continue
-        redacted.append(
-            {
-                str(child_key): (
-                    _REDACTED
-                    if str(child_key) in {"value", "reference", "reference_id"}
-                    else _redact_descriptor_value(str(child_key), child_value)
-                )
-                for child_key, child_value in sorted(binding.items())
-            }
-        )
-    return redacted
-
-
-def _looks_sensitive_key(key: str) -> bool:
-    normalized = key.lower().replace("-", "_")
-    return (
-        normalized in _ADDRESS_KEYS
-        or ("." not in normalized and normalized.endswith("_url"))
-        or any(marker in normalized for marker in _SECRET_MARKERS)
-    )
