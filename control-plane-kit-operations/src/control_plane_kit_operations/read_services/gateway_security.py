@@ -59,7 +59,7 @@ class _GatewaySecurityReadProjection:
         except KeyError:
             missing = True
             attempt = None
-        if missing or getattr(attempt, "workspace_id", None) != workspace_id:
+        if missing or attempt.workspace_id != workspace_id:
             raise ReadModelError(f"missing gateway probe {probe_id!r}")
         return FocusedDetailReadModel(
             workspace_id=workspace_id,
