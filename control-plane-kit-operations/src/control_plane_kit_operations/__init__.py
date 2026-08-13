@@ -78,6 +78,14 @@ from .desired_realized_projections import (
     DesiredRealizedProjectionPublicationResult,
     PublishDesiredRealizedProjection,
 )
+from .deployment_transitions import (
+    Deploy,
+    DeploymentTransition,
+    InitialDeployment,
+    NoOpDeployment,
+    TeardownDeployment,
+    UpdateDeployment,
+)
 from .delegation_key_generation import (
     AdmitGeneratedDelegationSigningKey,
     AdmittedGeneratedDelegationSigningKey,
@@ -511,6 +519,12 @@ __all__ = [
     "read_collection_spec",
     "read_cursor_from_mapping",
     "DeploymentProgramStage",
+    "Deploy",
+    "DeploymentTransition",
+    "InitialDeployment",
+    "NoOpDeployment",
+    "TeardownDeployment",
+    "UpdateDeployment",
     "ActivityEventRecord",
     "ActivityPlanRecord",
     "ActivityPlanStatus",
