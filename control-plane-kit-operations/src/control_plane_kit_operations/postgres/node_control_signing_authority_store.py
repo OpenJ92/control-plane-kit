@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from control_plane_kit_core.secrets import (
@@ -13,6 +12,11 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_operations.node_control_attempts import (
     NodeControlIntendedAttempt,
+)
+from control_plane_kit_operations.node_control_signing_authority import (
+    _LockedSigningFamily,
+    _LockedSigningTruth,
+    _NodeControlSigningAuthorityStoreError,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
@@ -26,23 +30,6 @@ from control_plane_kit_operations.secret_providers import (
     RegisteredSecretReferenceStatus,
     SecretProviderKind,
 )
-
-
-class _NodeControlSigningAuthorityStoreError(ValueError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class _LockedSigningFamily:
-    authorization: AuthorizedSecretUse
-    reference: RegisteredSecretReference
-    provider: RegisteredSecretProvider
-
-
-@dataclass(frozen=True, slots=True)
-class _LockedSigningTruth:
-    transit: _LockedSigningFamily
-    workload: _LockedSigningFamily
 
 
 class _NodeControlSigningAuthorityStore:

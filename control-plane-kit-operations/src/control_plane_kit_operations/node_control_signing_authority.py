@@ -37,11 +37,10 @@ from control_plane_kit_operations.node_control_intents import (
     DeferredGatewayNodeControlTransitSigningRequest,
     DeferredWorkloadNodeControlSigningRequest,
 )
-from control_plane_kit_operations.postgres.node_control_signing_authority_store import (
-    _LockedSigningFamily,
-    _NodeControlSigningAuthorityStoreError,
-)
 from control_plane_kit_operations.secret_providers import (
+    AuthorizedSecretUse,
+    RegisteredSecretProvider,
+    RegisteredSecretReference,
     SecretProviderRegistrationError,
     _validate_reference_admission,
     secret_resolution_grant_for,
@@ -54,6 +53,23 @@ class NodeControlSigningAuthorityError(RuntimeError):
 
 class NodeControlSigningAuthorityUnavailable(NodeControlSigningAuthorityError):
     """Raised when retained signing authority is absent or no longer current."""
+
+
+class _NodeControlSigningAuthorityStoreError(ValueError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class _LockedSigningFamily:
+    authorization: AuthorizedSecretUse
+    reference: RegisteredSecretReference
+    provider: RegisteredSecretProvider
+
+
+@dataclass(frozen=True, slots=True)
+class _LockedSigningTruth:
+    transit: _LockedSigningFamily
+    workload: _LockedSigningFamily
 
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
