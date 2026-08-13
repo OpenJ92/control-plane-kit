@@ -142,4 +142,3 @@ def _observation_descriptor(projected: ProjectedObservation) -> dict[str, object
         ),
         "payload": _redact_descriptor_value("payload", record.evidence.descriptor()),
     }
-
