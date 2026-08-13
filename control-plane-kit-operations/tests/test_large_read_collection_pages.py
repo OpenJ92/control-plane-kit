@@ -16,6 +16,18 @@ from tests.large_read_history_fixture import (
 )
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.public_ingress import IngressAuthorityReference
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDelivery,
+    RuntimeAuthorityAccessDeliveryKind,
+    RuntimeAuthorityDeliverySecretReference,
+    RuntimeAuthorityReference,
+)
+from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_operations.ingress_authorities import (
+    CloudflareZoneIngressAuthority,
+)
 from control_plane_kit_operations.postgres import PostgresStoreBundle, install_schema
 from control_plane_kit_operations.read_pages import (
     DelegationKeyReadCursor,
@@ -30,12 +42,16 @@ from control_plane_kit_operations.read_pages import (
     TemporalReadCursor,
     WorkspaceReadScope,
 )
+from control_plane_kit_operations.runtime_authorities import (
+    RemoteDockerTlsAuthority,
+)
 
 
 _COUNT = 201
 _LIMIT = 100
 _INSTANT = datetime(2026, 8, 12, 12, tzinfo=timezone.utc)
 _CURSOR_INSTANT = "2026-08-12T12:00:00.000000Z"
+_REPLACEMENT_INSTANT = "2026-08-12T12:00:01.000000Z"
 _EPOCH = 1_786_534_400
 
 
@@ -529,111 +545,165 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             )
             self.assertEqual(observation_fresh.items[0].subject_id, "subject-0000")
 
-            authority_cases = (
-                (
+            runtime_workspace = handles.runtime_authorities_workspace_id
+            runtime_scope = WorkspaceReadScope(runtime_workspace)
+            runtime_ref = RuntimeAuthorityReference("runtime-authority-0050")
+            runtime_first = stores.runtime_authorities.active_page(
+                ReadPageRequest(
                     ReadCollection.RUNTIME_AUTHORITIES,
-                    handles.runtime_authorities_workspace_id,
-                    stores.runtime_authorities.active_page,
-                    "cpk_runtime_authorities",
-                    "registration_id",
-                    "runtime-registration-replacement",
-                    "runtime-authority-0050",
-                ),
-                (
-                    ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
-                    handles.runtime_deliveries_workspace_id,
-                    stores.runtime_authority_deliveries.active_page,
-                    "cpk_runtime_authority_deliveries",
-                    "delivery_id",
-                    "runtime-delivery-replacement",
-                    "runtime-delivery-0050",
-                ),
-                (
-                    ReadCollection.INGRESS_AUTHORITIES,
-                    handles.ingress_authorities_workspace_id,
-                    stores.ingress_authorities.active_page,
-                    "cpk_ingress_authorities",
-                    "registration_id",
-                    "ingress-registration-replacement",
-                    "ingress-authority-0050",
-                ),
+                    runtime_scope,
+                    _LIMIT,
+                )
             )
-            for (
-                collection,
-                workspace_id,
-                fetch,
-                table,
-                key_column,
-                replacement_id,
-                authority_ref,
-            ) in authority_cases:
-                with self.subTest(collection=collection.value):
-                    authority_scope = WorkspaceReadScope(workspace_id)
-                    authority_first = fetch(
-                        ReadPageRequest(collection, authority_scope, _LIMIT)
-                    )
-                    connection.execute(
-                        f"UPDATE {table} SET status = 'revoked' "
-                        "WHERE workspace_id = %s AND authority_ref = %s "
-                        "AND status = 'active'",
-                        (workspace_id, authority_ref),
-                    )
-                    columns = (
-                        "registration_id, workspace_id, authority_ref, runtime_kind, "
-                        "authority_kind, authority, credential_references, admitted_by, "
-                        "admitted_at, status, metadata"
-                        if table == "cpk_runtime_authorities"
-                        else (
-                            "delivery_id, workspace_id, authority_ref, delivery_kind, "
-                            "delivery, secret_references, admitted_by, admitted_at, "
-                            "status, metadata"
-                            if table == "cpk_runtime_authority_deliveries"
-                            else "registration_id, workspace_id, authority_ref, "
-                            "provider_kind, authority, credential_references, "
-                            "allowed_hostname_pattern, admitted_by, admitted_at, "
-                            "status, metadata"
-                        )
-                    )
-                    connection.execute(
-                        f"INSERT INTO {table} ({columns}) "
-                        f"SELECT %s, {', '.join(columns.split(', ')[1:-2])}, "
-                        "'active', metadata "
-                        f"FROM {table} WHERE workspace_id = %s "
-                        f"AND authority_ref = %s AND {key_column} <> %s "
-                        "ORDER BY admitted_at DESC LIMIT 1",
-                        (
-                            replacement_id,
-                            workspace_id,
-                            authority_ref,
-                            replacement_id,
-                        ),
-                    )
-                    authority_continued = fetch(
-                        ReadPageRequest(
-                            collection,
-                            authority_scope,
-                            _LIMIT,
-                            authority_first.next_cursor,
-                        )
-                    )
-                    self.assertNotIn(
-                        authority_ref,
-                        [item.authority_ref.reference_id for item in authority_continued.items],
-                    )
-                    authority_fresh = fetch(
-                        ReadPageRequest(collection, authority_scope, _LIMIT)
-                    )
-                    replacement = next(
-                        item
-                        for item in authority_fresh.items
-                        if item.authority_ref.reference_id == authority_ref
-                    )
-                    stored_identity = getattr(
-                        replacement,
-                        "registration_id",
-                        getattr(replacement, "delivery_id", None),
-                    )
-                    self.assertEqual(stored_identity, replacement_id)
+            stores.runtime_authorities.revoke(runtime_workspace, runtime_ref)
+            runtime_replacement = stores.runtime_authorities.register(
+                workspace_id=runtime_workspace,
+                authority_ref=runtime_ref,
+                runtime_kind=RuntimeKind.DOCKER,
+                authority=self._remote_runtime_authority("runtime-authority"),
+                admitted_by="operator",
+                admitted_at=_REPLACEMENT_INSTANT,
+            )
+            runtime_continued = stores.runtime_authorities.active_page(
+                ReadPageRequest(
+                    ReadCollection.RUNTIME_AUTHORITIES,
+                    runtime_scope,
+                    _LIMIT,
+                    runtime_first.next_cursor,
+                )
+            )
+            self.assertNotIn(
+                runtime_ref.reference_id,
+                [item.authority_ref.reference_id for item in runtime_continued.items],
+            )
+            runtime_fresh = stores.runtime_authorities.active_page(
+                ReadPageRequest(
+                    ReadCollection.RUNTIME_AUTHORITIES,
+                    runtime_scope,
+                    _LIMIT,
+                )
+            )
+            self.assertEqual(
+                next(
+                    item for item in runtime_fresh.items
+                    if item.authority_ref == runtime_ref
+                ).registration_id,
+                runtime_replacement.registration_id,
+            )
+
+            delivery_workspace = handles.runtime_deliveries_workspace_id
+            delivery_scope = WorkspaceReadScope(delivery_workspace)
+            delivery_ref = RuntimeAuthorityReference("runtime-delivery-0050")
+            delivery_first = stores.runtime_authority_deliveries.active_page(
+                ReadPageRequest(
+                    ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                    delivery_scope,
+                    _LIMIT,
+                )
+            )
+            stores.runtime_authorities.register(
+                workspace_id=delivery_workspace,
+                authority_ref=delivery_ref,
+                runtime_kind=RuntimeKind.DOCKER,
+                authority=self._remote_runtime_authority("runtime-delivery"),
+                admitted_by="operator",
+                admitted_at=_REPLACEMENT_INSTANT,
+            )
+            stores.runtime_authority_deliveries.revoke(
+                delivery_workspace,
+                delivery_ref,
+            )
+            delivery_replacement = stores.runtime_authority_deliveries.register(
+                workspace_id=delivery_workspace,
+                delivery=self._remote_runtime_delivery(delivery_ref),
+                admitted_by="operator",
+                admitted_at=_REPLACEMENT_INSTANT,
+            )
+            delivery_continued = stores.runtime_authority_deliveries.active_page(
+                ReadPageRequest(
+                    ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                    delivery_scope,
+                    _LIMIT,
+                    delivery_first.next_cursor,
+                )
+            )
+            self.assertNotIn(
+                delivery_ref.reference_id,
+                [item.authority_ref.reference_id for item in delivery_continued.items],
+            )
+            delivery_fresh = stores.runtime_authority_deliveries.active_page(
+                ReadPageRequest(
+                    ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                    delivery_scope,
+                    _LIMIT,
+                )
+            )
+            self.assertEqual(
+                next(
+                    item for item in delivery_fresh.items
+                    if item.authority_ref == delivery_ref
+                ).delivery_id,
+                delivery_replacement.delivery_id,
+            )
+
+            ingress_workspace = handles.ingress_authorities_workspace_id
+            ingress_scope = WorkspaceReadScope(ingress_workspace)
+            ingress_ref = IngressAuthorityReference("ingress-authority-0050")
+            ingress_first = stores.ingress_authorities.active_page(
+                ReadPageRequest(
+                    ReadCollection.INGRESS_AUTHORITIES,
+                    ingress_scope,
+                    _LIMIT,
+                )
+            )
+            stores.ingress_authorities.revoke(ingress_workspace, ingress_ref)
+            ingress_replacement = stores.ingress_authorities.register(
+                workspace_id=ingress_workspace,
+                authority_ref=ingress_ref,
+                authority=CloudflareZoneIngressAuthority(
+                    account_id="synthetic-replacement-account",
+                    zone_id="synthetic-replacement-zone",
+                    zone_name="invalid.test",
+                    api_token_ref=SecretReference(
+                        "secret://synthetic/cloudflare/replacement-token"
+                    ),
+                    allowed_hostname_pattern="replacement-*.invalid.test",
+                    generated_secret_provider_registration_id=(
+                        "synthetic-replacement-provider"
+                    ),
+                    generated_secret_reference_prefix=SecretReference(
+                        "secret://synthetic/replacement-ingress"
+                    ),
+                ),
+                admitted_by="operator",
+                admitted_at=_REPLACEMENT_INSTANT,
+            )
+            ingress_continued = stores.ingress_authorities.active_page(
+                ReadPageRequest(
+                    ReadCollection.INGRESS_AUTHORITIES,
+                    ingress_scope,
+                    _LIMIT,
+                    ingress_first.next_cursor,
+                )
+            )
+            self.assertNotIn(
+                ingress_ref.reference_id,
+                [item.authority_ref.reference_id for item in ingress_continued.items],
+            )
+            ingress_fresh = stores.ingress_authorities.active_page(
+                ReadPageRequest(
+                    ReadCollection.INGRESS_AUTHORITIES,
+                    ingress_scope,
+                    _LIMIT,
+                )
+            )
+            self.assertEqual(
+                next(
+                    item for item in ingress_fresh.items
+                    if item.authority_ref == ingress_ref
+                ).registration_id,
+                ingress_replacement.registration_id,
+            )
 
             provider_scope = WorkspaceReadScope(handles.secret_providers_workspace_id)
             provider_first = stores.secret_providers.active_page(
@@ -873,6 +943,46 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 ReadPageRequest(ReadCollection.GATEWAY_PROBES, scope, _LIMIT)
             )
             self.assertEqual(fresh.items[0].probe_id, "probe-new-head")
+
+    @staticmethod
+    def _remote_runtime_authority(label: str) -> RemoteDockerTlsAuthority:
+        return RemoteDockerTlsAuthority(
+            endpoint=f"tcp://{label}.invalid:2376",
+            ca_certificate=SecretReference(
+                f"secret://synthetic/{label}/ca-certificate"
+            ),
+            client_certificate=SecretReference(
+                f"secret://synthetic/{label}/client-certificate"
+            ),
+            client_key=SecretReference(
+                f"secret://synthetic/{label}/client-key"
+            ),
+        )
+
+    @staticmethod
+    def _remote_runtime_delivery(
+        authority_ref: RuntimeAuthorityReference,
+    ) -> RuntimeAuthorityAccessDelivery:
+        return RuntimeAuthorityAccessDelivery(
+            authority_ref=authority_ref,
+            delivery_kind=(
+                RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES
+            ),
+            secret_references=(
+                RuntimeAuthorityDeliverySecretReference(
+                    "ca-cert",
+                    SecretReference("secret://synthetic/runtime-delivery/ca"),
+                ),
+                RuntimeAuthorityDeliverySecretReference(
+                    "client-cert",
+                    SecretReference("secret://synthetic/runtime-delivery/cert"),
+                ),
+                RuntimeAuthorityDeliverySecretReference(
+                    "client-key",
+                    SecretReference("secret://synthetic/runtime-delivery/key"),
+                ),
+            ),
+        )
 
     @staticmethod
     def _insert_run(connection, handles, run_id: str) -> None:
