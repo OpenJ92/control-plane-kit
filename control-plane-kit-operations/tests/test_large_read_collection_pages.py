@@ -643,7 +643,7 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 """
                 UPDATE cpk_secret_providers
                 SET status = 'revoked', revoked_by = 'operator', revoked_at = %s
-                WHERE workspace_id = %s AND provider_id = 'provider-0150'
+                WHERE workspace_id = %s AND provider_id = 'provider-0050'
                 """,
                 (_INSTANT, handles.secret_providers_workspace_id),
             )
@@ -656,7 +656,7 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 )
             )
             self.assertNotIn(
-                "provider-0150",
+                "provider-0050",
                 [item.provider_id.value for item in provider_continued.items],
             )
             connection.execute(
@@ -672,7 +672,7 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                        allowed_reference_prefixes, allowed_intents, admitted_by,
                        admitted_at, 'active', registration_id, metadata
                 FROM cpk_secret_providers
-                WHERE workspace_id = %s AND provider_id = 'provider-0150'
+                WHERE workspace_id = %s AND provider_id = 'provider-0050'
                   AND status = 'revoked'
                 """,
                 (handles.secret_providers_workspace_id,),
@@ -686,7 +686,7 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 )
             )
             self.assertNotIn(
-                "provider-0150",
+                "provider-0050",
                 [item.provider_id.value for item in provider_after_reregister.items],
             )
             provider_fresh = stores.secret_providers.active_page(
@@ -694,7 +694,7 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             )
             provider_replacement = next(
                 item for item in provider_fresh.items
-                if item.provider_id.value == "provider-0150"
+                if item.provider_id.value == "provider-0050"
             )
             self.assertEqual(
                 provider_replacement.registration_id,
