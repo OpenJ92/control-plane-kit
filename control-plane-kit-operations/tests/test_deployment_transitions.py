@@ -175,6 +175,7 @@ class DeploymentTransitionTests(unittest.TestCase):
             (empty, blue, operations.InitialDeployment),
             (blue, green, operations.UpdateDeployment),
             (blue, empty, operations.TeardownDeployment),
+            (empty, empty, operations.NoOpDeployment),
             (blue, blue, operations.NoOpDeployment),
         )
         for current, desired, expected in cases:
@@ -198,6 +199,7 @@ class DeploymentTransitionTests(unittest.TestCase):
             (operations.InitialDeployment, empty, blue),
             (operations.UpdateDeployment, blue, green),
             (operations.TeardownDeployment, blue, empty),
+            (operations.NoOpDeployment, empty, empty),
             (operations.NoOpDeployment, blue, blue),
         )
         forged = GraphDiff("forged-current", "forged-desired", ())
