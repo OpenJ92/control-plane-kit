@@ -16,6 +16,10 @@ from control_plane_kit_core.delegation_keys import (
     DelegationKeyPurpose,
     DelegationPublicKey,
 )
+from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_operations.delegation_signing_keys import (
+    delegation_signing_key_registration_id_for,
+)
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
@@ -55,6 +59,46 @@ class NodeControlSigningAuthorityPostgresTests(
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self._seed_truth()
         self.contract("NodeControlAttemptStore")(self.connection).add(self.attempt())
+
+    @staticmethod
+    def _key_registration_id(
+        purpose: DelegationKeyPurpose,
+        issuer: str,
+        public_key: DelegationPublicKey,
+        private_key_reference: str,
+    ) -> str:
+        return delegation_signing_key_registration_id_for(
+            workspace_id="workspace-a",
+            purpose=purpose,
+            issuer=issuer,
+            public_key=public_key,
+            private_key_reference=SecretReference(private_key_reference),
+        )
+
+    def _retained_key_registration_id(
+        self,
+        purpose: DelegationKeyPurpose,
+    ) -> str:
+        transit = purpose is DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT
+        return self._key_registration_id(
+            purpose,
+            "cpk-server",
+            self.transit_public_key if transit else self.workload_public_key,
+            "secret://workspace-secrets/keys/transit"
+            if transit
+            else "secret://workspace-secrets/keys/workload",
+        )
+
+    def attempt(self, **changes):
+        return replace(
+            super().attempt(**changes),
+            transit_key_registration_id=self._retained_key_registration_id(
+                DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT
+            ),
+            workload_key_registration_id=self._retained_key_registration_id(
+                DelegationKeyPurpose.WORKLOAD_NODE_CONTROL
+            ),
+        )
 
     def _seed_truth(self) -> None:
         self.connection.execute(
@@ -161,19 +205,17 @@ class NodeControlSigningAuthorityPostgresTests(
             )
         keys = (
             (
-                "a",
                 DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
                 self.transit_public_key,
                 "secret://workspace-secrets/keys/transit",
             ),
             (
-                "b",
                 DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
                 self.workload_public_key,
                 "secret://workspace-secrets/keys/workload",
             ),
         )
-        for suffix, purpose, public_key, reference in keys:
+        for purpose, public_key, reference in keys:
             self.connection.execute(
                 """
                 INSERT INTO cpk_delegation_signing_keys
@@ -185,7 +227,12 @@ class NodeControlSigningAuthorityPostgresTests(
                         '2027-01-15T07:00:00Z')
                 """,
                 (
-                    "dkey_" + suffix * 64,
+                    self._key_registration_id(
+                        purpose,
+                        "cpk-server",
+                        public_key,
+                        reference,
+                    ),
                     purpose.value,
                     public_key.key_id,
                     public_key.algorithm.value,
@@ -402,7 +449,11 @@ class NodeControlSigningAuthorityPostgresTests(
                 "UPDATE cpk_delegation_signing_keys SET status='revoked', "
                 "revoked_by='operator-a',revoked_at='2027-01-15T09:00:00Z' "
                 "WHERE registration_id=%s",
-                ("dkey_" + "a" * 64,),
+                (
+                    self._retained_key_registration_id(
+                        DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT
+                    ),
+                ),
             ),
             (
                 "changed-public-material",
@@ -415,21 +466,31 @@ class NodeControlSigningAuthorityPostgresTests(
                         DelegationKeyAlgorithm.ED25519,
                         contract_tests.PUBLIC_KEY_C,
                     ).fingerprint_sha256,
-                    "dkey_" + "a" * 64,
+                    self._retained_key_registration_id(
+                        DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT
+                    ),
                 ),
             ),
             (
                 "wrong-purpose",
                 "UPDATE cpk_delegation_signing_keys SET purpose='gateway-probe' "
                 "WHERE registration_id=%s",
-                ("dkey_" + "a" * 64,),
+                (
+                    self._retained_key_registration_id(
+                        DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT
+                    ),
+                ),
             ),
             (
                 "workload-revoked",
                 "UPDATE cpk_delegation_signing_keys SET status='revoked', "
                 "revoked_by='operator-a',revoked_at='2027-01-15T09:00:00Z' "
                 "WHERE registration_id=%s",
-                ("dkey_" + "b" * 64,),
+                (
+                    self._retained_key_registration_id(
+                        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL
+                    ),
+                ),
             ),
             (
                 "workload-changed-public-material",
@@ -442,7 +503,9 @@ class NodeControlSigningAuthorityPostgresTests(
                         DelegationKeyAlgorithm.ED25519,
                         contract_tests.PUBLIC_KEY_C,
                     ).fingerprint_sha256,
-                    "dkey_" + "b" * 64,
+                    self._retained_key_registration_id(
+                        DelegationKeyPurpose.WORKLOAD_NODE_CONTROL
+                    ),
                 ),
             ),
         )
@@ -469,7 +532,12 @@ class NodeControlSigningAuthorityPostgresTests(
                     '2027-01-15T07:00:00Z')
             """,
             (
-                "dkey_" + "f" * 64,
+                self._key_registration_id(
+                    DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+                    "other-server",
+                    extra_key,
+                    "secret://workspace-secrets/keys/transit",
+                ),
                 extra_key.key_id,
                 extra_key.public_key_pem,
                 extra_key.fingerprint_sha256,
@@ -495,7 +563,12 @@ class NodeControlSigningAuthorityPostgresTests(
                     '2027-01-15T07:00:00Z')
             """,
             (
-                "dkey_" + "9" * 64,
+                self._key_registration_id(
+                    DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+                    "other-server",
+                    extra_workload,
+                    "secret://workspace-secrets/keys/workload",
+                ),
                 extra_workload.key_id,
                 extra_workload.public_key_pem,
                 extra_workload.fingerprint_sha256,
