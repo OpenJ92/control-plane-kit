@@ -14,6 +14,7 @@ _EXPECTED_MODULES = {
     "_redaction",
     "authority_secrets",
     "errors",
+    "gateway_security",
     "instance",
     "models",
     "observations",
