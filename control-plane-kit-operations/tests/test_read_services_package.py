@@ -12,6 +12,7 @@ import control_plane_kit_operations.read_services as read_services
 _EXPECTED_MODULES = {
     "__init__",
     "_redaction",
+    "authority_secrets",
     "errors",
     "instance",
     "models",
