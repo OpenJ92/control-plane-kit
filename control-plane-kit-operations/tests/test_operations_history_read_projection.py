@@ -270,7 +270,7 @@ class OperationsHistoryReadProjectionStructureTests(unittest.TestCase):
             {"__init__"} | _FACADE_METHODS | _MOVED_HELPERS,
         )
         self.assertTrue(_MOVED_HELPERS.isdisjoint(instance_definitions))
-        self.assertIn("_mapping", instance_definitions)
+        self.assertNotIn("_mapping", instance_definitions)
         self.assertNotIn("_mapping", owner_definitions)
 
     def test_facade_is_exact_one_step_delegate(self) -> None:

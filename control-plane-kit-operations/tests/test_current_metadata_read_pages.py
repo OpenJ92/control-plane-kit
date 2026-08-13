@@ -83,6 +83,9 @@ from control_plane_kit_operations.read_pages import (
     WorkspaceReadScope,
 )
 from control_plane_kit_operations.read_services import InstanceReadService
+from control_plane_kit_operations.read_services.authority_secrets import (
+    _AuthoritySecretReadProjection,
+)
 from control_plane_kit_operations.read_services.observations import (
     _ObservationReadProjection,
 )
@@ -306,15 +309,19 @@ class CurrentMetadataPageContractTests(unittest.TestCase):
             "list_active",
             "list_workspace",
         }
+        owners = {
+            "observed_state": _ObservationReadProjection,
+            "runtime_authorities": _AuthoritySecretReadProjection,
+            "runtime_authority_deliveries": _AuthoritySecretReadProjection,
+            "ingress_authorities": _AuthoritySecretReadProjection,
+            "secret_providers": _AuthoritySecretReadProjection,
+            "secret_references": _AuthoritySecretReadProjection,
+        }
         for method_name, selector in expected.items():
             with self.subTest(method=method_name):
                 method = getattr(InstanceReadService, method_name)
                 self.assertEqual(tuple(signature(method).parameters), ("self", "request"))
-                owner = (
-                    _ObservationReadProjection
-                    if method_name == "observed_state"
-                    else InstanceReadService
-                )
+                owner = owners.get(method_name, InstanceReadService)
                 source = getsource(getattr(owner, method_name))
                 self.assertIn(f".{selector}(", source)
                 self.assertTrue(all(f".{name}(" not in source for name in forbidden))
