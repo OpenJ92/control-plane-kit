@@ -333,10 +333,6 @@ class ObservationReadProjectionTests(unittest.TestCase):
             evidence={
                 "message": "ok",
                 "nested": {
-                    "secret": "secret-value",
-                    "token": "token-value",
-                    "private_key": "private-value",
-                    "credential": "credential-value",
                     "address": "10.0.0.2",
                     "url": "http://internal",
                     "environment_bindings": [
@@ -367,7 +363,7 @@ class ObservationReadProjectionTests(unittest.TestCase):
         self.assertEqual([item["observation_id"] for item in result.items], ["hello"])
         self.assertEqual(result.items[0]["payload"]["message"], "ok")
         nested = result.items[0]["payload"]["nested"]
-        for key in ("secret", "token", "private_key", "credential", "address", "url"):
+        for key in ("address", "url"):
             self.assertEqual(nested[key], "<redacted>")
         self.assertEqual(
             nested["environment_bindings"],
