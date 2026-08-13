@@ -182,6 +182,22 @@ _STORE_PARAMETERS = (
 )
 
 
+def _absolute_module_imports(tree: ast.AST) -> set[str]:
+    imported = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+            continue
+        imported.add(node.module)
+        if node.module == "control_plane_kit_operations":
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+    return imported
+
+
 class AuthoritySecretReadProjectionTests(unittest.TestCase):
     def setUp(self) -> None:
         try:
@@ -797,20 +813,7 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
         }
         self.assertEqual(_local_module_imports(owner, forbidden), set())
 
-        imported_modules = {
-            alias.name
-            for node in ast.walk(owner)
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        }
-        for node in ast.walk(owner):
-            if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
-                continue
-            imported_modules.add(node.module)
-            if node.module == "control_plane_kit_operations":
-                imported_modules.update(
-                    f"{node.module}.{alias.name}" for alias in node.names
-                )
+        imported_modules = _absolute_module_imports(owner)
         forbidden_external_prefixes = (
             "control_plane_kit_operations.postgres",
             "control_plane_kit_operations.cpk_server",
@@ -827,21 +830,11 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
             "from control_plane_kit_operations import cpk_server",
         )
         for source in alias_forms:
-            tree = ast.parse(source)
-            imported = set()
-            for node in ast.walk(tree):
-                if (
-                    isinstance(node, ast.ImportFrom)
-                    and node.module == "control_plane_kit_operations"
-                ):
-                    imported.update(
-                        f"{node.module}.{alias.name}" for alias in node.names
-                    )
             with self.subTest(source=source):
                 self.assertTrue(
                     any(
                         candidate.startswith(forbidden_external_prefixes)
-                        for candidate in imported
+                        for candidate in _absolute_module_imports(ast.parse(source))
                     )
                 )
 
