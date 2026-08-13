@@ -311,7 +311,12 @@ def _seed_runs(connection: object, handles: LargeReadHistoryHandles, count: int)
         SELECT 'runs-decision-' || lpad(value::text, 4, '0'),
                'runs-approval-' || lpad(value::text, 4, '0'),
                'reviewer', 'approved', 'plan:approve', %s::timestamptz
-        FROM generate_series(1, %s) AS value;
+        FROM generate_series(1, %s) AS value
+        """,
+        (_INSTANT, count),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_execution_requests
           (request_id, workspace_id, session_id, plan_id, status, requested_by,
            requested_at, approval_request_id, approval_decision_id,
@@ -322,7 +327,18 @@ def _seed_runs(connection: object, handles: LargeReadHistoryHandles, count: int)
                'runs-decision-' || lpad(value::text, 4, '0'),
                'runs-execution-' || lpad(value::text, 4, '0'),
                'runs-fingerprint-' || lpad(value::text, 4, '0')
-        FROM generate_series(1, %s) AS value;
+        FROM generate_series(1, %s) AS value
+        """,
+        (
+            handles.runs_workspace_id,
+            session_id,
+            handles.runs_plan_id,
+            _INSTANT,
+            count,
+        ),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_activity_runs
           (run_id, plan_id, request_id, attempt, status, created_at,
            started_at, settled_at, metadata)
@@ -332,20 +348,7 @@ def _seed_runs(connection: object, handles: LargeReadHistoryHandles, count: int)
                %s::timestamptz, '{}'::jsonb
         FROM generate_series(1, %s) AS value
         """,
-        (
-            _INSTANT,
-            count,
-            handles.runs_workspace_id,
-            session_id,
-            handles.runs_plan_id,
-            _INSTANT,
-            count,
-            handles.runs_plan_id,
-            _INSTANT,
-            _INSTANT,
-            _INSTANT,
-            count,
-        ),
+        (handles.runs_plan_id, _INSTANT, _INSTANT, _INSTANT, count),
     )
 
 
@@ -371,40 +374,47 @@ def _seed_events(connection: object, handles: LargeReadHistoryHandles, count: in
         INSERT INTO cpk_approval_decisions
           (decision_id, request_id, actor_id, decision, scope, decided_at)
         VALUES ('events-decision', 'events-approval-0001', 'reviewer',
-                'approved', 'plan:approve', %s);
+                'approved', 'plan:approve', %s)
+        """,
+        (_INSTANT,),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_execution_requests
           (request_id, workspace_id, session_id, plan_id, status, requested_by,
            requested_at, approval_request_id, approval_decision_id,
            idempotency_key, intent_fingerprint)
         VALUES ('events-execution', %s, %s, %s, 'cancelled', 'operator', %s,
                 'events-approval-0001', 'events-decision', 'events-execution',
-                'events-fingerprint');
+                'events-fingerprint')
+        """,
+        (handles.events_workspace_id, session_id, plan_id, _INSTANT),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_activity_runs
           (run_id, plan_id, request_id, attempt, status, created_at,
            started_at, settled_at, metadata)
         VALUES (%s, %s, 'events-execution', 1, 'succeeded', %s, %s, %s,
-                '{}'::jsonb);
+                '{}'::jsonb)
+        """,
+        (
+            handles.events_run_id,
+            plan_id,
+            _INSTANT,
+            _INSTANT,
+            _INSTANT,
+        ),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_activity_events
           (event_id, run_id, ordinal, event_type, occurred_at, payload)
         SELECT 'event-' || lpad(value::text, 4, '0'), %s, value,
                'run_started', %s::timestamptz, '{}'::jsonb
         FROM generate_series(1, %s) AS value
         """,
-        (
-            _INSTANT,
-            handles.events_workspace_id,
-            session_id,
-            plan_id,
-            _INSTANT,
-            handles.events_run_id,
-            plan_id,
-            _INSTANT,
-            _INSTANT,
-            _INSTANT,
-            handles.events_run_id,
-            _INSTANT,
-            count,
-        ),
+        (handles.events_run_id, _INSTANT, count),
     )
 
 
@@ -421,7 +431,12 @@ def _seed_current_metadata(
         SELECT 'observation-' || lpad(value::text, 4, '0'), %s,
                'subject-' || lpad(value::text, 4, '0'), 'healthy',
                %s::timestamptz, '{}'::jsonb, 'fresh'
-        FROM generate_series(1, %s) AS value;
+        FROM generate_series(1, %s) AS value
+        """,
+        (handles.observations_workspace_id, _INSTANT, count),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_runtime_authorities
           (registration_id, workspace_id, authority_ref, runtime_kind,
            authority_kind, authority, admitted_by, admitted_at, status, metadata)
@@ -430,7 +445,12 @@ def _seed_current_metadata(
                'local-docker-socket',
                jsonb_build_object('kind', 'local-docker-socket'),
                'operator', %s::timestamptz, 'active', '{}'::jsonb
-        FROM generate_series(1, %s) AS value;
+        FROM generate_series(1, %s) AS value
+        """,
+        (handles.runtime_authorities_workspace_id, _INSTANT, count),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_runtime_authority_deliveries
           (delivery_id, workspace_id, authority_ref, delivery_kind, delivery,
            secret_references, admitted_by, admitted_at, status, metadata)
@@ -445,7 +465,12 @@ def _seed_current_metadata(
                  'secret_references', '[]'::jsonb
                ),
                '[]'::jsonb, 'operator', %s::timestamptz, 'active', '{}'::jsonb
-        FROM generate_series(1, %s) AS value;
+        FROM generate_series(1, %s) AS value
+        """,
+        (handles.runtime_deliveries_workspace_id, _INSTANT, count),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_ingress_authorities
           (registration_id, workspace_id, authority_ref, provider_kind,
            authority, credential_references, allowed_hostname_pattern,
@@ -464,7 +489,12 @@ def _seed_current_metadata(
                  'api_token_ref', 'secret://synthetic/cloudflare/token'
                ),
                '*.invalid.test', 'operator', %s::timestamptz, 'active', '{}'::jsonb
-        FROM generate_series(1, %s) AS value;
+        FROM generate_series(1, %s) AS value
+        """,
+        (handles.ingress_authorities_workspace_id, _INSTANT, count),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_secret_providers
           (registration_id, workspace_id, provider_id, provider_kind,
            display_name, endpoint_reference, credential_reference,
@@ -480,23 +510,7 @@ def _seed_current_metadata(
                %s::timestamptz, 'active', '{}'::jsonb
         FROM generate_series(1, %s) AS value
         """,
-        (
-            handles.observations_workspace_id,
-            _INSTANT,
-            count,
-            handles.runtime_authorities_workspace_id,
-            _INSTANT,
-            count,
-            handles.runtime_deliveries_workspace_id,
-            _INSTANT,
-            count,
-            handles.ingress_authorities_workspace_id,
-            _INSTANT,
-            count,
-            handles.secret_providers_workspace_id,
-            _INSTANT,
-            count,
-        ),
+        (handles.secret_providers_workspace_id, _INSTANT, count),
     )
     connection.execute(
         """
@@ -511,7 +525,12 @@ def _seed_current_metadata(
                 'secret://synthetic/reference/credential',
                 '["secret://synthetic/reference"]'::jsonb,
                 '["postgres-password"]'::jsonb, 'operator', %s, 'active',
-                '{}'::jsonb);
+                '{}'::jsonb)
+        """,
+        (handles.secret_references_workspace_id, _INSTANT),
+    )
+    connection.execute(
+        """
         INSERT INTO cpk_secret_references
           (registration_id, workspace_id, secret_reference,
            provider_registration_id, allowed_intents, admitted_by, admitted_at,
@@ -522,13 +541,7 @@ def _seed_current_metadata(
                'operator', %s::timestamptz, 'active', '{}'::jsonb
         FROM generate_series(1, %s) AS value
         """,
-        (
-            handles.secret_references_workspace_id,
-            _INSTANT,
-            handles.secret_references_workspace_id,
-            _INSTANT,
-            count,
-        ),
+        (handles.secret_references_workspace_id, _INSTANT, count),
     )
 
 
