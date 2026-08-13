@@ -142,6 +142,11 @@ class ReadServicesPackageTests(unittest.TestCase):
         self.assertEqual(imports, _EXPECTED_FOUNDATION_IMPORTS)
 
         for start in _FOUNDATION_LEAVES:
+            self.assertNotIn(
+                "instance",
+                local_imports[start],
+                f"foundation leaf {start} must not import the service facade",
+            )
             reachable = list(local_imports[start] & _FOUNDATION_LEAVES)
             visited: set[str] = set()
             while reachable:
