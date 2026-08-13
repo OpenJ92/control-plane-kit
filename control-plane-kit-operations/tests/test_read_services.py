@@ -622,7 +622,7 @@ class InstanceReadServiceTests(unittest.TestCase):
 
                     with self.assertRaisesRegex(
                         ReadModelError,
-                        "^control surface graph is invalid$",
+                        "^invalid stored graph descriptor$",
                     ) as raised:
                         self.service().control_surface("workspace-a")
 
