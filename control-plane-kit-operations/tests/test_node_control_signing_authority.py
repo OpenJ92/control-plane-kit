@@ -51,6 +51,47 @@ CCCC
 """
 
 
+def _imports_operations_postgres(tree: ast.AST) -> bool:
+    package = "control_plane_kit_operations"
+    postgres = f"{package}.postgres"
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import) and any(
+            alias.name == postgres or alias.name.startswith(postgres + ".")
+            for alias in node.names
+        ):
+            return True
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module = node.module or ""
+        if node.level == 1 and (
+            module == "postgres"
+            or module.startswith("postgres.")
+            or (
+                not module
+                and any(
+                    alias.name == "postgres"
+                    or alias.name.startswith("postgres.")
+                    for alias in node.names
+                )
+            )
+        ):
+            return True
+        if (
+            module == postgres
+            or module.startswith(postgres + ".")
+            or (
+                module == package
+                and any(
+                    alias.name == "postgres"
+                    or alias.name.startswith("postgres.")
+                    for alias in node.names
+                )
+            )
+        ):
+            return True
+    return False
+
+
 class _SigningAuthorityFixture:
     def contract(self, name: str):
         value = getattr(operations, name, None)
@@ -726,6 +767,21 @@ class NodeControlSigningAuthorityContractTests(
                 for name in imports
                 if any(name == root or name.startswith(root + ".") for root in forbidden_roots)
             }
+        )
+        postgres_imports = (
+            "import control_plane_kit_operations.postgres\n",
+            "import control_plane_kit_operations.postgres.stores as stores\n",
+            "from control_plane_kit_operations.postgres import stores\n",
+            "from control_plane_kit_operations import postgres\n",
+            "from .postgres import stores\n",
+            "from . import postgres\n",
+        )
+        for candidate in postgres_imports:
+            with self.subTest(postgres_import=candidate):
+                self.assertTrue(_imports_operations_postgres(ast.parse(candidate)))
+        self.assertFalse(
+            _imports_operations_postgres(tree),
+            "public signing authority service must not import a Postgres adapter",
         )
         source = module_path.read_text(encoding="utf-8")
         for forbidden in ("sign(", "resolve(", "fetchall("):
