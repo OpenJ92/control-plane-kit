@@ -26,6 +26,8 @@ from control_plane_kit_operations.records import (
     WorkspaceRecord,
 )
 
+from test_read_services_package import _local_module_imports
+
 
 _FACADE_METHODS = {
     "activity_sessions",
@@ -150,12 +152,21 @@ class _RejectedCodec:
         raise AssertionError("rejected graph must not be encoded")
 
 
-class _InvalidDecodedTypeCodec:
+class _ValidationFailureGraph:
     def __init__(self, candidate: str) -> None:
         self.candidate = candidate
 
+    @property
+    def runtimes(self):
+        raise TypeError(f"invalid graph during validation {self.candidate}")
+
+
+class _ValidationFailureCodec:
+    def __init__(self, candidate: str) -> None:
+        self.graph = _ValidationFailureGraph(candidate)
+
     def decode(self, _descriptor):
-        raise TypeError(f"invalid decoded value {self.candidate}")
+        return self.graph
 
     def encode(self, _graph):
         raise AssertionError("invalid graph must not be encoded")
@@ -236,7 +247,7 @@ class OperationsHistoryReadProjectionStructureTests(unittest.TestCase):
 
     def test_owner_has_exact_method_and_helper_family(self) -> None:
         owner, instance = self._trees()
-        _owner_functions, owner_methods = self._definitions(owner)
+        owner_functions, owner_methods = self._definitions(owner)
         owner_definitions = {
             node.name
             for node in ast.walk(owner)
@@ -248,8 +259,16 @@ class OperationsHistoryReadProjectionStructureTests(unittest.TestCase):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
 
-        self.assertTrue(_FACADE_METHODS <= owner_methods)
-        self.assertTrue(_MOVED_HELPERS <= owner_definitions)
+        class_helpers = {"_activity_history", "_execution", "_recovery_for_plan"}
+        self.assertEqual(
+            owner_methods,
+            {"__init__"} | _FACADE_METHODS | class_helpers,
+        )
+        self.assertEqual(owner_functions, _MOVED_HELPERS - class_helpers)
+        self.assertEqual(
+            owner_definitions,
+            {"__init__"} | _FACADE_METHODS | _MOVED_HELPERS,
+        )
         self.assertTrue(_MOVED_HELPERS.isdisjoint(instance_definitions))
         self.assertIn("_mapping", instance_definitions)
         self.assertNotIn("_mapping", owner_definitions)
@@ -316,13 +335,26 @@ class OperationsHistoryReadProjectionStructureTests(unittest.TestCase):
             }.isdisjoint(assigned)
         )
 
-        imports = {
-            node.module
-            for node in ast.walk(owner)
-            if isinstance(node, ast.ImportFrom) and node.module
-        }
-        self.assertNotIn("instance", imports)
-        self.assertNotIn("workspace_graph", imports)
+        self.assertEqual(
+            _local_module_imports(owner, {"instance", "workspace_graph"}),
+            set(),
+        )
+
+    def test_forbidden_owner_edges_cover_every_supported_import_form(self) -> None:
+        sources = (
+            "from .workspace_graph import WorkspaceSummary",
+            "from . import workspace_graph",
+            "from control_plane_kit_operations.read_services.workspace_graph "
+            "import WorkspaceSummary",
+            "from control_plane_kit_operations.read_services import workspace_graph",
+            "import control_plane_kit_operations.read_services.workspace_graph",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                self.assertEqual(
+                    _local_module_imports(ast.parse(source), {"workspace_graph"}),
+                    {"workspace_graph"},
+                )
 
 
 class OperationsHistoryRecoveryFailureTests(unittest.TestCase):
@@ -382,7 +414,7 @@ class OperationsHistoryRecoveryFailureTests(unittest.TestCase):
                 "validation",
                 "plan recovery graph truth is invalid",
                 {self.base.graph_id: self.base, self.desired.graph_id: self.desired},
-                _InvalidDecodedTypeCodec("validation-hostile-candidate"),
+                _ValidationFailureCodec("validation-hostile-candidate"),
                 "validation-hostile-candidate",
             ),
             (
