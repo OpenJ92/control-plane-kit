@@ -53,6 +53,19 @@ class _DescriptorRecord:
         }
 
 
+class _NonMappingDescriptorRecord:
+    def descriptor(self) -> object:
+        return ["not", "a", "mapping"]
+
+
+class _FailingDescriptorRecord:
+    def __init__(self, failure: BaseException) -> None:
+        self._failure = failure
+
+    def descriptor(self) -> object:
+        raise self._failure
+
+
 def _provider() -> RegisteredSecretProvider:
     return RegisteredSecretProvider(
         registration_id="provider-registration-a",
@@ -415,58 +428,163 @@ class AuthoritySecretReadProjectionTests(unittest.TestCase):
                 if method_name.startswith("secret_"):
                     self.assertNotIn("store-candidate", str(caught.exception))
 
-    def test_configured_malformed_records_keep_family_specific_errors(self) -> None:
+    def test_configured_malformed_records_keep_page_and_detail_errors(self) -> None:
+        runtime_reference = RuntimeAuthorityReference("runtime-a")
+        ingress_reference = IngressAuthorityReference("ingress-a")
+        provider_id = SecretProviderId("workspace-secrets")
         cases = (
             (
                 "runtime_authority_store",
                 "runtime_authorities",
                 ReadCollection.RUNTIME_AUTHORITIES,
+                "runtime_authority_detail",
+                ("workspace-a", runtime_reference),
                 "runtime authority record cannot be projected",
             ),
             (
                 "runtime_authority_delivery_store",
                 "runtime_authority_deliveries",
                 ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                "runtime_authority_delivery_detail",
+                ("workspace-a", runtime_reference),
                 "runtime authority delivery record cannot be projected",
             ),
             (
                 "ingress_authority_store",
                 "ingress_authorities",
                 ReadCollection.INGRESS_AUTHORITIES,
+                "ingress_authority_detail",
+                ("workspace-a", ingress_reference),
                 "ingress authority record cannot be projected",
             ),
             (
                 "secret_provider_store",
                 "secret_providers",
                 ReadCollection.SECRET_PROVIDERS,
+                "secret_provider_detail",
+                ("workspace-a", provider_id),
                 "secret provider record cannot be projected",
             ),
             (
                 "secret_reference_store",
                 "secret_references",
                 ReadCollection.SECRET_REFERENCES,
+                "secret_reference_detail",
+                ("workspace-a", "reference-registration-a"),
                 "secret reference record cannot be projected",
             ),
         )
-        for store_name, method_name, collection, message in cases:
-            with self.subTest(method=method_name):
+        for (
+            store_name,
+            page_method,
+            collection,
+            detail_method,
+            detail_arguments,
+            message,
+        ) in cases:
+            invocations = (
+                (page_method, (_request(collection),)),
+                (detail_method, detail_arguments),
+            )
+            for method_name, arguments in invocations:
+                with self.subTest(method=method_name):
+                    trace: list[object] = []
+                    projection = self._projection(
+                        trace,
+                        **{store_name: _FamilyStore(trace, object())},
+                    )
+
+                    with self.assertRaises(ReadModelError) as caught:
+                        getattr(projection, method_name)(*arguments)
+
+                    self.assertEqual(str(caught.exception), message)
+                    self.assertIsNone(caught.exception.__cause__)
+                    self.assertIsNone(caught.exception.__context__)
+
+    def test_descriptor_based_families_preserve_mapping_and_raw_error_seams(
+        self,
+    ) -> None:
+        runtime_reference = RuntimeAuthorityReference("runtime-a")
+        ingress_reference = IngressAuthorityReference("ingress-a")
+        cases = (
+            (
+                "runtime_authority_store",
+                "runtime_authorities",
+                ReadCollection.RUNTIME_AUTHORITIES,
+                "runtime_authority_detail",
+                ("workspace-a", runtime_reference),
+            ),
+            (
+                "runtime_authority_delivery_store",
+                "runtime_authority_deliveries",
+                ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                "runtime_authority_delivery_detail",
+                ("workspace-a", runtime_reference),
+            ),
+            (
+                "ingress_authority_store",
+                "ingress_authorities",
+                ReadCollection.INGRESS_AUTHORITIES,
+                "ingress_authority_detail",
+                ("workspace-a", ingress_reference),
+            ),
+        )
+        for (
+            store_name,
+            page_method,
+            collection,
+            detail_method,
+            detail_arguments,
+        ) in cases:
+            invocations = (
+                (page_method, (_request(collection),)),
+                (detail_method, detail_arguments),
+            )
+            for method_name, arguments in invocations:
+                with self.subTest(method=method_name, malformed="non-mapping"):
+                    trace: list[object] = []
+                    projection = self._projection(
+                        trace,
+                        **{
+                            store_name: _FamilyStore(
+                                trace,
+                                _NonMappingDescriptorRecord(),
+                            )
+                        },
+                    )
+
+                    with self.assertRaises(ReadModelError) as caught:
+                        getattr(projection, method_name)(*arguments)
+
+                    self.assertEqual(
+                        str(caught.exception),
+                        "expected mapping in graph descriptor",
+                    )
+                    self.assertIsNone(caught.exception.__cause__)
+                    self.assertIsNone(caught.exception.__context__)
+
+        raw_failure = RuntimeError("descriptor-driver-candidate")
+        for method_name, arguments in (
+            ("runtime_authorities", (_request(ReadCollection.RUNTIME_AUTHORITIES),)),
+            (
+                "runtime_authority_detail",
+                ("workspace-a", runtime_reference),
+            ),
+        ):
+            with self.subTest(method=method_name, malformed="raw-failure"):
                 trace: list[object] = []
-                request = _request(collection)
                 projection = self._projection(
                     trace,
-                    **{store_name: _FamilyStore(trace, object())},
+                    runtime_authority_store=_FamilyStore(
+                        trace,
+                        _FailingDescriptorRecord(raw_failure),
+                    ),
                 )
 
-                with self.assertRaises(ReadModelError) as caught:
-                    getattr(projection, method_name)(request)
+                with self.assertRaises(RuntimeError) as caught:
+                    getattr(projection, method_name)(*arguments)
 
-                self.assertEqual(str(caught.exception), message)
-                self.assertIsNone(caught.exception.__cause__)
-                self.assertIsNone(caught.exception.__context__)
-                self.assertEqual(
-                    trace,
-                    [("workspace", "workspace-a"), ("active_page", request)],
-                )
+                self.assertIs(caught.exception, raw_failure)
 
     def test_each_absent_store_keeps_its_exact_independent_error(self) -> None:
         cases = (
@@ -680,15 +798,19 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
         self.assertEqual(_local_module_imports(owner, forbidden), set())
 
         imported_modules = {
-            node.module or ""
-            for node in ast.walk(owner)
-            if isinstance(node, ast.ImportFrom) and not node.level
-        } | {
             alias.name
             for node in ast.walk(owner)
             if isinstance(node, ast.Import)
             for alias in node.names
         }
+        for node in ast.walk(owner):
+            if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+                continue
+            imported_modules.add(node.module)
+            if node.module == "control_plane_kit_operations":
+                imported_modules.update(
+                    f"{node.module}.{alias.name}" for alias in node.names
+                )
         forbidden_external_prefixes = (
             "control_plane_kit_operations.postgres",
             "control_plane_kit_operations.cpk_server",
@@ -698,6 +820,29 @@ class AuthoritySecretReadProjectionStructureTests(unittest.TestCase):
                 self.assertFalse(
                     imported.startswith(forbidden_external_prefixes),
                     f"authority/secret projection imports outer module {imported}",
+                )
+
+        alias_forms = (
+            "from control_plane_kit_operations import postgres",
+            "from control_plane_kit_operations import cpk_server",
+        )
+        for source in alias_forms:
+            tree = ast.parse(source)
+            imported = set()
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.ImportFrom)
+                    and node.module == "control_plane_kit_operations"
+                ):
+                    imported.update(
+                        f"{node.module}.{alias.name}" for alias in node.names
+                    )
+            with self.subTest(source=source):
+                self.assertTrue(
+                    any(
+                        candidate.startswith(forbidden_external_prefixes)
+                        for candidate in imported
+                    )
                 )
 
 
