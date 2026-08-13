@@ -15,6 +15,7 @@ _EXPECTED_MODULES = {
     "errors",
     "instance",
     "models",
+    "observations",
     "operations_history",
     "protocols",
     "workspace_graph",
@@ -25,12 +26,12 @@ _PUBLIC_OWNERS = {
     "FocusedDetailReadModel": "models",
     "GraphPointerReadModel": "workspace_graph",
     "InstanceReadService": "instance",
-    "ObservationFreshnessPolicy": "instance",
-    "ProjectedObservation": "instance",
+    "ObservationFreshnessPolicy": "observations",
+    "ProjectedObservation": "observations",
     "ReadModelError": "errors",
     "WorkspaceReadModel": "workspace_graph",
     "WorkspaceSummary": "workspace_graph",
-    "project_observation": "instance",
+    "project_observation": "observations",
 }
 
 _INTERNAL_PROTOCOLS = {
@@ -130,6 +131,7 @@ class ReadServicesPackageTests(unittest.TestCase):
                     "errors",
                     "instance",
                     "models",
+                    "observations",
                     "protocols",
                     "workspace_graph",
                 }
