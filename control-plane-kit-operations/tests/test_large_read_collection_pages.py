@@ -34,6 +34,7 @@ from control_plane_kit_operations.read_pages import (
 _COUNT = 201
 _LIMIT = 100
 _INSTANT = datetime(2026, 8, 12, 12, tzinfo=timezone.utc)
+_CURSOR_INSTANT = "2026-08-12T12:00:00.000000Z"
 _EPOCH = 1_786_534_400
 
 
@@ -489,15 +490,13 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                     _INSTANT,
                 ),
             )
-            continued = stores.gateway_probes.page(
-                ReadPageRequest(
-                    ReadCollection.GATEWAY_PROBES,
-                    scope,
-                    _LIMIT,
-                    first.next_cursor,
-                )
+            continued_ids = self._remaining_ids(
+                stores.gateway_probes.page,
+                ReadCollection.GATEWAY_PROBES,
+                scope,
+                first.next_cursor,
+                lambda item: item.probe_id,
             )
-            continued_ids = [item.probe_id for item in continued.items]
             self.assertNotIn("probe-new-head", continued_ids)
             self.assertIn("probe-new-tail", continued_ids)
             fresh = stores.gateway_probes.page(
@@ -526,7 +525,12 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 fetch,
                 identity,
                 expected,
-                TemporalReadCursor(collection, scope, _INSTANT, expected[-1]),
+                TemporalReadCursor(
+                    collection,
+                    scope,
+                    _CURSOR_INSTANT,
+                    expected[-1],
+                ),
             )
 
         def ordinal(collection, scope, fetch, prefix, identity):

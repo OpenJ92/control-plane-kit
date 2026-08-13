@@ -240,11 +240,14 @@ def _approval_requests(
                jsonb_build_object(
                  'kind', 'activity-plan', 'plan_id', %s::text
                ),
-               repeat('a', 64), 'operator', %s::timestamptz,
+               encode(
+                 sha256(convert_to('activity-plan:' || %s::text, 'UTF8')),
+                 'hex'
+               ), 'operator', %s::timestamptz,
                'plan:approve', 'low', false
         FROM generate_series(1, %s) AS value
         """,
-        (prefix, session_id, plan_id, plan_id, _INSTANT, count),
+        (prefix, session_id, plan_id, plan_id, plan_id, _INSTANT, count),
     )
 
 
@@ -506,7 +509,7 @@ def _seed_current_metadata(
                'synthetic-endpoint-' || lpad(value::text, 4, '0'),
                'secret://synthetic/provider/credential-' || value,
                jsonb_build_array('secret://synthetic/workspace'),
-               jsonb_build_array('postgres-password'), 'operator',
+               jsonb_build_array('postgres.password'), 'operator',
                %s::timestamptz, 'active', '{}'::jsonb
         FROM generate_series(1, %s) AS value
         """,
@@ -524,7 +527,7 @@ def _seed_current_metadata(
                 'synthetic-reference-endpoint',
                 'secret://synthetic/reference/credential',
                 '["secret://synthetic/reference"]'::jsonb,
-                '["postgres-password"]'::jsonb, 'operator', %s, 'active',
+                '["postgres.password"]'::jsonb, 'operator', %s, 'active',
                 '{}'::jsonb)
         """,
         (handles.secret_references_workspace_id, _INSTANT),
@@ -537,7 +540,7 @@ def _seed_current_metadata(
            status, metadata)
         SELECT 'reference-' || lpad(value::text, 4, '0'), %s,
                'secret://synthetic/reference/value-' || value,
-               'reference-parent-provider', '["postgres-password"]'::jsonb,
+               'reference-parent-provider', '["postgres.password"]'::jsonb,
                'operator', %s::timestamptz, 'active', '{}'::jsonb
         FROM generate_series(1, %s) AS value
         """,
