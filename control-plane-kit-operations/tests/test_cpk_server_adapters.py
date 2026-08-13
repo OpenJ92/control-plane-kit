@@ -390,6 +390,37 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 403)
         self.assertFalse(store_accessed)
 
+    def test_workspace_denial_is_bounded_before_command_service_access(self) -> None:
+        recording = RecordingService()
+        service = CpkServerApprovalService(recording)
+
+        with self.assertRaises(CpkServerApplicationError) as raised:
+            service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.approval.request",
+                    service_role=ControlPlaneServiceRole.APPROVAL,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={
+                        "session_id": "session-a",
+                        "plan_id": "plan-a",
+                        "idempotency_key": "approval-a",
+                    },
+                    principal=operator_principal(
+                        workspace_ids=("workspace-b",),
+                        scopes=(PolicyScope.PLAN_REQUEST,),
+                    ),
+                )
+            )
+
+        self.assertEqual(raised.exception.status, 403)
+        self.assertEqual(str(raised.exception), "workspace access is denied")
+        self.assertNotIn("workspace-a", repr(raised.exception))
+        self.assertNotIn("workspace-b", repr(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+        self.assertIsNone(raised.exception.__context__)
+        self.assertEqual(recording.commands, [])
+
     def test_command_provenance_and_scopes_come_from_trusted_principal(self) -> None:
         recording = RecordingService()
         service = CpkServerApprovalService(recording)
@@ -797,7 +828,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     )
                 self.assertEqual(raised.exception.status, 400)
 
-    def test_journal_authorization_precedes_cursor_decoding(self) -> None:
+    def test_workspace_denial_precedes_journal_cursor_decoding(self) -> None:
         entered = False
 
         def forbidden_unit_of_work():
@@ -806,22 +837,55 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             raise AssertionError("authorization must precede store access")
 
         service = CpkServerReadService(forbidden_unit_of_work)
-        with self.assertRaises(CpkServerApplicationError) as raised:
-            service.handle(
-                RouteRequest(
-                    surface="http",
-                    route_id="read.session-actions",
-                    service_role=ControlPlaneServiceRole.READS,
-                    path_parameters={
-                        "workspace_id": "workspace-a",
-                        "session_id": "session-a",
-                    },
-                    payload={"after": {"api_token": "do-not-disclose"}},
-                    principal=operator_principal(workspace_ids=("workspace-b",)),
-                )
-            )
+        candidate = {"api_token": "do-not-disclose"}
+        requests = (
+            RouteRequest(
+                surface="http",
+                route_id="read.session-actions",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "session_id": "session-a",
+                },
+                payload={"after": candidate},
+                principal=operator_principal(
+                    workspace_ids=("workspace-b",),
+                    scopes=(PolicyScope.INSTANCE_WORKSPACE_READ,),
+                ),
+            ),
+            RouteRequest(
+                surface="mcp",
+                route_id="read.session-actions",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={
+                    "workspace_id": "workspace-a",
+                    "session_id": "session-a",
+                    "after": candidate,
+                },
+                principal=operator_principal(
+                    workspace_ids=("workspace-b",),
+                    scopes=(PolicyScope.INSTANCE_WORKSPACE_READ,),
+                ),
+            ),
+        )
 
-        self.assertEqual(raised.exception.status, 403)
+        for request in requests:
+            with self.subTest(surface=request.surface):
+                with self.assertRaises(CpkServerApplicationError) as raised:
+                    service.handle(request)
+
+                self.assertEqual(raised.exception.status, 403)
+                self.assertEqual(
+                    str(raised.exception),
+                    "workspace access is denied",
+                )
+                self.assertNotIn("api_token", repr(raised.exception))
+                self.assertNotIn("do-not-disclose", repr(raised.exception))
+                self.assertNotIn("workspace-a", repr(raised.exception))
+                self.assertNotIn("workspace-b", repr(raised.exception))
+                self.assertIsNone(raised.exception.__cause__)
+                self.assertIsNone(raised.exception.__context__)
         self.assertFalse(entered)
 
     def test_journal_cursor_errors_are_bounded_and_cause_free(self) -> None:
