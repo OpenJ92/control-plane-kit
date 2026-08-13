@@ -237,6 +237,101 @@ class AuthoritySecretReadProjectionTests(unittest.TestCase):
                 else:
                     self.assertEqual(rendered["registration_id"], identity)
 
+    def test_each_configured_detail_capability_works_with_all_siblings_absent(
+        self,
+    ) -> None:
+        runtime_reference = RuntimeAuthorityReference("runtime-a")
+        ingress_reference = IngressAuthorityReference("ingress-a")
+        provider_id = SecretProviderId("workspace-secrets")
+        cases = (
+            (
+                "runtime_authority_store",
+                "runtime_authority_detail",
+                ("workspace-a", runtime_reference),
+                ("get", "workspace-a", runtime_reference),
+                _DescriptorRecord("runtime-a"),
+                "runtime-authority-detail",
+                "runtime_authority",
+            ),
+            (
+                "runtime_authority_delivery_store",
+                "runtime_authority_delivery_detail",
+                ("workspace-a", runtime_reference),
+                ("get", "workspace-a", runtime_reference),
+                _DescriptorRecord("delivery-a"),
+                "runtime-authority-delivery-detail",
+                "runtime_authority_delivery",
+            ),
+            (
+                "ingress_authority_store",
+                "ingress_authority_detail",
+                ("workspace-a", ingress_reference),
+                ("get", "workspace-a", ingress_reference),
+                _DescriptorRecord("ingress-a"),
+                "ingress-authority-detail",
+                "ingress_authority",
+            ),
+            (
+                "secret_provider_store",
+                "secret_provider_detail",
+                ("workspace-a", provider_id),
+                ("get_active", "workspace-a", provider_id),
+                _provider(),
+                "secret-provider-detail",
+                "secret_provider",
+            ),
+            (
+                "secret_reference_store",
+                "secret_reference_detail",
+                ("workspace-a", "reference-registration-a"),
+                (
+                    "get_by_registration",
+                    "workspace-a",
+                    "reference-registration-a",
+                ),
+                _reference(),
+                "secret-reference-detail",
+                "secret_reference",
+            ),
+        )
+        for (
+            store_name,
+            method_name,
+            arguments,
+            store_call,
+            value,
+            kind,
+            payload_key,
+        ) in cases:
+            with self.subTest(method=method_name):
+                trace: list[object] = []
+                projection = self._projection(
+                    trace,
+                    **{store_name: _FamilyStore(trace, value)},
+                )
+
+                detail = getattr(projection, method_name)(*arguments)
+
+                self.assertEqual(detail.workspace_id, "workspace-a")
+                self.assertEqual(detail.kind, kind)
+                self.assertEqual(
+                    trace,
+                    [("workspace", "workspace-a"), store_call],
+                )
+                rendered = detail.payload[payload_key]
+                if isinstance(value, _DescriptorRecord):
+                    self.assertEqual(rendered["identity"], value.identity)
+                    self.assertEqual(rendered["address"], "<redacted>")
+                    self.assertEqual(
+                        rendered["credential_reference"],
+                        "<redacted>",
+                    )
+                else:
+                    self.assertEqual(
+                        rendered["registration_id"],
+                        value.registration_id,
+                    )
+
     def test_each_absent_store_keeps_its_exact_independent_error(self) -> None:
         cases = (
             (
