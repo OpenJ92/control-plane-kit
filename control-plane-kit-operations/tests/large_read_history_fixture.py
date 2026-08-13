@@ -22,6 +22,7 @@ class LargeReadHistoryHandles:
     pending_workspace_id: str
     pending_session_id: str
     runs_workspace_id: str
+    runs_session_id: str
     runs_plan_id: str
     events_workspace_id: str
     events_run_id: str
@@ -55,6 +56,7 @@ def seed_large_read_history(
         pending_workspace_id="workspace-pending",
         pending_session_id="pending-parent",
         runs_workspace_id="workspace-runs",
+        runs_session_id="runs-parent-session",
         runs_plan_id="runs-parent-plan",
         events_workspace_id="workspace-events",
         events_run_id="events-parent-run",
@@ -292,18 +294,17 @@ def _seed_pending_approvals(
 
 
 def _seed_runs(connection: object, handles: LargeReadHistoryHandles, count: int) -> None:
-    session_id = "runs-parent-session"
     _one_plan(
         connection,
         workspace_id=handles.runs_workspace_id,
-        session_id=session_id,
+        session_id=handles.runs_session_id,
         plan_id=handles.runs_plan_id,
         prefix="runs",
     )
     _approval_requests(
         connection,
         prefix="runs-approval",
-        session_id=session_id,
+        session_id=handles.runs_session_id,
         plan_id=handles.runs_plan_id,
         count=count,
     )
@@ -334,7 +335,7 @@ def _seed_runs(connection: object, handles: LargeReadHistoryHandles, count: int)
         """,
         (
             handles.runs_workspace_id,
-            session_id,
+            handles.runs_session_id,
             handles.runs_plan_id,
             _INSTANT,
             count,

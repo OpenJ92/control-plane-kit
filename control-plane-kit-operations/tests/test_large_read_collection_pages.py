@@ -171,6 +171,78 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 [item.session_id for item in open_continued.items],
             )
 
+            connection.execute(
+                """
+                INSERT INTO cpk_operation_sessions
+                  (session_id, workspace_id, actor_id, title, status, created_at)
+                VALUES
+                  ('open-session-0000', %s, 'operator', 'Before', 'open', %s),
+                  ('open-session-0100a', %s, 'operator', 'After', 'open', %s)
+                """,
+                (
+                    handles.open_workspace_id,
+                    _INSTANT,
+                    handles.open_workspace_id,
+                    _INSTANT,
+                ),
+            )
+            open_after_insert = stores.activity_history.session_page(
+                ReadPageRequest(
+                    ReadCollection.OPEN_SESSIONS,
+                    open_scope,
+                    _LIMIT,
+                    open_first.next_cursor,
+                )
+            )
+            self.assertEqual(open_after_insert.items[0].session_id, "open-session-0100a")
+            self.assertNotIn(
+                "open-session-0000",
+                [item.session_id for item in open_after_insert.items],
+            )
+            open_fresh = stores.activity_history.session_page(
+                ReadPageRequest(ReadCollection.OPEN_SESSIONS, open_scope, _LIMIT)
+            )
+            self.assertEqual(open_fresh.items[0].session_id, "open-session-0000")
+
+            plan_scope = SessionReadScope(
+                handles.plans_workspace_id,
+                handles.plans_session_id,
+            )
+            plan_first = stores.activity_history.plan_page(
+                ReadPageRequest(ReadCollection.SESSION_PLANS, plan_scope, _LIMIT)
+            )
+            for plan_id in ("plan-0000", "plan-0100a"):
+                connection.execute(
+                    """
+                    INSERT INTO cpk_activity_plans
+                      (plan_id, session_id, base_graph_id, desired_graph_id,
+                       base_realized_projection_id,
+                       desired_realized_projection_id, desired_graph_revision,
+                       status, created_at, payload)
+                    SELECT %s, session_id, base_graph_id, desired_graph_id,
+                           base_realized_projection_id,
+                           desired_realized_projection_id,
+                           desired_graph_revision, status, created_at, payload
+                    FROM cpk_activity_plans
+                    WHERE plan_id = 'plan-0001'
+                    """,
+                    (plan_id,),
+                )
+            plan_continued = stores.activity_history.plan_page(
+                ReadPageRequest(
+                    ReadCollection.SESSION_PLANS,
+                    plan_scope,
+                    _LIMIT,
+                    plan_first.next_cursor,
+                )
+            )
+            self.assertEqual(plan_continued.items[0].plan_id, "plan-0100a")
+            self.assertNotIn("plan-0000", [item.plan_id for item in plan_continued.items])
+            plan_fresh = stores.activity_history.plan_page(
+                ReadPageRequest(ReadCollection.SESSION_PLANS, plan_scope, _LIMIT)
+            )
+            self.assertEqual(plan_fresh.items[0].plan_id, "plan-0000")
+
             approval_scope = SessionReadScope(
                 handles.approvals_workspace_id,
                 handles.approvals_session_id,
@@ -247,6 +319,40 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 [item.request.request_id for item in pending_continued.items],
             )
 
+            run_scope = PlanReadScope(
+                handles.runs_workspace_id,
+                handles.runs_plan_id,
+            )
+            run_first = stores.execution.run_page(
+                ReadPageRequest(ReadCollection.PLAN_RUNS, run_scope, _LIMIT)
+            )
+            self._insert_run(connection, handles, "run-0000")
+            self._insert_run(connection, handles, "run-0100a")
+            connection.execute(
+                """
+                UPDATE cpk_activity_runs
+                SET status = 'failed', settled_at = NULL
+                WHERE run_id = 'run-0050'
+                """
+            )
+            run_continued = stores.execution.run_page(
+                ReadPageRequest(
+                    ReadCollection.PLAN_RUNS,
+                    run_scope,
+                    _LIMIT,
+                    run_first.next_cursor,
+                )
+            )
+            self.assertEqual(run_continued.items[0].run_id, "run-0100a")
+            self.assertNotIn("run-0000", [item.run_id for item in run_continued.items])
+            self.assertNotIn("run-0050", [item.run_id for item in run_continued.items])
+            run_fresh = stores.execution.run_page(
+                ReadPageRequest(ReadCollection.PLAN_RUNS, run_scope, _LIMIT)
+            )
+            self.assertEqual(run_fresh.items[0].run_id, "run-0000")
+            changed_run = next(item for item in run_fresh.items if item.run_id == "run-0050")
+            self.assertEqual(changed_run.status.value, "failed")
+
     def test_ordinal_append_and_duplicate_positions_are_distinct_laws(self) -> None:
         with self._seeded() as (connection, handles):
             stores = PostgresStoreBundle(connection)
@@ -288,6 +394,18 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                         """,
                         (handles.actions_session_id, _INSTANT),
                     )
+            action_residue = connection.execute(
+                "SELECT count(*) FROM cpk_operation_actions "
+                "WHERE session_id = %s AND action_id = 'action-duplicate'",
+                (handles.actions_session_id,),
+            ).fetchone()[0]
+            self.assertEqual(action_residue, 0)
+            self.assertEqual(
+                stores.activity_history.action_page(
+                    ReadPageRequest(ReadCollection.SESSION_ACTIONS, action_scope, 1)
+                ).items[0].action_id,
+                "action-0001",
+            )
 
             event_scope = RunReadScope(
                 handles.events_workspace_id,
@@ -323,6 +441,18 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                         """,
                         (handles.events_run_id, _INSTANT),
                     )
+            event_residue = connection.execute(
+                "SELECT count(*) FROM cpk_activity_events "
+                "WHERE run_id = %s AND event_id = 'event-duplicate'",
+                (handles.events_run_id,),
+            ).fetchone()[0]
+            self.assertEqual(event_residue, 0)
+            self.assertEqual(
+                stores.execution.event_page(
+                    ReadPageRequest(ReadCollection.RUN_EVENTS, event_scope, 1)
+                ).items[0].event_id,
+                "event-0001",
+            )
 
     def test_current_identity_views_evaluate_each_statement(self) -> None:
         with self._seeded() as (connection, handles):
@@ -360,6 +490,150 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 item for item in fresh.items if item.subject_id == "subject-0050"
             )
             self.assertEqual(replacement.observation_id, "observation-replacement")
+            connection.execute(
+                """
+                INSERT INTO cpk_observations
+                  (observation_id, workspace_id, subject_id, status,
+                   observed_at, evidence, freshness)
+                VALUES
+                  ('observation-before', %s, 'subject-0000', 'healthy', %s,
+                   '{}'::jsonb, 'fresh'),
+                  ('observation-after', %s, 'subject-0100a', 'healthy', %s,
+                   '{}'::jsonb, 'fresh')
+                """,
+                (
+                    handles.observations_workspace_id,
+                    _INSTANT,
+                    handles.observations_workspace_id,
+                    _INSTANT,
+                ),
+            )
+            observation_after_insert = stores.observed_state.latest_page(
+                ReadPageRequest(
+                    ReadCollection.LATEST_OBSERVATIONS,
+                    scope,
+                    _LIMIT,
+                    first.next_cursor,
+                )
+            )
+            self.assertEqual(
+                observation_after_insert.items[0].subject_id,
+                "subject-0100a",
+            )
+            self.assertNotIn(
+                "subject-0000",
+                [item.subject_id for item in observation_after_insert.items],
+            )
+            observation_fresh = stores.observed_state.latest_page(
+                ReadPageRequest(ReadCollection.LATEST_OBSERVATIONS, scope, _LIMIT)
+            )
+            self.assertEqual(observation_fresh.items[0].subject_id, "subject-0000")
+
+            authority_cases = (
+                (
+                    ReadCollection.RUNTIME_AUTHORITIES,
+                    handles.runtime_authorities_workspace_id,
+                    stores.runtime_authorities.active_page,
+                    "cpk_runtime_authorities",
+                    "registration_id",
+                    "runtime-registration-replacement",
+                    "runtime-authority-0050",
+                ),
+                (
+                    ReadCollection.RUNTIME_AUTHORITY_DELIVERIES,
+                    handles.runtime_deliveries_workspace_id,
+                    stores.runtime_authority_deliveries.active_page,
+                    "cpk_runtime_authority_deliveries",
+                    "delivery_id",
+                    "runtime-delivery-replacement",
+                    "runtime-delivery-0050",
+                ),
+                (
+                    ReadCollection.INGRESS_AUTHORITIES,
+                    handles.ingress_authorities_workspace_id,
+                    stores.ingress_authorities.active_page,
+                    "cpk_ingress_authorities",
+                    "registration_id",
+                    "ingress-registration-replacement",
+                    "ingress-authority-0050",
+                ),
+            )
+            for (
+                collection,
+                workspace_id,
+                fetch,
+                table,
+                key_column,
+                replacement_id,
+                authority_ref,
+            ) in authority_cases:
+                with self.subTest(collection=collection.value):
+                    authority_scope = WorkspaceReadScope(workspace_id)
+                    authority_first = fetch(
+                        ReadPageRequest(collection, authority_scope, _LIMIT)
+                    )
+                    connection.execute(
+                        f"UPDATE {table} SET status = 'revoked' "
+                        "WHERE workspace_id = %s AND authority_ref = %s "
+                        "AND status = 'active'",
+                        (workspace_id, authority_ref),
+                    )
+                    columns = (
+                        "registration_id, workspace_id, authority_ref, runtime_kind, "
+                        "authority_kind, authority, credential_references, admitted_by, "
+                        "admitted_at, status, metadata"
+                        if table == "cpk_runtime_authorities"
+                        else (
+                            "delivery_id, workspace_id, authority_ref, delivery_kind, "
+                            "delivery, secret_references, admitted_by, admitted_at, "
+                            "status, metadata"
+                            if table == "cpk_runtime_authority_deliveries"
+                            else "registration_id, workspace_id, authority_ref, "
+                            "provider_kind, authority, credential_references, "
+                            "allowed_hostname_pattern, admitted_by, admitted_at, "
+                            "status, metadata"
+                        )
+                    )
+                    connection.execute(
+                        f"INSERT INTO {table} ({columns}) "
+                        f"SELECT %s, {', '.join(columns.split(', ')[1:-2])}, "
+                        "'active', metadata "
+                        f"FROM {table} WHERE workspace_id = %s "
+                        f"AND authority_ref = %s AND {key_column} <> %s "
+                        "ORDER BY admitted_at DESC LIMIT 1",
+                        (
+                            replacement_id,
+                            workspace_id,
+                            authority_ref,
+                            replacement_id,
+                        ),
+                    )
+                    authority_continued = fetch(
+                        ReadPageRequest(
+                            collection,
+                            authority_scope,
+                            _LIMIT,
+                            authority_first.next_cursor,
+                        )
+                    )
+                    self.assertNotIn(
+                        authority_ref,
+                        [item.authority_ref.reference_id for item in authority_continued.items],
+                    )
+                    authority_fresh = fetch(
+                        ReadPageRequest(collection, authority_scope, _LIMIT)
+                    )
+                    replacement = next(
+                        item
+                        for item in authority_fresh.items
+                        if item.authority_ref.reference_id == authority_ref
+                    )
+                    stored_identity = getattr(
+                        replacement,
+                        "registration_id",
+                        getattr(replacement, "delivery_id", None),
+                    )
+                    self.assertEqual(stored_identity, replacement_id)
 
             provider_scope = WorkspaceReadScope(handles.secret_providers_workspace_id)
             provider_first = stores.secret_providers.active_page(
@@ -384,6 +658,47 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             self.assertNotIn(
                 "provider-0150",
                 [item.provider_id.value for item in provider_continued.items],
+            )
+            connection.execute(
+                """
+                INSERT INTO cpk_secret_providers
+                  (registration_id, workspace_id, provider_id, provider_kind,
+                   display_name, endpoint_reference, credential_reference,
+                   allowed_reference_prefixes, allowed_intents, admitted_by,
+                   admitted_at, status, supersedes_registration_id, metadata)
+                SELECT 'provider-registration-replacement', workspace_id,
+                       provider_id, provider_kind, display_name,
+                       endpoint_reference, credential_reference,
+                       allowed_reference_prefixes, allowed_intents, admitted_by,
+                       admitted_at, 'active', registration_id, metadata
+                FROM cpk_secret_providers
+                WHERE workspace_id = %s AND provider_id = 'provider-0150'
+                  AND status = 'revoked'
+                """,
+                (handles.secret_providers_workspace_id,),
+            )
+            provider_after_reregister = stores.secret_providers.active_page(
+                ReadPageRequest(
+                    ReadCollection.SECRET_PROVIDERS,
+                    provider_scope,
+                    _LIMIT,
+                    provider_first.next_cursor,
+                )
+            )
+            self.assertNotIn(
+                "provider-0150",
+                [item.provider_id.value for item in provider_after_reregister.items],
+            )
+            provider_fresh = stores.secret_providers.active_page(
+                ReadPageRequest(ReadCollection.SECRET_PROVIDERS, provider_scope, _LIMIT)
+            )
+            provider_replacement = next(
+                item for item in provider_fresh.items
+                if item.provider_id.value == "provider-0150"
+            )
+            self.assertEqual(
+                provider_replacement.registration_id,
+                "provider-registration-replacement",
             )
 
             reference_scope = WorkspaceReadScope(handles.secret_references_workspace_id)
@@ -414,6 +729,53 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 "reference-0150",
                 [item.registration_id for item in reference_continued.items],
             )
+            connection.execute(
+                """
+                INSERT INTO cpk_secret_references
+                  (registration_id, workspace_id, secret_reference,
+                   provider_registration_id, allowed_intents, admitted_by,
+                   admitted_at, status, metadata)
+                VALUES
+                  ('reference-0000', %s,
+                   'secret://synthetic/reference/value-before',
+                   'reference-parent-provider', '["postgres.password"]'::jsonb,
+                   'operator', %s, 'active', '{}'::jsonb),
+                  ('reference-0100a', %s,
+                   'secret://synthetic/reference/value-after',
+                   'reference-parent-provider', '["postgres.password"]'::jsonb,
+                   'operator', %s, 'active', '{}'::jsonb)
+                """,
+                (
+                    handles.secret_references_workspace_id,
+                    _INSTANT,
+                    handles.secret_references_workspace_id,
+                    _INSTANT,
+                ),
+            )
+            reference_after_insert = stores.secret_references.active_page(
+                ReadPageRequest(
+                    ReadCollection.SECRET_REFERENCES,
+                    reference_scope,
+                    _LIMIT,
+                    reference_first.next_cursor,
+                )
+            )
+            self.assertEqual(
+                reference_after_insert.items[0].registration_id,
+                "reference-0100a",
+            )
+            self.assertNotIn(
+                "reference-0000",
+                [item.registration_id for item in reference_after_insert.items],
+            )
+            reference_fresh = stores.secret_references.active_page(
+                ReadPageRequest(
+                    ReadCollection.SECRET_REFERENCES,
+                    reference_scope,
+                    _LIMIT,
+                )
+            )
+            self.assertEqual(reference_fresh.items[0].registration_id, "reference-0000")
 
     def test_delegation_lifecycle_preserves_full_tuple_position(self) -> None:
         with self._seeded() as (connection, handles):
@@ -452,6 +814,13 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             )
             changed = next(item for item in fresh.items if item.key_id == "key-0050")
             self.assertEqual(changed.status.value, "retired")
+            self.assertEqual(
+                [(item.purpose.value, item.issuer, item.key_id) for item in fresh.items],
+                [
+                    ("gateway-probe", "issuer", f"key-{value:04d}")
+                    for value in range(1, _LIMIT + 1)
+                ],
+            )
 
     def test_gateway_probe_head_and_tail_follow_descending_cursor(self) -> None:
         with self._seeded() as (connection, handles):
@@ -504,6 +873,82 @@ class LargeReadCollectionPageTests(unittest.TestCase):
                 ReadPageRequest(ReadCollection.GATEWAY_PROBES, scope, _LIMIT)
             )
             self.assertEqual(fresh.items[0].probe_id, "probe-new-head")
+
+    @staticmethod
+    def _insert_run(connection, handles, run_id: str) -> None:
+        approval_id = f"{run_id}-approval"
+        decision_id = f"{run_id}-decision"
+        execution_id = f"{run_id}-execution"
+        connection.execute(
+            """
+            INSERT INTO cpk_approval_requests
+              (request_id, session_id, plan_id, subject_kind, subject_payload,
+               review_digest, requested_by, requested_at, required_scope,
+               max_risk, destructive)
+            VALUES (
+              %s, %s, %s, 'activity-plan',
+              jsonb_build_object('kind', 'activity-plan', 'plan_id', %s::text),
+              encode(
+                sha256(convert_to('activity-plan:' || %s::text, 'UTF8')),
+                'hex'
+              ),
+              'operator', %s, 'plan:approve', 'low', false
+            )
+            """,
+            (
+                approval_id,
+                handles.runs_session_id,
+                handles.runs_plan_id,
+                handles.runs_plan_id,
+                handles.runs_plan_id,
+                _INSTANT,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at)
+            VALUES (%s, %s, 'reviewer', 'approved', 'plan:approve', %s)
+            """,
+            (decision_id, approval_id, _INSTANT),
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint)
+            VALUES (%s, %s, %s, %s, 'cancelled', 'operator', %s, %s, %s,
+                    %s, %s)
+            """,
+            (
+                execution_id,
+                handles.runs_workspace_id,
+                handles.runs_session_id,
+                handles.runs_plan_id,
+                _INSTANT,
+                approval_id,
+                decision_id,
+                execution_id,
+                f"{run_id}-fingerprint",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO cpk_activity_runs
+              (run_id, plan_id, request_id, attempt, status, created_at,
+               started_at, settled_at, metadata)
+            VALUES (%s, %s, %s, 1, 'succeeded', %s, %s, %s, '{}'::jsonb)
+            """,
+            (
+                run_id,
+                handles.runs_plan_id,
+                execution_id,
+                _INSTANT,
+                _INSTANT,
+                _INSTANT,
+            ),
+        )
 
     @staticmethod
     def _remaining_ids(fetch, collection, scope, cursor, identity):
