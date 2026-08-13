@@ -86,6 +86,13 @@ from .deployment_transitions import (
     TeardownDeployment,
     UpdateDeployment,
 )
+from .deployment_program import (
+    DeploymentProgramCommand,
+    DeploymentProgramReference,
+    InvalidDeploymentProgramContract,
+    PrepareDeploymentProgram,
+    ProgressDeploymentProgram,
+)
 from .delegation_key_generation import (
     AdmitGeneratedDelegationSigningKey,
     AdmittedGeneratedDelegationSigningKey,
@@ -525,6 +532,11 @@ __all__ = [
     "NoOpDeployment",
     "TeardownDeployment",
     "UpdateDeployment",
+    "DeploymentProgramCommand",
+    "DeploymentProgramReference",
+    "InvalidDeploymentProgramContract",
+    "PrepareDeploymentProgram",
+    "ProgressDeploymentProgram",
     "ActivityEventRecord",
     "ActivityPlanRecord",
     "ActivityPlanStatus",

@@ -391,7 +391,6 @@ class DeploymentTransitionTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, source)
-        self.assertFalse(hasattr(operations, "DeploymentProgramReference"))
 
 
 if __name__ == "__main__":
