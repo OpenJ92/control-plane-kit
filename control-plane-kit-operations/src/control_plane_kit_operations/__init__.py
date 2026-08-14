@@ -93,6 +93,12 @@ from .deployment_program import (
     PrepareDeploymentProgram,
     ProgressDeploymentProgram,
 )
+from .deployment_program_interpreter import (
+    DeploymentProgram,
+    DeploymentProgramAuthorizationDenied,
+    DeploymentProgramError,
+    DeploymentProgramStateConflict,
+)
 from .deployment_program_projections import (
     DeploymentAdmissionReady,
     DeploymentAdvancementReady,
@@ -561,6 +567,10 @@ __all__ = [
     "InvalidDeploymentProgramContract",
     "PrepareDeploymentProgram",
     "ProgressDeploymentProgram",
+    "DeploymentProgram",
+    "DeploymentProgramAuthorizationDenied",
+    "DeploymentProgramError",
+    "DeploymentProgramStateConflict",
     "DeploymentProgramProjection",
     "DeploymentCompleted",
     "DeploymentSessionStopped",
