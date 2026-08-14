@@ -84,6 +84,7 @@ from control_plane_kit_operations.records import (
     FailureEvidence,
     ObservationRecord,
     ObservationStatus,
+    OperationsRecordError,
     RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
@@ -907,6 +908,17 @@ class ExecutionCoordinator:
                         "adapter returned observation evidence for a different workspace",
                     )
                 )
+            try:
+                event_evidence = _step_evidence(command.fence, outcome.evidence)
+            except OperationsRecordError:
+                outcome = ActivityExecutionOutcome.uncertain(
+                    FailureEvidence(
+                        FailureCategory.UNCERTAIN,
+                        "adapter-evidence-envelope-invalid",
+                        "adapter evidence could not enter durable step history",
+                    )
+                )
+                event_evidence = _step_evidence(command.fence, outcome.evidence)
             kind = _outcome_event_kind(outcome.kind)
             event = ActivityEventRecord(
                 event_id=self._id_factory(),
@@ -915,7 +927,7 @@ class ExecutionCoordinator:
                 kind=kind,
                 occurred_at=now,
                 activity_id=activity.activity_id.value,
-                evidence=_step_evidence(command.fence, outcome.evidence),
+                evidence=event_evidence,
                 failure=outcome.failure,
             )
             stores.execution.add_event(event)
@@ -927,10 +939,13 @@ class ExecutionCoordinator:
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             request, run = _locked_request_and_run(stores, command)
+            missing_plan = False
             try:
                 plan_record = stores.activity_history.get_plan(run.plan_id)
-            except KeyError as error:
-                raise ExecutionCoordinatorNotFound("activity plan was not found") from error
+            except KeyError:
+                missing_plan = True
+            if missing_plan:
+                raise ExecutionCoordinatorNotFound("activity plan was not found")
             for projection_id, graph_id, label in (
                 (
                     plan_record.base_realized_projection_id,
@@ -945,16 +960,20 @@ class ExecutionCoordinator:
             ):
                 if projection_id is not None:
                     continue
+                missing_authored = False
                 try:
                     authored = stores.graphs.get(graph_id)
-                except KeyError as error:
+                except KeyError:
+                    missing_authored = True
+                if missing_authored:
                     raise ExecutionCoordinatorNotFound(
                         "pinned graph was not found"
-                    ) from error
+                    )
                 if authored.workspace_id != request.identity.workspace_id:
                     raise ExecutionCoordinatorConflict(
                         f"{label} graph must match execution workspace"
                     )
+            missing_projection = False
             try:
                 base_graph = (
                     stores.realized_graphs.get(
@@ -976,8 +995,10 @@ class ExecutionCoordinator:
                         plan_record.desired_graph_id,
                     )
                 )
-            except KeyError as error:
-                raise ExecutionCoordinatorNotFound("pinned graph was not found") from error
+            except KeyError:
+                missing_projection = True
+            if missing_projection:
+                raise ExecutionCoordinatorNotFound("pinned graph was not found")
             registered_products = stores.registered_products.list_active(
                 request.identity.workspace_id
             )
@@ -1163,17 +1184,25 @@ class _CoordinatorContext:
 
 
 def _get_run(stores: Any, run_id: str) -> ActivityRunRecord:
+    missing_run = False
     try:
-        return stores.execution.get_run(run_id)
-    except KeyError as error:
-        raise ExecutionCoordinatorNotFound("activity run was not found") from error
+        run = stores.execution.get_run(run_id)
+    except KeyError:
+        missing_run = True
+    if missing_run:
+        raise ExecutionCoordinatorNotFound("activity run was not found")
+    return run
 
 
 def _get_run_for_update(stores: Any, run_id: str) -> ActivityRunRecord:
+    missing_run = False
     try:
-        return stores.execution.get_run_for_update(run_id)
-    except KeyError as error:
-        raise ExecutionCoordinatorNotFound("activity run was not found") from error
+        run = stores.execution.get_run_for_update(run_id)
+    except KeyError:
+        missing_run = True
+    if missing_run:
+        raise ExecutionCoordinatorNotFound("activity run was not found")
+    return run
 
 
 def _get_request(stores: Any, request_id: str) -> ExecutionRequestRecord:

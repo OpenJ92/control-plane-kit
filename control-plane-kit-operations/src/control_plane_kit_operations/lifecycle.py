@@ -320,10 +320,13 @@ class RunLifecycleCommandService:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
+            missing_locator = False
             try:
                 locator = stores.execution.get_request(command.request_id)
-            except KeyError as error:
-                raise RunLifecycleNotFound("execution request was not found") from error
+            except KeyError:
+                missing_locator = True
+            if missing_locator:
+                raise RunLifecycleNotFound("execution request was not found")
             history = stores.activity_history
             history.lock_action_idempotency(
                 locator.identity.session_id,
@@ -503,7 +506,9 @@ class RunLifecycleCommandService:
                     run.run_id,
                     expected=status,
                     replacement=replacement,
-                    started_at=now if started else None,
+                    started_at=(
+                        now if started and run.started_at is None else None
+                    ),
                     settled_at=now if settled else None,
                 )
                 if transitioned is not None:
@@ -622,8 +627,17 @@ def _replay(
         missing = True
     if missing:
         raise RunLifecycleError("lifecycle action is missing run/event evidence")
+    recorded_status, recorded_event_kind = _lifecycle_result_for_action(
+        action.action_type
+    )
     if (
-        run.run_id != run_id
+        action.session_id != request.identity.session_id
+        or _payload_text(action.payload, "execution_request_id")
+        != request.identity.request_id
+        or _payload_text(action.payload, "plan_id") != request.identity.plan_id
+        or run.plan_id != request.identity.plan_id
+        or run.run_id != run_id
+        or _payload_text(action.payload, "run_status") != recorded_status.value
         or action.actor_id != (
             fence.worker_id if fence is not None else action.actor_id
         )
@@ -631,15 +645,56 @@ def _replay(
             expected_action_type is not None
             and action.action_type is not expected_action_type
         )
-        or
-        run.admission.request_id != request.identity.request_id
+        or run.admission.request_id != request.identity.request_id
         or event.run_id != run.run_id
+        or event.kind is not recorded_event_kind
+        or _payload_text(action.payload, "event_type") != event.kind.value
+        or _payload_positive_integer(action.payload, "event_ordinal")
+        != event.ordinal
     ):
         raise RunLifecycleError("lifecycle action run/event evidence is incongruent")
     if fence is not None:
         if _payload_positive_integer(action.payload, "claim_generation") != fence.generation:
             raise RunLifecycleError("lifecycle action generation evidence is incongruent")
     return RunLifecycleResult(request, run, event, action, replayed=True)
+
+
+def _lifecycle_result_for_action(
+    action_type: LifecycleOperationKind,
+) -> tuple[ActivityRunStatus, ActivityEventKind]:
+    result = {
+        LifecycleOperationKind.CLAIM_RUN: (
+            ActivityRunStatus.CLAIMED,
+            ActivityEventKind.RUN_OPENED,
+        ),
+        LifecycleOperationKind.START_RUN: (
+            ActivityRunStatus.RUNNING,
+            ActivityEventKind.RUN_STARTED,
+        ),
+        LifecycleOperationKind.PAUSE_RUN: (
+            ActivityRunStatus.PAUSED,
+            ActivityEventKind.RUN_PAUSED,
+        ),
+        LifecycleOperationKind.RESUME_RUN: (
+            ActivityRunStatus.RUNNING,
+            ActivityEventKind.RUN_RESUMED,
+        ),
+        LifecycleOperationKind.COMPLETE_RUN: (
+            ActivityRunStatus.SUCCEEDED,
+            ActivityEventKind.RUN_SUCCEEDED,
+        ),
+        LifecycleOperationKind.FAIL_RUN: (
+            ActivityRunStatus.FAILED,
+            ActivityEventKind.RUN_FAILED,
+        ),
+        LifecycleOperationKind.CANCEL_RUN: (
+            ActivityRunStatus.CANCELLED,
+            ActivityEventKind.RUN_CANCELLED,
+        ),
+    }.get(action_type)
+    if result is None:
+        raise RunLifecycleError("lifecycle action type is incongruent")
+    return result
 
 
 def _payload(

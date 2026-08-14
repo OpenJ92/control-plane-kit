@@ -214,6 +214,7 @@ class GatewayKeyRotationDeploymentExecutionProgram:
         snapshot = self._snapshot(rotation, command)
         if self._current_is_desired(snapshot):
             return self._advance_and_accept(rotation, snapshot, command)
+        coordinator_rejected = False
         try:
             coordinated = self._coordinator.execute(
                 ExecuteActivityRun(
@@ -226,8 +227,12 @@ class GatewayKeyRotationDeploymentExecutionProgram:
                     max_effects=1,
                 )
             )
-        except ExecutionCoordinatorError as error:
-            raise GatewayKeyRotationDeploymentExecutionConflict(str(error)) from error
+        except ExecutionCoordinatorError:
+            coordinator_rejected = True
+        if coordinator_rejected:
+            raise GatewayKeyRotationDeploymentExecutionConflict(
+                "deployment coordinator rejected progress"
+            )
         if coordinated.status is CoordinatorStatus.COMPLETED:
             return self._advance_and_accept(
                 rotation,
