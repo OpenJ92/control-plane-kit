@@ -267,7 +267,7 @@ class GatewayKeyRotationOverlapExecutionTests(
 
         self.assertEqual(
             str(captured.exception),
-            "deployment coordinator rejected progress",
+            "overlap checkpoint does not match durable child truth",
         )
         self.assertIsNone(captured.exception.__cause__)
         self.assertIsNone(captured.exception.__context__)

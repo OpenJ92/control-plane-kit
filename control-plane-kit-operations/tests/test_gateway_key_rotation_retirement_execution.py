@@ -53,7 +53,7 @@ class GatewayKeyRotationRetirementExecutionTests(
 
         self.assertEqual(
             str(captured.exception),
-            "deployment coordinator rejected progress",
+            "retirement checkpoint does not match durable child truth",
         )
         self.assertIsNone(captured.exception.__cause__)
         self.assertIsNone(captured.exception.__context__)
