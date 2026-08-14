@@ -360,7 +360,9 @@ class RunProvenanceAuthorityIdentityTests(unittest.TestCase):
     ) -> None:
         error = self.capture_error(call)
         self.assertIs(type(error), error_type)
-        self.assertNotIn(str(candidate), str(error))
+        candidate_text = str(candidate)
+        if candidate_text:
+            self.assertNotIn(candidate_text, str(error))
         self.assertIsNone(error.__cause__)
         self.assertIsNone(error.__context__)
 

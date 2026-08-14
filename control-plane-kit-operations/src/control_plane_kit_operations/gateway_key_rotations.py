@@ -9,6 +9,7 @@ import json
 import re
 from typing import Any, Callable
 
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.approval_subjects import (
     GatewayKeyRotationApprovalSubject,
 )
@@ -143,11 +144,12 @@ class GatewayKeyRotationDeploymentCheckpoint:
             raise GatewayKeyRotationError("deployment status is unsupported")
         for name in (
             "session_id", "plan_id", "approval_request_id",
-            "approval_decision_id", "execution_request_id", "run_id",
+            "approval_decision_id", "execution_request_id",
             "base_authored_graph_id", "base_realized_projection_id",
             "desired_authored_graph_id", "desired_realized_projection_id",
         ):
             _identifier(getattr(self, name), name)
+        _run_id(self.run_id)
         if type(self.desired_revision) is not int or self.desired_revision < 0:
             raise GatewayKeyRotationError("desired revision is malformed")
         _text(self.prepared_at, "prepared_at")
@@ -920,6 +922,17 @@ def _scope(scopes):
 def _identifier(value, name):
     if not isinstance(value, str) or not _ID.fullmatch(value):
         raise GatewayKeyRotationError(f"{name} is malformed")
+
+
+def _run_id(value: object) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        valid = False
+    else:
+        valid = True
+    if not valid:
+        raise GatewayKeyRotationError("run_id is malformed")
 
 
 def _required(value, name):
