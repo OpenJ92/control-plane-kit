@@ -24,6 +24,7 @@ from control_plane_kit_operations.deployment_program import (
 from control_plane_kit_operations.deployment_program_projections import (
     DeploymentApprovalRequired,
     DeploymentNoChanges,
+    DeploymentProgramProjection,
     DeploymentReviewBlocked,
 )
 from control_plane_kit_operations.deployment_transitions import NoOpDeployment
@@ -63,15 +64,18 @@ class DeploymentProgram:
         self,
         operations: OperationCommandService,
         desired_graphs: DesiredGraphCommandService,
-        activity_planning: ActivityPlanningCommandService,
+        planning: ActivityPlanningCommandService,
         approvals: ApprovalCommandService,
     ) -> None:
         self._operations = operations
         self._desired_graphs = desired_graphs
-        self._activity_planning = activity_planning
+        self._planning = planning
         self._approvals = approvals
 
-    def prepare(self, command: PrepareDeploymentProgram):
+    def prepare(
+        self,
+        command: PrepareDeploymentProgram,
+    ) -> DeploymentProgramProjection:
         _authorize(command)
         _validate_desired(command)
         keys = _child_keys(command)
@@ -115,7 +119,7 @@ class DeploymentProgram:
             DesiredGraphCommandError,
         )
         planning_result = _execute_state(
-            self._activity_planning,
+            self._planning,
             RequestActivityPlan(
                 session_id=session_id,
                 workspace_id=command.context.workspace_id,
