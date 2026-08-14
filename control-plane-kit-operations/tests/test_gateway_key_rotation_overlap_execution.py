@@ -203,12 +203,13 @@ class GatewayKeyRotationOverlapExecutionTests(
         )
         adapter = RecordingAdapter(*(accepted_outcome,) * activity_count)
         program = self.program(adapter)
+        command = self.command()
 
         intermediate = [
-            program.progress(self.command())
+            program.progress(command)
             for _ in range(activity_count - 1)
         ]
-        result = program.progress(self.command())
+        result = program.progress(command)
 
         self.assertTrue(intermediate)
         self.assertTrue(
@@ -229,6 +230,11 @@ class GatewayKeyRotationOverlapExecutionTests(
         )
         self.assertEqual(len(adapter.calls), activity_count)
         self.assertEqual(result.effects_attempted, 1)
+        self.assertIsNotNone(result.advancement)
+        self.assertEqual(
+            result.advancement.action.payload["claim_generation"],
+            command.fence.generation,
+        )
         workspace = self._workspace()
         self.assertEqual(workspace.current_graph_id, "graph-a")
         self.assertEqual(
@@ -238,7 +244,7 @@ class GatewayKeyRotationOverlapExecutionTests(
         self.assertEqual(workspace.desired_graph_id, "graph-a")
         self.assertEqual(self._authored_graph_count(), 1)
 
-        replay = self.program(adapter, prefix="replay").progress(self.command())
+        replay = self.program(adapter, prefix="replay").progress(command)
 
         self.assertIs(
             replay.outcome,
