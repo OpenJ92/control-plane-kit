@@ -387,48 +387,48 @@ class RunLifecycleTests(unittest.TestCase):
         self.assertEqual(run.retry.prior_run_id, "a")
         self.assertEqual(event.run_id, long_run_id)
 
-    def test_restart_rejects_corrupted_current_run_identity(self) -> None:
-        self._insert_run("run/current-canary")
+    def test_database_rejects_corrupted_current_run_identity(self) -> None:
+        with self.assertRaises(psycopg.errors.CheckViolation) as captured:
+            self._insert_run("run/current-canary")
 
-        with self.assertRaises(OperationsRecordError) as captured:
-            with self.unit_of_work() as unit_of_work:
-                unit_of_work.stores.execution.runs_for_request("request-a")
+        self.assertEqual(
+            captured.exception.diag.constraint_name,
+            "cpk_activity_runs_run_id_check",
+        )
 
-        self._assert_safe_error(captured.exception, "current-canary")
-
-    def test_restart_rejects_corrupted_prior_run_identity(self) -> None:
+    def test_database_rejects_corrupted_prior_run_identity(self) -> None:
         self._insert_run(
-            "run/prior-canary",
+            "run-prior-canary",
             status=ActivityRunStatus.CANCELLED,
         )
-        self._insert_run(
-            "run-current",
-            attempt=2,
-            prior_run_id="run/prior-canary",
+        with self.assertRaises(psycopg.errors.ForeignKeyViolation) as captured:
+            self._insert_run(
+                "run-current",
+                attempt=2,
+                prior_run_id="run/prior-canary",
+            )
+
+        self.assertEqual(
+            captured.exception.diag.constraint_name,
+            "cpk_activity_runs_prior_run_id_fkey",
         )
 
-        with self.assertRaises(OperationsRecordError) as captured:
-            with self.unit_of_work() as unit_of_work:
-                unit_of_work.stores.execution.get_run("run-current")
+    def test_database_rejects_corrupted_event_run_identity(self) -> None:
+        self._insert_run("run-event-canary")
+        with self.assertRaises(psycopg.errors.ForeignKeyViolation) as captured:
+            self.connection.execute(
+                """
+                INSERT INTO cpk_activity_events
+                  (event_id, run_id, ordinal, event_type, occurred_at, payload)
+                VALUES ('event-corrupt', 'run/event-canary', 1, 'run_opened',
+                        '2026-07-22T13:00:00Z', '{"evidence":{}}'::jsonb)
+                """
+            )
 
-        self._assert_safe_error(captured.exception, "prior-canary")
-
-    def test_restart_rejects_corrupted_event_run_identity(self) -> None:
-        self._insert_run("run/event-canary")
-        self.connection.execute(
-            """
-            INSERT INTO cpk_activity_events
-              (event_id, run_id, ordinal, event_type, occurred_at, payload)
-            VALUES ('event-corrupt', 'run/event-canary', 1, 'run_opened',
-                    '2026-07-22T13:00:00Z', '{"evidence":{}}'::jsonb)
-            """
+        self.assertEqual(
+            captured.exception.diag.constraint_name,
+            "cpk_activity_events_run_id_fkey",
         )
-
-        with self.assertRaises(OperationsRecordError) as captured:
-            with self.unit_of_work() as unit_of_work:
-                unit_of_work.stores.execution.get_event("event-corrupt")
-
-        self._assert_safe_error(captured.exception, "event-canary")
 
     def test_invalid_run_factory_leaves_all_claim_truth_unchanged(self) -> None:
         error = None
