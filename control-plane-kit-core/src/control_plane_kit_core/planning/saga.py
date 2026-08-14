@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Generic, TypeAlias, TypeVar
 
+from control_plane_kit_core._run_identity import _is_canonical_run_identity
 from control_plane_kit_core.planning.activity_plan import (
     ActivityId,
     ActivityPlan,
@@ -889,8 +890,8 @@ class ActivityJournalEvent:
     def __post_init__(self) -> None:
         if not isinstance(self.event_id, str) or not self.event_id.strip():
             raise ValueError("activity journal event id must be non-empty text")
-        if not isinstance(self.run_id, str) or not self.run_id.strip():
-            raise ValueError("activity journal run id must be non-empty text")
+        if not _is_canonical_run_identity(self.run_id):
+            raise ValueError("activity journal run id is malformed")
         if not isinstance(self.ordinal, int) or self.ordinal < 1:
             raise ValueError("activity journal ordinal must be a positive integer")
         if not isinstance(self.kind, ActivityJournalEventKind):

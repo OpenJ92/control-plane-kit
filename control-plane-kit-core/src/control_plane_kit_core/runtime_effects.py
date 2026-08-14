@@ -19,6 +19,7 @@ from control_plane_kit_core.environment import (
     environment_binding_from_descriptor,
 )
 from control_plane_kit_core.operations.execution import EffectResultKind
+from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, ActivityOperation, ReviewChange
 from control_plane_kit_core.planning.codec import activity_operation_descriptor
 from control_plane_kit_core.probe_intents import RuntimeEndpointObservation
@@ -141,7 +142,7 @@ class RuntimeEffectSource:
 
     workspace_id: str
     request_id: str
-    run_id: str
+    run_id: RunId
     plan_id: str
     base_graph_id: str
     desired_graph_id: str
@@ -151,19 +152,20 @@ class RuntimeEffectSource:
         for value, name in (
             (self.workspace_id, "workspace_id"),
             (self.request_id, "request_id"),
-            (self.run_id, "run_id"),
             (self.plan_id, "plan_id"),
             (self.base_graph_id, "base_graph_id"),
             (self.desired_graph_id, "desired_graph_id"),
             (self.intent_event_id, "intent_event_id"),
         ):
             _required_text(value, name)
+        if type(self.run_id) is not RunId:
+            raise RuntimeEffectContractError("run_id must be RunId")
 
     def descriptor(self) -> dict[str, str]:
         return {
             "workspace_id": self.workspace_id,
             "request_id": self.request_id,
-            "run_id": self.run_id,
+            "run_id": self.run_id.value,
             "plan_id": self.plan_id,
             "base_graph_id": self.base_graph_id,
             "desired_graph_id": self.desired_graph_id,
@@ -173,10 +175,17 @@ class RuntimeEffectSource:
     @classmethod
     def from_descriptor(cls, value: Mapping[str, object]) -> "RuntimeEffectSource":
         _require_keys(value, _SOURCE_KEYS, "runtime effect source")
+        run_id_text = _text(value, "run_id")
+        try:
+            run_id = RunId(run_id_text)
+        except ValueError:
+            run_id = None
+        if run_id is None:
+            raise RuntimeEffectContractError("run_id is malformed")
         return cls(
             workspace_id=_text(value, "workspace_id"),
             request_id=_text(value, "request_id"),
-            run_id=_text(value, "run_id"),
+            run_id=run_id,
             plan_id=_text(value, "plan_id"),
             base_graph_id=_text(value, "base_graph_id"),
             desired_graph_id=_text(value, "desired_graph_id"),

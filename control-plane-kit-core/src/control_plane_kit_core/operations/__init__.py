@@ -84,6 +84,7 @@ from control_plane_kit_core.operations.recovery import (
     InvalidEffectRecoveryContract,
     fold_effect_attempt,
 )
+from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.operations.persistence import (
     DurableStoreContract,
     DurableStoreKind,
@@ -253,6 +254,7 @@ __all__ = [
     "ReadProjectionPolicy",
     "ReadProjectionSet",
     "RunStatusTimingContract",
+    "RunId",
     "ServiceTransactionBoundary",
     "ShutdownContract",
     "StoreParticipation",

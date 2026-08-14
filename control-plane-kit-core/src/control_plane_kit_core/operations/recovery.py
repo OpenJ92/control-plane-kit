@@ -10,6 +10,7 @@ from typing import Mapping
 from control_plane_kit_core._activity_identity import (
     _is_canonical_activity_identity,
 )
+from control_plane_kit_core.operations.run_identity import RunId
 
 
 _MAX_PUBLIC_TEXT_LENGTH = 256
@@ -54,19 +55,20 @@ class EffectRecoveryResolution(StrEnum):
 class EffectAttemptIdentity:
     """Stable identity for one activity's external-effect attempt."""
 
-    run_id: str
+    run_id: RunId
     activity_id: str
     attempt: int
 
     def __post_init__(self) -> None:
-        _bounded_text(self.run_id, "run_id")
+        if type(self.run_id) is not RunId:
+            raise InvalidEffectRecoveryContract("run_id must be RunId")
         if not _is_canonical_activity_identity(self.activity_id):
             raise InvalidEffectRecoveryContract("activity_id is malformed")
         _positive_int(self.attempt, "attempt")
 
     def descriptor(self) -> dict[str, object]:
         return {
-            "run_id": self.run_id,
+            "run_id": self.run_id.value,
             "activity_id": self.activity_id,
             "attempt": self.attempt,
         }
@@ -77,8 +79,15 @@ class EffectAttemptIdentity:
         value: Mapping[str, object],
     ) -> "EffectAttemptIdentity":
         _strict_keys(value, {"run_id", "activity_id", "attempt"}, "identity")
+        run_id_text = _text(value["run_id"], "run_id")
+        try:
+            run_id = RunId(run_id_text)
+        except ValueError:
+            run_id = None
+        if run_id is None:
+            raise InvalidEffectRecoveryContract("run_id is malformed")
         return cls(
-            run_id=_text(value["run_id"], "run_id"),
+            run_id=run_id,
             activity_id=_text(value["activity_id"], "activity_id"),
             attempt=_int(value["attempt"], "attempt"),
         )

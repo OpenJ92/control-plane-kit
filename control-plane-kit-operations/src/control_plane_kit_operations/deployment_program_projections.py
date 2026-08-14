@@ -465,7 +465,7 @@ def _live_attempt(
         raise InvalidDeploymentProgramContract(
             "effect_attempt must be EffectAttemptIdentity"
         )
-    if effect_attempt.run_id != run_id:
+    if effect_attempt.run_id.value != run_id:
         raise InvalidDeploymentProgramContract(
             "effect_attempt and projection run identities differ"
         )

@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from control_plane_kit_core._activity_identity import (
     _is_canonical_activity_identity,
 )
+from control_plane_kit_core._run_identity import _is_canonical_run_identity
 
 
 _PROVIDER_ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
@@ -245,12 +246,13 @@ class SecretResolutionGrant:
         for value, label in (
             (self.operation_id, "operation_id"),
             (self.session_id, "session_id"),
-            (self.run_id, "run_id"),
             (self.effect_id, "effect_id"),
             (self.probe_id, "probe_id"),
         ):
             if value is not None:
                 _validate_grant_identifier(value, label)
+        if self.run_id is not None:
+            _validate_run_identifier(self.run_id)
         if self.activity_id is not None:
             _validate_activity_identifier(self.activity_id)
 
@@ -341,11 +343,12 @@ class SecretCustodyGrant:
         for value, label in (
             (self.operation_id, "operation_id"),
             (self.session_id, "session_id"),
-            (self.run_id, "run_id"),
             (self.effect_id, "effect_id"),
         ):
             if value is not None:
                 _validate_grant_identifier(value, label)
+        if self.run_id is not None:
+            _validate_run_identifier(self.run_id)
         if self.activity_id is not None:
             _validate_activity_identifier(self.activity_id)
 
@@ -486,11 +489,12 @@ class SecretVersionRevocationGrant:
         for value, label in (
             (self.operation_id, "operation_id"),
             (self.session_id, "session_id"),
-            (self.run_id, "run_id"),
             (self.effect_id, "effect_id"),
         ):
             if value is not None:
                 _validate_grant_identifier(value, label)
+        if self.run_id is not None:
+            _validate_run_identifier(self.run_id)
         if self.activity_id is not None:
             _validate_activity_identifier(self.activity_id)
 
@@ -1009,4 +1013,11 @@ def _validate_activity_identifier(value: object) -> None:
     if not _is_canonical_activity_identity(value):
         raise SecretProviderContractError(
             "secret resolution grant activity_id is malformed"
+        )
+
+
+def _validate_run_identifier(value: object) -> None:
+    if not _is_canonical_run_identity(value):
+        raise SecretProviderContractError(
+            "secret resolution grant run_id is malformed"
         )

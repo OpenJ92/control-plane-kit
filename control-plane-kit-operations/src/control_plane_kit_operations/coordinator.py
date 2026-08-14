@@ -582,7 +582,7 @@ class RuntimeInterpreterDispatcher:
                         actor_subject=context.authority.worker_id,
                         operation_id=request.source.request_id,
                         session_id=context.plan_record.session_id,
-                        run_id=request.source.run_id,
+                        run_id=request.source.run_id.value,
                         activity_id=request.activity_id.value,
                         effect_id=request.effect_id,
                     ),
@@ -590,7 +590,7 @@ class RuntimeInterpreterDispatcher:
                     actor_scopes=context.authority.scopes,
                     operation_id=request.source.request_id,
                     session_id=context.plan_record.session_id,
-                    run_id=request.source.run_id,
+                    run_id=request.source.run_id.value,
                     activity_id=request.activity_id.value,
                     effect_id=request.effect_id,
                 )
