@@ -383,6 +383,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
         hostname: str = "cpk-gateway-001.openj92.dev",
         tunnel_name: str = "cpk-gateway-001",
         tunnel_id: str = "tunnel-001",
+        source_run_id: str = "run-001",
         removed_at: str | None = None,
         removed_by_run_id: str | None = None,
     ) -> CloudflareOwnedIngressResource:
@@ -400,7 +401,7 @@ class IngressAuthorityValueTests(unittest.TestCase):
             lifecycle=lifecycle,
             created_at="2026-07-27T23:30:00Z",
             observed_at="2026-07-27T23:31:00Z",
-            source_run_id="run-001",
+            source_run_id=source_run_id,
             source_activity_id="activity-001",
             source_event_id="event-001",
             epoch=epoch,
@@ -880,7 +881,6 @@ class IngressAuthorityStoreTests(unittest.TestCase):
         reference = SecretReference(
             "secret://generated/ingress/cloudflared-tunnel-token/token-activity"
         )
-
         evidence = record_generated_ingress_secret(
             workspace_id="workspace-a",
             purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
@@ -908,6 +908,106 @@ class IngressAuthorityStoreTests(unittest.TestCase):
             "allocate-public-ingress:9800f8498edba0a5",
         )
         self.assertNotIn("cf_api_token", repr(evidence.descriptor()).lower())
+
+    def test_run_evidence_exact_boundary_and_corruption_fail_on_restart(
+        self,
+    ) -> None:
+        boundary = "r" * 200
+        source = IngressAuthorityValueTests().cloudflare_resource(
+            ingress_id="gateway-source",
+            tunnel_name="gateway-source",
+            tunnel_id="tunnel-source",
+            source_run_id=boundary,
+        )
+        removable = IngressAuthorityValueTests().cloudflare_resource(
+            ingress_id="gateway-removed",
+            tunnel_name="gateway-removed",
+            tunnel_id="tunnel-removed",
+            source_run_id=boundary,
+        )
+        generated = record_generated_ingress_secret(
+            workspace_id="workspace-a",
+            purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+            receipt=SecretCustodyReceipt(
+                custody_id="scust-run-boundary",
+                provider_registration_id="sprov-generated-ingress",
+                reference=SecretReference(
+                    "secret://generated/ingress/run-boundary-token"
+                ),
+                version_id="version-run-boundary",
+                version_number=1,
+            ),
+            reference_registration_id="sref-run-boundary",
+            source_run_id=boundary,
+            source_activity_id="activity-run-boundary",
+            source_event_id="event-run-boundary",
+            recorded_at="2026-07-28T07:00:00Z",
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.ingress_resources.record_cloudflare(source)
+            unit_of_work.stores.ingress_resources.record_cloudflare(removable)
+            removed = unit_of_work.stores.ingress_resources.mark_removed(
+                "workspace-a",
+                "gateway-removed",
+                removed_at="2026-07-28T08:02:00Z",
+                removed_by_run_id=boundary,
+            )
+            unit_of_work.stores.generated_ingress_secrets.record(generated)
+            unit_of_work.commit()
+
+        with self.unit_of_work() as unit_of_work:
+            recovered_source = unit_of_work.stores.ingress_resources.get_cloudflare(
+                "workspace-a", "gateway-source"
+            )
+            recovered_resources = unit_of_work.stores.ingress_resources.list_cloudflare(
+                "workspace-a"
+            )
+            recovered_generated = (
+                unit_of_work.stores.generated_ingress_secrets.get_by_source(
+                    workspace_id="workspace-a",
+                    purpose=GeneratedSecretPurpose.CLOUDFLARED_TUNNEL_TOKEN,
+                    source_run_id=boundary,
+                    source_activity_id="activity-run-boundary",
+                    source_event_id="event-run-boundary",
+                )
+            )
+        self.assertEqual(recovered_source.source_run_id, boundary)
+        self.assertIn(removed, recovered_resources)
+        self.assertEqual(removed.removed_by_run_id, boundary)
+        self.assertEqual(recovered_generated.source_run_id, boundary)
+
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET source_run_id = 'run/bad' WHERE ingress_id = 'gateway-source'"
+        )
+        with self.unit_of_work() as unit_of_work:
+            with self.assertRaises(IngressAuthorityRegistrationError):
+                unit_of_work.stores.ingress_resources.get_cloudflare(
+                    "workspace-a", "gateway-source"
+                )
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET source_run_id = %s WHERE ingress_id = 'gateway-source'",
+            (boundary,),
+        )
+        self.connection.execute(
+            "UPDATE cpk_cloudflare_ingress_resources "
+            "SET removed_by_run_id = 'run/bad' "
+            "WHERE ingress_id = 'gateway-removed'"
+        )
+        with self.unit_of_work() as unit_of_work:
+            with self.assertRaises(IngressAuthorityRegistrationError):
+                unit_of_work.stores.ingress_resources.list_cloudflare("workspace-a")
+        self.connection.execute(
+            "UPDATE cpk_generated_ingress_secret_references "
+            "SET source_run_id = 'run/bad' "
+            "WHERE source_event_id = 'event-run-boundary'"
+        )
+        with self.unit_of_work() as unit_of_work:
+            with self.assertRaises(IngressAuthorityRegistrationError):
+                unit_of_work.stores.generated_ingress_secrets.list_for_workspace(
+                    "workspace-a"
+                )
 
     def read_service(self) -> InstanceReadService:
         stores = PostgresStoreBundle(self.connection)
