@@ -402,7 +402,7 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
         commands = RecordingService()
         lifecycle_service = CpkServerLifecycleService(commands)
         try:
-            lifecycle_service.handle(
+            result = lifecycle_service.handle(
                 RouteRequest(
                     surface="http",
                     route_id="command.run.claim",
@@ -418,8 +418,11 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
                     principal=worker_principal(),
                 )
             )
-        except CpkServerApplicationError:
-            pass
+        except CpkServerApplicationError as error:
+            self.fail(
+                f"bounded lease-duration claim was rejected with {error.status}"
+            )
+        self.assertEqual(result["command_type"], "ClaimAndOpenActivityRun")
         self.assertEqual(
             len(commands.commands),
             1,

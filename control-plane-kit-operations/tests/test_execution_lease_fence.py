@@ -143,14 +143,10 @@ class ExecutionLeaseLanguageTargetTests(unittest.TestCase):
 
         self.assertTrue(observation.expired)
         normalized = tuple(" ".join(sql.split()).lower() for sql in connection.sql)
-        lock_index = next(
-            index for index, sql in enumerate(normalized) if "for update" in sql
-        )
-        clock_index = next(
-            index for index, sql in enumerate(normalized) if "clock_timestamp()" in sql
-        )
-        self.assertLess(lock_index, clock_index)
-        self.assertIn("lease_expires_at <=", normalized[clock_index])
+        complete_sql = " ".join(normalized)
+        self.assertIn("for update", complete_sql)
+        self.assertEqual(complete_sql.count("clock_timestamp()"), 1)
+        self.assertIn("lease_expires_at <=", complete_sql)
 
     def test_direct_schema_contract_has_exact_bigint_generation(self) -> None:
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
@@ -220,26 +216,27 @@ class _LeaseObservationConnection:
     def execute(self, sql, parameters=()):
         del parameters
         self.sql.append(sql)
+        request_row = (
+            "request-a",
+            "workspace-a",
+            "session-a",
+            "plan-a",
+            "claimed",
+            "operator-a",
+            self.observed_at,
+            "approval-request-a",
+            "approval-decision-a",
+            "execute-a",
+            "fingerprint-a",
+            "worker-a",
+            1,
+            self.observed_at,
+            self.observed_at,
+        )
+        if "FOR UPDATE" in sql and "clock_timestamp()" in sql:
+            return _Row((*request_row, self.observed_at, True))
         if "FOR UPDATE" in sql:
-            return _Row(
-                (
-                    "request-a",
-                    "workspace-a",
-                    "session-a",
-                    "plan-a",
-                    "claimed",
-                    "operator-a",
-                    self.observed_at,
-                    "approval-request-a",
-                    "approval-decision-a",
-                    "execute-a",
-                    "fingerprint-a",
-                    "worker-a",
-                    1,
-                    self.observed_at,
-                    self.observed_at,
-                )
-            )
+            return _Row(request_row)
         if "clock_timestamp()" in sql:
             return _Row((self.observed_at, True))
         raise AssertionError("unexpected lease observation SQL")

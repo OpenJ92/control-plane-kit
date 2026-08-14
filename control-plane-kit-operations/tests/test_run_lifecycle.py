@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import dataclasses
+from datetime import datetime
 import os
 import queue
 import time
@@ -323,6 +324,60 @@ class RunLifecycleTests(unittest.TestCase):
         self.assertGreaterEqual(claimed_at, released_at)
         self.assertEqual(result.request.claim.generation, 1)
 
+    def test_target_observation_samples_time_only_after_waiting_for_request_lock(
+        self,
+    ) -> None:
+        self.service("run-target", "event-target", "action-target").execute(
+            self.target_claim_command()
+        )
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        observer_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            observer_pids.put(connection.info.backend_pid)
+            return connection
+
+        def observe():
+            with PostgresUnitOfWork(connection_factory) as unit_of_work:
+                result = (
+                    unit_of_work.stores.execution.observe_request_lease_for_update(
+                        "request-a"
+                    )
+                )
+                unit_of_work.commit()
+                return result
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(observe)
+                observer_pid = observer_pids.get(timeout=5)
+                deadline = time.monotonic() + 5
+                while True:
+                    blocked_by = self.connection.execute(
+                        "SELECT pg_blocking_pids(%s)", (observer_pid,)
+                    ).fetchone()[0]
+                    if blocker_pid in blocked_by:
+                        break
+                    if time.monotonic() >= deadline:
+                        self.fail("observation did not block on the request row")
+                released_at = blocker.execute("SELECT clock_timestamp()").fetchone()[0]
+                blocker.commit()
+                observation = future.result(timeout=5)
+        finally:
+            blocker.rollback()
+            blocker.close()
+
+        observed_at = datetime.fromisoformat(
+            observation.observed_at.replace("Z", "+00:00")
+        )
+        self.assertGreaterEqual(observed_at, released_at)
+
     def test_target_original_claim_replay_is_stale_after_generation_changes(
         self,
     ) -> None:
@@ -339,11 +394,14 @@ class RunLifecycleTests(unittest.TestCase):
             factory_calls += 1
             raise AssertionError("stale replay consumed a new identity")
 
-        with self.assertRaises(RunLifecycleConflict):
+        with self.assertRaises(RunLifecycleConflict) as captured:
             self._service_with_factory(fail_factory).execute(command)
         self.assertEqual(factory_calls, 0)
+        self._assert_safe_error(captured.exception, "request-a")
 
-    def test_target_invalid_run_rolls_back_database_generated_claim(self) -> None:
+    def test_target_invalid_run_is_rejected_before_database_generated_claim(
+        self,
+    ) -> None:
         with self.assertRaises(RunLifecycleError):
             self.service(
                 "run/factory-canary", "event-target", "action-target"
