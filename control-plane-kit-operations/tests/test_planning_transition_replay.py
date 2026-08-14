@@ -696,10 +696,11 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         )
         replay = module_functions["_activity_plan_replay"]
 
-        def reachable_calls(root) -> set[str]:
+        def reachable_calls(root, *, blocked: set[str] | None = None) -> set[str]:
             reachable: set[str] = set()
             pending = [root]
             visited: set[str] = set()
+            blocked = set() if blocked is None else blocked
             while pending:
                 function = pending.pop()
                 for node in ast.walk(function):
@@ -710,12 +711,19 @@ class PlanningTransitionReplayTests(unittest.TestCase):
                         continue
                     name = node.func.id
                     reachable.add(name)
-                    if name in module_functions and name not in visited:
+                    if (
+                        name in module_functions
+                        and name not in blocked
+                        and name not in visited
+                    ):
                         visited.add(name)
                         pending.append(module_functions[name])
             return reachable
 
-        first_calls = reachable_calls(first_execute)
+        first_calls = reachable_calls(
+            first_execute,
+            blocked={"_activity_plan_replay"},
+        )
         replay_calls = reachable_calls(replay)
 
         self.assertIn(
