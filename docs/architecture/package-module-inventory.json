@@ -8597,6 +8597,7 @@
         "CompleteActivityRun",
         "CompleteActivityRunCompensation",
         "DecideActivityRunRecovery",
+        "ExecutionLeaseDuration",
         "ExecutionWorkerAuthority",
         "FailActivityRun",
         "FailActivityRunCompensation",
@@ -9113,6 +9114,7 @@
     },
     {
       "canonical_public_exports": [
+        "ExecutionLeaseDuration",
         "ExecutionWorkerAuthority",
         "ClaimAndOpenActivityRun",
         "StartActivityRun",

@@ -574,11 +574,18 @@ class ClaimIdentity:
     """Worker ownership and bounded lease evidence for a claimed request."""
 
     worker_id: str
+    generation: int
     claimed_at: str
     lease_expires_at: str
 
     def __post_init__(self) -> None:
         _validate_text(self.worker_id, "worker_id")
+        if (
+            type(self.generation) is not int
+            or self.generation < 1
+            or self.generation > 2**63 - 1
+        ):
+            raise OperationsRecordError("claim generation is invalid")
         _validate_text(self.claimed_at, "claimed_at")
         _validate_text(self.lease_expires_at, "lease_expires_at")
 

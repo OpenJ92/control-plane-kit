@@ -81,6 +81,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKeyStatus,
 )
 from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     RunLifecycleCommandService,
 )
@@ -292,7 +293,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_id="operator-a",
             actor_scopes=self._deployment_scopes(),
             worker_authority=self._worker(),
-            lease_expires_at="2026-08-02T02:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
         overlap = GatewayKeyRotationOverlapPreparationProgram(
             self.uow,
@@ -355,7 +356,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_id="operator-a",
             actor_scopes=self._deployment_scopes(),
             worker_authority=self._worker(),
-            lease_expires_at="2026-08-02T04:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
         retirement = GatewayKeyRotationRetirementPreparationProgram(
             self.uow,

@@ -72,18 +72,32 @@ class ExecutionWorkerAuthority:
 
 
 @dataclass(frozen=True)
+class ExecutionLeaseDuration:
+    """Bounded requested lifetime for one database-timed execution lease."""
+
+    seconds: int
+
+    def __post_init__(self) -> None:
+        if type(self.seconds) is not int or not 1 <= self.seconds <= 3600:
+            raise InvalidOperationCommand("lease duration is invalid")
+
+
+@dataclass(frozen=True)
 class ClaimAndOpenActivityRun:
     """Claim one queued execution request and open its first activity run."""
 
     request_id: str
     authority: ExecutionWorkerAuthority
-    lease_expires_at: str
+    lease_duration: ExecutionLeaseDuration
     idempotency_key: IdempotencyKey
 
     def __post_init__(self) -> None:
         _required_text(self.request_id, "request_id")
         _require_authority(self.authority)
-        _required_text(self.lease_expires_at, "lease_expires_at")
+        if not isinstance(self.lease_duration, ExecutionLeaseDuration):
+            raise InvalidOperationCommand(
+                "claim lease_duration must be ExecutionLeaseDuration"
+            )
         _require_idempotency_key(self.idempotency_key)
 
     def descriptor(self) -> dict[str, object]:
@@ -91,7 +105,7 @@ class ClaimAndOpenActivityRun:
             "command": LifecycleOperationKind.CLAIM_RUN.value,
             "request_id": self.request_id,
             "worker_id": self.authority.worker_id,
-            "lease_expires_at": self.lease_expires_at,
+            "lease_duration_seconds": self.lease_duration.seconds,
             "idempotency_key": self.idempotency_key.value,
         }
 
@@ -190,7 +204,7 @@ class RunLifecycleResult:
     replayed: bool = False
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor: dict[str, object] = {
             "execution_request_id": self.request.identity.request_id,
             "run_id": self.run.run_id,
             "run_status": self.run.status.value,
@@ -201,6 +215,9 @@ class RunLifecycleResult:
             "action_type": self.action.action_type.value,
             "replayed": self.replayed,
         }
+        if self.request.claim is not None:
+            descriptor["claim_generation"] = self.request.claim.generation
+        return descriptor
 
 
 class RunLifecycleCommandService:
@@ -281,7 +298,6 @@ class RunLifecycleCommandService:
 
     def _claim(self, command: ClaimAndOpenActivityRun) -> RunLifecycleResult:
         fingerprint = _fingerprint(command)
-        now = self._clock()
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             try:
@@ -298,7 +314,18 @@ class RunLifecycleCommandService:
                 command.idempotency_key.value,
             )
             if existing is not None:
-                result = _replay(stores, locator, existing, fingerprint)
+                missing_locked_request = False
+                try:
+                    locked_request = stores.execution.get_request_for_update(
+                        command.request_id
+                    )
+                except KeyError:
+                    missing_locked_request = True
+                if missing_locked_request:
+                    raise RunLifecycleNotFound(
+                        "execution request was not found"
+                    )
+                result = _replay(stores, locked_request, existing, fingerprint)
                 unit_of_work.commit()
                 return result
             session = _get_open_session_for_update(
@@ -322,13 +349,15 @@ class RunLifecycleCommandService:
             claimed = stores.execution.claim_request(
                 command.request_id,
                 command.authority.worker_id,
-                now,
-                command.lease_expires_at,
+                command.lease_duration.seconds,
             )
             if claimed is None:
                 raise RunLifecycleConflict("execution request is not claimable")
             if claimed.status is not ExecutionRequestStatus.CLAIMED:
                 raise RunLifecycleConflict("execution request was not claimed")
+            if claimed.claim is None:
+                raise RunLifecycleConflict("claimed request lacks lease evidence")
+            now = claimed.claim.claimed_at
             run = stores.execution.add_run(
                 ActivityRunRecord(
                     run_id=run_id,
@@ -506,6 +535,18 @@ def _replay(
         raise RunLifecycleIdempotencyConflict(
             "idempotency key was reused with different lifecycle intent"
         )
+    if action.action_type is LifecycleOperationKind.CLAIM_RUN:
+        claim_generation = _payload_positive_integer(
+            action.payload,
+            "claim_generation",
+        )
+        if (
+            request.status is not ExecutionRequestStatus.CLAIMED
+            or request.claim is None
+            or request.claim.worker_id != action.actor_id
+            or request.claim.generation != claim_generation
+        ):
+            raise RunLifecycleConflict("claim replay no longer has active authority")
     run_id = _payload_run_id(action.payload)
     event_id = _payload_text(action.payload, "event_id")
     missing = False
@@ -529,7 +570,7 @@ def _payload(
     run: ActivityRunRecord,
     event: ActivityEventRecord,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "execution_request_id": request.identity.request_id,
         "plan_id": request.identity.plan_id,
         "run_id": run.run_id,
@@ -538,6 +579,9 @@ def _payload(
         "event_type": event.kind.value,
         "event_ordinal": event.ordinal,
     }
+    if request.claim is not None:
+        payload["claim_generation"] = request.claim.generation
+    return payload
 
 
 def _fingerprint(command: LifecycleCommand) -> str:
@@ -546,7 +590,7 @@ def _fingerprint(command: LifecycleCommand) -> str:
             "command": LifecycleOperationKind.CLAIM_RUN.value,
             "request_id": command.request_id,
             "worker_id": command.authority.worker_id,
-            "lease_expires_at": command.lease_expires_at,
+            "lease_duration_seconds": command.lease_duration.seconds,
         }
     elif isinstance(command, StartActivityRun):
         value = _run_intent(command, LifecycleOperationKind.START_RUN)
@@ -605,6 +649,13 @@ def _payload_text(payload: Mapping[str, object], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
         raise RunLifecycleError(f"lifecycle action payload lacks {key}")
+    return value
+
+
+def _payload_positive_integer(payload: Mapping[str, object], key: str) -> int:
+    value = payload.get(key)
+    if type(value) is not int or value < 1:
+        raise RunLifecycleError(f"lifecycle action payload lacks valid {key}")
     return value
 
 

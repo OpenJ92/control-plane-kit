@@ -27,7 +27,10 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
-from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
+    ExecutionWorkerAuthority,
+)
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 
 
@@ -104,7 +107,7 @@ class GatewayKeyRotationOverlapPreparationTests(
                 "worker-a",
                 (PolicyScope.EXECUTION_OPERATE,),
             ),
-            lease_expires_at="2026-08-02T02:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
 
     def program(
@@ -148,7 +151,7 @@ class GatewayKeyRotationOverlapPreparationTests(
             f"gateway-rotation-{self.rotation_id}-overlap",
         )
         self.assertEqual(checkpoint.desired_revision, 2)
-        self.assertEqual(checkpoint.prepared_at, "2026-08-02T02:05:00Z")
+        self.assertEqual(checkpoint.prepared_at, "2026-08-02T02:04:00Z")
 
         workspace = self.connection.execute(
             "SELECT current_graph_id, desired_graph_id, "

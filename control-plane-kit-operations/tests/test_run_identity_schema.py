@@ -140,8 +140,8 @@ class RunIdentitySchemaStaticTests(unittest.TestCase):
     def test_contract_count_changes_only_by_five_direct_checks(self) -> None:
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         self.assertEqual(len(contract.relations), 29)
-        self.assertEqual(len(contract.columns), 380)
-        self.assertEqual(len(contract.constraints), 273)
+        self.assertEqual(len(contract.columns), 381)
+        self.assertEqual(len(contract.constraints), 274)
         self.assertEqual(len(contract.indexes), 94)
 
     def test_contract_has_six_exact_direct_checks(self) -> None:
@@ -494,10 +494,10 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
                approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claimed_at, lease_expires_at)
+               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
             VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'claimed',
                     'operator-a', '2026-08-14T00:06:00Z', 'approval-a',
-                    'decision-a', 'execute-a', 'fingerprint-a', 'worker-a',
+                    'decision-a', 'execute-a', 'fingerprint-a', 'worker-a', 1,
                     '2026-08-14T00:06:30Z', '2026-08-14T01:00:00Z');
 
             INSERT INTO cpk_activity_runs

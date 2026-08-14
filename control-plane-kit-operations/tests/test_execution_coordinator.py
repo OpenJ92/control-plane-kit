@@ -52,6 +52,7 @@ from control_plane_kit_operations.ingress_authorities import (
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     RunLifecycleCommandService,
     StartActivityRun,
@@ -743,7 +744,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ClaimAndOpenActivityRun(
                 "request-a",
                 self.authority(),
-                "2026-07-22T13:10:00Z",
+                ExecutionLeaseDuration(600),
                 IdempotencyKey("claim-a"),
             )
         )

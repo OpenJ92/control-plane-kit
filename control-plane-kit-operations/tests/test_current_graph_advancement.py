@@ -798,6 +798,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                     ExecutionIdempotency("execute-a", "fingerprint-a"),
                     ClaimIdentity(
                         "worker-a",
+                        1,
                         "2026-07-22T12:04:30Z",
                         "2026-07-22T12:14:30Z",
                     ),
@@ -931,6 +932,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 ExecutionIdempotency(f"execute-{suffix}", f"fingerprint-{suffix}"),
                 ClaimIdentity(
                     "worker-a",
+                    1,
                     "2026-07-22T12:04:30Z",
                     "2026-07-22T12:14:30Z",
                 ),

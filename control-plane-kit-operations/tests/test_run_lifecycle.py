@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import concurrent.futures
+import dataclasses
+from datetime import datetime
 import os
+import queue
+import time
 import unittest
 
 import psycopg
+import control_plane_kit_operations.lifecycle as lifecycle_module
 
 from tests.graph_lineage_fixture import seed_identity_graphs
 
@@ -19,6 +24,7 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
     CompleteActivityRun,
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     FailActivityRun,
     PauseActivityRun,
@@ -147,13 +153,421 @@ class RunLifecycleTests(unittest.TestCase):
         *,
         worker_id: str = "worker-a",
         key: str = "claim-a",
-        lease: str = "2026-07-22T13:10:00Z",
+        duration_seconds: int = 600,
     ) -> ClaimAndOpenActivityRun:
         return ClaimAndOpenActivityRun(
             "request-a",
             self.authority(worker_id),
-            lease,
+            ExecutionLeaseDuration(duration_seconds),
             IdempotencyKey(key),
+        )
+
+    def target_claim_command(
+        self,
+        *,
+        worker_id: str = "worker-a",
+        key: str = "claim-target-a",
+        duration_seconds: int = 600,
+    ) -> ClaimAndOpenActivityRun:
+        duration_type = getattr(lifecycle_module, "ExecutionLeaseDuration", None)
+        self.assertIsNotNone(
+            duration_type,
+            "ExecutionLeaseDuration is missing from the lifecycle language",
+        )
+        return ClaimAndOpenActivityRun(
+            request_id="request-a",
+            authority=self.authority(worker_id),
+            lease_duration=duration_type(duration_seconds),
+            idempotency_key=IdempotencyKey(key),
+        )
+
+    def test_target_claim_uses_database_time_generation_and_one_atomic_timestamp(
+        self,
+    ) -> None:
+        before = self.connection.execute("SELECT clock_timestamp()").fetchone()[0]
+        result = self.service(
+            "run-target", "event-target", "action-target", now="1900-01-01T00:00:00Z"
+        ).execute(self.target_claim_command())
+        after = self.connection.execute("SELECT clock_timestamp()").fetchone()[0]
+        claim = result.request.claim
+
+        self.assertIsNotNone(claim)
+        claimed_at, lease_expires_at, generation = self.connection.execute(
+            """
+            SELECT claimed_at, lease_expires_at, claim_generation
+            FROM cpk_execution_requests
+            WHERE request_id = 'request-a'
+            """
+        ).fetchone()
+        self.assertLessEqual(before, claimed_at)
+        self.assertLessEqual(claimed_at, after)
+        self.assertEqual(
+            (lease_expires_at - claimed_at).total_seconds(),
+            600,
+        )
+        self.assertEqual(generation, 1)
+        self.assertEqual(claim.generation, 1)
+        self.assertEqual(result.run.created_at, claim.claimed_at)
+        self.assertEqual(result.event.occurred_at, claim.claimed_at)
+        self.assertEqual(result.action.created_at, claim.claimed_at)
+        self.assertEqual(result.descriptor()["claim_generation"], 1)
+        self.assertNotIn(
+            "fence_generation",
+            tuple(field.name for field in dataclasses.fields(result)),
+        )
+
+    def test_target_claim_replay_precedes_time_generation_and_identity_allocation(
+        self,
+    ) -> None:
+        command = self.target_claim_command()
+        first = self.service("run-target", "event-target", "action-target").execute(
+            command
+        )
+        factory_calls = 0
+
+        def fail_factory() -> str:
+            nonlocal factory_calls
+            factory_calls += 1
+            raise AssertionError("claim replay consumed a new identity")
+
+        replay = self._service_with_factory(fail_factory).execute(command)
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay, dataclasses.replace(first, replayed=True))
+        self.assertEqual(factory_calls, 0)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT claim_generation FROM cpk_execution_requests"
+            ).fetchone()[0],
+            1,
+        )
+        with self.assertRaises(RunLifecycleIdempotencyConflict):
+            self._service_with_factory(fail_factory).execute(
+                self.target_claim_command(duration_seconds=601)
+            )
+
+    def test_target_locked_observation_uses_database_expiry_boundary(self) -> None:
+        self.service("run-target", "event-target", "action-target").execute(
+            self.target_claim_command()
+        )
+        with self.unit_of_work() as unit_of_work:
+            active = (
+                unit_of_work.stores.execution.observe_request_lease_for_update(
+                    "request-a"
+                )
+            )
+            self.assertFalse(active.expired)
+            unit_of_work.commit()
+
+        self.connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET lease_expires_at = clock_timestamp() - interval '1 microsecond'
+            WHERE request_id = 'request-a'
+            """
+        )
+        with self.unit_of_work() as unit_of_work:
+            expired = (
+                unit_of_work.stores.execution.observe_request_lease_for_update(
+                    "request-a"
+                )
+            )
+            self.assertTrue(expired.expired)
+            self.assertEqual(expired.request.claim.generation, 1)
+            unit_of_work.commit()
+
+    def test_target_claim_samples_time_only_after_waiting_for_request_lock(
+        self,
+    ) -> None:
+        command = self.target_claim_command()
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        claim_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            claim_pids.put(connection.info.backend_pid)
+            return connection
+
+        service = RunLifecycleCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "1900-01-01T00:00:00Z",
+            id_factory=Sequence("run-lock", "event-lock", "action-lock"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(service.execute, command)
+                claim_pid = claim_pids.get(timeout=5)
+                deadline = time.monotonic() + 5
+                while True:
+                    blocked_by = self.connection.execute(
+                        "SELECT pg_blocking_pids(%s)", (claim_pid,)
+                    ).fetchone()[0]
+                    if blocker_pid in blocked_by:
+                        break
+                    if time.monotonic() >= deadline:
+                        self.fail("claim did not block on the locked request row")
+                released_at = blocker.execute("SELECT clock_timestamp()").fetchone()[0]
+                blocker.commit()
+                result = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        claimed_at = self.connection.execute(
+            "SELECT claimed_at FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a'"
+        ).fetchone()[0]
+        self.assertGreaterEqual(claimed_at, released_at)
+        self.assertEqual(result.request.claim.generation, 1)
+
+    def test_target_observation_samples_time_only_after_waiting_for_request_lock(
+        self,
+    ) -> None:
+        self.service("run-target", "event-target", "action-target").execute(
+            self.target_claim_command()
+        )
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        observer_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            observer_pids.put(connection.info.backend_pid)
+            return connection
+
+        def observe():
+            with PostgresUnitOfWork(connection_factory) as unit_of_work:
+                result = (
+                    unit_of_work.stores.execution.observe_request_lease_for_update(
+                        "request-a"
+                    )
+                )
+                unit_of_work.commit()
+                return result
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(observe)
+                observer_pid = observer_pids.get(timeout=5)
+                deadline = time.monotonic() + 5
+                while True:
+                    blocked_by = self.connection.execute(
+                        "SELECT pg_blocking_pids(%s)", (observer_pid,)
+                    ).fetchone()[0]
+                    if blocker_pid in blocked_by:
+                        break
+                    if time.monotonic() >= deadline:
+                        self.fail("observation did not block on the request row")
+                released_at = blocker.execute("SELECT clock_timestamp()").fetchone()[0]
+                blocker.commit()
+                observation = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        observed_at = datetime.fromisoformat(
+            observation.observed_at.replace("Z", "+00:00")
+        )
+        self.assertGreaterEqual(observed_at, released_at)
+
+    def test_target_original_claim_replay_is_stale_after_generation_changes(
+        self,
+    ) -> None:
+        command = self.target_claim_command()
+        self.service("run-target", "event-target", "action-target").execute(command)
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation = 2 "
+            "WHERE request_id = 'request-a'"
+        )
+        factory_calls = 0
+
+        def fail_factory() -> str:
+            nonlocal factory_calls
+            factory_calls += 1
+            raise AssertionError("stale replay consumed a new identity")
+
+        with self.assertRaises(RunLifecycleConflict) as captured:
+            self._service_with_factory(fail_factory).execute(command)
+        self.assertEqual(factory_calls, 0)
+        self._assert_safe_error(captured.exception, "request-a")
+
+    def test_target_claim_replay_locks_before_accepting_current_generation(
+        self,
+    ) -> None:
+        command = self.target_claim_command()
+        self.service("run-target", "event-target", "action-target").execute(command)
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "UPDATE cpk_execution_requests SET claim_generation = 2 "
+            "WHERE request_id = 'request-a'"
+        )
+        blocker_pid = blocker.info.backend_pid
+        replay_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            replay_pids.put(connection.info.backend_pid)
+            return connection
+
+        replay_service = RunLifecycleCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "1900-01-01T00:00:00Z",
+            id_factory=lambda: self.fail("claim replay consumed a new identity"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(replay_service.execute, command)
+                replay_pid = replay_pids.get(timeout=5)
+                deadline = time.monotonic() + 5
+                while True:
+                    if future.done():
+                        self.fail("claim replay accepted a pre-lock generation snapshot")
+                    blocked_by = self.connection.execute(
+                        "SELECT pg_blocking_pids(%s)", (replay_pid,)
+                    ).fetchone()[0]
+                    if blocker_pid in blocked_by:
+                        break
+                    if time.monotonic() >= deadline:
+                        self.fail("claim replay did not lock the execution request")
+                blocker.commit()
+                with self.assertRaises(RunLifecycleConflict) as captured:
+                    future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self._assert_safe_error(captured.exception, "request-a")
+
+    def test_target_store_never_conflates_same_worker_with_claim_replay(self) -> None:
+        self.service("run-target", "event-target", "action-target").execute(
+            self.target_claim_command()
+        )
+        before_fence = self.connection.execute(
+            """
+            SELECT status, claim_worker_id, claim_generation,
+                   claimed_at, lease_expires_at
+            FROM cpk_execution_requests
+            WHERE request_id = 'request-a'
+            """
+        ).fetchone()
+        before_counts = tuple(
+            self._count(table)
+            for table in (
+                "cpk_activity_runs",
+                "cpk_activity_events",
+                "cpk_operation_actions",
+            )
+        )
+
+        for duration_seconds in (600, 601):
+            with self.subTest(duration_seconds=duration_seconds):
+                with self.unit_of_work() as unit_of_work:
+                    retained = unit_of_work.stores.execution.claim_request(
+                        "request-a",
+                        "worker-a",
+                        duration_seconds,
+                    )
+                    unit_of_work.commit()
+                self.assertIsNone(retained)
+
+        after_fence = self.connection.execute(
+            """
+            SELECT status, claim_worker_id, claim_generation,
+                   claimed_at, lease_expires_at
+            FROM cpk_execution_requests
+            WHERE request_id = 'request-a'
+            """
+        ).fetchone()
+        after_counts = tuple(
+            self._count(table)
+            for table in (
+                "cpk_activity_runs",
+                "cpk_activity_events",
+                "cpk_operation_actions",
+            )
+        )
+        self.assertEqual(after_fence, before_fence)
+        self.assertEqual(after_counts, before_counts)
+
+    def test_target_invalid_run_is_rejected_before_database_generated_claim(
+        self,
+    ) -> None:
+        with self.assertRaises(RunLifecycleError):
+            self.service(
+                "run/factory-canary", "event-target", "action-target"
+            ).execute(self.target_claim_command())
+
+        self.assertEqual(
+            self.connection.execute(
+                """
+                SELECT status, claim_worker_id, claim_generation,
+                       claimed_at, lease_expires_at
+                FROM cpk_execution_requests
+                WHERE request_id = 'request-a'
+                """
+            ).fetchone(),
+            ("queued", None, None, None, None),
+        )
+        self.assertEqual(self._count("cpk_activity_runs"), 0)
+        self.assertEqual(self._count("cpk_activity_events"), 0)
+        self.assertEqual(self._count("cpk_operation_actions"), 0)
+
+    def test_target_late_event_failure_rolls_back_generated_claim_and_run(
+        self,
+    ) -> None:
+        self._seed_second_request()
+        self._insert_run(
+            "run-existing",
+            request_id="request-b",
+            status=ActivityRunStatus.CANCELLED,
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_activity_events
+              (event_id, run_id, ordinal, event_type, occurred_at, payload)
+            VALUES ('event-collision', 'run-existing', 1, 'run_cancelled',
+                    '2026-07-22T13:00:01Z', '{"evidence":{}}'::jsonb)
+            """
+        )
+
+        with self.assertRaises(psycopg.errors.UniqueViolation):
+            self.service(
+                "run-target", "event-collision", "action-target"
+            ).execute(self.target_claim_command())
+
+        self.assertEqual(
+            self.connection.execute(
+                """
+                SELECT status, claim_worker_id, claim_generation,
+                       claimed_at, lease_expires_at
+                FROM cpk_execution_requests
+                WHERE request_id = 'request-a'
+                """
+            ).fetchone(),
+            ("queued", None, None, None, None),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_activity_runs "
+                "WHERE request_id = 'request-a'"
+            ).fetchone()[0],
+            0,
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_operation_actions "
+                "WHERE action_id = 'action-target'"
+            ).fetchone()[0],
+            0,
         )
 
     def test_claim_opens_one_run_and_event_atomically_without_effect_dependency(self) -> None:
@@ -185,14 +599,14 @@ class RunLifecycleTests(unittest.TestCase):
         self.assertEqual(replay.run, first.run)
         with self.assertRaises(RunLifecycleIdempotencyConflict):
             self.service("unused-run", "unused-event", "unused-action").execute(
-                self.claim_command(lease="2026-07-22T13:11:00Z")
+                self.claim_command(duration_seconds=660)
             )
         with self.assertRaises(RunLifecycleDenied):
             self.service("unused-run", "unused-event", "unused-action").execute(
                 ClaimAndOpenActivityRun(
                     "request-a",
                     self.authority(scopes=()),
-                    "2026-07-22T13:10:00Z",
+                    ExecutionLeaseDuration(600),
                     IdempotencyKey("claim-denied"),
                 )
             )

@@ -92,7 +92,7 @@ def prepare_gateway_key_rotation_child(
         ClaimAndOpenActivityRun(
             request_id=admitted.request.identity.request_id,
             authority=command.worker_authority,
-            lease_expires_at=command.lease_expires_at,
+            lease_duration=command.lease_duration,
             idempotency_key=IdempotencyKey(f"{prefix}:claim"),
         )
     )
