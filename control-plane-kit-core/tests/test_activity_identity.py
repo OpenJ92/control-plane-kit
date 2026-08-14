@@ -49,6 +49,26 @@ class _TextSubclass(str):
     pass
 
 
+INVALID_ACTIVITY_IDENTITIES = (
+    (object(), ()),
+    (True, ("True",)),
+    (_TextSubclass("subclass-canary"), ("subclass-canary",)),
+    ("", ()),
+    (" ", ()),
+    ("-leading-canary", ("leading-canary",)),
+    ("slash/canary", ("slash/canary",)),
+    ("space canary", ("space canary",)),
+    ("line\ncanary", ("canary",)),
+    ("a" * 201, ("a" * 32,)),
+)
+
+
+def _candidate_label(value: object) -> str:
+    if isinstance(value, str):
+        return repr(value[:24])
+    return type(value).__name__
+
+
 def _resolution_grant(activity_id: str) -> SecretResolutionGrant:
     return SecretResolutionGrant(
         authorization_id="authorization-a",
@@ -125,20 +145,8 @@ class ActivityIdentityContractTests(unittest.TestCase):
                 self.assertIs(type(identity.value), str)
                 self.assertIsNotNone(ACTIVITY_ID_PATTERN.fullmatch(candidate))
 
-        invalid = (
-            (object(), ()),
-            (True, ("True",)),
-            (_TextSubclass("subclass-canary"), ("subclass-canary",)),
-            ("", ()),
-            (" ", ()),
-            ("-leading-canary", ("leading-canary",)),
-            ("slash/canary", ("slash/canary",)),
-            ("space canary", ("space canary",)),
-            ("line\ncanary", ("canary",)),
-            ("a" * 201, ("a" * 32,)),
-        )
-        for candidate, canaries in invalid:
-            with self.subTest(invalid=type(candidate).__name__, length=getattr(candidate, "__len__", lambda: -1)()):
+        for candidate, canaries in INVALID_ACTIVITY_IDENTITIES:
+            with self.subTest(invalid=_candidate_label(candidate)):
                 self.assert_bounded_error(
                     ValueError,
                     lambda candidate=candidate: ActivityId(candidate),  # type: ignore[arg-type]
@@ -195,19 +203,14 @@ class ActivityIdentityContractTests(unittest.TestCase):
                     candidate,
                 )
 
-        for candidate in (
-            _TextSubclass("attempt-subclass-canary"),
-            "attempt/control\ncanary",
-            "a" * 201,
-        ):
-            with self.subTest(invalid=repr(candidate[:24])):
+        for candidate, canaries in INVALID_ACTIVITY_IDENTITIES:
+            with self.subTest(invalid=_candidate_label(candidate)):
                 self.assert_bounded_error(
                     InvalidEffectRecoveryContract,
                     lambda candidate=candidate: EffectAttemptIdentity(
                         "run-a", candidate, 1
-                    ),
-                    "canary",
-                    "a" * 32,
+                    ),  # type: ignore[arg-type]
+                    *canaries,
                 )
 
     def test_secret_grants_share_exact_activity_identity_admission(self) -> None:
@@ -216,17 +219,17 @@ class ActivityIdentityContractTests(unittest.TestCase):
             for candidate in ("a", "a" + "b" * 199):
                 with self.subTest(factory=factory.__name__, valid=len(candidate)):
                     self.assertEqual(factory(candidate).activity_id, candidate)
-            for candidate in (
-                _TextSubclass("grant-subclass-canary"),
-                "grant/control\ncanary",
-                "a" * 201,
-            ):
-                with self.subTest(factory=factory.__name__, invalid=repr(candidate[:24])):
+            for candidate, canaries in INVALID_ACTIVITY_IDENTITIES:
+                with self.subTest(
+                    factory=factory.__name__,
+                    invalid=_candidate_label(candidate),
+                ):
                     self.assert_bounded_error(
                         SecretProviderContractError,
-                        lambda factory=factory, candidate=candidate: factory(candidate),
-                        "canary",
-                        "a" * 32,
+                        lambda factory=factory, candidate=candidate: factory(
+                            candidate  # type: ignore[arg-type]
+                        ),
+                        *canaries,
                     )
 
     def test_public_import_order_and_identity_are_stable(self) -> None:
