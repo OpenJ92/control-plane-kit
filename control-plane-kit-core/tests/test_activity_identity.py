@@ -173,9 +173,6 @@ class ActivityIdentityContractTests(unittest.TestCase):
         malformed_activity["activities"][0]["activity_id"] = "activity/codec-canary"
         cases.append(malformed_activity)
         malformed_dependency = deepcopy(descriptor)
-        malformed_dependency["activities"][0]["activity_id"] = (
-            "dependency/codec-canary"
-        )
         dependent = next(
             item for item in malformed_dependency["activities"] if item["dependencies"]
         )

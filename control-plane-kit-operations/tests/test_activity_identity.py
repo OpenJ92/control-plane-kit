@@ -172,19 +172,29 @@ class ActivityIdentityOperationsTests(unittest.TestCase):
             (_authorized, SecretProviderRegistrationError),
         )
         invalid = (
-            _TextSubclass("operations-subclass-canary"),
-            "operations/control\ncanary",
-            "-operations-leading-canary",
-            "a" * 201,
+            (object(), ()),
+            (True, ("True",)),
+            (_TextSubclass("operations-subclass-canary"), ("subclass-canary",)),
+            ("", ()),
+            (" ", ()),
+            ("operations/control\ncanary", ("canary",)),
+            ("-operations-leading-canary", ("leading-canary",)),
+            ("operations/slash-canary", ("slash-canary",)),
+            ("operations space canary", ("space canary",)),
+            ("a" * 201, ("a" * 32,)),
         )
         for factory, error_type in cases:
-            for candidate in invalid:
-                with self.subTest(factory=factory.__name__, candidate=repr(candidate[:24])):
+            for candidate, canaries in invalid:
+                label = (
+                    repr(candidate[:24])
+                    if isinstance(candidate, str)
+                    else type(candidate).__name__
+                )
+                with self.subTest(factory=factory.__name__, candidate=label):
                     self.assert_bounded_error(
                         error_type,
                         lambda factory=factory, candidate=candidate: factory(candidate),
-                        "canary",
-                        "a" * 32,
+                        *canaries,
                     )
 
     def test_operations_use_public_activity_id_without_private_core_imports(self) -> None:
