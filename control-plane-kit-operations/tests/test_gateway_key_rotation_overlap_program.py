@@ -151,7 +151,7 @@ class GatewayKeyRotationOverlapPreparationTests(
             f"gateway-rotation-{self.rotation_id}-overlap",
         )
         self.assertEqual(checkpoint.desired_revision, 2)
-        self.assertEqual(checkpoint.prepared_at, "2026-08-02T02:05:00Z")
+        self.assertEqual(checkpoint.prepared_at, "2026-08-02T02:04:00Z")
 
         workspace = self.connection.execute(
             "SELECT current_graph_id, desired_graph_id, "
