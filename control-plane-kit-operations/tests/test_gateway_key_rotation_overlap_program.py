@@ -13,6 +13,7 @@ from gateway_rotation_overlap_fixture import (
     SimulatedProcessLoss,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     GatewayKeyRotationOverlapPreparationAuthorizationDenied,
     GatewayKeyRotationOverlapPreparationConflict,
@@ -152,6 +153,8 @@ class GatewayKeyRotationOverlapPreparationTests(
         )
         self.assertEqual(checkpoint.desired_revision, 2)
         self.assertEqual(checkpoint.prepared_at, "2026-08-02T02:04:00Z")
+        self.assertEqual(result.handoff.checkpoint, checkpoint)
+        self.assertEqual(result.handoff.fence, ExecutionLeaseFence("worker-a", 1))
 
         workspace = self.connection.execute(
             "SELECT current_graph_id, desired_graph_id, "
@@ -181,6 +184,7 @@ class GatewayKeyRotationOverlapPreparationTests(
             GatewayKeyRotationOverlapPreparationOutcome.PREPARED_REPLAY,
         )
         self.assertEqual(replay.checkpoint, checkpoint)
+        self.assertEqual(replay.handoff, result.handoff)
         self.assertEqual(self._count("cpk_activity_plans"), 1)
         self.assertEqual(self._count("cpk_execution_requests"), 1)
         self.assertEqual(self._count("cpk_activity_runs"), 1)
