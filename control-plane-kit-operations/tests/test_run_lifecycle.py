@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import concurrent.futures
+import dataclasses
 import os
 import unittest
 
 import psycopg
+import control_plane_kit_operations.lifecycle as lifecycle_module
 
 from tests.graph_lineage_fixture import seed_identity_graphs
 
@@ -155,6 +157,138 @@ class RunLifecycleTests(unittest.TestCase):
             lease,
             IdempotencyKey(key),
         )
+
+    def target_claim_command(
+        self,
+        *,
+        worker_id: str = "worker-a",
+        key: str = "claim-target-a",
+        duration_seconds: int = 600,
+    ) -> ClaimAndOpenActivityRun:
+        duration_type = getattr(lifecycle_module, "ExecutionLeaseDuration", None)
+        self.assertIsNotNone(
+            duration_type,
+            "ExecutionLeaseDuration is missing from the lifecycle language",
+        )
+        return ClaimAndOpenActivityRun(
+            request_id="request-a",
+            authority=self.authority(worker_id),
+            lease_duration=duration_type(duration_seconds),
+            idempotency_key=IdempotencyKey(key),
+        )
+
+    def test_target_claim_uses_database_time_generation_and_one_atomic_timestamp(
+        self,
+    ) -> None:
+        before = self.connection.execute("SELECT clock_timestamp()").fetchone()[0]
+        result = self.service(
+            "run-target", "event-target", "action-target", now="1900-01-01T00:00:00Z"
+        ).execute(self.target_claim_command())
+        after = self.connection.execute("SELECT clock_timestamp()").fetchone()[0]
+        claim = result.request.claim
+
+        self.assertIsNotNone(claim)
+        claimed_at, lease_expires_at, generation = self.connection.execute(
+            """
+            SELECT claimed_at, lease_expires_at, claim_generation
+            FROM cpk_execution_requests
+            WHERE request_id = 'request-a'
+            """
+        ).fetchone()
+        self.assertLessEqual(before, claimed_at)
+        self.assertLessEqual(claimed_at, after)
+        self.assertEqual(
+            (lease_expires_at - claimed_at).total_seconds(),
+            600,
+        )
+        self.assertEqual(generation, 1)
+        self.assertEqual(claim.generation, 1)
+        self.assertEqual(result.run.created_at, claim.claimed_at)
+        self.assertEqual(result.event.occurred_at, claim.claimed_at)
+        self.assertEqual(result.action.created_at, claim.claimed_at)
+        self.assertEqual(result.descriptor()["claim_generation"], 1)
+        self.assertNotIn("fence_generation", result.__dict__)
+
+    def test_target_claim_replay_precedes_time_generation_and_identity_allocation(
+        self,
+    ) -> None:
+        command = self.target_claim_command()
+        first = self.service("run-target", "event-target", "action-target").execute(
+            command
+        )
+        factory_calls = 0
+
+        def fail_factory() -> str:
+            nonlocal factory_calls
+            factory_calls += 1
+            raise AssertionError("claim replay consumed a new identity")
+
+        replay = self._service_with_factory(fail_factory).execute(command)
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay, dataclasses.replace(first, replayed=True))
+        self.assertEqual(factory_calls, 0)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT claim_generation FROM cpk_execution_requests"
+            ).fetchone()[0],
+            1,
+        )
+        with self.assertRaises(RunLifecycleIdempotencyConflict):
+            self._service_with_factory(fail_factory).execute(
+                self.target_claim_command(duration_seconds=601)
+            )
+
+    def test_target_locked_observation_uses_database_expiry_boundary(self) -> None:
+        self.service("run-target", "event-target", "action-target").execute(
+            self.target_claim_command()
+        )
+        with self.unit_of_work() as unit_of_work:
+            active = (
+                unit_of_work.stores.execution.observe_request_lease_for_update(
+                    "request-a"
+                )
+            )
+            self.assertFalse(active.expired)
+            unit_of_work.commit()
+
+        self.connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET lease_expires_at = clock_timestamp() - interval '1 microsecond'
+            WHERE request_id = 'request-a'
+            """
+        )
+        with self.unit_of_work() as unit_of_work:
+            expired = (
+                unit_of_work.stores.execution.observe_request_lease_for_update(
+                    "request-a"
+                )
+            )
+            self.assertTrue(expired.expired)
+            self.assertEqual(expired.request.claim.generation, 1)
+            unit_of_work.commit()
+
+    def test_target_invalid_run_rolls_back_database_generated_claim(self) -> None:
+        with self.assertRaises(RunLifecycleError):
+            self.service(
+                "run/factory-canary", "event-target", "action-target"
+            ).execute(self.target_claim_command())
+
+        self.assertEqual(
+            self.connection.execute(
+                """
+                SELECT status, claim_worker_id, claim_generation,
+                       claimed_at, lease_expires_at
+                FROM cpk_execution_requests
+                WHERE request_id = 'request-a'
+                """
+            ).fetchone(),
+            ("queued", None, None, None, None),
+        )
+        self.assertEqual(self._count("cpk_activity_runs"), 0)
+        self.assertEqual(self._count("cpk_activity_events"), 0)
+        self.assertEqual(self._count("cpk_operation_actions"), 0)
 
     def test_claim_opens_one_run_and_event_atomically_without_effect_dependency(self) -> None:
         result = self.service("run-a", "event-open", "action-claim").execute(
