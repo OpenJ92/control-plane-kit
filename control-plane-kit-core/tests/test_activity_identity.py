@@ -69,6 +69,17 @@ def _candidate_label(value: object) -> str:
     return type(value).__name__
 
 
+def _run_id(value: str):
+    target = "control_plane_kit_core.operations.run_identity"
+    try:
+        module = importlib.import_module(target)
+    except ModuleNotFoundError as error:
+        if error.name != target:
+            raise
+        raise AssertionError("missing #1636 RunId") from error
+    return module.RunId(value)
+
+
 def _resolution_grant(activity_id: str) -> SecretResolutionGrant:
     return SecretResolutionGrant(
         authorization_id="authorization-a",
@@ -199,7 +210,7 @@ class ActivityIdentityContractTests(unittest.TestCase):
         for candidate in ("a", "a" + "b" * 199):
             with self.subTest(valid=len(candidate)):
                 self.assertEqual(
-                    EffectAttemptIdentity("run-a", candidate, 1).activity_id,
+                    EffectAttemptIdentity(_run_id("run-a"), candidate, 1).activity_id,
                     candidate,
                 )
 
@@ -208,7 +219,7 @@ class ActivityIdentityContractTests(unittest.TestCase):
                 self.assert_bounded_error(
                     InvalidEffectRecoveryContract,
                     lambda candidate=candidate: EffectAttemptIdentity(
-                        "run-a", candidate, 1
+                        _run_id("run-a"), candidate, 1
                     ),  # type: ignore[arg-type]
                     *canaries,
                 )

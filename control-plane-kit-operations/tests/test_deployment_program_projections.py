@@ -88,8 +88,19 @@ def _reference() -> DeploymentProgramReference:
     return DeploymentProgramReference("workspace-a", "plan-a")
 
 
+def _run_id(value: str):
+    target = "control_plane_kit_core.operations.run_identity"
+    try:
+        module = importlib.import_module(target)
+    except ModuleNotFoundError as error:
+        if error.name != target:
+            raise
+        raise AssertionError("missing #1636 RunId") from error
+    return module.RunId(value)
+
+
 def _attempt(run_id: str = "run-a") -> EffectAttemptIdentity:
-    return EffectAttemptIdentity(run_id, "activity-a", 1)
+    return EffectAttemptIdentity(_run_id(run_id), "activity-a", 1)
 
 
 def _cases() -> tuple[_Case, ...]:
@@ -567,13 +578,15 @@ class DeploymentProgramProjectionTests(unittest.TestCase):
                 ActivityRunStatus.PAUSED,
                 ActivityRunStatus.COMPENSATING,
             ):
-                value = variant(_reference(), "r" * 256, status, _attempt("r" * 256))
+                value = variant(
+                    _reference(), "r" * 200, status, _attempt("r" * 200)
+                )
                 with self.subTest(case=name, status=status):
-                    self.assertEqual(value.effect_attempt, _attempt("r" * 256))
+                    self.assertEqual(value.effect_attempt, _attempt("r" * 200))
             invalid = (
                 object(),
-                _EffectAttemptSubclass("run-a", "activity-a", 1),
-                EffectAttemptIdentity("other-run", "activity-a", 1),
+                _EffectAttemptSubclass(_run_id("run-a"), "activity-a", 1),
+                EffectAttemptIdentity(_run_id("other-run"), "activity-a", 1),
             )
             for attempt in invalid:
                 with self.subTest(case=name, attempt=type(attempt).__name__):

@@ -9,6 +9,7 @@ SRC_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_core"
 EXPECTED_MODULES = {
     "__init__",
     "_activity_identity",
+    "_run_identity",
     "_node_control_public_wire",
     "algebra",
     "approval_subjects",
@@ -39,6 +40,7 @@ EXPECTED_MODULES = {
     "operations.process",
     "operations.projections",
     "operations.recovery",
+    "operations.run_identity",
     "operations.services",
     "operations.transactions",
     "planning.__init__",

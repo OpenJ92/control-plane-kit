@@ -104,6 +104,11 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         self.assertEqual(request.runtime_kind, RuntimeKind.DOCKER)
         self.assertIsNone(request.authority_ref)
         self.assertEqual(request.source.workspace_id, "workspace-a")
+        self.assertEqual(
+            type(request.source.run_id).__module__,
+            "control_plane_kit_core.operations.run_identity",
+        )
+        self.assertEqual(request.source.run_id.value, "run-a")
         self.assertEqual(request.source.desired_graph_id, "graph-desired")
         self.assertEqual(request.activity_id, ActivityId("activity-a"))
         self.assertEqual(request.operation, StartNode(NodeTarget("api")))

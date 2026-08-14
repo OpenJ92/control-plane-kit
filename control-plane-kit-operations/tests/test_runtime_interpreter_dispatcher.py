@@ -544,6 +544,36 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             ),
         )
 
+    def test_malformed_retained_run_fails_before_authorizer_or_runtime_io(self) -> None:
+        interpreter = RecordingInterpreter("docker")
+        authorizer = RecordingSecretUseAuthorizer()
+        dispatcher = RuntimeInterpreterDispatcher(
+            {RuntimeKind.DOCKER: interpreter},
+            secret_use_authorizer=authorizer,
+        )
+
+        outcome = dispatcher.execute(
+            context_for(
+                StartNode(NodeTarget("api")),
+                run_id="retained/run-canary",
+                secret_delivery=True,
+                worker_scopes=(
+                    PolicyScope.EXECUTION_OPERATE,
+                    PolicyScope.SECRET_PROVIDER_USE,
+                ),
+            )
+        )
+
+        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
+        self.assertIsNotNone(outcome.failure)
+        assert outcome.failure is not None
+        self.assertEqual(authorizer.commands, [])
+        self.assertEqual(interpreter.requests, [])
+        self.assertEqual(outcome.failure.code, "runtime.dispatch-target-unsupported")
+        rendered = f"{outcome.failure!s} {outcome.failure!r}"
+        self.assertLessEqual(len(rendered), 1024)
+        self.assertNotIn("retained/run-canary", rendered)
+
     def test_missing_secret_authorizer_fails_before_runtime_io(self) -> None:
         interpreter = RecordingInterpreter("docker")
         dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
@@ -606,6 +636,7 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
 def context_for(
     operation,
     *,
+    run_id: str = "run-a",
     base_kind: RuntimeKind = RuntimeKind.DOCKER,
     desired_kind: RuntimeKind = RuntimeKind.DOCKER,
     base_graph: DeploymentGraph | None = None,
@@ -630,7 +661,7 @@ def context_for(
             ClaimIdentity("worker-a", "2026-07-22T10:01:00Z", "2026-07-22T10:30:00Z"),
         ),
         run=ActivityRunRecord(
-            "run-a",
+            run_id,
             "plan-a",
             AdmittedRun("request-a"),
             RetryIdentity(1),
@@ -673,7 +704,7 @@ def context_for(
         runtime_authorities=runtime_authorities,
         intent_event=ActivityEventRecord(
             "event-intent",
-            "run-a",
+            run_id,
             1,
             ActivityEventKind.STEP_STARTED,
             "2026-07-22T10:02:30Z",

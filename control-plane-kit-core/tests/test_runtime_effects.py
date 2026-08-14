@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import unittest
 
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
@@ -59,8 +60,19 @@ from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
     SecretUseIntent,
 )
-from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.topology import GraphSubject
+from control_plane_kit_core.types import Protocol, RuntimeKind
+
+
+def _run_id(value: str):
+    target = "control_plane_kit_core.operations.run_identity"
+    try:
+        module = importlib.import_module(target)
+    except ModuleNotFoundError as error:
+        if error.name != target:
+            raise
+        raise AssertionError("missing #1636 RunId") from error
+    return module.RunId(value)
 
 
 class RuntimeEffectContractTests(unittest.TestCase):
@@ -838,7 +850,7 @@ def _source() -> RuntimeEffectSource:
     return RuntimeEffectSource(
         workspace_id="workspace-a",
         request_id="request-a",
-        run_id="run-a",
+        run_id=_run_id("run-a"),
         plan_id="plan-a",
         base_graph_id="graph-base",
         desired_graph_id="graph-desired",
