@@ -10,6 +10,7 @@ from typing import Callable, Generic, TypeVar
 import unicodedata
 
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
+from control_plane_kit_core.operations import RunId
 
 
 _GENERAL_IDENTIFIER_LIMIT = 512
@@ -104,7 +105,7 @@ class RunReadScope:
 
     def __post_init__(self) -> None:
         _general_identifier(self.workspace_id)
-        _general_identifier(self.run_id)
+        _run_identifier(self.run_id)
 
     def descriptor(self) -> dict[str, str]:
         return {"workspace_id": self.workspace_id, "run_id": self.run_id}
@@ -412,6 +413,17 @@ def _general_identifier(value: object) -> None:
         or any(unicodedata.category(character).startswith("C") for character in value)
     ):
         raise ReadPageError("read identifier is malformed")
+
+
+def _run_identifier(value: object) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        valid = False
+    else:
+        valid = True
+    if not valid:
+        raise ReadPageError("read run identity is malformed")
 
 
 def _delegation_identifier(value: object) -> None:

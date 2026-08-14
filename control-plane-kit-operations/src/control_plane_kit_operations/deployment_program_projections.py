@@ -10,6 +10,7 @@ from control_plane_kit_core.operations import (
     DeploymentProgramStage,
     EffectAttemptIdentity,
     ExecutionRequestStatus,
+    RunId,
 )
 from control_plane_kit_core.planning import ActivityId
 from control_plane_kit_operations.deployment_program import (
@@ -246,52 +247,52 @@ class DeploymentExecutionStopped(_Projection):
 
 @dataclass(frozen=True, slots=True)
 class DeploymentExecutionReady(_Projection):
-    run_id: str
+    run_id: RunId
 
     stage = DeploymentProgramStage.EXECUTE
     _projection = "execution-ready"
 
     def __post_init__(self) -> None:
         _Projection.__post_init__(self)
-        _bounded_identity(self.run_id, "run_id")
+        _run_id(self.run_id)
 
     def descriptor(self) -> dict[str, object]:
-        return self._descriptor(run_id=self.run_id)
+        return self._descriptor(run_id=self.run_id.value)
 
 
 @dataclass(frozen=True, slots=True)
 class DeploymentExecutionRunning(_Projection):
-    run_id: str
+    run_id: RunId
 
     stage = DeploymentProgramStage.EXECUTE
     _projection = "execution-running"
 
     def __post_init__(self) -> None:
         _Projection.__post_init__(self)
-        _bounded_identity(self.run_id, "run_id")
+        _run_id(self.run_id)
 
     def descriptor(self) -> dict[str, object]:
-        return self._descriptor(run_id=self.run_id)
+        return self._descriptor(run_id=self.run_id.value)
 
 
 @dataclass(frozen=True, slots=True)
 class DeploymentExecutionPaused(_Projection):
-    run_id: str
+    run_id: RunId
 
     stage = DeploymentProgramStage.EXECUTE
     _projection = "execution-paused"
 
     def __post_init__(self) -> None:
         _Projection.__post_init__(self)
-        _bounded_identity(self.run_id, "run_id")
+        _run_id(self.run_id)
 
     def descriptor(self) -> dict[str, object]:
-        return self._descriptor(run_id=self.run_id)
+        return self._descriptor(run_id=self.run_id.value)
 
 
 @dataclass(frozen=True, slots=True)
 class DeploymentEffectInFlight(_Projection):
-    run_id: str
+    run_id: RunId
     run_status: ActivityRunStatus
     effect_attempt: EffectAttemptIdentity
 
@@ -304,7 +305,7 @@ class DeploymentEffectInFlight(_Projection):
 
     def descriptor(self) -> dict[str, object]:
         return self._descriptor(
-            run_id=self.run_id,
+            run_id=self.run_id.value,
             run_status=self.run_status.value,
             effect_attempt=self.effect_attempt.descriptor(),
         )
@@ -312,7 +313,7 @@ class DeploymentEffectInFlight(_Projection):
 
 @dataclass(frozen=True, slots=True)
 class DeploymentRecoveryRequired(_Projection):
-    run_id: str
+    run_id: RunId
     run_status: ActivityRunStatus
     effect_attempt: EffectAttemptIdentity
 
@@ -325,7 +326,7 @@ class DeploymentRecoveryRequired(_Projection):
 
     def descriptor(self) -> dict[str, object]:
         return self._descriptor(
-            run_id=self.run_id,
+            run_id=self.run_id.value,
             run_status=self.run_status.value,
             effect_attempt=self.effect_attempt.descriptor(),
         )
@@ -333,22 +334,22 @@ class DeploymentRecoveryRequired(_Projection):
 
 @dataclass(frozen=True, slots=True)
 class DeploymentCompensationInProgress(_Projection):
-    run_id: str
+    run_id: RunId
 
     stage = DeploymentProgramStage.EXECUTE
     _projection = "compensation-in-progress"
 
     def __post_init__(self) -> None:
         _Projection.__post_init__(self)
-        _bounded_identity(self.run_id, "run_id")
+        _run_id(self.run_id)
 
     def descriptor(self) -> dict[str, object]:
-        return self._descriptor(run_id=self.run_id)
+        return self._descriptor(run_id=self.run_id.value)
 
 
 @dataclass(frozen=True, slots=True)
 class DeploymentExecutionFailed(_Projection):
-    run_id: str
+    run_id: RunId
     run_status: ActivityRunStatus
 
     stage = DeploymentProgramStage.EXECUTE
@@ -356,7 +357,7 @@ class DeploymentExecutionFailed(_Projection):
 
     def __post_init__(self) -> None:
         _Projection.__post_init__(self)
-        _bounded_identity(self.run_id, "run_id")
+        _run_id(self.run_id)
         _status(
             self.run_status,
             ActivityRunStatus,
@@ -366,14 +367,14 @@ class DeploymentExecutionFailed(_Projection):
 
     def descriptor(self) -> dict[str, object]:
         return self._descriptor(
-            run_id=self.run_id,
+            run_id=self.run_id.value,
             run_status=self.run_status.value,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class DeploymentExecutionSettled(_Projection):
-    run_id: str
+    run_id: RunId
     run_status: ActivityRunStatus
 
     stage = DeploymentProgramStage.EXECUTE
@@ -381,7 +382,7 @@ class DeploymentExecutionSettled(_Projection):
 
     def __post_init__(self) -> None:
         _Projection.__post_init__(self)
-        _bounded_identity(self.run_id, "run_id")
+        _run_id(self.run_id)
         _status(
             self.run_status,
             ActivityRunStatus,
@@ -396,24 +397,24 @@ class DeploymentExecutionSettled(_Projection):
 
     def descriptor(self) -> dict[str, object]:
         return self._descriptor(
-            run_id=self.run_id,
+            run_id=self.run_id.value,
             run_status=self.run_status.value,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class DeploymentAdvancementReady(_Projection):
-    run_id: str
+    run_id: RunId
 
     stage = DeploymentProgramStage.ADVANCE
     _projection = "advancement-ready"
 
     def __post_init__(self) -> None:
         _Projection.__post_init__(self)
-        _bounded_identity(self.run_id, "run_id")
+        _run_id(self.run_id)
 
     def descriptor(self) -> dict[str, object]:
-        return self._descriptor(run_id=self.run_id)
+        return self._descriptor(run_id=self.run_id.value)
 
 
 def _reference(value: object) -> None:
@@ -435,6 +436,11 @@ def _bounded_identity(value: object, field_name: str) -> None:
         )
 
 
+def _run_id(value: object) -> None:
+    if type(value) is not RunId:
+        raise InvalidDeploymentProgramContract("run_id must be RunId")
+
+
 def _status(
     value: object,
     status_type: type,
@@ -450,7 +456,7 @@ def _live_attempt(
     run_status: object,
     effect_attempt: object,
 ) -> None:
-    _bounded_identity(run_id, "run_id")
+    _run_id(run_id)
     _status(
         run_status,
         ActivityRunStatus,
@@ -465,7 +471,7 @@ def _live_attempt(
         raise InvalidDeploymentProgramContract(
             "effect_attempt must be EffectAttemptIdentity"
         )
-    if effect_attempt.run_id.value != run_id:
+    if effect_attempt.run_id != run_id:
         raise InvalidDeploymentProgramContract(
             "effect_attempt and projection run identities differ"
         )

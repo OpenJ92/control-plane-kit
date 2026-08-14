@@ -6,6 +6,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any, Callable, Mapping, Protocol
 
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -125,7 +126,7 @@ class ExecuteActivityRun:
     max_effects: int = 1
 
     def __post_init__(self) -> None:
-        _required_text(self.run_id, "run_id")
+        _require_run_id(self.run_id)
         if not isinstance(self.authority, ExecutionWorkerAuthority):
             raise InvalidOperationCommand("authority must be ExecutionWorkerAuthority")
         if not isinstance(self.idempotency_key, IdempotencyKey):
@@ -1333,3 +1334,14 @@ def _unsupported_dispatch(
 def _required_text(value: object, field: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise InvalidOperationCommand(f"{field} must not be empty")
+
+
+def _require_run_id(value: object) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        valid = False
+    else:
+        valid = True
+    if not valid:
+        raise InvalidOperationCommand("run_id is malformed")

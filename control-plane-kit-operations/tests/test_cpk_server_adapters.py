@@ -46,6 +46,7 @@ from control_plane_kit_operations.cpk_server import (
     CpkServerAdmissionService,
     CpkServerApplicationError,
     CpkServerApprovalService,
+    CpkServerExecutionService,
     CpkServerLifecycleService,
     CpkServerOperationsApplication,
     CpkServerPlanningService,
@@ -93,7 +94,10 @@ from control_plane_kit_operations.runtime_authorities import (
 from control_plane_kit_operations.secret_providers import (
     SecretProviderRegistrationService,
 )
-from control_plane_kit_operations.workflows import OperationCommandService
+from control_plane_kit_operations.workflows import (
+    InvalidOperationCommand,
+    OperationCommandService,
+)
 from control_plane_kit_operations.workspaces import WorkspaceCommandService
 
 
@@ -175,6 +179,265 @@ class SucceedingActivityAdapter:
         return ActivityExecutionOutcome.succeeded(
             BoundedEvidence.from_mapping({"activity_id": activity_id})
         )
+
+
+class _UnreadableArguments(dict):
+    def __getitem__(self, key):
+        raise AssertionError("unsupported recovery arguments were decoded")
+
+    def __iter__(self):
+        raise AssertionError("unsupported recovery arguments were decoded")
+
+    def get(self, key, default=None):
+        raise AssertionError("unsupported recovery arguments were decoded")
+
+    def items(self):
+        raise AssertionError("unsupported recovery arguments were decoded")
+
+
+def foreign_worker_principal() -> AuthenticatedPrincipal:
+    return AuthenticatedPrincipal(
+        PrincipalIdentity(
+            issuer="urn:test:cpk-server-adapters",
+            subject_id="worker-a",
+            kind=PrincipalKind.WORKER,
+        ),
+        (
+            WorkspaceGrant(
+                "workspace-other",
+                (PolicyScope.EXECUTION_OPERATE,),
+            ),
+        ),
+    )
+
+
+class RunIdentityAdapterContractTests(unittest.TestCase):
+    def services(self):
+        lifecycle = RecordingService()
+        execution = RecordingService()
+        advancement = RecordingService()
+        return (
+            CpkServerExecutionService(execution, lifecycle=lifecycle),
+            CpkServerLifecycleService(RecordingService(), advancement=advancement),
+            lifecycle,
+            execution,
+            advancement,
+        )
+
+    def command_request(
+        self,
+        route_id: str,
+        role: ControlPlaneServiceRole,
+        *,
+        surface: str,
+        run_id: str,
+        principal: AuthenticatedPrincipal | None = None,
+    ) -> RouteRequest:
+        path = {"workspace_id": "workspace-a", "run_id": run_id}
+        payload: dict[str, object]
+        if route_id == "command.run.start":
+            payload = {"idempotency_key": "start-a"}
+        elif route_id == "command.deployment.execute":
+            payload = {"idempotency_key": "execute-a", "max_effects": 1}
+        else:
+            payload = {
+                "plan_id": "plan-a",
+                "expected_current_graph_id": "graph-current",
+                "expected_current_realized_projection_id": "projection-current",
+                "desired_graph_id": "graph-desired",
+                "desired_realized_projection_id": "projection-desired",
+                "expected_desired_graph_revision": 1,
+                "idempotency_key": "advance-a",
+            }
+        if surface == "mcp":
+            payload = {**path, **payload}
+            path = {}
+        return RouteRequest(
+            surface=surface,
+            route_id=route_id,
+            service_role=role,
+            path_parameters=path,
+            payload=payload,
+            principal=principal or worker_principal(),
+        )
+
+    def test_implemented_http_and_mcp_routes_reject_noncanonical_run_before_callback(self) -> None:
+        execution_service, lifecycle_service, lifecycle, execution, advancement = (
+            self.services()
+        )
+        cases = (
+            (
+                "command.run.start",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+            ),
+            (
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+            ),
+            (
+                "command.graph.advance-current",
+                ControlPlaneServiceRole.LIFECYCLE,
+                lifecycle_service,
+            ),
+        )
+        for route_id, role, service in cases:
+            for surface in ("http", "mcp"):
+                with self.subTest(route_id=route_id, surface=surface):
+                    with self.assertRaises(InvalidOperationCommand) as captured:
+                        service.handle(
+                            self.command_request(
+                                route_id,
+                                role,
+                                surface=surface,
+                                run_id="slash/run-canary",
+                            )
+                        )
+                    self.assertIsNone(captured.exception.__cause__)
+                    self.assertIsNone(captured.exception.__context__)
+                    self.assertNotIn("slash/run-canary", repr(captured.exception))
+        self.assertEqual(lifecycle.commands, [])
+        self.assertEqual(execution.commands, [])
+        self.assertEqual(advancement.commands, [])
+
+        entered = False
+
+        def forbidden_unit_of_work():
+            nonlocal entered
+            entered = True
+            raise AssertionError("malformed run reached read unit of work")
+
+        read_service = CpkServerReadService(forbidden_unit_of_work)
+        for surface in ("http", "mcp"):
+            path = {
+                "workspace_id": "workspace-a",
+                "run_id": "slash/run-canary",
+            }
+            payload: dict[str, object] = {"limit": 1}
+            if surface == "mcp":
+                payload = {**path, **payload}
+                path = {}
+            with self.subTest(route_id="read.run-events", surface=surface):
+                with self.assertRaises(CpkServerApplicationError) as captured:
+                    read_service.handle(
+                        RouteRequest(
+                            surface=surface,
+                            route_id="read.run-events",
+                            service_role=ControlPlaneServiceRole.READS,
+                            path_parameters=path,
+                            payload=payload,
+                        )
+                    )
+                self.assertEqual(captured.exception.status, 400)
+                self.assertEqual(captured.exception.message, "read page request is malformed")
+                self.assertNotIn("slash/run-canary", repr(captured.exception))
+        self.assertFalse(entered)
+
+    def test_workspace_denial_precedes_run_and_cursor_decoding_for_all_routes(self) -> None:
+        execution_service, lifecycle_service, lifecycle, execution, advancement = (
+            self.services()
+        )
+        cases = (
+            (
+                "command.run.start",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+            ),
+            (
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+            ),
+            (
+                "command.graph.advance-current",
+                ControlPlaneServiceRole.LIFECYCLE,
+                lifecycle_service,
+            ),
+        )
+        for route_id, role, service in cases:
+            for surface in ("http", "mcp"):
+                with self.subTest(route_id=route_id, surface=surface):
+                    with self.assertRaises(CpkServerApplicationError) as captured:
+                        service.handle(
+                            self.command_request(
+                                route_id,
+                                role,
+                                surface=surface,
+                                run_id="slash/run-canary",
+                                principal=foreign_worker_principal(),
+                            )
+                        )
+                    self.assertEqual(captured.exception.status, 403)
+        self.assertEqual(lifecycle.commands, [])
+        self.assertEqual(execution.commands, [])
+        self.assertEqual(advancement.commands, [])
+
+        entered = False
+
+        def forbidden_unit_of_work():
+            nonlocal entered
+            entered = True
+            raise AssertionError("denied read reached unit of work")
+
+        read_service = CpkServerReadService(forbidden_unit_of_work)
+        with self.assertRaises(CpkServerApplicationError) as captured:
+            read_service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.run-events",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "run_id": "slash/run-canary",
+                    },
+                    payload={"after": {"hostile": True}, "limit": 1},
+                    principal=operator_principal(workspace_ids=("workspace-other",)),
+                )
+            )
+        self.assertEqual(captured.exception.status, 403)
+        self.assertFalse(entered)
+
+    def test_claim_and_unsupported_recovery_routes_do_not_parse_run_identity(self) -> None:
+        commands = RecordingService()
+        lifecycle_service = CpkServerLifecycleService(commands)
+        lifecycle_service.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.run.claim",
+                service_role=ControlPlaneServiceRole.LIFECYCLE,
+                path_parameters={
+                    "workspace_id": "workspace-a",
+                    "run_id": "request/legacy",
+                },
+                payload={
+                    "lease_expires_at": "2026-08-14T13:00:00Z",
+                    "idempotency_key": "claim-a",
+                },
+                principal=worker_principal(),
+            )
+        )
+        self.assertEqual(len(commands.commands), 1)
+        self.assertEqual(commands.commands[0].request_id, "request/legacy")
+
+        unsupported = CpkServerUnsupportedService(ControlPlaneServiceRole.RECOVERY)
+        for surface in ("http", "mcp"):
+            with self.subTest(surface=surface):
+                with self.assertRaises(CpkServerApplicationError) as captured:
+                    unsupported.handle(
+                        RouteRequest(
+                            surface=surface,
+                            route_id="command.recovery.decide",
+                            service_role=ControlPlaneServiceRole.RECOVERY,
+                            path_parameters={
+                                "workspace_id": "workspace-a",
+                                "run_id": "not/a/run",
+                            },
+                            payload=_UnreadableArguments(),
+                            principal=worker_principal(),
+                        )
+                    )
+                self.assertEqual(captured.exception.status, 501)
 
 
 class CpkServerOperationsAdapterTests(unittest.TestCase):

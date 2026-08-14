@@ -75,6 +75,30 @@ class _HostileText(str):
         raise AssertionError("hostile member was rendered")
 
 
+class _RunTextSubclass(str):
+    pass
+
+
+INVALID_RUN_IDS = (
+    (object(), ()),
+    (True, ("True",)),
+    (_RunTextSubclass("subclass-canary"), ("subclass-canary",)),
+    ("", ()),
+    (" ", ()),
+    ("-leading-canary", ("leading-canary",)),
+    (".leading-canary", ("leading-canary",)),
+    ("_leading-canary", ("leading-canary",)),
+    (":leading-canary", ("leading-canary",)),
+    ("slash/canary", ("slash/canary",)),
+    ("space canary", ("space canary",)),
+    *tuple(
+        (f"a{chr(code)}control-canary", ("control-canary",))
+        for code in (*range(32), 127)
+    ),
+    ("a" * 201, ("a" * 32,)),
+)
+
+
 class ReadPageContractTests(unittest.TestCase):
     def require_contract(self) -> None:
         self.assertIsNotNone(operations, "read-page public contract is missing")
@@ -83,6 +107,60 @@ class ReadPageContractTests(unittest.TestCase):
     def workspace(self):
         self.require_contract()
         return WorkspaceReadScope("workspace-a")
+
+    def assert_run_scope_error(self, callback, canaries: tuple[str, ...]) -> None:
+        with self.assertRaises(ReadPageError) as captured:
+            callback()
+        error = captured.exception
+        self.assertIsNone(error.__cause__)
+        self.assertIsNone(error.__context__)
+        rendered = f"{error!s} {error!r}"
+        self.assertLessEqual(len(rendered), 256)
+        for canary in canaries:
+            self.assertNotIn(canary, rendered)
+
+    def test_run_scope_uses_exact_canonical_run_identity(self) -> None:
+        for run_id in ("a", "a._:-0", "a" * 200):
+            with self.subTest(run_id=run_id, boundary="valid"):
+                scope = RunReadScope("workspace-a", run_id)
+                self.assertEqual(scope.run_id, run_id)
+                self.assertEqual(scope.descriptor()["run_id"], run_id)
+        for run_id, canaries in INVALID_RUN_IDS:
+            with self.subTest(run_type=type(run_id).__name__):
+                self.assert_run_scope_error(
+                    lambda run_id=run_id: RunReadScope("workspace-a", run_id),
+                    canaries,
+                )
+
+    def test_decoded_run_cursor_reuses_scope_grammar_cause_free(self) -> None:
+        for run_id in ("a", "a" * 200):
+            cursor = read_cursor_from_mapping(
+                {
+                    "format_version": 1,
+                    "collection": "run-events",
+                    "scope": {"workspace_id": "workspace-a", "run_id": run_id},
+                    "position": {"ordinal": 1, "item_id": "event-a"},
+                }
+            )
+            with self.subTest(run_id=run_id, boundary="valid"):
+                self.assertEqual(cursor.scope.run_id, run_id)
+                self.assertEqual(cursor.descriptor()["scope"]["run_id"], run_id)
+        for run_id, canaries in INVALID_RUN_IDS:
+            with self.subTest(run_type=type(run_id).__name__):
+                self.assert_run_scope_error(
+                    lambda run_id=run_id: read_cursor_from_mapping(
+                        {
+                            "format_version": 1,
+                            "collection": "run-events",
+                            "scope": {
+                                "workspace_id": "workspace-a",
+                                "run_id": run_id,
+                            },
+                            "position": {"ordinal": 1, "item_id": "event-a"},
+                        }
+                    ),
+                    canaries,
+                )
 
     def session(self):
         self.require_contract()
@@ -435,17 +513,17 @@ class ReadPageContractTests(unittest.TestCase):
             (WorkspaceReadScope, None),
             (SessionReadScope, "session"),
             (PlanReadScope, "plan"),
-            (RunReadScope, "run"),
         ):
             arguments = [accepted]
             if parent_field is not None:
                 arguments.append(accepted)
             scope_type(*arguments)
+        RunReadScope("workspace-a", "r" * 200)
         for build in (
             lambda: WorkspaceReadScope("a" * 513),
             lambda: SessionReadScope("workspace-a", "s" * 513),
             lambda: PlanReadScope("workspace-a", "p" * 513),
-            lambda: RunReadScope("workspace-a", "r" * 513),
+            lambda: RunReadScope("workspace-a", "r" * 201),
             lambda: WorkspaceReadScope("line\nbreak"),
             lambda: TemporalReadCursor(
                 ReadCollection.ACTIVITY_SESSIONS,
