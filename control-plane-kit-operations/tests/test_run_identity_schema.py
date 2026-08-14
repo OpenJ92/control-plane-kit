@@ -68,6 +68,10 @@ _DERIVED_FKS = {
         ("run_id",),
     ),
 }
+_DERIVED_COLUMNS = frozenset(
+    (relation, local)
+    for relation, local, _, _ in _DERIVED_FKS.values()
+)
 
 _INVALID_RUN_IDS = (
     "",
@@ -79,6 +83,8 @@ _INVALID_RUN_IDS = (
     "slash/value",
     "space value",
     "line\nbreak",
+    "trailing\n",
+    "trailing\r",
     "nonascii-\u00e9",
     "a" * 201,
 )
@@ -172,8 +178,12 @@ class RunIdentitySchemaStaticTests(unittest.TestCase):
                 self.assertEqual(value.referenced_relation, referenced)
                 self.assertEqual(value.referenced_columns, remote)
 
-        self.assertNotIn("cpk_activity_events_run_id_check", constraints)
-        self.assertNotIn("cpk_activity_runs_prior_run_id_check", constraints)
+        check_columns = {
+            (value.relation, value.local_columns)
+            for value in constraints.values()
+            if value.kind == "c"
+        }
+        self.assertTrue(_DERIVED_COLUMNS.isdisjoint(check_columns))
 
 
 class RunIdentitySchemaPostgresTests(unittest.TestCase):
@@ -265,19 +275,31 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
                     self.assertEqual(raised.exception.diag.constraint_name, name)
 
     def test_event_and_prior_run_identity_are_fk_derived_not_duplicated(self) -> None:
+        catalog_rows = self.connection.execute(
+            "SELECT relation.relname, owned.conname, owned.contype::text, "
+            "owned.convalidated, owned.condeferrable, owned.condeferred, "
+            "ARRAY(SELECT attribute.attname "
+            "      FROM unnest(owned.conkey) WITH ORDINALITY "
+            "           AS key(attnum, ordinal) "
+            "      JOIN pg_attribute AS attribute "
+            "        ON attribute.attrelid=owned.conrelid "
+            "       AND attribute.attnum=key.attnum "
+            "      ORDER BY key.ordinal) "
+            "FROM pg_constraint AS owned "
+            "JOIN pg_class AS relation ON relation.oid=owned.conrelid "
+            "JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace "
+            "WHERE namespace.nspname=current_schema()"
+        ).fetchall()
         constraints = {
-            row[0]: row[1:]
-            for row in self.connection.execute(
-                "SELECT owned.conname, owned.contype::text, owned.convalidated, "
-                "owned.condeferrable, owned.condeferred "
-                "FROM pg_constraint AS owned "
-                "JOIN pg_class AS relation ON relation.oid=owned.conrelid "
-                "JOIN pg_namespace AS namespace ON namespace.oid=relation.relnamespace "
-                "WHERE namespace.nspname=current_schema()"
-            ).fetchall()
+            row[1]: row[2:6]
+            for row in catalog_rows
         }
-        self.assertNotIn("cpk_activity_events_run_id_check", constraints)
-        self.assertNotIn("cpk_activity_runs_prior_run_id_check", constraints)
+        check_columns = {
+            (row[0], tuple(row[6]))
+            for row in catalog_rows
+            if row[2] == "c"
+        }
+        self.assertTrue(_DERIVED_COLUMNS.isdisjoint(check_columns))
         for name in _DERIVED_FKS:
             self.assertEqual(constraints[name], ("f", True, False, False))
 
@@ -285,14 +307,14 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
             "INSERT INTO cpk_activity_events "
             "(event_id, run_id, ordinal, event_type, occurred_at, payload) "
             "VALUES ('event-valid', 'run-root', 1, 'run_opened', "
-            "'2026-08-14T00:20:00Z', '{}')"
+            "'2026-08-14T00:07:30Z', '{}')"
         )
         with self.assertRaises(psycopg.errors.ForeignKeyViolation) as event_error:
             self.connection.execute(
                 "INSERT INTO cpk_activity_events "
                 "(event_id, run_id, ordinal, event_type, occurred_at, payload) "
                 "VALUES ('event-invalid', 'run/bad', 1, 'run_opened', "
-                "'2026-08-14T00:21:00Z', '{}')"
+                "'2026-08-14T00:07:31Z', '{}')"
             )
         self.assertEqual(
             event_error.exception.diag.constraint_name,
@@ -322,6 +344,17 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
         )
 
     def test_exact_reentry_preserves_rows_and_object_identity(self) -> None:
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT request.status, request.claim_worker_id, "
+                "run.status, request.claimed_at <= run.created_at, "
+                "run.created_at <= run.started_at, run.started_at <= run.settled_at "
+                "FROM cpk_execution_requests AS request "
+                "JOIN cpk_activity_runs AS run ON run.request_id=request.request_id "
+                "WHERE request.request_id='request-a'"
+            ).fetchone(),
+            ("claimed", "worker-a", "succeeded", True, True, True),
+        )
         before_objects = self._object_identities()
         before_rows = self._run_rows()
         recorder = _RecordingConnection(self.connection)
@@ -460,10 +493,12 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
             INSERT INTO cpk_execution_requests
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
+               approval_decision_id, idempotency_key, intent_fingerprint,
+               claim_worker_id, claimed_at, lease_expires_at)
+            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'claimed',
                     'operator-a', '2026-08-14T00:06:00Z', 'approval-a',
-                    'decision-a', 'execute-a', 'fingerprint-a');
+                    'decision-a', 'execute-a', 'fingerprint-a', 'worker-a',
+                    '2026-08-14T00:06:30Z', '2026-08-14T01:00:00Z');
 
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, status, created_at,
