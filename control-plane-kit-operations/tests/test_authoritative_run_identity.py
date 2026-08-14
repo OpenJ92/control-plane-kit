@@ -16,6 +16,7 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
     CancelActivityRun,
     ClaimAndOpenActivityRun,
@@ -147,7 +148,16 @@ def _replay_action(command, *, run_id="run-a", event_id="event-a"):
         1,
         LifecycleOperationKind.CLAIM_RUN,
         "worker-a",
-        {"run_id": run_id, "event_id": event_id, "claim_generation": 1},
+        {
+            "execution_request_id": "request-a",
+            "plan_id": "plan-a",
+            "run_id": run_id,
+            "run_status": ActivityRunStatus.CLAIMED.value,
+            "event_id": event_id,
+            "event_type": ActivityEventKind.RUN_OPENED.value,
+            "event_ordinal": 1,
+            "claim_generation": 1,
+        },
         "created",
         "claim-a",
         fingerprint,
@@ -314,6 +324,7 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
 
     def test_record_and_command_boundaries_share_exact_canonical_law(self):
         authority = _authority()
+        fence = ExecutionLeaseFence("worker-a", 1)
         key = IdempotencyKey("command-a")
         failure = FailureEvidence(
             FailureCategory.TERMINAL, "failure-a", "terminal failure"
@@ -324,12 +335,12 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
             lambda value: _event(value),
         )
         command_factories = (
-            lambda value: StartActivityRun(value, authority, key),
-            lambda value: PauseActivityRun(value, authority, key),
-            lambda value: ResumeActivityRun(value, authority, key),
-            lambda value: CompleteActivityRun(value, authority, key),
-            lambda value: FailActivityRun(value, authority, key, failure),
-            lambda value: CancelActivityRun(value, authority, key),
+            lambda value: StartActivityRun(value, authority, fence, key),
+            lambda value: PauseActivityRun(value, authority, fence, key),
+            lambda value: ResumeActivityRun(value, authority, fence, key),
+            lambda value: CompleteActivityRun(value, authority, fence, key),
+            lambda value: FailActivityRun(value, authority, fence, key, failure),
+            lambda value: CancelActivityRun(value, authority, fence, key),
         )
         for value in ("a", "r" * 200):
             for factory in record_factories + command_factories:
@@ -580,6 +591,7 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
         command = StartActivityRun(
             "run-a",
             _authority(),
+            ExecutionLeaseFence("worker-a", 1),
             IdempotencyKey("start-a"),
         )
         cases = (

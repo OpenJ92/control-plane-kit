@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import concurrent.futures
 import os
+import queue
+import time
 import unittest
 
 import psycopg
@@ -42,7 +45,9 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinator,
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
+    ExecutionCoordinatorNotFound,
 )
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     GeneratedIngressSecretReference,
@@ -52,8 +57,10 @@ from control_plane_kit_operations.ingress_authorities import (
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
+    CompleteActivityRun,
     ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
+    FailActivityRun,
     RunLifecycleCommandService,
     StartActivityRun,
 )
@@ -102,6 +109,7 @@ class ExecuteActivityRunContractTests(unittest.TestCase):
             (PolicyScope.EXECUTION_OPERATE,),
         )
         key = IdempotencyKey("execute-a")
+        fence = ExecutionLeaseFence("worker-a", 1)
         callbacks: list[object] = []
 
         def forbidden_execute(command: object) -> None:
@@ -109,13 +117,15 @@ class ExecuteActivityRunContractTests(unittest.TestCase):
 
         for run_id in ("a", "a._:-0", "a" * 200):
             with self.subTest(run_id=run_id, boundary="valid"):
-                command = ExecuteActivityRun(run_id, authority, key)
+                command = ExecuteActivityRun(run_id, authority, fence, key)
                 self.assertEqual(command.run_id, run_id)
 
         for run_id, canaries in INVALID_RUN_IDS:
             with self.subTest(run_type=type(run_id).__name__):
                 with self.assertRaises(InvalidOperationCommand) as captured:
-                    forbidden_execute(ExecuteActivityRun(run_id, authority, key))
+                    forbidden_execute(
+                        ExecuteActivityRun(run_id, authority, fence, key)
+                    )
                 error = captured.exception
                 self.assertIsNone(error.__cause__)
                 self.assertIsNone(error.__context__)
@@ -203,6 +213,49 @@ class RecordingAdapter:
         if not isinstance(outcome, ActivityExecutionOutcome):
             raise AssertionError("test adapter outcome must be ActivityExecutionOutcome")
         return outcome
+
+
+class GenerationReplacingAdapter:
+    def __init__(self, database_url: str, *, raises: bool = False) -> None:
+        self.database_url = database_url
+        self.raises = raises
+        self.calls: list[str] = []
+        self.contexts: list[ActivityRealizationContext] = []
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        self.calls.append(context.activity.activity_id.value)
+        self.contexts.append(context)
+        with psycopg.connect(self.database_url, autocommit=True) as connection:
+            connection.execute(
+                "UPDATE cpk_execution_requests SET claim_generation = 2 "
+                "WHERE request_id = 'request-a'"
+            )
+        if self.raises:
+            raise RuntimeError("provider-canary")
+        return ActivityExecutionOutcome.succeeded(
+            observations=(
+                ObservationRecord(
+                    "stale-observation",
+                    "workspace-a",
+                    "api",
+                    ObservationStatus.PROCESS_STARTED,
+                    "2026-07-22T13:01:05Z",
+                ),
+            )
+        )
+
+
+class RecordingLifecycle:
+    def __init__(self, inner: RunLifecycleCommandService) -> None:
+        self.inner = inner
+        self.commands: list[object] = []
+
+    def execute(self, command: object):
+        self.commands.append(command)
+        return self.inner.execute(command)
 
 
 class SideEvidenceWritingAdapter:
@@ -312,10 +365,12 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         worker_id: str = "worker-a",
         scopes: tuple[PolicyScope, ...] = (PolicyScope.EXECUTION_OPERATE,),
         max_effects: int = 1,
+        generation: int = 1,
     ) -> ExecuteActivityRun:
         return ExecuteActivityRun(
             "run-a",
             self.authority(worker_id, scopes),
+            ExecutionLeaseFence(worker_id, generation),
             IdempotencyKey("execute-a"),
             max_effects=max_effects,
         )
@@ -350,7 +405,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         adapter = RecordingAdapter(
             self.tracker,
             ActivityExecutionOutcome.succeeded(
-                BoundedEvidence.from_mapping({"adapter": "fake"}),
+                BoundedEvidence.from_mapping(
+                    {"adapter": "fake", "claim_generation": 999}
+                ),
                 observations=(
                     ObservationRecord(
                         "observation-start-api",
@@ -403,6 +460,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ["hello-server"],
         )
         self.assertEqual(context.authority.worker_id, "worker-a")
+        self.assertEqual(context.fence, ExecutionLeaseFence("worker-a", 1))
         self.assertEqual(context.intent_event.kind, ActivityEventKind.STEP_STARTED)
         self.assertEqual(context.intent_event.activity_id, "start-api")
         with self.unit_of_work() as unit_of_work:
@@ -430,6 +488,207 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             [event.activity_id for event in events if event.activity_id is not None],
             ["start-api", "start-api"],
         )
+        step_events = tuple(event for event in events if event.activity_id is not None)
+        self.assertEqual(
+            tuple(event.evidence.descriptor() for event in step_events),
+            (
+                {"claim_generation": 1, "details": {"phase": "intent"}},
+                {
+                    "claim_generation": 1,
+                    "details": {"adapter": "fake", "claim_generation": 999},
+                },
+            ),
+        )
+
+    def test_stale_generation_before_dispatch_calls_no_adapter(self) -> None:
+        self.claim_and_start()
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation = 2 "
+            "WHERE request_id = 'request-a'"
+        )
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+
+        with self.assertRaises(ExecutionCoordinatorDenied) as captured:
+            self.coordinator(adapter).execute(self.command())
+
+        self.assertEqual(adapter.calls, [])
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertNotIn("worker-a", repr(captured.exception))
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(
+            tuple(event.kind for event in events),
+            (ActivityEventKind.RUN_OPENED, ActivityEventKind.RUN_STARTED),
+        )
+
+    def test_missing_run_translation_clears_candidate_bearing_store_error(self) -> None:
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        command = ExecuteActivityRun(
+            "missing-run-canary",
+            self.authority(),
+            ExecutionLeaseFence("worker-a", 1),
+            IdempotencyKey("execute-missing"),
+        )
+
+        with self.assertRaises(ExecutionCoordinatorNotFound) as captured:
+            self.coordinator(adapter).execute(command)
+
+        self.assertEqual(str(captured.exception), "activity run was not found")
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertNotIn("missing-run-canary", repr(captured.exception))
+        self.assertEqual(adapter.calls, [])
+
+    def test_coordinator_shared_boundary_locks_request_before_run(self) -> None:
+        self.claim_and_start()
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        worker_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            worker_pids.put(connection.info.backend_pid)
+            return connection
+
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        coordinator = ExecutionCoordinator(
+            lambda: PostgresUnitOfWork(connection_factory),
+            lifecycle=self.lifecycle(),
+            adapter=adapter,
+            clock=lambda: "2026-07-22T13:01:00Z",
+            id_factory=self.ids,
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(coordinator.execute, self.command())
+                worker_pid = worker_pids.get(timeout=5)
+                deadline = time.monotonic() + 5
+                while True:
+                    blocked_by = self.connection.execute(
+                        "SELECT pg_blocking_pids(%s)",
+                        (worker_pid,),
+                    ).fetchone()[0]
+                    if blocker_pid in blocked_by:
+                        break
+                    if time.monotonic() >= deadline:
+                        self.fail("coordinator did not block on the request row")
+                with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                    )
+                blocker.commit()
+                result = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+
+    def test_generation_replacement_during_io_preserves_only_step_started(self) -> None:
+        self.claim_and_start()
+        adapter = GenerationReplacingAdapter(self.database_url)
+
+        with self.assertRaises(ExecutionCoordinatorDenied):
+            self.coordinator(adapter).execute(self.command())
+
+        self.assertEqual(adapter.calls, ["start-api"])
+        self.assertEqual(adapter.contexts[0].fence, ExecutionLeaseFence("worker-a", 1))
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+            observation = unit_of_work.stores.observed_state.latest(
+                "workspace-a", "api"
+            )
+        self.assertIsNone(observation)
+        self.assertEqual(
+            tuple(event.kind for event in events),
+            (
+                ActivityEventKind.RUN_OPENED,
+                ActivityEventKind.RUN_STARTED,
+                ActivityEventKind.STEP_STARTED,
+            ),
+        )
+        self.assertEqual(
+            events[-1].evidence.descriptor(),
+            {"claim_generation": 1, "details": {"phase": "intent"}},
+        )
+
+    def test_provider_exception_after_replacement_cannot_record_uncertainty(self) -> None:
+        self.claim_and_start()
+        adapter = GenerationReplacingAdapter(self.database_url, raises=True)
+
+        with self.assertRaises(ExecutionCoordinatorDenied):
+            self.coordinator(adapter).execute(self.command())
+
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(adapter.calls, ["start-api"])
+        self.assertEqual(events[-1].kind, ActivityEventKind.STEP_STARTED)
+        self.assertNotIn("provider-canary", repr(events[-1]))
+
+    def test_valid_but_unenvelopable_adapter_evidence_becomes_uncertain(self) -> None:
+        candidates = (
+            BoundedEvidence.from_mapping(
+                {"a": {"b": {"c": {"d": "maximum-depth"}}}}
+            ),
+            BoundedEvidence.from_mapping(
+                {f"k{index}": "x" * 500 for index in range(8)}
+            ),
+        )
+        for index, evidence in enumerate(candidates):
+            if index:
+                self.reset_execution_request(plan=single_activity_plan())
+            self.claim_and_start()
+            adapter = RecordingAdapter(
+                self.tracker,
+                ActivityExecutionOutcome.succeeded(
+                    evidence,
+                    observations=(
+                        ObservationRecord(
+                            "overflow-observation-canary",
+                            "workspace-a",
+                            "overflow-subject-canary",
+                            ObservationStatus.PROCESS_STARTED,
+                            "2026-07-22T13:01:05Z",
+                        ),
+                    ),
+                ),
+            )
+
+            result = self.coordinator(adapter).execute(self.command(max_effects=2))
+
+            self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+            self.assertEqual(result.effects_attempted, 1)
+            with self.unit_of_work() as unit_of_work:
+                events = unit_of_work.stores.execution.events_for_run("run-a")
+                observation = unit_of_work.stores.observed_state.latest(
+                    "workspace-a", "overflow-subject-canary"
+                )
+            self.assertIsNone(observation)
+            self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
+            self.assertEqual(
+                events[-1].failure.code,
+                "adapter-evidence-envelope-invalid",
+            )
+            self.assertEqual(
+                events[-1].evidence.descriptor(),
+                {"claim_generation": 1, "details": {}},
+            )
+            self.assertNotIn("overflow", repr(events[-1]))
 
     def test_completed_replay_does_not_repeat_effect(self) -> None:
         with self.unit_of_work() as unit_of_work:
@@ -672,6 +931,66 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             events = unit_of_work.stores.execution.events_for_run("run-a")
         self.assertEqual(events[-2].kind, ActivityEventKind.STEP_UNSUPPORTED)
         self.assertEqual(events[-2].failure.code, "unsupported-capability")
+        self.assertEqual(
+            events[-2].evidence.descriptor(),
+            {"claim_generation": 1, "details": {}},
+        )
+
+    def test_nested_completion_receives_the_identical_fence_object(self) -> None:
+        self.claim_and_start()
+        lifecycle = RecordingLifecycle(self.lifecycle())
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        command = self.command()
+        coordinator = ExecutionCoordinator(
+            self.unit_of_work,
+            lifecycle=lifecycle,
+            adapter=adapter,
+            clock=lambda: "2026-07-22T13:01:00Z",
+            id_factory=self.ids,
+        )
+
+        result = coordinator.execute(command)
+
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        terminal = tuple(
+            value for value in lifecycle.commands if isinstance(value, CompleteActivityRun)
+        )
+        self.assertEqual(len(terminal), 1)
+        self.assertIs(terminal[0].fence, command.fence)
+
+    def test_nested_failure_receives_the_identical_fence_object(self) -> None:
+        self.claim_and_start()
+        lifecycle = RecordingLifecycle(self.lifecycle())
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.failed(
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "adapter-failed",
+                    "adapter reported failure",
+                )
+            ),
+        )
+        command = self.command()
+        coordinator = ExecutionCoordinator(
+            self.unit_of_work,
+            lifecycle=lifecycle,
+            adapter=adapter,
+            clock=lambda: "2026-07-22T13:01:00Z",
+            id_factory=self.ids,
+        )
+
+        result = coordinator.execute(command)
+
+        self.assertIs(result.status, CoordinatorStatus.FAILED)
+        terminal = tuple(
+            value for value in lifecycle.commands if isinstance(value, FailActivityRun)
+        )
+        self.assertEqual(len(terminal), 1)
+        self.assertIs(terminal[0].fence, command.fence)
 
     def test_worker_scope_and_claim_ownership_are_checked_before_adapter(self) -> None:
         self.claim_and_start()
@@ -755,6 +1074,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             StartActivityRun(
                 "run-a",
                 self.authority(),
+                ExecutionLeaseFence("worker-a", 1),
                 IdempotencyKey("start-a"),
             )
         )

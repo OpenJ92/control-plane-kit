@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 from gateway_rotation_overlap_fixture import (
@@ -17,6 +18,7 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import ActivityExecutionOutcome
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKeyStatus,
 )
@@ -36,6 +38,27 @@ class GatewayKeyRotationRetirementExecutionTests(
     GatewayRotationRetirementFixture,
     unittest.TestCase,
 ):
+    def test_stale_fence_translation_is_bounded_and_cause_free(self) -> None:
+        self.prepare_retirement_execution()
+        adapter = RecordingAdapter(ActivityExecutionOutcome.succeeded())
+        command = replace(
+            self.execution_command(),
+            fence=ExecutionLeaseFence("worker-a", 2),
+        )
+
+        with self.assertRaises(
+            GatewayKeyRotationRetirementExecutionConflict
+        ) as captured:
+            self.execution_program(adapter).progress(command)
+
+        self.assertEqual(
+            str(captured.exception),
+            "deployment coordinator rejected progress",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(adapter.calls, [])
+
     def test_executes_b_only_child_accepts_and_replays_without_key_retirement(
         self,
     ) -> None:

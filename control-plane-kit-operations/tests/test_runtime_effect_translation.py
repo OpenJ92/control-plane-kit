@@ -29,6 +29,7 @@ from control_plane_kit_core.planning import (
     RuntimeTarget,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
     NamedPublicIngress,
@@ -670,6 +671,7 @@ def _context(
             worker_id="worker-a",
             scopes=(PolicyScope.EXECUTION_OPERATE,),
         ),
+        fence=ExecutionLeaseFence("worker-a", 1),
         intent_event=ActivityEventRecord(
             event_id="event-started",
             run_id=run_id,

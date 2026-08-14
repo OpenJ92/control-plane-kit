@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import json
 import os
@@ -236,9 +236,16 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
         path = {"workspace_id": "workspace-a", "run_id": run_id}
         payload: dict[str, object]
         if route_id == "command.run.start":
-            payload = {"idempotency_key": "start-a"}
+            payload = {
+                "idempotency_key": "start-a",
+                "claim_generation": 1,
+            }
         elif route_id == "command.deployment.execute":
-            payload = {"idempotency_key": "execute-a", "max_effects": 1}
+            payload = {
+                "idempotency_key": "execute-a",
+                "claim_generation": 1,
+                "max_effects": 1,
+            }
         else:
             payload = {
                 "plan_id": "plan-a",
@@ -372,6 +379,70 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
         self.assertEqual(lifecycle.commands, [])
         self.assertEqual(execution.commands, [])
         self.assertEqual(advancement.commands, [])
+
+    def test_execution_routes_require_bounded_generation_before_service_entry(self) -> None:
+        for route_id in ("command.run.start", "command.deployment.execute"):
+            for surface in ("http", "mcp"):
+                for candidate in (None, True, 0, -1, 2**63, "generation-canary"):
+                    execution_service, _, lifecycle, execution, _ = self.services()
+                    request = self.command_request(
+                        route_id,
+                        ControlPlaneServiceRole.EXECUTION,
+                        surface=surface,
+                        run_id="run-a",
+                    )
+                    payload = dict(request.payload)
+                    if candidate is None:
+                        payload.pop("claim_generation", None)
+                    else:
+                        payload["claim_generation"] = candidate
+                    with self.subTest(
+                        route_id=route_id,
+                        surface=surface,
+                        candidate=candidate,
+                    ):
+                        with self.assertRaises(CpkServerApplicationError) as captured:
+                            execution_service.handle(
+                                replace(request, payload=payload)
+                            )
+                        self.assertEqual(captured.exception.status, 400)
+                        self.assertEqual(
+                            captured.exception.message,
+                            "claim_generation is invalid",
+                        )
+                        self.assertNotIn("generation-canary", repr(captured.exception))
+                        self.assertEqual(lifecycle.commands, [])
+                        self.assertEqual(execution.commands, [])
+
+    def test_execution_fence_worker_comes_only_from_authenticated_actor(self) -> None:
+        execution_service, _, lifecycle, execution, _ = self.services()
+
+        for route_id, recorder in (
+            ("command.run.start", lifecycle),
+            ("command.deployment.execute", execution),
+        ):
+            request = self.command_request(
+                route_id,
+                ControlPlaneServiceRole.EXECUTION,
+                surface="http",
+                run_id="run-a",
+                principal=worker_principal(subject_id="trusted-worker"),
+            )
+            execution_service.handle(
+                replace(
+                    request,
+                    payload={
+                        **request.payload,
+                        "worker_id": "hostile-worker-canary",
+                        "claim_generation": 7,
+                    },
+                )
+            )
+
+            command = recorder.commands[-1]
+            self.assertEqual(command.authority.worker_id, "trusted-worker")
+            self.assertEqual(command.fence.worker_id, "trusted-worker")
+            self.assertEqual(command.fence.generation, 7)
 
         entered = False
 
@@ -1949,6 +2020,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 payload={
                     "worker_id": "worker-a",
                     "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+                    "claim_generation": claimed["claim_generation"],
                     "idempotency_key": "start-a",
                 },
                 principal=worker_principal(),
@@ -1966,6 +2038,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     "run_id": run_id,
                     "worker_id": "worker-a",
                     "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+                    "claim_generation": claimed["claim_generation"],
                     "idempotency_key": "execute-a",
                     "max_effects": 10,
                 },

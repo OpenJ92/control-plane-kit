@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Any, Callable
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.coordinator import (
     CoordinatorStatus,
     ExecutionCoordinator,
@@ -61,6 +62,7 @@ class ProgressGatewayKeyRotationOverlap:
     actor_id: str
     actor_scopes: tuple[PolicyScope, ...]
     worker_authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
 
     def __post_init__(self) -> None:
         normalized = self.deployment_command()
@@ -76,6 +78,7 @@ class ProgressGatewayKeyRotationOverlap:
             actor_id=self.actor_id,
             actor_scopes=self.actor_scopes,
             worker_authority=self.worker_authority,
+            fence=self.fence,
         )
 
 
@@ -155,14 +158,20 @@ class GatewayKeyRotationOverlapExecutionProgram:
     ) -> GatewayKeyRotationOverlapExecutionResult:
         if not isinstance(command, ProgressGatewayKeyRotationOverlap):
             raise TypeError("command must be ProgressGatewayKeyRotationOverlap")
+        authorization_message = None
+        conflict_message = None
         try:
             result = self._program.progress(command.deployment_command())
         except GatewayKeyRotationDeploymentExecutionAuthorizationDenied as error:
-            raise GatewayKeyRotationOverlapExecutionAuthorizationDenied(
-                str(error)
-            ) from error
+            authorization_message = str(error)
         except GatewayKeyRotationDeploymentExecutionConflict as error:
-            raise GatewayKeyRotationOverlapExecutionConflict(str(error)) from error
+            conflict_message = str(error)
+        if authorization_message is not None:
+            raise GatewayKeyRotationOverlapExecutionAuthorizationDenied(
+                authorization_message
+            )
+        if conflict_message is not None:
+            raise GatewayKeyRotationOverlapExecutionConflict(conflict_message)
         return _result(result)
 
 

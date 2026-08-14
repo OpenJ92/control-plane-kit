@@ -17,6 +17,7 @@ from control_plane_kit_core.operations.lifecycle import (
     FailureCategory,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
@@ -162,6 +163,7 @@ class GatewayKeyRotationOverlapExecutionTests(
                 "worker-a",
                 worker_scopes,
             ),
+            fence=ExecutionLeaseFence("worker-a", 1),
         )
 
     def program(
@@ -244,6 +246,26 @@ class GatewayKeyRotationOverlapExecutionTests(
         )
         self.assertEqual(len(adapter.calls), activity_count)
         self.assertEqual(self._current_advancement_count(), 1)
+
+    def test_stale_fence_translation_is_bounded_and_cause_free(self) -> None:
+        adapter = RecordingAdapter(ActivityExecutionOutcome.succeeded())
+        command = replace(
+            self.command(),
+            fence=ExecutionLeaseFence("worker-a", 2),
+        )
+
+        with self.assertRaises(
+            GatewayKeyRotationOverlapExecutionConflict
+        ) as captured:
+            self.program(adapter).progress(command)
+
+        self.assertEqual(
+            str(captured.exception),
+            "deployment coordinator rejected progress",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(adapter.calls, [])
 
     def test_failed_and_uncertain_effects_block_with_bounded_codes(self) -> None:
         cases = (

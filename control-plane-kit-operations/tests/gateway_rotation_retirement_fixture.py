@@ -8,6 +8,7 @@ import psycopg
 from gateway_rotation_overlap_fixture import GatewayRotationOverlapFixture
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
@@ -243,6 +244,7 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
             actor_id="operator-a",
             actor_scopes=actor_scopes,
             worker_authority=ExecutionWorkerAuthority("worker-a", worker_scopes),
+            fence=ExecutionLeaseFence("worker-a", 1),
         )
 
     def execution_program(

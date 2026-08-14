@@ -48,6 +48,7 @@ from control_plane_kit_core.topology import (
 )
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
     CompleteActivityRun,
     ExecutionWorkerAuthority,
@@ -83,6 +84,7 @@ from control_plane_kit_operations.records import (
     FailureEvidence,
     ObservationRecord,
     ObservationStatus,
+    OperationsRecordError,
     RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
@@ -122,6 +124,7 @@ class ExecuteActivityRun:
 
     run_id: str
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     idempotency_key: IdempotencyKey
     max_effects: int = 1
 
@@ -129,6 +132,10 @@ class ExecuteActivityRun:
         _require_run_id(self.run_id)
         if not isinstance(self.authority, ExecutionWorkerAuthority):
             raise InvalidOperationCommand("authority must be ExecutionWorkerAuthority")
+        if not isinstance(self.fence, ExecutionLeaseFence):
+            raise InvalidOperationCommand("fence must be ExecutionLeaseFence")
+        if self.authority.worker_id != self.fence.worker_id:
+            raise InvalidOperationCommand("authority and fence must agree")
         if not isinstance(self.idempotency_key, IdempotencyKey):
             raise InvalidOperationCommand("idempotency_key must be IdempotencyKey")
         if type(self.max_effects) is not int or self.max_effects < 1:
@@ -147,6 +154,7 @@ class ActivityRealizationContext:
     desired_graph: RealizedGraphProjectionRecord
     registered_products: tuple[RegisteredProduct, ...]
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     intent_event: ActivityEventRecord
     image_pull_authorities: tuple[RegisteredImagePullAuthority, ...] = ()
     runtime_authorities: tuple[RegisteredRuntimeAuthority, ...] = ()
@@ -244,11 +252,17 @@ class ActivityRealizationContext:
         )
         if not isinstance(self.authority, ExecutionWorkerAuthority):
             raise InvalidOperationCommand("realization authority must be ExecutionWorkerAuthority")
+        if not isinstance(self.fence, ExecutionLeaseFence):
+            raise InvalidOperationCommand("realization fence must be ExecutionLeaseFence")
+        if self.authority.worker_id != self.fence.worker_id:
+            raise InvalidOperationCommand("realization authority and fence must agree")
         if not isinstance(self.intent_event, ActivityEventRecord):
             raise InvalidOperationCommand("realization intent must be ActivityEventRecord")
         workspace_id = self.request.identity.workspace_id
         if self.run.admission.request_id != self.request.identity.request_id:
             raise InvalidOperationCommand("realization run must belong to request")
+        if self.request.claim is None or self.request.claim.fence != self.fence:
+            raise InvalidOperationCommand("realization fence must match request claim")
         if self.run.plan_id != self.plan_record.plan_id:
             raise InvalidOperationCommand("realization run must use the pinned plan")
         if self.request.identity.plan_id != self.plan_record.plan_id:
@@ -726,7 +740,7 @@ class ExecutionCoordinator:
                         ),
                     )
                 )
-            self._record_outcome(command, planned, outcome)
+            outcome = self._record_outcome(command, planned, outcome)
             if outcome.kind is EffectResultKind.SUCCEEDED:
                 continue
             classified = self._classify_current(self._load_context(command))
@@ -796,6 +810,7 @@ class ExecutionCoordinator:
                     FailActivityRun(
                         run.run_id,
                         context.authority,
+                        context.fence,
                         IdempotencyKey(f"coordinator:{run.run_id}:fail"),
                         failure,
                     )
@@ -815,6 +830,7 @@ class ExecutionCoordinator:
                 CompleteActivityRun(
                     run.run_id,
                     context.authority,
+                    context.fence,
                     IdempotencyKey(f"coordinator:{run.run_id}:complete"),
                     BoundedEvidence.from_mapping({"result": "all-activities-succeeded"}),
                 )
@@ -842,9 +858,7 @@ class ExecutionCoordinator:
         now = self._clock()
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
-            run = _get_run_for_update(stores, command.run_id)
-            request = _get_request(stores, run.admission.request_id)
-            _require_worker_owns(request, command.authority)
+            request, run = _locked_request_and_run(stores, command)
             if run.status is not ActivityRunStatus.RUNNING:
                 raise ExecutionCoordinatorConflict("run is not executable")
             _validate_observations(
@@ -859,7 +873,10 @@ class ExecutionCoordinator:
                     kind=kind,
                     occurred_at=now,
                     activity_id=activity.activity_id.value,
-                    evidence=evidence or BoundedEvidence(),
+                    evidence=_step_evidence(
+                        command.fence,
+                        evidence or BoundedEvidence(),
+                    ),
                     failure=failure,
                 )
             )
@@ -873,81 +890,63 @@ class ExecutionCoordinator:
         command: ExecuteActivityRun,
         activity: PlannedActivity,
         outcome: ActivityExecutionOutcome,
-    ) -> None:
-        if not self._observations_match_workspace(command, outcome.observations):
-            outcome = ActivityExecutionOutcome.uncertain(
-                FailureEvidence(
-                    FailureCategory.UNCERTAIN,
-                    "adapter-observation-workspace-mismatch",
-                    "adapter returned observation evidence for a different workspace",
-                )
-            )
-        if outcome.kind is EffectResultKind.SUCCEEDED:
-            self._record_step_event(
-                command,
-                activity,
-                ActivityEventKind.STEP_SUCCEEDED,
-                outcome.evidence,
-                observations=outcome.observations,
-            )
-            return
-        if outcome.kind is EffectResultKind.FAILED:
-            assert outcome.failure is not None
-            self._record_step_event(
-                command,
-                activity,
-                ActivityEventKind.STEP_FAILED,
-                failure=outcome.failure,
-                observations=outcome.observations,
-            )
-            return
-        if outcome.kind is EffectResultKind.UNSUPPORTED:
-            assert outcome.failure is not None
-            self._record_step_event(
-                command,
-                activity,
-                ActivityEventKind.STEP_UNSUPPORTED,
-                failure=outcome.failure,
-                observations=outcome.observations,
-            )
-            return
-        if outcome.kind is EffectResultKind.UNCERTAIN:
-            assert outcome.failure is not None
-            self._record_step_event(
-                command,
-                activity,
-                ActivityEventKind.STEP_UNCERTAIN,
-                failure=outcome.failure,
-                observations=outcome.observations,
-            )
-            return
-        raise ExecutionCoordinatorConflict("unsupported adapter outcome")
-
-    def _observations_match_workspace(
-        self,
-        command: ExecuteActivityRun,
-        observations: tuple[ObservationRecord, ...],
-    ) -> bool:
-        if not observations:
-            return True
+    ) -> ActivityExecutionOutcome:
+        now = self._clock()
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
-            run = _get_run(stores, command.run_id)
-            request = _get_request(stores, run.admission.request_id)
-            _require_worker_owns(request, command.authority)
-        workspace_id = request.identity.workspace_id
-        return all(observation.workspace_id == workspace_id for observation in observations)
+            request, run = _locked_request_and_run(stores, command)
+            if run.status is not ActivityRunStatus.RUNNING:
+                raise ExecutionCoordinatorConflict("run is not executable")
+            if any(
+                observation.workspace_id != request.identity.workspace_id
+                for observation in outcome.observations
+            ):
+                outcome = ActivityExecutionOutcome.uncertain(
+                    FailureEvidence(
+                        FailureCategory.UNCERTAIN,
+                        "adapter-observation-workspace-mismatch",
+                        "adapter returned observation evidence for a different workspace",
+                    )
+                )
+            try:
+                event_evidence = _step_evidence(command.fence, outcome.evidence)
+            except OperationsRecordError:
+                outcome = ActivityExecutionOutcome.uncertain(
+                    FailureEvidence(
+                        FailureCategory.UNCERTAIN,
+                        "adapter-evidence-envelope-invalid",
+                        "adapter evidence could not enter durable step history",
+                    )
+                )
+                event_evidence = _step_evidence(command.fence, outcome.evidence)
+            kind = _outcome_event_kind(outcome.kind)
+            event = ActivityEventRecord(
+                event_id=self._id_factory(),
+                run_id=run.run_id,
+                ordinal=stores.execution.next_event_ordinal(run.run_id),
+                kind=kind,
+                occurred_at=now,
+                activity_id=activity.activity_id.value,
+                evidence=event_evidence,
+                failure=outcome.failure,
+            )
+            stores.execution.add_event(event)
+            for observation in outcome.observations:
+                stores.observed_state.put(observation)
+            unit_of_work.commit()
+            return outcome
 
     def _load_context(self, command: ExecuteActivityRun) -> "_CoordinatorContext":
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
-            run = _get_run_for_update(stores, command.run_id)
-            request = _get_request(stores, run.admission.request_id)
-            _require_worker_owns(request, command.authority)
+            request, run = _locked_request_and_run(stores, command)
+            missing_plan = False
             try:
                 plan_record = stores.activity_history.get_plan(run.plan_id)
-            except KeyError as error:
-                raise ExecutionCoordinatorNotFound("activity plan was not found") from error
+            except KeyError:
+                missing_plan = True
+            if missing_plan:
+                raise ExecutionCoordinatorNotFound("activity plan was not found")
             for projection_id, graph_id, label in (
                 (
                     plan_record.base_realized_projection_id,
@@ -962,16 +961,20 @@ class ExecutionCoordinator:
             ):
                 if projection_id is not None:
                     continue
+                missing_authored = False
                 try:
                     authored = stores.graphs.get(graph_id)
-                except KeyError as error:
+                except KeyError:
+                    missing_authored = True
+                if missing_authored:
                     raise ExecutionCoordinatorNotFound(
                         "pinned graph was not found"
-                    ) from error
+                    )
                 if authored.workspace_id != request.identity.workspace_id:
                     raise ExecutionCoordinatorConflict(
                         f"{label} graph must match execution workspace"
                     )
+            missing_projection = False
             try:
                 base_graph = (
                     stores.realized_graphs.get(
@@ -993,8 +996,10 @@ class ExecutionCoordinator:
                         plan_record.desired_graph_id,
                     )
                 )
-            except KeyError as error:
-                raise ExecutionCoordinatorNotFound("pinned graph was not found") from error
+            except KeyError:
+                missing_projection = True
+            if missing_projection:
+                raise ExecutionCoordinatorNotFound("pinned graph was not found")
             registered_products = stores.registered_products.list_active(
                 request.identity.workspace_id
             )
@@ -1041,6 +1046,7 @@ class ExecutionCoordinator:
             projection=projection,
             schedule=schedule,
             authority=command.authority,
+            fence=command.fence,
         )
 
     def _fresh_run(self, run_id: str) -> ActivityRunRecord:
@@ -1066,11 +1072,20 @@ class _CoordinatorContext:
     projection: SagaJournalProjection
     schedule: ExecutionSchedule
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
 
     def __post_init__(self) -> None:
         workspace_id = self.request.identity.workspace_id
         if self.run.admission.request_id != self.request.identity.request_id:
             raise ExecutionCoordinatorConflict("run must belong to execution request")
+        if self.request.claim is None or self.request.claim.fence != self.fence:
+            raise ExecutionCoordinatorDenied(
+                "worker does not own the execution request claim"
+            )
+        if self.authority.worker_id != self.fence.worker_id:
+            raise ExecutionCoordinatorDenied(
+                "worker does not own the execution request claim"
+            )
         if self.run.plan_id != self.plan_record.plan_id:
             raise ExecutionCoordinatorConflict("run must use pinned activity plan")
         if self.request.identity.plan_id != self.plan_record.plan_id:
@@ -1158,6 +1173,7 @@ class _CoordinatorContext:
             desired_graph=self.desired_graph,
             registered_products=self.registered_products,
             authority=self.authority,
+            fence=self.fence,
             intent_event=intent_event,
             image_pull_authorities=self.image_pull_authorities,
             runtime_authorities=self.runtime_authorities,
@@ -1169,24 +1185,60 @@ class _CoordinatorContext:
 
 
 def _get_run(stores: Any, run_id: str) -> ActivityRunRecord:
+    missing_run = False
     try:
-        return stores.execution.get_run(run_id)
-    except KeyError as error:
-        raise ExecutionCoordinatorNotFound("activity run was not found") from error
+        run = stores.execution.get_run(run_id)
+    except KeyError:
+        missing_run = True
+    if missing_run:
+        raise ExecutionCoordinatorNotFound("activity run was not found")
+    return run
 
 
 def _get_run_for_update(stores: Any, run_id: str) -> ActivityRunRecord:
+    missing_run = False
     try:
-        return stores.execution.get_run_for_update(run_id)
-    except KeyError as error:
-        raise ExecutionCoordinatorNotFound("activity run was not found") from error
+        run = stores.execution.get_run_for_update(run_id)
+    except KeyError:
+        missing_run = True
+    if missing_run:
+        raise ExecutionCoordinatorNotFound("activity run was not found")
+    return run
 
 
 def _get_request(stores: Any, request_id: str) -> ExecutionRequestRecord:
+    missing_request = False
     try:
-        return stores.execution.get_request(request_id)
-    except KeyError as error:
-        raise ExecutionCoordinatorNotFound("execution request was not found") from error
+        request = stores.execution.get_request(request_id)
+    except KeyError:
+        missing_request = True
+    if missing_request:
+        raise ExecutionCoordinatorNotFound("execution request was not found")
+    return request
+
+
+def _get_request_for_update(stores: Any, request_id: str) -> ExecutionRequestRecord:
+    missing_request = False
+    try:
+        request = stores.execution.get_request_for_update(request_id)
+    except KeyError:
+        missing_request = True
+    if missing_request:
+        raise ExecutionCoordinatorNotFound("execution request was not found")
+    return request
+
+
+def _locked_request_and_run(
+    stores: Any,
+    command: ExecuteActivityRun,
+) -> tuple[ExecutionRequestRecord, ActivityRunRecord]:
+    locator_run = _get_run(stores, command.run_id)
+    request = _get_request_for_update(stores, locator_run.admission.request_id)
+    run = _get_run_for_update(stores, command.run_id)
+    if run.admission.request_id != request.identity.request_id:
+        raise ExecutionCoordinatorConflict("activity run request linkage changed")
+    _require_worker_owns(request, command.authority, command.fence)
+    return request, run
 
 
 def _validate_observations(
@@ -1204,15 +1256,41 @@ def _validate_observations(
 def _require_worker_owns(
     request: ExecutionRequestRecord,
     authority: ExecutionWorkerAuthority,
+    fence: ExecutionLeaseFence,
 ) -> None:
     if PolicyScope.EXECUTION_OPERATE not in authority.scopes:
         raise ExecutionCoordinatorDenied("scope execution:operate is missing")
     if (
         request.status is not ExecutionRequestStatus.CLAIMED
         or request.claim is None
-        or request.claim.worker_id != authority.worker_id
+        or request.claim.fence != fence
+        or authority.worker_id != fence.worker_id
     ):
         raise ExecutionCoordinatorDenied("worker does not own the execution request claim")
+
+
+def _step_evidence(
+    fence: ExecutionLeaseFence,
+    details: BoundedEvidence,
+) -> BoundedEvidence:
+    return BoundedEvidence.from_mapping(
+        {
+            "claim_generation": fence.generation,
+            "details": details.descriptor(),
+        }
+    )
+
+
+def _outcome_event_kind(kind: EffectResultKind) -> ActivityEventKind:
+    try:
+        return {
+            EffectResultKind.SUCCEEDED: ActivityEventKind.STEP_SUCCEEDED,
+            EffectResultKind.FAILED: ActivityEventKind.STEP_FAILED,
+            EffectResultKind.UNSUPPORTED: ActivityEventKind.STEP_UNSUPPORTED,
+            EffectResultKind.UNCERTAIN: ActivityEventKind.STEP_UNCERTAIN,
+        }[kind]
+    except KeyError:
+        raise ExecutionCoordinatorConflict("unsupported adapter outcome") from None
 
 
 def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
