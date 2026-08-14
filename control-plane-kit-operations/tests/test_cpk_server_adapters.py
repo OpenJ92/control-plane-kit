@@ -401,24 +401,51 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
     def test_claim_and_unsupported_recovery_routes_do_not_parse_run_identity(self) -> None:
         commands = RecordingService()
         lifecycle_service = CpkServerLifecycleService(commands)
-        lifecycle_service.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.run.claim",
-                service_role=ControlPlaneServiceRole.LIFECYCLE,
-                path_parameters={
-                    "workspace_id": "workspace-a",
-                    "run_id": "request/legacy",
-                },
-                payload={
-                    "lease_expires_at": "2026-08-14T13:00:00Z",
-                    "idempotency_key": "claim-a",
-                },
-                principal=worker_principal(),
+        try:
+            lifecycle_service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.run.claim",
+                    service_role=ControlPlaneServiceRole.LIFECYCLE,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "run_id": "request/legacy",
+                    },
+                    payload={
+                        "lease_duration_seconds": 600,
+                        "idempotency_key": "claim-a",
+                    },
+                    principal=worker_principal(),
+                )
             )
+        except CpkServerApplicationError:
+            pass
+        self.assertEqual(
+            len(commands.commands),
+            1,
+            "bounded lease-duration claim did not reach the lifecycle service",
         )
-        self.assertEqual(len(commands.commands), 1)
         self.assertEqual(commands.commands[0].request_id, "request/legacy")
+        self.assertEqual(commands.commands[0].lease_duration.seconds, 600)
+
+        with self.assertRaises(CpkServerApplicationError) as captured:
+            lifecycle_service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.run.claim",
+                    service_role=ControlPlaneServiceRole.LIFECYCLE,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "run_id": "request/legacy",
+                    },
+                    payload={
+                        "lease_expires_at": "2026-08-14T13:00:00Z",
+                        "idempotency_key": "claim-old",
+                    },
+                    principal=worker_principal(),
+                )
+            )
+        self.assertEqual(captured.exception.status, 400)
 
         unsupported = CpkServerUnsupportedService(ControlPlaneServiceRole.RECOVERY)
         for surface in ("http", "mcp"):
