@@ -169,6 +169,10 @@ class CurrentGraphAdvancementResult:
             raise CurrentGraphAdvancementError(
                 "advancement result requires current-graph activity evidence"
             )
+        if self.event.failure is not None:
+            raise CurrentGraphAdvancementError(
+                "advancement event cannot carry failure evidence"
+            )
         if self.action.action_type is not LifecycleOperationKind.ADVANCE_CURRENT_GRAPH:
             raise CurrentGraphAdvancementError(
                 "advancement result requires current-graph operation evidence"
