@@ -27,6 +27,7 @@ from control_plane_kit_operations.lifecycle import (
     RunLifecycleCommandService,
     RunLifecycleConflict,
     RunLifecycleError,
+    RunLifecycleNotFound,
     StartActivityRun,
 )
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
@@ -171,6 +172,8 @@ class _Trace:
         run=None,
         event=None,
         missing_replay=False,
+        missing_locator_run=False,
+        missing_locked_run=False,
         ids=("run-a", "event-a", "action-a"),
         factory_error=None,
     ) -> None:
@@ -182,6 +185,8 @@ class _Trace:
         self.run = run
         self.event = event
         self.missing_replay = missing_replay
+        self.missing_locator_run = missing_locator_run
+        self.missing_locked_run = missing_locked_run
         self.ids = list(ids)
         self.factory_error = factory_error
         self.factory_calls = 0
@@ -251,8 +256,16 @@ class _Trace:
 
     def get_run(self, run_id):
         self.log.append("get_run")
+        if self.missing_locator_run:
+            raise KeyError("missing run 'locator-run-canary'")
         if self.missing_replay:
             raise KeyError("missing run 'run-secret-canary'")
+        return self.run
+
+    def get_run_for_update(self, run_id):
+        self.log.append("get_run_for_update")
+        if self.missing_locked_run:
+            raise KeyError("missing run 'locked-run-canary'")
         return self.run
 
     def get_event(self, event_id):
@@ -529,3 +542,31 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
             "event-secret-canary",
         )
         self.assertEqual(trace.factory_calls, 0)
+
+    def test_existing_run_lookup_translations_clear_store_error_chain(self):
+        command = StartActivityRun(
+            "run-a",
+            _authority(),
+            IdempotencyKey("start-a"),
+        )
+        cases = (
+            (
+                _Trace(run=_run(), missing_locator_run=True),
+                "locator-run-canary",
+                "get_run",
+            ),
+            (
+                _Trace(run=_run(), missing_locked_run=True),
+                "locked-run-canary",
+                "get_run_for_update",
+            ),
+        )
+        for trace, canary, final_call in cases:
+            with self.subTest(final_call=final_call):
+                self.assert_bounded(
+                    RunLifecycleNotFound,
+                    lambda trace=trace: self.service(trace).execute(command),
+                    canary,
+                )
+                self.assertEqual(trace.log[-1], "uow_exit")
+                self.assertEqual(trace.log[-2], final_call)
