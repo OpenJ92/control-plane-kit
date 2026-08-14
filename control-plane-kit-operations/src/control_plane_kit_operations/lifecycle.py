@@ -314,7 +314,10 @@ class RunLifecycleCommandService:
                 command.idempotency_key.value,
             )
             if existing is not None:
-                result = _replay(stores, locator, existing, fingerprint)
+                locked_request = stores.execution.get_request_for_update(
+                    command.request_id
+                )
+                result = _replay(stores, locked_request, existing, fingerprint)
                 unit_of_work.commit()
                 return result
             session = _get_open_session_for_update(

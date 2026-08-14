@@ -164,10 +164,6 @@ class PostgresExecutionStore:
         if row is None:
             raise KeyError(f"missing execution request {request_id!r}")
         current = _execution_request(row)
-        if current.status is ExecutionRequestStatus.CLAIMED:
-            if current.claim is not None and current.claim.worker_id == worker_id:
-                return current
-            return None
         if current.status is not ExecutionRequestStatus.QUEUED:
             return None
         updated = self._connection.execute(
@@ -197,10 +193,7 @@ class PostgresExecutionStore:
         ).fetchone()
         return None if updated is None else _execution_request(updated)
 
-    def observe_request_lease_for_update(
-        self,
-        request_id: str,
-    ) -> _ExecutionLeaseObservation:
+    def get_request_for_update(self, request_id: str) -> ExecutionRequestRecord:
         row = self._connection.execute(
             """
             SELECT request_id, workspace_id, session_id, plan_id, status,
@@ -216,7 +209,13 @@ class PostgresExecutionStore:
         ).fetchone()
         if row is None:
             raise KeyError("missing execution request")
-        request = _execution_request(row)
+        return _execution_request(row)
+
+    def observe_request_lease_for_update(
+        self,
+        request_id: str,
+    ) -> _ExecutionLeaseObservation:
+        request = self.get_request_for_update(request_id)
         if request.claim is None:
             raise OperationsRecordError(
                 "execution request does not have an active lease"

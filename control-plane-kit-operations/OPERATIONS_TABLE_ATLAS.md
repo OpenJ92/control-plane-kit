@@ -473,7 +473,7 @@ order is semantically significant for every composite identity.
 - **Inbound dependents:** Activity runs bind the exact `(request_id, plan_id)` pair.
 - **Writers and transactions:** Request creation and the guarded queued-to-claimed transition run in explicit short transactions; run settlement belongs to `cpk_activity_runs`.
 - **Readers and projections:** Workers query claimable requests; history projections expose bounded status and ownership facts.
-- **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; request-row locks serialize lease observation, and monotonically positive `claim_generation` values fence worker authority across lease replacement.
+- **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; request-row locks serialize claim and lease observation, and generation one gives the initial claim an exact fence identity. #1656 owns monotonic generation changes during renewal or takeover.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, session, plan, request, decision, then execution request and runs; settled requests remain durable history.
 - **JSON boundary:** None; intent identity is a digest and all relationships are relational.
 - **Sensitive material:** Worker and actor identifiers are bounded operational metadata; no effect payload, credential, or secret value is stored.

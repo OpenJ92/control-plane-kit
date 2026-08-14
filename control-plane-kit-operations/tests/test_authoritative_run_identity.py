@@ -187,7 +187,7 @@ class _Trace:
             if action is not None
             else _request()
         )
-        self.requests = [locator, reread or _request()]
+        self.requests = [locator, reread or locator]
         self.request_reads = 0
         self.runs = runs
         self.action = action
@@ -223,6 +223,10 @@ class _Trace:
         value = self.requests[min(self.request_reads, 1)]
         self.request_reads += 1
         return value
+
+    def get_request_for_update(self, request_id):
+        self.log.append("get_request_for_update")
+        return self.get_request(request_id)
 
     def lock_action_idempotency(self, *args):
         self.log.append("lock_action_idempotency")
