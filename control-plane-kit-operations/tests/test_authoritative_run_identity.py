@@ -16,6 +16,7 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
     CancelActivityRun,
     ClaimAndOpenActivityRun,
@@ -314,6 +315,7 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
 
     def test_record_and_command_boundaries_share_exact_canonical_law(self):
         authority = _authority()
+        fence = ExecutionLeaseFence("worker-a", 1)
         key = IdempotencyKey("command-a")
         failure = FailureEvidence(
             FailureCategory.TERMINAL, "failure-a", "terminal failure"
@@ -324,12 +326,12 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
             lambda value: _event(value),
         )
         command_factories = (
-            lambda value: StartActivityRun(value, authority, key),
-            lambda value: PauseActivityRun(value, authority, key),
-            lambda value: ResumeActivityRun(value, authority, key),
-            lambda value: CompleteActivityRun(value, authority, key),
-            lambda value: FailActivityRun(value, authority, key, failure),
-            lambda value: CancelActivityRun(value, authority, key),
+            lambda value: StartActivityRun(value, authority, fence, key),
+            lambda value: PauseActivityRun(value, authority, fence, key),
+            lambda value: ResumeActivityRun(value, authority, fence, key),
+            lambda value: CompleteActivityRun(value, authority, fence, key),
+            lambda value: FailActivityRun(value, authority, fence, key, failure),
+            lambda value: CancelActivityRun(value, authority, fence, key),
         )
         for value in ("a", "r" * 200):
             for factory in record_factories + command_factories:
@@ -580,6 +582,7 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
         command = StartActivityRun(
             "run-a",
             _authority(),
+            ExecutionLeaseFence("worker-a", 1),
             IdempotencyKey("start-a"),
         )
         cases = (

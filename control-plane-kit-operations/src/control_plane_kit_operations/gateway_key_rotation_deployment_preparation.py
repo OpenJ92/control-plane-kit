@@ -96,10 +96,13 @@ def prepare_gateway_key_rotation_child(
             idempotency_key=IdempotencyKey(f"{prefix}:claim"),
         )
     )
+    if claim.request.claim is None:
+        raise ValueError("claimed rotation child lacks lease evidence")
     started = lifecycle.execute(
         StartActivityRun(
             run_id=claim.run.run_id,
             authority=command.worker_authority,
+            fence=claim.request.claim.fence,
             idempotency_key=IdempotencyKey(f"{prefix}:start"),
         )
     )

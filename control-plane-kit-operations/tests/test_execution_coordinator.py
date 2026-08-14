@@ -43,6 +43,7 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
 )
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     GeneratedIngressSecretReference,
@@ -52,8 +53,10 @@ from control_plane_kit_operations.ingress_authorities import (
 from control_plane_kit_operations.products import InlineDescriptorSource
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
+    CompleteActivityRun,
     ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
+    FailActivityRun,
     RunLifecycleCommandService,
     StartActivityRun,
 )
@@ -102,6 +105,7 @@ class ExecuteActivityRunContractTests(unittest.TestCase):
             (PolicyScope.EXECUTION_OPERATE,),
         )
         key = IdempotencyKey("execute-a")
+        fence = ExecutionLeaseFence("worker-a", 1)
         callbacks: list[object] = []
 
         def forbidden_execute(command: object) -> None:
@@ -109,13 +113,15 @@ class ExecuteActivityRunContractTests(unittest.TestCase):
 
         for run_id in ("a", "a._:-0", "a" * 200):
             with self.subTest(run_id=run_id, boundary="valid"):
-                command = ExecuteActivityRun(run_id, authority, key)
+                command = ExecuteActivityRun(run_id, authority, fence, key)
                 self.assertEqual(command.run_id, run_id)
 
         for run_id, canaries in INVALID_RUN_IDS:
             with self.subTest(run_type=type(run_id).__name__):
                 with self.assertRaises(InvalidOperationCommand) as captured:
-                    forbidden_execute(ExecuteActivityRun(run_id, authority, key))
+                    forbidden_execute(
+                        ExecuteActivityRun(run_id, authority, fence, key)
+                    )
                 error = captured.exception
                 self.assertIsNone(error.__cause__)
                 self.assertIsNone(error.__context__)
@@ -203,6 +209,49 @@ class RecordingAdapter:
         if not isinstance(outcome, ActivityExecutionOutcome):
             raise AssertionError("test adapter outcome must be ActivityExecutionOutcome")
         return outcome
+
+
+class GenerationReplacingAdapter:
+    def __init__(self, database_url: str, *, raises: bool = False) -> None:
+        self.database_url = database_url
+        self.raises = raises
+        self.calls: list[str] = []
+        self.contexts: list[ActivityRealizationContext] = []
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        self.calls.append(context.activity.activity_id.value)
+        self.contexts.append(context)
+        with psycopg.connect(self.database_url, autocommit=True) as connection:
+            connection.execute(
+                "UPDATE cpk_execution_requests SET claim_generation = 2 "
+                "WHERE request_id = 'request-a'"
+            )
+        if self.raises:
+            raise RuntimeError("provider-canary")
+        return ActivityExecutionOutcome.succeeded(
+            observations=(
+                ObservationRecord(
+                    "stale-observation",
+                    "workspace-a",
+                    "api",
+                    ObservationStatus.PROCESS_STARTED,
+                    "2026-07-22T13:01:05Z",
+                ),
+            )
+        )
+
+
+class RecordingLifecycle:
+    def __init__(self, inner: RunLifecycleCommandService) -> None:
+        self.inner = inner
+        self.commands: list[object] = []
+
+    def execute(self, command: object):
+        self.commands.append(command)
+        return self.inner.execute(command)
 
 
 class SideEvidenceWritingAdapter:
@@ -312,10 +361,12 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         worker_id: str = "worker-a",
         scopes: tuple[PolicyScope, ...] = (PolicyScope.EXECUTION_OPERATE,),
         max_effects: int = 1,
+        generation: int = 1,
     ) -> ExecuteActivityRun:
         return ExecuteActivityRun(
             "run-a",
             self.authority(worker_id, scopes),
+            ExecutionLeaseFence(worker_id, generation),
             IdempotencyKey("execute-a"),
             max_effects=max_effects,
         )
@@ -350,7 +401,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         adapter = RecordingAdapter(
             self.tracker,
             ActivityExecutionOutcome.succeeded(
-                BoundedEvidence.from_mapping({"adapter": "fake"}),
+                BoundedEvidence.from_mapping(
+                    {"adapter": "fake", "claim_generation": 999}
+                ),
                 observations=(
                     ObservationRecord(
                         "observation-start-api",
@@ -403,6 +456,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ["hello-server"],
         )
         self.assertEqual(context.authority.worker_id, "worker-a")
+        self.assertEqual(context.fence, ExecutionLeaseFence("worker-a", 1))
         self.assertEqual(context.intent_event.kind, ActivityEventKind.STEP_STARTED)
         self.assertEqual(context.intent_event.activity_id, "start-api")
         with self.unit_of_work() as unit_of_work:
@@ -430,6 +484,83 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             [event.activity_id for event in events if event.activity_id is not None],
             ["start-api", "start-api"],
         )
+        step_events = tuple(event for event in events if event.activity_id is not None)
+        self.assertEqual(
+            tuple(event.evidence.descriptor() for event in step_events),
+            (
+                {"claim_generation": 1, "details": {"phase": "intent"}},
+                {
+                    "claim_generation": 1,
+                    "details": {"adapter": "fake", "claim_generation": 999},
+                },
+            ),
+        )
+
+    def test_stale_generation_before_dispatch_calls_no_adapter(self) -> None:
+        self.claim_and_start()
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation = 2 "
+            "WHERE request_id = 'request-a'"
+        )
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+
+        with self.assertRaises(ExecutionCoordinatorDenied) as captured:
+            self.coordinator(adapter).execute(self.command())
+
+        self.assertEqual(adapter.calls, [])
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertNotIn("worker-a", repr(captured.exception))
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(
+            tuple(event.kind for event in events),
+            (ActivityEventKind.RUN_OPENED, ActivityEventKind.RUN_STARTED),
+        )
+
+    def test_generation_replacement_during_io_preserves_only_step_started(self) -> None:
+        self.claim_and_start()
+        adapter = GenerationReplacingAdapter(self.database_url)
+
+        with self.assertRaises(ExecutionCoordinatorDenied):
+            self.coordinator(adapter).execute(self.command())
+
+        self.assertEqual(adapter.calls, ["start-api"])
+        self.assertEqual(adapter.contexts[0].fence, ExecutionLeaseFence("worker-a", 1))
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+            observation = unit_of_work.stores.observed_state.latest(
+                "workspace-a", "api"
+            )
+        self.assertIsNone(observation)
+        self.assertEqual(
+            tuple(event.kind for event in events),
+            (
+                ActivityEventKind.RUN_OPENED,
+                ActivityEventKind.RUN_STARTED,
+                ActivityEventKind.STEP_STARTED,
+            ),
+        )
+        self.assertEqual(
+            events[-1].evidence.descriptor(),
+            {"claim_generation": 1, "details": {"phase": "intent"}},
+        )
+
+    def test_provider_exception_after_replacement_cannot_record_uncertainty(self) -> None:
+        self.claim_and_start()
+        adapter = GenerationReplacingAdapter(self.database_url, raises=True)
+
+        with self.assertRaises(ExecutionCoordinatorDenied):
+            self.coordinator(adapter).execute(self.command())
+
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(adapter.calls, ["start-api"])
+        self.assertEqual(events[-1].kind, ActivityEventKind.STEP_STARTED)
+        self.assertNotIn("provider-canary", repr(events[-1]))
 
     def test_completed_replay_does_not_repeat_effect(self) -> None:
         with self.unit_of_work() as unit_of_work:
@@ -672,6 +803,66 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             events = unit_of_work.stores.execution.events_for_run("run-a")
         self.assertEqual(events[-2].kind, ActivityEventKind.STEP_UNSUPPORTED)
         self.assertEqual(events[-2].failure.code, "unsupported-capability")
+        self.assertEqual(
+            events[-2].evidence.descriptor(),
+            {"claim_generation": 1, "details": {}},
+        )
+
+    def test_nested_completion_receives_the_identical_fence_object(self) -> None:
+        self.claim_and_start()
+        lifecycle = RecordingLifecycle(self.lifecycle())
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        command = self.command()
+        coordinator = ExecutionCoordinator(
+            self.unit_of_work,
+            lifecycle=lifecycle,
+            adapter=adapter,
+            clock=lambda: "2026-07-22T13:01:00Z",
+            id_factory=self.ids,
+        )
+
+        result = coordinator.execute(command)
+
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        terminal = tuple(
+            value for value in lifecycle.commands if isinstance(value, CompleteActivityRun)
+        )
+        self.assertEqual(len(terminal), 1)
+        self.assertIs(terminal[0].fence, command.fence)
+
+    def test_nested_failure_receives_the_identical_fence_object(self) -> None:
+        self.claim_and_start()
+        lifecycle = RecordingLifecycle(self.lifecycle())
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.failed(
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "adapter-failed",
+                    "adapter reported failure",
+                )
+            ),
+        )
+        command = self.command()
+        coordinator = ExecutionCoordinator(
+            self.unit_of_work,
+            lifecycle=lifecycle,
+            adapter=adapter,
+            clock=lambda: "2026-07-22T13:01:00Z",
+            id_factory=self.ids,
+        )
+
+        result = coordinator.execute(command)
+
+        self.assertIs(result.status, CoordinatorStatus.FAILED)
+        terminal = tuple(
+            value for value in lifecycle.commands if isinstance(value, FailActivityRun)
+        )
+        self.assertEqual(len(terminal), 1)
+        self.assertIs(terminal[0].fence, command.fence)
 
     def test_worker_scope_and_claim_ownership_are_checked_before_adapter(self) -> None:
         self.claim_and_start()
@@ -755,6 +946,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             StartActivityRun(
                 "run-a",
                 self.authority(),
+                ExecutionLeaseFence("worker-a", 1),
                 IdempotencyKey("start-a"),
             )
         )

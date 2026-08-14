@@ -56,6 +56,7 @@ from control_plane_kit_operations.approvals import (
     RequestApproval,
 )
 from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecutionCoordinator
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
     IngressAuthorityAuthorizationDenied,
@@ -1160,6 +1161,10 @@ class CpkServerExecutionService:
                 StartActivityRun(
                     run_id=_path_or_payload(payload, "run_id", "run_id"),
                     authority=_worker_authority(context),
+                    fence=ExecutionLeaseFence(
+                        context.actor_id,
+                        _claim_generation(payload),
+                    ),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 )
             )
@@ -1171,6 +1176,10 @@ class CpkServerExecutionService:
             ExecuteActivityRun(
                 run_id=_path_or_payload(payload, "run_id", "run_id"),
                 authority=_worker_authority(context),
+                fence=ExecutionLeaseFence(
+                    context.actor_id,
+                    _claim_generation(payload),
+                ),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 max_effects=_positive_int(payload, "max_effects", default=1),
             )
@@ -1717,6 +1726,13 @@ def _positive_int(values: Mapping[str, object], name: str, *, default: int) -> i
     value = values.get(name, default)
     if type(value) is not int or value < 1:
         raise CpkServerApplicationError(400, f"{name} must be a positive integer")
+    return value
+
+
+def _claim_generation(values: Mapping[str, object]) -> int:
+    value = values.get("claim_generation")
+    if type(value) is not int or not 1 <= value <= 2**63 - 1:
+        raise CpkServerApplicationError(400, "claim_generation is invalid")
     return value
 
 

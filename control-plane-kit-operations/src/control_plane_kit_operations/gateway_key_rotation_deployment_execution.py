@@ -9,6 +9,7 @@ import re
 from typing import Any, Callable
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.advancement import (
     AdvanceCurrentGraph,
     CurrentGraphAdvancementCommandService,
@@ -78,6 +79,7 @@ class ProgressGatewayKeyRotationDeployment:
     actor_id: str
     actor_scopes: tuple[PolicyScope, ...]
     worker_authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
 
     def __post_init__(self) -> None:
         _identifier(self.rotation_id, "rotation_id")
@@ -104,6 +106,10 @@ class ProgressGatewayKeyRotationDeployment:
             raise InvalidOperationCommand(
                 "worker_authority must be ExecutionWorkerAuthority"
             )
+        if not isinstance(self.fence, ExecutionLeaseFence):
+            raise InvalidOperationCommand("fence must be ExecutionLeaseFence")
+        if self.worker_authority.worker_id != self.fence.worker_id:
+            raise InvalidOperationCommand("worker authority and fence must agree")
 
 
 @dataclass(frozen=True)
@@ -213,6 +219,7 @@ class GatewayKeyRotationDeploymentExecutionProgram:
                 ExecuteActivityRun(
                     run_id=snapshot.checkpoint.run_id,
                     authority=command.worker_authority,
+                    fence=command.fence,
                     idempotency_key=IdempotencyKey(
                         f"{_prefix(rotation.rotation_id, command.phase)}:execute"
                     ),

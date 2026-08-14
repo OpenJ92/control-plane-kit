@@ -16,6 +16,7 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityRunRecord,
@@ -114,21 +115,27 @@ class ClaimAndOpenActivityRun:
 class StartActivityRun:
     run_id: str
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     idempotency_key: IdempotencyKey
 
     def __post_init__(self) -> None:
-        _run_command_post_init(self.run_id, self.authority, self.idempotency_key)
+        _run_command_post_init(
+            self.run_id, self.authority, self.fence, self.idempotency_key
+        )
 
 
 @dataclass(frozen=True)
 class PauseActivityRun:
     run_id: str
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     idempotency_key: IdempotencyKey
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
 
     def __post_init__(self) -> None:
-        _run_command_post_init(self.run_id, self.authority, self.idempotency_key)
+        _run_command_post_init(
+            self.run_id, self.authority, self.fence, self.idempotency_key
+        )
         if not isinstance(self.evidence, BoundedEvidence):
             raise InvalidOperationCommand("pause evidence must be BoundedEvidence")
 
@@ -137,21 +144,27 @@ class PauseActivityRun:
 class ResumeActivityRun:
     run_id: str
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     idempotency_key: IdempotencyKey
 
     def __post_init__(self) -> None:
-        _run_command_post_init(self.run_id, self.authority, self.idempotency_key)
+        _run_command_post_init(
+            self.run_id, self.authority, self.fence, self.idempotency_key
+        )
 
 
 @dataclass(frozen=True)
 class CompleteActivityRun:
     run_id: str
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     idempotency_key: IdempotencyKey
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
 
     def __post_init__(self) -> None:
-        _run_command_post_init(self.run_id, self.authority, self.idempotency_key)
+        _run_command_post_init(
+            self.run_id, self.authority, self.fence, self.idempotency_key
+        )
         if not isinstance(self.evidence, BoundedEvidence):
             raise InvalidOperationCommand("completion evidence must be BoundedEvidence")
 
@@ -160,11 +173,14 @@ class CompleteActivityRun:
 class FailActivityRun:
     run_id: str
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     idempotency_key: IdempotencyKey
     failure: FailureEvidence
 
     def __post_init__(self) -> None:
-        _run_command_post_init(self.run_id, self.authority, self.idempotency_key)
+        _run_command_post_init(
+            self.run_id, self.authority, self.fence, self.idempotency_key
+        )
         if not isinstance(self.failure, FailureEvidence):
             raise InvalidOperationCommand("failure must be FailureEvidence")
 
@@ -173,11 +189,14 @@ class FailActivityRun:
 class CancelActivityRun:
     run_id: str
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     idempotency_key: IdempotencyKey
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
 
     def __post_init__(self) -> None:
-        _run_command_post_init(self.run_id, self.authority, self.idempotency_key)
+        _run_command_post_init(
+            self.run_id, self.authority, self.fence, self.idempotency_key
+        )
         if not isinstance(self.evidence, BoundedEvidence):
             raise InvalidOperationCommand("cancel evidence must be BoundedEvidence")
 
@@ -291,6 +310,7 @@ class RunLifecycleCommandService:
                 expected=(ActivityRunStatus.CLAIMED, ActivityRunStatus.PAUSED),
                 replacement=ActivityRunStatus.CANCELLED,
                 event_kind=ActivityEventKind.RUN_CANCELLED,
+                started=True,
                 settled=True,
                 evidence=command.evidence,
             )
@@ -442,18 +462,41 @@ class RunLifecycleCommandService:
                 command.idempotency_key.value,
             )
             if existing is not None:
-                result = _replay(stores, locator_request, existing, fingerprint)
+                if existing.intent_fingerprint != fingerprint:
+                    raise RunLifecycleIdempotencyConflict(
+                        "idempotency key was reused with different lifecycle intent"
+                    )
+                request = _get_request_for_update(
+                    stores,
+                    locator_request.identity.request_id,
+                )
+                run = _get_run_for_update(stores, command.run_id)
+                _require_run_request_linkage(run, request)
+                _require_worker_owns(request, command.authority, command.fence)
+                result = _replay(
+                    stores,
+                    request,
+                    existing,
+                    fingerprint,
+                    locked_run=run,
+                    expected_action_type=action_type,
+                    fence=command.fence,
+                )
                 unit_of_work.commit()
                 return result
             session = _get_open_session_for_update(
                 history,
                 locator_request.identity.session_id,
             )
+            request = _get_request_for_update(
+                stores,
+                locator_run.admission.request_id,
+            )
             run = _get_run_for_update(stores, command.run_id)
-            request = _get_request(stores, run.admission.request_id)
+            _require_run_request_linkage(run, request)
             if request.identity.session_id != session.session_id:
                 raise RunLifecycleConflict("activity run session linkage changed")
-            _require_worker_owns(request, command.authority)
+            _require_worker_owns(request, command.authority, command.fence)
             transitioned = None
             for status in expected:
                 transitioned = stores.execution.compare_and_set_run_status(
@@ -509,17 +552,35 @@ def _get_run_for_update(stores: Any, run_id: str) -> ActivityRunRecord:
 
 
 def _get_request(stores: Any, request_id: str) -> ExecutionRequestRecord:
+    missing_request = False
     try:
-        return stores.execution.get_request(request_id)
-    except KeyError as error:
-        raise RunLifecycleNotFound("execution request was not found") from error
+        request = stores.execution.get_request(request_id)
+    except KeyError:
+        missing_request = True
+    if missing_request:
+        raise RunLifecycleNotFound("execution request was not found")
+    return request
+
+
+def _get_request_for_update(stores: Any, request_id: str) -> ExecutionRequestRecord:
+    missing_request = False
+    try:
+        request = stores.execution.get_request_for_update(request_id)
+    except KeyError:
+        missing_request = True
+    if missing_request:
+        raise RunLifecycleNotFound("execution request was not found")
+    return request
 
 
 def _get_open_session_for_update(history: Any, session_id: str) -> Any:
+    missing_session = False
     try:
         session = history.get_session_for_update(session_id)
-    except KeyError as error:
-        raise RunLifecycleNotFound("operation session was not found") from error
+    except KeyError:
+        missing_session = True
+    if missing_session:
+        raise RunLifecycleNotFound("operation session was not found")
     if session.status is not OperationSessionStatus.OPEN:
         raise RunLifecycleConflict("run lifecycle requires an open session")
     return session
@@ -530,6 +591,10 @@ def _replay(
     request: ExecutionRequestRecord,
     action: OperationActionRecord,
     fingerprint: str,
+    *,
+    locked_run: ActivityRunRecord | None = None,
+    expected_action_type: LifecycleOperationKind | None = None,
+    fence: ExecutionLeaseFence | None = None,
 ) -> RunLifecycleResult:
     if action.intent_fingerprint != fingerprint:
         raise RunLifecycleIdempotencyConflict(
@@ -551,17 +616,29 @@ def _replay(
     event_id = _payload_text(action.payload, "event_id")
     missing = False
     try:
-        run = stores.execution.get_run(run_id)
+        run = locked_run if locked_run is not None else stores.execution.get_run(run_id)
         event = stores.execution.get_event(event_id)
     except KeyError:
         missing = True
     if missing:
         raise RunLifecycleError("lifecycle action is missing run/event evidence")
     if (
+        run.run_id != run_id
+        or action.actor_id != (
+            fence.worker_id if fence is not None else action.actor_id
+        )
+        or (
+            expected_action_type is not None
+            and action.action_type is not expected_action_type
+        )
+        or
         run.admission.request_id != request.identity.request_id
         or event.run_id != run.run_id
     ):
         raise RunLifecycleError("lifecycle action run/event evidence is incongruent")
+    if fence is not None:
+        if _payload_positive_integer(action.payload, "claim_generation") != fence.generation:
+            raise RunLifecycleError("lifecycle action generation evidence is incongruent")
     return RunLifecycleResult(request, run, event, action, replayed=True)
 
 
@@ -642,6 +719,7 @@ def _run_intent(
         "command": kind.value,
         "run_id": command.run_id,
         "worker_id": command.authority.worker_id,
+        "claim_generation": command.fence.generation,
     }
 
 
@@ -683,13 +761,23 @@ def _run_id_or_lifecycle_error(value: object) -> str:
 def _require_worker_owns(
     request: ExecutionRequestRecord,
     authority: ExecutionWorkerAuthority,
+    fence: ExecutionLeaseFence,
 ) -> None:
     if (
         request.status is not ExecutionRequestStatus.CLAIMED
         or request.claim is None
-        or request.claim.worker_id != authority.worker_id
+        or request.claim.fence != fence
+        or authority.worker_id != fence.worker_id
     ):
         raise RunLifecycleDenied("worker does not own the execution request claim")
+
+
+def _require_run_request_linkage(
+    run: ActivityRunRecord,
+    request: ExecutionRequestRecord,
+) -> None:
+    if run.admission.request_id != request.identity.request_id:
+        raise RunLifecycleConflict("activity run request linkage changed")
 
 
 def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
@@ -700,6 +788,7 @@ def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
 def _run_command_post_init(
     run_id: str,
     authority: ExecutionWorkerAuthority,
+    fence: ExecutionLeaseFence,
     idempotency_key: IdempotencyKey,
 ) -> None:
     try:
@@ -711,6 +800,10 @@ def _run_command_post_init(
     if not valid_run_id:
         raise InvalidOperationCommand("run_id is malformed")
     _require_authority(authority)
+    if not isinstance(fence, ExecutionLeaseFence):
+        raise InvalidOperationCommand("fence must be ExecutionLeaseFence")
+    if authority.worker_id != fence.worker_id:
+        raise InvalidOperationCommand("authority and fence must agree")
     _require_idempotency_key(idempotency_key)
 
 

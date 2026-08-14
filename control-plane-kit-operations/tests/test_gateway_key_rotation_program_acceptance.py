@@ -17,6 +17,7 @@ from control_plane_kit_core.delegation_keys import (
     DelegationPublicKey,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference,
     SecretProviderId,
@@ -315,6 +316,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_id="operator-a",
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
             worker_authority=self._worker(),
+            fence=ExecutionLeaseFence("worker-a", 1),
         )
         overlap_ready = self._execute_overlap(overlap_execution_command, runtime)
         overlap_effect_count = len(runtime.calls)
@@ -377,6 +379,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_id="operator-a",
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
             worker_authority=self._worker(),
+            fence=ExecutionLeaseFence("worker-a", 1),
         )
         retirement_ready = self._execute_retirement(
             retirement_execution_command,

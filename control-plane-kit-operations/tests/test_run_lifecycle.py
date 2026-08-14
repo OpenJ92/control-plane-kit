@@ -10,6 +10,7 @@ import unittest
 
 import psycopg
 import control_plane_kit_operations.lifecycle as lifecycle_module
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 
 from tests.graph_lineage_fixture import seed_identity_graphs
 
@@ -22,6 +23,7 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.lifecycle import (
+    CancelActivityRun,
     ClaimAndOpenActivityRun,
     CompleteActivityRun,
     ExecutionLeaseDuration,
@@ -147,6 +149,13 @@ class RunLifecycleTests(unittest.TestCase):
         scopes: tuple[PolicyScope, ...] = (PolicyScope.EXECUTION_OPERATE,),
     ) -> ExecutionWorkerAuthority:
         return ExecutionWorkerAuthority(worker_id, scopes)
+
+    def fence(
+        self,
+        worker_id: str = "worker-a",
+        generation: int = 1,
+    ) -> ExecutionLeaseFence:
+        return ExecutionLeaseFence(worker_id, generation)
 
     def claim_command(
         self,
@@ -641,23 +650,29 @@ class RunLifecycleTests(unittest.TestCase):
         self.claim()
 
         started = self.service("event-start", "action-start").execute(
-            StartActivityRun("run-a", self.authority(), IdempotencyKey("start-a"))
+            StartActivityRun(
+                "run-a", self.authority(), self.fence(), IdempotencyKey("start-a")
+            )
         )
         paused = self.service("event-pause", "action-pause").execute(
             PauseActivityRun(
                 "run-a",
                 self.authority(),
+                self.fence(),
                 IdempotencyKey("pause-a"),
                 BoundedEvidence.from_mapping({"reason": "operator-review"}),
             )
         )
         resumed = self.service("event-resume", "action-resume").execute(
-            ResumeActivityRun("run-a", self.authority(), IdempotencyKey("resume-a"))
+            ResumeActivityRun(
+                "run-a", self.authority(), self.fence(), IdempotencyKey("resume-a")
+            )
         )
         completed = self.service("event-complete", "action-complete").execute(
             CompleteActivityRun(
                 "run-a",
                 self.authority(),
+                self.fence(),
                 IdempotencyKey("complete-a"),
                 BoundedEvidence.from_mapping({"result": "ok"}),
             )
@@ -679,16 +694,86 @@ class RunLifecycleTests(unittest.TestCase):
         )
         self.assertEqual([event.ordinal for event in self.events()], [1, 2, 3, 4, 5])
 
+    def test_cancel_uses_the_exact_claim_fence_and_records_generation(self) -> None:
+        self.claim()
+
+        cancelled = self.service("event-cancel", "action-cancel").execute(
+            CancelActivityRun(
+                "run-a",
+                self.authority(),
+                self.fence(),
+                IdempotencyKey("cancel-a"),
+                BoundedEvidence.from_mapping({"reason": "operator-request"}),
+            )
+        )
+
+        self.assertIs(cancelled.run.status, ActivityRunStatus.CANCELLED)
+        self.assertEqual(cancelled.run.started_at, cancelled.event.occurred_at)
+        self.assertEqual(cancelled.action.payload["claim_generation"], 1)
+        self.assertEqual(cancelled.event.evidence.descriptor(), {"reason": "operator-request"})
+
+    def test_post_claim_replay_is_stale_after_generation_replacement(self) -> None:
+        self.claim()
+        command = StartActivityRun(
+            "run-a",
+            self.authority(),
+            self.fence(),
+            IdempotencyKey("start-a"),
+        )
+        first = self.service("event-start", "action-start").execute(command)
+        before_counts = (
+            self._count("cpk_activity_events"),
+            self._count("cpk_operation_actions"),
+        )
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation = 2 "
+            "WHERE request_id = 'request-a'"
+        )
+
+        with self.assertRaises(RunLifecycleDenied) as stale:
+            self.service("unused-event", "unused-action").execute(command)
+        self._assert_safe_error(stale.exception, "worker-a", "1", "2")
+        with self.assertRaises(RunLifecycleIdempotencyConflict):
+            self.service("unused-event", "unused-action").execute(
+                StartActivityRun(
+                    "run-a",
+                    self.authority(),
+                    self.fence(generation=2),
+                    IdempotencyKey("start-a"),
+                )
+            )
+        with self.assertRaises(RunLifecycleDenied):
+            self.service("unused-event", "unused-action").execute(
+                PauseActivityRun(
+                    "run-a",
+                    self.authority(),
+                    self.fence(generation=3),
+                    IdempotencyKey("pause-higher"),
+                )
+            )
+
+        self.assertEqual(first.action.payload["claim_generation"], 1)
+        self.assertEqual(
+            (
+                self._count("cpk_activity_events"),
+                self._count("cpk_operation_actions"),
+            ),
+            before_counts,
+        )
+
     def test_worker_ownership_and_late_action_failure_roll_back_transition(self) -> None:
         self.claim()
         self.service("event-start", "action-start").execute(
-            StartActivityRun("run-a", self.authority(), IdempotencyKey("start-a"))
+            StartActivityRun(
+                "run-a", self.authority(), self.fence(), IdempotencyKey("start-a")
+            )
         )
         with self.assertRaises(RunLifecycleDenied):
             self.service("event-foreign", "action-foreign").execute(
                 PauseActivityRun(
                     "run-a",
                     self.authority("worker-b"),
+                    self.fence("worker-b"),
                     IdempotencyKey("pause-foreign"),
                 )
             )
@@ -697,6 +782,7 @@ class RunLifecycleTests(unittest.TestCase):
                 PauseActivityRun(
                     "run-a",
                     self.authority(),
+                    self.fence(),
                     IdempotencyKey("pause-rollback"),
                 )
             )
@@ -713,12 +799,15 @@ class RunLifecycleTests(unittest.TestCase):
     def test_fail_records_bounded_failure_and_terminal_settlement_is_write_once(self) -> None:
         self.claim()
         self.service("event-start", "action-start").execute(
-            StartActivityRun("run-a", self.authority(), IdempotencyKey("start-a"))
+            StartActivityRun(
+                "run-a", self.authority(), self.fence(), IdempotencyKey("start-a")
+            )
         )
         failed = self.service("event-fail", "action-fail").execute(
             FailActivityRun(
                 "run-a",
                 self.authority(),
+                self.fence(),
                 IdempotencyKey("fail-a"),
                 FailureEvidence(
                     FailureCategory.TERMINAL,
@@ -736,6 +825,7 @@ class RunLifecycleTests(unittest.TestCase):
                 CompleteActivityRun(
                     "run-a",
                     self.authority(),
+                    self.fence(),
                     IdempotencyKey("complete-after-fail"),
                 )
             )
@@ -765,6 +855,7 @@ class RunLifecycleTests(unittest.TestCase):
                 StartActivityRun(
                     "run-a",
                     self.authority(),
+                    self.fence(),
                     IdempotencyKey("start-after-close"),
                 )
             )

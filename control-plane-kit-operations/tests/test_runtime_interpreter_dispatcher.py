@@ -26,6 +26,7 @@ from control_plane_kit_core.planning import (
     SwitchSocketConnection,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
@@ -704,6 +705,7 @@ def context_for(
             "worker-a",
             worker_scopes,
         ),
+        fence=ExecutionLeaseFence("worker-a", 1),
         runtime_authorities=runtime_authorities,
         intent_event=ActivityEventRecord(
             "event-intent",

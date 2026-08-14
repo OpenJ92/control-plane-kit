@@ -14,6 +14,7 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.planning import (
     ActivityId,
     ActivityPlan,
@@ -891,6 +892,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                     PolicyScope.SECRET_PROVIDER_USE,
                 ),
             ),
+            fence=ExecutionLeaseFence("worker-a", 1),
             intent_event=ActivityEventRecord(
                 intent_event_id,
                 run_id,

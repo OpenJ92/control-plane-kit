@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Any, Callable
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.advancement import CurrentGraphAdvancementResult
 from control_plane_kit_operations.coordinator import (
     CoordinatorStatus,
@@ -60,6 +61,7 @@ class ProgressGatewayKeyRotationRetirement:
     actor_id: str
     actor_scopes: tuple[PolicyScope, ...]
     worker_authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
 
     def __post_init__(self) -> None:
         normalized = self.deployment_command()
@@ -75,6 +77,7 @@ class ProgressGatewayKeyRotationRetirement:
             actor_id=self.actor_id,
             actor_scopes=self.actor_scopes,
             worker_authority=self.worker_authority,
+            fence=self.fence,
         )
 
 
