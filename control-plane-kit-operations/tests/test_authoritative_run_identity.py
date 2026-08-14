@@ -20,6 +20,7 @@ from control_plane_kit_operations.lifecycle import (
     CancelActivityRun,
     ClaimAndOpenActivityRun,
     CompleteActivityRun,
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     FailActivityRun,
     PauseActivityRun,
@@ -80,7 +81,7 @@ INVALID_RUN_IDS = (
 
 def _request(status: ExecutionRequestStatus = ExecutionRequestStatus.QUEUED):
     claim = (
-        ClaimIdentity("worker-a", "claimed", "lease")
+        ClaimIdentity("worker-a", 1, "claimed", "lease")
         if status is ExecutionRequestStatus.CLAIMED
         else None
     )
@@ -123,7 +124,10 @@ def _authority():
 
 def _claim_command():
     return ClaimAndOpenActivityRun(
-        "request-a", _authority(), "lease", IdempotencyKey("claim-a")
+        "request-a",
+        _authority(),
+        ExecutionLeaseDuration(600),
+        IdempotencyKey("claim-a"),
     )
 
 
@@ -132,7 +136,7 @@ def _replay_action(command, *, run_id="run-a", event_id="event-a"):
         "command": LifecycleOperationKind.CLAIM_RUN.value,
         "request_id": command.request_id,
         "worker_id": command.authority.worker_id,
-        "lease_expires_at": command.lease_expires_at,
+        "lease_duration_seconds": command.lease_duration.seconds,
     }
     fingerprint = hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -143,7 +147,7 @@ def _replay_action(command, *, run_id="run-a", event_id="event-a"):
         1,
         LifecycleOperationKind.CLAIM_RUN,
         "worker-a",
-        {"run_id": run_id, "event_id": event_id},
+        {"run_id": run_id, "event_id": event_id, "claim_generation": 1},
         "created",
         "claim-a",
         fingerprint,
@@ -178,7 +182,12 @@ class _Trace:
         factory_error=None,
     ) -> None:
         self.log = []
-        self.requests = [_request(), reread or _request()]
+        locator = (
+            _request(ExecutionRequestStatus.CLAIMED)
+            if action is not None
+            else _request()
+        )
+        self.requests = [locator, reread or _request()]
         self.request_reads = 0
         self.runs = runs
         self.action = action

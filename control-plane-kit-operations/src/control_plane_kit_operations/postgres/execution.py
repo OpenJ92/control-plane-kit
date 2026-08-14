@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from control_plane_kit_core.operations.lifecycle import (
@@ -43,6 +44,13 @@ from control_plane_kit_operations.records import (
 )
 
 
+@dataclass(frozen=True)
+class _ExecutionLeaseObservation:
+    request: ExecutionRequestRecord
+    observed_at: str
+    expired: bool
+
+
 class PostgresExecutionStore:
     """Postgres-backed execution request store."""
 
@@ -57,8 +65,8 @@ class PostgresExecutionStore:
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
                approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claimed_at, lease_expires_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 record.identity.request_id,
@@ -73,6 +81,7 @@ class PostgresExecutionStore:
                 record.idempotency.key,
                 record.idempotency.intent_fingerprint,
                 None if claim is None else claim.worker_id,
+                None if claim is None else claim.generation,
                 None
                 if claim is None
                 else encode_postgres_timestamp(claim.claimed_at),
@@ -101,7 +110,7 @@ class PostgresExecutionStore:
             SELECT request_id, workspace_id, session_id, plan_id, status,
                    requested_by, requested_at, approval_request_id,
                    approval_decision_id, idempotency_key, intent_fingerprint,
-                   claim_worker_id, claimed_at, lease_expires_at
+                   claim_worker_id, claim_generation, claimed_at, lease_expires_at
             FROM cpk_execution_requests
             WHERE request_id = %s
             """,
@@ -121,7 +130,7 @@ class PostgresExecutionStore:
             SELECT request_id, workspace_id, session_id, plan_id, status,
                    requested_by, requested_at, approval_request_id,
                    approval_decision_id, idempotency_key, intent_fingerprint,
-                   claim_worker_id, claimed_at, lease_expires_at
+                   claim_worker_id, claim_generation, claimed_at, lease_expires_at
             FROM cpk_execution_requests
             WHERE workspace_id = %s AND idempotency_key = %s
             """,
@@ -133,17 +142,19 @@ class PostgresExecutionStore:
         self,
         request_id: str,
         worker_id: str,
-        claimed_at: str,
-        lease_expires_at: str,
+        lease_duration_seconds: int,
     ) -> ExecutionRequestRecord | None:
-        encoded_claimed_at = encode_postgres_timestamp(claimed_at)
-        encoded_lease_expires_at = encode_postgres_timestamp(lease_expires_at)
+        if (
+            type(lease_duration_seconds) is not int
+            or not 1 <= lease_duration_seconds <= 3600
+        ):
+            raise OperationsRecordError("lease duration is invalid")
         row = self._connection.execute(
             """
             SELECT request_id, workspace_id, session_id, plan_id, status,
                    requested_by, requested_at, approval_request_id,
                    approval_decision_id, idempotency_key, intent_fingerprint,
-                   claim_worker_id, claimed_at, lease_expires_at
+                   claim_worker_id, claim_generation, claimed_at, lease_expires_at
             FROM cpk_execution_requests
             WHERE request_id = %s
             FOR UPDATE
@@ -161,23 +172,75 @@ class PostgresExecutionStore:
             return None
         updated = self._connection.execute(
             """
+            WITH observed AS (
+              SELECT clock_timestamp() AS observed_at
+            )
             UPDATE cpk_execution_requests
-            SET status = 'claimed', claim_worker_id = %s, claimed_at = %s,
-                lease_expires_at = %s
+            SET status = 'claimed', claim_worker_id = %s,
+                claim_generation = 1,
+                claimed_at = observed.observed_at,
+                lease_expires_at = observed.observed_at
+                  + (%s * interval '1 second')
+            FROM observed
             WHERE request_id = %s AND status = 'queued'
             RETURNING request_id, workspace_id, session_id, plan_id, status,
                       requested_by, requested_at, approval_request_id,
                       approval_decision_id, idempotency_key, intent_fingerprint,
-                      claim_worker_id, claimed_at, lease_expires_at
+                      claim_worker_id, claim_generation, claimed_at,
+                      lease_expires_at
             """,
             (
                 worker_id,
-                encoded_claimed_at,
-                encoded_lease_expires_at,
+                lease_duration_seconds,
                 request_id,
             ),
         ).fetchone()
         return None if updated is None else _execution_request(updated)
+
+    def observe_request_lease_for_update(
+        self,
+        request_id: str,
+    ) -> _ExecutionLeaseObservation:
+        row = self._connection.execute(
+            """
+            SELECT request_id, workspace_id, session_id, plan_id, status,
+                   requested_by, requested_at, approval_request_id,
+                   approval_decision_id, idempotency_key, intent_fingerprint,
+                   claim_worker_id, claim_generation, claimed_at,
+                   lease_expires_at
+            FROM cpk_execution_requests
+            WHERE request_id = %s
+            FOR UPDATE
+            """,
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError("missing execution request")
+        request = _execution_request(row)
+        if request.claim is None:
+            raise OperationsRecordError(
+                "execution request does not have an active lease"
+            )
+        observed = self._connection.execute(
+            """
+            WITH observed AS (
+              SELECT clock_timestamp() AS observed_at
+            )
+            SELECT observed.observed_at,
+                   request.lease_expires_at <= observed.observed_at AS expired
+            FROM cpk_execution_requests AS request
+            CROSS JOIN observed
+            WHERE request.request_id = %s
+            """,
+            (request_id,),
+        ).fetchone()
+        if observed is None:
+            raise KeyError("missing execution request")
+        return _ExecutionLeaseObservation(
+            request=request,
+            observed_at=decode_postgres_timestamp(observed[0]),
+            expired=observed[1],
+        )
 
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
         self._connection.execute(
@@ -480,8 +543,9 @@ def _execution_request(row: tuple[Any, ...]) -> ExecutionRequestRecord:
         if row[11] is None
         else ClaimIdentity(
             worker_id=row[11],
-            claimed_at=decode_postgres_timestamp(row[12]),
-            lease_expires_at=decode_postgres_timestamp(row[13]),
+            generation=row[12],
+            claimed_at=decode_postgres_timestamp(row[13]),
+            lease_expires_at=decode_postgres_timestamp(row[14]),
         )
     )
     return ExecutionRequestRecord(

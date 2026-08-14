@@ -32,6 +32,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     RunLifecycleCommandService,
 )
@@ -105,7 +106,7 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
                 actor_id="operator-a",
                 actor_scopes=self.scopes(),
                 worker_authority=self.worker(),
-                lease_expires_at="2026-08-02T02:30:00Z",
+                lease_duration=ExecutionLeaseDuration(1800),
             )
         )
         checkpoint = overlap.checkpoint
@@ -199,7 +200,7 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
             actor_id="operator-a",
             actor_scopes=scopes or self.scopes(),
             worker_authority=self.worker(),
-            lease_expires_at="2026-08-02T04:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
 
     def program(

@@ -34,6 +34,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     RunLifecycleCommandService,
     RunLifecycleDenied,
@@ -104,7 +105,7 @@ class PrepareGatewayKeyRotationOverlap:
     actor_id: str
     actor_scopes: tuple[PolicyScope, ...]
     worker_authority: ExecutionWorkerAuthority
-    lease_expires_at: str
+    lease_duration: ExecutionLeaseDuration
 
     def __post_init__(self) -> None:
         for value, name in (
@@ -155,7 +156,10 @@ class PrepareGatewayKeyRotationOverlap:
             raise InvalidOperationCommand(
                 "worker_authority must be ExecutionWorkerAuthority"
             )
-        _text(self.lease_expires_at, "lease_expires_at")
+        if not isinstance(self.lease_duration, ExecutionLeaseDuration):
+            raise InvalidOperationCommand(
+                "lease_duration must be ExecutionLeaseDuration"
+            )
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=00ccfe6e3bdd408b64a296e4cd8b88dae75ae1ac781501dfb7307895f934f587 relations=29 columns=380 constraints=273 indexes=94 foreign-keys=54 -->
+<!-- current-schema-contract: sha256=6822209d90038a38a897989340ddc542ba02b0201e2516c0863da5912862cf75 relations=29 columns=381 constraints=274 indexes=94 foreign-keys=54 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -467,13 +467,13 @@ order is semantically significant for every composite identity.
 - **Future impact:** #1553 and #1554 add transit authority language but must preserve exact purpose separation and defer private-key resolution to immediate I/O.
 
 ### `cpk_execution_requests`
-- **Durable meaning and owner:** `PostgresExecutionStore` owns durable requests to execute an approved activity plan, including claim leases.
+- **Durable meaning and owner:** `PostgresExecutionStore` owns durable requests to execute an approved activity plan, including database-timed, generation-fenced claim leases.
 - **Identity and cardinality:** `request_id` is primary; workspace idempotency is unique; `(request_id, plan_id)` binds downstream runs.
 - **Outgoing foreign keys:** The workspace, session, plan, approval request, and approval decision must all agree through composite identities.
 - **Inbound dependents:** Activity runs bind the exact `(request_id, plan_id)` pair.
 - **Writers and transactions:** Request creation and the guarded queued-to-claimed transition run in explicit short transactions; run settlement belongs to `cpk_activity_runs`.
 - **Readers and projections:** Workers query claimable requests; history projections expose bounded status and ownership facts.
-- **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; claim leases use guarded updates so one worker owns an attempt.
+- **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; request-row locks serialize lease observation, and monotonically positive `claim_generation` values fence worker authority across lease replacement.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, session, plan, request, decision, then execution request and runs; settled requests remain durable history.
 - **JSON boundary:** None; intent identity is a digest and all relationships are relational.
 - **Sensitive material:** Worker and actor identifiers are bounded operational metadata; no effect payload, credential, or secret value is stored.

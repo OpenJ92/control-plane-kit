@@ -107,10 +107,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "00ccfe6e3bdd408b64a296e4cd8b88dae75ae1ac781501dfb7307895f934f587"
+    "6822209d90038a38a897989340ddc542ba02b0201e2516c0863da5912862cf75"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "d7de358ef3d698657a800134c8c1261df539311058dc6fb903333fdaa9597521"
+    "f307faba937c03570ecefb9351a4b73cd65acde883bf97a92b6008e5b787f6fc"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -346,8 +346,8 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         self.assertEqual(len(contract.relations), 29)
-        self.assertEqual(len(contract.columns), 380)
-        self.assertEqual(len(contract.constraints), 273)
+        self.assertEqual(len(contract.columns), 381)
+        self.assertEqual(len(contract.constraints), 274)
         self.assertEqual(len(contract.indexes), 94)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
@@ -474,7 +474,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (29, 380, 273, 94))
+        self.assertEqual(self._catalog_counts(), (29, 381, 274, 94))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -802,7 +802,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (29, 380, 273, 94))
+        self.assertEqual(self._catalog_counts(), (29, 381, 274, 94))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

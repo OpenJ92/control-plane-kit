@@ -27,7 +27,10 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
-from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
+    ExecutionWorkerAuthority,
+)
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 
 
@@ -104,7 +107,7 @@ class GatewayKeyRotationOverlapPreparationTests(
                 "worker-a",
                 (PolicyScope.EXECUTION_OPERATE,),
             ),
-            lease_expires_at="2026-08-02T02:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
 
     def program(

@@ -24,6 +24,7 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
     CompleteActivityRun,
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     FailActivityRun,
     PauseActivityRun,
@@ -152,12 +153,12 @@ class RunLifecycleTests(unittest.TestCase):
         *,
         worker_id: str = "worker-a",
         key: str = "claim-a",
-        lease: str = "2026-07-22T13:10:00Z",
+        duration_seconds: int = 600,
     ) -> ClaimAndOpenActivityRun:
         return ClaimAndOpenActivityRun(
             "request-a",
             self.authority(worker_id),
-            lease,
+            ExecutionLeaseDuration(duration_seconds),
             IdempotencyKey(key),
         )
 
@@ -500,14 +501,14 @@ class RunLifecycleTests(unittest.TestCase):
         self.assertEqual(replay.run, first.run)
         with self.assertRaises(RunLifecycleIdempotencyConflict):
             self.service("unused-run", "unused-event", "unused-action").execute(
-                self.claim_command(lease="2026-07-22T13:11:00Z")
+                self.claim_command(duration_seconds=660)
             )
         with self.assertRaises(RunLifecycleDenied):
             self.service("unused-run", "unused-event", "unused-action").execute(
                 ClaimAndOpenActivityRun(
                     "request-a",
                     self.authority(scopes=()),
-                    "2026-07-22T13:10:00Z",
+                    ExecutionLeaseDuration(600),
                     IdempotencyKey("claim-denied"),
                 )
             )

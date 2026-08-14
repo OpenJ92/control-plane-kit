@@ -616,7 +616,7 @@ def _context(
             "approval-request-a",
             "approval-decision-a",
             ExecutionIdempotency("execute-a", "fingerprint-a"),
-            ClaimIdentity("worker-a", "2026-07-22T10:01:00Z", "2026-07-22T10:30:00Z"),
+            ClaimIdentity("worker-a", 1, "2026-07-22T10:01:00Z", "2026-07-22T10:30:00Z"),
         ),
         run=ActivityRunRecord(
             run_id,

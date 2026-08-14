@@ -86,6 +86,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
 )
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     RunLifecycleCommandService,
     StartActivityRun,
@@ -1132,7 +1133,7 @@ class CpkServerLifecycleService:
             ClaimAndOpenActivityRun(
                 request_id=_path_or_payload(payload, "run_id", "request_id"),
                 authority=_worker_authority(context),
-                lease_expires_at=_text(payload, "lease_expires_at"),
+                lease_duration=_lease_duration(payload),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
             )
         )
@@ -1682,6 +1683,16 @@ def _nonnegative_integer(values: Mapping[str, object], name: str) -> int:
     if value is None:
         raise CpkServerApplicationError(400, f"{name} is required")
     return value
+
+
+def _lease_duration(values: Mapping[str, object]) -> ExecutionLeaseDuration:
+    value = values.get("lease_duration_seconds")
+    if type(value) is not int or not 1 <= value <= 3600:
+        raise CpkServerApplicationError(
+            400,
+            "lease_duration_seconds is invalid",
+        )
+    return ExecutionLeaseDuration(value)
 
 
 def _text_tuple(

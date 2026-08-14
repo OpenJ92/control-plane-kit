@@ -840,6 +840,7 @@ class IngressRealizationAdapterTests(unittest.TestCase):
                 ExecutionIdempotency("execute-a", "fingerprint-a"),
                 claim=ClaimIdentity(
                     "worker-a",
+                    1,
                     "2026-07-28T08:00:30Z",
                     "2026-07-28T08:10:30Z",
                 ),

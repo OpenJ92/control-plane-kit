@@ -158,9 +158,11 @@ CREATE TABLE cpk_execution_requests (
     idempotency_key text NOT NULL,
     intent_fingerprint text NOT NULL,
     claim_worker_id text,
+    claim_generation bigint,
     claimed_at timestamp with time zone,
     lease_expires_at timestamp with time zone,
-    CONSTRAINT cpk_execution_requests_claim_check CHECK ((((status = 'claimed'::text) AND (claim_worker_id IS NOT NULL) AND (claimed_at IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR ((status <> 'claimed'::text) AND (claim_worker_id IS NULL) AND (claimed_at IS NULL) AND (lease_expires_at IS NULL)))),
+    CONSTRAINT cpk_execution_requests_claim_check CHECK ((((status = 'claimed'::text) AND (claim_worker_id IS NOT NULL) AND (claim_generation IS NOT NULL) AND (claimed_at IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR ((status <> 'claimed'::text) AND (claim_worker_id IS NULL) AND (claim_generation IS NULL) AND (claimed_at IS NULL) AND (lease_expires_at IS NULL)))),
+    CONSTRAINT cpk_execution_requests_claim_generation_check CHECK (((claim_generation >= 1) AND (claim_generation <= 9223372036854775807))),
     CONSTRAINT cpk_execution_requests_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'claimed'::text, 'cancelled'::text, 'abandoned'::text])))
 );
 

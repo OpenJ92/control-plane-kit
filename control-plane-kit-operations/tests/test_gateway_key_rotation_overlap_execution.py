@@ -38,6 +38,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     RunLifecycleCommandService,
 )
@@ -134,7 +135,7 @@ class GatewayKeyRotationOverlapExecutionTests(
                 "worker-a",
                 (PolicyScope.EXECUTION_OPERATE,),
             ),
-            lease_expires_at="2026-08-02T02:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
 
     def command(

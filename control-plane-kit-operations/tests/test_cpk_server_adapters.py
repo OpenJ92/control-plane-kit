@@ -1932,7 +1932,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 payload={
                     "worker_id": "worker-a",
                     "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-                    "lease_expires_at": "2026-07-22T10:30:00Z",
+                    "lease_duration_seconds": 1800,
                     "idempotency_key": "claim-a",
                 },
                 principal=worker_principal(),
