@@ -585,6 +585,9 @@ def _activity_event(row: tuple[Any, ...]) -> ActivityEventRecord:
     payload = row[5]
     if not isinstance(payload, dict):
         raise ValueError("persisted activity event payload must be an object")
+    evidence = payload.get("evidence", {})
+    if not isinstance(evidence, dict):
+        raise ValueError("persisted activity event evidence must be an object")
     recovery = payload.get("recovery")
     if recovery is not None:
         raise ValueError("recovery event payloads belong to recovery extraction")
@@ -595,7 +598,7 @@ def _activity_event(row: tuple[Any, ...]) -> ActivityEventRecord:
         kind=ActivityEventKind(row[3]),
         occurred_at=decode_postgres_timestamp(row[4]),
         activity_id=payload.get("activity_id"),
-        evidence=BoundedEvidence.from_mapping(payload.get("evidence", {})),
+        evidence=BoundedEvidence.from_mapping(evidence),
         failure=_failure_evidence(payload.get("failure")),
     )
 
