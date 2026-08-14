@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import fields
+from dataclasses import fields, replace
 import os
 from pathlib import Path
 import unittest
@@ -16,6 +16,7 @@ from control_plane_kit_core.planning import (
     planning_scenarios,
 )
 from control_plane_kit_core.topology import (
+    DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
     GraphDescriptorCodec,
     compile_topology,
@@ -34,12 +35,17 @@ from control_plane_kit_operations.planning import (
     ActivityPlanningGraphInvalid,
     ActivityPlanningGraphStateConflict,
     ActivityPlanningResult,
+    ActivityPlanningSessionConflict,
     DesiredGraphCommandService,
     RequestActivityPlan,
     SetDesiredGraph,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
-from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
+from control_plane_kit_operations.records import (
+    GraphVersionRecord,
+    RealizedGraphProjectionRecord,
+    WorkspaceRecord,
+)
 from control_plane_kit_operations.workflows import (
     CloseOperationSession,
     IdempotencyKey,
@@ -83,13 +89,74 @@ class MissingProjectionStore:
 
 
 class ProjectionStores:
-    def __init__(self, failure: BaseException) -> None:
-        self.realized_graphs = MissingProjectionStore(failure)
+    def __init__(self, realized_graphs) -> None:
+        self.realized_graphs = realized_graphs
 
 
 class ProjectionUnitOfWork:
-    def __init__(self, failure: BaseException) -> None:
-        self.stores = ProjectionStores(failure)
+    def __init__(self, realized_graphs) -> None:
+        self.stores = ProjectionStores(realized_graphs)
+
+
+class StaticProjectionStore:
+    def __init__(self, record: RealizedGraphProjectionRecord) -> None:
+        self.record = record
+
+    def get(self, projection_id: str) -> RealizedGraphProjectionRecord:
+        return self.record
+
+
+class ReplayHistory:
+    def __init__(
+        self,
+        *,
+        action,
+        plan=None,
+        session=None,
+        plan_failure: BaseException | None = None,
+        session_failure: BaseException | None = None,
+    ) -> None:
+        self.action = action
+        self.plan = plan
+        self.session = session
+        self.plan_failure = plan_failure
+        self.session_failure = session_failure
+
+    def lock_action_idempotency(self, session_id: str, key: str) -> None:
+        return None
+
+    def action_for_idempotency(self, session_id: str, key: str):
+        return self.action
+
+    def get_plan(self, plan_id: str):
+        if self.plan_failure is not None:
+            raise self.plan_failure
+        return self.plan
+
+    def get_session(self, session_id: str):
+        if self.session_failure is not None:
+            raise self.session_failure
+        return self.session
+
+
+class ReplayStores:
+    def __init__(self, history: ReplayHistory) -> None:
+        self.activity_history = history
+
+
+class ReplayUnitOfWork:
+    def __init__(self, history: ReplayHistory) -> None:
+        self.stores = ReplayStores(history)
+        self.commits = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def commit(self) -> None:
+        self.commits += 1
 
 
 class PlanningTransitionReplayTests(unittest.TestCase):
@@ -135,12 +202,13 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         self,
         *ids: str,
         graph_codec: GraphDescriptorCodec | None = None,
+        unit_of_work_factory=None,
     ) -> ActivityPlanningCommandService:
         arguments = {}
         if graph_codec is not None:
             arguments["graph_codec"] = graph_codec
         return ActivityPlanningCommandService(
-            self.unit_of_work,
+            unit_of_work_factory or self.unit_of_work,
             clock=lambda: "2026-08-14T10:02:00Z",
             id_factory=Sequence(*ids),
             **arguments,
@@ -158,6 +226,16 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         current: DeploymentGraph,
         desired: DeploymentGraph,
     ) -> tuple[RequestActivityPlan, ActivityPlanningResult]:
+        command = self.prepare(current, desired)
+        return command, self.planning_service("plan-a", "action-plan").execute(
+            command
+        )
+
+    def prepare(
+        self,
+        current: DeploymentGraph,
+        desired: DeploymentGraph,
+    ) -> RequestActivityPlan:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
@@ -216,9 +294,7 @@ class PlanningTransitionReplayTests(unittest.TestCase):
             ),
             idempotency_key=IdempotencyKey("plan"),
         )
-        return command, self.planning_service("plan-a", "action-plan").execute(
-            command
-        )
+        return command
 
     def test_result_retains_exact_transition_without_descriptor_or_repr_material(
         self,
@@ -237,8 +313,31 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         )
         self.assertNotIn(scenario.current_graph.name, repr(result))
         self.assertNotIn(scenario.desired_graph.name, repr(result))
-        self.assertNotIn("transition", result.descriptor())
-        self.assertNotIn("diff", result.descriptor())
+        self.assertEqual(
+            result.descriptor(),
+            {
+                "plan_id": result.plan_record.plan_id,
+                "session_id": result.plan_record.session_id,
+                "base_graph_id": result.plan_record.base_graph_id,
+                "desired_graph_id": result.plan_record.desired_graph_id,
+                "base_realized_projection_id": (
+                    result.plan_record.base_realized_projection_id
+                ),
+                "desired_realized_projection_id": (
+                    result.plan_record.desired_realized_projection_id
+                ),
+                "desired_graph_revision": (
+                    result.plan_record.desired_graph_revision
+                ),
+                "ready_for_execution": (
+                    result.plan_record.plan.ready_for_execution
+                ),
+                "activity_count": len(result.plan_record.plan.activities),
+                "action_id": result.action.action_id,
+                "action_ordinal": result.action.ordinal,
+                "replayed": False,
+            },
+        )
 
     def test_equal_graph_values_under_distinct_ids_are_no_op(self) -> None:
         scenario = self.scenario("no-change")
@@ -366,6 +465,91 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         self.assertEqual(codec.decode_calls, 0)
         self._assert_clean_error(captured.exception)
 
+    def test_missing_plan_and_session_use_distinct_bounded_replay_categories(
+        self,
+    ) -> None:
+        scenario = self.scenario("backend-switch")
+        command, result = self.plan(scenario.current_graph, scenario.desired_graph)
+        self.connection.execute(
+            """
+            UPDATE cpk_operation_actions
+            SET payload = jsonb_set(payload, '{plan_id}', '"MISSING-PLAN-CANARY"')
+            WHERE action_id = %s
+            """,
+            (result.action.action_id,),
+        )
+        with self.assertRaises(ActivityPlanningGraphStateConflict) as missing_plan:
+            self.planning_service().execute(command)
+        self.assertEqual(str(missing_plan.exception), "planning replay truth is missing")
+        self._assert_clean_error(missing_plan.exception, "MISSING-PLAN-CANARY")
+
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        command, result = self.plan(scenario.current_graph, scenario.desired_graph)
+        history = ReplayHistory(
+            action=result.action,
+            plan=result.plan_record,
+            session_failure=KeyError("MISSING-SESSION-CANARY"),
+        )
+        unit_of_work = ReplayUnitOfWork(history)
+        with self.assertRaises(ActivityPlanningSessionConflict) as missing_session:
+            self.planning_service(
+                unit_of_work_factory=lambda: unit_of_work
+            ).execute(command)
+        self.assertEqual(
+            str(missing_session.exception),
+            "planning replay session is missing",
+        )
+        self._assert_clean_error(
+            missing_session.exception,
+            "MISSING-SESSION-CANARY",
+        )
+        self.assertEqual(unit_of_work.commits, 0)
+
+    def test_foreign_projection_membership_is_bounded_before_graph_use(self) -> None:
+        foreign = RealizedGraphProjectionRecord.identity_for_authored(
+            authored_record=GraphVersionRecord.from_graph(
+                graph_id="graph-a",
+                workspace_id="workspace-b",
+                version=1,
+                graph=DeploymentGraph("FOREIGN-GRAPH-CANARY"),
+                created_by="operator-b",
+                created_at="2026-08-14T10:00:00Z",
+            )
+        )
+
+        with self.assertRaises(ActivityPlanningGraphStateConflict) as captured:
+            planning_module._projection_record(
+                ProjectionUnitOfWork(StaticProjectionStore(foreign)),
+                foreign.projection_id,
+                "graph-a",
+                "workspace-a",
+            )
+
+        self.assertEqual(str(captured.exception), "realized graph truth is unavailable")
+        self._assert_clean_error(
+            captured.exception,
+            "workspace-b",
+            "FOREIGN-GRAPH-CANARY",
+        )
+
+    def test_first_planning_translates_malformed_projection_cause_free(self) -> None:
+        scenario = self.scenario("backend-switch")
+        command = self.prepare(scenario.current_graph, scenario.desired_graph)
+        self.connection.execute(
+            """
+            UPDATE cpk_realized_graph_projections
+            SET graph_descriptor = '{"name":"FIRST-GRAPH-CANARY","nodes":"bad"}'::jsonb
+            WHERE projection_id = %s
+            """,
+            (command.expected_desired_realized_projection_id,),
+        )
+
+        with self.assertRaises(ActivityPlanningGraphInvalid) as captured:
+            self.planning_service("plan-a", "action-plan").execute(command)
+
+        self.assertEqual(str(captured.exception), "persisted graph pair is invalid")
+        self._assert_clean_error(captured.exception, "FIRST-GRAPH-CANARY")
+
     def test_replay_rejects_malformed_graph_and_plan_incongruence(self) -> None:
         scenario = self.scenario("backend-switch")
         command, result = self.plan(scenario.current_graph, scenario.desired_graph)
@@ -399,12 +583,50 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         )
         self._assert_clean_error(mismatch.exception)
 
+    def test_replay_rejects_decodable_validation_invalid_graph(self) -> None:
+        scenario = self.scenario("backend-switch")
+        command, result = self.plan(scenario.current_graph, scenario.desired_graph)
+        connected = self.scenario("insert-rate-limiter").desired_graph
+        invalid = replace(connected, edges={})
+        self.assertFalse(validate_graph(invalid).valid)
+        self.connection.execute(
+            """
+            UPDATE cpk_realized_graph_projections
+            SET graph_descriptor = %s
+            WHERE projection_id = %s
+            """,
+            (
+                Jsonb(DEFAULT_GRAPH_CODEC.encode(invalid)),
+                result.plan_record.desired_realized_projection_id,
+            ),
+        )
+
+        with self.assertRaises(ActivityPlanningGraphInvalid) as captured:
+            self.planning_service().execute(command)
+
+        self.assertEqual(str(captured.exception), "persisted graph pair is invalid")
+        self._assert_clean_error(captured.exception, invalid.name)
+
+    def test_unexpected_codec_failure_escapes_replay_by_identity(self) -> None:
+        scenario = self.scenario("backend-switch")
+        command, _ = self.plan(scenario.current_graph, scenario.desired_graph)
+        sentinel = SentinelFailure("unexpected-codec-failure")
+        codec = ExplodingCodec(sentinel)
+
+        with self.assertRaises(SentinelFailure) as captured:
+            self.planning_service(graph_codec=codec).execute(command)
+
+        self.assertIs(captured.exception, sentinel)
+        self.assertEqual(codec.decode_calls, 1)
+
     def test_shared_projection_lookup_is_bounded_and_unexpected_errors_escape(
         self,
     ) -> None:
         with self.assertRaises(ActivityPlanningGraphStateConflict) as missing:
             planning_module._projection_record(
-                ProjectionUnitOfWork(KeyError("STORE-CANARY")),
+                ProjectionUnitOfWork(
+                    MissingProjectionStore(KeyError("STORE-CANARY"))
+                ),
                 "PROJECTION-CANARY",
                 "graph-a",
                 "workspace-a",
@@ -419,7 +641,7 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         sentinel = SentinelFailure("unexpected-store-failure")
         with self.assertRaises(SentinelFailure) as unexpected:
             planning_module._projection_record(
-                ProjectionUnitOfWork(sentinel),
+                ProjectionUnitOfWork(MissingProjectionStore(sentinel)),
                 "projection-a",
                 "graph-a",
                 "workspace-a",
@@ -434,6 +656,10 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         same = validate_graph(DeploymentGraph("same"))
         wrong_transition = Deploy(same, same)
 
+        with self.assertRaises(TypeError):
+            ActivityPlanningResult(result.plan_record, result.action)
+        with self.assertRaises(InvalidOperationCommand):
+            ActivityPlanningResult(result.plan_record, result.action, object())
         with self.assertRaises(InvalidOperationCommand):
             ActivityPlanningResult(
                 result.plan_record,
@@ -445,14 +671,52 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         source_path = Path(planning_module.__file__)
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         imported: dict[str, set[str]] = {}
-        calls: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported.setdefault(node.module, set()).update(
                     alias.name for alias in node.names
                 )
-            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                calls.add(node.func.id)
+
+        module_functions = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        service_class = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "ActivityPlanningCommandService"
+        )
+        first_execute = next(
+            node
+            for node in service_class.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "execute"
+        )
+        replay = module_functions["_activity_plan_replay"]
+
+        def reachable_calls(root) -> set[str]:
+            reachable: set[str] = set()
+            pending = [root]
+            visited: set[str] = set()
+            while pending:
+                function = pending.pop()
+                for node in ast.walk(function):
+                    if not (
+                        isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                    ):
+                        continue
+                    name = node.func.id
+                    reachable.add(name)
+                    if name in module_functions and name not in visited:
+                        visited.add(name)
+                        pending.append(module_functions[name])
+            return reachable
+
+        first_calls = reachable_calls(first_execute)
+        replay_calls = reachable_calls(replay)
 
         self.assertIn(
             "Deploy",
@@ -465,8 +729,11 @@ class PlanningTransitionReplayTests(unittest.TestCase):
             "diff_graphs",
             imported.get("control_plane_kit_core.topology", set()),
         )
-        self.assertIn("Deploy", calls)
-        self.assertNotIn("diff_graphs", calls)
+        for owner, calls in (("first", first_calls), ("replay", replay_calls)):
+            with self.subTest(owner=owner):
+                self.assertIn("Deploy", calls)
+                self.assertIn("compile_activity_plan", calls)
+                self.assertNotIn("diff_graphs", calls)
 
     def _durable_counts(self) -> tuple[int, ...]:
         return tuple(
