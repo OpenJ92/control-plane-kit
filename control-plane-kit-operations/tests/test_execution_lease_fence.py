@@ -6,9 +6,14 @@ import unittest
 
 import control_plane_kit_operations as operations_root
 import control_plane_kit_operations.lifecycle as lifecycle
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres import current_schema_contract
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
-from control_plane_kit_operations.records import ClaimIdentity
+from control_plane_kit_operations.records import (
+    ClaimIdentity,
+    OperationsRecordError,
+)
+from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
 class ExecutionLeaseLanguageTargetTests(unittest.TestCase):
@@ -31,7 +36,7 @@ class ExecutionLeaseLanguageTargetTests(unittest.TestCase):
         self.assertEqual(duration_type(3600).seconds, 3600)
         for candidate in (True, 0, -1, 3601, 1.5, "60"):
             with self.subTest(candidate=candidate):
-                with self.assertRaises(Exception):
+                with self.assertRaises(InvalidOperationCommand):
                     duration_type(candidate)
 
     def test_claim_identity_has_one_bounded_generation(self) -> None:
@@ -51,7 +56,7 @@ class ExecutionLeaseLanguageTargetTests(unittest.TestCase):
         )
         for candidate in (True, 0, -1, 2**63):
             with self.subTest(candidate=candidate):
-                with self.assertRaises(Exception):
+                with self.assertRaises(OperationsRecordError):
                     ClaimIdentity("worker-a", candidate, "claimed", "expires")
 
     def test_claim_command_uses_duration_and_not_absolute_expiry(self) -> None:
@@ -68,7 +73,7 @@ class ExecutionLeaseLanguageTargetTests(unittest.TestCase):
             request_id="request-a",
             authority=lifecycle.ExecutionWorkerAuthority(
                 "worker-a",
-                (operations_root.PolicyScope.EXECUTION_OPERATE,),
+                (PolicyScope.EXECUTION_OPERATE,),
             ),
             lease_duration=duration_type(600),
             idempotency_key=operations_root.IdempotencyKey("claim-a"),
