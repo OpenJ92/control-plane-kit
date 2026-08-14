@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Mapping
 
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning.activity_plan import (
     AddSocketConnection,
     NodeTarget,
@@ -90,6 +91,12 @@ def runtime_effect_request_for_context(
         raise InvalidOperationCommand(
             "runtime effect translation requires ActivityRealizationContext"
         )
+    try:
+        run_id = RunId(context.run.run_id)
+    except ValueError:
+        run_id = None
+    if run_id is None:
+        raise InvalidOperationCommand("runtime effect run_id is malformed")
     graph = _material_graph(context)
     runtime_id = _runtime_id_for_context(context, graph)
     authority_ref = _runtime_authority_ref_for_context(graph, runtime_id)
@@ -105,7 +112,7 @@ def runtime_effect_request_for_context(
         source=RuntimeEffectSource(
             workspace_id=context.request.identity.workspace_id,
             request_id=context.request.identity.request_id,
-            run_id=context.run.run_id,
+            run_id=run_id,
             plan_id=context.plan_record.plan_id,
             base_graph_id=context.plan_record.base_graph_id,
             desired_graph_id=context.plan_record.desired_graph_id,

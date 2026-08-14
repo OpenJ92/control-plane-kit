@@ -4237,6 +4237,63 @@
       "source": "control_plane_kit_core/_activity_identity.py"
     },
     {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_core._run_identity",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit_core.operations.run_identity",
+        "control_plane_kit_core.planning.saga",
+        "control_plane_kit_core.secrets"
+      ],
+      "migration_prerequisites": [
+        "#1636"
+      ],
+      "module": "control_plane_kit_core._run_identity",
+      "motivation": "Own one private pure run-identity grammar shared by Core values and string boundaries without introducing planning or secrets import cycles.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_run_identity.py"
+      ],
+      "role": "pure-contract",
+      "semantic_roles": [
+        "validation"
+      ],
+      "source": "control_plane_kit_core/_run_identity.py"
+    },
+    {
+      "canonical_public_exports": [
+        "RunId"
+      ],
+      "destination": "control_plane_kit_core.operations.run_identity",
+      "internal_dependencies": [
+        "control_plane_kit_core._run_identity"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_core.operations.recovery",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations.runtime_effects"
+      ],
+      "migration_prerequisites": [
+        "#1636"
+      ],
+      "module": "control_plane_kit_core.operations.run_identity",
+      "motivation": "Expose the canonical frozen nominal identity used by pure run, recovery, and runtime-effect languages while representations remain strings at persistence and wire boundaries.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_run_identity.py"
+      ],
+      "role": "pure-contract",
+      "semantic_roles": [
+        "values",
+        "validation"
+      ],
+      "source": "control_plane_kit_core/operations/run_identity.py"
+    },
+    {
       "canonical_public_exports": [
         "ActivityId",
         "ActivityDependency",

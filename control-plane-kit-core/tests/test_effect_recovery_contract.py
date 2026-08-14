@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import unittest
 
 import control_plane_kit_core as core
@@ -22,11 +23,22 @@ REQUEST_FINGERPRINT = "a" * 64
 OUTCOME_FINGERPRINT = "b" * 64
 UNCERTAIN_FINGERPRINT = "c" * 64
 RECOVERY_FINGERPRINT = "d" * 64
+RUN_ID_MODULE = "control_plane_kit_core.operations.run_identity"
+
+
+def _run_id(value: str):
+    try:
+        module = importlib.import_module(RUN_ID_MODULE)
+    except ModuleNotFoundError as error:
+        if error.name != RUN_ID_MODULE:
+            raise
+        raise AssertionError("missing #1636 RunId") from error
+    return module.RunId(value)
 
 
 class EffectRecoveryContractTests(unittest.TestCase):
     def identity(self, attempt: int = 1) -> EffectAttemptIdentity:
-        return EffectAttemptIdentity("run-1", "activity-1", attempt)
+        return EffectAttemptIdentity(_run_id("run-1"), "activity-1", attempt)
 
     def fence(self, generation: int = 1) -> EffectAttemptFence:
         return EffectAttemptFence("worker-1", generation)
@@ -79,9 +91,9 @@ class EffectRecoveryContractTests(unittest.TestCase):
     def test_identity_and_fence_are_bounded_and_positive(self) -> None:
         invalid_factories = (
             lambda: EffectAttemptIdentity("", "activity-1", 1),
-            lambda: EffectAttemptIdentity("run-1", "", 1),
-            lambda: EffectAttemptIdentity("run-1", "activity-1", 0),
-            lambda: EffectAttemptIdentity("run-1", "activity-1", True),
+            lambda: EffectAttemptIdentity(_run_id("run-1"), "", 1),
+            lambda: EffectAttemptIdentity(_run_id("run-1"), "activity-1", 0),
+            lambda: EffectAttemptIdentity(_run_id("run-1"), "activity-1", True),
             lambda: EffectAttemptFence("", 1),
             lambda: EffectAttemptFence("worker-1", 0),
             lambda: EffectAttemptFence("worker-1", True),
@@ -109,7 +121,9 @@ class EffectRecoveryContractTests(unittest.TestCase):
                 None,
                 self.start(
                     identity=second,
-                    prior_attempt=EffectAttemptIdentity("other-run", "activity-1", 1),
+                    prior_attempt=EffectAttemptIdentity(
+                        _run_id("other-run"), "activity-1", 1
+                    ),
                 ),
                 fence=self.fence(),
             )
