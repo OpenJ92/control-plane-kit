@@ -1123,6 +1123,10 @@ class CpkServerLifecycleService:
                         "expected_desired_graph_revision",
                     ),
                     authority=_worker_authority(context),
+                    fence=ExecutionLeaseFence(
+                        context.actor_id,
+                        _claim_generation(payload),
+                    ),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 )
             )

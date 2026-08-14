@@ -254,6 +254,7 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
                 "desired_graph_id": "graph-desired",
                 "desired_realized_projection_id": "projection-desired",
                 "expected_desired_graph_revision": 1,
+                "claim_generation": 1,
                 "idempotency_key": "advance-a",
             }
         if surface == "mcp":
@@ -380,14 +381,26 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
         self.assertEqual(execution.commands, [])
         self.assertEqual(advancement.commands, [])
 
-    def test_execution_routes_require_bounded_generation_before_service_entry(self) -> None:
-        for route_id in ("command.run.start", "command.deployment.execute"):
+    def test_post_claim_routes_require_bounded_generation_before_service_entry(self) -> None:
+        cases = (
+            ("command.run.start", ControlPlaneServiceRole.EXECUTION, 0),
+            ("command.deployment.execute", ControlPlaneServiceRole.EXECUTION, 1),
+            ("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE, 2),
+        )
+        for route_id, role, recorder_index in cases:
             for surface in ("http", "mcp"):
                 for candidate in (None, True, 0, -1, 2**63, "generation-canary"):
-                    execution_service, _, lifecycle, execution, _ = self.services()
+                    execution_service, lifecycle_service, lifecycle, execution, advancement = (
+                        self.services()
+                    )
+                    services = {
+                        ControlPlaneServiceRole.EXECUTION: execution_service,
+                        ControlPlaneServiceRole.LIFECYCLE: lifecycle_service,
+                    }
+                    recorders = (lifecycle, execution, advancement)
                     request = self.command_request(
                         route_id,
-                        ControlPlaneServiceRole.EXECUTION,
+                        role,
                         surface=surface,
                         run_id="run-a",
                     )
@@ -402,7 +415,7 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
                         candidate=candidate,
                     ):
                         with self.assertRaises(CpkServerApplicationError) as captured:
-                            execution_service.handle(
+                            services[role].handle(
                                 replace(request, payload=payload)
                             )
                         self.assertEqual(captured.exception.status, 400)
@@ -411,24 +424,41 @@ class RunIdentityAdapterContractTests(unittest.TestCase):
                             "claim_generation is invalid",
                         )
                         self.assertNotIn("generation-canary", repr(captured.exception))
-                        self.assertEqual(lifecycle.commands, [])
-                        self.assertEqual(execution.commands, [])
+                        self.assertEqual(recorders[recorder_index].commands, [])
 
     def test_execution_fence_worker_comes_only_from_authenticated_actor(self) -> None:
-        execution_service, _, lifecycle, execution, _ = self.services()
+        execution_service, lifecycle_service, lifecycle, execution, advancement = (
+            self.services()
+        )
 
-        for route_id, recorder in (
-            ("command.run.start", lifecycle),
-            ("command.deployment.execute", execution),
+        for route_id, role, service, recorder in (
+            (
+                "command.run.start",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+                lifecycle,
+            ),
+            (
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+                execution,
+            ),
+            (
+                "command.graph.advance-current",
+                ControlPlaneServiceRole.LIFECYCLE,
+                lifecycle_service,
+                advancement,
+            ),
         ):
             request = self.command_request(
                 route_id,
-                ControlPlaneServiceRole.EXECUTION,
+                role,
                 surface="http",
                 run_id="run-a",
                 principal=worker_principal(subject_id="trusted-worker"),
             )
-            execution_service.handle(
+            service.handle(
                 replace(
                     request,
                     payload={
@@ -2061,6 +2091,7 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             "expected_desired_graph_revision": desired_revision,
             "worker_id": "worker-a",
             "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+            "claim_generation": claimed["claim_generation"],
             "idempotency_key": "advance-a",
         }
         advanced = application.handle(
