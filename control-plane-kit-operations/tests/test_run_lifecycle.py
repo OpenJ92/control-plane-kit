@@ -297,8 +297,8 @@ class RunLifecycleTests(unittest.TestCase):
             clock=lambda: "1900-01-01T00:00:00Z",
             id_factory=Sequence("run-lock", "event-lock", "action-lock"),
         )
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
                 future = executor.submit(service.execute, command)
                 claim_pid = claim_pids.get(timeout=5)
                 deadline = time.monotonic() + 5
@@ -313,9 +313,9 @@ class RunLifecycleTests(unittest.TestCase):
                 released_at = blocker.execute("SELECT clock_timestamp()").fetchone()[0]
                 blocker.commit()
                 result = future.result(timeout=5)
-        finally:
-            blocker.rollback()
-            blocker.close()
+            finally:
+                blocker.rollback()
+                blocker.close()
 
         claimed_at = self.connection.execute(
             "SELECT claimed_at FROM cpk_execution_requests "
@@ -353,8 +353,8 @@ class RunLifecycleTests(unittest.TestCase):
                 unit_of_work.commit()
                 return result
 
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
                 future = executor.submit(observe)
                 observer_pid = observer_pids.get(timeout=5)
                 deadline = time.monotonic() + 5
@@ -369,9 +369,9 @@ class RunLifecycleTests(unittest.TestCase):
                 released_at = blocker.execute("SELECT clock_timestamp()").fetchone()[0]
                 blocker.commit()
                 observation = future.result(timeout=5)
-        finally:
-            blocker.rollback()
-            blocker.close()
+            finally:
+                blocker.rollback()
+                blocker.close()
 
         observed_at = datetime.fromisoformat(
             observation.observed_at.replace("Z", "+00:00")
