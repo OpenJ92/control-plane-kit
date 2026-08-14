@@ -400,6 +400,68 @@ class RunLifecycleTests(unittest.TestCase):
         self.assertEqual(factory_calls, 0)
         self._assert_safe_error(captured.exception, "request-a")
 
+    def test_target_claim_replay_locks_before_accepting_current_generation(
+        self,
+    ) -> None:
+        command = self.target_claim_command()
+        self.service("run-target", "event-target", "action-target").execute(command)
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "UPDATE cpk_execution_requests SET claim_generation = 2 "
+            "WHERE request_id = 'request-a'"
+        )
+        blocker_pid = blocker.info.backend_pid
+        replay_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            replay_pids.put(connection.info.backend_pid)
+            return connection
+
+        replay_service = RunLifecycleCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "1900-01-01T00:00:00Z",
+            id_factory=lambda: self.fail("claim replay consumed a new identity"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(replay_service.execute, command)
+                replay_pid = replay_pids.get(timeout=5)
+                deadline = time.monotonic() + 5
+                while True:
+                    if future.done():
+                        self.fail("claim replay accepted a pre-lock generation snapshot")
+                    blocked_by = self.connection.execute(
+                        "SELECT pg_blocking_pids(%s)", (replay_pid,)
+                    ).fetchone()[0]
+                    if blocker_pid in blocked_by:
+                        break
+                    if time.monotonic() >= deadline:
+                        self.fail("claim replay did not lock the execution request")
+                blocker.commit()
+                with self.assertRaises(RunLifecycleConflict) as captured:
+                    future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self._assert_safe_error(captured.exception, "request-a")
+
+    def test_target_store_never_conflates_same_worker_with_claim_replay(self) -> None:
+        self.service("run-target", "event-target", "action-target").execute(
+            self.target_claim_command()
+        )
+
+        with self.unit_of_work() as unit_of_work:
+            retained = unit_of_work.stores.execution.claim_request(
+                "request-a",
+                "worker-a",
+                600,
+            )
+            unit_of_work.commit()
+
+        self.assertIsNone(retained)
+
     def test_target_invalid_run_is_rejected_before_database_generated_claim(
         self,
     ) -> None:
