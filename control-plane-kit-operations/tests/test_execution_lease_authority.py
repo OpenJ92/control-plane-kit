@@ -90,7 +90,8 @@ class ExecutionLeaseAuthorityTargetTests(unittest.TestCase):
             with self.subTest(candidate_type=type(candidate).__name__):
                 with self.assertRaises(error_type) as captured:
                     fence_type(candidate, 1)
-                self.assert_safe_error(captured.exception, str(candidate))
+                canaries = () if candidate == "" else (str(candidate),)
+                self.assert_safe_error(captured.exception, *canaries)
 
     def test_generation_is_exact_positive_postgres_bigint(self) -> None:
         fence_type = self.fence_type()
