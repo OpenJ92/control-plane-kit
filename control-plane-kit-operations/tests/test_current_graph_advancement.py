@@ -154,6 +154,7 @@ def _contract_result(
         "worker-a",
         payload={
             **evidence.descriptor(),
+            "execution_request_id": "request-a",
             "claim_generation": 1,
             "event_id": "event-a",
         },
@@ -374,6 +375,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         )
         self.assertIs(result.event.kind, ActivityEventKind.CURRENT_GRAPH_ADVANCED)
         self.assertIs(result.action.action_type, LifecycleOperationKind.ADVANCE_CURRENT_GRAPH)
+        self.assertEqual(result.action.payload["execution_request_id"], "request-a")
         self.assertEqual(result.action.payload["claim_generation"], 1)
         self.assertNotIn("claim_generation", result.event.evidence.descriptor())
         self.assertTrue(replay.replayed)
@@ -619,6 +621,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         mutations = (
             ("workspace_id", "workspace-canary"),
             ("plan_id", "plan-canary"),
+            ("execution_request_id", "request-canary"),
             ("run_id", "run-canary"),
             ("from_authored_graph_id", "from-canary"),
             ("from_realized_projection_id", "from-projection-canary"),
@@ -684,6 +687,83 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         self.assertIsNone(captured.exception.__cause__)
         self.assertIsNone(captured.exception.__context__)
         self.assertNotIn("event-workspace-canary", repr(captured.exception))
+
+    def test_replay_rejects_run_reassigned_to_another_compatible_request(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        self.service("event-advance", "action-advance").execute(command)
+        self.connection.execute(
+            "UPDATE cpk_execution_requests "
+            "SET status = 'abandoned', claim_worker_id = NULL, "
+            "claim_generation = NULL, claimed_at = NULL, lease_expires_at = NULL "
+            "WHERE request_id = 'request-a'"
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.execution.add_request(
+                ExecutionRequestRecord(
+                    ExecutionRequestIdentity(
+                        "request-b",
+                        "workspace-a",
+                        "session-a",
+                        "plan-a",
+                    ),
+                    ExecutionRequestStatus.CLAIMED,
+                    "operator-a",
+                    "2026-07-22T13:06:00Z",
+                    "approval-request-a",
+                    "approval-decision-a",
+                    ExecutionIdempotency("execute-b", "fingerprint-b"),
+                    ClaimIdentity(
+                        "worker-a",
+                        1,
+                        "2026-07-22T13:06:30Z",
+                        "2026-07-22T13:16:30Z",
+                    ),
+                )
+            )
+            unit_of_work.commit()
+        self.connection.execute(
+            "UPDATE cpk_activity_runs SET request_id = 'request-b' "
+            "WHERE run_id = 'run-a'"
+        )
+
+        with self.assertRaises(CurrentGraphAdvancementError) as captured:
+            self.service("unused-event", "unused-action").execute(command)
+
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+
+    def test_replay_translates_malformed_persisted_action(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        self.service("event-advance", "action-advance").execute(command)
+        self.connection.execute(
+            "UPDATE cpk_operation_actions SET payload = '[]'::jsonb "
+            "WHERE action_id = 'action-advance'"
+        )
+
+        with self.assertRaises(CurrentGraphAdvancementError) as captured:
+            self.service("unused-event", "unused-action").execute(command)
+
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertLessEqual(len(repr(captured.exception)), 256)
+
+    def test_replay_translates_malformed_persisted_event(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        self.service("event-advance", "action-advance").execute(command)
+        self.connection.execute(
+            "UPDATE cpk_activity_events SET payload = '[]'::jsonb "
+            "WHERE event_id = 'event-advance'"
+        )
+
+        with self.assertRaises(CurrentGraphAdvancementError) as captured:
+            self.service("unused-event", "unused-action").execute(command)
+
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertLessEqual(len(repr(captured.exception)), 256)
 
     def test_closed_session_cannot_publish_a_new_advancement(self) -> None:
         self.seed_succeeded_run()
