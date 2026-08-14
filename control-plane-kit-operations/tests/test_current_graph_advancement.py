@@ -9,6 +9,7 @@ from typing import Any
 import psycopg
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -28,6 +29,7 @@ from control_plane_kit_operations.advancement import (
     CurrentGraphAdvancementIdempotencyConflict,
     CurrentGraphAdvancementIncomplete,
     CurrentGraphAdvancementNotFound,
+    CurrentGraphAdvancementResult,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
@@ -57,8 +59,152 @@ from control_plane_kit_operations.records import (
 from control_plane_kit_operations.workflows import (
     CloseOperationSession,
     IdempotencyKey,
+    InvalidOperationCommand,
     OperationCommandService,
 )
+
+
+class _RunTextSubclass(str):
+    pass
+
+
+INVALID_RUN_IDS = (
+    (object(), ()),
+    (True, ("True",)),
+    (_RunTextSubclass("subclass-canary"), ("subclass-canary",)),
+    ("", ()),
+    (" ", ()),
+    ("-leading-canary", ("leading-canary",)),
+    (".leading-canary", ("leading-canary",)),
+    ("_leading-canary", ("leading-canary",)),
+    (":leading-canary", ("leading-canary",)),
+    ("slash/canary", ("slash/canary",)),
+    ("space canary", ("space canary",)),
+    *tuple(
+        (f"a{chr(code)}control-canary", ("control-canary",))
+        for code in (*range(32), 127)
+    ),
+    ("a" * 201, ("a" * 32,)),
+)
+
+
+def _contract_authority() -> ExecutionWorkerAuthority:
+    return ExecutionWorkerAuthority(
+        "worker-a",
+        (PolicyScope.EXECUTION_OPERATE,),
+    )
+
+
+def _contract_command(run_id: object) -> AdvanceCurrentGraph:
+    return AdvanceCurrentGraph(
+        workspace_id="workspace-a",
+        run_id=run_id,
+        plan_id="plan-a",
+        expected_current_graph_id="graph-current",
+        expected_current_realized_projection_id="projection-current",
+        desired_graph_id="graph-desired",
+        desired_realized_projection_id="projection-desired",
+        expected_desired_graph_revision=1,
+        authority=_contract_authority(),
+        idempotency_key=IdempotencyKey("advance-a"),
+    )
+
+
+def _contract_result(
+    run_id: object,
+    *,
+    replayed: bool,
+) -> CurrentGraphAdvancementResult:
+    try:
+        evidence_run_id = RunId(run_id).value
+    except ValueError:
+        evidence_run_id = "run-a"
+    evidence = BoundedEvidence.from_mapping(
+        {
+            "workspace_id": "workspace-a",
+            "plan_id": "plan-a",
+            "run_id": evidence_run_id,
+            "from_authored_graph_id": "graph-current",
+            "from_realized_projection_id": "projection-current",
+            "to_authored_graph_id": "graph-desired",
+            "to_realized_projection_id": "projection-desired",
+            "to_realized_projection_digest": "a" * 64,
+            "desired_graph_revision": 1,
+        }
+    )
+    event = ActivityEventRecord(
+        "event-a",
+        evidence_run_id,
+        1,
+        ActivityEventKind.CURRENT_GRAPH_ADVANCED,
+        "2026-08-14T12:00:00Z",
+        evidence=evidence,
+    )
+    action = OperationActionRecord(
+        "action-a",
+        "session-a",
+        1,
+        LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,
+        "worker-a",
+        payload={"event_id": "event-a"},
+        created_at="2026-08-14T12:00:00Z",
+    )
+    return CurrentGraphAdvancementResult(
+        workspace_id="workspace-a",
+        from_authored_graph_id="graph-current",
+        from_realized_projection_id="projection-current",
+        to_authored_graph_id="graph-desired",
+        to_realized_projection_id="projection-desired",
+        to_realized_projection_digest="a" * 64,
+        desired_graph_revision=1,
+        run_id=run_id,
+        plan_id="plan-a",
+        event=event,
+        action=action,
+        replayed=replayed,
+    )
+
+
+class CurrentGraphAdvancementContractTests(unittest.TestCase):
+    def assert_invalid_run(self, callback, canaries: tuple[str, ...]) -> None:
+        with self.assertRaises(Exception) as captured:
+            callback()
+        error = captured.exception
+        self.assertIs(type(error), InvalidOperationCommand)
+        self.assertIsNone(error.__cause__)
+        self.assertIsNone(error.__context__)
+        rendered = f"{error!s} {error!r}"
+        self.assertLessEqual(len(rendered), 256)
+        for canary in canaries:
+            self.assertNotIn(canary, rendered)
+
+    def test_command_run_identity_is_canonical_before_unit_of_work(self) -> None:
+        for run_id in ("a", "a._:-0", "a" * 200):
+            with self.subTest(run_id=run_id, boundary="valid"):
+                self.assertEqual(_contract_command(run_id).run_id, run_id)
+        for run_id, canaries in INVALID_RUN_IDS:
+            with self.subTest(run_type=type(run_id).__name__):
+                self.assert_invalid_run(
+                    lambda run_id=run_id: _contract_command(run_id),
+                    canaries,
+                )
+
+    def test_direct_and_replayed_results_share_canonical_run_admission(self) -> None:
+        for replayed in (False, True):
+            for run_id in ("a", "a._:-0", "a" * 200):
+                with self.subTest(replayed=replayed, run_id=run_id):
+                    result = _contract_result(run_id, replayed=replayed)
+                    self.assertEqual(result.run_id, run_id)
+                    self.assertEqual(result.descriptor()["run_id"], run_id)
+            for run_id, canaries in INVALID_RUN_IDS:
+                with self.subTest(replayed=replayed, run_type=type(run_id).__name__):
+                    self.assert_invalid_run(
+                        lambda run_id=run_id, replayed=replayed: _contract_result(
+                            run_id,
+                            replayed=replayed,
+                        ),
+                        canaries,
+                    )
 
 
 class Sequence:

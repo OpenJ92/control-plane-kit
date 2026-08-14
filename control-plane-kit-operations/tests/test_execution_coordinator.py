@@ -67,7 +67,62 @@ from control_plane_kit_operations.records import (
     ObservationRecord,
     ObservationStatus,
 )
-from control_plane_kit_operations.workflows import IdempotencyKey
+from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
+
+
+class _RunTextSubclass(str):
+    pass
+
+
+INVALID_RUN_IDS = (
+    (object(), ()),
+    (True, ("True",)),
+    (_RunTextSubclass("subclass-canary"), ("subclass-canary",)),
+    ("", ()),
+    (" ", ()),
+    ("-leading-canary", ("leading-canary",)),
+    (".leading-canary", ("leading-canary",)),
+    ("_leading-canary", ("leading-canary",)),
+    (":leading-canary", ("leading-canary",)),
+    ("slash/canary", ("slash/canary",)),
+    ("space canary", ("space canary",)),
+    *tuple(
+        (f"a{chr(code)}control-canary", ("control-canary",))
+        for code in (*range(32), 127)
+    ),
+    ("a" * 201, ("a" * 32,)),
+)
+
+
+class ExecuteActivityRunContractTests(unittest.TestCase):
+    def test_run_identity_is_canonical_before_any_execution_callback(self) -> None:
+        authority = ExecutionWorkerAuthority(
+            "worker-a",
+            (PolicyScope.EXECUTION_OPERATE,),
+        )
+        key = IdempotencyKey("execute-a")
+        callbacks: list[object] = []
+
+        def forbidden_execute(command: object) -> None:
+            callbacks.append(command)
+
+        for run_id in ("a", "a._:-0", "a" * 200):
+            with self.subTest(run_id=run_id, boundary="valid"):
+                command = ExecuteActivityRun(run_id, authority, key)
+                self.assertEqual(command.run_id, run_id)
+
+        for run_id, canaries in INVALID_RUN_IDS:
+            with self.subTest(run_type=type(run_id).__name__):
+                with self.assertRaises(InvalidOperationCommand) as captured:
+                    forbidden_execute(ExecuteActivityRun(run_id, authority, key))
+                error = captured.exception
+                self.assertIsNone(error.__cause__)
+                self.assertIsNone(error.__context__)
+                rendered = f"{error!s} {error!r}"
+                self.assertLessEqual(len(rendered), 256)
+                for canary in canaries:
+                    self.assertNotIn(canary, rendered)
+        self.assertEqual(callbacks, [])
 
 
 class Sequence:

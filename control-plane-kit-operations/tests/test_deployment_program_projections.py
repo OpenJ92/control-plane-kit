@@ -16,6 +16,7 @@ from control_plane_kit_core.operations import (
     DeploymentProgramStage,
     EffectAttemptIdentity,
     ExecutionRequestStatus,
+    RunId,
 )
 from control_plane_kit_core.planning import ActivityId
 from control_plane_kit_operations.deployment_program import (
@@ -209,21 +210,21 @@ def _cases() -> tuple[_Case, ...]:
         ),
         _Case(
             "DeploymentExecutionReady",
-            {"reference": _reference(), "run_id": "run-a"},
+            {"reference": _reference(), "run_id": _run_id("run-a")},
             DeploymentProgramStage.EXECUTE,
             "execution-ready",
             ("run_id",),
         ),
         _Case(
             "DeploymentExecutionRunning",
-            {"reference": _reference(), "run_id": "run-a"},
+            {"reference": _reference(), "run_id": _run_id("run-a")},
             DeploymentProgramStage.EXECUTE,
             "execution-running",
             ("run_id",),
         ),
         _Case(
             "DeploymentExecutionPaused",
-            {"reference": _reference(), "run_id": "run-a"},
+            {"reference": _reference(), "run_id": _run_id("run-a")},
             DeploymentProgramStage.EXECUTE,
             "execution-paused",
             ("run_id",),
@@ -232,7 +233,7 @@ def _cases() -> tuple[_Case, ...]:
             "DeploymentEffectInFlight",
             {
                 "reference": _reference(),
-                "run_id": "run-a",
+                "run_id": _run_id("run-a"),
                 "run_status": ActivityRunStatus.RUNNING,
                 "effect_attempt": _attempt(),
             },
@@ -243,7 +244,7 @@ def _cases() -> tuple[_Case, ...]:
             "DeploymentRecoveryRequired",
             {
                 "reference": _reference(),
-                "run_id": "run-a",
+                "run_id": _run_id("run-a"),
                 "run_status": ActivityRunStatus.RUNNING,
                 "effect_attempt": _attempt(),
             },
@@ -252,7 +253,7 @@ def _cases() -> tuple[_Case, ...]:
         ),
         _Case(
             "DeploymentCompensationInProgress",
-            {"reference": _reference(), "run_id": "run-a"},
+            {"reference": _reference(), "run_id": _run_id("run-a")},
             DeploymentProgramStage.EXECUTE,
             "compensation-in-progress",
             ("run_id",),
@@ -261,7 +262,7 @@ def _cases() -> tuple[_Case, ...]:
             "DeploymentExecutionFailed",
             {
                 "reference": _reference(),
-                "run_id": "run-a",
+                "run_id": _run_id("run-a"),
                 "run_status": ActivityRunStatus.FAILED,
             },
             DeploymentProgramStage.EXECUTE,
@@ -272,7 +273,7 @@ def _cases() -> tuple[_Case, ...]:
             "DeploymentExecutionSettled",
             {
                 "reference": _reference(),
-                "run_id": "run-a",
+                "run_id": _run_id("run-a"),
                 "run_status": ActivityRunStatus.COMPENSATED,
             },
             DeploymentProgramStage.EXECUTE,
@@ -281,7 +282,7 @@ def _cases() -> tuple[_Case, ...]:
         ),
         _Case(
             "DeploymentAdvancementReady",
-            {"reference": _reference(), "run_id": "run-a"},
+            {"reference": _reference(), "run_id": _run_id("run-a")},
             DeploymentProgramStage.ADVANCE,
             "advancement-ready",
             ("run_id",),
@@ -319,6 +320,10 @@ class _ActivityIdSubclass(ActivityId):
 
 
 class _EffectAttemptSubclass(EffectAttemptIdentity):
+    pass
+
+
+class _RunIdSubclass(RunId):
     pass
 
 
@@ -468,6 +473,8 @@ class DeploymentProgramProjectionTests(unittest.TestCase):
         for case in _cases():
             variant = getattr(module, case.name)
             for field_name in case.identity_fields:
+                if field_name == "run_id":
+                    continue
                 valid = dict(case.arguments)
                 valid[field_name] = "v" * 512
                 with self.subTest(case=case.name, field=field_name, boundary="max"):
@@ -484,6 +491,30 @@ class DeploymentProgramProjectionTests(unittest.TestCase):
                             lambda arguments=arguments: variant(**arguments),
                             canary,
                         )
+
+    def test_all_nine_run_variants_require_exact_nominal_run_id(self) -> None:
+        _, module = _contract()
+        cases = tuple(case for case in _cases() if "run_id" in case.arguments)
+        self.assertEqual(len(cases), 9)
+
+        for case in cases:
+            variant = getattr(module, case.name)
+            value = variant(**case.arguments)
+            with self.subTest(case=case.name, boundary="exact"):
+                self.assertIs(type(value.run_id), RunId)
+                self.assertEqual(value.descriptor()["run_id"], "run-a")
+            for candidate in (
+                "run-a",
+                _RunIdSubclass("run-a"),
+                object(),
+            ):
+                arguments = dict(case.arguments)
+                arguments["run_id"] = candidate
+                with self.subTest(
+                    case=case.name,
+                    candidate=type(candidate).__name__,
+                ):
+                    self.assert_contract_error(lambda: variant(**arguments))
 
     def test_status_subsets_are_exhaustive_and_non_substitutable(self) -> None:
         _, module = _contract()
@@ -579,7 +610,7 @@ class DeploymentProgramProjectionTests(unittest.TestCase):
                 ActivityRunStatus.COMPENSATING,
             ):
                 value = variant(
-                    _reference(), "r" * 200, status, _attempt("r" * 200)
+                    _reference(), _run_id("r" * 200), status, _attempt("r" * 200)
                 )
                 with self.subTest(case=name, status=status):
                     self.assertEqual(value.effect_attempt, _attempt("r" * 200))
@@ -593,7 +624,7 @@ class DeploymentProgramProjectionTests(unittest.TestCase):
                     self.assert_contract_error(
                         lambda attempt=attempt: variant(
                             _reference(),
-                            "run-a",
+                            _run_id("run-a"),
                             ActivityRunStatus.RUNNING,
                             attempt,
                         )
