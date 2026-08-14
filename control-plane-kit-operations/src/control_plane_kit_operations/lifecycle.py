@@ -314,9 +314,17 @@ class RunLifecycleCommandService:
                 command.idempotency_key.value,
             )
             if existing is not None:
-                locked_request = stores.execution.get_request_for_update(
-                    command.request_id
-                )
+                missing_locked_request = False
+                try:
+                    locked_request = stores.execution.get_request_for_update(
+                        command.request_id
+                    )
+                except KeyError:
+                    missing_locked_request = True
+                if missing_locked_request:
+                    raise RunLifecycleNotFound(
+                        "execution request was not found"
+                    )
                 result = _replay(stores, locked_request, existing, fingerprint)
                 unit_of_work.commit()
                 return result
