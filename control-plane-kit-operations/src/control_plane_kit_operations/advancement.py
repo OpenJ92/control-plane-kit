@@ -175,6 +175,7 @@ class CurrentGraphAdvancementResult:
             )
         if self.action.payload.get("event_id") != self.event.event_id:
             raise CurrentGraphAdvancementError("advancement event/action disagree")
+        _payload_text(self.action.payload, "execution_request_id")
         expected = {
             "workspace_id": self.workspace_id,
             "plan_id": self.plan_id,
@@ -291,7 +292,8 @@ class CurrentGraphAdvancementCommandService:
                 locator_request.identity.session_id,
                 command.idempotency_key.value,
             )
-            existing = history.action_for_idempotency(
+            existing = _action_for_idempotency(
+                history,
                 locator_request.identity.session_id,
                 command.idempotency_key.value,
             )
@@ -413,6 +415,7 @@ class CurrentGraphAdvancementCommandService:
                     command.authority.worker_id,
                     payload={
                         **evidence.descriptor(),
+                        "execution_request_id": request.identity.request_id,
                         "claim_generation": command.fence.generation,
                         "event_id": event.event_id,
                     },
@@ -434,6 +437,23 @@ def _get_run(stores: Any, run_id: str) -> ActivityRunRecord:
     if missing_run:
         raise CurrentGraphAdvancementNotFound("activity run was not found")
     return run
+
+
+def _action_for_idempotency(
+    history: Any,
+    session_id: str,
+    idempotency_key: str,
+) -> OperationActionRecord | None:
+    malformed_action = False
+    try:
+        action = history.action_for_idempotency(session_id, idempotency_key)
+    except ValueError:
+        malformed_action = True
+    if malformed_action:
+        raise CurrentGraphAdvancementError(
+            "advancement operation evidence is malformed"
+        )
+    return action
 
 
 def _get_run_for_update(stores: Any, run_id: str) -> ActivityRunRecord:
@@ -720,8 +740,11 @@ def _replay(
         or action.actor_id != command.fence.worker_id
         or request.identity.workspace_id != command.workspace_id
         or request.identity.plan_id != command.plan_id
+        or run.run_id != command.run_id
         or run.plan_id != command.plan_id
         or run.admission.request_id != request.identity.request_id
+        or _payload_text(action.payload, "execution_request_id")
+        != request.identity.request_id
         or _payload_text(action.payload, "workspace_id") != command.workspace_id
         or _payload_text(action.payload, "plan_id") != command.plan_id
         or _payload_text(action.payload, "run_id") != command.run_id
@@ -771,13 +794,20 @@ def _replay(
         )
     event_id = _payload_text(action.payload, "event_id")
     missing_event = False
+    malformed_event = False
     try:
         event = stores.execution.get_event(event_id)
     except KeyError:
         missing_event = True
+    except ValueError:
+        malformed_event = True
     if missing_event:
         raise CurrentGraphAdvancementError(
             "advancement operation evidence is missing its event"
+        )
+    if malformed_event:
+        raise CurrentGraphAdvancementError(
+            "advancement operation evidence is malformed"
         )
     return _result(event, action, replayed=True)
 
