@@ -11,6 +11,7 @@ import re
 from types import MappingProxyType
 from typing import Any, Mapping, Protocol
 
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning import ActivityId
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import (
@@ -438,7 +439,6 @@ class AuthorizeSecretUse:
         for field_name in (
             "operation_id",
             "session_id",
-            "run_id",
             "effect_id",
             "probe_id",
         ):
@@ -446,6 +446,7 @@ class AuthorizeSecretUse:
                 getattr(self, field_name),
                 field_name,
             )
+        _require_optional_run_id(self.run_id)
         _require_optional_activity_id(self.activity_id)
 
 
@@ -502,7 +503,6 @@ class AuthorizedSecretUse:
         for field_name in (
             "operation_id",
             "session_id",
-            "run_id",
             "effect_id",
             "probe_id",
         ):
@@ -510,6 +510,7 @@ class AuthorizedSecretUse:
                 getattr(self, field_name),
                 field_name,
             )
+        _require_optional_run_id(self.run_id)
         _require_optional_activity_id(self.activity_id)
 
     def descriptor(self) -> dict[str, object]:
@@ -931,6 +932,7 @@ def secret_custody_correlation_for(
             "secret custody correlation requires SecretUseIntent"
         )
     _require_identifier(actor_subject, "actor_subject")
+    _require_optional_run_id(run_id)
     semantics = {
         "workspace_id": workspace_id,
         "provider_registration_id": provider_registration_id,
@@ -968,6 +970,7 @@ def secret_use_correlation_for(
             "secret use correlation requires SecretUseIntent"
         )
     _require_identifier(actor_subject, "actor_subject")
+    _require_optional_run_id(run_id)
     semantics = {
         "workspace_id": workspace_id,
         "reference_id": reference.reference_id,
@@ -1231,6 +1234,19 @@ def _require_optional_correlation_identifier(
 ) -> None:
     if value is not None:
         _require_correlation_identifier(value, field_name)
+
+
+def _require_optional_run_id(value: object) -> None:
+    if value is None:
+        return
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        valid = False
+    else:
+        valid = True
+    if not valid:
+        raise SecretProviderRegistrationError("run_id is malformed")
 
 
 def _require_optional_activity_id(value: object) -> None:

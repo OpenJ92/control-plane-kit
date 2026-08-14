@@ -27,6 +27,7 @@ from control_plane_kit_operations.ingress_authorities import (
     OwnedIngressResourceConflict,
     RegisteredIngressAuthority,
     RegisteredIngressAuthorityStatus,
+    _validate_run_id,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
@@ -389,6 +390,7 @@ class IngressResourceStore:
         *,
         source_run_id: str,
     ) -> CloudflareOwnedIngressResource:
+        _validate_run_id(source_run_id, "source_run_id")
         resource = self.require_active_cloudflare(workspace_id, ingress_id)
         updated = replace(
             resource,
@@ -406,6 +408,7 @@ class IngressResourceStore:
         removed_at: str,
         removed_by_run_id: str,
     ) -> CloudflareOwnedIngressResource:
+        _validate_run_id(removed_by_run_id, "removed_by_run_id")
         encode_postgres_timestamp(removed_at)
         resource = self._get_cloudflare_by_status(
             workspace_id,
@@ -433,6 +436,7 @@ class IngressResourceStore:
         *,
         source_run_id: str,
     ) -> CloudflareOwnedIngressResource:
+        _validate_run_id(source_run_id, "source_run_id")
         resource = self._get_blocking_cloudflare(workspace_id, ingress_id)
         if resource is None:
             raise IngressAuthorityNotFound("owned ingress resource was not found")
@@ -712,6 +716,7 @@ class GeneratedIngressSecretReferenceStore:
         source_activity_id: str,
         source_event_id: str,
     ) -> GeneratedIngressSecretReference | None:
+        _validate_run_id(source_run_id, "source_run_id")
         row = self._connection.execute(
             """
             SELECT

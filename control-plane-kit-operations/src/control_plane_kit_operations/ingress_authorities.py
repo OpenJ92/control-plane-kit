@@ -8,6 +8,7 @@ from hashlib import sha256
 import re
 from typing import Any, Mapping
 
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning import ActivityId
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import (
@@ -227,13 +228,13 @@ class CloudflareOwnedIngressResource:
             )
         _validate_identifier(self.created_at, "created_at")
         _validate_identifier(self.observed_at, "observed_at")
-        _validate_identifier(self.source_run_id, "source_run_id")
+        _validate_run_id(self.source_run_id, "source_run_id")
         _validate_activity_id(self.source_activity_id)
         _validate_identifier(self.source_event_id, "source_event_id")
         if self.removed_at is not None:
             _validate_identifier(self.removed_at, "removed_at")
         if self.removed_by_run_id is not None:
-            _validate_identifier(self.removed_by_run_id, "removed_by_run_id")
+            _validate_run_id(self.removed_by_run_id, "removed_by_run_id")
         if self.status is OwnedIngressResourceStatus.REMOVED:
             if self.removed_at is None or self.removed_by_run_id is None:
                 raise IngressAuthorityRegistrationError(
@@ -398,7 +399,7 @@ class GeneratedIngressSecretReference:
                 "provider_version_number must be a positive integer"
             )
         _validate_identifier(self.recorded_at, "recorded_at")
-        _validate_identifier(self.source_run_id, "source_run_id")
+        _validate_run_id(self.source_run_id, "source_run_id")
         _validate_activity_id(self.source_activity_id)
         _validate_identifier(self.source_event_id, "source_event_id")
 
@@ -821,6 +822,17 @@ def _validate_identifier(value: str, field: str) -> None:
         raise IngressAuthorityRegistrationError(
             f"{field} must not contain control characters"
         )
+
+
+def _validate_run_id(value: object, field: str) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        valid = False
+    else:
+        valid = True
+    if not valid:
+        raise IngressAuthorityRegistrationError(f"{field} is malformed")
 
 
 def _validate_activity_id(value: object) -> None:

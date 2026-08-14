@@ -866,6 +866,32 @@ class SecretProviderStoreTests(unittest.TestCase):
             )
         self.assertEqual(stored, authorized)
 
+    def test_secret_use_run_exact_boundary_survives_restart_and_grant(self) -> None:
+        provider, reference = self.admit_reference()
+        boundary = "r" * 200
+        command = self.authorize_command(
+            reference.reference,
+            correlation_id="correlation-run-boundary",
+            run_id=boundary,
+        )
+
+        authorized = self.authorization_service().authorize(command)
+        with self.unit_of_work() as unit_of_work:
+            recovered = unit_of_work.stores.secret_use_authorizations.get(
+                "workspace-a", authorized.authorization_id
+            )
+        grant = self.authorization_service().authorize_resolution(command)
+
+        self.assertEqual(recovered.run_id, boundary)
+        self.assertEqual(grant.run_id, boundary)
+        self.assertEqual(grant.provider_registration_id, provider.registration_id)
+        with self.assertRaises(psycopg.errors.CheckViolation):
+            self.connection.execute(
+                "UPDATE cpk_secret_use_authorizations SET run_id = 'run/bad' "
+                "WHERE authorization_id = %s",
+                (authorized.authorization_id,),
+            )
+
     def test_provider_supersession_invalidates_handle_pinned_to_old_registration(
         self,
     ) -> None:

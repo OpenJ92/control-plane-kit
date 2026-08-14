@@ -24,6 +24,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationDeploymentCheckpoint,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
+    GatewayKeyRotationError,
     GatewayKeyRotationRevocationCheckpoint,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
@@ -276,7 +277,10 @@ class GatewayKeyRotationTests(unittest.TestCase):
         rotation = self.advance(rotation, GatewayKeyRotationStatus.KEY_GENERATED,
             new_key_id="gateway-key-b", new_secret_version_id="version-b",
             new_secret_version_number=1)
-        checkpoint = self.checkpoint(GatewayKeyRotationDeploymentPhase.OVERLAP)
+        checkpoint = replace(
+            self.checkpoint(GatewayKeyRotationDeploymentPhase.OVERLAP),
+            run_id="r" * 200,
+        )
         rotation = self.advance(rotation, GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
             deployment=checkpoint)
 
@@ -287,6 +291,13 @@ class GatewayKeyRotationTests(unittest.TestCase):
             self.service().transitions(rotation.rotation_id)[-1].to_status,
             GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
         )
+        self.connection.execute(
+            "UPDATE cpk_gateway_key_rotation_deployments "
+            "SET run_id = 'run/bad' WHERE rotation_id = %s",
+            (rotation.rotation_id,),
+        )
+        with self.assertRaises(GatewayKeyRotationError):
+            self.service().get(rotation.rotation_id)
 
     def test_service_admits_all_supplied_times_before_uow_or_replay_access(self) -> None:
         invalid = "2027-02-30T08:00:00Z"
