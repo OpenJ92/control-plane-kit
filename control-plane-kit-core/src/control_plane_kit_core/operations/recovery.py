@@ -7,6 +7,10 @@ from enum import StrEnum
 import re
 from typing import Mapping
 
+from control_plane_kit_core._activity_identity import (
+    _is_canonical_activity_identity,
+)
+
 
 _MAX_PUBLIC_TEXT_LENGTH = 256
 
@@ -56,7 +60,8 @@ class EffectAttemptIdentity:
 
     def __post_init__(self) -> None:
         _bounded_text(self.run_id, "run_id")
-        _bounded_text(self.activity_id, "activity_id")
+        if not _is_canonical_activity_identity(self.activity_id):
+            raise InvalidEffectRecoveryContract("activity_id is malformed")
         _positive_int(self.attempt, "attempt")
 
     def descriptor(self) -> dict[str, object]:

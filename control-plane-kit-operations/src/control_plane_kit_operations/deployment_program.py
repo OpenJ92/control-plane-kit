@@ -118,13 +118,6 @@ class ProgressDeploymentProgram:
             raise InvalidDeploymentProgramContract(
                 "readiness must contain exact ExternalReadinessAttestation values"
             )
-        if not all(
-            type(item.activity_id) is str and item.activity_id
-            for item in self.readiness
-        ):
-            raise InvalidDeploymentProgramContract(
-                "readiness activity identities must be nonempty text"
-            )
         activity_ids = tuple(item.activity_id for item in self.readiness)
         if len(set(activity_ids)) != len(activity_ids):
             raise InvalidDeploymentProgramContract(

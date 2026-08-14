@@ -8,6 +8,7 @@ from hashlib import sha256
 import re
 from typing import Any, Mapping
 
+from control_plane_kit_core.planning import ActivityId
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import (
     IngressAuthorityReference,
@@ -227,7 +228,7 @@ class CloudflareOwnedIngressResource:
         _validate_identifier(self.created_at, "created_at")
         _validate_identifier(self.observed_at, "observed_at")
         _validate_identifier(self.source_run_id, "source_run_id")
-        _validate_identifier(self.source_activity_id, "source_activity_id")
+        _validate_activity_id(self.source_activity_id)
         _validate_identifier(self.source_event_id, "source_event_id")
         if self.removed_at is not None:
             _validate_identifier(self.removed_at, "removed_at")
@@ -398,7 +399,7 @@ class GeneratedIngressSecretReference:
             )
         _validate_identifier(self.recorded_at, "recorded_at")
         _validate_identifier(self.source_run_id, "source_run_id")
-        _validate_identifier(self.source_activity_id, "source_activity_id")
+        _validate_activity_id(self.source_activity_id)
         _validate_identifier(self.source_event_id, "source_event_id")
 
     def descriptor(self) -> dict[str, object]:
@@ -820,6 +821,16 @@ def _validate_identifier(value: str, field: str) -> None:
         raise IngressAuthorityRegistrationError(
             f"{field} must not contain control characters"
         )
+
+
+def _validate_activity_id(value: object) -> None:
+    try:
+        ActivityId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise IngressAuthorityRegistrationError("source_activity_id is malformed")
 
 
 def _validate_zone_name(value: str) -> None:
