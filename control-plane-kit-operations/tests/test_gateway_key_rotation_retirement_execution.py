@@ -254,6 +254,35 @@ class GatewayKeyRotationRetirementExecutionTests(
                         prefix=f"crash-{crash_after_commit}",
                     ).progress(self.execution_command())
 
+                if crash_after_commit == 6:
+                    self.assertEqual(
+                        self.workspace().current_realized_projection_id,
+                        self.retirement_checkpoint.desired_realized_projection_id,
+                    )
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claim_generation=2 "
+                        "WHERE request_id=%s",
+                        (self.retirement_checkpoint.execution_request_id,),
+                    )
+                    stale_adapter = RecordingAdapter()
+                    with self.assertRaises(
+                        GatewayKeyRotationRetirementExecutionConflict
+                    ) as captured:
+                        self.execution_program(
+                            stale_adapter,
+                            prefix="stale-after-graph-advance",
+                        ).progress(self.execution_command())
+                    self.assertEqual(
+                        str(captured.exception),
+                        "retirement checkpoint does not match durable child truth",
+                    )
+                    self.assertEqual(stale_adapter.calls, [])
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claim_generation=1 "
+                        "WHERE request_id=%s",
+                        (self.retirement_checkpoint.execution_request_id,),
+                    )
+
                 recovered_adapter = RecordingAdapter()
                 recovered = self.execution_program(
                     recovered_adapter,

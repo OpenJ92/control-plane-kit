@@ -401,6 +401,34 @@ class GatewayKeyRotationOverlapExecutionTests(
                         durable_kinds.count(ActivityEventKind.STEP_SUCCEEDED),
                         activity_count,
                     )
+                if crash_after_commit == 6:
+                    self.assertEqual(
+                        self._workspace().current_realized_projection_id,
+                        self.checkpoint.desired_realized_projection_id,
+                    )
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claim_generation=2 "
+                        "WHERE request_id=%s",
+                        (self.checkpoint.execution_request_id,),
+                    )
+                    stale_adapter = RecordingAdapter()
+                    with self.assertRaises(
+                        GatewayKeyRotationOverlapExecutionConflict
+                    ) as captured:
+                        self.program(
+                            stale_adapter,
+                            prefix="stale-after-graph-advance",
+                        ).progress(self.command())
+                    self.assertEqual(
+                        str(captured.exception),
+                        "overlap checkpoint does not match durable child truth",
+                    )
+                    self.assertEqual(stale_adapter.calls, [])
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claim_generation=1 "
+                        "WHERE request_id=%s",
+                        (self.checkpoint.execution_request_id,),
+                    )
 
                 recovered_adapter = RecordingAdapter()
                 recovered = self.program(
