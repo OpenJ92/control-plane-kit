@@ -203,9 +203,13 @@ class CurrentGraphAdvancementContractTests(unittest.TestCase):
     def test_command_requires_exact_congruent_lease_fence(self) -> None:
         command = _contract_command("run-a")
 
+        class HostileExecutionLeaseFence(ExecutionLeaseFence):
+            pass
+
         self.assertEqual(command.fence, ExecutionLeaseFence("worker-a", 1))
         for fence in (
             object(),
+            HostileExecutionLeaseFence("worker-a", 1),
             ExecutionLeaseFence("worker-b", 1),
         ):
             with self.subTest(fence_type=type(fence).__name__):
@@ -621,6 +625,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         mutations = (
             ("workspace_id", "workspace-canary"),
             ("plan_id", "plan-canary"),
+            ("execution_request_id", None),
             ("execution_request_id", "request-canary"),
             ("run_id", "run-canary"),
             ("from_authored_graph_id", "from-canary"),
@@ -692,6 +697,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         self.seed_succeeded_run()
         command = self.command()
         self.service("event-advance", "action-advance").execute(command)
+        accepted_truth = self.advancement_truth()
         self.connection.execute(
             "UPDATE cpk_execution_requests "
             "SET status = 'abandoned', claim_worker_id = NULL, "
@@ -732,13 +738,15 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
 
         self.assertIsNone(captured.exception.__cause__)
         self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(self.advancement_truth(), accepted_truth)
 
     def test_replay_translates_malformed_persisted_action(self) -> None:
         self.seed_succeeded_run()
         command = self.command()
         self.service("event-advance", "action-advance").execute(command)
         self.connection.execute(
-            "UPDATE cpk_operation_actions SET payload = '[]'::jsonb "
+            "UPDATE cpk_operation_actions "
+            "SET payload = '[\"action-evidence-canary\"]'::jsonb "
             "WHERE action_id = 'action-advance'"
         )
 
@@ -747,14 +755,18 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
 
         self.assertIsNone(captured.exception.__cause__)
         self.assertIsNone(captured.exception.__context__)
-        self.assertLessEqual(len(repr(captured.exception)), 256)
+        rendered = f"{captured.exception!s} {captured.exception!r}"
+        self.assertLessEqual(len(rendered), 256)
+        self.assertNotIn("action-evidence-canary", rendered)
 
     def test_replay_translates_malformed_persisted_event(self) -> None:
         self.seed_succeeded_run()
         command = self.command()
         self.service("event-advance", "action-advance").execute(command)
         self.connection.execute(
-            "UPDATE cpk_activity_events SET payload = '[]'::jsonb "
+            "UPDATE cpk_activity_events "
+            "SET payload = '{\"evidence\": 1, "
+            "\"event-evidence-canary\": true}'::jsonb "
             "WHERE event_id = 'event-advance'"
         )
 
@@ -763,7 +775,9 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
 
         self.assertIsNone(captured.exception.__cause__)
         self.assertIsNone(captured.exception.__context__)
-        self.assertLessEqual(len(repr(captured.exception)), 256)
+        rendered = f"{captured.exception!s} {captured.exception!r}"
+        self.assertLessEqual(len(rendered), 256)
+        self.assertNotIn("event-evidence-canary", rendered)
 
     def test_closed_session_cannot_publish_a_new_advancement(self) -> None:
         self.seed_succeeded_run()
@@ -1276,6 +1290,16 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                     )
                 )
             unit_of_work.commit()
+
+    def advancement_truth(self) -> tuple[object, ...]:
+        return self.connection.execute(
+            "SELECT current_graph_id, current_realized_projection_id, "
+            "(SELECT COUNT(*) FROM cpk_activity_events "
+            " WHERE event_type = 'current_graph_advanced'), "
+            "(SELECT COUNT(*) FROM cpk_operation_actions "
+            " WHERE action_type = 'advance_current_graph') "
+            "FROM cpk_workspaces WHERE workspace_id = 'workspace-a'"
+        ).fetchone()
 
     def _seed_execution(
         self,
