@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import dataclasses
 from datetime import datetime
+import json
 import os
 import queue
 import time
@@ -156,6 +157,18 @@ class RunLifecycleTests(unittest.TestCase):
         generation: int = 1,
     ) -> ExecutionLeaseFence:
         return ExecutionLeaseFence(worker_id, generation)
+
+    def _wait_until_blocked_by(self, worker_pid: int, blocker_pid: int) -> None:
+        deadline = time.monotonic() + 5
+        while True:
+            blocked_by = self.connection.execute(
+                "SELECT pg_blocking_pids(%s)",
+                (worker_pid,),
+            ).fetchone()[0]
+            if blocker_pid in blocked_by:
+                return
+            if time.monotonic() >= deadline:
+                self.fail("writer did not block on the execution request row")
 
     def claim_command(
         self,
@@ -712,6 +725,43 @@ class RunLifecycleTests(unittest.TestCase):
         self.assertEqual(cancelled.action.payload["claim_generation"], 1)
         self.assertEqual(cancelled.event.evidence.descriptor(), {"reason": "operator-request"})
 
+    def test_paused_cancellation_preserves_the_original_start_timestamp(self) -> None:
+        self.claim()
+        started = self.service(
+            "event-start", "action-start", now="2026-07-22T13:00:00Z"
+        ).execute(
+            StartActivityRun(
+                "run-a",
+                self.authority(),
+                self.fence(),
+                IdempotencyKey("start-a"),
+            )
+        )
+        self.service(
+            "event-pause", "action-pause", now="2026-07-22T13:01:00Z"
+        ).execute(
+            PauseActivityRun(
+                "run-a",
+                self.authority(),
+                self.fence(),
+                IdempotencyKey("pause-a"),
+            )
+        )
+
+        cancelled = self.service(
+            "event-cancel", "action-cancel", now="2026-07-22T14:00:00Z"
+        ).execute(
+            CancelActivityRun(
+                "run-a",
+                self.authority(),
+                self.fence(),
+                IdempotencyKey("cancel-a"),
+            )
+        )
+
+        self.assertEqual(cancelled.run.started_at, started.run.started_at)
+        self.assertEqual(cancelled.run.settled_at, "2026-07-22T14:00:00Z")
+
     def test_post_claim_replay_is_stale_after_generation_replacement(self) -> None:
         self.claim()
         command = StartActivityRun(
@@ -760,6 +810,150 @@ class RunLifecycleTests(unittest.TestCase):
             ),
             before_counts,
         )
+
+    def test_post_claim_replay_rejects_every_incongruent_payload_coordinate(self) -> None:
+        self.claim()
+        command = StartActivityRun(
+            "run-a",
+            self.authority(),
+            self.fence(),
+            IdempotencyKey("start-a"),
+        )
+        self.service("event-start", "action-start").execute(command)
+        original = self.connection.execute(
+            "SELECT payload FROM cpk_operation_actions "
+            "WHERE action_id = 'action-start'"
+        ).fetchone()[0]
+        corruptions = {
+            "execution_request_id": "request-foreign-canary",
+            "plan_id": "plan-foreign-canary",
+            "run_status": "paused",
+            "event_type": "run_paused",
+            "event_ordinal": 999,
+        }
+
+        for field, value in corruptions.items():
+            with self.subTest(field=field):
+                corrupted = {**original, field: value}
+                self.connection.execute(
+                    "UPDATE cpk_operation_actions SET payload = %s::jsonb "
+                    "WHERE action_id = 'action-start'",
+                    (json.dumps(corrupted),),
+                )
+                with self.assertRaises(RunLifecycleError) as captured:
+                    self.service("unused-event", "unused-action").execute(command)
+                self._assert_safe_error(captured.exception, "foreign-canary", "999")
+                self.connection.execute(
+                    "UPDATE cpk_operation_actions SET payload = %s::jsonb "
+                    "WHERE action_id = 'action-start'",
+                    (json.dumps(original),),
+                )
+
+        self.assertEqual(self._count("cpk_activity_events"), 2)
+        self.assertEqual(self._count("cpk_operation_actions"), 2)
+
+    def test_first_transition_locks_request_before_run(self) -> None:
+        self.claim()
+        command = StartActivityRun(
+            "run-a",
+            self.authority(),
+            self.fence(),
+            IdempotencyKey("start-a"),
+        )
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        worker_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            worker_pids.put(connection.info.backend_pid)
+            return connection
+
+        service = RunLifecycleCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "2026-07-22T13:00:00Z",
+            id_factory=Sequence("event-start", "action-start"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(service.execute, command)
+                worker_pid = worker_pids.get(timeout=5)
+                self._wait_until_blocked_by(worker_pid, blocker_pid)
+                with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                    )
+                blocker.commit()
+                result = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+
+    def test_replay_locks_request_before_run_but_changed_intent_locks_neither(self) -> None:
+        self.claim()
+        command = StartActivityRun(
+            "run-a",
+            self.authority(),
+            self.fence(),
+            IdempotencyKey("start-a"),
+        )
+        self.service("event-start", "action-start").execute(command)
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            changed = executor.submit(
+                self.service("unused-event", "unused-action").execute,
+                StartActivityRun(
+                    "run-a",
+                    self.authority(),
+                    self.fence(generation=2),
+                    IdempotencyKey("start-a"),
+                ),
+            )
+            with self.assertRaises(RunLifecycleIdempotencyConflict):
+                changed.result(timeout=5)
+
+        replay_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            replay_pids.put(connection.info.backend_pid)
+            return connection
+
+        replay_service = RunLifecycleCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "2026-07-22T14:00:00Z",
+            id_factory=lambda: self.fail("replay allocated an identity"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(replay_service.execute, command)
+                replay_pid = replay_pids.get(timeout=5)
+                self._wait_until_blocked_by(replay_pid, blocker_pid)
+                with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                    )
+                blocker.commit()
+                replay = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self.assertTrue(replay.replayed)
 
     def test_worker_ownership_and_late_action_failure_roll_back_transition(self) -> None:
         self.claim()

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import concurrent.futures
 import os
+import queue
+import time
 import unittest
 
 import psycopg
@@ -42,6 +45,7 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinator,
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
+    ExecutionCoordinatorNotFound,
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
@@ -521,6 +525,80 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             (ActivityEventKind.RUN_OPENED, ActivityEventKind.RUN_STARTED),
         )
 
+    def test_missing_run_translation_clears_candidate_bearing_store_error(self) -> None:
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        command = ExecuteActivityRun(
+            "missing-run-canary",
+            self.authority(),
+            ExecutionLeaseFence("worker-a", 1),
+            IdempotencyKey("execute-missing"),
+        )
+
+        with self.assertRaises(ExecutionCoordinatorNotFound) as captured:
+            self.coordinator(adapter).execute(command)
+
+        self.assertEqual(str(captured.exception), "activity run was not found")
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertNotIn("missing-run-canary", repr(captured.exception))
+        self.assertEqual(adapter.calls, [])
+
+    def test_coordinator_shared_boundary_locks_request_before_run(self) -> None:
+        self.claim_and_start()
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        worker_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            worker_pids.put(connection.info.backend_pid)
+            return connection
+
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        coordinator = ExecutionCoordinator(
+            lambda: PostgresUnitOfWork(connection_factory),
+            lifecycle=self.lifecycle(),
+            adapter=adapter,
+            clock=lambda: "2026-07-22T13:01:00Z",
+            id_factory=self.ids,
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(coordinator.execute, self.command())
+                worker_pid = worker_pids.get(timeout=5)
+                deadline = time.monotonic() + 5
+                while True:
+                    blocked_by = self.connection.execute(
+                        "SELECT pg_blocking_pids(%s)",
+                        (worker_pid,),
+                    ).fetchone()[0]
+                    if blocker_pid in blocked_by:
+                        break
+                    if time.monotonic() >= deadline:
+                        self.fail("coordinator did not block on the request row")
+                with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                    )
+                blocker.commit()
+                result = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+
     def test_generation_replacement_during_io_preserves_only_step_started(self) -> None:
         self.claim_and_start()
         adapter = GenerationReplacingAdapter(self.database_url)
@@ -561,6 +639,39 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(adapter.calls, ["start-api"])
         self.assertEqual(events[-1].kind, ActivityEventKind.STEP_STARTED)
         self.assertNotIn("provider-canary", repr(events[-1]))
+
+    def test_valid_but_unenvelopable_adapter_evidence_becomes_uncertain(self) -> None:
+        candidates = (
+            BoundedEvidence.from_mapping(
+                {"a": {"b": {"c": {"d": "maximum-depth"}}}}
+            ),
+            BoundedEvidence.from_mapping(
+                {f"k{index}": "x" * 500 for index in range(8)}
+            ),
+        )
+        for index, evidence in enumerate(candidates):
+            if index:
+                self.reset_execution_request(plan=single_activity_plan())
+            self.claim_and_start()
+            adapter = RecordingAdapter(
+                self.tracker,
+                ActivityExecutionOutcome.succeeded(evidence),
+            )
+
+            result = self.coordinator(adapter).execute(self.command())
+
+            self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+            with self.unit_of_work() as unit_of_work:
+                events = unit_of_work.stores.execution.events_for_run("run-a")
+            self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
+            self.assertEqual(
+                events[-1].failure.code,
+                "adapter-evidence-envelope-invalid",
+            )
+            self.assertEqual(
+                events[-1].evidence.descriptor(),
+                {"claim_generation": 1, "details": {}},
+            )
 
     def test_completed_replay_does_not_repeat_effect(self) -> None:
         with self.unit_of_work() as unit_of_work:

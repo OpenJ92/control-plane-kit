@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
+import ast
+import inspect
+import textwrap
 import unittest
 
 from control_plane_kit_core.operations.lifecycle import FailureCategory
@@ -8,6 +11,7 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import (
     ActivityRealizationContext,
     ExecuteActivityRun,
+    ExecutionCoordinator,
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 import control_plane_kit_operations.lifecycle as lifecycle_module
@@ -73,17 +77,39 @@ class ExecutionWriterFenceLanguageTests(unittest.TestCase):
         )
         self.assertTrue(all(command.fence is self.fence for command in commands))
 
-        with self.assertRaises(InvalidOperationCommand) as captured:
-            StartActivityRun(
+        foreign = ExecutionLeaseFence("different-worker-canary", 7)
+        factories = (
+            lambda: StartActivityRun("run-a", self.authority, foreign, self.key),
+            lambda: PauseActivityRun("run-a", self.authority, foreign, self.key),
+            lambda: ResumeActivityRun("run-a", self.authority, foreign, self.key),
+            lambda: CompleteActivityRun("run-a", self.authority, foreign, self.key),
+            lambda: FailActivityRun(
                 "run-a",
                 self.authority,
-                ExecutionLeaseFence("different-worker-canary", 7),
+                foreign,
                 self.key,
-            )
-        self.assertEqual(str(captured.exception), "authority and fence must agree")
-        self.assertIsNone(captured.exception.__cause__)
-        self.assertIsNone(captured.exception.__context__)
-        self.assertNotIn("different-worker-canary", repr(captured.exception))
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "failed",
+                    "failed safely",
+                ),
+            ),
+            lambda: CancelActivityRun("run-a", self.authority, foreign, self.key),
+        )
+        for factory in factories:
+            with self.subTest(factory=factory.__code__.co_firstlineno):
+                with self.assertRaises(InvalidOperationCommand) as captured:
+                    factory()
+                self.assertEqual(
+                    str(captured.exception),
+                    "authority and fence must agree",
+                )
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                self.assertNotIn(
+                    "different-worker-canary",
+                    repr(captured.exception),
+                )
 
     def test_post_claim_intent_fingerprint_binds_generation(self) -> None:
         first = StartActivityRun(
@@ -141,6 +167,18 @@ class ExecutionWriterFenceLanguageTests(unittest.TestCase):
         self.assertNotIn("fence", fields)
         self.assertNotIn("claim_generation", fields)
         self.assertNotIn("worker_authority", fields)
+
+    def test_all_coordinator_writer_phases_use_the_shared_locked_boundary(self) -> None:
+        for method_name in ("_load_context", "_record_step_event", "_record_outcome"):
+            method = getattr(ExecutionCoordinator, method_name)
+            tree = ast.parse(textwrap.dedent(inspect.getsource(method)))
+            called_names = tuple(
+                node.func.id
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            )
+            with self.subTest(method=method_name):
+                self.assertEqual(called_names.count("_locked_request_and_run"), 1)
 
 
 if __name__ == "__main__":
