@@ -289,6 +289,7 @@ class GatewayKeyRotationDeploymentExecutionProgram:
                     ),
                     expected_desired_graph_revision=checkpoint.desired_revision,
                     authority=command.worker_authority,
+                    fence=command.fence,
                     idempotency_key=IdempotencyKey(
                         f"{_prefix(rotation.rotation_id, command.phase)}:advance"
                     ),

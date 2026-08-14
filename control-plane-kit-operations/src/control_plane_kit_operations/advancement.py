@@ -25,6 +25,7 @@ from control_plane_kit_core.planning import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -80,6 +81,7 @@ class AdvanceCurrentGraph:
     desired_realized_projection_id: str
     expected_desired_graph_revision: int
     authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
     idempotency_key: IdempotencyKey
 
     def __post_init__(self) -> None:
@@ -113,6 +115,10 @@ class AdvanceCurrentGraph:
             )
         if not isinstance(self.authority, ExecutionWorkerAuthority):
             raise InvalidOperationCommand("authority must be ExecutionWorkerAuthority")
+        if type(self.fence) is not ExecutionLeaseFence:
+            raise InvalidOperationCommand("fence must be ExecutionLeaseFence")
+        if self.authority.worker_id != self.fence.worker_id:
+            raise InvalidOperationCommand("authority and fence must agree")
         if not isinstance(self.idempotency_key, IdempotencyKey):
             raise InvalidOperationCommand("idempotency_key must be IdempotencyKey")
 
@@ -180,6 +186,40 @@ class CurrentGraphAdvancementResult:
             "to_realized_projection_digest": self.to_realized_projection_digest,
             "desired_graph_revision": self.desired_graph_revision,
         }
+        action_transition = {
+            "workspace_id": _payload_text(self.action.payload, "workspace_id"),
+            "plan_id": _payload_text(self.action.payload, "plan_id"),
+            "run_id": _payload_text(self.action.payload, "run_id"),
+            "from_authored_graph_id": _payload_text(
+                self.action.payload,
+                "from_authored_graph_id",
+            ),
+            "from_realized_projection_id": _payload_text(
+                self.action.payload,
+                "from_realized_projection_id",
+            ),
+            "to_authored_graph_id": _payload_text(
+                self.action.payload,
+                "to_authored_graph_id",
+            ),
+            "to_realized_projection_id": _payload_text(
+                self.action.payload,
+                "to_realized_projection_id",
+            ),
+            "to_realized_projection_digest": _payload_text(
+                self.action.payload,
+                "to_realized_projection_digest",
+            ),
+            "desired_graph_revision": _payload_nonnegative_integer(
+                self.action.payload,
+                "desired_graph_revision",
+            ),
+        }
+        if action_transition != expected:
+            raise CurrentGraphAdvancementError(
+                "advancement action does not encode the claimed graph transition"
+            )
+        _payload_positive_integer(self.action.payload, "claim_generation")
         if self.event.run_id != self.run_id:
             raise CurrentGraphAdvancementError("advancement event belongs elsewhere")
         if self.event.evidence.descriptor() != expected:
@@ -240,13 +280,11 @@ class CurrentGraphAdvancementCommandService:
         fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
-            try:
-                locator_run = stores.execution.get_run(command.run_id)
-                locator_request = stores.execution.get_request(
-                    locator_run.admission.request_id
-                )
-            except KeyError as error:
-                raise CurrentGraphAdvancementNotFound(str(error)) from error
+            locator_run = _get_run(stores, command.run_id)
+            locator_request = _get_request(
+                stores,
+                locator_run.admission.request_id,
+            )
 
             history = stores.activity_history
             history.lock_action_idempotency(
@@ -258,19 +296,36 @@ class CurrentGraphAdvancementCommandService:
                 command.idempotency_key.value,
             )
             if existing is not None:
-                result = _replay(stores, existing, fingerprint)
+                _require_replay_intent(existing, fingerprint)
+                request = _get_request_for_update(
+                    stores,
+                    locator_request.identity.request_id,
+                )
+                run = _get_run_for_update(stores, command.run_id)
+                _require_run_request_linkage(run, request)
+                _require_worker_owns(request, command.authority, command.fence)
+                result = _replay(
+                    stores,
+                    command,
+                    request,
+                    run,
+                    existing,
+                    fingerprint,
+                )
                 unit_of_work.commit()
                 return result
-            try:
-                session = history.get_session_for_update(
-                    locator_request.identity.session_id
-                )
-                workspace = stores.workspaces.get_for_update(command.workspace_id)
-                run = stores.execution.get_run_for_update(command.run_id)
-                request = stores.execution.get_request(run.admission.request_id)
-                plan = history.get_plan(command.plan_id)
-            except KeyError as error:
-                raise CurrentGraphAdvancementNotFound(str(error)) from error
+            session = _get_session_for_update(
+                history,
+                locator_request.identity.session_id,
+            )
+            workspace = _get_workspace_for_update(stores, command.workspace_id)
+            request = _get_request_for_update(
+                stores,
+                locator_run.admission.request_id,
+            )
+            run = _get_run_for_update(stores, command.run_id)
+            plan = _get_plan(history, command.plan_id)
+            _require_run_request_linkage(run, request)
             if session.status is not OperationSessionStatus.OPEN:
                 raise CurrentGraphAdvancementConflict(
                     "current graph advancement requires an open session"
@@ -280,7 +335,7 @@ class CurrentGraphAdvancementCommandService:
                     "activity run session linkage changed"
                 )
 
-            _require_worker_owns(request, command.authority)
+            _require_worker_owns(request, command.authority, command.fence)
             current_projection, desired_projection = _require_identity(
                 command,
                 workspace,
@@ -358,6 +413,7 @@ class CurrentGraphAdvancementCommandService:
                     command.authority.worker_id,
                     payload={
                         **evidence.descriptor(),
+                        "claim_generation": command.fence.generation,
                         "event_id": event.event_id,
                     },
                     created_at=occurred_at,
@@ -367,6 +423,96 @@ class CurrentGraphAdvancementCommandService:
             )
             unit_of_work.commit()
             return _result(event, action)
+
+
+def _get_run(stores: Any, run_id: str) -> ActivityRunRecord:
+    missing_run = False
+    try:
+        run = stores.execution.get_run(run_id)
+    except KeyError:
+        missing_run = True
+    if missing_run:
+        raise CurrentGraphAdvancementNotFound("activity run was not found")
+    return run
+
+
+def _get_run_for_update(stores: Any, run_id: str) -> ActivityRunRecord:
+    missing_run = False
+    try:
+        run = stores.execution.get_run_for_update(run_id)
+    except KeyError:
+        missing_run = True
+    if missing_run:
+        raise CurrentGraphAdvancementNotFound("activity run was not found")
+    return run
+
+
+def _get_request(stores: Any, request_id: str) -> ExecutionRequestRecord:
+    missing_request = False
+    try:
+        request = stores.execution.get_request(request_id)
+    except KeyError:
+        missing_request = True
+    if missing_request:
+        raise CurrentGraphAdvancementNotFound("execution request was not found")
+    return request
+
+
+def _get_request_for_update(
+    stores: Any,
+    request_id: str,
+) -> ExecutionRequestRecord:
+    missing_request = False
+    try:
+        request = stores.execution.get_request_for_update(request_id)
+    except KeyError:
+        missing_request = True
+    if missing_request:
+        raise CurrentGraphAdvancementNotFound("execution request was not found")
+    return request
+
+
+def _get_session_for_update(history: Any, session_id: str) -> Any:
+    missing_session = False
+    try:
+        session = history.get_session_for_update(session_id)
+    except KeyError:
+        missing_session = True
+    if missing_session:
+        raise CurrentGraphAdvancementNotFound("operation session was not found")
+    return session
+
+
+def _get_workspace_for_update(stores: Any, workspace_id: str) -> WorkspaceRecord:
+    missing_workspace = False
+    try:
+        workspace = stores.workspaces.get_for_update(workspace_id)
+    except KeyError:
+        missing_workspace = True
+    if missing_workspace:
+        raise CurrentGraphAdvancementNotFound("workspace was not found")
+    return workspace
+
+
+def _get_plan(history: Any, plan_id: str) -> ActivityPlanRecord:
+    missing_plan = False
+    try:
+        plan = history.get_plan(plan_id)
+    except KeyError:
+        missing_plan = True
+    if missing_plan:
+        raise CurrentGraphAdvancementNotFound("activity plan was not found")
+    return plan
+
+
+def _require_run_request_linkage(
+    run: ActivityRunRecord,
+    request: ExecutionRequestRecord,
+) -> None:
+    if run.admission.request_id != request.identity.request_id:
+        raise CurrentGraphAdvancementConflict(
+            "activity run request linkage changed"
+        )
 
 
 def _require_identity(
@@ -432,12 +578,15 @@ def _projection(
     workspace_id: str,
     source_authored_graph_id: str,
 ) -> RealizedGraphProjectionRecord:
+    missing_projection = False
     try:
         record = store.get(projection_id)
-    except KeyError as error:
+    except KeyError:
+        missing_projection = True
+    if missing_projection:
         raise CurrentGraphAdvancementConflict(
             "realized graph projection is stale or missing"
-        ) from error
+        )
     if (
         record.workspace_id != workspace_id
         or record.source_authored_graph_id != source_authored_graph_id
@@ -453,10 +602,13 @@ def _require_graph_ownership(
     workspace_id: str,
     *graph_ids: str,
 ) -> None:
+    missing_graph = False
     try:
         records = tuple(graph_store.get(graph_id) for graph_id in graph_ids)
-    except KeyError as error:
-        raise CurrentGraphAdvancementNotFound(str(error)) from error
+    except KeyError:
+        missing_graph = True
+    if missing_graph:
+        raise CurrentGraphAdvancementNotFound("authored graph was not found")
     if any(record.workspace_id != workspace_id for record in records):
         raise CurrentGraphAdvancementConflict("plan graph belongs to another workspace")
 
@@ -464,11 +616,13 @@ def _require_graph_ownership(
 def _require_worker_owns(
     request: ExecutionRequestRecord,
     authority: ExecutionWorkerAuthority,
+    fence: ExecutionLeaseFence,
 ) -> None:
     if (
         request.status is not ExecutionRequestStatus.CLAIMED
         or request.claim is None
-        or request.claim.worker_id != authority.worker_id
+        or request.claim.fence != fence
+        or authority.worker_id != fence.worker_id
     ):
         raise CurrentGraphAdvancementDenied(
             "worker does not own the execution request claim"
@@ -508,13 +662,16 @@ def _require_complete_success(
         raise CurrentGraphAdvancementIncomplete(
             "failed, unsupported, or compensating history cannot advance truth"
         )
+    incoherent = False
     try:
         projection = project_activity_journal(plan, activity_journal_events(events))
         schedule = derive_schedule(plan, projection.state)
-    except (SagaJournalError, SagaStateError, ScheduleEvidenceError) as error:
+    except (SagaJournalError, SagaStateError, ScheduleEvidenceError):
+        incoherent = True
+    if incoherent:
         raise CurrentGraphAdvancementIncomplete(
             "durable saga evidence is structurally incoherent"
-        ) from error
+        )
     if projection.in_flight or projection.uncertain or not schedule.successful:
         raise CurrentGraphAdvancementIncomplete(
             "durable saga evidence is not a complete successful schedule"
@@ -535,11 +692,10 @@ def _require_complete_success(
         )
 
 
-def _replay(
-    stores: Any,
+def _require_replay_intent(
     action: OperationActionRecord,
     fingerprint: str,
-) -> CurrentGraphAdvancementResult:
+) -> None:
     if action.action_type is not LifecycleOperationKind.ADVANCE_CURRENT_GRAPH:
         raise CurrentGraphAdvancementIdempotencyConflict(
             "idempotency key already belongs to another operation"
@@ -548,13 +704,81 @@ def _replay(
         raise CurrentGraphAdvancementIdempotencyConflict(
             "idempotency key was reused with different advancement intent"
         )
+
+
+def _replay(
+    stores: Any,
+    command: AdvanceCurrentGraph,
+    request: ExecutionRequestRecord,
+    run: ActivityRunRecord,
+    action: OperationActionRecord,
+    fingerprint: str,
+) -> CurrentGraphAdvancementResult:
+    _require_replay_intent(action, fingerprint)
+    if (
+        action.session_id != request.identity.session_id
+        or action.actor_id != command.fence.worker_id
+        or request.identity.workspace_id != command.workspace_id
+        or request.identity.plan_id != command.plan_id
+        or run.plan_id != command.plan_id
+        or run.admission.request_id != request.identity.request_id
+        or _payload_text(action.payload, "workspace_id") != command.workspace_id
+        or _payload_text(action.payload, "plan_id") != command.plan_id
+        or _payload_text(action.payload, "run_id") != command.run_id
+        or _payload_text(action.payload, "from_authored_graph_id")
+        != command.expected_current_graph_id
+        or _payload_text(action.payload, "from_realized_projection_id")
+        != command.expected_current_realized_projection_id
+        or _payload_text(action.payload, "to_authored_graph_id")
+        != command.desired_graph_id
+        or _payload_text(action.payload, "to_realized_projection_id")
+        != command.desired_realized_projection_id
+        or _payload_nonnegative_integer(
+            action.payload,
+            "desired_graph_revision",
+        )
+        != command.expected_desired_graph_revision
+        or _payload_positive_integer(action.payload, "claim_generation")
+        != command.fence.generation
+    ):
+        raise CurrentGraphAdvancementError(
+            "advancement action evidence is incongruent"
+        )
+    _require_graph_ownership(
+        stores.graphs,
+        command.workspace_id,
+        command.expected_current_graph_id,
+        command.desired_graph_id,
+    )
+    _projection(
+        stores.realized_graphs,
+        projection_id=command.expected_current_realized_projection_id,
+        workspace_id=command.workspace_id,
+        source_authored_graph_id=command.expected_current_graph_id,
+    )
+    desired_projection = _projection(
+        stores.realized_graphs,
+        projection_id=command.desired_realized_projection_id,
+        workspace_id=command.workspace_id,
+        source_authored_graph_id=command.desired_graph_id,
+    )
+    if (
+        _payload_text(action.payload, "to_realized_projection_digest")
+        != desired_projection.projection_digest
+    ):
+        raise CurrentGraphAdvancementError(
+            "advancement action evidence is incongruent"
+        )
     event_id = _payload_text(action.payload, "event_id")
+    missing_event = False
     try:
         event = stores.execution.get_event(event_id)
-    except KeyError as error:
+    except KeyError:
+        missing_event = True
+    if missing_event:
         raise CurrentGraphAdvancementError(
             "advancement operation evidence is missing its event"
-        ) from error
+        )
     return _result(event, action, replayed=True)
 
 
@@ -609,6 +833,7 @@ def _fingerprint(command: AdvanceCurrentGraph) -> str:
         "desired_realized_projection_id": command.desired_realized_projection_id,
         "expected_desired_graph_revision": command.expected_desired_graph_revision,
         "worker_id": command.authority.worker_id,
+        "claim_generation": command.fence.generation,
     }
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -626,6 +851,15 @@ def _payload_nonnegative_integer(payload: Mapping[str, object], key: str) -> int
     value = payload.get(key)
     if type(value) is not int or value < 0:
         raise CurrentGraphAdvancementError(f"advancement action payload lacks {key}")
+    return value
+
+
+def _payload_positive_integer(payload: Mapping[str, object], key: str) -> int:
+    value = payload.get(key)
+    if type(value) is not int or not 1 <= value <= 2**63 - 1:
+        raise CurrentGraphAdvancementError(
+            f"advancement action payload lacks valid {key}"
+        )
     return value
 
 

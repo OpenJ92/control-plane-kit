@@ -152,7 +152,11 @@ def _contract_result(
         1,
         LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,
         "worker-a",
-        payload={"event_id": "event-a"},
+        payload={
+            **evidence.descriptor(),
+            "claim_generation": 1,
+            "event_id": "event-a",
+        },
         created_at="2026-08-14T12:00:00Z",
     )
     return CurrentGraphAdvancementResult(
