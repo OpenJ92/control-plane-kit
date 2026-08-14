@@ -740,7 +740,7 @@ class ExecutionCoordinator:
                         ),
                     )
                 )
-            self._record_outcome(command, planned, outcome)
+            outcome = self._record_outcome(command, planned, outcome)
             if outcome.kind is EffectResultKind.SUCCEEDED:
                 continue
             classified = self._classify_current(self._load_context(command))
@@ -890,7 +890,7 @@ class ExecutionCoordinator:
         command: ExecuteActivityRun,
         activity: PlannedActivity,
         outcome: ActivityExecutionOutcome,
-    ) -> None:
+    ) -> ActivityExecutionOutcome:
         now = self._clock()
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
@@ -934,6 +934,7 @@ class ExecutionCoordinator:
             for observation in outcome.observations:
                 stores.observed_state.put(observation)
             unit_of_work.commit()
+            return outcome
 
     def _load_context(self, command: ExecuteActivityRun) -> "_CoordinatorContext":
         with self._unit_of_work_factory() as unit_of_work:

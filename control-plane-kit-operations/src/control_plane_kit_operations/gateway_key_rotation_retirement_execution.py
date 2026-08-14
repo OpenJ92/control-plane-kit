@@ -163,14 +163,20 @@ class GatewayKeyRotationRetirementExecutionProgram:
     ) -> GatewayKeyRotationRetirementExecutionResult:
         if not isinstance(command, ProgressGatewayKeyRotationRetirement):
             raise TypeError("command must be ProgressGatewayKeyRotationRetirement")
+        authorization_message = None
+        conflict_message = None
         try:
             result = self._program.progress(command.deployment_command())
         except GatewayKeyRotationDeploymentExecutionAuthorizationDenied as error:
-            raise GatewayKeyRotationRetirementExecutionAuthorizationDenied(
-                str(error)
-            ) from error
+            authorization_message = str(error)
         except GatewayKeyRotationDeploymentExecutionConflict as error:
-            raise GatewayKeyRotationRetirementExecutionConflict(str(error)) from error
+            conflict_message = str(error)
+        if authorization_message is not None:
+            raise GatewayKeyRotationRetirementExecutionAuthorizationDenied(
+                authorization_message
+            )
+        if conflict_message is not None:
+            raise GatewayKeyRotationRetirementExecutionConflict(conflict_message)
         return _result(result)
 
 
