@@ -362,9 +362,9 @@ class RunLifecycleTests(unittest.TestCase):
 
     def test_canonical_current_prior_and_event_run_identity_round_trip(self) -> None:
         long_run_id = "r" * 200
+        self._insert_run("a", status=ActivityRunStatus.CANCELLED)
         with self.unit_of_work() as unit_of_work:
             store = unit_of_work.stores.execution
-            store.add_run(self._run_record("a"))
             store.add_run(
                 self._run_record(long_run_id, attempt=2, prior_run_id="a")
             )
@@ -397,7 +397,10 @@ class RunLifecycleTests(unittest.TestCase):
         self._assert_safe_error(captured.exception, "current-canary")
 
     def test_restart_rejects_corrupted_prior_run_identity(self) -> None:
-        self._insert_run("run/prior-canary")
+        self._insert_run(
+            "run/prior-canary",
+            status=ActivityRunStatus.CANCELLED,
+        )
         self._insert_run(
             "run-current",
             attempt=2,
@@ -467,7 +470,11 @@ class RunLifecycleTests(unittest.TestCase):
         command = self.claim_command()
         self.service("run-a", "event-a", "action-a").execute(command)
         self._seed_second_request()
-        self._insert_run("run-b", request_id="request-b")
+        self._insert_run(
+            "run-b",
+            request_id="request-b",
+            status=ActivityRunStatus.CANCELLED,
+        )
         self.connection.execute(
             """
             INSERT INTO cpk_activity_events
@@ -502,7 +509,11 @@ class RunLifecycleTests(unittest.TestCase):
 
     def test_valid_factory_collision_rolls_back_claim_and_stays_raw(self) -> None:
         self._seed_second_request()
-        self._insert_run("run-collision", request_id="request-b")
+        self._insert_run(
+            "run-collision",
+            request_id="request-b",
+            status=ActivityRunStatus.CANCELLED,
+        )
 
         with self.assertRaises(psycopg.errors.UniqueViolation) as captured:
             self.service("run-collision", "event-a", "action-a").execute(
@@ -573,16 +584,30 @@ class RunLifecycleTests(unittest.TestCase):
         request_id: str = "request-a",
         attempt: int = 1,
         prior_run_id: str | None = None,
+        status: ActivityRunStatus = ActivityRunStatus.CLAIMED,
     ) -> None:
+        terminal_at = (
+            "2026-07-22T13:00:01Z"
+            if status is ActivityRunStatus.CANCELLED
+            else None
+        )
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, prior_run_id, status,
-               created_at, metadata)
-            VALUES (%s, 'plan-a', %s, %s, %s, 'claimed',
-                    '2026-07-22T13:00:00Z', '{}'::jsonb)
+               created_at, started_at, settled_at, metadata)
+            VALUES (%s, 'plan-a', %s, %s, %s, %s,
+                    '2026-07-22T13:00:00Z', %s, %s, '{}'::jsonb)
             """,
-            (run_id, request_id, attempt, prior_run_id),
+            (
+                run_id,
+                request_id,
+                attempt,
+                prior_run_id,
+                status.value,
+                terminal_at,
+                terminal_at,
+            ),
         )
 
     def _seed_second_request(self) -> None:
@@ -592,7 +617,7 @@ class RunLifecycleTests(unittest.TestCase):
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
                approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES ('request-b', 'workspace-a', 'session-a', 'plan-a', 'queued',
+            VALUES ('request-b', 'workspace-a', 'session-a', 'plan-a', 'cancelled',
                     'operator-a', '2026-07-22T12:05:00Z', 'approval-request-a',
                     'approval-decision-a', 'execute-b', 'fingerprint-b')
             """
