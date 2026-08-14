@@ -11,6 +11,7 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     FailureCategory,
 )
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_cursor_timestamp,
@@ -37,6 +38,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     FailureEvidence,
+    OperationsRecordError,
     RetryIdentity,
 )
 
@@ -201,6 +203,7 @@ class PostgresExecutionStore:
         return record
 
     def get_run(self, run_id: str) -> ActivityRunRecord:
+        _require_run_id(run_id)
         row = self._connection.execute(
             """
             SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
@@ -215,6 +218,7 @@ class PostgresExecutionStore:
         return _activity_run(row)
 
     def get_run_for_update(self, run_id: str) -> ActivityRunRecord:
+        _require_run_id(run_id)
         row = self._connection.execute(
             """
             SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
@@ -238,6 +242,7 @@ class PostgresExecutionStore:
         started_at: str | None = None,
         settled_at: str | None = None,
     ) -> ActivityRunRecord | None:
+        _require_run_id(run_id)
         encoded_started_at = _encode_optional_timestamp(started_at)
         encoded_settled_at = _encode_optional_timestamp(settled_at)
         row = self._connection.execute(
@@ -292,6 +297,8 @@ class PostgresExecutionStore:
         if request.collection is not ReadCollection.PLAN_RUNS:
             raise ReadPageError("run page request is incongruent")
         cursor = request.cursor
+        if cursor is not None:
+            _require_page_run_id(cursor.item_id)
         seek = ""
         parameters: tuple[object, ...]
         if cursor is None:
@@ -391,6 +398,7 @@ class PostgresExecutionStore:
         return _activity_event(row)
 
     def next_event_ordinal(self, run_id: str) -> int:
+        _require_run_id(run_id)
         locked = self._connection.execute(
             "SELECT run_id FROM cpk_activity_runs WHERE run_id = %s FOR UPDATE",
             (run_id,),
@@ -408,6 +416,7 @@ class PostgresExecutionStore:
         return int(row[0])
 
     def events_for_run(self, run_id: str) -> tuple[ActivityEventRecord, ...]:
+        _require_run_id(run_id)
         rows = self._connection.execute(
             """
             SELECT event_id, run_id, ordinal, event_type, occurred_at, payload
@@ -425,6 +434,7 @@ class PostgresExecutionStore:
     ) -> ReadPage[ActivityEventRecord]:
         if request.collection is not ReadCollection.RUN_EVENTS:
             raise ReadPageError("event page request is incongruent")
+        _require_page_run_id(request.scope.run_id)
         cursor = request.cursor
         parameters: tuple[object, ...]
         seek = ""
@@ -550,3 +560,23 @@ def _encode_optional_timestamp(value: str | None) -> object:
 
 def _decode_optional_timestamp(value: object) -> str | None:
     return None if value is None else decode_postgres_timestamp(value)
+
+
+def _require_run_id(value: object) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise OperationsRecordError("run_id is malformed")
+
+
+def _require_page_run_id(value: object) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise ReadPageError("run page identity is malformed")

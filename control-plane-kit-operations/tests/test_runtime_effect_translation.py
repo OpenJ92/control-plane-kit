@@ -84,6 +84,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     GraphVersionRecord,
+    OperationsRecordError,
     RealizedGraphProjectionRecord,
     RetryIdentity,
 )
@@ -140,15 +141,15 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
         self.assertIsNone(request.products[0].pull_authority)
 
-    def test_malformed_retained_run_is_categorical_before_effect_construction(
+    def test_malformed_retained_run_fails_at_authoritative_record_boundary(
         self,
     ) -> None:
-        context = _context(run_id="retained/run-direct-canary")
-
-        with self.assertRaises(InvalidOperationCommand) as captured:
-            runtime_effect_request_for_context(context)
+        with self.assertRaises(OperationsRecordError) as captured:
+            _context(run_id="retained/run-direct-canary")
 
         error = captured.exception
+        self.assertIs(type(error), OperationsRecordError)
+        self.assertEqual(str(error), "run_id is malformed")
         self.assertIsNone(error.__cause__)
         self.assertIsNone(error.__context__)
         rendered = f"{error!s} {error!r}"
