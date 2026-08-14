@@ -759,7 +759,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         self.assertLessEqual(len(rendered), 256)
         self.assertNotIn("action-evidence-canary", rendered)
 
-    def test_replay_translates_malformed_persisted_event(self) -> None:
+    def test_replay_rejects_malformed_or_incongruent_persisted_event(self) -> None:
         self.seed_succeeded_run()
         command = self.command()
         accepted = self.service("event-advance", "action-advance").execute(command)
@@ -779,6 +779,18 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                     },
                 },
                 "event-failure-canary",
+            ),
+            (
+                {
+                    "evidence": accepted.event.evidence.descriptor(),
+                    "failure": {
+                        "category": "terminal",
+                        "code": "event-valid-failure-canary",
+                        "message": "event valid failure canary",
+                        "details": {},
+                    },
+                },
+                "event-valid-failure-canary",
             ),
         )
         for payload, canary in cases:
