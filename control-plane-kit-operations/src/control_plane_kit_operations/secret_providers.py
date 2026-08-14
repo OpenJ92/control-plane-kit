@@ -11,6 +11,7 @@ import re
 from types import MappingProxyType
 from typing import Any, Mapping, Protocol
 
+from control_plane_kit_core.planning import ActivityId
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import (
     SecretCustodyGrant,
@@ -438,7 +439,6 @@ class AuthorizeSecretUse:
             "operation_id",
             "session_id",
             "run_id",
-            "activity_id",
             "effect_id",
             "probe_id",
         ):
@@ -446,6 +446,7 @@ class AuthorizeSecretUse:
                 getattr(self, field_name),
                 field_name,
             )
+        _require_optional_activity_id(self.activity_id)
 
 
 @dataclass(frozen=True)
@@ -502,7 +503,6 @@ class AuthorizedSecretUse:
             "operation_id",
             "session_id",
             "run_id",
-            "activity_id",
             "effect_id",
             "probe_id",
         ):
@@ -510,6 +510,7 @@ class AuthorizedSecretUse:
                 getattr(self, field_name),
                 field_name,
             )
+        _require_optional_activity_id(self.activity_id)
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -1230,6 +1231,18 @@ def _require_optional_correlation_identifier(
 ) -> None:
     if value is not None:
         _require_correlation_identifier(value, field_name)
+
+
+def _require_optional_activity_id(value: object) -> None:
+    if value is None:
+        return
+    try:
+        ActivityId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise SecretProviderRegistrationError("activity_id is malformed")
 
 
 def _require_bounded_text(

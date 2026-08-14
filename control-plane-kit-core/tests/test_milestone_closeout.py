@@ -8,6 +8,7 @@ SRC_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_core"
 
 EXPECTED_MODULES = {
     "__init__",
+    "_activity_identity",
     "_node_control_public_wire",
     "algebra",
     "approval_subjects",

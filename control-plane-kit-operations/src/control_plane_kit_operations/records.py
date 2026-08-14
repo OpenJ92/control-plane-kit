@@ -24,8 +24,7 @@ from control_plane_kit_core.operations.lifecycle import (
     LifecycleOperationKind,
     activity_event_scope,
 )
-from control_plane_kit_core.planning import ActivityPlan
-from control_plane_kit_core.planning import RiskLevel
+from control_plane_kit_core.planning import ActivityId, ActivityPlan, RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.probe_intents import (
     EndpointContext,
@@ -778,7 +777,7 @@ class ActivityEventRecord:
         if not isinstance(self.kind, ActivityEventKind):
             raise OperationsRecordError("activity event kind must be ActivityEventKind")
         _validate_text(self.occurred_at, "occurred_at")
-        _validate_optional_text(self.activity_id, "activity_id")
+        _validate_optional_activity_id(self.activity_id)
         if not isinstance(self.evidence, BoundedEvidence):
             raise OperationsRecordError("activity event evidence must be BoundedEvidence")
         if self.failure is not None and not isinstance(
@@ -983,3 +982,15 @@ def _validate_optional_text(value: str | None, field: str) -> None:
     if value is None:
         return
     _validate_text(value, field)
+
+
+def _validate_optional_activity_id(value: object) -> None:
+    if value is None:
+        return
+    try:
+        ActivityId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise OperationsRecordError("activity_id is malformed")

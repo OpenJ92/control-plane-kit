@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TypeAlias
 
+from control_plane_kit_core._activity_identity import (
+    _is_canonical_activity_identity,
+)
 from control_plane_kit_core.topology.changes import DiffSubject
 
 
@@ -14,8 +17,8 @@ class ActivityId:
     value: str
 
     def __post_init__(self) -> None:
-        if not self.value.strip():
-            raise ValueError("activity id must not be empty")
+        if not _is_canonical_activity_identity(self.value):
+            raise ValueError("activity id is malformed")
 
 
 @dataclass(frozen=True)

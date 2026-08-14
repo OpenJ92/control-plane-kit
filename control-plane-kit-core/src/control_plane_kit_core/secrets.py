@@ -10,6 +10,10 @@ from types import MappingProxyType
 from typing import Mapping, Protocol, TypeAlias
 from urllib.parse import urlsplit
 
+from control_plane_kit_core._activity_identity import (
+    _is_canonical_activity_identity,
+)
+
 
 _PROVIDER_ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
 _REFERENCE_SEGMENT = re.compile(r"[A-Za-z0-9._-]{1,128}\Z")
@@ -242,12 +246,13 @@ class SecretResolutionGrant:
             (self.operation_id, "operation_id"),
             (self.session_id, "session_id"),
             (self.run_id, "run_id"),
-            (self.activity_id, "activity_id"),
             (self.effect_id, "effect_id"),
             (self.probe_id, "probe_id"),
         ):
             if value is not None:
                 _validate_grant_identifier(value, label)
+        if self.activity_id is not None:
+            _validate_activity_identifier(self.activity_id)
 
     def permits(
         self,
@@ -337,11 +342,12 @@ class SecretCustodyGrant:
             (self.operation_id, "operation_id"),
             (self.session_id, "session_id"),
             (self.run_id, "run_id"),
-            (self.activity_id, "activity_id"),
             (self.effect_id, "effect_id"),
         ):
             if value is not None:
                 _validate_grant_identifier(value, label)
+        if self.activity_id is not None:
+            _validate_activity_identifier(self.activity_id)
 
     def permits(
         self,
@@ -481,11 +487,12 @@ class SecretVersionRevocationGrant:
             (self.operation_id, "operation_id"),
             (self.session_id, "session_id"),
             (self.run_id, "run_id"),
-            (self.activity_id, "activity_id"),
             (self.effect_id, "effect_id"),
         ):
             if value is not None:
                 _validate_grant_identifier(value, label)
+        if self.activity_id is not None:
+            _validate_activity_identifier(self.activity_id)
 
     def permits(
         self,
@@ -995,4 +1002,11 @@ def _validate_grant_identifier(value: object, label: str) -> None:
     if not isinstance(value, str) or not _GRANT_IDENTIFIER.fullmatch(value):
         raise SecretProviderContractError(
             f"secret resolution grant {label} is malformed"
+        )
+
+
+def _validate_activity_identifier(value: object) -> None:
+    if not _is_canonical_activity_identity(value):
+        raise SecretProviderContractError(
+            "secret resolution grant activity_id is malformed"
         )

@@ -4189,6 +4189,32 @@
       "source": "control_plane_kit/core/planning/__init__.py"
     },
     {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_core._activity_identity",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit_core.operations.recovery",
+        "control_plane_kit_core.planning.activity_plan",
+        "control_plane_kit_core.secrets"
+      ],
+      "migration_prerequisites": [
+        "#1632"
+      ],
+      "module": "control_plane_kit_core._activity_identity",
+      "motivation": "Own one private pure activity-identity grammar shared by Core values without creating an activity-plan and secrets import cycle.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_activity_identity.py"
+      ],
+      "role": "pure-contract",
+      "semantic_roles": [
+        "validation"
+      ],
+      "source": "control_plane_kit_core/_activity_identity.py"
+    },
+    {
       "canonical_public_exports": [
         "ActivityId",
         "ActivityDependency",
