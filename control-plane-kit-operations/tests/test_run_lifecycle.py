@@ -26,6 +26,7 @@ from control_plane_kit_operations.lifecycle import (
     RunLifecycleCommandService,
     RunLifecycleConflict,
     RunLifecycleDenied,
+    RunLifecycleError,
     RunLifecycleIdempotencyConflict,
     StartActivityRun,
 )
@@ -359,6 +360,164 @@ class RunLifecycleTests(unittest.TestCase):
             (ActivityEventKind.RUN_OPENED,),
         )
 
+    def test_canonical_current_prior_and_event_run_identity_round_trip(self) -> None:
+        long_run_id = "r" * 200
+        with self.unit_of_work() as unit_of_work:
+            store = unit_of_work.stores.execution
+            store.add_run(self._run_record("a"))
+            store.add_run(
+                self._run_record(long_run_id, attempt=2, prior_run_id="a")
+            )
+            store.add_event(
+                ActivityEventRecord(
+                    "event-long",
+                    long_run_id,
+                    1,
+                    ActivityEventKind.RUN_OPENED,
+                    "2026-07-22T13:00:00Z",
+                )
+            )
+            unit_of_work.commit()
+
+        with self.unit_of_work() as unit_of_work:
+            run = unit_of_work.stores.execution.get_run(long_run_id)
+            event = unit_of_work.stores.execution.get_event("event-long")
+
+        self.assertEqual(run.run_id, long_run_id)
+        self.assertEqual(run.retry.prior_run_id, "a")
+        self.assertEqual(event.run_id, long_run_id)
+
+    def test_restart_rejects_corrupted_current_run_identity(self) -> None:
+        self._insert_run("run/current-canary")
+
+        with self.assertRaises(OperationsRecordError) as captured:
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.execution.runs_for_request("request-a")
+
+        self._assert_safe_error(captured.exception, "current-canary")
+
+    def test_restart_rejects_corrupted_prior_run_identity(self) -> None:
+        self._insert_run("run/prior-canary")
+        self._insert_run(
+            "run-current",
+            attempt=2,
+            prior_run_id="run/prior-canary",
+        )
+
+        with self.assertRaises(OperationsRecordError) as captured:
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.execution.get_run("run-current")
+
+        self._assert_safe_error(captured.exception, "prior-canary")
+
+    def test_restart_rejects_corrupted_event_run_identity(self) -> None:
+        self._insert_run("run/event-canary")
+        self.connection.execute(
+            """
+            INSERT INTO cpk_activity_events
+              (event_id, run_id, ordinal, event_type, occurred_at, payload)
+            VALUES ('event-corrupt', 'run/event-canary', 1, 'run_opened',
+                    '2026-07-22T13:00:00Z', '{"evidence":{}}'::jsonb)
+            """
+        )
+
+        with self.assertRaises(OperationsRecordError) as captured:
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.execution.get_event("event-corrupt")
+
+        self._assert_safe_error(captured.exception, "event-canary")
+
+    def test_invalid_run_factory_leaves_all_claim_truth_unchanged(self) -> None:
+        error = None
+        try:
+            self.service(
+                "run/factory-canary",
+                "event-invalid",
+                "action-invalid",
+            ).execute(self.claim_command())
+        except RunLifecycleError as caught:
+            error = caught
+
+        self.assertEqual(self._request_status(), ExecutionRequestStatus.QUEUED.value)
+        self.assertEqual(self._count("cpk_activity_runs"), 0)
+        self.assertEqual(self._count("cpk_activity_events"), 0)
+        self.assertEqual(self._count("cpk_operation_actions"), 0)
+        self.assertIsNotNone(error)
+        self._assert_safe_error(error, "factory-canary")
+
+    def test_reconstructed_claim_replay_consumes_no_factory(self) -> None:
+        command = self.claim_command()
+        claimed = self.service("r" * 200, "event-open", "action-claim").execute(
+            command
+        )
+        factory_calls = 0
+
+        def fail_factory() -> str:
+            nonlocal factory_calls
+            factory_calls += 1
+            raise AssertionError("replay consumed a new identity")
+
+        replay = self._service_with_factory(fail_factory).execute(command)
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.run, claimed.run)
+        self.assertEqual(factory_calls, 0)
+
+    def test_replay_rejects_persisted_foreign_run_and_event_evidence(self) -> None:
+        command = self.claim_command()
+        self.service("run-a", "event-a", "action-a").execute(command)
+        self._seed_second_request()
+        self._insert_run("run-b", request_id="request-b")
+        self.connection.execute(
+            """
+            INSERT INTO cpk_activity_events
+              (event_id, run_id, ordinal, event_type, occurred_at, payload)
+            VALUES ('event-b', 'run-b', 1, 'run_opened',
+                    '2026-07-22T13:01:00Z', '{"evidence":{}}'::jsonb);
+            UPDATE cpk_operation_actions
+            SET payload = jsonb_set(
+                jsonb_set(payload, '{run_id}', '"run-b"'::jsonb),
+                '{event_id}', '"event-b"'::jsonb
+            )
+            WHERE action_id = 'action-a'
+            """
+        )
+
+        with self.assertRaises(RunLifecycleError) as captured:
+            self._service_with_factory(self._fail_factory).execute(command)
+
+        self._assert_safe_error(captured.exception)
+
+    def test_missing_replay_event_clears_candidate_bearing_store_error(self) -> None:
+        command = self.claim_command()
+        self.service("run-a", "event-secret-canary", "action-a").execute(command)
+        self.connection.execute(
+            "DELETE FROM cpk_activity_events WHERE event_id = 'event-secret-canary'"
+        )
+
+        with self.assertRaises(RunLifecycleError) as captured:
+            self._service_with_factory(self._fail_factory).execute(command)
+
+        self._assert_safe_error(captured.exception, "event-secret-canary")
+
+    def test_valid_factory_collision_rolls_back_claim_and_stays_raw(self) -> None:
+        self._seed_second_request()
+        self._insert_run("run-collision", request_id="request-b")
+
+        with self.assertRaises(psycopg.errors.UniqueViolation) as captured:
+            self.service("run-collision", "event-a", "action-a").execute(
+                self.claim_command()
+            )
+
+        self.assertIs(type(captured.exception), psycopg.errors.UniqueViolation)
+        self.assertEqual(self._request_status(), ExecutionRequestStatus.QUEUED.value)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_activity_runs WHERE request_id = 'request-a'"
+            ).fetchone()[0],
+            0,
+        )
+
     def claim(self) -> None:
         self.service("run-a", "event-open", "action-claim").execute(
             self.claim_command()
@@ -367,6 +526,91 @@ class RunLifecycleTests(unittest.TestCase):
     def events(self) -> tuple[ActivityEventRecord, ...]:
         with self.unit_of_work() as unit_of_work:
             return unit_of_work.stores.execution.events_for_run("run-a")
+
+    def _service_with_factory(self, factory) -> RunLifecycleCommandService:
+        return RunLifecycleCommandService(
+            self.unit_of_work,
+            clock=lambda: "2026-07-22T13:00:00Z",
+            id_factory=factory,
+        )
+
+    @staticmethod
+    def _fail_factory() -> str:
+        raise AssertionError("replay consumed a new identity")
+
+    @staticmethod
+    def _assert_safe_error(error, *canaries: str) -> None:
+        assert error is not None
+        if error.__cause__ is not None or error.__context__ is not None:
+            raise AssertionError("public run identity error retained exception context")
+        rendered = f"{error!s} {error!r}"
+        if len(rendered) > 512:
+            raise AssertionError("public run identity error is unbounded")
+        for canary in canaries:
+            if canary in rendered:
+                raise AssertionError("public run identity error exposed candidate text")
+
+    def _run_record(
+        self,
+        run_id: str,
+        *,
+        attempt: int = 1,
+        prior_run_id: str | None = None,
+    ) -> ActivityRunRecord:
+        return ActivityRunRecord(
+            run_id,
+            "plan-a",
+            AdmittedRun("request-a"),
+            RetryIdentity(attempt, prior_run_id),
+            ActivityRunStatus.CLAIMED,
+            "2026-07-22T13:00:00Z",
+        )
+
+    def _insert_run(
+        self,
+        run_id: str,
+        *,
+        request_id: str = "request-a",
+        attempt: int = 1,
+        prior_run_id: str | None = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO cpk_activity_runs
+              (run_id, plan_id, request_id, attempt, prior_run_id, status,
+               created_at, metadata)
+            VALUES (%s, 'plan-a', %s, %s, %s, 'claimed',
+                    '2026-07-22T13:00:00Z', '{}'::jsonb)
+            """,
+            (run_id, request_id, attempt, prior_run_id),
+        )
+
+    def _seed_second_request(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint)
+            VALUES ('request-b', 'workspace-a', 'session-a', 'plan-a', 'queued',
+                    'operator-a', '2026-07-22T12:05:00Z', 'approval-request-a',
+                    'approval-decision-a', 'execute-b', 'fingerprint-b')
+            """
+        )
+
+    def _request_status(self) -> str:
+        return self.connection.execute(
+            "SELECT status FROM cpk_execution_requests WHERE request_id = 'request-a'"
+        ).fetchone()[0]
+
+    def _count(self, table: str) -> int:
+        if table not in {
+            "cpk_activity_runs",
+            "cpk_activity_events",
+            "cpk_operation_actions",
+        }:
+            raise AssertionError("unexpected test table")
+        return self.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
 
     def seed_execution_request(self) -> None:
         self.connection.execute(
