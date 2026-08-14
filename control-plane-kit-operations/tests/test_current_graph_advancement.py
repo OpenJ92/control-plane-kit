@@ -762,22 +762,41 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
     def test_replay_translates_malformed_persisted_event(self) -> None:
         self.seed_succeeded_run()
         command = self.command()
-        self.service("event-advance", "action-advance").execute(command)
-        self.connection.execute(
-            "UPDATE cpk_activity_events "
-            "SET payload = '{\"evidence\": 1, "
-            "\"event-evidence-canary\": true}'::jsonb "
-            "WHERE event_id = 'event-advance'"
+        accepted = self.service("event-advance", "action-advance").execute(command)
+        cases = (
+            (
+                {"evidence": 1, "event-evidence-canary": True},
+                "event-evidence-canary",
+            ),
+            (
+                {
+                    "evidence": accepted.event.evidence.descriptor(),
+                    "failure": {
+                        "category": "terminal",
+                        "code": "event-failure-canary",
+                        "message": "event failure canary",
+                        "details": 1,
+                    },
+                },
+                "event-failure-canary",
+            ),
         )
+        for payload, canary in cases:
+            with self.subTest(canary=canary):
+                self.connection.execute(
+                    "UPDATE cpk_activity_events SET payload = %s::jsonb "
+                    "WHERE event_id = 'event-advance'",
+                    (json.dumps(payload),),
+                )
 
-        with self.assertRaises(CurrentGraphAdvancementError) as captured:
-            self.service("unused-event", "unused-action").execute(command)
+                with self.assertRaises(CurrentGraphAdvancementError) as captured:
+                    self.service("unused-event", "unused-action").execute(command)
 
-        self.assertIsNone(captured.exception.__cause__)
-        self.assertIsNone(captured.exception.__context__)
-        rendered = f"{captured.exception!s} {captured.exception!r}"
-        self.assertLessEqual(len(rendered), 256)
-        self.assertNotIn("event-evidence-canary", rendered)
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                rendered = f"{captured.exception!s} {captured.exception!r}"
+                self.assertLessEqual(len(rendered), 256)
+                self.assertNotIn(canary, rendered)
 
     def test_closed_session_cannot_publish_a_new_advancement(self) -> None:
         self.seed_succeeded_run()
