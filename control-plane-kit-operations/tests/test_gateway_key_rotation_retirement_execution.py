@@ -200,6 +200,26 @@ class GatewayKeyRotationRetirementExecutionTests(
             self.workspace().current_realized_projection_id,
             self.overlap_projection_id,
         )
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation=2 "
+            "WHERE request_id=%s",
+            (self.retirement_checkpoint.execution_request_id,),
+        )
+        stale_adapter = RecordingAdapter()
+        with self.assertRaises(
+            GatewayKeyRotationRetirementExecutionConflict
+        ) as captured:
+            self.execution_program(
+                stale_adapter,
+                prefix="stale-replay",
+            ).progress(self.execution_command())
+        self.assertEqual(
+            str(captured.exception),
+            "gateway deployment execution authority is stale",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(stale_adapter.calls, [])
 
     def test_restarts_after_post_effect_commits_without_redispatch(self) -> None:
         for crash_after_commit in range(4, 8):

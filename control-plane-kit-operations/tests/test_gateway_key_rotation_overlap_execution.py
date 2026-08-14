@@ -336,6 +336,25 @@ class GatewayKeyRotationOverlapExecutionTests(
             self._workspace().current_realized_projection_id,
             "projection-a",
         )
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation=2 "
+            "WHERE request_id=%s",
+            (self.checkpoint.execution_request_id,),
+        )
+        stale_adapter = RecordingAdapter()
+        with self.assertRaises(
+            GatewayKeyRotationOverlapExecutionConflict
+        ) as captured:
+            self.program(stale_adapter, prefix="stale-replay").progress(
+                self.command()
+            )
+        self.assertEqual(
+            str(captured.exception),
+            "gateway deployment execution authority is stale",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(stale_adapter.calls, [])
 
     def test_restarts_after_each_post_effect_commit_without_duplicate_effect(self) -> None:
         # get rotation, snapshot, step intent, step result, run complete,
