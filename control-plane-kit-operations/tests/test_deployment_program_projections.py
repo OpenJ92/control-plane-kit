@@ -66,11 +66,12 @@ class _Case:
 
 
 def _contract():
+    target = "control_plane_kit_operations.deployment_program_projections"
     try:
-        module = importlib.import_module(
-            "control_plane_kit_operations.deployment_program_projections"
-        )
+        module = importlib.import_module(target)
     except ModuleNotFoundError as error:
+        if error.name != target:
+            raise
         raise AssertionError("missing #1630 deployment-program projections") from error
     import control_plane_kit_operations as operations
 
@@ -366,6 +367,24 @@ class DeploymentProgramProjectionTests(unittest.TestCase):
         )
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["owner"], "operation")
+
+        target = "control_plane_kit_operations.deployment_program_projections"
+        original_import_module = importlib.import_module
+
+        def missing_nested_dependency(name: str):
+            if name == target:
+                error = ModuleNotFoundError("missing nested projection dependency")
+                error.name = "projection_nested_dependency"
+                raise error
+            return original_import_module(name)
+
+        importlib.import_module = missing_nested_dependency
+        try:
+            with self.assertRaises(ModuleNotFoundError) as captured:
+                _contract()
+            self.assertEqual(captured.exception.name, "projection_nested_dependency")
+        finally:
+            importlib.import_module = original_import_module
 
     def test_module_root_union_and_frozen_slotted_values_are_exact(self) -> None:
         operations, module = _contract()
