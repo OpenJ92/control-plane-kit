@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=60227521dfacd39473c01bac53f062158ee7f9b50f7a287c22faf17a842834fe relations=29 columns=380 constraints=268 indexes=94 foreign-keys=54 -->
+<!-- current-schema-contract: sha256=00ccfe6e3bdd408b64a296e4cd8b88dae75ae1ac781501dfb7307895f934f587 relations=29 columns=380 constraints=273 indexes=94 foreign-keys=54 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -377,7 +377,7 @@ order is semantically significant for every composite identity.
 
 ### `cpk_activity_events`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns the ordered, bounded event stream emitted by one activity run.
-- **Identity and cardinality:** `event_id` is primary; `(run_id, ordinal)` permits exactly one event at each run position.
+- **Identity and cardinality:** `event_id` is primary; `(run_id, ordinal)` permits exactly one event at each run position, and the validated immediate run foreign key derives the canonical run-identity law from `cpk_activity_runs`.
 - **Outgoing foreign keys:** `run_id` requires the owning `cpk_activity_runs` row.
 - **Inbound dependents:** Generated ingress-secret records may cite event identifiers as provenance, but no database foreign key couples that external provenance tuple.
 - **Writers and transactions:** `PostgresExecutionStore.add_event` performs one direct insert in the caller's run transaction; it does not compare an existing event for replay equivalence.
@@ -403,7 +403,7 @@ order is semantically significant for every composite identity.
 
 ### `cpk_activity_runs`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns each execution attempt, its status, timing, retry ancestry, and bounded metadata.
-- **Identity and cardinality:** `run_id` is primary; `attempt` and `prior_run_id` describe a retry chain without replacing earlier attempts.
+- **Identity and cardinality:** Canonical ASCII `run_id` is primary and constrained directly; `attempt` and the self-FK-derived `prior_run_id` describe a retry chain without replacing earlier attempts.
 - **Outgoing foreign keys:** `(request_id, plan_id)` binds the run to the exact execution request, and `prior_run_id` may bind a predecessor run.
 - **Inbound dependents:** Activity events belong to runs; generated ingress and rotation evidence may cite run identifiers as durable provenance.
 - **Writers and transactions:** Claiming and settling a run occur in explicit execution transactions with status predicates.
@@ -442,7 +442,7 @@ order is semantically significant for every composite identity.
 
 ### `cpk_cloudflare_ingress_resources`
 - **Durable meaning and owner:** `IngressResourceStore` owns observed Cloudflare ingress resource identity and lifecycle evidence for a workspace.
-- **Identity and cardinality:** `(workspace_id, ingress_id, epoch)` is primary, preserving successive observed epochs without identity collapse.
+- **Identity and cardinality:** `(workspace_id, ingress_id, epoch)` is primary, preserving successive observed epochs without identity collapse; independent `source_run_id` and optional `removed_by_run_id` provenance obey the canonical ASCII run grammar through direct checks.
 - **Outgoing foreign keys:** `workspace_id` must name the owning workspace.
 - **Inbound dependents:** No current table references these rows; workflows correlate source run, activity, and event identifiers as provenance values.
 - **Writers and transactions:** Ingress effects record observations and removals after provider outcomes in explicit operations transactions.
@@ -481,7 +481,7 @@ order is semantically significant for every composite identity.
 
 ### `cpk_gateway_key_rotation_deployments`
 - **Durable meaning and owner:** `GatewayKeyRotationStore` owns prepared and accepted graph-deployment evidence for each rotation phase.
-- **Identity and cardinality:** `(rotation_id, phase)` is primary, allowing one exact record per lifecycle phase.
+- **Identity and cardinality:** `(rotation_id, phase)` is primary, allowing one exact record per lifecycle phase; its independent deployment `run_id` obeys the canonical ASCII run grammar through a direct check.
 - **Outgoing foreign keys:** `rotation_id` must name the owning gateway-key rotation.
 - **Inbound dependents:** No current relation references deployments; rotation workflows read them as phase evidence.
 - **Writers and transactions:** Preparation and acceptance evidence is committed atomically with the corresponding rotation transition.
@@ -546,7 +546,7 @@ order is semantically significant for every composite identity.
 
 ### `cpk_generated_ingress_secret_references`
 - **Durable meaning and owner:** `GeneratedIngressSecretReferenceStore` owns references to secrets created by ingress activity and their exact source provenance.
-- **Identity and cardinality:** `(workspace_id, purpose, source_run_id, source_activity_id, source_event_id)` is the primary provenance identity.
+- **Identity and cardinality:** `(workspace_id, purpose, source_run_id, source_activity_id, source_event_id)` is the primary provenance identity, with `source_run_id` independently constrained to the canonical ASCII run grammar.
 - **Outgoing foreign keys:** `workspace_id` must name the owning workspace.
 - **Inbound dependents:** No current relation references these rows; ingress reconciliation resolves them through store APIs.
 - **Writers and transactions:** Effects record the opaque reference after successful generation, with source provenance in the caller's unit of work.
@@ -731,7 +731,7 @@ order is semantically significant for every composite identity.
 - **Identity and cardinality:** `authorization_id` is primary; workspace correlation is unique; `(authorization_id, workspace_id)` preserves exact audit identity.
 - **Outgoing foreign keys:** Workspace, provider registration, and secret-reference registration must exist and agree on workspace.
 - **Inbound dependents:** No current relation references authorizations; effects consume the committed record by service contract.
-- **Writers and transactions:** Authorization commits in its own authorization unit of work before resolution or external I/O; optional operation/session/run/activity/effect/probe columns retain correlation provenance without an atomic owning-intent insert.
+- **Writers and transactions:** Authorization commits in its own authorization unit of work before resolution or external I/O; optional operation/session/run/activity/effect/probe columns retain correlation provenance without an atomic owning-intent insert, and optional `run_id` has a direct locale-stable canonical ASCII check.
 - **Readers and projections:** Secret policy, effect execution, and audit projections read intent, references, actor, correlation, and operation provenance.
 - **Mutation, locks, retries, and idempotency:** Authorizations are immutable; workspace correlation and intent fingerprint distinguish replay from conflicting secret use.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, provider, and reference first; authorizations remain durable even after referenced registrations are revoked.

@@ -909,7 +909,7 @@ class IngressAuthorityStoreTests(unittest.TestCase):
         )
         self.assertNotIn("cf_api_token", repr(evidence.descriptor()).lower())
 
-    def test_run_evidence_exact_boundary_and_corruption_fail_on_restart(
+    def test_run_evidence_boundary_survives_and_database_rejects_corruption(
         self,
     ) -> None:
         boundary = "r" * 200
@@ -976,38 +976,51 @@ class IngressAuthorityStoreTests(unittest.TestCase):
         self.assertEqual(removed.removed_by_run_id, boundary)
         self.assertEqual(recovered_generated.source_run_id, boundary)
 
-        self.connection.execute(
-            "UPDATE cpk_cloudflare_ingress_resources "
-            "SET source_run_id = 'run/bad' WHERE ingress_id = 'gateway-source'"
+        corruptions = (
+            (
+                "UPDATE cpk_cloudflare_ingress_resources "
+                "SET source_run_id = 'run/bad' "
+                "WHERE ingress_id = 'gateway-source'",
+                "cpk_cloudflare_ingress_resources_source_run_id_check",
+            ),
+            (
+                "UPDATE cpk_cloudflare_ingress_resources "
+                "SET removed_by_run_id = 'run/bad' "
+                "WHERE ingress_id = 'gateway-removed'",
+                "cpk_cloudflare_ingress_resources_removed_by_run_id_check",
+            ),
+            (
+                "UPDATE cpk_generated_ingress_secret_references "
+                "SET source_run_id = 'run/bad' "
+                "WHERE source_event_id = 'event-run-boundary'",
+                "cpk_generated_ingress_secret_references_source_run_id_check",
+            ),
         )
-        with self.unit_of_work() as unit_of_work:
-            with self.assertRaises(IngressAuthorityRegistrationError):
-                unit_of_work.stores.ingress_resources.get_cloudflare(
-                    "workspace-a", "gateway-source"
+        for statement, constraint_name in corruptions:
+            with self.subTest(constraint_name=constraint_name):
+                with self.assertRaises(psycopg.errors.CheckViolation) as captured:
+                    self.connection.execute(statement)
+                self.assertEqual(
+                    captured.exception.diag.constraint_name,
+                    constraint_name,
                 )
-        self.connection.execute(
-            "UPDATE cpk_cloudflare_ingress_resources "
-            "SET source_run_id = %s WHERE ingress_id = 'gateway-source'",
-            (boundary,),
-        )
-        self.connection.execute(
-            "UPDATE cpk_cloudflare_ingress_resources "
-            "SET removed_by_run_id = 'run/bad' "
-            "WHERE ingress_id = 'gateway-removed'"
-        )
+
         with self.unit_of_work() as unit_of_work:
-            with self.assertRaises(IngressAuthorityRegistrationError):
+            persisted_source = unit_of_work.stores.ingress_resources.get_cloudflare(
+                "workspace-a", "gateway-source"
+            )
+            persisted_resources = (
                 unit_of_work.stores.ingress_resources.list_cloudflare("workspace-a")
-        self.connection.execute(
-            "UPDATE cpk_generated_ingress_secret_references "
-            "SET source_run_id = 'run/bad' "
-            "WHERE source_event_id = 'event-run-boundary'"
-        )
-        with self.unit_of_work() as unit_of_work:
-            with self.assertRaises(IngressAuthorityRegistrationError):
+            )
+            persisted_generated = (
                 unit_of_work.stores.generated_ingress_secrets.list_for_workspace(
                     "workspace-a"
                 )
+            )
+        self.assertEqual(persisted_source.source_run_id, boundary)
+        self.assertIn(removed, persisted_resources)
+        self.assertEqual(removed.removed_by_run_id, boundary)
+        self.assertIn(generated, persisted_generated)
 
     def read_service(self) -> InstanceReadService:
         stores = PostgresStoreBundle(self.connection)

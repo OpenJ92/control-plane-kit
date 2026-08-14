@@ -24,7 +24,6 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationDeploymentCheckpoint,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
-    GatewayKeyRotationError,
     GatewayKeyRotationRevocationCheckpoint,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
@@ -267,7 +266,7 @@ class GatewayKeyRotationTests(unittest.TestCase):
                     accepted_current_projection_id="projection-a-b",
                     accepted_at="2026-08-02T01:05:00Z"))
 
-    def test_restart_reconstructs_predeclared_child_identity_before_effect_fold(self) -> None:
+    def test_restart_reconstructs_identity_and_database_rejects_corruption(self) -> None:
         rotation = self.service().request(self.request())
         rotation = self.advance(rotation, GatewayKeyRotationStatus.AWAITING_APPROVAL,
             approval_request_id="approval-request-a")
@@ -291,13 +290,20 @@ class GatewayKeyRotationTests(unittest.TestCase):
             self.service().transitions(rotation.rotation_id)[-1].to_status,
             GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
         )
-        self.connection.execute(
-            "UPDATE cpk_gateway_key_rotation_deployments "
-            "SET run_id = 'run/bad' WHERE rotation_id = %s",
-            (rotation.rotation_id,),
+        with self.assertRaises(psycopg.errors.CheckViolation) as captured:
+            self.connection.execute(
+                "UPDATE cpk_gateway_key_rotation_deployments "
+                "SET run_id = 'run/bad' WHERE rotation_id = %s",
+                (rotation.rotation_id,),
+            )
+        self.assertEqual(
+            captured.exception.diag.constraint_name,
+            "cpk_gateway_key_rotation_deployments_run_id_check",
         )
-        with self.assertRaises(GatewayKeyRotationError):
-            self.service().get(rotation.rotation_id)
+        self.assertEqual(
+            self.service().get(rotation.rotation_id).overlap_deployment,
+            checkpoint,
+        )
 
     def test_service_admits_all_supplied_times_before_uow_or_replay_access(self) -> None:
         invalid = "2027-02-30T08:00:00Z"
