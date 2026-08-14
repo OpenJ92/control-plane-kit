@@ -39,6 +39,7 @@ from control_plane_kit_operations.planning import (
 from control_plane_kit_operations.records import GraphProjectionLineage
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
+    InvalidOperationCommand,
     OperationIdempotencyConflict,
     StartOperationSession,
 )
@@ -91,6 +92,10 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
                 "control_plane_kit_operations.deployment_program_interpreter"
             )
         except ModuleNotFoundError as error:
+            if error.name != (
+                "control_plane_kit_operations.deployment_program_interpreter"
+            ):
+                raise
             self.fail(f"deployment program interpreter is missing: {error}")
 
     def context(
@@ -293,6 +298,100 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, rendered)
 
+    def test_nested_missing_dependency_escapes_by_identity(self) -> None:
+        original = importlib.import_module
+        sentinel = ModuleNotFoundError(
+            "missing nested dependency",
+            name="deployment_program_nested_dependency",
+        )
+
+        def fail_import(name: str):
+            if name == "control_plane_kit_operations.deployment_program_interpreter":
+                raise sentinel
+            return original(name)
+
+        importlib.import_module = fail_import
+        try:
+            with self.assertRaises(ModuleNotFoundError) as captured:
+                self.module()
+        finally:
+            importlib.import_module = original
+        self.assertIs(captured.exception, sentinel)
+
+    def test_intent_digest_is_canonical_complete_and_excludes_retry_authority(
+        self,
+    ) -> None:
+        graph = self.scenario("insert-rate-limiter").desired_graph
+        expected_desired = GraphProjectionLineage(
+            "graph-previous-desired",
+            "projection-previous-desired",
+        )
+        base = replace(
+            self.command(desired=graph),
+            expected_desired=expected_desired,
+            expected_desired_graph_revision=1,
+        )
+        base_digest = self._intent_digest(base)
+        included_changes = (
+            replace(base, context=self.context(
+                PolicyScope.INSTANCE_WORKSPACE_EDIT,
+                PolicyScope.PLAN_REQUEST,
+                workspace_id="workspace-b",
+            )),
+            replace(base, context=self.context(
+                PolicyScope.INSTANCE_WORKSPACE_EDIT,
+                PolicyScope.PLAN_REQUEST,
+                actor_id="operator-b",
+            )),
+            replace(base, desired=replace(graph, name="changed-graph")),
+            replace(base, expected_current=GraphProjectionLineage(
+                "changed-current",
+                base.expected_current.realized_projection_id,
+            )),
+            replace(base, expected_current=GraphProjectionLineage(
+                base.expected_current.authored_graph_id,
+                "changed-current-projection",
+            )),
+            replace(base, expected_desired=GraphProjectionLineage(
+                "changed-previous-desired",
+                expected_desired.realized_projection_id,
+            )),
+            replace(base, expected_desired=GraphProjectionLineage(
+                expected_desired.authored_graph_id,
+                "changed-previous-desired-projection",
+            )),
+            replace(base, expected_desired_graph_revision=2),
+            replace(base, title="Changed title"),
+            replace(base, approval_comment="Changed approval comment"),
+        )
+        for changed in included_changes:
+            with self.subTest(included=changed):
+                self.assertNotEqual(self._intent_digest(changed), base_digest)
+
+        excluded_changes = (
+            replace(base, idempotency_key=IdempotencyKey("another-parent")),
+            replace(base, context=self.context(
+                PolicyScope.INSTANCE_WORKSPACE_EDIT,
+                PolicyScope.PLAN_REQUEST,
+                PolicyScope.INSTANCE_WORKSPACE_READ,
+            )),
+        )
+        for changed in excluded_changes:
+            with self.subTest(excluded=changed):
+                self.assertEqual(self._intent_digest(changed), base_digest)
+
+        reordered = replace(
+            graph,
+            runtimes=dict(reversed(tuple(graph.runtimes.items()))),
+            nodes=dict(reversed(tuple(graph.nodes.items()))),
+            edges=dict(reversed(tuple(graph.edges.items()))),
+        )
+        self.assertEqual(reordered, graph)
+        self.assertEqual(
+            self._intent_digest(replace(base, desired=reordered)),
+            base_digest,
+        )
+
     def test_exact_terminal_projection_and_call_trace_matrix(self) -> None:
         cases = (
             ("no-change", DeploymentNoChanges, 3),
@@ -377,13 +476,16 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
                 self._assert_clean_error(captured.exception, str(failure))
 
     def test_unexpected_child_failure_escapes_by_identity(self) -> None:
-        sentinel = SentinelFailure("unexpected-programming-failure")
-        program, _ = self.program(failure=("desired", sentinel))
-
-        with self.assertRaises(SentinelFailure) as captured:
-            program.prepare(self.command())
-
-        self.assertIs(captured.exception, sentinel)
+        cases = (
+            SentinelFailure("unexpected-programming-failure"),
+            InvalidOperationCommand("invalid-child-command"),
+        )
+        for sentinel in cases:
+            with self.subTest(error=type(sentinel).__name__):
+                program, _ = self.program(failure=("operations", sentinel))
+                with self.assertRaises(type(sentinel)) as captured:
+                    program.prepare(self.command())
+                self.assertIs(captured.exception, sentinel)
 
     def test_child_keys_are_bounded_and_workspace_namespaced(self) -> None:
         first, first_trace = self.program()
@@ -430,31 +532,34 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
             / "deployment_program_interpreter.py"
         )
         self.assertTrue(source_path.is_file())
-        tree = ast.parse(source_path.read_text(encoding="utf-8"))
-        imports = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
+        source = source_path.read_text(encoding="utf-8")
+        allowed_imports = {
+            "__future__",
+            "hashlib",
+            "json",
+            "control_plane_kit_core.policies",
+            "control_plane_kit_core.topology",
+            "control_plane_kit_operations.approvals",
+            "control_plane_kit_operations.deployment_program",
+            "control_plane_kit_operations.deployment_program_projections",
+            "control_plane_kit_operations.deployment_transitions",
+            "control_plane_kit_operations.planning",
+            "control_plane_kit_operations.workflows",
         }
-        forbidden_roots = {
-            "control_plane_kit_interpreters",
-            "control_plane_kit_servers",
-            "control_plane_kit_secrets",
-            "psycopg",
-            "docker",
-            "fastapi",
-            "mcp",
-        }
-        self.assertFalse(
-            {
-                module_name.split(".", 1)[0]
-                for module_name in imports
-            }
-            & forbidden_roots
+        self.assertEqual(self._imported_modules(source), allowed_imports)
+        hostile_sources = (
+            "import psycopg as database\n",
+            "from control_plane_kit_operations.postgres import "
+            "PostgresUnitOfWork as P\n",
+            "from .postgres import PostgresUnitOfWork as P\n",
         )
-        source_names = {
-            node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
-        }
+        for hostile in hostile_sources:
+            with self.subTest(hostile=hostile):
+                self.assertFalse(
+                    self._imported_modules(hostile).issubset(allowed_imports)
+                )
+        tree = ast.parse(source)
+        source_names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
         self.assertTrue(
             {"OperationCommandService", "DesiredGraphCommandService",
              "ActivityPlanningCommandService", "ApprovalCommandService"}
@@ -464,6 +569,27 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
             source_names
             & {"PostgresUnitOfWork", "UnitOfWork", "stores", "connection", "cursor"}
         )
+
+    def _intent_digest(self, command: PrepareDeploymentProgram) -> str:
+        program, trace = self.program(self.plan_result("fresh-deployment"))
+        program.prepare(command)
+        metadata = trace[0][1].metadata
+        return metadata["deployment_prepare_intent_sha256"]
+
+    def _imported_modules(self, source: str) -> set[str]:
+        modules: set[str] = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    relative = "control_plane_kit_operations"
+                    if node.module:
+                        relative = f"{relative}.{node.module}"
+                    modules.add(relative)
+                elif node.module is not None:
+                    modules.add(node.module)
+        return modules
 
     def _assert_clean_error(self, error: BaseException, *canaries: str) -> None:
         self.assertIsNone(error.__cause__)

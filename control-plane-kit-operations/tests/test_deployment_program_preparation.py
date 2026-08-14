@@ -91,6 +91,10 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
                 "control_plane_kit_operations.deployment_program_interpreter"
             )
         except ModuleNotFoundError as error:
+            if error.name != (
+                "control_plane_kit_operations.deployment_program_interpreter"
+            ):
+                raise
             self.fail(f"deployment program interpreter is missing: {error}")
 
     def unit_of_work(self) -> PostgresUnitOfWork:
@@ -225,6 +229,7 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
                     before["cpk_operation_actions"],
                     3 + approval_count,
                 )
+                self._assert_current_lineage(current)
                 self._assert_no_progression_truth(before)
 
     def test_zero_activity_graph_update_still_requests_approval(self) -> None:
@@ -240,6 +245,7 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
             )
         self.assertEqual(plan.plan.activities, ())
         self.assertEqual(self._counts()["cpk_approval_requests"], 1)
+        self._assert_current_lineage(current)
 
     def test_restart_after_each_physical_commit_converges_without_duplicates(
         self,
@@ -374,8 +380,12 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
 
     def test_stale_or_unavailable_graph_truth_records_no_later_stage(self) -> None:
         scenario = self.scenario("fresh-deployment")
-        cases = ("stale-desired", "missing-current", "malformed-current")
-        for case in cases:
+        cases = (
+            ("stale-desired", (1, 1, 1, 1)),
+            ("missing-current", (1, 2, 2, 2)),
+            ("malformed-current", (1, 2, 2, 2)),
+        )
+        for case, partial_counts in cases:
             with self.subTest(case=case):
                 self._reset()
                 current = self.setup_workspace(scenario.current_graph)
@@ -420,8 +430,18 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
                 self.assertIsNone(captured.exception.__cause__)
                 self.assertIsNone(captured.exception.__context__)
                 counts = self._counts()
+                self.assertEqual(
+                    (
+                        counts["cpk_operation_sessions"],
+                        counts["cpk_operation_actions"],
+                        counts["cpk_graph_versions"],
+                        counts["cpk_realized_graph_projections"],
+                    ),
+                    partial_counts,
+                )
                 self.assertEqual(counts["cpk_activity_plans"], 0)
                 self.assertEqual(counts["cpk_approval_requests"], 0)
+                self._assert_current_lineage(current)
                 self._assert_no_progression_truth(counts)
 
     def test_session_metadata_contains_only_bounded_intent_commitment(self) -> None:
@@ -459,6 +479,7 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
             "cpk_execution_requests",
             "cpk_activity_runs",
             "cpk_activity_events",
+            "cpk_observations",
         )
         return {
             table: self.connection.execute(
@@ -473,8 +494,25 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
             "cpk_execution_requests",
             "cpk_activity_runs",
             "cpk_activity_events",
+            "cpk_observations",
         ):
             self.assertEqual(counts[table], 0, table)
+
+    def _assert_current_lineage(self, expected: GraphProjectionLineage) -> None:
+        current = self.connection.execute(
+            """
+            SELECT current_graph_id, current_realized_projection_id
+            FROM cpk_workspaces
+            WHERE workspace_id = 'workspace-a'
+            """
+        ).fetchone()
+        self.assertEqual(
+            current,
+            (
+                expected.authored_graph_id,
+                expected.realized_projection_id,
+            ),
+        )
 
 
 if __name__ == "__main__":
