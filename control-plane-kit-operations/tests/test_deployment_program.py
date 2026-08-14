@@ -17,7 +17,10 @@ from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.admission import ExternalReadinessAttestation
 from control_plane_kit_operations.records import GraphProjectionLineage
-from control_plane_kit_operations.workflows import IdempotencyKey
+from control_plane_kit_operations.workflows import (
+    IdempotencyKey,
+    InvalidOperationCommand,
+)
 
 
 EXPECTED_EXPORTS = (
@@ -288,14 +291,16 @@ class DeploymentProgramCommandTests(unittest.TestCase):
         command = _progress(module, readiness=(activity_b, activity_a))
 
         self.assertEqual(command.readiness, (activity_a, activity_b))
-        unbounded_current_id = ExternalReadinessAttestation(
-            "a" * 513,
-            "readiness/large-id",
+        canonical_boundary = ExternalReadinessAttestation(
+            "a" * 200,
+            "readiness/boundary-id",
         )
         self.assertEqual(
-            _progress(module, readiness=(unbounded_current_id,)).readiness,
-            (unbounded_current_id,),
+            _progress(module, readiness=(canonical_boundary,)).readiness,
+            (canonical_boundary,),
         )
+        with self.assertRaises(InvalidOperationCommand):
+            ExternalReadinessAttestation("a" * 513, "readiness/large-id")
 
         invalid = (
             {"context": object()},
