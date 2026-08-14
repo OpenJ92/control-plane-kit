@@ -176,6 +176,7 @@ class _Trace:
         run=None,
         event=None,
         missing_replay=False,
+        missing_locked_request=False,
         missing_locator_run=False,
         missing_locked_run=False,
         ids=("run-a", "event-a", "action-a"),
@@ -194,6 +195,7 @@ class _Trace:
         self.run = run
         self.event = event
         self.missing_replay = missing_replay
+        self.missing_locked_request = missing_locked_request
         self.missing_locator_run = missing_locator_run
         self.missing_locked_run = missing_locked_run
         self.ids = list(ids)
@@ -226,6 +228,8 @@ class _Trace:
 
     def get_request_for_update(self, request_id):
         self.log.append("get_request_for_update")
+        if self.missing_locked_request:
+            raise KeyError("missing request 'locked-request-canary'")
         return self.get_request(request_id)
 
     def lock_action_idempotency(self, *args):
@@ -555,6 +559,22 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
             "event-secret-canary",
         )
         self.assertEqual(trace.factory_calls, 0)
+
+    def test_claim_replay_locked_reread_clears_store_error_chain(self):
+        command = _claim_command()
+        trace = _Trace(
+            action=_replay_action(command),
+            missing_locked_request=True,
+        )
+
+        self.assert_bounded(
+            RunLifecycleNotFound,
+            lambda: self.service(trace).execute(command),
+            "locked-request-canary",
+        )
+        self.assertEqual(trace.factory_calls, 0)
+        for mutation in ("add_run", "add_event", "add_action", "commit"):
+            self.assertNotIn(mutation, trace.log)
 
     def test_existing_run_lookup_translations_clear_store_error_chain(self):
         command = StartActivityRun(

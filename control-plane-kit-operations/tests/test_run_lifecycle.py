@@ -451,16 +451,52 @@ class RunLifecycleTests(unittest.TestCase):
         self.service("run-target", "event-target", "action-target").execute(
             self.target_claim_command()
         )
-
-        with self.unit_of_work() as unit_of_work:
-            retained = unit_of_work.stores.execution.claim_request(
-                "request-a",
-                "worker-a",
-                600,
+        before_fence = self.connection.execute(
+            """
+            SELECT status, claim_worker_id, claim_generation,
+                   claimed_at, lease_expires_at
+            FROM cpk_execution_requests
+            WHERE request_id = 'request-a'
+            """
+        ).fetchone()
+        before_counts = tuple(
+            self._count(table)
+            for table in (
+                "cpk_activity_runs",
+                "cpk_activity_events",
+                "cpk_operation_actions",
             )
-            unit_of_work.commit()
+        )
 
-        self.assertIsNone(retained)
+        for duration_seconds in (600, 601):
+            with self.subTest(duration_seconds=duration_seconds):
+                with self.unit_of_work() as unit_of_work:
+                    retained = unit_of_work.stores.execution.claim_request(
+                        "request-a",
+                        "worker-a",
+                        duration_seconds,
+                    )
+                    unit_of_work.commit()
+                self.assertIsNone(retained)
+
+        after_fence = self.connection.execute(
+            """
+            SELECT status, claim_worker_id, claim_generation,
+                   claimed_at, lease_expires_at
+            FROM cpk_execution_requests
+            WHERE request_id = 'request-a'
+            """
+        ).fetchone()
+        after_counts = tuple(
+            self._count(table)
+            for table in (
+                "cpk_activity_runs",
+                "cpk_activity_events",
+                "cpk_operation_actions",
+            )
+        )
+        self.assertEqual(after_fence, before_fence)
+        self.assertEqual(after_counts, before_counts)
 
     def test_target_invalid_run_is_rejected_before_database_generated_claim(
         self,
