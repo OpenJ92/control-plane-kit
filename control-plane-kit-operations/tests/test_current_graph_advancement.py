@@ -628,7 +628,8 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         event_evidence = accepted.event.evidence.descriptor()
         event_evidence["workspace_id"] = "event-workspace-canary"
         self.connection.execute(
-            "UPDATE cpk_activity_events SET evidence = %s::jsonb "
+            "UPDATE cpk_activity_events "
+            "SET payload = jsonb_set(payload, '{evidence}', %s::jsonb) "
             "WHERE event_id = 'event-advance'",
             (json.dumps(event_evidence),),
         )
