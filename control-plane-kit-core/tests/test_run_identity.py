@@ -4,7 +4,6 @@ import ast
 from dataclasses import FrozenInstanceError
 import importlib
 from itertools import permutations
-import json
 from pathlib import Path
 import re
 import subprocess
@@ -37,7 +36,6 @@ from control_plane_kit_core.secrets import (
 RUN_ID_MODULE = "control_plane_kit_core.operations.run_identity"
 RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY_ROOT = PACKAGE_ROOT.parent
 SOURCE_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_core"
 
 
@@ -380,7 +378,7 @@ class RunIdentityContractTests(unittest.TestCase):
                 failures.append(order)
         self.assertEqual(failures, [], f"failed import orders: {failures!r}")
 
-    def test_private_helper_and_inventory_have_exact_ownership(self) -> None:
+    def test_private_helper_has_exact_pure_ownership(self) -> None:
         helper_path = SOURCE_ROOT / "_run_identity.py"
         self.assertTrue(helper_path.is_file(), "missing private run identity owner")
         tree = ast.parse(helper_path.read_text(encoding="utf-8"))
@@ -405,31 +403,6 @@ class RunIdentityContractTests(unittest.TestCase):
             importers,
             {"operations/run_identity.py", "planning/saga.py", "secrets.py"},
         )
-
-        inventory_path = (
-            REPOSITORY_ROOT / "docs" / "architecture" / "package-module-inventory.json"
-        )
-        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
-        expected = {
-            "control_plane_kit_core._run_identity": (
-                "control_plane_kit_core/_run_identity.py",
-                [],
-            ),
-            RUN_ID_MODULE: (
-                "control_plane_kit_core/operations/run_identity.py",
-                ["RunId"],
-            ),
-        }
-        for module_name, (source, exports) in expected.items():
-            rows = tuple(
-                row for row in inventory["modules"] if row["module"] == module_name
-            )
-            with self.subTest(module=module_name):
-                self.assertEqual(len(rows), 1)
-                self.assertEqual(rows[0]["owner"], "core")
-                self.assertEqual(rows[0]["destination"], module_name)
-                self.assertEqual(rows[0]["source"], source)
-                self.assertEqual(rows[0]["canonical_public_exports"], exports)
 
 
 if __name__ == "__main__":

@@ -259,6 +259,31 @@ class ActivityIdentityOperationsTests(unittest.TestCase):
         self.assertEqual(row["source"], "control_plane_kit_core/_activity_identity.py")
         self.assertEqual(row["canonical_public_exports"], [])
 
+    def test_run_identity_owners_are_exhaustively_inventoried(self) -> None:
+        inventory_path = Path(os.environ["CPK_PACKAGE_MODULE_INVENTORY"])
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        expected = {
+            "control_plane_kit_core._run_identity": (
+                "control_plane_kit_core/_run_identity.py",
+                [],
+            ),
+            "control_plane_kit_core.operations.run_identity": (
+                "control_plane_kit_core/operations/run_identity.py",
+                ["RunId"],
+            ),
+        }
+
+        for module_name, (source, exports) in expected.items():
+            rows = tuple(
+                row for row in inventory["modules"] if row["module"] == module_name
+            )
+            with self.subTest(module=module_name):
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["owner"], "core")
+                self.assertEqual(rows[0]["destination"], module_name)
+                self.assertEqual(rows[0]["source"], source)
+                self.assertEqual(rows[0]["canonical_public_exports"], exports)
+
 
 if __name__ == "__main__":
     unittest.main()
