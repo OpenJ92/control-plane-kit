@@ -140,6 +140,21 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
         self.assertIsNone(request.products[0].pull_authority)
 
+    def test_malformed_retained_run_is_categorical_before_effect_construction(
+        self,
+    ) -> None:
+        context = _context(run_id="retained/run-direct-canary")
+
+        with self.assertRaises(InvalidOperationCommand) as captured:
+            runtime_effect_request_for_context(context)
+
+        error = captured.exception
+        self.assertIsNone(error.__cause__)
+        self.assertIsNone(error.__context__)
+        rendered = f"{error!s} {error!r}"
+        self.assertLessEqual(len(rendered), 512)
+        self.assertNotIn("retained/run-direct-canary", rendered)
+
     def test_runtime_material_uses_graph_node_verification(self) -> None:
         descriptor_verification = VerificationContract(
             (
@@ -576,6 +591,7 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
 
 def _context(
     *,
+    run_id: str = "run-a",
     activity: PlannedActivity | None = None,
     desired_graph: DeploymentGraph | None = None,
     pull_authorities: tuple[RegisteredImagePullAuthority, ...] = (),
@@ -602,7 +618,7 @@ def _context(
             ClaimIdentity("worker-a", "2026-07-22T10:01:00Z", "2026-07-22T10:30:00Z"),
         ),
         run=ActivityRunRecord(
-            "run-a",
+            run_id,
             "plan-a",
             AdmittedRun("request-a"),
             RetryIdentity(1),
@@ -655,7 +671,7 @@ def _context(
         ),
         intent_event=ActivityEventRecord(
             event_id="event-started",
-            run_id="run-a",
+            run_id=run_id,
             kind=ActivityEventKind.STEP_STARTED,
             activity_id=activity.activity_id.value,
             occurred_at="2026-07-22T10:02:00Z",
