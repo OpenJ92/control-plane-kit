@@ -158,14 +158,20 @@ class GatewayKeyRotationOverlapExecutionProgram:
     ) -> GatewayKeyRotationOverlapExecutionResult:
         if not isinstance(command, ProgressGatewayKeyRotationOverlap):
             raise TypeError("command must be ProgressGatewayKeyRotationOverlap")
+        authorization_message = None
+        conflict_message = None
         try:
             result = self._program.progress(command.deployment_command())
         except GatewayKeyRotationDeploymentExecutionAuthorizationDenied as error:
-            raise GatewayKeyRotationOverlapExecutionAuthorizationDenied(
-                str(error)
-            ) from error
+            authorization_message = str(error)
         except GatewayKeyRotationDeploymentExecutionConflict as error:
-            raise GatewayKeyRotationOverlapExecutionConflict(str(error)) from error
+            conflict_message = str(error)
+        if authorization_message is not None:
+            raise GatewayKeyRotationOverlapExecutionAuthorizationDenied(
+                authorization_message
+            )
+        if conflict_message is not None:
+            raise GatewayKeyRotationOverlapExecutionConflict(conflict_message)
         return _result(result)
 
 
