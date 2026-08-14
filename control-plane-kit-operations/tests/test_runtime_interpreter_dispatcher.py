@@ -84,6 +84,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestRecord,
     FailureEvidence,
     GraphVersionRecord,
+    OperationsRecordError,
     RealizedGraphProjectionRecord,
     RetryIdentity,
 )
@@ -544,15 +545,17 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             ),
         )
 
-    def test_malformed_retained_run_fails_before_authorizer_or_runtime_io(self) -> None:
+    def test_malformed_retained_run_fails_at_record_boundary_before_dispatch(
+        self,
+    ) -> None:
         interpreter = RecordingInterpreter("docker")
         authorizer = RecordingSecretUseAuthorizer()
-        dispatcher = RuntimeInterpreterDispatcher(
+        RuntimeInterpreterDispatcher(
             {RuntimeKind.DOCKER: interpreter},
             secret_use_authorizer=authorizer,
         )
 
-        outcome = dispatcher.execute(
+        with self.assertRaises(OperationsRecordError) as captured:
             context_for(
                 StartNode(NodeTarget("api")),
                 run_id="retained/run-canary",
@@ -562,16 +565,16 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                     PolicyScope.SECRET_PROVIDER_USE,
                 ),
             )
-        )
 
-        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-        self.assertIsNotNone(outcome.failure)
-        assert outcome.failure is not None
+        error = captured.exception
+        self.assertIs(type(error), OperationsRecordError)
+        self.assertEqual(str(error), "run_id is malformed")
+        self.assertIsNone(error.__cause__)
+        self.assertIsNone(error.__context__)
         self.assertEqual(authorizer.commands, [])
         self.assertEqual(interpreter.requests, [])
-        self.assertEqual(outcome.failure.code, "runtime.dispatch-target-unsupported")
-        rendered = f"{outcome.failure!s} {outcome.failure!r}"
-        self.assertLessEqual(len(rendered), 1024)
+        rendered = f"{error!s} {error!r}"
+        self.assertLessEqual(len(rendered), 512)
         self.assertNotIn("retained/run-canary", rendered)
 
     def test_missing_secret_authorizer_fails_before_runtime_io(self) -> None:
