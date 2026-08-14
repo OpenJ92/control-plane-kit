@@ -277,7 +277,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
             if blocker_pid in blocked_by:
                 return
             if time.monotonic() >= deadline:
-                self.fail("advancement did not block on the request row")
+                self.fail("advancement did not block on the expected row")
 
     def authority(
         self,
@@ -499,6 +499,48 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 worker_pid = worker_pids.get(timeout=5)
                 self.wait_until_blocked_by(worker_pid, blocker_pid)
                 with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                    )
+                blocker.commit()
+                result = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self.assertEqual(result.to_authored_graph_id, "graph-desired")
+
+    def test_first_execution_locks_workspace_before_request_and_run(self) -> None:
+        self.seed_succeeded_run()
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT workspace_id FROM cpk_workspaces "
+            "WHERE workspace_id = 'workspace-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        worker_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            worker_pids.put(connection.info.backend_pid)
+            return connection
+
+        service = CurrentGraphAdvancementCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "2026-07-22T13:05:00Z",
+            id_factory=Sequence("event-advance", "action-advance"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(service.execute, self.command())
+                worker_pid = worker_pids.get(timeout=5)
+                self.wait_until_blocked_by(worker_pid, blocker_pid)
+                with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT request_id FROM cpk_execution_requests "
+                        "WHERE request_id = 'request-a' FOR UPDATE NOWAIT"
+                    )
                     probe.execute(
                         "SELECT run_id FROM cpk_activity_runs "
                         "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
