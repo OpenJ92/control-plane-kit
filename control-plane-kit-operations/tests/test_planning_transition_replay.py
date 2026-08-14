@@ -696,10 +696,15 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         )
         replay = module_functions["_activity_plan_replay"]
 
-        def reachable_calls(root, *, blocked: set[str] | None = None) -> set[str]:
+        def reachable_surface(
+            root,
+            *,
+            blocked: set[str] | None = None,
+        ) -> tuple[set[str], list[ast.AST]]:
             reachable: set[str] = set()
             pending = [root]
             visited: set[str] = set()
+            functions: list[ast.AST] = [root]
             blocked = set() if blocked is None else blocked
             while pending:
                 function = pending.pop()
@@ -717,14 +722,42 @@ class PlanningTransitionReplayTests(unittest.TestCase):
                         and name not in visited
                     ):
                         visited.add(name)
-                        pending.append(module_functions[name])
-            return reachable
+                        dependency = module_functions[name]
+                        pending.append(dependency)
+                        functions.append(dependency)
+            return reachable, functions
 
-        first_calls = reachable_calls(
+        def compiles_deploy_diff(functions: list[ast.AST]) -> bool:
+            for function in functions:
+                transition_names = {
+                    target.id
+                    for node in ast.walk(function)
+                    if isinstance(node, ast.Assign)
+                    and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Name)
+                    and node.value.func.id == "Deploy"
+                    for target in node.targets
+                    if isinstance(target, ast.Name)
+                }
+                if any(
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "compile_activity_plan"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Attribute)
+                    and node.args[0].attr == "diff"
+                    and isinstance(node.args[0].value, ast.Name)
+                    and node.args[0].value.id in transition_names
+                    for node in ast.walk(function)
+                ):
+                    return True
+            return False
+
+        first_calls, first_functions = reachable_surface(
             first_execute,
             blocked={"_activity_plan_replay"},
         )
-        replay_calls = reachable_calls(replay)
+        replay_calls, replay_functions = reachable_surface(replay)
 
         self.assertIn(
             "Deploy",
@@ -737,11 +770,15 @@ class PlanningTransitionReplayTests(unittest.TestCase):
             "diff_graphs",
             imported.get("control_plane_kit_core.topology", set()),
         )
-        for owner, calls in (("first", first_calls), ("replay", replay_calls)):
+        for owner, calls, functions in (
+            ("first", first_calls, first_functions),
+            ("replay", replay_calls, replay_functions),
+        ):
             with self.subTest(owner=owner):
                 self.assertIn("Deploy", calls)
                 self.assertIn("compile_activity_plan", calls)
                 self.assertNotIn("diff_graphs", calls)
+                self.assertTrue(compiles_deploy_diff(functions))
 
     def _durable_counts(self) -> tuple[int, ...]:
         return tuple(
