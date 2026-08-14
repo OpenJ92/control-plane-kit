@@ -35,6 +35,7 @@ from control_plane_kit_core.probe_intents import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 
 
 class OperationsRecordError(ValueError):
@@ -588,6 +589,10 @@ class ClaimIdentity:
             raise OperationsRecordError("claim generation is invalid")
         _validate_text(self.claimed_at, "claimed_at")
         _validate_text(self.lease_expires_at, "lease_expires_at")
+
+    @property
+    def fence(self) -> ExecutionLeaseFence:
+        return ExecutionLeaseFence(self.worker_id, self.generation)
 
 
 @dataclass(frozen=True)

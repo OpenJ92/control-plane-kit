@@ -123,6 +123,10 @@ from .deployment_program_projections import (
     DeploymentReviewBlocked,
     DeploymentSessionStopped,
 )
+from .execution_leases import (
+    ExecutionLeaseFence,
+    InvalidExecutionLeaseFence,
+)
 from .delegation_key_generation import (
     AdmitGeneratedDelegationSigningKey,
     AdmittedGeneratedDelegationSigningKey,
@@ -633,6 +637,7 @@ __all__ = [
     "CloudflareZoneIngressAuthority",
     "CloudflareZoneIngressAuthorityCodec",
     "ExecutionLeaseDuration",
+    "ExecutionLeaseFence",
     "GeneratedIngressSecretReference",
     "GeneratedSecretPurpose",
     "GeneratedSecretRecordingConflict",
@@ -832,6 +837,7 @@ __all__ = [
     "IngressAllocationResult",
     "IngressProviderInterpreter",
     "IngressRealizationAdapter",
+    "InvalidExecutionLeaseFence",
     "ImportProductDescriptorCommand",
     "InlineDescriptorSource",
     "IngressAuthorityAuthorizationDenied",
