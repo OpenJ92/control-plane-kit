@@ -8,6 +8,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -83,7 +84,7 @@ class AdvanceCurrentGraph:
 
     def __post_init__(self) -> None:
         _required_text(self.workspace_id, "workspace_id")
-        _required_text(self.run_id, "run_id")
+        _require_run_id(self.run_id)
         _required_text(self.plan_id, "plan_id")
         _required_text(self.expected_current_graph_id, "expected_current_graph_id")
         _required_text(
@@ -140,10 +141,10 @@ class CurrentGraphAdvancementResult:
             (self.from_realized_projection_id, "from_realized_projection_id"),
             (self.to_authored_graph_id, "to_authored_graph_id"),
             (self.to_realized_projection_id, "to_realized_projection_id"),
-            (self.run_id, "run_id"),
-            (self.plan_id, "plan_id"),
         ):
             _required_text(value, name)
+        _require_run_id(self.run_id)
+        _required_text(self.plan_id, "plan_id")
         if (
             len(self.to_realized_projection_digest) != 64
             or any(
@@ -636,3 +637,14 @@ def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
 def _required_text(value: object, field: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise InvalidOperationCommand(f"{field} must not be empty")
+
+
+def _require_run_id(value: object) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        valid = False
+    else:
+        valid = True
+    if not valid:
+        raise InvalidOperationCommand("run_id is malformed")
