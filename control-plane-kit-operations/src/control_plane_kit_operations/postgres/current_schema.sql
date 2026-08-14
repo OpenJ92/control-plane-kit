@@ -37,6 +37,7 @@ CREATE TABLE cpk_activity_runs (
     settled_at timestamp with time zone,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT cpk_activity_runs_attempt_check CHECK (((attempt > 0) AND (((attempt = 1) AND (prior_run_id IS NULL)) OR ((attempt > 1) AND (prior_run_id IS NOT NULL))) AND (prior_run_id IS DISTINCT FROM run_id))),
+    CONSTRAINT cpk_activity_runs_run_id_check CHECK (((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
     CONSTRAINT cpk_activity_runs_settlement_check CHECK ((((status = ANY (ARRAY['cancelled'::text, 'compensated'::text, 'partially_failed'::text, 'succeeded'::text, 'uncompensated_failure'::text])) AND (settled_at IS NOT NULL)) OR ((status <> ALL (ARRAY['cancelled'::text, 'compensated'::text, 'partially_failed'::text, 'succeeded'::text, 'uncompensated_failure'::text])) AND (settled_at IS NULL)))),
     CONSTRAINT cpk_activity_runs_started_check CHECK ((((status = 'claimed'::text) AND (started_at IS NULL)) OR ((status = ANY (ARRAY['cancelled'::text, 'compensated'::text, 'compensating'::text, 'failed'::text, 'partially_failed'::text, 'paused'::text, 'running'::text, 'succeeded'::text, 'uncompensated_failure'::text])) AND (started_at IS NOT NULL)))),
     CONSTRAINT cpk_activity_runs_status_check CHECK ((status = ANY (ARRAY['claimed'::text, 'running'::text, 'paused'::text, 'succeeded'::text, 'failed'::text, 'compensating'::text, 'compensated'::text, 'partially_failed'::text, 'uncompensated_failure'::text, 'cancelled'::text])))
@@ -106,7 +107,9 @@ CREATE TABLE cpk_cloudflare_ingress_resources (
     CONSTRAINT cpk_cloudflare_ingress_resources_lifecycle_check CHECK ((lifecycle = ANY (ARRAY['ephemeral'::text, 'retained'::text, 'external'::text]))),
     CONSTRAINT cpk_cloudflare_ingress_resources_metadata_shape_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
     CONSTRAINT cpk_cloudflare_ingress_resources_provider_kind_check CHECK ((provider_kind = 'cloudflare'::text)),
+    CONSTRAINT cpk_cloudflare_ingress_resources_removed_by_run_id_check CHECK (((removed_by_run_id IS NULL) OR ((removed_by_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_cloudflare_ingress_resources_removed_evidence_check CHECK ((((status = 'removed'::text) AND (removed_at IS NOT NULL) AND (removed_by_run_id IS NOT NULL)) OR ((status <> 'removed'::text) AND (removed_at IS NULL) AND (removed_by_run_id IS NULL)))),
+    CONSTRAINT cpk_cloudflare_ingress_resources_source_run_id_check CHECK (((source_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
     CONSTRAINT cpk_cloudflare_ingress_resources_status_check CHECK ((status = ANY (ARRAY['allocating'::text, 'active'::text, 'removing'::text, 'removed'::text, 'uncertain'::text, 'orphaned'::text])))
 );
 
@@ -183,6 +186,7 @@ CREATE TABLE cpk_gateway_key_rotation_deployments (
     CONSTRAINT cpk_gateway_key_rotation_deployments_acceptance_check CHECK ((((status = 'accepted'::text) AND (accepted_current_graph_id IS NOT NULL) AND (accepted_current_projection_id IS NOT NULL) AND (accepted_at IS NOT NULL)) OR ((status = 'prepared'::text) AND (accepted_current_graph_id IS NULL) AND (accepted_current_projection_id IS NULL) AND (accepted_at IS NULL)))),
     CONSTRAINT cpk_gateway_key_rotation_deployments_phase_check CHECK ((phase = ANY (ARRAY['overlap'::text, 'retirement'::text]))),
     CONSTRAINT cpk_gateway_key_rotation_deployments_revision_check CHECK ((desired_revision >= 0)),
+    CONSTRAINT cpk_gateway_key_rotation_deployments_run_id_check CHECK (((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
     CONSTRAINT cpk_gateway_key_rotation_deployments_status_check CHECK ((status = ANY (ARRAY['prepared'::text, 'accepted'::text])))
 );
 
@@ -307,7 +311,8 @@ CREATE TABLE cpk_generated_ingress_secret_references (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT cpk_generated_ingress_secret_references_metadata_shape_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
     CONSTRAINT cpk_generated_ingress_secret_references_purpose_check CHECK ((purpose = 'cloudflared-tunnel-token'::text)),
-    CONSTRAINT cpk_generated_ingress_secret_references_ref_check CHECK ((secret_ref ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text))
+    CONSTRAINT cpk_generated_ingress_secret_references_ref_check CHECK ((secret_ref ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
+    CONSTRAINT cpk_generated_ingress_secret_references_source_run_id_check CHECK (((source_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))
 );
 
 CREATE TABLE cpk_graph_versions (
@@ -603,7 +608,7 @@ CREATE TABLE cpk_secret_use_authorizations (
     CONSTRAINT cpk_secret_use_authorizations_operation_check CHECK (((operation_id IS NULL) OR (operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_probe_check CHECK (((probe_id IS NULL) OR (probe_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_reference_check CHECK ((secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
-    CONSTRAINT cpk_secret_use_authorizations_run_check CHECK (((run_id IS NULL) OR (run_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_secret_use_authorizations_run_check CHECK (((run_id IS NULL) OR ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_session_check CHECK (((session_id IS NULL) OR (session_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)))
 );
 

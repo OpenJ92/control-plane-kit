@@ -310,8 +310,10 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
         with self.assertRaises(psycopg.errors.CheckViolation) as parent_error:
             self.connection.execute(
                 "INSERT INTO cpk_activity_runs "
-                "(run_id, plan_id, request_id, attempt, status, created_at) "
-                "VALUES ('run/bad', 'plan-a', 'request-a', 3, 'claimed', "
+                "(run_id, plan_id, request_id, attempt, prior_run_id, status, "
+                "created_at) "
+                "VALUES ('run/bad', 'plan-a', 'request-a', 3, 'run-root', "
+                "'claimed', "
                 "'2026-08-14T00:22:00Z')"
             )
         self.assertEqual(
@@ -407,16 +409,21 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
             INSERT INTO cpk_graph_versions
               (graph_id, workspace_id, version, graph_descriptor, created_by,
                created_at)
-            VALUES ('graph-a', 'workspace-a', 1, '{}', 'operator-a',
+            VALUES ('graph-a', 'workspace-a', 1,
+                    '{"name":"graph-a","runtimes":{},"nodes":{},"edges":{},"public_ingresses":[]}',
+                    'operator-a',
                     '2026-08-14T00:00:00Z');
 
             INSERT INTO cpk_realized_graph_projections
               (projection_id, workspace_id, source_authored_graph_id,
                projection_kind, projection_key, projection_digest,
                graph_descriptor, created_by, created_at)
-            VALUES ('projection-a', 'workspace-a', 'graph-a', 'identity',
-                    'authored-graph', repeat('a', 64), '{}', 'operator-a',
-                    '2026-08-14T00:01:00Z');
+            VALUES
+              ('projection-8c93244f9a9f0eeeb374541de8926a2d7a4c79e01dee2039534bf38a6838c0e1',
+               'workspace-a', 'graph-a', 'identity', 'identity',
+               '8c93244f9a9f0eeeb374541de8926a2d7a4c79e01dee2039534bf38a6838c0e1',
+               '{"name":"graph-a","runtimes":{},"nodes":{},"edges":{},"public_ingresses":[]}',
+               'operator-a', '2026-08-14T00:00:00Z');
 
             INSERT INTO cpk_operation_sessions
               (session_id, workspace_id, actor_id, title, status, created_at)
@@ -427,15 +434,22 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
               (plan_id, session_id, base_graph_id, desired_graph_id,
                base_realized_projection_id, desired_realized_projection_id,
                desired_graph_revision, status, created_at, payload)
-            VALUES ('plan-a', 'session-a', 'graph-a', 'graph-a', 'projection-a',
-                    'projection-a', 1, 'planned', '2026-08-14T00:03:00Z', '{}');
+            VALUES
+              ('plan-a', 'session-a', 'graph-a', 'graph-a',
+               'projection-8c93244f9a9f0eeeb374541de8926a2d7a4c79e01dee2039534bf38a6838c0e1',
+               'projection-8c93244f9a9f0eeeb374541de8926a2d7a4c79e01dee2039534bf38a6838c0e1',
+               1, 'planned', '2026-08-14T00:03:00Z', '{}');
 
             INSERT INTO cpk_approval_requests
               (request_id, session_id, plan_id, subject_kind, subject_payload,
                review_digest, requested_by, requested_at, required_scope,
                max_risk, destructive)
-            VALUES ('approval-a', 'session-a', 'plan-a', 'activity-plan', '{}',
-                    repeat('b', 64), 'operator-a', '2026-08-14T00:04:00Z',
+            VALUES ('approval-a', 'session-a', 'plan-a', 'activity-plan',
+                    jsonb_build_object('kind', 'activity-plan',
+                                       'plan_id', 'plan-a'),
+                    encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')),
+                           'hex'),
+                    'operator-a', '2026-08-14T00:04:00Z',
                     'plan:approve', 'low', false);
 
             INSERT INTO cpk_approval_decisions
@@ -496,7 +510,11 @@ class RunIdentitySchemaPostgresTests(unittest.TestCase):
                desired_revision, prepared_at)
             VALUES ('rotation-a', 'overlap', 'prepared', 'session-a', 'plan-a',
                     'approval-a', 'decision-a', 'request-a', 'run-deployment',
-                    'graph-a', 'projection-a', 'graph-a', 'projection-a', 1,
+                    'graph-a',
+                    'projection-8c93244f9a9f0eeeb374541de8926a2d7a4c79e01dee2039534bf38a6838c0e1',
+                    'graph-a',
+                    'projection-8c93244f9a9f0eeeb374541de8926a2d7a4c79e01dee2039534bf38a6838c0e1',
+                    1,
                     '2026-08-14T00:14:00Z');
 
             INSERT INTO cpk_generated_ingress_secret_references
