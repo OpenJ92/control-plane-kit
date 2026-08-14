@@ -14,6 +14,7 @@ from control_plane_kit_core.operations.lifecycle import (
     FailureCategory,
     LifecycleOperationKind,
 )
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -309,6 +310,15 @@ class RunLifecycleCommandService:
                 raise RunLifecycleConflict(
                     "execution request session linkage changed"
                 )
+            if (
+                request.status is not ExecutionRequestStatus.QUEUED
+                or request.claim is not None
+            ):
+                raise RunLifecycleConflict("execution request is not claimable")
+            if stores.execution.runs_for_request(command.request_id):
+                raise RunLifecycleConflict("execution request already has a run")
+            run_id_candidate = self._id_factory()
+            run_id = _run_id_or_lifecycle_error(run_id_candidate)
             claimed = stores.execution.claim_request(
                 command.request_id,
                 command.authority.worker_id,
@@ -319,11 +329,9 @@ class RunLifecycleCommandService:
                 raise RunLifecycleConflict("execution request is not claimable")
             if claimed.status is not ExecutionRequestStatus.CLAIMED:
                 raise RunLifecycleConflict("execution request was not claimed")
-            if stores.execution.runs_for_request(command.request_id):
-                raise RunLifecycleConflict("execution request already has a run")
             run = stores.execution.add_run(
                 ActivityRunRecord(
-                    run_id=self._id_factory(),
+                    run_id=run_id,
                     plan_id=claimed.identity.plan_id,
                     admission=AdmittedRun(claimed.identity.request_id),
                     retry=RetryIdentity(1),
@@ -384,10 +392,13 @@ class RunLifecycleCommandService:
         now = self._clock()
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
+            missing_run = False
             try:
                 locator_run = stores.execution.get_run(command.run_id)
-            except KeyError as error:
-                raise RunLifecycleNotFound("activity run was not found") from error
+            except KeyError:
+                missing_run = True
+            if missing_run:
+                raise RunLifecycleNotFound("activity run was not found")
             locator_request = _get_request(
                 stores,
                 locator_run.admission.request_id,
@@ -458,10 +469,14 @@ class RunLifecycleCommandService:
 
 
 def _get_run_for_update(stores: Any, run_id: str) -> ActivityRunRecord:
+    missing_run = False
     try:
-        return stores.execution.get_run_for_update(run_id)
-    except KeyError as error:
-        raise RunLifecycleNotFound("activity run was not found") from error
+        run = stores.execution.get_run_for_update(run_id)
+    except KeyError:
+        missing_run = True
+    if missing_run:
+        raise RunLifecycleNotFound("activity run was not found")
+    return run
 
 
 def _get_request(stores: Any, request_id: str) -> ExecutionRequestRecord:
@@ -491,13 +506,21 @@ def _replay(
         raise RunLifecycleIdempotencyConflict(
             "idempotency key was reused with different lifecycle intent"
         )
-    run_id = _payload_text(action.payload, "run_id")
+    run_id = _payload_run_id(action.payload)
     event_id = _payload_text(action.payload, "event_id")
+    missing = False
     try:
         run = stores.execution.get_run(run_id)
         event = stores.execution.get_event(event_id)
-    except KeyError as error:
-        raise RunLifecycleError("lifecycle action is missing run/event evidence") from error
+    except KeyError:
+        missing = True
+    if missing:
+        raise RunLifecycleError("lifecycle action is missing run/event evidence")
+    if (
+        run.admission.request_id != request.identity.request_id
+        or event.run_id != run.run_id
+    ):
+        raise RunLifecycleError("lifecycle action run/event evidence is incongruent")
     return RunLifecycleResult(request, run, event, action, replayed=True)
 
 
@@ -585,6 +608,27 @@ def _payload_text(payload: Mapping[str, object], key: str) -> str:
     return value
 
 
+def _payload_run_id(payload: Mapping[str, object]) -> str:
+    value = payload.get("run_id")
+    try:
+        run_id = RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        run_id = None
+    if run_id is None:
+        raise RunLifecycleError("lifecycle action run identity is malformed")
+    return run_id.value
+
+
+def _run_id_or_lifecycle_error(value: object) -> str:
+    try:
+        run_id = RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        run_id = None
+    if run_id is None:
+        raise RunLifecycleError("generated run identity is malformed")
+    return run_id.value
+
+
 def _require_worker_owns(
     request: ExecutionRequestRecord,
     authority: ExecutionWorkerAuthority,
@@ -607,7 +651,14 @@ def _run_command_post_init(
     authority: ExecutionWorkerAuthority,
     idempotency_key: IdempotencyKey,
 ) -> None:
-    _required_text(run_id, "run_id")
+    try:
+        RunId(run_id)
+    except ValueError:
+        valid_run_id = False
+    else:
+        valid_run_id = True
+    if not valid_run_id:
+        raise InvalidOperationCommand("run_id is malformed")
     _require_authority(authority)
     _require_idempotency_key(idempotency_key)
 

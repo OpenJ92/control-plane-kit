@@ -24,6 +24,7 @@ from control_plane_kit_core.operations.lifecycle import (
     LifecycleOperationKind,
     activity_event_scope,
 )
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.probe_intents import (
@@ -595,7 +596,7 @@ class RetryIdentity:
         if self.attempt == 1 and self.prior_run_id is not None:
             raise OperationsRecordError("first attempt cannot reference a prior run")
         if self.attempt > 1:
-            _validate_text(self.prior_run_id, "prior_run_id")
+            _validate_run_id(self.prior_run_id, "prior_run_id")
 
 
 @dataclass(frozen=True)
@@ -740,12 +741,14 @@ class ActivityRunRecord:
     metadata: BoundedEvidence = field(default_factory=BoundedEvidence)
 
     def __post_init__(self) -> None:
-        _validate_text(self.run_id, "run_id")
+        _validate_run_id(self.run_id, "run_id")
         _validate_text(self.plan_id, "plan_id")
         if not isinstance(self.admission, AdmittedRun):
             raise OperationsRecordError("activity run admission must be AdmittedRun")
         if not isinstance(self.retry, RetryIdentity):
             raise OperationsRecordError("activity run retry identity must be typed")
+        if self.retry.prior_run_id == self.run_id:
+            raise OperationsRecordError("activity run retry identity is incongruent")
         if not isinstance(self.status, ActivityRunStatus):
             raise OperationsRecordError("activity run status must be ActivityRunStatus")
         _validate_text(self.created_at, "created_at")
@@ -771,7 +774,7 @@ class ActivityEventRecord:
 
     def __post_init__(self) -> None:
         _validate_text(self.event_id, "event_id")
-        _validate_text(self.run_id, "run_id")
+        _validate_run_id(self.run_id, "run_id")
         if type(self.ordinal) is not int or self.ordinal < 1:
             raise OperationsRecordError("event ordinal must be a positive integer")
         if not isinstance(self.kind, ActivityEventKind):
@@ -982,6 +985,16 @@ def _validate_optional_text(value: str | None, field: str) -> None:
     if value is None:
         return
     _validate_text(value, field)
+
+
+def _validate_run_id(value: object, field: str) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise OperationsRecordError(f"{field} is malformed")
 
 
 def _validate_optional_activity_id(value: object) -> None:
