@@ -513,17 +513,17 @@ class ReadPageContractTests(unittest.TestCase):
             (WorkspaceReadScope, None),
             (SessionReadScope, "session"),
             (PlanReadScope, "plan"),
-            (RunReadScope, "run"),
         ):
             arguments = [accepted]
             if parent_field is not None:
                 arguments.append(accepted)
             scope_type(*arguments)
+        RunReadScope("workspace-a", "r" * 200)
         for build in (
             lambda: WorkspaceReadScope("a" * 513),
             lambda: SessionReadScope("workspace-a", "s" * 513),
             lambda: PlanReadScope("workspace-a", "p" * 513),
-            lambda: RunReadScope("workspace-a", "r" * 513),
+            lambda: RunReadScope("workspace-a", "r" * 201),
             lambda: WorkspaceReadScope("line\nbreak"),
             lambda: TemporalReadCursor(
                 ReadCollection.ACTIVITY_SESSIONS,
