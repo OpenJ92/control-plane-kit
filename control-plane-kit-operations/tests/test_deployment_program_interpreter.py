@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from dataclasses import replace
 import importlib
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -27,6 +28,7 @@ from control_plane_kit_operations.deployment_program import (
 from control_plane_kit_operations.deployment_program_projections import (
     DeploymentApprovalRequired,
     DeploymentNoChanges,
+    DeploymentProgramProjection,
     DeploymentReviewBlocked,
 )
 from control_plane_kit_operations.deployment_transitions import Deploy
@@ -524,6 +526,16 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
                 getattr(control_plane_kit_operations, name),
                 getattr(self.module(), name),
             )
+        constructor = inspect.signature(self.module().DeploymentProgram)
+        self.assertEqual(
+            tuple(constructor.parameters),
+            ("operations", "desired_graphs", "planning", "approvals"),
+        )
+        annotations = inspect.get_annotations(
+            self.module().DeploymentProgram.prepare,
+            eval_str=True,
+        )
+        self.assertIs(annotations["return"], DeploymentProgramProjection)
 
         source_path = (
             Path(__file__).resolve().parents[1]
