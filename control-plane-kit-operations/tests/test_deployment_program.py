@@ -30,6 +30,12 @@ EXPECTED_EXPORTS = (
     "PrepareDeploymentProgram",
     "ProgressDeploymentProgram",
 )
+EXPECTED_INTERPRETER_EXPORTS = (
+    "DeploymentProgram",
+    "DeploymentProgramAuthorizationDenied",
+    "DeploymentProgramError",
+    "DeploymentProgramStateConflict",
+)
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_operations"
 
@@ -130,7 +136,13 @@ class DeploymentProgramCommandTests(unittest.TestCase):
             module.PrepareDeploymentProgram | module.ProgressDeploymentProgram,
         )
         self.assertFalse(hasattr(module, "DeploymentProgramStateConflict"))
-        self.assertFalse(hasattr(operations, "DeploymentProgramStateConflict"))
+        interpreter = importlib.import_module(
+            "control_plane_kit_operations.deployment_program_interpreter"
+        )
+        for name in EXPECTED_INTERPRETER_EXPORTS:
+            with self.subTest(interpreter_export=name):
+                self.assertIs(getattr(operations, name), getattr(interpreter, name))
+                self.assertIn(name, operations.__all__)
 
         values = (
             module.DeploymentProgramReference("workspace-a", "plan-a"),
