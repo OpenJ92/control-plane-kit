@@ -655,14 +655,30 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             self.claim_and_start()
             adapter = RecordingAdapter(
                 self.tracker,
-                ActivityExecutionOutcome.succeeded(evidence),
+                ActivityExecutionOutcome.succeeded(
+                    evidence,
+                    observations=(
+                        ObservationRecord(
+                            "overflow-observation-canary",
+                            "workspace-a",
+                            "overflow-subject-canary",
+                            ObservationStatus.PROCESS_STARTED,
+                            "2026-07-22T13:01:05Z",
+                        ),
+                    ),
+                ),
             )
 
-            result = self.coordinator(adapter).execute(self.command())
+            result = self.coordinator(adapter).execute(self.command(max_effects=2))
 
             self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+            self.assertEqual(result.effects_attempted, 1)
             with self.unit_of_work() as unit_of_work:
                 events = unit_of_work.stores.execution.events_for_run("run-a")
+                observation = unit_of_work.stores.observed_state.latest(
+                    "workspace-a", "overflow-subject-canary"
+                )
+            self.assertIsNone(observation)
             self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
             self.assertEqual(
                 events[-1].failure.code,
@@ -672,6 +688,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 events[-1].evidence.descriptor(),
                 {"claim_generation": 1, "details": {}},
             )
+            self.assertNotIn("overflow", repr(events[-1]))
 
     def test_completed_replay_does_not_repeat_effect(self) -> None:
         with self.unit_of_work() as unit_of_work:

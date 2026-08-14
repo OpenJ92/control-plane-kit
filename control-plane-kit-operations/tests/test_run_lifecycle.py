@@ -852,6 +852,65 @@ class RunLifecycleTests(unittest.TestCase):
         self.assertEqual(self._count("cpk_activity_events"), 2)
         self.assertEqual(self._count("cpk_operation_actions"), 2)
 
+    def test_post_claim_replay_rejects_missing_and_malformed_payload(self) -> None:
+        self.claim()
+        command = StartActivityRun(
+            "run-a",
+            self.authority(),
+            self.fence(),
+            IdempotencyKey("start-a"),
+        )
+        self.service("event-start", "action-start").execute(command)
+        original = self.connection.execute(
+            "SELECT payload FROM cpk_operation_actions "
+            "WHERE action_id = 'action-start'"
+        ).fetchone()[0]
+        malformed = {
+            "execution_request_id": (None, 7, ["request-canary"]),
+            "plan_id": (None, 7, ["plan-canary"]),
+            "run_status": (None, 7, ["status-canary"]),
+            "event_type": (None, 7, ["event-canary"]),
+            "event_ordinal": (None, True, "ordinal-canary", 0),
+            "claim_generation": (None, True, "generation-canary", 0),
+        }
+
+        for field, values in malformed.items():
+            for missing in (True, False):
+                candidates = (None,) if missing else values
+                for value in candidates:
+                    with self.subTest(field=field, missing=missing, value=value):
+                        corrupted = dict(original)
+                        if missing:
+                            corrupted.pop(field)
+                        else:
+                            corrupted[field] = value
+                        self.connection.execute(
+                            "UPDATE cpk_operation_actions SET payload = %s::jsonb "
+                            "WHERE action_id = 'action-start'",
+                            (json.dumps(corrupted),),
+                        )
+                        with self.assertRaises(RunLifecycleError) as captured:
+                            self.service("unused-event", "unused-action").execute(
+                                command
+                            )
+                        self._assert_safe_error(
+                            captured.exception,
+                            "request-canary",
+                            "plan-canary",
+                            "status-canary",
+                            "event-canary",
+                            "ordinal-canary",
+                            "generation-canary",
+                        )
+                        self.connection.execute(
+                            "UPDATE cpk_operation_actions SET payload = %s::jsonb "
+                            "WHERE action_id = 'action-start'",
+                            (json.dumps(original),),
+                        )
+
+        self.assertEqual(self._count("cpk_activity_events"), 2)
+        self.assertEqual(self._count("cpk_operation_actions"), 2)
+
     def test_first_transition_locks_request_before_run(self) -> None:
         self.claim()
         command = StartActivityRun(
@@ -905,25 +964,35 @@ class RunLifecycleTests(unittest.TestCase):
             IdempotencyKey("start-a"),
         )
         self.service("event-start", "action-start").execute(command)
-        blocker = psycopg.connect(self.database_url)
-        blocker.execute(
+        changed_blocker = psycopg.connect(self.database_url)
+        changed_blocker.execute(
             "SELECT request_id FROM cpk_execution_requests "
             "WHERE request_id = 'request-a' FOR UPDATE"
         )
-        blocker_pid = blocker.info.backend_pid
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            changed = executor.submit(
-                self.service("unused-event", "unused-action").execute,
-                StartActivityRun(
-                    "run-a",
-                    self.authority(),
-                    self.fence(generation=2),
-                    IdempotencyKey("start-a"),
-                ),
-            )
-            with self.assertRaises(RunLifecycleIdempotencyConflict):
-                changed.result(timeout=5)
+            try:
+                changed = executor.submit(
+                    self.service("unused-event", "unused-action").execute,
+                    StartActivityRun(
+                        "run-a",
+                        self.authority(),
+                        self.fence(generation=2),
+                        IdempotencyKey("start-a"),
+                    ),
+                )
+                with self.assertRaises(RunLifecycleIdempotencyConflict):
+                    changed.result(timeout=5)
+            finally:
+                changed_blocker.rollback()
+                changed_blocker.close()
+
+        replay_blocker = psycopg.connect(self.database_url)
+        replay_blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = replay_blocker.info.backend_pid
 
         replay_pids: queue.Queue[int] = queue.Queue()
 
@@ -947,11 +1016,11 @@ class RunLifecycleTests(unittest.TestCase):
                         "SELECT run_id FROM cpk_activity_runs "
                         "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
                     )
-                blocker.commit()
+                replay_blocker.commit()
                 replay = future.result(timeout=5)
             finally:
-                blocker.rollback()
-                blocker.close()
+                replay_blocker.rollback()
+                replay_blocker.close()
 
         self.assertTrue(replay.replayed)
 
