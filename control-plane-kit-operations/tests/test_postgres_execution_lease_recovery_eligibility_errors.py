@@ -60,21 +60,71 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
                 "compensation-completed",
             ),
             (RecoveryDecisionKind.RENEW_EXPIRED_CLAIM, "foreign-step"),
+            (RecoveryDecisionKind.RENEW_EXPIRED_CLAIM, "duplicate-start"),
         )
-        for decision, history in rejected:
-            with self.subTest(rejected=history):
-                self.reset_truth(decision, history=history)
-                before = self.snapshot()
-                service, sequence = self.service_with_sequence(
-                    "unused-a", "unused-b", "unused-c"
-                )
-                with self.assertRaises(RunLifecycleConflict) as captured:
-                    service.execute(
-                        self.command(decision, key=f"reject-{history}")
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("invalid journal sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            for decision, history in rejected:
+                with self.subTest(rejected=history):
+                    self.reset_truth(decision, history=history)
+                    before = self.snapshot()
+                    service, sequence = self.service_with_sequence(
+                        "unused-a", "unused-b", "unused-c"
                     )
-                self.assertEqual(sequence.calls, [])
-                safe_error(self, captured.exception, "foreign-step-canary")
-                self.assertEqual(self.snapshot(), before)
+                    with self.assertRaises(RunLifecycleConflict) as captured:
+                        service.execute(
+                            self.command(decision, key=f"reject-{history}")
+                        )
+                    self.assertEqual(sequence.calls, [])
+                    safe_error(
+                        self,
+                        captured.exception,
+                        "foreign-step-canary",
+                        "seed-event-4",
+                    )
+                    self.assertEqual(self.snapshot(), before)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = (
+                original_observe
+            )
+
+    def test_malformed_persisted_journal_is_categorical_before_clock_or_ids(
+        self,
+    ) -> None:
+        self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+        self.connection.execute(
+            "UPDATE cpk_activity_events SET payload = "
+            "jsonb_set(payload, '{evidence}', '"
+            + '"journal-event-canary"'
+            + "'::jsonb) WHERE event_id = 'seed-event-3'"
+        )
+        before = self.snapshot()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("malformed journal sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        service, sequence = self.service_with_sequence(
+            "unused-a", "unused-b", "unused-c"
+        )
+        try:
+            with self.assertRaises(RunLifecycleConflict) as captured:
+                service.execute(
+                    self.command(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+                )
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = (
+                original_observe
+            )
+        self.assertEqual(sequence.calls, [])
+        safe_error(self, captured.exception, "journal-event-canary")
+        self.assertEqual(self.snapshot(), before)
 
     def test_request_run_expiry_fence_and_generation_matrix_is_exact(self) -> None:
         cases = (

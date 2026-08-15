@@ -234,6 +234,139 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 self.assertEqual(replay, dataclasses.replace(first, replayed=True))
                 self.assertEqual(self.snapshot(), snapshot)
 
+    def test_replay_requires_durable_semantics_to_equal_submitted_command(
+        self,
+    ) -> None:
+        mutations = {
+            "duration": lambda: self.connection.execute(
+                "UPDATE cpk_operation_actions SET payload = "
+                "jsonb_set(payload, '{lease_duration_seconds}', '601'::jsonb) "
+                "WHERE action_id = 'action-a'"
+            ),
+            "coherent-takeover": self.rewrite_recovery_as_takeover,
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+                command = self.command(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+                self.service("decision-a", "consequence-a", "action-a").execute(
+                    command
+                )
+                mutate()
+                before = self.snapshot()
+                original_observe = (
+                    PostgresExecutionStore.observe_request_lease_for_update
+                )
+
+                def fail_observe(*_args, **_kwargs):
+                    raise AssertionError("semantic drift replay sampled database time")
+
+                PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+                try:
+                    with self.assertRaises(RunLifecycleConflict) as captured:
+                        ExecutionLeaseRecoveryCommandService(
+                            self.unit_of_work,
+                            id_factory=lambda: (_ for _ in ()).throw(
+                                AssertionError(
+                                    "semantic drift replay allocated identity"
+                                )
+                            ),
+                        ).execute(command)
+                finally:
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
+                    )
+                safe_error(self, captured.exception, "worker-b")
+                self.assertEqual(self.snapshot(), before)
+
+    def test_malformed_replay_event_is_categorical_without_clock_or_ids(
+        self,
+    ) -> None:
+        self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+        command = self.command(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+        self.service("decision-a", "consequence-a", "action-a").execute(command)
+        self.connection.execute(
+            "UPDATE cpk_activity_events SET payload = "
+            "jsonb_set(payload, '{evidence}', '"
+            + '"replay-event-canary"'
+            + "'::jsonb) WHERE event_id = 'decision-a'"
+        )
+        before = self.snapshot()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("malformed replay sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            with self.assertRaises(RunLifecycleConflict) as captured:
+                ExecutionLeaseRecoveryCommandService(
+                    self.unit_of_work,
+                    id_factory=lambda: (_ for _ in ()).throw(
+                        AssertionError("malformed replay allocated identity")
+                    ),
+                ).execute(command)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = (
+                original_observe
+            )
+        safe_error(self, captured.exception, "replay-event-canary")
+        self.assertEqual(self.snapshot(), before)
+
+    def rewrite_recovery_as_takeover(self) -> None:
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_worker_id = 'worker-b' "
+            "WHERE request_id = 'request-a'"
+        )
+        self.connection.execute(
+            """
+            UPDATE cpk_activity_events
+            SET payload = jsonb_set(
+                    jsonb_set(
+                        payload,
+                        '{recovery,decision}',
+                        %s::jsonb
+                    ),
+                    '{recovery,replacement_fence,worker_id}',
+                    %s::jsonb
+                )
+            WHERE event_id = 'decision-a'
+            """,
+            (
+                json.dumps(RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM.value),
+                json.dumps("worker-b"),
+            ),
+        )
+        self.connection.execute(
+            "UPDATE cpk_activity_events SET event_type = %s "
+            "WHERE event_id = 'consequence-a'",
+            (ActivityEventKind.REQUEST_CLAIM_TAKEN_OVER.value,),
+        )
+        self.connection.execute(
+            """
+            UPDATE cpk_operation_actions
+            SET payload = jsonb_set(
+                    jsonb_set(
+                        jsonb_set(
+                            payload,
+                            '{recovery,decision}',
+                            %s::jsonb
+                        ),
+                        '{recovery,replacement_fence,worker_id}',
+                        %s::jsonb
+                    ),
+                    '{consequence_event_kind}',
+                    %s::jsonb
+                )
+            WHERE action_id = 'action-a'
+            """,
+            (
+                json.dumps(RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM.value),
+                json.dumps("worker-b"),
+                json.dumps(ActivityEventKind.REQUEST_CLAIM_TAKEN_OVER.value),
+            ),
+        )
+
     def test_changed_intent_conflicts_before_request_and_run_locks(self) -> None:
         self.require_service()
         self.seed_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)

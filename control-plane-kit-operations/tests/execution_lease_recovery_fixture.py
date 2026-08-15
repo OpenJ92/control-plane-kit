@@ -477,6 +477,14 @@ class PostgresExecutionLeaseRecoveryFixture(unittest.TestCase):
                 (ActivityEventKind.STEP_FAILED, "start-runtime"),
                 (ActivityEventKind.RUN_FAILED, None),
             ),
+            "duplicate-start": (
+                (ActivityEventKind.RUN_OPENED, None),
+                (ActivityEventKind.RUN_STARTED, None),
+                (ActivityEventKind.STEP_STARTED, "start-runtime"),
+                (ActivityEventKind.STEP_STARTED, "start-runtime"),
+                (ActivityEventKind.STEP_FAILED, "start-runtime"),
+                (ActivityEventKind.RUN_FAILED, None),
+            ),
             "resolved-forward-failure": (
                 (ActivityEventKind.RUN_OPENED, None),
                 (ActivityEventKind.RUN_STARTED, None),
