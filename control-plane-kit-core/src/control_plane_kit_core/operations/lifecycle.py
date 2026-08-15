@@ -340,11 +340,11 @@ class RecoveryDecisionContract:
             raise InvalidExecutionLifecycleContract(
                 "recovery decision cannot require both expired and unexpired claim"
             )
-        claim_requirement = _CLAIM_RECOVERY_REQUIREMENT_BY_KIND.get(self.kind)
+        claim_requirement = _CLAIM_AUTHORITY_REQUIREMENT_BY_KIND.get(self.kind)
         if claim_requirement is None:
             if self.requires_expired_claim or self.requires_unexpired_claim:
                 raise InvalidExecutionLifecycleContract(
-                    "only claim recovery decisions may require claim expiry state"
+                    "only claim-authority decisions may require claim expiry state"
                 )
         elif (
             self.allowed_run_statuses,
@@ -352,7 +352,7 @@ class RecoveryDecisionContract:
             self.requires_expired_claim,
         ) != claim_requirement:
             raise InvalidExecutionLifecycleContract(
-                "claim recovery decision has invalid status or expiry requirement"
+                "claim-authority decision has invalid status or expiry requirement"
             )
 
     def descriptor(self) -> dict[str, object]:
@@ -910,7 +910,12 @@ _RECOVERY_SCOPE_BY_KIND = {
     RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM: RecoveryScope.ABANDON_CLAIM,
 }
 
-_CLAIM_RECOVERY_REQUIREMENT_BY_KIND = {
+_CLAIM_AUTHORITY_REQUIREMENT_BY_KIND = {
+    RecoveryDecisionKind.RETRY_AS_NEW_RUN: (
+        (ActivityRunStatus.FAILED,),
+        True,
+        False,
+    ),
     RecoveryDecisionKind.RENEW_ACTIVE_CLAIM: (
         (ActivityRunStatus.CLAIMED,),
         True,
@@ -958,6 +963,7 @@ def _canonical_recovery_decisions() -> tuple[RecoveryDecisionContract, ...]:
         RecoveryScope.OPERATE,
         (ActivityRunStatus.FAILED,),
         requires_no_uncertainty=True,
+        requires_unexpired_claim=True,
     ),
     RecoveryDecisionContract(
         RecoveryDecisionKind.BEGIN_COMPENSATION,
