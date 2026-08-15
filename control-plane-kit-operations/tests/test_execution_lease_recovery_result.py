@@ -407,6 +407,35 @@ class ExecutionLeaseRecoveryResultTests(unittest.TestCase):
             with self.subTest(decision=result.decision_event.recovery.decision_kind):
                 self.assert_result_rejected(result, retained_run=expired_as_claimed)
 
+    def test_result_categorically_rejects_retry_evidence(self) -> None:
+        valid = self.result(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+        prior_fence = valid.decision_event.recovery.prior_fence
+        retry_evidence = ExecutionLeaseRecoveryEvidence(
+            RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+            RunId(valid.retained_run.run_id),
+            prior_fence,
+            prior_fence,
+        )
+        retry_event = dataclasses.replace(
+            valid.decision_event,
+            recovery=retry_evidence,
+        )
+
+        with self.assertRaises(OperationsRecordError) as captured:
+            ExecutionLeaseRecoveryResult(
+                valid.request,
+                valid.retained_run,
+                retry_event,
+                valid.consequence_event,
+                valid.action,
+            )
+
+        self.assertEqual(
+            str(captured.exception),
+            "recovery result decision kind is invalid",
+        )
+        self.assert_safe_error(captured.exception)
+
 
 if __name__ == "__main__":
     unittest.main()

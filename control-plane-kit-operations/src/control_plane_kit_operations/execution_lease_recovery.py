@@ -308,6 +308,8 @@ def _validate_result_decision(result: ExecutionLeaseRecoveryResult) -> None:
         or decision_event.evidence != BoundedEvidence()
     ):
         raise OperationsRecordError("recovery decision event is incongruent")
+    if recovery.decision_kind not in _CONSEQUENCE_KINDS:
+        raise OperationsRecordError("recovery result decision kind is invalid")
     if (
         consequence_event.kind is not _CONSEQUENCE_KINDS[recovery.decision_kind]
         or consequence_event.failure is not None

@@ -210,6 +210,65 @@ class ExecutionLeaseRecoveryReadProjectionTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, rendered)
 
+    def test_retry_evidence_is_exact_in_event_and_read_service_projection(
+        self,
+    ) -> None:
+        fence = ExecutionLeaseFence("worker-a", 7)
+        retry = ActivityEventRecord(
+            "event-retry",
+            "run-a",
+            2,
+            ActivityEventKind.RECOVERY_DECISION_RECORDED,
+            "2026-08-15T04:01:00Z",
+            recovery=ExecutionLeaseRecoveryEvidence(
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RunId("run-a"),
+                fence,
+                fence,
+            ),
+        )
+        expected = {
+            "decision": "retry-as-new-run",
+            "retained_run_id": "run-a",
+            "prior_fence": {"worker_id": "worker-a", "generation": 7},
+            "replacement_fence": {
+                "worker_id": "worker-a",
+                "generation": 7,
+            },
+        }
+
+        event_descriptor = public_event_descriptor(retry)
+        self.assertEqual(event_descriptor["recovery"], expected)
+
+        request = ReadPageRequest(
+            ReadCollection.RUN_EVENTS,
+            RunReadScope("workspace-a", "run-a"),
+            10,
+        )
+        page = InstanceReadService(
+            workspace_store=_WorkspaceStore(),
+            graph_topology_store=object(),
+            execution_store=_ExecutionStore(retry),
+        ).run_events(request)
+        self.assertEqual(page.request, request)
+        self.assertEqual(page.items[0]["recovery"], expected)
+
+        rendered = json.dumps(
+            {"event": event_descriptor, "page": page.items},
+            sort_keys=True,
+        )
+        for forbidden in (
+            "authority_reference",
+            "scopes",
+            "claimed_at",
+            "lease_expires_at",
+            "idempotency",
+            "fingerprint",
+            "secret",
+            "endpoint",
+        ):
+            self.assertNotIn(forbidden, rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

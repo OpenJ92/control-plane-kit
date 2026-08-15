@@ -604,8 +604,14 @@ class RetryIdentity:
     prior_run_id: str | None = None
 
     def __post_init__(self) -> None:
-        if type(self.attempt) is not int or self.attempt < 1:
-            raise OperationsRecordError("retry attempt must be a positive integer")
+        if (
+            type(self.attempt) is not int
+            or self.attempt < 1
+            or self.attempt > 2_147_483_647
+        ):
+            raise OperationsRecordError(
+                "retry attempt must be an integer from 1 through 2147483647"
+            )
         if self.attempt == 1 and self.prior_run_id is not None:
             raise OperationsRecordError("first attempt cannot reference a prior run")
         if self.attempt > 1:
@@ -686,8 +692,9 @@ class FailureEvidence:
             raise OperationsRecordError("failure details must be BoundedEvidence")
 
 
-_CLAIM_RECOVERY_DECISIONS = frozenset(
+_RECOVERY_DECISIONS = frozenset(
     {
+        RecoveryDecisionKind.RETRY_AS_NEW_RUN,
         RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
         RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
         RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
@@ -698,7 +705,7 @@ _CLAIM_RECOVERY_DECISIONS = frozenset(
 
 @dataclass(frozen=True)
 class ExecutionLeaseRecoveryEvidence:
-    """Bounded durable evidence for one accepted claim-recovery decision."""
+    """Bounded durable evidence for one accepted recovery decision."""
 
     decision_kind: RecoveryDecisionKind
     retained_run_id: RunId
@@ -708,7 +715,7 @@ class ExecutionLeaseRecoveryEvidence:
     def __post_init__(self) -> None:
         if (
             type(self.decision_kind) is not RecoveryDecisionKind
-            or self.decision_kind not in _CLAIM_RECOVERY_DECISIONS
+            or self.decision_kind not in _RECOVERY_DECISIONS
         ):
             raise OperationsRecordError("recovery decision kind is invalid")
         if type(self.retained_run_id) is not RunId:
@@ -723,6 +730,12 @@ class ExecutionLeaseRecoveryEvidence:
 
     def _validate_fence_transition(self) -> None:
         replacement = self.replacement_fence
+        if self.decision_kind is RecoveryDecisionKind.RETRY_AS_NEW_RUN:
+            if replacement is None or replacement != self.prior_fence:
+                raise OperationsRecordError(
+                    "retry recovery fence transition is invalid"
+                )
+            return
         if self.decision_kind is RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM:
             if replacement is not None:
                 raise OperationsRecordError(

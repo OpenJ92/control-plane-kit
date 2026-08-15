@@ -499,6 +499,10 @@ from .execution_lease_recovery import (
     RenewExpiredExecutionClaim,
     TakeOverExpiredExecutionClaim,
 )
+from .activity_run_retry import (
+    ActivityRunRetryResult,
+    RetryFailedActivityRun,
+)
 from .execution_lease_recovery_interpreter import (
     ExecutionLeaseRecoveryCommandService,
 )
@@ -627,6 +631,7 @@ __all__ = [
     "ActivityPlanningSessionConflict",
     "ActivityPlanningWorkspaceNotFound",
     "ActivityRunRecord",
+    "ActivityRunRetryResult",
     "AdvanceCurrentGraph",
     "AdmittedRun",
     "ApprovalAuthorizationDenied",
@@ -922,6 +927,7 @@ __all__ = [
     "RecordOperationAction",
     "ReadModelError",
     "RetryIdentity",
+    "RetryFailedActivityRun",
     "RequestApproval",
     "RequestGatewayKeyRotationApproval",
     "RequestActivityPlan",
