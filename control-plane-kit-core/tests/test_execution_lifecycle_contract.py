@@ -247,7 +247,7 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
             decision,
         )
 
-    def test_claim_recovery_predicates_are_explicit_and_exact(self) -> None:
+    def test_claim_authority_predicates_are_explicit_and_exact(self) -> None:
         contract = canonical_execution_lifecycle_contract_set()
         claim_matrix = {
             RecoveryDecisionKind.RETRY_AS_NEW_RUN: (
@@ -295,7 +295,7 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                     decision.descriptor()["requires_unexpired_claim"], expected[1]
                 )
 
-    def test_claim_recovery_contract_rejects_incongruent_direct_values(self) -> None:
+    def test_claim_authority_contract_rejects_incongruent_direct_values(self) -> None:
         cases = (
             (
                 RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
@@ -378,6 +378,13 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                 RecoveryDecisionKind.RETRY_AS_NEW_RUN,
                 RecoveryScope.OPERATE,
                 (ActivityRunStatus.FAILED,),
+                False,
+                True,
+            ),
+            (
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.FAILED,),
                 True,
                 True,
             ),
@@ -401,7 +408,7 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                         requires_expired_claim=expired,
                     )
 
-    def test_claim_recovery_descriptor_requires_exact_predicate_matrix(self) -> None:
+    def test_claim_authority_descriptor_requires_exact_predicate_matrix(self) -> None:
         contract = canonical_execution_lifecycle_contract_set()
         active = contract.recovery_decision(
             RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
