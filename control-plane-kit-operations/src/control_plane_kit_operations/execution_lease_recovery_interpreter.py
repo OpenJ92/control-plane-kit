@@ -411,7 +411,7 @@ def _require_journal(
         != tuple(range(1, len(events) + 1))
     ):
         raise RunLifecycleConflict("retained run journal is invalid")
-    base_events = _journal_before_recovery_suffix(
+    base_events = _journal_without_recovery_pairs(
         events,
         command.expected_fence,
     )
@@ -454,39 +454,53 @@ def _require_journal(
         raise RunLifecycleConflict("retained run effect failure is unresolved")
 
 
-def _journal_before_recovery_suffix(
+def _journal_without_recovery_pairs(
     events: tuple[ActivityEventRecord, ...],
     expected_fence: ExecutionLeaseFence,
 ) -> tuple[ActivityEventRecord, ...] | None:
-    first_recovery = next(
-        (
-            index
-            for index, event in enumerate(events)
-            if event.kind in _RECOVERY_EVENT_KINDS
-        ),
-        None,
-    )
-    if first_recovery is None:
-        return events
-
-    base_events = events[:first_recovery]
-    recovery_events = events[first_recovery:]
-    if len(recovery_events) % 2:
-        return None
-    expected_ordinal = base_events[-1].ordinal + 1 if base_events else 1
+    base_events: list[ActivityEventRecord] = []
     has_prior_recovery = False
     prior_replacement: ExecutionLeaseFence | None = None
-    for index in range(0, len(recovery_events), 2):
-        decision = recovery_events[index]
-        consequence = recovery_events[index + 1]
+    run_opened = False
+    run_started = False
+    run_failed = False
+    index = 0
+    while index < len(events):
+        decision = events[index]
+        if decision.kind is not ActivityEventKind.RECOVERY_DECISION_RECORDED:
+            if decision.kind in _RECOVERY_EVENT_KINDS:
+                return None
+            base_events.append(decision)
+            run_opened = (
+                run_opened or decision.kind is ActivityEventKind.RUN_OPENED
+            )
+            run_started = (
+                run_started or decision.kind is ActivityEventKind.RUN_STARTED
+            )
+            run_failed = (
+                run_failed or decision.kind is ActivityEventKind.RUN_FAILED
+            )
+            index += 1
+            continue
+        if index + 1 >= len(events):
+            return None
+        consequence = events[index + 1]
         recovery = decision.recovery
         if (
-            decision.kind is not ActivityEventKind.RECOVERY_DECISION_RECORDED
-            or recovery is None
-            or decision.ordinal != expected_ordinal
+            recovery is None
             or (
                 has_prior_recovery
                 and recovery.prior_fence != prior_replacement
+            )
+            or (
+                recovery.decision_kind
+                is RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+                and (not run_opened or run_started or run_failed)
+            )
+            or (
+                recovery.decision_kind
+                is not RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+                and (not run_opened or not run_started or not run_failed)
             )
             or consequence.kind is not _CONSEQUENCE_KIND[recovery.decision_kind]
             or consequence.ordinal != decision.ordinal + 1
@@ -495,12 +509,12 @@ def _journal_before_recovery_suffix(
             or consequence.failure is not None
         ):
             return None
-        expected_ordinal += 2
         has_prior_recovery = True
         prior_replacement = recovery.replacement_fence
-    if prior_replacement != expected_fence:
+        index += 2
+    if has_prior_recovery and prior_replacement != expected_fence:
         return None
-    return base_events
+    return tuple(base_events)
 
 
 def _require_replay_command(
