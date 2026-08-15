@@ -625,13 +625,13 @@ def _optional_text(value: object, field: str) -> str | None:
 def _bounded_text(value: object, field: str) -> None:
     valid = (
         isinstance(value, str)
-        and bool(value.strip())
-        and len(value) <= _MAX_PUBLIC_TEXT_LENGTH
-        and "\x00" not in value
+        and bool(str.strip(value))
+        and str.__len__(value) <= _MAX_PUBLIC_TEXT_LENGTH
+        and not str.__contains__(value, "\x00")
     )
     if valid:
         try:
-            value.encode("utf-8")
+            str.encode(value, "utf-8")
         except UnicodeEncodeError:
             valid = False
     if not valid:
