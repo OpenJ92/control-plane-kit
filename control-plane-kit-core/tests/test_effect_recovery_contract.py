@@ -220,6 +220,19 @@ class EffectRecoveryContractTests(unittest.TestCase):
                 )
 
     def test_worker_and_recovery_decision_ids_are_postgres_text_safe(self) -> None:
+        class HostileStr(str):
+            def strip(self, *args, **kwargs):
+                return "apparently-safe"
+
+            def __len__(self):
+                return 1
+
+            def __contains__(self, value):
+                return False
+
+            def encode(self, *args, **kwargs):
+                return b"apparently-safe"
+
         unicode_identifier = "\U0001f642" * 256
         fence = EffectAttemptFence(unicode_identifier, 1)
         decision = EffectRecoveryDecision(
@@ -262,6 +275,10 @@ class EffectRecoveryContractTests(unittest.TestCase):
             ("leading-low-canary", "\udc00-leading-low-canary"),
             ("interior-low-canary", "worker-\udc00-interior-low-canary"),
             ("trailing-low-canary", "trailing-low-canary-\udc00"),
+            (
+                "hostile-subclass-canary",
+                HostileStr("worker-\ud800-hostile-subclass-canary"),
+            ),
         )
         for canary, candidate in candidates:
             cases = (
