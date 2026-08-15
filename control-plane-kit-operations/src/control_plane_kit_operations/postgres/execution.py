@@ -11,8 +11,10 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityRunStatus,
     ExecutionRequestStatus,
     FailureCategory,
+    RecoveryDecisionKind,
 )
 from control_plane_kit_core.operations import RunId
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_cursor_timestamp,
@@ -36,6 +38,7 @@ from control_plane_kit_operations.records import (
     BoundedEvidence,
     ClaimIdentity,
     ExecutionIdempotency,
+    ExecutionLeaseRecoveryEvidence,
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     FailureEvidence,
@@ -427,7 +430,11 @@ class PostgresExecutionStore:
                 "message": record.failure.message,
                 "details": record.failure.details.descriptor(),
             },
-            "recovery": None,
+            "recovery": (
+                None
+                if record.recovery is None
+                else record.recovery.descriptor()
+            ),
         }
         self._connection.execute(
             """
@@ -588,9 +595,6 @@ def _activity_event(row: tuple[Any, ...]) -> ActivityEventRecord:
     evidence = payload.get("evidence", {})
     if not isinstance(evidence, dict):
         raise ValueError("persisted activity event evidence must be an object")
-    recovery = payload.get("recovery")
-    if recovery is not None:
-        raise ValueError("recovery event payloads belong to recovery extraction")
     return ActivityEventRecord(
         event_id=row[0],
         run_id=row[1],
@@ -600,6 +604,57 @@ def _activity_event(row: tuple[Any, ...]) -> ActivityEventRecord:
         activity_id=payload.get("activity_id"),
         evidence=BoundedEvidence.from_mapping(evidence),
         failure=_failure_evidence(payload.get("failure")),
+        recovery=_recovery_evidence(payload.get("recovery")),
+    )
+
+
+_RECOVERY_EVIDENCE_KEYS = frozenset(
+    {
+        "decision",
+        "retained_run_id",
+        "prior_fence",
+        "replacement_fence",
+    }
+)
+_RECOVERY_FENCE_KEYS = frozenset({"worker_id", "generation"})
+
+
+def _recovery_evidence(
+    value: object,
+) -> ExecutionLeaseRecoveryEvidence | None:
+    if value is None:
+        return None
+    malformed = False
+    decoded = None
+    try:
+        if type(value) is not dict or frozenset(value) != _RECOVERY_EVIDENCE_KEYS:
+            raise ValueError("recovery evidence shape is invalid")
+        replacement_value = value["replacement_fence"]
+        decoded = ExecutionLeaseRecoveryEvidence(
+            decision_kind=RecoveryDecisionKind(value["decision"]),
+            retained_run_id=RunId(value["retained_run_id"]),
+            prior_fence=_recovery_fence(value["prior_fence"]),
+            replacement_fence=(
+                None
+                if replacement_value is None
+                else _recovery_fence(replacement_value)
+            ),
+        )
+    except (KeyError, TypeError, ValueError):
+        malformed = True
+    if malformed or decoded is None:
+        raise OperationsRecordError(
+            "persisted recovery evidence is malformed"
+        ) from None
+    return decoded
+
+
+def _recovery_fence(value: object) -> ExecutionLeaseFence:
+    if type(value) is not dict or frozenset(value) != _RECOVERY_FENCE_KEYS:
+        raise ValueError("recovery fence shape is invalid")
+    return ExecutionLeaseFence(
+        worker_id=value["worker_id"],
+        generation=value["generation"],
     )
 
 
