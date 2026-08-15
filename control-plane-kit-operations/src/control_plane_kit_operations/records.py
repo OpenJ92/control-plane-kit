@@ -24,6 +24,7 @@ from control_plane_kit_core.operations.lifecycle import (
     LifecycleOperationKind,
     RecoveryDecisionKind,
     activity_event_scope,
+    canonical_execution_lifecycle_contract_set,
 )
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, RiskLevel
@@ -41,6 +42,13 @@ from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 
 class OperationsRecordError(ValueError):
     """Raised when a durable operations record is malformed."""
+
+
+_EVENT_KINDS_PERMITTING_FAILURE = frozenset(
+    event.kind
+    for event in canonical_execution_lifecycle_contract_set().events
+    if event.may_carry_failure
+)
 
 
 class OperationSessionStatus(StrEnum):
@@ -906,6 +914,13 @@ class ActivityEventRecord:
         elif self.recovery is not None:
             raise OperationsRecordError(
                 "only a recovery decision event may carry recovery evidence"
+            )
+        elif (
+            self.failure is not None
+            and self.kind not in _EVENT_KINDS_PERMITTING_FAILURE
+        ):
+            raise OperationsRecordError(
+                "event kind does not permit failure evidence"
             )
         if activity_event_scope(self.kind) is ActivityEventScope.ACTIVITY:
             if self.activity_id is None:

@@ -107,10 +107,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "cf83d532e312c74f37b53df18f1984e8345da6a92f61fda9201903c1c2979ee4"
+    "cd2abc48b0f556e75a6acce79eca87e212c16574baed0cd870c8ac381fc71e30"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "f307faba937c03570ecefb9351a4b73cd65acde883bf97a92b6008e5b787f6fc"
+    "773c453c5df9d887c151bc9119a4fd4ebcc7f1b06d29c542f94d523c76f5450d"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -415,6 +415,31 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
             current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT_SHA256,
             hashlib.sha256(payload).hexdigest(),
         )
+
+    def test_current_contract_contains_exact_uncertainty_abandonment_events(
+        self,
+    ) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import schema
+
+        constraints = {
+            value.name: value.check_expression
+            for value in current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints
+        }
+        for event_type in (
+            "step_uncertainty_abandoned",
+            "step_compensation_uncertainty_abandoned",
+        ):
+            with self.subTest(event_type=event_type):
+                self.assertIn(
+                    event_type,
+                    constraints["cpk_activity_events_kind_check"],
+                )
+                self.assertIn(
+                    event_type,
+                    constraints["cpk_activity_events_shape_check"],
+                )
+                self.assertEqual(schema._CURRENT_SCHEMA_SQL.count(event_type), 2)
 
     def test_direct_schema_program_is_unconditional_and_nonhistorical(self) -> None:
         from control_plane_kit_operations.postgres import schema

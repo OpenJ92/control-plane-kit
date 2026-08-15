@@ -121,6 +121,30 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                 descriptor
             )
 
+    def test_uncertainty_abandonment_events_are_activity_scoped_nonfailure_truth(
+        self,
+    ) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+
+        for name, value in (
+            ("STEP_UNCERTAINTY_ABANDONED", "step_uncertainty_abandoned"),
+            (
+                "STEP_COMPENSATION_UNCERTAINTY_ABANDONED",
+                "step_compensation_uncertainty_abandoned",
+            ),
+        ):
+            with self.subTest(name=name):
+                kind = getattr(ActivityEventKind, name)
+                event = contract.event(kind)
+                self.assertEqual(kind.value, value)
+                self.assertIs(event.scope, ActivityEventScope.ACTIVITY)
+                self.assertFalse(event.may_carry_failure)
+                self.assertFalse(event.may_carry_recovery)
+                self.assertEqual(
+                    type(event).from_descriptor(event.descriptor()),
+                    event,
+                )
+
     def test_run_timing_and_transition_domains_match_frozen_lifecycle_algebra(self) -> None:
         contract = canonical_execution_lifecycle_contract_set()
         timing = {

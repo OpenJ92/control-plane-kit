@@ -10,7 +10,6 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
     ExecutionRequestStatus,
-    FailureCategory,
     LifecycleOperationKind,
     RecoveryDecisionKind,
 )
@@ -25,7 +24,6 @@ from control_plane_kit_operations.records import (
     ExecutionIdempotency,
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
-    FailureEvidence,
     OperationActionRecord,
     OperationsRecordError,
     RetryIdentity,
@@ -305,7 +303,6 @@ class ExecutionLeaseRecoveryResultTests(unittest.TestCase):
             {"consequence_event": dataclasses.replace(valid.consequence_event, occurred_at="later")},
             {"consequence_event": dataclasses.replace(valid.consequence_event, kind=ActivityEventKind.REQUEST_CLAIM_TAKEN_OVER)},
             {"consequence_event": dataclasses.replace(valid.consequence_event, evidence=BoundedEvidence.from_mapping({"canary": True}))},
-            {"consequence_event": dataclasses.replace(valid.consequence_event, failure=FailureEvidence(FailureCategory.TERMINAL, "code", "message"))},
             {"action": dataclasses.replace(valid.action, session_id="other")},
             {"action": dataclasses.replace(valid.action, action_type=LifecycleOperationKind.START_RUN)},
             {"action": dataclasses.replace(valid.action, created_at="later")},
