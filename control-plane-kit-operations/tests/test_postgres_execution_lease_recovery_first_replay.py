@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import json
 import os
+import queue
+import time
 import unittest
 from pathlib import Path
+
+import psycopg
 
 import control_plane_kit_operations as operations_root
 from control_plane_kit_core.operations import RunId
@@ -39,6 +44,7 @@ from control_plane_kit_operations.postgres import (
     GatewayKeyRotationStore,
     PostgresActivityHistoryStore,
     PostgresExecutionStore,
+    PostgresUnitOfWork,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -92,6 +98,30 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
     PostgresExecutionLeaseRecoveryFixture,
     unittest.TestCase,
 ):
+    def wait_until_blocked_by(
+        self,
+        worker_pid: int,
+        blocker_pid: int,
+    ) -> None:
+        deadline = time.monotonic() + 5
+        while True:
+            blocked_by = self.connection.execute(
+                "SELECT pg_blocking_pids(%s)",
+                (worker_pid,),
+            ).fetchone()[0]
+            if blocker_pid in blocked_by:
+                return
+            if time.monotonic() >= deadline:
+                self.fail("historical replay did not reach the run-b lock")
+
+    def reporting_connection_factory(self, pids: queue.Queue[int]):
+        def factory():
+            connection = psycopg.connect(self.database_url)
+            pids.put(connection.info.backend_pid)
+            return connection
+
+        return factory
+
     def test_predecessor_delegates_approval_and_journal_to_shared_support(
         self,
     ) -> None:
@@ -869,6 +899,63 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         self.assertEqual(second.run.run_id, "run-c")
         self.assertEqual(fence, replay.request.claim.fence)
         self.assertEqual(self.snapshot(), before)
+
+    def test_two_retry_replay_locks_successors_in_chain_order(self) -> None:
+        command, _fence, _first, _second = (
+            self.active_recovery_with_two_linked_retries()
+        )
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT run_id FROM cpk_activity_runs "
+            "WHERE run_id = 'run-b' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        pids: queue.Queue[int] = queue.Queue()
+        service = ExecutionLeaseRecoveryCommandService(
+            lambda: PostgresUnitOfWork(
+                self.reporting_connection_factory(pids)
+            ),
+            id_factory=lambda: (_ for _ in ()).throw(
+                AssertionError("ordered replay allocated identity")
+            ),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(service.execute, command)
+            try:
+                worker_pid = pids.get(timeout=5)
+                self.wait_until_blocked_by(worker_pid, blocker_pid)
+                with psycopg.connect(self.database_url) as probe:
+                    row = probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-c' FOR UPDATE NOWAIT"
+                    ).fetchone()
+                    self.assertEqual(row, ("run-c",))
+                for table, column, value in (
+                    ("cpk_execution_requests", "request_id", "request-a"),
+                    ("cpk_activity_runs", "run_id", "run-a"),
+                ):
+                    with self.subTest(held=f"{table}.{column}"):
+                        probe = psycopg.connect(self.database_url)
+                        try:
+                            with self.assertRaises(
+                                psycopg.errors.LockNotAvailable
+                            ):
+                                probe.execute(
+                                    f"SELECT {column} FROM {table} "
+                                    f"WHERE {column} = %s FOR UPDATE NOWAIT",
+                                    (value,),
+                                )
+                        finally:
+                            probe.rollback()
+                            probe.close()
+                blocker.commit()
+                replay = future.result(timeout=10)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.retained_run.run_id, "run-a")
 
     def test_replay_rejects_broken_retry_successor_chain(self) -> None:
         mutations = {
