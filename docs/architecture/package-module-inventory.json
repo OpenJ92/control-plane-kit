@@ -9302,6 +9302,7 @@
         "control_plane_kit_operations.records"
       ],
       "known_package_consumers": [
+        "control_plane_kit_operations.activity_run_retry_interpreter",
         "control_plane_kit_operations.execution_lease_recovery_interpreter"
       ],
       "migration_prerequisites": [],
@@ -9319,6 +9320,41 @@
         "transformations"
       ],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_execution_lease_recovery_support.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ActivityRunRetryCommandService"
+      ],
+      "destination": "control_plane_kit_operations.activity_run_retry_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_operations._execution_lease_recovery_support",
+        "control_plane_kit_operations.activity_run_retry",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.activity_run_retry_interpreter",
+      "motivation": "Interprets one admitted failed-run retry as one atomic linked run, event, and action transaction with exact replay.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_activity_run_retry_interpreter_contract.py",
+        "tests/test_postgres_activity_run_retry_concurrency.py",
+        "tests/test_postgres_activity_run_retry_eligibility_rollback.py",
+        "tests/test_postgres_activity_run_retry_first_replay.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry_interpreter.py"
     },
     {
       "canonical_public_exports": [

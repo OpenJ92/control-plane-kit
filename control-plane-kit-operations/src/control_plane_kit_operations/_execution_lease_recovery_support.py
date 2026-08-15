@@ -146,7 +146,10 @@ def require_recovery_eligible_journal(
         ):
             raise RunLifecycleConflict("active retained run has effect history")
         return
-    if decision_kind not in _CONSEQUENCE_KIND or lifecycle_kinds != (
+    if decision_kind not in {
+        *_CONSEQUENCE_KIND,
+        RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+    } or lifecycle_kinds != (
         ActivityEventKind.RUN_OPENED,
         ActivityEventKind.RUN_STARTED,
         ActivityEventKind.RUN_FAILED,
