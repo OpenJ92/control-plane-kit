@@ -31,6 +31,7 @@ from control_plane_kit_operations.gateway_key_rotation_retirement_execution impo
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotationDeployment,
     AdvanceGatewayKeyRotation,
+    GatewayKeyRotationConflict,
     GatewayKeyRotationDeploymentHandoff,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
@@ -423,6 +424,71 @@ class GatewayKeyRotationRetirementExecutionTests(
         with self.assertRaises(GatewayKeyRotationRetirementExecutionConflict):
             self.execution_program(adapter).progress(self.execution_command())
         self.assertEqual(adapter.calls, [])
+
+    def test_accepted_fold_without_graph_advancement_evidence_is_rejected(
+        self,
+    ) -> None:
+        self.prepare_retirement_execution()
+        rotations = GatewayKeyRotationService(
+            self.unit_of_work,
+            clock=lambda: 5_000,
+        )
+        handoff = rotations.deployment_handoff(
+            ReadGatewayKeyRotationDeploymentHandoff(
+                self.rotation_id,
+                GatewayKeyRotationDeploymentPhase.RETIREMENT,
+                self.execution_command().worker_authority,
+            )
+        )
+        accepted = replace(
+            self.retirement_checkpoint,
+            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+            accepted_current_graph_id=(
+                self.retirement_checkpoint.desired_authored_graph_id
+            ),
+            accepted_current_projection_id=(
+                self.retirement_checkpoint.desired_realized_projection_id
+            ),
+            accepted_at="2026-08-02T05:00:00Z",
+        )
+        before = rotations.get(self.rotation_id)
+        transitions = rotations.transitions(self.rotation_id)
+        event_count = len(self.retirement_event_kinds())
+        action_count = self._current_advancement_action_count()
+
+        with self.assertRaisesRegex(
+            GatewayKeyRotationConflict,
+            "^gateway deployment acceptance evidence is incongruent$",
+        ) as captured:
+            rotations.advance_deployment(
+                AdvanceGatewayKeyRotationDeployment(
+                    transition=AdvanceGatewayKeyRotation(
+                        rotation_id=self.rotation_id,
+                        transition_id="retirement-accepted-without-evidence",
+                        expected_status=(
+                            GatewayKeyRotationStatus.RETIREMENT_DEPLOYING
+                        ),
+                        expected_version=self.retirement_prepared_version,
+                        target_status=GatewayKeyRotationStatus.RETIREMENT_READY,
+                        advanced_by="operator-a",
+                        advanced_at=accepted.accepted_at,
+                        actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                        deployment=accepted,
+                    ),
+                    handoff=GatewayKeyRotationDeploymentHandoff(
+                        self.rotation_id,
+                        accepted,
+                        handoff.fence,
+                    ),
+                )
+            )
+
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(rotations.get(self.rotation_id), before)
+        self.assertEqual(rotations.transitions(self.rotation_id), transitions)
+        self.assertEqual(len(self.retirement_event_kinds()), event_count)
+        self.assertEqual(self._current_advancement_action_count(), action_count)
 
     def _current_advancement_action_count(self) -> int:
         return self.connection.execute(

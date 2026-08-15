@@ -176,6 +176,36 @@ class GatewayKeyRotationDeploymentFencingTests(
             handoff=handoff or self.prepared.handoff,
         )
 
+    def accepted_command(self, handoff=None):
+        accepted = replace(
+            self.prepared.checkpoint,
+            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+            accepted_current_graph_id=(
+                self.prepared.checkpoint.desired_authored_graph_id
+            ),
+            accepted_current_projection_id=(
+                self.prepared.checkpoint.desired_realized_projection_id
+            ),
+            accepted_at="2026-08-02T03:00:00Z",
+        )
+        return AdvanceGatewayKeyRotationDeployment(
+            transition=AdvanceGatewayKeyRotation(
+                rotation_id=self.rotation_id,
+                transition_id="deployment-overlap-accepted-without-evidence",
+                expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                expected_version=self.prepared.rotation.version,
+                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
+                advanced_by="operator-a",
+                advanced_at=accepted.accepted_at,
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                deployment=accepted,
+            ),
+            handoff=handoff or replace(
+                self.prepared.handoff,
+                checkpoint=accepted,
+            ),
+        )
+
     def first_prepared_command(self, handoff):
         rotation = self.service().get(self.rotation_id)
         return AdvanceGatewayKeyRotationDeployment(
@@ -474,6 +504,45 @@ class GatewayKeyRotationDeploymentFencingTests(
         self.assertEqual(
             len(self.service().transitions(self.rotation_id)),
             transition_count,
+        )
+
+    def test_accepted_fold_requires_durable_graph_advancement_evidence(
+        self,
+    ) -> None:
+        before = self.service().get(self.rotation_id)
+        transitions = self.service().transitions(self.rotation_id)
+        event_count = self.connection.execute(
+            "SELECT count(*) FROM cpk_activity_events"
+        ).fetchone()[0]
+        action_count = self.connection.execute(
+            "SELECT count(*) FROM cpk_operation_actions"
+        ).fetchone()[0]
+
+        with self.assertRaises(GatewayKeyRotationConflict) as captured:
+            self.service().advance_deployment(self.accepted_command())
+
+        self.assertEqual(
+            str(captured.exception),
+            "gateway deployment acceptance evidence is incongruent",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(self.service().get(self.rotation_id), before)
+        self.assertEqual(
+            self.service().transitions(self.rotation_id),
+            transitions,
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_activity_events"
+            ).fetchone()[0],
+            event_count,
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_operation_actions"
+            ).fetchone()[0],
+            action_count,
         )
 
     def test_deployment_transition_locks_request_run_rotation_and_replays_semantics(
