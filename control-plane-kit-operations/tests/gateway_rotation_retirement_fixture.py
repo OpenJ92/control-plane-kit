@@ -28,6 +28,7 @@ from control_plane_kit_operations.gateway_key_rotation_retirement_program import
 )
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
+    AdvanceGatewayKeyRotationDeployment,
     GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
@@ -135,18 +136,21 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
             accepted_at="2026-08-02T03:00:00Z",
         )
         rotations = GatewayKeyRotationService(self.unit_of_work, clock=lambda: 1_000)
-        ready = rotations.advance(
-            AdvanceGatewayKeyRotation(
-                self.rotation_id,
-                "accept-overlap",
-                GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                overlap.rotation.version,
-                GatewayKeyRotationStatus.OVERLAP_READY,
-                "operator-a",
-                "2026-08-02T03:00:00Z",
-                (PolicyScope.DELEGATION_KEY_ROTATE,),
-                deployment=accepted,
-            )
+        ready = rotations.advance_deployment(
+            AdvanceGatewayKeyRotationDeployment(
+                transition=AdvanceGatewayKeyRotation(
+                    self.rotation_id,
+                    "accept-overlap",
+                    GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                    overlap.rotation.version,
+                    GatewayKeyRotationStatus.OVERLAP_READY,
+                    "operator-a",
+                    "2026-08-02T03:00:00Z",
+                    (PolicyScope.DELEGATION_KEY_ROTATE,),
+                    deployment=accepted,
+                ),
+                handoff=replace(overlap.handoff, checkpoint=accepted),
+            ),
         )
         active = rotations.advance(
             AdvanceGatewayKeyRotation(

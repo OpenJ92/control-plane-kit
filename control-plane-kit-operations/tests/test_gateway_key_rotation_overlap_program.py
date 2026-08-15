@@ -23,6 +23,7 @@ from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
 )
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
+    AdvanceGatewayKeyRotationDeployment,
     GatewayKeyRotationDeploymentCheckpoint,
     GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationService,
@@ -258,18 +259,21 @@ class GatewayKeyRotationOverlapPreparationTests(
             accepted_at="2026-08-02T03:00:00Z",
         )
         rotations = GatewayKeyRotationService(self.unit_of_work, clock=lambda: 3_000)
-        rotations.advance(
-            AdvanceGatewayKeyRotation(
-                rotation_id=self.rotation_id,
-                transition_id=f"{self.rotation_id}:overlap-accepted",
-                expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                expected_version=prepared.rotation.version,
-                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
-                advanced_by="operator-a",
-                advanced_at="2026-08-02T03:00:00Z",
-                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
-                deployment=accepted,
-            )
+        rotations.advance_deployment(
+            AdvanceGatewayKeyRotationDeployment(
+                transition=AdvanceGatewayKeyRotation(
+                    rotation_id=self.rotation_id,
+                    transition_id=f"{self.rotation_id}:overlap-accepted",
+                    expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                    expected_version=prepared.rotation.version,
+                    target_status=GatewayKeyRotationStatus.OVERLAP_READY,
+                    advanced_by="operator-a",
+                    advanced_at="2026-08-02T03:00:00Z",
+                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                    deployment=accepted,
+                ),
+                handoff=replace(prepared.handoff, checkpoint=accepted),
+            ),
         )
         counts = self._child_counts()
 
