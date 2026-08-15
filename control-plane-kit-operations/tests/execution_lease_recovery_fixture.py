@@ -394,6 +394,7 @@ class PostgresExecutionLeaseRecoveryFixture:
                     ActivityRunStatus.CLAIMED if active else ActivityRunStatus.FAILED,
                     "2026-08-15T03:59:10Z",
                     started_at=None if active else "2026-08-15T03:59:20Z",
+                    metadata=BoundedEvidence.from_mapping({"attempt": 1}),
                 )
             )
             for event in self.history_events(history):

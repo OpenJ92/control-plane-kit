@@ -407,6 +407,81 @@ class ExecutionLeaseRecoveryResultTests(unittest.TestCase):
             with self.subTest(decision=result.decision_event.recovery.decision_kind):
                 self.assert_result_rejected(result, retained_run=expired_as_claimed)
 
+    def test_active_renew_replay_admits_exact_closed_lifecycle_set(self) -> None:
+        active = self.result(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+        replay_statuses = (
+            ActivityRunStatus.CLAIMED,
+            ActivityRunStatus.RUNNING,
+            ActivityRunStatus.PAUSED,
+            ActivityRunStatus.SUCCEEDED,
+            ActivityRunStatus.FAILED,
+            ActivityRunStatus.COMPENSATING,
+            ActivityRunStatus.COMPENSATED,
+            ActivityRunStatus.PARTIALLY_FAILED,
+            ActivityRunStatus.UNCOMPENSATED_FAILURE,
+            ActivityRunStatus.CANCELLED,
+        )
+        self.assertEqual(tuple(ActivityRunStatus), replay_statuses)
+        settled = {
+            ActivityRunStatus.SUCCEEDED,
+            ActivityRunStatus.COMPENSATED,
+            ActivityRunStatus.PARTIALLY_FAILED,
+            ActivityRunStatus.UNCOMPENSATED_FAILURE,
+            ActivityRunStatus.CANCELLED,
+        }
+        started = {
+            ActivityRunStatus.RUNNING,
+            ActivityRunStatus.PAUSED,
+            ActivityRunStatus.SUCCEEDED,
+            ActivityRunStatus.FAILED,
+            ActivityRunStatus.COMPENSATING,
+            ActivityRunStatus.COMPENSATED,
+            ActivityRunStatus.PARTIALLY_FAILED,
+            ActivityRunStatus.UNCOMPENSATED_FAILURE,
+        }
+
+        for status in replay_statuses:
+            run = dataclasses.replace(
+                active.retained_run,
+                status=status,
+                started_at="started" if status in started else None,
+                settled_at="settled" if status in settled else None,
+            )
+            with self.subTest(status=status):
+                replayed = ExecutionLeaseRecoveryResult(
+                    active.request,
+                    run,
+                    active.decision_event,
+                    active.consequence_event,
+                    active.action,
+                    replayed=True,
+                )
+                self.assertIs(replayed.retained_run.status, status)
+                if status is not ActivityRunStatus.CLAIMED:
+                    self.assert_result_rejected(
+                        active,
+                        retained_run=run,
+                        replayed=False,
+                    )
+
+        for decision in (
+            RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+            RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
+            RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM,
+        ):
+            result = self.result(decision)
+            replayed = dataclasses.replace(result, replayed=True)
+            self.assertIs(replayed.retained_run.status, ActivityRunStatus.FAILED)
+            with self.subTest(decision=decision):
+                self.assert_result_rejected(
+                    result,
+                    retained_run=dataclasses.replace(
+                        result.retained_run,
+                        status=ActivityRunStatus.RUNNING,
+                    ),
+                    replayed=True,
+                )
+
     def test_result_categorically_rejects_retry_evidence(self) -> None:
         valid = self.result(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
         prior_fence = valid.decision_event.recovery.prior_fence

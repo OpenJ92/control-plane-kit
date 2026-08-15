@@ -30,12 +30,40 @@ class _RecordingConnection:
         return _EmptyCursor()
 
 
+class _FailingConnection:
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+
+    def execute(self, *_args):
+        raise self.error
+
+
 class _TextSubclass(str):
     pass
 
 
 class _FenceSubclass(ExecutionLeaseFence):
     pass
+
+
+INVALID_RUN_IDS = (
+    (object(), ()),
+    (True, ("True",)),
+    (_TextSubclass("subclass-canary"), ("subclass-canary",)),
+    ("", ()),
+    (" ", ()),
+    ("-leading-canary", ("leading-canary",)),
+    (".leading-canary", ("leading-canary",)),
+    ("_leading-canary", ("leading-canary",)),
+    (":leading-canary", ("leading-canary",)),
+    ("slash/canary", ("slash/canary",)),
+    ("space canary", ("space canary",)),
+    *tuple(
+        (f"a{chr(code)}control-canary", ("control-canary",))
+        for code in (*range(32), 127)
+    ),
+    ("a" * 201, ("a" * 32,)),
+)
 
 
 def _safe_error(
@@ -58,7 +86,7 @@ def _candidate_canaries(*values: object) -> tuple[str, ...]:
             canaries.append(str(value))
         elif type(value) is str and "canary" in value:
             canaries.append("canary")
-        elif type(value) is str and len(value) > 512:
+        elif type(value) is str and len(value) > 200:
             canaries.append(value[:32])
     return tuple(canaries)
 
@@ -75,6 +103,85 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
             [],
             "execution-lease recovery store operations are missing",
         )
+
+    def require_scoped_selector(self) -> None:
+        self.assertTrue(
+            hasattr(PostgresExecutionStore, "get_run_for_request_for_update"),
+            "request-scoped activity-run selector is missing",
+        )
+
+    def test_request_scoped_run_selector_validates_both_ids_before_sql(self) -> None:
+        self.require_scoped_selector()
+        invalid_requests = (
+            (object(), "run-a", ()),
+            (True, "run-a", ("True",)),
+            (
+                _TextSubclass("request-canary"),
+                "run-a",
+                ("request-canary",),
+            ),
+            ("", "run-a", ()),
+            ("request\ncanary", "run-a", ("canary",)),
+            ("r" * 513, "run-a", ("r" * 32,)),
+        )
+        invalid = invalid_requests + tuple(
+            ("request-a", run_id, canaries)
+            for run_id, canaries in INVALID_RUN_IDS
+        )
+        for request_id, run_id, canaries in invalid:
+            with self.subTest(
+                request_type=type(request_id).__name__,
+                run_type=type(run_id).__name__,
+            ):
+                connection = _NoSqlConnection()
+                store = PostgresExecutionStore(connection)
+                with self.assertRaises(OperationsRecordError) as captured:
+                    store.get_run_for_request_for_update(request_id, run_id)
+                self.assertEqual(connection.calls, [])
+                _safe_error(
+                    self,
+                    captured.exception,
+                    *canaries,
+                )
+
+    def test_request_scoped_run_selector_accepts_exact_identity_boundaries(self) -> None:
+        self.require_scoped_selector()
+        for request_id in ("r", "r" * 512):
+            for run_id in ("r", "r" * 200):
+                with self.subTest(
+                    request_length=len(request_id),
+                    run_length=len(run_id),
+                ):
+                    connection = _RecordingConnection()
+                    store = PostgresExecutionStore(connection)
+                    with self.assertRaises(KeyError):
+                        store.get_run_for_request_for_update(request_id, run_id)
+                    self.assertEqual(len(connection.calls), 1)
+
+    def test_request_scoped_run_selector_has_fixed_candidate_free_miss(self) -> None:
+        self.require_scoped_selector()
+        connection = _RecordingConnection()
+        store = PostgresExecutionStore(connection)
+        with self.assertRaises(KeyError) as captured:
+            store.get_run_for_request_for_update(
+                "request-canary-a",
+                "run-canary-a",
+            )
+        self.assertEqual(str(captured.exception), "'activity run was not found for request'")
+        _safe_error(self, captured.exception, "request-canary-a", "run-canary-a")
+        self.assertEqual(len(connection.calls), 1)
+        query, parameters = connection.calls[0]
+        normalized = " ".join(str(query).split())
+        self.assertIn("WHERE request_id = %s AND run_id = %s FOR UPDATE", normalized)
+        self.assertEqual(parameters, ("request-canary-a", "run-canary-a"))
+
+    def test_request_scoped_run_selector_preserves_unexpected_sql_errors(self) -> None:
+        self.require_scoped_selector()
+        canary = RuntimeError("selector-sql-canary")
+        store = PostgresExecutionStore(_FailingConnection(canary))
+        with self.assertRaises(RuntimeError) as captured:
+            store.get_run_for_request_for_update("request-a", "run-a")
+        self.assertIs(captured.exception, canary)
 
     def test_invalid_latest_run_inputs_execute_zero_sql(self) -> None:
         self.require_store_methods()

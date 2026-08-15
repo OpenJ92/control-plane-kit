@@ -7,8 +7,10 @@ import unittest
 from pathlib import Path
 
 import control_plane_kit_operations as operations_root
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
+    ActivityRunStatus,
     ExecutionRequestStatus,
     FailureCategory,
     LifecycleOperationKind,
@@ -16,9 +18,11 @@ from control_plane_kit_core.operations.lifecycle import (
     RecoveryScope,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.activity_run_retry import ActivityRunRetryResult
 from control_plane_kit_operations.execution_lease_recovery import (
     ExecutionLeaseRecoveryResult,
 )
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
     ExecutionWorkerAuthority,
     FailActivityRun,
@@ -37,8 +41,13 @@ from control_plane_kit_operations.postgres import (
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
+    ActivityRunRecord,
+    AdmittedRun,
     BoundedEvidence,
+    ExecutionLeaseRecoveryEvidence,
     FailureEvidence,
+    OperationActionRecord,
+    RetryIdentity,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey
 
@@ -49,6 +58,7 @@ from tests.execution_lease_recovery_fixture import (
     TARGET_MODULE,
     safe_error,
 )
+import control_plane_kit_operations.execution_lease_recovery_interpreter as recovery_interpreter
 
 
 DECISIONS = (
@@ -81,6 +91,151 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
     PostgresExecutionLeaseRecoveryFixture,
     unittest.TestCase,
 ):
+    def test_predecessor_delegates_approval_and_journal_to_shared_support(
+        self,
+    ) -> None:
+        required = (
+            "locked_recovery_approval",
+            "require_recovery_eligible_journal",
+        )
+        self.assertEqual(
+            [name for name in required if not hasattr(recovery_interpreter, name)],
+            [],
+            "predecessor interpreter does not bind shared recovery support",
+        )
+        original_approval = recovery_interpreter.locked_recovery_approval
+        original_journal = recovery_interpreter.require_recovery_eligible_journal
+        calls: list[tuple[str, object]] = []
+
+        def approval(*args, **kwargs):
+            calls.append(("approval", args[1].identity.request_id))
+            return original_approval(*args, **kwargs)
+
+        def journal(*args, **kwargs):
+            calls.append(("journal", args[0]))
+            return original_journal(*args, **kwargs)
+
+        recovery_interpreter.locked_recovery_approval = approval
+        recovery_interpreter.require_recovery_eligible_journal = journal
+        try:
+            for subject in ("activity-plan", "gateway-key-rotation"):
+                with self.subTest(subject=subject):
+                    self.reset_truth(
+                        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                        approval_subject=subject,
+                    )
+                    self.service(
+                        f"decision-{subject}",
+                        f"consequence-{subject}",
+                        f"action-{subject}",
+                    ).execute(
+                        self.command(
+                            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                            key=f"recover-{subject}",
+                        )
+                    )
+        finally:
+            recovery_interpreter.locked_recovery_approval = original_approval
+            recovery_interpreter.require_recovery_eligible_journal = original_journal
+
+        self.assertEqual(
+            calls,
+            [
+                ("approval", "request-a"),
+                ("journal", RecoveryDecisionKind.RENEW_ACTIVE_CLAIM),
+                ("approval", "request-a"),
+                ("journal", RecoveryDecisionKind.RENEW_ACTIVE_CLAIM),
+            ],
+        )
+
+    def persist_linked_retry_truth(
+        self,
+        *,
+        fence: ExecutionLeaseFence,
+    ) -> ActivityRunRetryResult:
+        observed_at = "2026-08-15T04:30:00Z"
+        metadata = BoundedEvidence.from_mapping(
+            {"attempt": 2, "prior_run_id": "run-a"}
+        )
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            request = stores.execution.get_request("request-a")
+            prior = stores.execution.get_run("run-a")
+            decision_ordinal = stores.execution.next_event_ordinal("run-a")
+            action_ordinal = stores.activity_history.next_action_ordinal(
+                "session-a"
+            )
+            run = ActivityRunRecord(
+                "run-b",
+                "plan-a",
+                AdmittedRun("request-a"),
+                RetryIdentity(2, "run-a"),
+                ActivityRunStatus.CLAIMED,
+                observed_at,
+                metadata=metadata,
+            )
+            recovery = ExecutionLeaseRecoveryEvidence(
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RunId("run-a"),
+                fence,
+                fence,
+            )
+            decision = ActivityEventRecord(
+                "retry-decision",
+                "run-a",
+                decision_ordinal,
+                ActivityEventKind.RECOVERY_DECISION_RECORDED,
+                observed_at,
+                recovery=recovery,
+            )
+            opened = ActivityEventRecord(
+                "run-b-opened",
+                "run-b",
+                1,
+                ActivityEventKind.RUN_OPENED,
+                observed_at,
+                evidence=metadata,
+            )
+            action = OperationActionRecord(
+                "retry-action",
+                "session-a",
+                action_ordinal,
+                LifecycleOperationKind.RECORD_RECOVERY_DECISION,
+                "operator-a",
+                {
+                    "execution_request_id": "request-a",
+                    "plan_id": "plan-a",
+                    "prior_run_id": "run-a",
+                    "run_id": "run-b",
+                    "prior_attempt": 1,
+                    "attempt": 2,
+                    "decision_event_id": "retry-decision",
+                    "decision_event_kind": "recovery_decision_recorded",
+                    "decision_event_ordinal": decision_ordinal,
+                    "opened_event_id": "run-b-opened",
+                    "opened_event_kind": "run_opened",
+                    "opened_event_ordinal": 1,
+                    "recovery": recovery.descriptor(),
+                },
+                observed_at,
+                "retry-a",
+                "b" * 64,
+            )
+            result = ActivityRunRetryResult(
+                request,
+                prior,
+                run,
+                decision,
+                opened,
+                action,
+            )
+            self.assertEqual(stores.execution.add_run(run), run)
+            self.assertEqual(stores.execution.add_event(decision), decision)
+            self.assertEqual(stores.execution.add_event(opened), opened)
+            self.assertEqual(stores.activity_history.add_action(action), action)
+            unit_of_work.commit()
+            return result
+
     def test_exact_scope_is_required_before_unit_of_work(self) -> None:
         self.require_service()
         for decision in DECISIONS:
@@ -420,6 +575,102 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 "request_claim_renewed",
             ),
         )
+
+    def test_active_renew_replay_survives_failure_and_linked_retry(self) -> None:
+        self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+        command = self.command(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+            key="recover-a",
+        )
+        active = self.service(
+            "decision-a", "consequence-a", "action-a"
+        ).execute(command)
+        fence = active.request.claim.fence
+        authority = ExecutionWorkerAuthority(
+            fence.worker_id,
+            (PolicyScope.EXECUTION_OPERATE,),
+        )
+        started_at = active.request.claim.claimed_at
+        RunLifecycleCommandService(
+            self.unit_of_work,
+            clock=lambda: started_at,
+            id_factory=Sequence("start-event", "start-action"),
+        ).execute(
+            StartActivityRun(
+                "run-a",
+                authority,
+                fence,
+                IdempotencyKey("start-after-renewal"),
+            )
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.execution.add_event(
+                ActivityEventRecord(
+                    "step-started",
+                    "run-a",
+                    5,
+                    ActivityEventKind.STEP_STARTED,
+                    started_at,
+                    activity_id="start-runtime",
+                )
+            )
+            unit_of_work.stores.execution.add_event(
+                ActivityEventRecord(
+                    "step-failed",
+                    "run-a",
+                    6,
+                    ActivityEventKind.STEP_FAILED,
+                    started_at,
+                    activity_id="start-runtime",
+                )
+            )
+            unit_of_work.commit()
+        RunLifecycleCommandService(
+            self.unit_of_work,
+            clock=lambda: started_at,
+            id_factory=Sequence("run-failed", "fail-action"),
+        ).execute(
+            FailActivityRun(
+                "run-a",
+                authority,
+                fence,
+                IdempotencyKey("fail-after-renewal"),
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "adapter-error",
+                    "adapter returned a terminal failure",
+                    BoundedEvidence(),
+                ),
+            )
+        )
+        linked = self.persist_linked_retry_truth(fence=fence)
+        self.connection.execute(
+            "UPDATE cpk_operation_sessions SET status = 'closed', "
+            "closed_at = '2026-08-15T04:31:00Z' "
+            "WHERE session_id = 'session-a'"
+        )
+        before = self.snapshot()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("historical recovery replay sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            replay = ExecutionLeaseRecoveryCommandService(
+                self.unit_of_work,
+                id_factory=lambda: (_ for _ in ()).throw(
+                    AssertionError("historical recovery replay allocated identity")
+                ),
+            ).execute(command)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.retained_run.run_id, "run-a")
+        self.assertIs(replay.retained_run.status, ActivityRunStatus.FAILED)
+        self.assertEqual(linked.run.run_id, "run-b")
+        self.assertEqual(self.snapshot(), before)
 
     def test_replay_requires_durable_semantics_to_equal_submitted_command(
         self,
