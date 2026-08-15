@@ -41,14 +41,21 @@ def _run_id(value: str):
 
 
 class EffectRecoveryContractTests(unittest.TestCase):
-    def assert_invalid_contract(self, factory, *canaries: str) -> None:
+    def assert_invalid_contract(
+        self,
+        factory,
+        expected_message: str,
+        *canaries: str,
+    ) -> None:
         with self.assertRaises(InvalidEffectRecoveryContract) as raised:
             factory()
         self.assertIsNone(raised.exception.__cause__)
         self.assertIsNone(raised.exception.__context__)
-        rendered = str(raised.exception)
+        self.assertEqual(str(raised.exception), expected_message)
+        renderings = (str(raised.exception), repr(raised.exception))
         for canary in canaries:
-            self.assertNotIn(canary, rendered)
+            for rendered in renderings:
+                self.assertNotIn(canary, rendered)
 
     def identity(self, attempt: int = 1) -> EffectAttemptIdentity:
         return EffectAttemptIdentity(_run_id("run-1"), "activity-1", attempt)
@@ -140,31 +147,77 @@ class EffectRecoveryContractTests(unittest.TestCase):
             EffectAttemptFence.from_descriptor(fence.descriptor()),
             fence,
         )
+        self.assertEqual(EffectAttemptState.from_descriptor(state.descriptor()), state)
 
-        invalid_identity_factories = (
-            lambda: self.identity(attempt=MAX_EFFECT_ATTEMPT + 1),
-            lambda: EffectAttemptIdentity.from_descriptor(
-                {
-                    "run_id": "run-1",
-                    "activity_id": "activity-1",
-                    "attempt": MAX_EFFECT_ATTEMPT + 1,
-                }
+        invalid_identity_cases = (
+            (
+                lambda: self.identity(attempt=MAX_EFFECT_ATTEMPT + 1),
+                str(MAX_EFFECT_ATTEMPT + 1),
             ),
-            lambda: self.identity(attempt=HostileInt(1)),
-        )
-        invalid_fence_factories = (
-            lambda: self.fence(generation=MAX_EFFECT_FENCE_GENERATION + 1),
-            lambda: EffectAttemptFence.from_descriptor(
-                {
-                    "worker_id": "worker-1",
-                    "generation": MAX_EFFECT_FENCE_GENERATION + 1,
-                }
+            (
+                lambda: EffectAttemptIdentity.from_descriptor(
+                    {
+                        "run_id": "run-1",
+                        "activity_id": "activity-1",
+                        "attempt": MAX_EFFECT_ATTEMPT + 1,
+                    }
+                ),
+                str(MAX_EFFECT_ATTEMPT + 1),
             ),
-            lambda: self.fence(generation=HostileInt(1)),
+            (lambda: self.identity(attempt=HostileInt(1)), "HostileInt"),
+            (
+                lambda: EffectAttemptIdentity.from_descriptor(
+                    {
+                        "run_id": "run-1",
+                        "activity_id": "activity-1",
+                        "attempt": HostileInt(1),
+                    }
+                ),
+                "HostileInt",
+            ),
         )
-        for factory in invalid_identity_factories + invalid_fence_factories:
-            with self.subTest(factory=factory):
-                self.assert_invalid_contract(factory)
+        invalid_fence_cases = (
+            (
+                lambda: self.fence(
+                    generation=MAX_EFFECT_FENCE_GENERATION + 1
+                ),
+                str(MAX_EFFECT_FENCE_GENERATION + 1),
+            ),
+            (
+                lambda: EffectAttemptFence.from_descriptor(
+                    {
+                        "worker_id": "worker-1",
+                        "generation": MAX_EFFECT_FENCE_GENERATION + 1,
+                    }
+                ),
+                str(MAX_EFFECT_FENCE_GENERATION + 1),
+            ),
+            (lambda: self.fence(generation=HostileInt(1)), "HostileInt"),
+            (
+                lambda: EffectAttemptFence.from_descriptor(
+                    {
+                        "worker_id": "worker-1",
+                        "generation": HostileInt(1),
+                    }
+                ),
+                "HostileInt",
+            ),
+        )
+        for factory, canary in invalid_identity_cases:
+            with self.subTest(field="attempt", factory=factory):
+                self.assert_invalid_contract(
+                    factory,
+                    "attempt must be an integer from 1 through 2147483647",
+                    canary,
+                )
+        for factory, canary in invalid_fence_cases:
+            with self.subTest(field="generation", factory=factory):
+                self.assert_invalid_contract(
+                    factory,
+                    "generation must be an integer from 1 through "
+                    "9223372036854775807",
+                    canary,
+                )
 
     def test_worker_and_recovery_decision_ids_are_postgres_text_safe(self) -> None:
         unicode_identifier = "\U0001f642" * 256
@@ -203,49 +256,82 @@ class EffectRecoveryContractTests(unittest.TestCase):
 
         candidates = (
             ("nul-canary", "worker\x00nul-canary"),
-            ("surrogate-canary", "worker-\ud800-surrogate-canary"),
+            ("leading-high-canary", "\ud800-leading-high-canary"),
+            ("interior-high-canary", "worker-\ud800-interior-high-canary"),
+            ("trailing-high-canary", "trailing-high-canary-\ud800"),
+            ("leading-low-canary", "\udc00-leading-low-canary"),
+            ("interior-low-canary", "worker-\udc00-interior-low-canary"),
+            ("trailing-low-canary", "trailing-low-canary-\udc00"),
         )
         for canary, candidate in candidates:
-            factories = (
-                lambda candidate=candidate: EffectAttemptFence(candidate, 1),
-                lambda candidate=candidate: EffectAttemptFence.from_descriptor(
-                    {"worker_id": candidate, "generation": 1}
+            cases = (
+                (
+                    "worker_id must be non-empty PostgreSQL-compatible text "
+                    "of at most 256 characters",
+                    lambda candidate=candidate: EffectAttemptFence(candidate, 1),
                 ),
-                lambda candidate=candidate: EffectRecoveryDecision(
-                    decision_id=candidate,
-                    attempt_identity=self.identity(),
-                    resolution=EffectRecoveryResolution.FAILED,
-                    uncertain_fingerprint=UNCERTAIN_FINGERPRINT,
-                    evidence_fingerprint=RECOVERY_FINGERPRINT,
+                (
+                    "worker_id must be non-empty PostgreSQL-compatible text "
+                    "of at most 256 characters",
+                    lambda candidate=candidate: EffectAttemptFence.from_descriptor(
+                        {"worker_id": candidate, "generation": 1}
+                    ),
                 ),
-                lambda candidate=candidate: EffectRecoveryDecision.from_descriptor(
-                    {
-                        **decision.descriptor(),
-                        "decision_id": candidate,
-                    }
+                (
+                    "decision_id must be non-empty PostgreSQL-compatible text "
+                    "of at most 256 characters",
+                    lambda candidate=candidate: EffectRecoveryDecision(
+                        decision_id=candidate,
+                        attempt_identity=self.identity(),
+                        resolution=EffectRecoveryResolution.FAILED,
+                        uncertain_fingerprint=UNCERTAIN_FINGERPRINT,
+                        evidence_fingerprint=RECOVERY_FINGERPRINT,
+                    ),
                 ),
-                lambda candidate=candidate: EffectAttemptState.from_descriptor(
-                    {
-                        **self.started_state().descriptor(),
-                        "fence": {
-                            "worker_id": candidate,
-                            "generation": 1,
-                        },
-                    }
-                ),
-                lambda candidate=candidate: EffectAttemptState.from_descriptor(
-                    {
-                        **recovered.descriptor(),
-                        "recovery_decision": {
-                            **recovered.recovery_decision.descriptor(),
+                (
+                    "decision_id must be non-empty PostgreSQL-compatible text "
+                    "of at most 256 characters",
+                    lambda candidate=candidate: EffectRecoveryDecision.from_descriptor(
+                        {
+                            **decision.descriptor(),
                             "decision_id": candidate,
-                        },
-                    }
+                        }
+                    ),
+                ),
+                (
+                    "worker_id must be non-empty PostgreSQL-compatible text "
+                    "of at most 256 characters",
+                    lambda candidate=candidate: EffectAttemptState.from_descriptor(
+                        {
+                            **self.started_state().descriptor(),
+                            "fence": {
+                                "worker_id": candidate,
+                                "generation": 1,
+                            },
+                        }
+                    ),
+                ),
+                (
+                    "decision_id must be non-empty PostgreSQL-compatible text "
+                    "of at most 256 characters",
+                    lambda candidate=candidate: EffectAttemptState.from_descriptor(
+                        {
+                            **recovered.descriptor(),
+                            "recovery_decision": {
+                                **recovered.recovery_decision.descriptor(),
+                                "decision_id": candidate,
+                            },
+                        }
+                    ),
                 ),
             )
-            for factory in factories:
+            for expected_message, factory in cases:
                 with self.subTest(canary=canary, factory=factory):
-                    self.assert_invalid_contract(factory, canary)
+                    self.assert_invalid_contract(
+                        factory,
+                        expected_message,
+                        canary,
+                    )
 
     def test_retry_attempt_preserves_exact_lineage(self) -> None:
         second = self.identity(attempt=2)
