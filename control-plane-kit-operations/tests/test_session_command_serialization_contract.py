@@ -79,9 +79,18 @@ class SessionCommandSerializationContractTests(unittest.TestCase):
             with self.subTest(command=item["command"]):
                 identity = calls.index("lock_action_idempotency")
                 session = calls.index("get_session_for_update")
+                if item["command"] == "record-recovery-decision":
+                    observation = calls.index(
+                        "observe_request_lease_for_update"
+                    )
+                    event_ordinal = calls.index("next_event_ordinal")
+                    self.assertLess(session, observation)
+                    self.assertLess(observation, event_ordinal)
                 ordinal = calls.index("next_action_ordinal")
                 self.assertLess(identity, session)
                 self.assertLess(session, ordinal)
+                if item["command"] == "record-recovery-decision":
+                    self.assertLess(event_ordinal, ordinal)
 
     def test_rotation_projection_locks_workspace_before_rotation_truth(self) -> None:
         source = (
