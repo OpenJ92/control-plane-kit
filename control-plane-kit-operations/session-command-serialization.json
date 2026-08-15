@@ -148,6 +148,14 @@
       "session_rule": "requires OPEN after lock; immutable run and request linkage may locate the session before locking"
     },
     {
+      "command": "record-recovery-decision",
+      "service": "ExecutionLeaseRecoveryCommandService.execute",
+      "writer": "execution_lease_recovery_interpreter.py:ExecutionLeaseRecoveryCommandService.execute",
+      "source": "execution_lease_recovery_interpreter.py",
+      "roles": ["command-identity", "session-lifecycle", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN after lock; immutable request linkage may locate the session before locking"
+    },
+    {
       "command": "advance-current-graph",
       "service": "CurrentGraphAdvancementCommandService.execute",
       "writer": "advancement.py:CurrentGraphAdvancementCommandService.execute",
