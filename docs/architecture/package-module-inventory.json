@@ -9219,6 +9219,40 @@
     },
     {
       "canonical_public_exports": [
+        "ActivityRunRetryResult",
+        "RetryFailedActivityRun"
+      ],
+      "destination": "control_plane_kit_operations.activity_run_retry",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_operations.execution_lease_recovery",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.activity_run_retry",
+      "motivation": "Owns the pure command and result language for linked activity-run retry without interpreting mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_activity_run_retry_contract.py",
+        "tests/test_activity_run_retry_result.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry.py"
+    },
+    {
+      "canonical_public_exports": [
         "AbandonExpiredExecutionClaim",
         "ExecutionLeaseRecoveryCommand",
         "ExecutionLeaseRecoveryResult",
