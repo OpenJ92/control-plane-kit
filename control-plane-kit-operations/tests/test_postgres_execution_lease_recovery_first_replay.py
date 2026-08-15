@@ -25,6 +25,7 @@ from control_plane_kit_operations.lifecycle import (
 )
 from control_plane_kit_operations.postgres import (
     GatewayKeyRotationStore,
+    PostgresActivityHistoryStore,
     PostgresExecutionStore,
 )
 
@@ -274,20 +275,6 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         self.assertEqual(self.snapshot(), snapshot)
 
     def test_replay_revalidates_complete_authoritative_history(self) -> None:
-        def drift_action_session() -> None:
-            self.connection.execute(
-                "INSERT INTO cpk_operation_sessions "
-                "(session_id, workspace_id, actor_id, title, status, created_at, "
-                "closed_at, metadata, idempotency_key, intent_fingerprint) "
-                "SELECT 'session-drift-canary', workspace_id, actor_id, title, "
-                "status, created_at, closed_at, metadata, NULL, NULL "
-                "FROM cpk_operation_sessions WHERE session_id = 'session-a'"
-            )
-            self.connection.execute(
-                "UPDATE cpk_operation_actions SET session_id = "
-                "'session-drift-canary' WHERE action_id = 'action-a'"
-            )
-
         mutations = {
             "current-fence": (
                 lambda: self.connection.execute(
@@ -364,14 +351,6 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 ),
                 RunLifecycleConflict,
             ),
-            "action-session": (drift_action_session, RunLifecycleConflict),
-            "action-idempotency": (
-                lambda: self.connection.execute(
-                    "UPDATE cpk_operation_actions SET idempotency_key = "
-                    "'key-drift-canary' WHERE action_id = 'action-a'"
-                ),
-                RunLifecycleConflict,
-            ),
             "action-fingerprint": (
                 lambda: self.connection.execute(
                     "UPDATE cpk_operation_actions SET intent_fingerprint = %s "
@@ -428,6 +407,56 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                     "session-drift-canary",
                     "key-drift-canary",
                 )
+                self.assertEqual(self.snapshot(), before)
+
+    def test_replay_rejects_action_lookup_coordinate_drift(self) -> None:
+        self.require_service()
+        for field_name, drift in (
+            ("session_id", "session-drift-canary"),
+            ("idempotency_key", "key-drift-canary"),
+        ):
+            with self.subTest(field=field_name):
+                self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+                command = self.command(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+                self.service("decision-a", "consequence-a", "action-a").execute(
+                    command
+                )
+                before = self.snapshot()
+                original_lookup = (
+                    PostgresActivityHistoryStore.action_for_idempotency
+                )
+                original_observe = (
+                    PostgresExecutionStore.observe_request_lease_for_update
+                )
+
+                def drift_lookup(store, session_id, idempotency_key):
+                    action = original_lookup(store, session_id, idempotency_key)
+                    self.assertIsNotNone(action)
+                    return dataclasses.replace(action, **{field_name: drift})
+
+                def fail_observe(*_args, **_kwargs):
+                    raise AssertionError("action drift replay sampled database time")
+
+                PostgresActivityHistoryStore.action_for_idempotency = drift_lookup
+                PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+                try:
+                    with self.assertRaises(RunLifecycleConflict) as captured:
+                        ExecutionLeaseRecoveryCommandService(
+                            self.unit_of_work,
+                            id_factory=lambda: (_ for _ in ()).throw(
+                                AssertionError(
+                                    "action drift replay allocated identity"
+                                )
+                            ),
+                        ).execute(command)
+                finally:
+                    PostgresActivityHistoryStore.action_for_idempotency = (
+                        original_lookup
+                    )
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
+                    )
+                safe_error(self, captured.exception, drift)
                 self.assertEqual(self.snapshot(), before)
 
     def test_both_approval_subjects_are_rechecked_without_gateway_read_or_lock(
