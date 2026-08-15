@@ -234,6 +234,77 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 self.assertEqual(replay, dataclasses.replace(first, replayed=True))
                 self.assertEqual(self.snapshot(), snapshot)
 
+    def test_active_claim_can_be_renewed_twice_on_one_retained_run(self) -> None:
+        self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+        first = self.service(
+            "decision-a", "consequence-a", "action-a"
+        ).execute(
+            self.command(
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                key="recover-a",
+            )
+        )
+        second = self.service(
+            "decision-b", "consequence-b", "action-b"
+        ).execute(
+            self.command(
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                key="recover-b",
+                expected_fence=first.request.claim.fence,
+            )
+        )
+
+        self.assertEqual(first.retained_run, second.retained_run)
+        self.assertEqual(first.request.claim.fence.generation, 8)
+        self.assertEqual(second.request.claim.fence.generation, 9)
+        snapshot = self.snapshot()
+        self.assertEqual(len(snapshot[3]), 1)
+        self.assertEqual(
+            tuple(row[0] for row in snapshot[1][-4:]),
+            ("decision-a", "consequence-a", "decision-b", "consequence-b"),
+        )
+        self.assertEqual(
+            tuple(row[0] for row in snapshot[2]),
+            ("action-a", "action-b"),
+        )
+
+    def test_expired_replacement_can_be_renewed_without_a_retry_run(self) -> None:
+        self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+        first = self.service(
+            "decision-a", "consequence-a", "action-a"
+        ).execute(
+            self.command(
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                key="recover-a",
+            )
+        )
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET lease_expires_at = "
+            "'2000-01-01T00:00:00Z' WHERE request_id = 'request-a'"
+        )
+        second = self.service(
+            "decision-b", "consequence-b", "action-b"
+        ).execute(
+            self.command(
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                key="recover-b",
+                expected_fence=first.request.claim.fence,
+            )
+        )
+
+        self.assertEqual(first.retained_run, second.retained_run)
+        self.assertEqual(second.request.claim.fence.generation, 9)
+        snapshot = self.snapshot()
+        self.assertEqual(len(snapshot[3]), 1)
+        self.assertEqual(
+            tuple(row[0] for row in snapshot[1][-4:]),
+            ("decision-a", "consequence-a", "decision-b", "consequence-b"),
+        )
+        self.assertEqual(
+            tuple(row[0] for row in snapshot[2]),
+            ("action-a", "action-b"),
+        )
+
     def test_replay_requires_durable_semantics_to_equal_submitted_command(
         self,
     ) -> None:
@@ -277,6 +348,48 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                         original_observe
                     )
                 safe_error(self, captured.exception, "worker-b")
+                self.assertEqual(self.snapshot(), before)
+
+    def test_replay_rejects_same_fence_lease_timestamp_drift(self) -> None:
+        for column, drift in (
+            ("claimed_at", "2050-01-01T00:00:00Z"),
+            ("lease_expires_at", "2050-01-01T00:10:00Z"),
+        ):
+            with self.subTest(column=column):
+                self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+                command = self.command(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+                self.service("decision-a", "consequence-a", "action-a").execute(
+                    command
+                )
+                self.connection.execute(
+                    f"UPDATE cpk_execution_requests SET {column} = %s "
+                    "WHERE request_id = 'request-a'",
+                    (drift,),
+                )
+                before = self.snapshot()
+                original_observe = (
+                    PostgresExecutionStore.observe_request_lease_for_update
+                )
+
+                def fail_observe(*_args, **_kwargs):
+                    raise AssertionError("timestamp drift replay sampled database time")
+
+                PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+                try:
+                    with self.assertRaises(RunLifecycleConflict) as captured:
+                        ExecutionLeaseRecoveryCommandService(
+                            self.unit_of_work,
+                            id_factory=lambda: (_ for _ in ()).throw(
+                                AssertionError(
+                                    "timestamp drift replay allocated identity"
+                                )
+                            ),
+                        ).execute(command)
+                finally:
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
+                    )
+                safe_error(self, captured.exception, drift)
                 self.assertEqual(self.snapshot(), before)
 
     def test_malformed_replay_event_is_categorical_without_clock_or_ids(
