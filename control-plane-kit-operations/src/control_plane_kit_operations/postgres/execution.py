@@ -640,7 +640,7 @@ def _recovery_evidence(
                 else _recovery_fence(replacement_value)
             ),
         )
-    except (KeyError, TypeError, ValueError):
+    except ValueError:
         malformed = True
     if malformed or decoded is None:
         raise OperationsRecordError(
