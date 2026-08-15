@@ -20,6 +20,7 @@ from tests.execution_lease_recovery_fixture import safe_error
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 INVENTORY_PATH = Path(
     os.environ.get(
         "CPK_PACKAGE_MODULE_INVENTORY",
@@ -54,8 +55,7 @@ class ActivityRunRetryInterpreterContractTests(unittest.TestCase):
         self.assertEqual(source.name, "activity_run_retry_interpreter")
         tree = ast.parse(
             (
-                REPOSITORY_ROOT
-                / "control-plane-kit-operations"
+                PACKAGE_ROOT
                 / "src"
                 / "control_plane_kit_operations"
                 / "activity_run_retry_interpreter.py"
@@ -129,8 +129,7 @@ class ActivityRunRetryInterpreterContractTests(unittest.TestCase):
         )
         support = importlib.import_module(support_module)
         path = (
-            REPOSITORY_ROOT
-            / "control-plane-kit-operations"
+            PACKAGE_ROOT
             / "src"
             / "control_plane_kit_operations"
             / "activity_run_retry_interpreter.py"
