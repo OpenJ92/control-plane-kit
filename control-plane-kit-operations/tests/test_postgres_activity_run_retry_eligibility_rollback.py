@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import unittest
 
 import psycopg
@@ -15,6 +16,7 @@ from control_plane_kit_operations.postgres import (
 from tests.activity_run_retry_interpreter_fixture import (
     ActivityRunRetryCommandService,
     PostgresActivityRunRetryFixture,
+    retry_interpreter,
 )
 from tests.execution_lease_recovery_fixture import safe_error
 
@@ -74,9 +76,14 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                         self.connection.execute(
                             "UPDATE cpk_activity_runs SET attempt = 2147483647, "
                             "prior_run_id = 'run-z', metadata = "
-                            "'{\"attempt\":2147483647," 
+                            "'{\"attempt\":2147483647,"
                             "\"prior_run_id\":\"run-z\"}'::jsonb "
                             "WHERE run_id = 'run-a'"
+                        )
+                        self.connection.execute(
+                            "UPDATE cpk_activity_runs SET attempt = 1, "
+                            "prior_run_id = NULL, metadata = "
+                            "'{\"attempt\":1}'::jsonb WHERE run_id = 'run-z'"
                         )
                     before = self.snapshot()
                     service = ActivityRunRetryCommandService(
@@ -131,6 +138,39 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
             self.assertEqual(self.snapshot(), before)
         finally:
             PostgresExecutionStore.observe_request_lease_for_update = original_observe
+
+    def test_expiry_equality_is_expired(self) -> None:
+        self.require_retry_service()
+        self.reset_retry_truth()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+        calls = 0
+
+        def equal_observe(store, request_id):
+            nonlocal calls
+            calls += 1
+            observed = original_observe(store, request_id)
+            assert observed.request.claim is not None
+            return dataclasses.replace(
+                observed,
+                observed_at=observed.request.claim.lease_expires_at,
+                expired=True,
+            )
+
+        PostgresExecutionStore.observe_request_lease_for_update = equal_observe
+        try:
+            before = self.snapshot()
+            with self.assertRaises(RunLifecycleConflict) as raised:
+                ActivityRunRetryCommandService(
+                    self.unit_of_work,
+                    id_factory=lambda: (_ for _ in ()).throw(
+                        AssertionError("expiry equality allocated identity")
+                    ),
+                ).execute(self.retry_command())
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
+        safe_error(self, raised.exception, "worker-a")
+        self.assertEqual(calls, 1)
+        self.assertEqual(self.snapshot(), before)
 
     def test_all_four_identities_are_allocated_before_first_write(self) -> None:
         self.require_retry_service()
@@ -201,6 +241,157 @@ class PostgresActivityRunRetryEligibilityRollbackTests(
                 "action",
             ],
         )
+
+    def test_complete_result_is_constructed_before_first_write(self) -> None:
+        self.require_retry_service()
+        self.reset_retry_truth()
+        trace: list[str] = []
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+        original_event_ordinal = PostgresExecutionStore.next_event_ordinal
+        original_action_ordinal = PostgresActivityHistoryStore.next_action_ordinal
+        original_result = retry_interpreter.ActivityRunRetryResult
+        original_add_run = PostgresExecutionStore.add_run
+
+        def observe(store, request_id):
+            trace.append("observe")
+            return original_observe(store, request_id)
+
+        def event_ordinal(store, run_id):
+            trace.append("event-ordinal")
+            return original_event_ordinal(store, run_id)
+
+        def action_ordinal(store, session_id):
+            trace.append("action-ordinal")
+            return original_action_ordinal(store, session_id)
+
+        def result(*args, **kwargs):
+            trace.append("result")
+            return original_result(*args, **kwargs)
+
+        def add_run(store, record):
+            trace.append("write:run")
+            return original_add_run(store, record)
+
+        ids = iter(("run-b", "retry-decision", "run-b-opened", "retry-action"))
+
+        def identity():
+            value = next(ids)
+            trace.append(f"id:{value}")
+            return value
+
+        PostgresExecutionStore.observe_request_lease_for_update = observe
+        PostgresExecutionStore.next_event_ordinal = event_ordinal
+        PostgresActivityHistoryStore.next_action_ordinal = action_ordinal
+        retry_interpreter.ActivityRunRetryResult = result
+        PostgresExecutionStore.add_run = add_run
+        try:
+            ActivityRunRetryCommandService(
+                self.unit_of_work,
+                id_factory=identity,
+            ).execute(self.retry_command())
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
+            PostgresExecutionStore.next_event_ordinal = original_event_ordinal
+            PostgresActivityHistoryStore.next_action_ordinal = original_action_ordinal
+            retry_interpreter.ActivityRunRetryResult = original_result
+            PostgresExecutionStore.add_run = original_add_run
+        self.assertEqual(
+            trace,
+            [
+                "observe",
+                "event-ordinal",
+                "action-ordinal",
+                "id:run-b",
+                "id:retry-decision",
+                "id:run-b-opened",
+                "id:retry-action",
+                "result",
+                "write:run",
+            ],
+        )
+
+    def test_result_construction_failure_precedes_every_write(self) -> None:
+        self.require_retry_service()
+        self.reset_retry_truth()
+        before = self.snapshot()
+        raw = RawDependencyFailure("result-construction-canary")
+        original_result = retry_interpreter.ActivityRunRetryResult
+        original_add_run = PostgresExecutionStore.add_run
+
+        def fail_result(*_args, **_kwargs):
+            raise raw
+
+        def fail_write(*_args, **_kwargs):
+            raise AssertionError("result failure reached first write")
+
+        retry_interpreter.ActivityRunRetryResult = fail_result
+        PostgresExecutionStore.add_run = fail_write
+        try:
+            with self.assertRaises(RawDependencyFailure) as raised:
+                ActivityRunRetryCommandService(
+                    self.unit_of_work,
+                    id_factory=iter(
+                        ("run-b", "retry-decision", "run-b-opened", "retry-action")
+                    ).__next__,
+                ).execute(self.retry_command())
+        finally:
+            retry_interpreter.ActivityRunRetryResult = original_result
+            PostgresExecutionStore.add_run = original_add_run
+        self.assertIs(raised.exception, raw)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_unequal_store_returns_conflict_and_roll_back_all_truth(self) -> None:
+        self.require_retry_service()
+        stages = ("run", "decision", "opened", "action")
+        for stage in stages:
+            with self.subTest(stage=stage):
+                self.reset_retry_truth()
+                before = self.snapshot()
+                original_add_run = PostgresExecutionStore.add_run
+                original_add_event = PostgresExecutionStore.add_event
+                original_add_action = PostgresActivityHistoryStore.add_action
+                event_calls = 0
+
+                def add_run(store, record):
+                    persisted = original_add_run(store, record)
+                    return object() if stage == "run" else persisted
+
+                def add_event(store, record):
+                    nonlocal event_calls
+                    event_calls += 1
+                    persisted = original_add_event(store, record)
+                    if (stage == "decision" and event_calls == 1) or (
+                        stage == "opened" and event_calls == 2
+                    ):
+                        return object()
+                    return persisted
+
+                def add_action(store, record):
+                    persisted = original_add_action(store, record)
+                    return object() if stage == "action" else persisted
+
+                PostgresExecutionStore.add_run = add_run
+                PostgresExecutionStore.add_event = add_event
+                PostgresActivityHistoryStore.add_action = add_action
+                try:
+                    with self.assertRaises(RunLifecycleConflict) as raised:
+                        ActivityRunRetryCommandService(
+                            self.unit_of_work,
+                            id_factory=iter(
+                                (
+                                    "run-b",
+                                    "retry-decision",
+                                    "run-b-opened",
+                                    "retry-action",
+                                )
+                            ).__next__,
+                        ).execute(self.retry_command())
+                finally:
+                    PostgresExecutionStore.add_run = original_add_run
+                    PostgresExecutionStore.add_event = original_add_event
+                    PostgresActivityHistoryStore.add_action = original_add_action
+                safe_error(self, raised.exception, stage)
+                self.assertEqual(self.snapshot(), before)
 
     def test_each_late_failure_escapes_and_rolls_back_every_record(self) -> None:
         self.require_retry_service()

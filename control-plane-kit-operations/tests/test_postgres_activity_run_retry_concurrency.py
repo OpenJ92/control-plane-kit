@@ -10,12 +10,16 @@ import psycopg
 from psycopg.errors import LockNotAvailable
 
 from control_plane_kit_operations.lifecycle import RunLifecycleConflict
-from control_plane_kit_operations.postgres import PostgresUnitOfWork
+from control_plane_kit_operations.postgres import (
+    PostgresExecutionStore,
+    PostgresUnitOfWork,
+)
 
 from tests.activity_run_retry_interpreter_fixture import (
     ActivityRunRetryCommandService,
     PostgresActivityRunRetryFixture,
 )
+from tests.execution_lease_recovery_fixture import Sequence
 
 
 class PostgresActivityRunRetryConcurrencyTests(
@@ -121,6 +125,77 @@ class PostgresActivityRunRetryConcurrencyTests(
         self.assertEqual(len(snapshot[3]), 2)
         self.assertEqual(len(snapshot[2]), 1)
 
+    def test_distinct_key_race_forces_both_winner_identities(self) -> None:
+        self.require_retry_service()
+        for winner, loser in (("b", "c"), ("c", "b")):
+            with self.subTest(winner=winner):
+                self._force_distinct_winner(winner, loser)
+
+    def _force_distinct_winner(self, winner: str, loser: str) -> None:
+        self.reset_retry_truth()
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        winner_pids: queue.Queue[int] = queue.Queue()
+        loser_pids: queue.Queue[int] = queue.Queue()
+        winner_ids = Sequence(
+            f"run-{winner}",
+            f"decision-{winner}",
+            f"opened-{winner}",
+            f"action-{winner}",
+        )
+        loser_ids = Sequence(
+            f"run-{loser}",
+            f"decision-{loser}",
+            f"opened-{loser}",
+            f"action-{loser}",
+        )
+        winner_service = ActivityRunRetryCommandService(
+            lambda: PostgresUnitOfWork(self.reporting_factory(winner_pids)),
+            id_factory=winner_ids,
+        )
+        loser_service = ActivityRunRetryCommandService(
+            lambda: PostgresUnitOfWork(self.reporting_factory(loser_pids)),
+            id_factory=loser_ids,
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            winner_future = executor.submit(
+                winner_service.execute,
+                self.retry_command(key=f"retry-{winner}"),
+            )
+            loser_future = None
+            try:
+                winner_pid = winner_pids.get(timeout=5)
+                self.wait_until_blocked_by(winner_pid, blocker_pid)
+                loser_future = executor.submit(
+                    loser_service.execute,
+                    self.retry_command(key=f"retry-{loser}"),
+                )
+                loser_pid = loser_pids.get(timeout=5)
+                self.wait_until_blocked_by(loser_pid, winner_pid)
+                blocker.commit()
+                result = winner_future.result(timeout=10)
+                with self.assertRaises(RunLifecycleConflict):
+                    loser_future.result(timeout=10)
+            finally:
+                blocker.rollback()
+                blocker.close()
+                if loser_future is not None and not loser_future.done():
+                    loser_future.cancel()
+        self.assertEqual(result.run.run_id, f"run-{winner}")
+        self.assertEqual(winner_ids.calls, [
+            f"run-{winner}",
+            f"decision-{winner}",
+            f"opened-{winner}",
+            f"action-{winner}",
+        ])
+        self.assertEqual(loser_ids.calls, [])
+        self.assertEqual(len(self.snapshot()[3]), 2)
+        self.assertEqual(len(self.snapshot()[2]), 1)
+
     def test_run_remains_free_while_retry_waits_on_request(self) -> None:
         self.require_retry_service()
         self.reset_retry_truth()
@@ -137,23 +212,40 @@ class PostgresActivityRunRetryConcurrencyTests(
                 ("run-b", "retry-decision", "run-b-opened", "retry-action")
             ).__next__,
         )
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(service.execute, self.retry_command())
-            try:
-                worker_pid = pids.get(timeout=5)
-                self.wait_until_blocked_by(worker_pid, blocker_pid)
-                with psycopg.connect(self.database_url) as probe:
-                    row = probe.execute(
-                        "SELECT run_id FROM cpk_activity_runs "
-                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
-                    ).fetchone()
-                    self.assertEqual(row[0], "run-a")
-                    probe.rollback()
-            finally:
-                blocker.rollback()
-                blocker.close()
-            result = future.result(timeout=10)
+        observations = 0
+        observation_lock = threading.Lock()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def observe(store, request_id):
+            nonlocal observations
+            with observation_lock:
+                observations += 1
+            return original_observe(store, request_id)
+
+        PostgresExecutionStore.observe_request_lease_for_update = observe
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(service.execute, self.retry_command())
+                try:
+                    worker_pid = pids.get(timeout=5)
+                    self.wait_until_blocked_by(worker_pid, blocker_pid)
+                    with psycopg.connect(self.database_url) as probe:
+                        row = probe.execute(
+                            "SELECT run_id FROM cpk_activity_runs "
+                            "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                        ).fetchone()
+                        self.assertEqual(row[0], "run-a")
+                        probe.rollback()
+                    with observation_lock:
+                        self.assertEqual(observations, 0)
+                finally:
+                    blocker.rollback()
+                    blocker.close()
+                result = future.result(timeout=10)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
         self.assertEqual(result.run.run_id, "run-b")
+        self.assertEqual(observations, 1)
 
     def test_request_remains_held_while_retry_waits_on_run(self) -> None:
         self.require_retry_service()
@@ -171,23 +263,40 @@ class PostgresActivityRunRetryConcurrencyTests(
                 ("run-b", "retry-decision", "run-b-opened", "retry-action")
             ).__next__,
         )
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(service.execute, self.retry_command())
-            try:
-                worker_pid = pids.get(timeout=5)
-                self.wait_until_blocked_by(worker_pid, blocker_pid)
-                with psycopg.connect(self.database_url) as probe:
-                    with self.assertRaises(LockNotAvailable):
-                        probe.execute(
-                            "SELECT request_id FROM cpk_execution_requests "
-                            "WHERE request_id = 'request-a' FOR UPDATE NOWAIT"
-                        )
-                    probe.rollback()
-            finally:
-                blocker.rollback()
-                blocker.close()
-            result = future.result(timeout=10)
+        observations = 0
+        observation_lock = threading.Lock()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def observe(store, request_id):
+            nonlocal observations
+            with observation_lock:
+                observations += 1
+            return original_observe(store, request_id)
+
+        PostgresExecutionStore.observe_request_lease_for_update = observe
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(service.execute, self.retry_command())
+                try:
+                    worker_pid = pids.get(timeout=5)
+                    self.wait_until_blocked_by(worker_pid, blocker_pid)
+                    with psycopg.connect(self.database_url) as probe:
+                        with self.assertRaises(LockNotAvailable):
+                            probe.execute(
+                                "SELECT request_id FROM cpk_execution_requests "
+                                "WHERE request_id = 'request-a' FOR UPDATE NOWAIT"
+                            )
+                        probe.rollback()
+                    with observation_lock:
+                        self.assertEqual(observations, 0)
+                finally:
+                    blocker.rollback()
+                    blocker.close()
+                result = future.result(timeout=10)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
         self.assertEqual(result.run.run_id, "run-b")
+        self.assertEqual(observations, 1)
 
 
 if __name__ == "__main__":

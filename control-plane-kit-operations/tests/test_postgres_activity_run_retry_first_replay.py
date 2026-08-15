@@ -13,15 +13,19 @@ from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
     RunLifecycleConflict,
     RunLifecycleIdempotencyConflict,
+    RunLifecycleNotFound,
 )
 from control_plane_kit_operations.postgres import (
     GatewayKeyRotationStore,
+    PostgresActivityHistoryStore,
     PostgresExecutionStore,
 )
+from control_plane_kit_operations.records import OperationsRecordError
 
 from tests.activity_run_retry_interpreter_fixture import (
     ActivityRunRetryCommandService,
     PostgresActivityRunRetryFixture,
+    retry_interpreter,
 )
 from tests.execution_lease_recovery_fixture import safe_error
 from tests.execution_lease_recovery_fixture import (
@@ -211,6 +215,205 @@ class PostgresActivityRunRetryFirstReplayTests(
                 self.assertTrue(replay.replayed)
                 self.assertEqual(replay.run.status.value, status)
 
+    def test_replay_revalidates_current_fence_and_complete_result_truth(self) -> None:
+        mutations = {
+            "replaced-fence": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_execution_requests SET claim_generation = 8 "
+                    "WHERE request_id = 'request-a'"
+                ),
+                RunLifecycleConflict,
+            ),
+            "abandoned-fence": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_execution_requests SET status = 'abandoned', "
+                    "claim_worker_id = NULL, claim_generation = NULL, "
+                    "claimed_at = NULL, lease_expires_at = NULL "
+                    "WHERE request_id = 'request-a'"
+                ),
+                RunLifecycleConflict,
+            ),
+            "missing-prior": (self._delete_retry_runs, RunLifecycleNotFound),
+            "missing-new": (self._delete_new_run, RunLifecycleNotFound),
+            "missing-decision": (
+                lambda: self.connection.execute(
+                    "DELETE FROM cpk_activity_events "
+                    "WHERE event_id = 'retry-decision'"
+                ),
+                RunLifecycleNotFound,
+            ),
+            "missing-opened": (
+                lambda: self.connection.execute(
+                    "DELETE FROM cpk_activity_events "
+                    "WHERE event_id = 'run-b-opened'"
+                ),
+                RunLifecycleNotFound,
+            ),
+            "attempt": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_activity_runs SET attempt = 3, metadata = "
+                    "'{\"attempt\":3,\"prior_run_id\":\"run-a\"}'::jsonb "
+                    "WHERE run_id = 'run-b'"
+                ),
+                RunLifecycleConflict,
+            ),
+            "action-coordinate": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_operation_actions SET payload = "
+                    "jsonb_set(payload, '{execution_request_id}', "
+                    "'\"request-canary\"'::jsonb) "
+                    "WHERE action_id = 'retry-action'"
+                ),
+                RunLifecycleConflict,
+            ),
+            "event-time": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_activity_events SET occurred_at = "
+                    "occurred_at + interval '1 second' "
+                    "WHERE event_id = 'run-b-opened'"
+                ),
+                RunLifecycleConflict,
+            ),
+            "recovery": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_activity_events SET payload = "
+                    "jsonb_set(payload, '{recovery,replacement_fence,generation}', "
+                    "'8'::jsonb) WHERE event_id = 'retry-decision'"
+                ),
+                RunLifecycleConflict,
+            ),
+        }
+        for label, (mutate, expected) in mutations.items():
+            with self.subTest(mutation=label):
+                self.reset_retry_truth()
+                command = self.retry_command()
+                self.retry_service(
+                    "run-b", "retry-decision", "run-b-opened", "retry-action"
+                ).execute(command)
+                mutate()
+                before = self.snapshot()
+                with self.assertRaises(expected) as raised:
+                    ActivityRunRetryCommandService(
+                        self.unit_of_work,
+                        id_factory=lambda: (_ for _ in ()).throw(
+                            AssertionError("invalid replay allocated identity")
+                        ),
+                    ).execute(command)
+                safe_error(
+                    self,
+                    raised.exception,
+                    "request-canary",
+                    "authority-reference-a",
+                )
+                self.assertEqual(self.snapshot(), before)
+
+    def _delete_retry_runs(self) -> None:
+        self.connection.execute(
+            "DELETE FROM cpk_activity_events WHERE run_id IN ('run-a', 'run-b')"
+        )
+        self.connection.execute(
+            "DELETE FROM cpk_activity_runs WHERE run_id = 'run-b'"
+        )
+        self.connection.execute(
+            "DELETE FROM cpk_activity_runs WHERE run_id = 'run-a'"
+        )
+
+    def _delete_new_run(self) -> None:
+        self.connection.execute(
+            "DELETE FROM cpk_activity_events WHERE run_id = 'run-b'"
+        )
+        self.connection.execute(
+            "DELETE FROM cpk_activity_runs WHERE run_id = 'run-b'"
+        )
+
+    def test_replay_selector_corruption_is_categorical_and_raw_errors_escape(
+        self,
+    ) -> None:
+        cases = (
+            (OperationsRecordError("selector-record-canary"), RunLifecycleConflict),
+            (RuntimeError("selector-runtime-canary"), RuntimeError),
+        )
+        for injected, expected in cases:
+            with self.subTest(error=type(injected).__name__):
+                self.reset_retry_truth()
+                command = self.retry_command()
+                self.retry_service(
+                    "run-b", "retry-decision", "run-b-opened", "retry-action"
+                ).execute(command)
+                before = self.snapshot()
+                original = PostgresExecutionStore.get_run_for_request_for_update
+
+                def fail_selector(*_args, **_kwargs):
+                    raise injected
+
+                PostgresExecutionStore.get_run_for_request_for_update = fail_selector
+                try:
+                    with self.assertRaises(expected) as raised:
+                        ActivityRunRetryCommandService(
+                            self.unit_of_work,
+                            id_factory=lambda: (_ for _ in ()).throw(
+                                AssertionError("selector failure allocated identity")
+                            ),
+                        ).execute(command)
+                finally:
+                    PostgresExecutionStore.get_run_for_request_for_update = original
+                if type(injected) is RuntimeError:
+                    self.assertIs(raised.exception, injected)
+                else:
+                    safe_error(self, raised.exception, "selector-record-canary")
+                self.assertEqual(self.snapshot(), before)
+
+    def test_foreign_action_new_run_does_not_lock_foreign_row(self) -> None:
+        self.reset_retry_truth()
+        command = self.retry_command()
+        self.retry_service(
+            "run-b", "retry-decision", "run-b-opened", "retry-action"
+        ).execute(command)
+        self.seed_foreign_run()
+        before = self.snapshot()
+        original_lookup = PostgresActivityHistoryStore.action_for_idempotency
+        original_selector = PostgresExecutionStore.get_run_for_request_for_update
+        calls: list[tuple[str, str]] = []
+
+        def foreign_action(store, session_id, idempotency_key):
+            action = original_lookup(store, session_id, idempotency_key)
+            assert action is not None
+            return dataclasses.replace(
+                action,
+                payload={**action.payload, "run_id": "run-foreign"},
+            )
+
+        def selector(store, request_id, run_id):
+            calls.append((request_id, run_id))
+            if run_id == "run-foreign":
+                import psycopg
+
+                with psycopg.connect(self.database_url) as probe:
+                    row = probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-foreign' FOR UPDATE NOWAIT"
+                    ).fetchone()
+                    self.assertEqual(row, ("run-foreign",))
+                    probe.rollback()
+            return original_selector(store, request_id, run_id)
+
+        PostgresActivityHistoryStore.action_for_idempotency = foreign_action
+        PostgresExecutionStore.get_run_for_request_for_update = selector
+        try:
+            with self.assertRaises(RunLifecycleNotFound) as raised:
+                ActivityRunRetryCommandService(
+                    self.unit_of_work,
+                    id_factory=lambda: (_ for _ in ()).throw(
+                        AssertionError("foreign replay allocated identity")
+                    ),
+                ).execute(command)
+        finally:
+            PostgresActivityHistoryStore.action_for_idempotency = original_lookup
+            PostgresExecutionStore.get_run_for_request_for_update = original_selector
+        self.assertEqual(calls, [("request-a", "run-a"), ("request-a", "run-foreign")])
+        safe_error(self, raised.exception, "run-foreign")
+        self.assertEqual(self.snapshot(), before)
+
     def test_same_key_changed_intent_conflicts_without_mutation(self) -> None:
         self.reset_retry_truth()
         self.retry_service(
@@ -255,6 +458,107 @@ class PostgresActivityRunRetryFirstReplayTests(
         finally:
             for name, method in originals.items():
                 setattr(GatewayKeyRotationStore, name, method)
+
+    def test_retry_delegates_approval_and_journal_to_shared_support(self) -> None:
+        self.require_retry_service()
+        original_approval = retry_interpreter.locked_recovery_approval
+        original_journal = retry_interpreter.require_recovery_eligible_journal
+        calls: list[tuple[str, object]] = []
+
+        def approval(*args, **kwargs):
+            calls.append(("approval", args[1].identity.request_id))
+            return original_approval(*args, **kwargs)
+
+        def journal(*args, **kwargs):
+            calls.append(("journal", args[0]))
+            return original_journal(*args, **kwargs)
+
+        retry_interpreter.locked_recovery_approval = approval
+        retry_interpreter.require_recovery_eligible_journal = journal
+        try:
+            for subject in ("activity-plan", "gateway-key-rotation"):
+                self.reset_retry_truth(approval_subject=subject)
+                self.retry_service(
+                    f"run-{subject}",
+                    f"decision-{subject}",
+                    f"opened-{subject}",
+                    f"action-{subject}",
+                ).execute(self.retry_command(key=f"retry-{subject}"))
+        finally:
+            retry_interpreter.locked_recovery_approval = original_approval
+            retry_interpreter.require_recovery_eligible_journal = original_journal
+
+        self.assertEqual(
+            calls,
+            [
+                ("approval", "request-a"),
+                ("journal", RecoveryDecisionKind.RETRY_AS_NEW_RUN),
+                ("approval", "request-a"),
+                ("journal", RecoveryDecisionKind.RETRY_AS_NEW_RUN),
+            ],
+        )
+
+    def test_approval_corruption_rejects_before_clock_ids_and_writes(self) -> None:
+        self.require_retry_service()
+        mutations = {
+            "subject": lambda: self.connection.execute(
+                "UPDATE cpk_approval_requests SET review_digest = %s "
+                "WHERE request_id = 'approval-request-a'",
+                ("f" * 64,),
+            ),
+            "scope": lambda: self.connection.execute(
+                "UPDATE cpk_approval_decisions SET scope = "
+                "'plan:approve-destructive' "
+                "WHERE decision_id = 'approval-decision-a'"
+            ),
+            "decision": lambda: self.connection.execute(
+                "UPDATE cpk_approval_decisions SET decision = 'rejected' "
+                "WHERE decision_id = 'approval-decision-a'"
+            ),
+            "plan-link": self._drift_approval_session,
+        }
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("invalid retry approval sampled database time")
+
+        for subject in ("activity-plan", "gateway-key-rotation"):
+            for label, mutate in mutations.items():
+                with self.subTest(subject=subject, mutation=label):
+                    self.reset_retry_truth(approval_subject=subject)
+                    mutate()
+                    before = self.snapshot()
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        fail_observe
+                    )
+                    try:
+                        with self.assertRaises(RunLifecycleConflict) as raised:
+                            ActivityRunRetryCommandService(
+                                self.unit_of_work,
+                                id_factory=lambda: (_ for _ in ()).throw(
+                                    AssertionError(
+                                        "invalid retry approval allocated identity"
+                                    )
+                                ),
+                            ).execute(self.retry_command())
+                    finally:
+                        PostgresExecutionStore.observe_request_lease_for_update = (
+                            original_observe
+                        )
+                    safe_error(self, raised.exception, "f" * 32, "rotation-a")
+                    self.assertEqual(self.snapshot(), before)
+
+    def _drift_approval_session(self) -> None:
+        self.connection.execute(
+            "INSERT INTO cpk_operation_sessions "
+            "(session_id, workspace_id, actor_id, title, status, created_at, "
+            "metadata) VALUES ('session-b', 'workspace-a', 'operator-a', "
+            "'Foreign', 'open', '2026-08-15T03:55:01Z', '{}'::jsonb)"
+        )
+        self.connection.execute(
+            "UPDATE cpk_approval_requests SET session_id = 'session-b' "
+            "WHERE request_id = 'approval-request-a'"
+        )
 
     def test_retry_and_lease_rotation_preserve_both_temporal_worlds(self) -> None:
         self.reset_retry_truth()

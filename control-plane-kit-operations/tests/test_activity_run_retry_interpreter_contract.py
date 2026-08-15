@@ -83,18 +83,19 @@ class ActivityRunRetryInterpreterContractTests(unittest.TestCase):
         )
 
         fixture = PostgresActivityRunRetryFixture()
-        command = fixture.retry_command(scopes=(RecoveryScope.RENEW_CLAIM,))
-
         def fail_factory():
             raise AssertionError("scope rejection opened a unit of work")
 
-        service = ActivityRunRetryCommandService(
-            fail_factory,
-            id_factory=lambda: "unused-id",
-        )
-        with self.assertRaises(RunLifecycleDenied) as raised:
-            service.execute(command)
-        safe_error(self, raised.exception, "authority-reference-a")
+        for scopes in ((), (RecoveryScope.RENEW_CLAIM,)):
+            with self.subTest(scopes=scopes):
+                command = fixture.retry_command(scopes=scopes)
+                service = ActivityRunRetryCommandService(
+                    fail_factory,
+                    id_factory=lambda: "unused-id",
+                )
+                with self.assertRaises(RunLifecycleDenied) as raised:
+                    service.execute(command)
+                safe_error(self, raised.exception, "authority-reference-a")
 
     def test_inventory_owns_one_public_interpreter_module(self) -> None:
         inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))

@@ -8,7 +8,14 @@ from control_plane_kit_core.operations.lifecycle import (
     RecoveryScope,
 )
 from control_plane_kit_operations.activity_run_retry import RetryFailedActivityRun
+from control_plane_kit_operations.execution_lease_recovery import RecoveryAuthority
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.records import (
+    ActivityRunRecord,
+    AdmittedRun,
+    RetryIdentity,
+)
+from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 from control_plane_kit_operations.workflows import IdempotencyKey
 
 from tests.execution_lease_recovery_fixture import (
@@ -69,21 +76,7 @@ class PostgresActivityRunRetryFixture(PostgresExecutionLeaseRecoveryFixture):
             request_id,
             RunId(prior_run_id),
             expected_fence or ExecutionLeaseFence("worker-a", 7),
-            self.authority(
-                RecoveryScope.OPERATE,
-                actor_id=actor_id,
-                authority_reference=authority_reference,
-                extra_scopes=tuple(
-                    scope for scope in scopes if scope is not RecoveryScope.OPERATE
-                ),
-            )
-            if RecoveryScope.OPERATE in scopes
-            else self.authority(
-                scopes[0],
-                actor_id=actor_id,
-                authority_reference=authority_reference,
-                extra_scopes=scopes[1:],
-            ),
+            RecoveryAuthority(actor_id, authority_reference, scopes),
             IdempotencyKey(key),
         )
 
@@ -103,6 +96,42 @@ class PostgresActivityRunRetryFixture(PostgresExecutionLeaseRecoveryFixture):
             "lease_expires_at = %s WHERE request_id = 'request-a'",
             ("2098-01-01T00:00:00Z", "2099-01-01T00:00:00Z"),
         )
+
+    def seed_foreign_run(self, run_id: str = "run-foreign") -> None:
+        self.connection.execute(
+            "INSERT INTO cpk_activity_plans "
+            "(plan_id, session_id, base_graph_id, desired_graph_id, "
+            "base_realized_projection_id, desired_realized_projection_id, "
+            "desired_graph_revision, status, created_at, payload) "
+            "SELECT 'plan-b', session_id, base_graph_id, desired_graph_id, "
+            "base_realized_projection_id, desired_realized_projection_id, "
+            "desired_graph_revision, status, created_at, payload "
+            "FROM cpk_activity_plans WHERE plan_id = 'plan-a'"
+        )
+        self.connection.execute(
+            "INSERT INTO cpk_execution_requests "
+            "(request_id, workspace_id, session_id, plan_id, status, "
+            "requested_by, requested_at, approval_request_id, "
+            "approval_decision_id, idempotency_key, intent_fingerprint, "
+            "claim_worker_id, claim_generation, claimed_at, lease_expires_at) "
+            "SELECT 'request-b', workspace_id, session_id, 'plan-b', status, "
+            "requested_by, requested_at, approval_request_id, "
+            "approval_decision_id, 'execute-b', intent_fingerprint, "
+            "claim_worker_id, claim_generation, claimed_at, lease_expires_at "
+            "FROM cpk_execution_requests WHERE request_id = 'request-a'"
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.execution.add_run(
+                ActivityRunRecord(
+                    run_id,
+                    "plan-b",
+                    AdmittedRun("request-b"),
+                    RetryIdentity(1),
+                    ActivityRunStatus.CLAIMED,
+                    "2026-08-15T04:20:00Z",
+                )
+            )
+            unit_of_work.commit()
 
 
 __all__ = [
