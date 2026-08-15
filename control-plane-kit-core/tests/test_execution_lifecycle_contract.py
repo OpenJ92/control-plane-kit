@@ -218,9 +218,14 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
         )
         self.assertTrue(decision.requires_unexpired_claim)
         self.assertFalse(decision.requires_expired_claim)
-        self.assertIn(
-            ActivityRunStatus.CLAIMED,
+        self.assertEqual(
             contract.operation("recovery.decide").accepted_run_statuses,
+            (
+                ActivityRunStatus.CLAIMED,
+                ActivityRunStatus.PAUSED,
+                ActivityRunStatus.FAILED,
+                ActivityRunStatus.PARTIALLY_FAILED,
+            ),
         )
 
     def test_claim_recovery_predicates_are_explicit_and_exact(self) -> None:
@@ -268,6 +273,13 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
 
     def test_claim_recovery_contract_rejects_incongruent_direct_values(self) -> None:
         cases = (
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.CLAIMED,),
+                True,
+                False,
+            ),
             (
                 RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
                 RecoveryScope.RENEW_CLAIM,
@@ -346,12 +358,14 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
         malformed.extend(
             (
                 {**active, "allowed_run_statuses": [ActivityRunStatus.FAILED.value]},
+                {**active, "required_scope": RecoveryScope.OPERATE.value},
                 {**active, "requires_unexpired_claim": False},
                 {**active, "requires_expired_claim": True},
                 {**expired, "allowed_run_statuses": [ActivityRunStatus.CLAIMED.value]},
                 {**expired, "requires_expired_claim": False},
                 {**expired, "requires_unexpired_claim": True},
                 {**expired, "requires_unexpired_claim": 1},
+                {**expired, "kind": "invented"},
                 {**expired, "extra": False},
             )
         )
