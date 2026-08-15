@@ -375,6 +375,29 @@ class ExecutionLeaseRecoveryLanguageTests(unittest.TestCase):
                     )
                 self.assert_safe_error(captured.exception, str(next_worker_id))
 
+        for command_type, decision in (
+            (RenewActiveExecutionClaim, RecoveryDecisionKind.RENEW_ACTIVE_CLAIM),
+            (RenewExpiredExecutionClaim, RecoveryDecisionKind.RENEW_EXPIRED_CLAIM),
+            (
+                TakeOverExpiredExecutionClaim,
+                RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
+            ),
+            (
+                AbandonExpiredExecutionClaim,
+                RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM,
+            ),
+        ):
+            hostile_type = type(f"Hostile{command_type.__name__}", (command_type,), {})
+            valid = self.command(decision)
+            values = {
+                field.name: getattr(valid, field.name)
+                for field in dataclasses.fields(command_type)
+            }
+            with self.subTest(command=command_type.__name__):
+                with self.assertRaises(InvalidOperationCommand) as captured:
+                    hostile_type(**values)
+                self.assert_safe_error(captured.exception)
+
     def test_fingerprint_is_exact_canonical_intent_and_excludes_retry_authority(self) -> None:
         common = {
             "actor_id": "operator-a",
