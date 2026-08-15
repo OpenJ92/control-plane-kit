@@ -142,12 +142,17 @@ class ExecutionLeaseRecoveryCommandService:
                 raise RunLifecycleConflict("execution request changed before recovery")
             _require_expiry(command, observation.expired)
 
+            first_event_ordinal = stores.execution.next_event_ordinal(run.run_id)
+            action_ordinal = history.next_action_ordinal(
+                request.identity.session_id
+            )
             result = self._plan_result(
-                stores,
                 command,
                 request,
                 run,
                 observed_at=observation.observed_at,
+                first_event_ordinal=first_event_ordinal,
+                action_ordinal=action_ordinal,
             )
             persisted = _persist_claim(stores, command, result)
             if persisted != result.request:
@@ -163,12 +168,13 @@ class ExecutionLeaseRecoveryCommandService:
 
     def _plan_result(
         self,
-        stores: Any,
         command: ExecutionLeaseRecoveryCommand,
         request: ExecutionRequestRecord,
         run: ActivityRunRecord,
         *,
         observed_at: str,
+        first_event_ordinal: int,
+        action_ordinal: int,
     ) -> ExecutionLeaseRecoveryResult:
         prior_fence = command.expected_fence
         replacement_fence = _replacement_fence(command)
@@ -184,14 +190,10 @@ class ExecutionLeaseRecoveryCommandService:
             prior_fence,
             replacement_fence,
         )
-        first_ordinal = stores.execution.next_event_ordinal(run.run_id)
-        action_ordinal = stores.activity_history.next_action_ordinal(
-            request.identity.session_id
-        )
         decision_event = ActivityEventRecord(
             self._id_factory(),
             run.run_id,
-            first_ordinal,
+            first_event_ordinal,
             ActivityEventKind.RECOVERY_DECISION_RECORDED,
             observed_at,
             recovery=recovery,
@@ -199,7 +201,7 @@ class ExecutionLeaseRecoveryCommandService:
         consequence_event = ActivityEventRecord(
             self._id_factory(),
             run.run_id,
-            first_ordinal + 1,
+            first_event_ordinal + 1,
             _CONSEQUENCE_KIND[recovery.decision_kind],
             observed_at,
         )
