@@ -15,6 +15,7 @@ from gateway_rotation_retirement_fixture import (
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     FailureCategory,
+    LifecycleOperationKind,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.coordinator import ActivityExecutionOutcome
@@ -28,7 +29,14 @@ from control_plane_kit_operations.gateway_key_rotation_retirement_execution impo
     GatewayKeyRotationRetirementExecutionOutcome,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotationDeployment,
+    AdvanceGatewayKeyRotation,
+    GatewayKeyRotationConflict,
+    GatewayKeyRotationDeploymentHandoff,
+    GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
+    ReadGatewayKeyRotationDeploymentHandoff,
+    GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.records import BoundedEvidence, FailureEvidence
@@ -53,7 +61,7 @@ class GatewayKeyRotationRetirementExecutionTests(
 
         self.assertEqual(
             str(captured.exception),
-            "deployment coordinator rejected progress",
+            "retirement checkpoint does not match durable child truth",
         )
         self.assertIsNone(captured.exception.__cause__)
         self.assertIsNone(captured.exception.__context__)
@@ -200,6 +208,26 @@ class GatewayKeyRotationRetirementExecutionTests(
             self.workspace().current_realized_projection_id,
             self.overlap_projection_id,
         )
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation=2 "
+            "WHERE request_id=%s",
+            (self.retirement_checkpoint.execution_request_id,),
+        )
+        stale_adapter = RecordingAdapter()
+        with self.assertRaises(
+            GatewayKeyRotationRetirementExecutionConflict
+        ) as captured:
+            self.execution_program(
+                stale_adapter,
+                prefix="stale-replay",
+            ).progress(self.execution_command())
+        self.assertEqual(
+            str(captured.exception),
+            "gateway deployment execution authority is stale",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(stale_adapter.calls, [])
 
     def test_restarts_after_post_effect_commits_without_redispatch(self) -> None:
         for crash_after_commit in range(4, 8):
@@ -234,20 +262,127 @@ class GatewayKeyRotationRetirementExecutionTests(
                         prefix=f"crash-{crash_after_commit}",
                     ).progress(self.execution_command())
 
-                recovered_adapter = RecordingAdapter()
-                recovered = self.execution_program(
-                    recovered_adapter,
-                    prefix=f"recover-{crash_after_commit}",
-                ).progress(self.execution_command())
+                if crash_after_commit == 6:
+                    rotations = GatewayKeyRotationService(
+                        self.unit_of_work,
+                        clock=lambda: 5_000,
+                    )
+                    rotation_before_stale = rotations.get(self.rotation_id)
+                    transitions_before_stale = rotations.transitions(
+                        self.rotation_id
+                    )
+                    events_before_stale = tuple(self.retirement_event_kinds())
+                    actions_before_stale = self._current_advancement_action_count()
+                    self.assertIs(
+                        rotation_before_stale.status,
+                        GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+                    )
+                    self.assertEqual(
+                        rotation_before_stale.retirement_deployment,
+                        self.retirement_checkpoint,
+                    )
+                    self.assertEqual(
+                        self.workspace().current_realized_projection_id,
+                        self.retirement_checkpoint.desired_realized_projection_id,
+                    )
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claim_generation=2 "
+                        "WHERE request_id=%s",
+                        (self.retirement_checkpoint.execution_request_id,),
+                    )
+                    stale_adapter = RecordingAdapter()
+                    with self.assertRaises(
+                        GatewayKeyRotationRetirementExecutionConflict
+                    ) as captured:
+                        self.execution_program(
+                            stale_adapter,
+                            prefix="stale-after-graph-advance",
+                        ).progress(self.execution_command())
+                    self.assertEqual(
+                        str(captured.exception),
+                        "retirement checkpoint does not match durable child truth",
+                    )
+                    self.assertEqual(stale_adapter.calls, [])
+                    self.assertEqual(
+                        rotations.get(self.rotation_id),
+                        rotation_before_stale,
+                    )
+                    self.assertEqual(
+                        rotations.transitions(self.rotation_id),
+                        transitions_before_stale,
+                    )
+                    self.assertEqual(
+                        tuple(self.retirement_event_kinds()),
+                        events_before_stale,
+                    )
+                    self.assertEqual(self.retirement_advancement_count(), 1)
+                    self.assertEqual(
+                        self._current_advancement_action_count(),
+                        actions_before_stale,
+                    )
+                    replacement_handoff = rotations.deployment_handoff(
+                        ReadGatewayKeyRotationDeploymentHandoff(
+                            self.rotation_id,
+                            GatewayKeyRotationDeploymentPhase.RETIREMENT,
+                            self.execution_command().worker_authority,
+                        )
+                    )
+                    accepted_checkpoint = replace(
+                        self.retirement_checkpoint,
+                        status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+                        accepted_current_graph_id=(
+                            self.retirement_checkpoint.desired_authored_graph_id
+                        ),
+                        accepted_current_projection_id=(
+                            self.retirement_checkpoint.desired_realized_projection_id
+                        ),
+                        accepted_at="2026-08-02T05:00:00Z",
+                    )
+                    recovered_rotation = rotations.advance_deployment(
+                        AdvanceGatewayKeyRotationDeployment(
+                            transition=AdvanceGatewayKeyRotation(
+                                rotation_id=self.rotation_id,
+                                transition_id="replacement-retirement-fold",
+                                expected_status=(
+                                    GatewayKeyRotationStatus.RETIREMENT_DEPLOYING
+                                ),
+                                expected_version=rotation_before_stale.version,
+                                target_status=(
+                                    GatewayKeyRotationStatus.RETIREMENT_READY
+                                ),
+                                advanced_by="operator-a",
+                                advanced_at=accepted_checkpoint.accepted_at,
+                                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                                deployment=accepted_checkpoint,
+                            ),
+                            handoff=GatewayKeyRotationDeploymentHandoff(
+                                self.rotation_id,
+                                accepted_checkpoint,
+                                replacement_handoff.fence,
+                            ),
+                        )
+                    )
+                    recovered_adapter = RecordingAdapter()
+                    self.assertIs(
+                        recovered_rotation.status,
+                        GatewayKeyRotationStatus.RETIREMENT_READY,
+                    )
+                else:
+                    recovered_adapter = RecordingAdapter()
+                    recovered = self.execution_program(
+                        recovered_adapter,
+                        prefix=f"recover-{crash_after_commit}",
+                    ).progress(self.execution_command())
 
-                self.assertIn(
-                    recovered.outcome,
-                    {
-                        GatewayKeyRotationRetirementExecutionOutcome.ACCEPTED,
-                        GatewayKeyRotationRetirementExecutionOutcome.ACCEPTED_REPLAY,
-                    },
-                    recovered.failure_code,
-                )
+                if crash_after_commit != 6:
+                    self.assertIn(
+                        recovered.outcome,
+                        {
+                            GatewayKeyRotationRetirementExecutionOutcome.ACCEPTED,
+                            GatewayKeyRotationRetirementExecutionOutcome.ACCEPTED_REPLAY,
+                        },
+                        recovered.failure_code,
+                    )
                 self.assertEqual(len(prior_adapter.calls), activity_count - 1)
                 self.assertEqual(len(adapter.calls), 1)
                 self.assertEqual(recovered_adapter.calls, [])
@@ -289,6 +424,77 @@ class GatewayKeyRotationRetirementExecutionTests(
         with self.assertRaises(GatewayKeyRotationRetirementExecutionConflict):
             self.execution_program(adapter).progress(self.execution_command())
         self.assertEqual(adapter.calls, [])
+
+    def test_accepted_fold_without_graph_advancement_evidence_is_rejected(
+        self,
+    ) -> None:
+        self.prepare_retirement_execution()
+        rotations = GatewayKeyRotationService(
+            self.unit_of_work,
+            clock=lambda: 5_000,
+        )
+        handoff = rotations.deployment_handoff(
+            ReadGatewayKeyRotationDeploymentHandoff(
+                self.rotation_id,
+                GatewayKeyRotationDeploymentPhase.RETIREMENT,
+                self.execution_command().worker_authority,
+            )
+        )
+        accepted = replace(
+            self.retirement_checkpoint,
+            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+            accepted_current_graph_id=(
+                self.retirement_checkpoint.desired_authored_graph_id
+            ),
+            accepted_current_projection_id=(
+                self.retirement_checkpoint.desired_realized_projection_id
+            ),
+            accepted_at="2026-08-02T05:00:00Z",
+        )
+        before = rotations.get(self.rotation_id)
+        transitions = rotations.transitions(self.rotation_id)
+        event_count = len(self.retirement_event_kinds())
+        action_count = self._current_advancement_action_count()
+
+        with self.assertRaisesRegex(
+            GatewayKeyRotationConflict,
+            "^gateway deployment acceptance evidence is incongruent$",
+        ) as captured:
+            rotations.advance_deployment(
+                AdvanceGatewayKeyRotationDeployment(
+                    transition=AdvanceGatewayKeyRotation(
+                        rotation_id=self.rotation_id,
+                        transition_id="retirement-accepted-without-evidence",
+                        expected_status=(
+                            GatewayKeyRotationStatus.RETIREMENT_DEPLOYING
+                        ),
+                        expected_version=self.retirement_prepared_version,
+                        target_status=GatewayKeyRotationStatus.RETIREMENT_READY,
+                        advanced_by="operator-a",
+                        advanced_at=accepted.accepted_at,
+                        actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                        deployment=accepted,
+                    ),
+                    handoff=GatewayKeyRotationDeploymentHandoff(
+                        self.rotation_id,
+                        accepted,
+                        handoff.fence,
+                    ),
+                )
+            )
+
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(rotations.get(self.rotation_id), before)
+        self.assertEqual(rotations.transitions(self.rotation_id), transitions)
+        self.assertEqual(len(self.retirement_event_kinds()), event_count)
+        self.assertEqual(self._current_advancement_action_count(), action_count)
+
+    def _current_advancement_action_count(self) -> int:
+        return self.connection.execute(
+            "SELECT count(*) FROM cpk_operation_actions WHERE action_type=%s",
+            (LifecycleOperationKind.ADVANCE_CURRENT_GRAPH.value,),
+        ).fetchone()[0]
 
 
 if __name__ == "__main__":

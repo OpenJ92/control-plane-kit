@@ -15,6 +15,7 @@ from gateway_rotation_overlap_fixture import (
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     FailureCategory,
+    LifecycleOperationKind,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
@@ -35,7 +36,14 @@ from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     PrepareGatewayKeyRotationOverlap,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotationDeployment,
+    AdvanceGatewayKeyRotation,
+    GatewayKeyRotationConflict,
+    GatewayKeyRotationDeploymentHandoff,
+    GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
+    ReadGatewayKeyRotationDeploymentHandoff,
+    GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.lifecycle import (
@@ -267,7 +275,7 @@ class GatewayKeyRotationOverlapExecutionTests(
 
         self.assertEqual(
             str(captured.exception),
-            "deployment coordinator rejected progress",
+            "overlap checkpoint does not match durable child truth",
         )
         self.assertIsNone(captured.exception.__cause__)
         self.assertIsNone(captured.exception.__context__)
@@ -336,6 +344,25 @@ class GatewayKeyRotationOverlapExecutionTests(
             self._workspace().current_realized_projection_id,
             "projection-a",
         )
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation=2 "
+            "WHERE request_id=%s",
+            (self.checkpoint.execution_request_id,),
+        )
+        stale_adapter = RecordingAdapter()
+        with self.assertRaises(
+            GatewayKeyRotationOverlapExecutionConflict
+        ) as captured:
+            self.program(stale_adapter, prefix="stale-replay").progress(
+                self.command()
+            )
+        self.assertEqual(
+            str(captured.exception),
+            "gateway deployment execution authority is stale",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(stale_adapter.calls, [])
 
     def test_restarts_after_each_post_effect_commit_without_duplicate_effect(self) -> None:
         # get rotation, snapshot, step intent, step result, run complete,
@@ -382,21 +409,122 @@ class GatewayKeyRotationOverlapExecutionTests(
                         durable_kinds.count(ActivityEventKind.STEP_SUCCEEDED),
                         activity_count,
                     )
+                if crash_after_commit == 6:
+                    rotations = GatewayKeyRotationService(
+                        self.unit_of_work,
+                        clock=lambda: 3_000,
+                    )
+                    rotation_before_stale = rotations.get(self.rotation_id)
+                    transitions_before_stale = rotations.transitions(
+                        self.rotation_id
+                    )
+                    events_before_stale = tuple(self._event_kinds())
+                    actions_before_stale = self._current_advancement_action_count()
+                    self.assertIs(
+                        rotation_before_stale.status,
+                        GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                    )
+                    self.assertEqual(
+                        rotation_before_stale.overlap_deployment,
+                        self.checkpoint,
+                    )
+                    self.assertEqual(
+                        self._workspace().current_realized_projection_id,
+                        self.checkpoint.desired_realized_projection_id,
+                    )
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claim_generation=2 "
+                        "WHERE request_id=%s",
+                        (self.checkpoint.execution_request_id,),
+                    )
+                    stale_adapter = RecordingAdapter()
+                    with self.assertRaises(
+                        GatewayKeyRotationOverlapExecutionConflict
+                    ) as captured:
+                        self.program(
+                            stale_adapter,
+                            prefix="stale-after-graph-advance",
+                        ).progress(self.command())
+                    self.assertEqual(
+                        str(captured.exception),
+                        "overlap checkpoint does not match durable child truth",
+                    )
+                    self.assertEqual(stale_adapter.calls, [])
+                    self.assertEqual(
+                        rotations.get(self.rotation_id),
+                        rotation_before_stale,
+                    )
+                    self.assertEqual(
+                        rotations.transitions(self.rotation_id),
+                        transitions_before_stale,
+                    )
+                    self.assertEqual(tuple(self._event_kinds()), events_before_stale)
+                    self.assertEqual(self._current_advancement_count(), 1)
+                    self.assertEqual(
+                        self._current_advancement_action_count(),
+                        actions_before_stale,
+                    )
+                    replacement_handoff = rotations.deployment_handoff(
+                        ReadGatewayKeyRotationDeploymentHandoff(
+                            self.rotation_id,
+                            GatewayKeyRotationDeploymentPhase.OVERLAP,
+                            self.command().worker_authority,
+                        )
+                    )
+                    accepted_checkpoint = replace(
+                        self.checkpoint,
+                        status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+                        accepted_current_graph_id=(
+                            self.checkpoint.desired_authored_graph_id
+                        ),
+                        accepted_current_projection_id=(
+                            self.checkpoint.desired_realized_projection_id
+                        ),
+                        accepted_at="2026-08-02T03:00:00Z",
+                    )
+                    recovered_rotation = rotations.advance_deployment(
+                        AdvanceGatewayKeyRotationDeployment(
+                            transition=AdvanceGatewayKeyRotation(
+                                rotation_id=self.rotation_id,
+                                transition_id="replacement-overlap-fold",
+                                expected_status=(
+                                    GatewayKeyRotationStatus.OVERLAP_DEPLOYING
+                                ),
+                                expected_version=rotation_before_stale.version,
+                                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
+                                advanced_by="operator-a",
+                                advanced_at=accepted_checkpoint.accepted_at,
+                                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                                deployment=accepted_checkpoint,
+                            ),
+                            handoff=GatewayKeyRotationDeploymentHandoff(
+                                self.rotation_id,
+                                accepted_checkpoint,
+                                replacement_handoff.fence,
+                            ),
+                        )
+                    )
+                    recovered_adapter = RecordingAdapter()
+                    self.assertIs(
+                        recovered_rotation.status,
+                        GatewayKeyRotationStatus.OVERLAP_READY,
+                    )
+                else:
+                    recovered_adapter = RecordingAdapter()
+                    recovered = self.program(
+                        recovered_adapter,
+                        prefix=f"recover-{crash_after_commit}",
+                    ).progress(self.command())
 
-                recovered_adapter = RecordingAdapter()
-                recovered = self.program(
-                    recovered_adapter,
-                    prefix=f"recover-{crash_after_commit}",
-                ).progress(self.command())
-
-                self.assertIn(
-                    recovered.outcome,
-                    {
-                        GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED,
-                        GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED_REPLAY,
-                    },
-                    recovered.failure_code,
-                )
+                if crash_after_commit != 6:
+                    self.assertIn(
+                        recovered.outcome,
+                        {
+                            GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED,
+                            GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED_REPLAY,
+                        },
+                        recovered.failure_code,
+                    )
                 self.assertEqual(len(prior_adapter.calls), activity_count - 1)
                 self.assertEqual(len(adapter.calls), 1)
                 self.assertEqual(recovered_adapter.calls, [])
@@ -404,6 +532,126 @@ class GatewayKeyRotationOverlapExecutionTests(
                 self.assertEqual(
                     self._workspace().current_realized_projection_id,
                     self.checkpoint.desired_realized_projection_id,
+                )
+
+    def test_accepted_fold_requires_exact_advancement_action_and_event(
+        self,
+    ) -> None:
+        cases = (
+            (
+                "missing-action",
+                lambda action, event, accepted: (
+                    self.connection.execute(
+                        "DELETE FROM cpk_operation_actions WHERE action_id=%s",
+                        (action.action_id,),
+                    ),
+                    accepted,
+                )[1],
+            ),
+            (
+                "missing-event",
+                lambda action, event, accepted: (
+                    self.connection.execute(
+                        "DELETE FROM cpk_activity_events WHERE event_id=%s",
+                        (event.event_id,),
+                    ),
+                    accepted,
+                )[1],
+            ),
+            (
+                "foreign-request",
+                lambda action, event, accepted: (
+                    self.connection.execute(
+                        "UPDATE cpk_operation_actions "
+                        "SET payload=jsonb_set(payload, "
+                        "'{execution_request_id}', to_jsonb(%s::text)) "
+                        "WHERE action_id=%s",
+                        ("foreign-request", action.action_id),
+                    ),
+                    accepted,
+                )[1],
+            ),
+            (
+                "foreign-event-link",
+                lambda action, event, accepted: (
+                    self.connection.execute(
+                        "UPDATE cpk_operation_actions "
+                        "SET payload=jsonb_set(payload, "
+                        "'{event_id}', to_jsonb(%s::text)) "
+                        "WHERE action_id=%s",
+                        ("foreign-event", action.action_id),
+                    ),
+                    accepted,
+                )[1],
+            ),
+            (
+                "event-transition-drift",
+                lambda action, event, accepted: (
+                    self.connection.execute(
+                        "UPDATE cpk_activity_events "
+                        "SET payload=jsonb_set(payload, "
+                        "'{evidence,to_authored_graph_id}', to_jsonb(%s::text)) "
+                        "WHERE event_id=%s",
+                        ("graph-drift", event.event_id),
+                    ),
+                    accepted,
+                )[1],
+            ),
+            (
+                "accepted-graph-drift",
+                lambda _action, _event, accepted: replace(
+                    accepted,
+                    accepted_current_graph_id="graph-drift",
+                ),
+            ),
+            (
+                "accepted-projection-drift",
+                lambda _action, _event, accepted: replace(
+                    accepted,
+                    accepted_current_projection_id="projection-drift",
+                ),
+            ),
+            (
+                "accepted-time-drift",
+                lambda _action, _event, accepted: replace(
+                    accepted,
+                    accepted_at="2026-08-02T03:00:01Z",
+                ),
+            ),
+        )
+        for identity, mutate in cases:
+            with self.subTest(identity=identity):
+                self.reset_truth()
+                rotations, rotation = self._advance_graph_without_rotation_fold()
+                self.connection.execute(
+                    "UPDATE cpk_execution_requests SET claim_generation=2 "
+                    "WHERE request_id=%s",
+                    (self.checkpoint.execution_request_id,),
+                )
+                handoff = rotations.deployment_handoff(
+                    ReadGatewayKeyRotationDeploymentHandoff(
+                        self.rotation_id,
+                        GatewayKeyRotationDeploymentPhase.OVERLAP,
+                        self.command().worker_authority,
+                    )
+                )
+                accepted, action, event = self._accepted_from_advancement()
+                candidate = mutate(action, event, accepted)
+                snapshot = self._durable_acceptance_snapshot(rotations)
+
+                with self.assertRaisesRegex(
+                    GatewayKeyRotationConflict,
+                    "^gateway deployment acceptance evidence is incongruent$",
+                ) as captured:
+                    rotations.advance_deployment(
+                        self._accepted_fold(rotation, handoff.fence, candidate)
+                    )
+
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                self.assertEqual(
+                    self._durable_acceptance_snapshot(rotations),
+                    snapshot,
                 )
 
     def test_stale_checkpoint_and_missing_scopes_fail_before_dispatch(self) -> None:
@@ -456,6 +704,104 @@ class GatewayKeyRotationOverlapExecutionTests(
             )
         return [event.kind for event in events]
 
+    def _advance_graph_without_rotation_fold(self):
+        activity_count = self._plan_activity_count()
+        prior_adapter = RecordingAdapter(
+            *(ActivityExecutionOutcome.succeeded(),) * (activity_count - 1)
+        )
+        prior_program = self.program(prior_adapter, prefix="evidence-prior")
+        for _ in range(activity_count - 1):
+            prior_program.progress(self.command())
+        control = CrashControl(6)
+        with self.assertRaises(SimulatedProcessLoss):
+            self.program(
+                RecordingAdapter(ActivityExecutionOutcome.succeeded()),
+                unit_of_work_factory=lambda: CrashAfterCommitUnitOfWork(
+                    self.unit_of_work(),
+                    control,
+                ),
+                prefix="evidence-crash",
+            ).progress(self.command())
+        rotations = GatewayKeyRotationService(
+            self.unit_of_work,
+            clock=lambda: 3_000,
+        )
+        rotation = rotations.get(self.rotation_id)
+        self.assertIs(
+            rotation.status,
+            GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+        )
+        self.assertEqual(self._current_advancement_count(), 1)
+        return rotations, rotation
+
+    def _accepted_from_advancement(self):
+        with self.unit_of_work() as unit_of_work:
+            actions = tuple(
+                action
+                for action in unit_of_work.stores.activity_history.actions_for_session(
+                    self.checkpoint.session_id
+                )
+                if action.action_type
+                is LifecycleOperationKind.ADVANCE_CURRENT_GRAPH
+            )
+            self.assertEqual(len(actions), 1)
+            action = actions[0]
+            event = unit_of_work.stores.execution.get_event(
+                action.payload["event_id"]
+            )
+        return (
+            replace(
+                self.checkpoint,
+                status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+                accepted_current_graph_id=action.payload["to_authored_graph_id"],
+                accepted_current_projection_id=(
+                    action.payload["to_realized_projection_id"]
+                ),
+                accepted_at=event.occurred_at,
+            ),
+            action,
+            event,
+        )
+
+    def _accepted_fold(self, rotation, fence, checkpoint):
+        return AdvanceGatewayKeyRotationDeployment(
+            transition=AdvanceGatewayKeyRotation(
+                rotation_id=self.rotation_id,
+                transition_id="evidence-overlap-fold",
+                expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                expected_version=rotation.version,
+                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
+                advanced_by="operator-a",
+                advanced_at=checkpoint.accepted_at,
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                deployment=checkpoint,
+            ),
+            handoff=GatewayKeyRotationDeploymentHandoff(
+                self.rotation_id,
+                checkpoint,
+                fence,
+            ),
+        )
+
+    def _durable_acceptance_snapshot(self, rotations):
+        return (
+            self._workspace(),
+            rotations.get(self.rotation_id),
+            rotations.transitions(self.rotation_id),
+            tuple(
+                self.connection.execute(
+                    "SELECT action_id, payload FROM cpk_operation_actions "
+                    "ORDER BY ordinal, action_id"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
+                    "SELECT event_id, run_id, event_type, occurred_at, payload "
+                    "FROM cpk_activity_events ORDER BY ordinal, event_id"
+                ).fetchall()
+            ),
+        )
+
     def _authored_graph_count(self) -> int:
         return self.connection.execute(
             "SELECT count(*) FROM cpk_graph_versions"
@@ -463,6 +809,12 @@ class GatewayKeyRotationOverlapExecutionTests(
 
     def _current_advancement_count(self) -> int:
         return self._event_kinds().count(ActivityEventKind.CURRENT_GRAPH_ADVANCED)
+
+    def _current_advancement_action_count(self) -> int:
+        return self.connection.execute(
+            "SELECT count(*) FROM cpk_operation_actions WHERE action_type=%s",
+            (LifecycleOperationKind.ADVANCE_CURRENT_GRAPH.value,),
+        ).fetchone()[0]
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import unittest
 import psycopg
 
 import control_plane_kit_operations.postgres as postgres
+from gateway_rotation_overlap_fixture import GatewayRotationOverlapFixture
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.secrets import SecretReference
@@ -19,6 +20,7 @@ from control_plane_kit_operations.approvals import (
 )
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
+    AdvanceGatewayKeyRotationDeployment,
     GatewayKeyRotationAuthorizationDenied,
     GatewayKeyRotationConflict,
     GatewayKeyRotationDeploymentCheckpoint,
@@ -29,6 +31,14 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationStatus,
     GatewayKeyRotationTransition,
     RequestGatewayKeyRotation,
+)
+from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
+    GatewayKeyRotationOverlapPreparationProgram,
+    PrepareGatewayKeyRotationOverlap,
+)
+from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
+    ExecutionWorkerAuthority,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.postgres.gateway_key_rotation_store import (
@@ -42,7 +52,7 @@ from control_plane_kit_operations.records import (
 from control_plane_kit_operations.workflows import IdempotencyKey
 
 
-class GatewayKeyRotationTests(unittest.TestCase):
+class GatewayKeyRotationTests(GatewayRotationOverlapFixture, unittest.TestCase):
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
@@ -68,6 +78,49 @@ class GatewayKeyRotationTests(unittest.TestCase):
 
     def service(self) -> GatewayKeyRotationService:
         return GatewayKeyRotationService(self.unit_of_work, clock=lambda: self.now)
+
+    def prepare_fenced_overlap(self):
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.seed_graph_and_keys()
+        self.seed_rotation_approval()
+        timestamps = iter(
+            f"2026-08-02T02:{minute:02d}:00Z" for minute in range(30)
+        )
+        identifiers = iter(
+            f"direct-overlap-{index}" for index in range(1, 30)
+        )
+        return GatewayKeyRotationOverlapPreparationProgram(
+            self.unit_of_work,
+            clock=lambda: next(timestamps),
+            trusted_epoch_clock=lambda: self.now,
+            id_factory=lambda: next(identifiers),
+        ).prepare(
+            PrepareGatewayKeyRotationOverlap(
+                rotation_id=self.rotation_id,
+                expected_rotation_version=self.rotation_version,
+                expected_authored_graph_id="graph-a",
+                expected_current_realized_projection_id="projection-a",
+                expected_desired_realized_projection_id="projection-a",
+                expected_desired_graph_revision=1,
+                actor_id="operator-a",
+                actor_scopes=(
+                    PolicyScope.DELEGATION_KEY_ROTATE,
+                    PolicyScope.PLAN_EXECUTE,
+                    PolicyScope.EXECUTION_OPERATE,
+                ),
+                worker_authority=ExecutionWorkerAuthority(
+                    "worker-a",
+                    (PolicyScope.EXECUTION_OPERATE,),
+                ),
+                lease_duration=ExecutionLeaseDuration(1800),
+            )
+        )
+
+    def accept_fenced_overlap(self, prepared):
+        return self.accept_prepared_overlap(
+            prepared,
+            prefix="direct-overlap-execution",
+        ).rotation
 
     def test_request_is_idempotent_and_one_nonterminal_binding_wins(self) -> None:
         service = self.service()
@@ -169,119 +222,76 @@ class GatewayKeyRotationTests(unittest.TestCase):
         self.assertEqual(len(winners), 1)
         self.assertEqual(winners[0].status, GatewayKeyRotationStatus.REQUESTED)
 
-    def test_full_state_machine_uses_durable_drain_deadline_without_sleep(self) -> None:
-        service = self.service()
-        rotation = service.request(self.request())
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.AWAITING_APPROVAL,
-            approval_request_id="approval-request-a")
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.APPROVED,
-            approval_decision_id="approval-decision-a")
-        rotation = self.prepare_generation(rotation)
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.KEY_GENERATED,
-            new_key_id="gateway-key-b", new_secret_version_id="version-b",
-            new_secret_version_number=1)
-        overlap = self.checkpoint(GatewayKeyRotationDeploymentPhase.OVERLAP)
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-            deployment=overlap)
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.OVERLAP_READY,
-            deployment=replace(overlap,
-                status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-                accepted_current_graph_id="graph-a",
-                accepted_current_projection_id="projection-a-b",
-                accepted_at="2026-08-02T01:05:00Z"))
+    def test_fenced_overlap_preserves_durable_drain_deadline_without_sleep(
+        self,
+    ) -> None:
+        prepared = self.prepare_fenced_overlap()
+        rotation = self.accept_fenced_overlap(prepared)
         rotation = self.advance(rotation, GatewayKeyRotationStatus.NEW_KEY_ACTIVE,
             new_key_activated_at="2026-08-02T01:06:00Z")
         self.assertEqual(rotation.drain_deadline_epoch, self.now + 65)
         rotation = self.advance(rotation, GatewayKeyRotationStatus.DRAINING_OLD_GRANTS)
-        retirement = self.checkpoint(GatewayKeyRotationDeploymentPhase.RETIREMENT)
-        with self.assertRaises(GatewayKeyRotationConflict):
-            self.advance(rotation, GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
-                deployment=retirement)
-        self.now += 65
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
-            deployment=retirement)
-        accepted_retirement = replace(retirement,
-                status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-                accepted_current_graph_id="graph-a",
-                accepted_current_projection_id="projection-b",
-                accepted_at="2026-08-02T01:08:00Z")
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.RETIREMENT_READY,
-            deployment=accepted_retirement)
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.OLD_KEY_RETIRED,
-            old_key_retired_at="2026-08-02T01:09:00Z")
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.REVOCATION_PREPARED,
-            revocation=GatewayKeyRotationRevocationCheckpoint(
-                provider_registration_id="provider-a",
-                secret_reference=SecretReference(
-                    "secret://workspace-secrets/keys/key-a"
-                ),
-                provider_version_id="version-a",
-                provider_version_number=1,
-                revocation_id="srevoke_" + "a" * 64,
-                correlation_id="rotation-a:revoke-old-version",
-                action_digest="b" * 64,
-                prepared_at="2026-08-02T01:09:01Z",
-            ))
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.COMPLETED,
-            old_secret_revoked_at="2026-08-02T01:09:01Z")
-
-        self.assertEqual(rotation.status, GatewayKeyRotationStatus.COMPLETED)
+        self.assertEqual(
+            rotation.status,
+            GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
+        )
         self.assertEqual(self.service().get(rotation.rotation_id), rotation)
         transitions = self.service().transitions(rotation.rotation_id)
-        self.assertEqual(len(transitions), 13)
         self.assertEqual(transitions[0].from_status, GatewayKeyRotationStatus.REQUESTED)
         self.assertEqual(
             transitions[2].to_status,
             GatewayKeyRotationStatus.GENERATION_PREPARED,
         )
-        self.assertEqual(transitions[-1].to_status, GatewayKeyRotationStatus.COMPLETED)
+        self.assertEqual(
+            transitions[-1].to_status,
+            GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
+        )
         read = self.service().read(rotation.rotation_id)
         self.assertNotIn("secret", repr(read).lower())
-        self.assertEqual(read.new_key_id, "gateway-key-b")
+        self.assertEqual(read.new_key_id, "key-b")
 
     def test_blocked_retains_child_identity_and_rejects_guessing_success(self) -> None:
-        service = self.service()
-        rotation = service.request(self.request())
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.AWAITING_APPROVAL,
-            approval_request_id="approval-request-a")
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.APPROVED,
-            approval_decision_id="approval-decision-a")
-        rotation = self.prepare_generation(rotation)
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.KEY_GENERATED,
-            new_key_id="gateway-key-b", new_secret_version_id="version-b",
-            new_secret_version_number=1)
-        checkpoint = self.checkpoint(GatewayKeyRotationDeploymentPhase.OVERLAP)
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-            deployment=checkpoint)
-        blocked = self.advance(rotation, GatewayKeyRotationStatus.BLOCKED,
-            failure_code="child-effect-uncertain")
+        prepared = self.prepare_fenced_overlap()
+        blocked = self.service().advance_deployment(
+            AdvanceGatewayKeyRotationDeployment(
+                transition=AdvanceGatewayKeyRotation(
+                    rotation_id=self.rotation_id,
+                    transition_id="direct-overlap-blocked",
+                    expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                    expected_version=prepared.rotation.version,
+                    target_status=GatewayKeyRotationStatus.BLOCKED,
+                    advanced_by="operator-a",
+                    advanced_at="2026-08-02T03:00:00Z",
+                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                    failure_code="child-effect-uncertain",
+                ),
+                handoff=prepared.handoff,
+            )
+        )
 
-        self.assertEqual(blocked.overlap_deployment, checkpoint)
+        self.assertEqual(blocked.overlap_deployment, prepared.checkpoint)
         self.assertEqual(blocked.failure_code, "child-effect-uncertain")
         with self.assertRaises(GatewayKeyRotationConflict):
-            self.advance(blocked, GatewayKeyRotationStatus.OVERLAP_READY,
-                deployment=replace(checkpoint,
+            self.service().advance(AdvanceGatewayKeyRotation(
+                rotation_id=self.rotation_id,
+                transition_id="guess-overlap-success",
+                expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                expected_version=prepared.rotation.version,
+                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
+                advanced_by="operator-a",
+                advanced_at="2026-08-02T03:01:00Z",
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                deployment=replace(prepared.checkpoint,
                     status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
                     accepted_current_graph_id="graph-a",
                     accepted_current_projection_id="projection-a-b",
-                    accepted_at="2026-08-02T01:05:00Z"))
+                    accepted_at="2026-08-02T01:05:00Z"),
+            ))
 
     def test_restart_reconstructs_identity_and_database_rejects_corruption(self) -> None:
-        rotation = self.service().request(self.request())
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.AWAITING_APPROVAL,
-            approval_request_id="approval-request-a")
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.APPROVED,
-            approval_decision_id="approval-decision-a")
-        rotation = self.prepare_generation(rotation)
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.KEY_GENERATED,
-            new_key_id="gateway-key-b", new_secret_version_id="version-b",
-            new_secret_version_number=1)
-        checkpoint = replace(
-            self.checkpoint(GatewayKeyRotationDeploymentPhase.OVERLAP),
-            run_id="r" * 200,
-        )
-        rotation = self.advance(rotation, GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-            deployment=checkpoint)
+        prepared = self.prepare_fenced_overlap()
+        rotation = prepared.rotation
+        checkpoint = prepared.checkpoint
 
         recovered = self.service().get(rotation.rotation_id)
         self.assertEqual(recovered.status, GatewayKeyRotationStatus.OVERLAP_DEPLOYING)

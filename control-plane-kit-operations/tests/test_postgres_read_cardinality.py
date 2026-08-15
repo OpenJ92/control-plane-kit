@@ -326,20 +326,29 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
                 ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             )
 
-        advance_scope = (
+        advance_locked_scope = (
             "control_plane_kit_operations.gateway_key_rotations."
-            "GatewayKeyRotationService.advance"
+            "GatewayKeyRotationService._advance_locked"
         )
+        expected_rotation_writers = [advance_locked_scope]
         self.assertEqual(
             [scope for scope, _line in add_transition_calls],
-            [advance_scope],
+            expected_rotation_writers,
         )
-        self.assertEqual([scope for scope, _line in transition_calls], [advance_scope])
+        self.assertEqual(
+            [scope for scope, _line in transition_calls],
+            expected_rotation_writers,
+        )
         self.assertEqual(
             legal_guard_scopes,
             ["control_plane_kit_operations.gateway_key_rotations._transition"],
         )
-        self.assertLess(transition_calls[0][1], add_transition_calls[0][1])
+        for transition_call, add_transition_call in zip(
+            transition_calls,
+            add_transition_calls,
+            strict=True,
+        ):
+            self.assertLess(transition_call[1], add_transition_call[1])
 
         constraints = {
             constraint.name: constraint

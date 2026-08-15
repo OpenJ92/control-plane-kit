@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from hashlib import sha256
 import json
@@ -20,6 +20,13 @@ from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations._temporal import (
     validate_canonical_utc_timestamp,
 )
+from control_plane_kit_operations.advancement import (
+    CurrentGraphAdvancementError,
+    CurrentGraphAdvancementResult,
+)
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.records import OperationsRecordError
 
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
@@ -172,6 +179,38 @@ class GatewayKeyRotationDeploymentCheckpoint:
                 _identifier(value, name)
         if self.accepted_at is not None:
             _text(self.accepted_at, "accepted_at")
+
+
+@dataclass(frozen=True)
+class GatewayKeyRotationDeploymentHandoff:
+    """Authenticated restart snapshot; the request claim remains authority."""
+
+    rotation_id: str
+    checkpoint: GatewayKeyRotationDeploymentCheckpoint
+    fence: ExecutionLeaseFence = field(repr=False)
+
+    def __post_init__(self) -> None:
+        _identifier(self.rotation_id, "rotation_id")
+        if type(self.checkpoint) is not GatewayKeyRotationDeploymentCheckpoint:
+            raise GatewayKeyRotationConflict("deployment checkpoint is malformed")
+        if type(self.fence) is not ExecutionLeaseFence:
+            raise GatewayKeyRotationConflict("deployment fence is malformed")
+
+
+@dataclass(frozen=True)
+class ReadGatewayKeyRotationDeploymentHandoff:
+    rotation_id: str
+    phase: GatewayKeyRotationDeploymentPhase
+    worker_authority: ExecutionWorkerAuthority = field(repr=False)
+
+    def __post_init__(self) -> None:
+        _identifier(self.rotation_id, "rotation_id")
+        if type(self.phase) is not GatewayKeyRotationDeploymentPhase:
+            raise GatewayKeyRotationError("deployment phase is unsupported")
+        if type(self.worker_authority) is not ExecutionWorkerAuthority:
+            raise GatewayKeyRotationAuthorizationDenied(
+                "gateway deployment worker authority is malformed"
+            )
 
 
 @dataclass(frozen=True)
@@ -456,6 +495,21 @@ class AdvanceGatewayKeyRotation:
         _text(self.advanced_at, "advanced_at")
 
 
+@dataclass(frozen=True)
+class AdvanceGatewayKeyRotationDeployment:
+    transition: AdvanceGatewayKeyRotation
+    handoff: GatewayKeyRotationDeploymentHandoff
+
+    def __post_init__(self) -> None:
+        if type(self.transition) is not AdvanceGatewayKeyRotation:
+            raise GatewayKeyRotationError("deployment transition is malformed")
+        if type(self.handoff) is not GatewayKeyRotationDeploymentHandoff:
+            raise GatewayKeyRotationError("deployment handoff is malformed")
+        if self.transition.rotation_id != self.handoff.rotation_id:
+            raise GatewayKeyRotationConflict("deployment rotation identity changed")
+        _validate_deployment_transition_shape(self)
+
+
 _LEGAL = {
     GatewayKeyRotationStatus.REQUESTED: {GatewayKeyRotationStatus.AWAITING_APPROVAL},
     GatewayKeyRotationStatus.AWAITING_APPROVAL: {
@@ -551,54 +605,408 @@ class GatewayKeyRotationService:
             drain_deadline_epoch=value.drain_deadline_epoch,
             failure_code=value.failure_code, updated_at=value.updated_at)
 
+    def deployment_handoff(
+        self,
+        command: ReadGatewayKeyRotationDeploymentHandoff,
+    ) -> GatewayKeyRotationDeploymentHandoff:
+        if not isinstance(command, ReadGatewayKeyRotationDeploymentHandoff):
+            raise TypeError(
+                "command must be ReadGatewayKeyRotationDeploymentHandoff"
+            )
+        _worker_scope(command.worker_authority)
+        with self._unit_of_work_factory() as uow:
+            try:
+                rotation = uow.stores.gateway_key_rotations.get(command.rotation_id)
+                checkpoint = _deployment_checkpoint(rotation, command.phase)
+                plan = uow.stores.activity_history.get_plan(checkpoint.plan_id)
+                request = uow.stores.execution.get_request(
+                    checkpoint.execution_request_id
+                )
+                run = uow.stores.execution.get_run(checkpoint.run_id)
+            except (GatewayKeyRotationError, KeyError, OperationsRecordError):
+                raise GatewayKeyRotationConflict(
+                    "gateway deployment truth is unavailable"
+                ) from None
+            _validate_deployment_linkage(
+                rotation,
+                checkpoint,
+                plan,
+                request,
+                run,
+            )
+            claim = request.claim
+            if (
+                claim is None
+                or claim.worker_id != command.worker_authority.worker_id
+            ):
+                raise GatewayKeyRotationAuthorizationDenied(
+                    "gateway deployment worker is not current"
+                ) from None
+            handoff = GatewayKeyRotationDeploymentHandoff(
+                rotation.rotation_id,
+                checkpoint,
+                claim.fence,
+            )
+            uow.commit()
+            return handoff
+
     def advance(self, command: AdvanceGatewayKeyRotation) -> GatewayKeyRotation:
         if not isinstance(command, AdvanceGatewayKeyRotation):
             raise TypeError("command must be AdvanceGatewayKeyRotation")
         _scope(command.actor_scopes)
         _validate_advance_timestamps(command)
+        if _is_deployment_owned_transition(command):
+            raise GatewayKeyRotationConflict(
+                "deployment-owned rotation transition requires fenced writer"
+            )
         fingerprint = _transition_fingerprint(command)
         with self._unit_of_work_factory() as uow:
             store = uow.stores.gateway_key_rotations
             current = store.get_for_update(command.rotation_id)
-            existing = store.transition_for_id(
-                command.rotation_id, command.transition_id)
-            if existing is not None:
-                if existing.transition_fingerprint != fingerprint:
-                    raise GatewayKeyRotationConflict(
-                        "rotation transition id was reused with different intent")
-                uow.commit()
-                return current
-            if (current.status is not command.expected_status
-                    or current.version != command.expected_version):
-                raise GatewayKeyRotationConflict("rotation expected state is stale")
-            _validate_approval_evidence(uow, current, command)
-            now = self._clock()
-            if type(now) is not int or now < 0:
-                raise GatewayKeyRotationError("trusted clock returned malformed time")
-            replacement = _transition(current, command, now)
-            updated = store.compare_and_set(current, replacement)
-            if updated is None:
-                raise GatewayKeyRotationConflict("rotation advanced concurrently")
-            store.add_transition(GatewayKeyRotationTransition(
-                rotation_id=current.rotation_id,
-                transition_id=command.transition_id,
-                from_status=current.status,
-                to_status=updated.status,
-                from_version=current.version,
-                to_version=updated.version,
-                transition_fingerprint=fingerprint,
-                advanced_by=command.advanced_by,
-                advanced_at=command.advanced_at,
-                failure_code=command.failure_code,
-            ))
+            return self._advance_locked(uow, current, command, fingerprint)
+
+    def advance_deployment(
+        self,
+        command: AdvanceGatewayKeyRotationDeployment,
+    ) -> GatewayKeyRotation:
+        if not isinstance(command, AdvanceGatewayKeyRotationDeployment):
+            raise TypeError("command must be AdvanceGatewayKeyRotationDeployment")
+        transition = command.transition
+        handoff = command.handoff
+        _scope(transition.actor_scopes)
+        _validate_advance_timestamps(transition)
+        fingerprint = _transition_fingerprint(transition)
+        checkpoint = handoff.checkpoint
+        with self._unit_of_work_factory() as uow:
+            stores = uow.stores
+            try:
+                request = stores.execution.get_request_for_update(
+                    checkpoint.execution_request_id
+                )
+                run = stores.execution.get_run_for_update(checkpoint.run_id)
+                plan = stores.activity_history.get_plan(checkpoint.plan_id)
+                current = stores.gateway_key_rotations.get_for_update(
+                    transition.rotation_id
+                )
+            except (GatewayKeyRotationError, KeyError, OperationsRecordError):
+                raise GatewayKeyRotationConflict(
+                    "gateway deployment truth is unavailable"
+                ) from None
+            _validate_deployment_linkage(
+                current,
+                checkpoint,
+                plan,
+                request,
+                run,
+            )
+            claim = request.claim
+            if claim is None or claim.fence != handoff.fence:
+                raise GatewayKeyRotationAuthorizationDenied(
+                    "gateway deployment execution authority is stale"
+                ) from None
+            _validate_deployment_current(command, current)
+            _validate_deployment_acceptance(
+                stores,
+                current,
+                checkpoint,
+                transition,
+            )
+            return self._advance_locked(uow, current, transition, fingerprint)
+
+    def _advance_locked(
+        self,
+        uow: Any,
+        current: GatewayKeyRotation,
+        command: AdvanceGatewayKeyRotation,
+        fingerprint: str,
+    ) -> GatewayKeyRotation:
+        store = uow.stores.gateway_key_rotations
+        existing = store.transition_for_id(
+            command.rotation_id,
+            command.transition_id,
+        )
+        if existing is not None:
+            if existing.transition_fingerprint != fingerprint:
+                raise GatewayKeyRotationConflict(
+                    "rotation transition id was reused with different intent"
+                )
             uow.commit()
-            return updated
+            return current
+        if (
+            current.status is not command.expected_status
+            or current.version != command.expected_version
+        ):
+            raise GatewayKeyRotationConflict("rotation expected state is stale")
+        _validate_approval_evidence(uow, current, command)
+        now = self._clock()
+        if type(now) is not int or now < 0:
+            raise GatewayKeyRotationError("trusted clock returned malformed time")
+        replacement = _transition(current, command, now)
+        updated = store.compare_and_set(current, replacement)
+        if updated is None:
+            raise GatewayKeyRotationConflict("rotation advanced concurrently")
+        store.add_transition(GatewayKeyRotationTransition(
+            rotation_id=current.rotation_id,
+            transition_id=command.transition_id,
+            from_status=current.status,
+            to_status=updated.status,
+            from_version=current.version,
+            to_version=updated.version,
+            transition_fingerprint=fingerprint,
+            advanced_by=command.advanced_by,
+            advanced_at=command.advanced_at,
+            failure_code=command.failure_code,
+        ))
+        uow.commit()
+        return updated
 
     def transitions(self, rotation_id: str) -> tuple[GatewayKeyRotationTransition, ...]:
         with self._unit_of_work_factory() as uow:
             values = uow.stores.gateway_key_rotations.transitions(rotation_id)
             uow.commit()
             return values
+
+
+def _validate_deployment_transition_shape(
+    command: AdvanceGatewayKeyRotationDeployment,
+) -> None:
+    transition = command.transition
+    checkpoint = command.handoff.checkpoint
+    phase = checkpoint.phase
+    if phase is GatewayKeyRotationDeploymentPhase.OVERLAP:
+        deploying = GatewayKeyRotationStatus.OVERLAP_DEPLOYING
+        ready = GatewayKeyRotationStatus.OVERLAP_READY
+        preparation_source = GatewayKeyRotationStatus.KEY_GENERATED
+    else:
+        deploying = GatewayKeyRotationStatus.RETIREMENT_DEPLOYING
+        ready = GatewayKeyRotationStatus.RETIREMENT_READY
+        preparation_source = GatewayKeyRotationStatus.DRAINING_OLD_GRANTS
+    shape = (transition.expected_status, transition.target_status)
+    if shape == (preparation_source, deploying):
+        expected_checkpoint_status = GatewayKeyRotationDeploymentStatus.PREPARED
+        if transition.deployment != checkpoint:
+            raise GatewayKeyRotationConflict(
+                "prepared deployment transition changed checkpoint"
+            )
+    elif shape == (deploying, ready):
+        expected_checkpoint_status = GatewayKeyRotationDeploymentStatus.ACCEPTED
+        if transition.deployment != checkpoint:
+            raise GatewayKeyRotationConflict(
+                "accepted deployment transition changed checkpoint"
+            )
+    elif shape == (deploying, GatewayKeyRotationStatus.BLOCKED):
+        expected_checkpoint_status = GatewayKeyRotationDeploymentStatus.PREPARED
+        if transition.deployment is not None:
+            raise GatewayKeyRotationConflict(
+                "blocked deployment transition cannot replace checkpoint"
+            )
+    else:
+        raise GatewayKeyRotationConflict(
+            "gateway rotation transition is not deployment-owned"
+        )
+    if checkpoint.status is not expected_checkpoint_status:
+        raise GatewayKeyRotationConflict("deployment checkpoint status is stale")
+
+
+def _is_deployment_owned_transition(
+    command: AdvanceGatewayKeyRotation,
+) -> bool:
+    return (command.expected_status, command.target_status) in {
+        (
+            GatewayKeyRotationStatus.KEY_GENERATED,
+            GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+        ),
+        (
+            GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+            GatewayKeyRotationStatus.OVERLAP_READY,
+        ),
+        (
+            GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+            GatewayKeyRotationStatus.BLOCKED,
+        ),
+        (
+            GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
+            GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+        ),
+        (
+            GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+            GatewayKeyRotationStatus.RETIREMENT_READY,
+        ),
+        (
+            GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+            GatewayKeyRotationStatus.BLOCKED,
+        ),
+    }
+
+
+def _gateway_key_rotation_deployment_prefix(
+    rotation_id: str,
+    phase: GatewayKeyRotationDeploymentPhase,
+) -> str:
+    return (
+        f"gkrot-{phase.value}:"
+        + sha256(rotation_id.encode("utf-8")).hexdigest()
+    )
+
+
+def _validate_deployment_current(
+    command: AdvanceGatewayKeyRotationDeployment,
+    current: GatewayKeyRotation,
+) -> None:
+    handoff = command.handoff
+    checkpoint = handoff.checkpoint
+    if current.rotation_id != handoff.rotation_id:
+        raise GatewayKeyRotationConflict("deployment rotation identity changed")
+    stored = _optional_deployment_checkpoint(current, checkpoint.phase)
+    if stored is None:
+        if command.transition.target_status not in {
+            GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+            GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+        }:
+            raise GatewayKeyRotationConflict("deployment checkpoint is missing")
+        return
+    if not _same_deployment_identity(stored, checkpoint):
+        raise GatewayKeyRotationConflict("deployment checkpoint identity changed")
+
+
+def _validate_deployment_linkage(
+    rotation: GatewayKeyRotation,
+    checkpoint: GatewayKeyRotationDeploymentCheckpoint,
+    plan: Any,
+    request: Any,
+    run: Any,
+) -> None:
+    if (
+        request.identity.request_id != checkpoint.execution_request_id
+        or request.identity.workspace_id != rotation.workspace_id
+        or request.identity.session_id != checkpoint.session_id
+        or request.identity.plan_id != checkpoint.plan_id
+        or request.approval_request_id != checkpoint.approval_request_id
+        or request.approval_decision_id != checkpoint.approval_decision_id
+        or run.run_id != checkpoint.run_id
+        or run.plan_id != checkpoint.plan_id
+        or run.admission.request_id != checkpoint.execution_request_id
+    ):
+        raise GatewayKeyRotationConflict(
+            "gateway deployment execution linkage changed"
+        )
+    if (
+        rotation.approval_request_id != checkpoint.approval_request_id
+        or rotation.approval_decision_id != checkpoint.approval_decision_id
+    ):
+        raise GatewayKeyRotationConflict(
+            "gateway deployment approval does not match rotation truth"
+        )
+    if (
+        plan.plan_id != checkpoint.plan_id
+        or plan.session_id != checkpoint.session_id
+        or plan.base_graph_id != checkpoint.base_authored_graph_id
+        or plan.base_realized_projection_id
+        != checkpoint.base_realized_projection_id
+        or plan.desired_graph_id != checkpoint.desired_authored_graph_id
+        or plan.desired_realized_projection_id
+        != checkpoint.desired_realized_projection_id
+        or plan.desired_graph_revision != checkpoint.desired_revision
+    ):
+        raise GatewayKeyRotationConflict(
+            "gateway deployment plan linkage changed"
+        )
+
+
+def _validate_deployment_acceptance(
+    stores: Any,
+    rotation: GatewayKeyRotation,
+    checkpoint: GatewayKeyRotationDeploymentCheckpoint,
+    transition: AdvanceGatewayKeyRotation,
+) -> None:
+    if transition.target_status not in {
+        GatewayKeyRotationStatus.OVERLAP_READY,
+        GatewayKeyRotationStatus.RETIREMENT_READY,
+    }:
+        return
+    valid = True
+    try:
+        action = stores.activity_history.action_for_idempotency(
+            checkpoint.session_id,
+            (
+                f"{_gateway_key_rotation_deployment_prefix(rotation.rotation_id, checkpoint.phase)}"
+                ":advance"
+            ),
+        )
+        if action is None:
+            raise CurrentGraphAdvancementError(
+                "gateway deployment advancement action is missing"
+            )
+        event_id = action.payload.get("event_id")
+        projection_digest = action.payload.get("to_realized_projection_digest")
+        if not isinstance(event_id, str) or not isinstance(
+            projection_digest,
+            str,
+        ):
+            raise CurrentGraphAdvancementError(
+                "gateway deployment advancement evidence is malformed"
+            )
+        event = stores.execution.get_event(event_id)
+        CurrentGraphAdvancementResult(
+            workspace_id=rotation.workspace_id,
+            from_authored_graph_id=checkpoint.base_authored_graph_id,
+            from_realized_projection_id=checkpoint.base_realized_projection_id,
+            to_authored_graph_id=checkpoint.accepted_current_graph_id,
+            to_realized_projection_id=(
+                checkpoint.accepted_current_projection_id
+            ),
+            to_realized_projection_digest=projection_digest,
+            desired_graph_revision=checkpoint.desired_revision,
+            run_id=checkpoint.run_id,
+            plan_id=checkpoint.plan_id,
+            event=event,
+            action=action,
+        )
+        if (
+            action.session_id != checkpoint.session_id
+            or action.payload.get("execution_request_id")
+            != checkpoint.execution_request_id
+            or action.created_at != checkpoint.accepted_at
+            or event.occurred_at != checkpoint.accepted_at
+            or transition.advanced_at != checkpoint.accepted_at
+        ):
+            raise CurrentGraphAdvancementError(
+                "gateway deployment advancement linkage changed"
+            )
+    except (CurrentGraphAdvancementError, KeyError, OperationsRecordError, ValueError):
+        valid = False
+    if not valid:
+        raise GatewayKeyRotationConflict(
+            "gateway deployment acceptance evidence is incongruent"
+        ) from None
+
+
+def _deployment_checkpoint(
+    rotation: GatewayKeyRotation,
+    phase: GatewayKeyRotationDeploymentPhase,
+) -> GatewayKeyRotationDeploymentCheckpoint:
+    checkpoint = _optional_deployment_checkpoint(rotation, phase)
+    if checkpoint is None:
+        raise GatewayKeyRotationConflict("gateway deployment checkpoint is missing")
+    return checkpoint
+
+
+def _optional_deployment_checkpoint(
+    rotation: GatewayKeyRotation,
+    phase: GatewayKeyRotationDeploymentPhase,
+) -> GatewayKeyRotationDeploymentCheckpoint | None:
+    return (
+        rotation.overlap_deployment
+        if phase is GatewayKeyRotationDeploymentPhase.OVERLAP
+        else rotation.retirement_deployment
+    )
+
+
+def _worker_scope(authority: ExecutionWorkerAuthority) -> None:
+    if PolicyScope.EXECUTION_OPERATE not in authority.scopes:
+        raise GatewayKeyRotationAuthorizationDenied(
+            "gateway deployment worker requires execution:operate"
+        )
 
 
 def _validate_advance_timestamps(command: AdvanceGatewayKeyRotation) -> None:
@@ -952,11 +1360,13 @@ def _digest(value):
 
 
 __all__ = [
+    "AdvanceGatewayKeyRotationDeployment",
     "AdvanceGatewayKeyRotation",
     "GatewayKeyRotation",
     "GatewayKeyRotationAuthorizationDenied",
     "GatewayKeyRotationConflict",
     "GatewayKeyRotationDeploymentCheckpoint",
+    "GatewayKeyRotationDeploymentHandoff",
     "GatewayKeyRotationDeploymentPhase",
     "GatewayKeyRotationDeploymentStatus",
     "GatewayKeyRotationError",
@@ -966,5 +1376,6 @@ __all__ = [
     "GatewayKeyRotationStatus",
     "GatewayKeyRotationTransition",
     "RequestGatewayKeyRotation",
+    "ReadGatewayKeyRotationDeploymentHandoff",
     "gateway_key_rotation_approval_subject",
 ]

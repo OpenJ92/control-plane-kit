@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from hashlib import sha256
 import re
 from typing import Any, Callable
 
@@ -23,14 +22,18 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinatorError,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotationDeployment,
     AdvanceGatewayKeyRotation,
     GatewayKeyRotation,
     GatewayKeyRotationDeploymentCheckpoint,
+    GatewayKeyRotationDeploymentHandoff,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationError,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
+    ReadGatewayKeyRotationDeploymentHandoff,
+    _gateway_key_rotation_deployment_prefix as _prefix,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import (
@@ -171,6 +174,7 @@ class _DeploymentSnapshot:
     plan: ActivityPlanRecord
     request: ExecutionRequestRecord
     run: ActivityRunRecord
+    handoff: GatewayKeyRotationDeploymentHandoff
 
 
 class GatewayKeyRotationDeploymentExecutionProgram:
@@ -254,7 +258,7 @@ class GatewayKeyRotationDeploymentExecutionProgram:
                 effects_attempted=coordinated.effects_attempted,
             )
         failure_code = _failure_code(coordinated.status, command.phase)
-        blocked = self._block(rotation, command, failure_code)
+        blocked = self._block(rotation, snapshot, command, failure_code)
         return GatewayKeyRotationDeploymentExecutionResult(
             rotation=blocked,
             outcome=GatewayKeyRotationDeploymentExecutionOutcome.BLOCKED,
@@ -304,23 +308,31 @@ class GatewayKeyRotationDeploymentExecutionProgram:
                 ),
                 accepted_at=advancement.event.occurred_at,
             )
-            accepted = self._rotations.advance(
-                AdvanceGatewayKeyRotation(
-                    rotation_id=rotation.rotation_id,
-                    transition_id=(
-                        f"{_prefix(rotation.rotation_id, command.phase)}:accepted"
+            accepted = self._rotations.advance_deployment(
+                AdvanceGatewayKeyRotationDeployment(
+                    transition=AdvanceGatewayKeyRotation(
+                        rotation_id=rotation.rotation_id,
+                        transition_id=(
+                            f"{_prefix(rotation.rotation_id, command.phase)}:accepted"
+                        ),
+                        expected_status=_prepared_status(command.phase),
+                        expected_version=rotation.version,
+                        target_status=_accepted_status(command.phase),
+                        advanced_by=command.actor_id,
+                        advanced_at=advancement.event.occurred_at,
+                        actor_scopes=command.actor_scopes,
+                        deployment=accepted_checkpoint,
                     ),
-                    expected_status=_prepared_status(command.phase),
-                    expected_version=rotation.version,
-                    target_status=_accepted_status(command.phase),
-                    advanced_by=command.actor_id,
-                    advanced_at=advancement.event.occurred_at,
-                    actor_scopes=command.actor_scopes,
-                    deployment=accepted_checkpoint,
+                    handoff=GatewayKeyRotationDeploymentHandoff(
+                        rotation.rotation_id,
+                        accepted_checkpoint,
+                        snapshot.handoff.fence,
+                    ),
                 )
             )
         except (CurrentGraphAdvancementError, GatewayKeyRotationError) as error:
-            raise GatewayKeyRotationDeploymentExecutionConflict(str(error)) from error
+            message = str(error)
+            raise GatewayKeyRotationDeploymentExecutionConflict(message) from None
         return GatewayKeyRotationDeploymentExecutionResult(
             rotation=accepted,
             outcome=GatewayKeyRotationDeploymentExecutionOutcome.ACCEPTED,
@@ -333,28 +345,33 @@ class GatewayKeyRotationDeploymentExecutionProgram:
     def _block(
         self,
         rotation: GatewayKeyRotation,
+        snapshot: _DeploymentSnapshot,
         command: ProgressGatewayKeyRotationDeployment,
         failure_code: str,
     ) -> GatewayKeyRotation:
         try:
-            return self._rotations.advance(
-                AdvanceGatewayKeyRotation(
-                    rotation_id=rotation.rotation_id,
-                    transition_id=(
-                        f"{_prefix(rotation.rotation_id, command.phase)}:blocked:"
-                        f"{failure_code}"
+            return self._rotations.advance_deployment(
+                AdvanceGatewayKeyRotationDeployment(
+                    transition=AdvanceGatewayKeyRotation(
+                        rotation_id=rotation.rotation_id,
+                        transition_id=(
+                            f"{_prefix(rotation.rotation_id, command.phase)}:blocked:"
+                            f"{failure_code}"
+                        ),
+                        expected_status=_prepared_status(command.phase),
+                        expected_version=rotation.version,
+                        target_status=GatewayKeyRotationStatus.BLOCKED,
+                        advanced_by=command.actor_id,
+                        advanced_at=self._clock(),
+                        actor_scopes=command.actor_scopes,
+                        failure_code=failure_code,
                     ),
-                    expected_status=_prepared_status(command.phase),
-                    expected_version=rotation.version,
-                    target_status=GatewayKeyRotationStatus.BLOCKED,
-                    advanced_by=command.actor_id,
-                    advanced_at=self._clock(),
-                    actor_scopes=command.actor_scopes,
-                    failure_code=failure_code,
+                    handoff=snapshot.handoff,
                 )
             )
         except GatewayKeyRotationError as error:
-            raise GatewayKeyRotationDeploymentExecutionConflict(str(error)) from error
+            message = str(error)
+            raise GatewayKeyRotationDeploymentExecutionConflict(message) from None
 
     def _snapshot(
         self,
@@ -374,7 +391,7 @@ class GatewayKeyRotationDeploymentExecutionProgram:
             except KeyError as error:
                 raise GatewayKeyRotationDeploymentExecutionConflict(
                     f"{command.phase.value} child truth is missing"
-                ) from error
+                ) from None
             unit_of_work.commit()
         claim = request.claim
         if (
@@ -401,13 +418,24 @@ class GatewayKeyRotationDeploymentExecutionProgram:
             or run.plan_id != checkpoint.plan_id
             or run.admission.request_id != checkpoint.execution_request_id
             or claim is None
-            or claim.worker_id != command.worker_authority.worker_id
+            or claim.fence != command.fence
             or not _current_is_base_or_desired(workspace, checkpoint)
         ):
             raise GatewayKeyRotationDeploymentExecutionConflict(
                 f"{command.phase.value} checkpoint does not match durable child truth"
             )
-        return _DeploymentSnapshot(workspace, checkpoint, plan, request, run)
+        return _DeploymentSnapshot(
+            workspace,
+            checkpoint,
+            plan,
+            request,
+            run,
+            GatewayKeyRotationDeploymentHandoff(
+                rotation.rotation_id,
+                checkpoint,
+                command.fence,
+            ),
+        )
 
     @staticmethod
     def _current_is_desired(snapshot: _DeploymentSnapshot) -> bool:
@@ -437,6 +465,7 @@ class GatewayKeyRotationDeploymentExecutionProgram:
                 raise GatewayKeyRotationDeploymentExecutionConflict(
                     f"blocked {command.phase.value} evidence is incomplete"
                 )
+            self._require_current_handoff(rotation, command)
             return GatewayKeyRotationDeploymentExecutionResult(
                 rotation=rotation,
                 outcome=GatewayKeyRotationDeploymentExecutionOutcome.BLOCKED,
@@ -459,17 +488,40 @@ class GatewayKeyRotationDeploymentExecutionProgram:
             raise GatewayKeyRotationDeploymentExecutionConflict(
                 f"accepted {command.phase.value} evidence is incomplete"
             )
+        self._require_current_handoff(rotation, command)
         return GatewayKeyRotationDeploymentExecutionResult(
             rotation=rotation,
             outcome=outcome,
             checkpoint=checkpoint,
         )
 
+    def _require_current_handoff(
+        self,
+        rotation: GatewayKeyRotation,
+        command: ProgressGatewayKeyRotationDeployment,
+    ) -> None:
+        try:
+            handoff = self._rotations.deployment_handoff(
+                ReadGatewayKeyRotationDeploymentHandoff(
+                    rotation.rotation_id,
+                    command.phase,
+                    command.worker_authority,
+                )
+            )
+        except GatewayKeyRotationError as error:
+            message = str(error)
+            raise GatewayKeyRotationDeploymentExecutionConflict(message) from None
+        if handoff.fence != command.fence:
+            raise GatewayKeyRotationDeploymentExecutionConflict(
+                "gateway deployment execution authority is stale"
+            )
+
     def _rotation(self, rotation_id: str) -> GatewayKeyRotation:
         try:
             return self._rotations.get(rotation_id)
         except GatewayKeyRotationError as error:
-            raise GatewayKeyRotationDeploymentExecutionConflict(str(error)) from error
+            message = str(error)
+            raise GatewayKeyRotationDeploymentExecutionConflict(message) from None
 
     @staticmethod
     def _require_authority(command: ProgressGatewayKeyRotationDeployment) -> None:
@@ -580,13 +632,6 @@ def _failure_code(
         CoordinatorStatus.IN_FLIGHT: f"{label}-effect-uncertain",
         CoordinatorStatus.BLOCKED: f"{label}-run-blocked",
     }.get(status, f"{label}-execution-unexpected")
-
-
-def _prefix(rotation_id: str, phase: GatewayKeyRotationDeploymentPhase) -> str:
-    return (
-        f"gkrot-{phase.value}:"
-        + sha256(rotation_id.encode("utf-8")).hexdigest()
-    )
 
 
 def _identifier(value: object, name: str) -> None:

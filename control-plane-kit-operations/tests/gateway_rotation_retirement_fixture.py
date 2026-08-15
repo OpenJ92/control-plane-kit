@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import os
 
 import psycopg
@@ -28,7 +27,6 @@ from control_plane_kit_operations.gateway_key_rotation_retirement_program import
 )
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
-    GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
@@ -111,13 +109,12 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
             )
         )
         checkpoint = overlap.checkpoint
+        accepted = self.accept_prepared_overlap(
+            overlap,
+            prefix="retirement-overlap-execution",
+        )
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.set_current_graph(
-                "workspace-a",
-                "graph-a",
-                checkpoint.desired_realized_projection_id,
-            )
             stores.delegation_signing_keys.activate(
                 "workspace-a",
                 overlap.rotation.purpose,
@@ -127,27 +124,8 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
                 activated_at="2026-08-02T03:00:01Z",
             )
             unit_of_work.commit()
-        accepted = replace(
-            checkpoint,
-            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-            accepted_current_graph_id="graph-a",
-            accepted_current_projection_id=checkpoint.desired_realized_projection_id,
-            accepted_at="2026-08-02T03:00:00Z",
-        )
         rotations = GatewayKeyRotationService(self.unit_of_work, clock=lambda: 1_000)
-        ready = rotations.advance(
-            AdvanceGatewayKeyRotation(
-                self.rotation_id,
-                "accept-overlap",
-                GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                overlap.rotation.version,
-                GatewayKeyRotationStatus.OVERLAP_READY,
-                "operator-a",
-                "2026-08-02T03:00:00Z",
-                (PolicyScope.DELEGATION_KEY_ROTATE,),
-                deployment=accepted,
-            )
-        )
+        ready = accepted.rotation
         active = rotations.advance(
             AdvanceGatewayKeyRotation(
                 self.rotation_id,

@@ -202,11 +202,13 @@ from .node_control_signing_authority import (
 )
 from .postgres.node_control_attempt_store import NodeControlAttemptStore
 from .gateway_key_rotations import (
+    AdvanceGatewayKeyRotationDeployment,
     AdvanceGatewayKeyRotation,
     GatewayKeyRotation,
     GatewayKeyRotationAuthorizationDenied,
     GatewayKeyRotationConflict,
     GatewayKeyRotationDeploymentCheckpoint,
+    GatewayKeyRotationDeploymentHandoff,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationError,
@@ -216,6 +218,7 @@ from .gateway_key_rotations import (
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
     GatewayKeyRotationTransition,
+    ReadGatewayKeyRotationDeploymentHandoff,
     RequestGatewayKeyRotation,
 )
 from .gateway_key_rotation_program import (
@@ -645,6 +648,7 @@ __all__ = [
     "GatewayKeyRotationAuthorizationDenied",
     "GatewayKeyRotationConflict",
     "GatewayKeyRotationDeploymentCheckpoint",
+    "GatewayKeyRotationDeploymentHandoff",
     "GatewayKeyRotationDeploymentPhase",
     "GatewayKeyRotationDeploymentStatus",
     "GatewayKeyRotationError",
@@ -711,7 +715,9 @@ __all__ = [
     "RevokeDelegationSigningKeyCommand",
     "GenerateDelegationSigningKey",
     "AdvanceGatewayKeyRotation",
+    "AdvanceGatewayKeyRotationDeployment",
     "RequestGatewayKeyRotation",
+    "ReadGatewayKeyRotationDeploymentHandoff",
     "delegation_signing_key_registration_id_for",
     "DescriptorSourceCodec",
     "DesiredGraphCommandError",

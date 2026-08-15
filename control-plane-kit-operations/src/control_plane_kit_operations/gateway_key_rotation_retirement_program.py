@@ -24,14 +24,18 @@ from control_plane_kit_operations.gateway_key_rotation_retirement import (
     PublishGatewayKeyRotationRetirementProjection,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotationDeployment,
     AdvanceGatewayKeyRotation,
     GatewayKeyRotation,
+    GatewayKeyRotationAuthorizationDenied,
     GatewayKeyRotationDeploymentCheckpoint,
+    GatewayKeyRotationDeploymentHandoff,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationError,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
+    ReadGatewayKeyRotationDeploymentHandoff,
 )
 from control_plane_kit_operations.lifecycle import (
     ExecutionLeaseDuration,
@@ -151,6 +155,7 @@ class GatewayKeyRotationRetirementPreparationResult:
     rotation: GatewayKeyRotation
     outcome: GatewayKeyRotationRetirementPreparationOutcome
     checkpoint: GatewayKeyRotationDeploymentCheckpoint
+    handoff: GatewayKeyRotationDeploymentHandoff | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.rotation, GatewayKeyRotation):
@@ -170,6 +175,17 @@ class GatewayKeyRotationRetirementPreparationResult:
         ):
             raise GatewayKeyRotationRetirementPreparationError(
                 "preparation checkpoint is malformed"
+            )
+        prepared = self.outcome in {
+            GatewayKeyRotationRetirementPreparationOutcome.PREPARED,
+            GatewayKeyRotationRetirementPreparationOutcome.PREPARED_REPLAY,
+        }
+        if prepared != isinstance(
+            self.handoff,
+            GatewayKeyRotationDeploymentHandoff,
+        ):
+            raise GatewayKeyRotationRetirementPreparationError(
+                "preparation handoff is incomplete"
             )
 
 
@@ -269,17 +285,20 @@ class GatewayKeyRotationRetirementPreparationProgram:
                 lifecycle=self._lifecycle,
             )
             checkpoint = child.checkpoint
-            prepared = self._rotations.advance(
-                AdvanceGatewayKeyRotation(
-                    rotation_id=rotation.rotation_id,
-                    transition_id=f"{prefix}:prepared",
-                    expected_status=GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
-                    expected_version=rotation.version,
-                    target_status=GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
-                    advanced_by=command.actor_id,
-                    advanced_at=checkpoint.prepared_at,
-                    actor_scopes=command.actor_scopes,
-                    deployment=checkpoint,
+            prepared = self._rotations.advance_deployment(
+                AdvanceGatewayKeyRotationDeployment(
+                    transition=AdvanceGatewayKeyRotation(
+                        rotation_id=rotation.rotation_id,
+                        transition_id=f"{prefix}:prepared",
+                        expected_status=GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
+                        expected_version=rotation.version,
+                        target_status=GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+                        advanced_by=command.actor_id,
+                        advanced_at=checkpoint.prepared_at,
+                        actor_scopes=command.actor_scopes,
+                        deployment=checkpoint,
+                    ),
+                    handoff=child.handoff,
                 )
             )
         except (
@@ -301,19 +320,20 @@ class GatewayKeyRotationRetirementPreparationProgram:
             ):
                 raise GatewayKeyRotationRetirementPreparationAuthorizationDenied(
                     str(error)
-                ) from error
-            raise GatewayKeyRotationRetirementPreparationConflict(str(error)) from error
+                ) from None
+            raise GatewayKeyRotationRetirementPreparationConflict(str(error)) from None
         return GatewayKeyRotationRetirementPreparationResult(
             prepared,
             GatewayKeyRotationRetirementPreparationOutcome.PREPARED,
             checkpoint,
+            child.handoff,
         )
 
     def _rotation(self, rotation_id: str) -> GatewayKeyRotation:
         try:
             return self._rotations.get(rotation_id)
         except GatewayKeyRotationError as error:
-            raise GatewayKeyRotationRetirementPreparationConflict(str(error)) from error
+            raise GatewayKeyRotationRetirementPreparationConflict(str(error)) from None
 
     def _classify_existing(
         self,
@@ -331,10 +351,27 @@ class GatewayKeyRotationRetirementPreparationProgram:
                 expected_status=GatewayKeyRotationDeploymentStatus.PREPARED,
                 expected_version=command.expected_rotation_version + 1,
             )
+            try:
+                handoff = self._rotations.deployment_handoff(
+                    ReadGatewayKeyRotationDeploymentHandoff(
+                        rotation.rotation_id,
+                        GatewayKeyRotationDeploymentPhase.RETIREMENT,
+                        command.worker_authority,
+                    )
+                )
+            except GatewayKeyRotationAuthorizationDenied as error:
+                raise GatewayKeyRotationRetirementPreparationAuthorizationDenied(
+                    str(error)
+                ) from None
+            except GatewayKeyRotationError as error:
+                raise GatewayKeyRotationRetirementPreparationConflict(
+                    str(error)
+                ) from None
             return GatewayKeyRotationRetirementPreparationResult(
                 rotation,
                 GatewayKeyRotationRetirementPreparationOutcome.PREPARED_REPLAY,
                 checkpoint,
+                handoff,
             )
         if (
             rotation.status is not GatewayKeyRotationStatus.COMPLETED
