@@ -352,7 +352,7 @@ class RecoveryDecisionContract:
             self.requires_expired_claim,
         ) != claim_requirement:
             raise InvalidExecutionLifecycleContract(
-                "claim recovery decision has invalid status or expiry requirement"
+                "claim-authority decision has invalid status or expiry requirement"
             )
 
     def descriptor(self) -> dict[str, object]:
