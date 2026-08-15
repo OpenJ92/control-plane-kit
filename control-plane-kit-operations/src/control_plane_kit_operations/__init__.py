@@ -471,6 +471,7 @@ from .records import (
     BoundedEvidence,
     ClaimIdentity,
     ExecutionIdempotency,
+    ExecutionLeaseRecoveryEvidence,
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     FailureEvidence,
@@ -488,6 +489,15 @@ from .records import (
     RealizedGraphProjectionKind,
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
+)
+from .execution_lease_recovery import (
+    AbandonExpiredExecutionClaim,
+    ExecutionLeaseRecoveryCommand,
+    ExecutionLeaseRecoveryResult,
+    RecoveryAuthority,
+    RenewActiveExecutionClaim,
+    RenewExpiredExecutionClaim,
+    TakeOverExpiredExecutionClaim,
 )
 from .read_pages import (
     READ_COLLECTION_SPECS,
@@ -546,6 +556,7 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "AbandonExpiredExecutionClaim",
     "READ_COLLECTION_SPECS",
     "DelegationKeyReadCursor",
     "IdentityReadCursor",
@@ -641,6 +652,9 @@ __all__ = [
     "CloudflareZoneIngressAuthorityCodec",
     "ExecutionLeaseDuration",
     "ExecutionLeaseFence",
+    "ExecutionLeaseRecoveryCommand",
+    "ExecutionLeaseRecoveryEvidence",
+    "ExecutionLeaseRecoveryResult",
     "GeneratedIngressSecretReference",
     "GeneratedSecretPurpose",
     "GeneratedSecretRecordingConflict",
@@ -908,8 +922,11 @@ __all__ = [
     "RequestGatewayKeyRotationApproval",
     "RequestActivityPlan",
     "RequestPlanExecution",
+    "RecoveryAuthority",
     "RequestGatewayProbe",
     "ResumeActivityRun",
+    "RenewActiveExecutionClaim",
+    "RenewExpiredExecutionClaim",
     "RunLifecycleCommandService",
     "RunLifecycleConflict",
     "RunLifecycleDenied",
@@ -966,6 +983,7 @@ __all__ = [
     "PrepareGatewayKeyRotationOverlap",
     "StartOperationSession",
     "StartActivityRun",
+    "TakeOverExpiredExecutionClaim",
     "StaleDesiredGraph",
     "WorkspaceRecord",
     "WorkspaceCommandError",

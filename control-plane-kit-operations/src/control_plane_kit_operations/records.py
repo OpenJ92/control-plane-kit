@@ -22,6 +22,7 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     FailureCategory,
     LifecycleOperationKind,
+    RecoveryDecisionKind,
     activity_event_scope,
 )
 from control_plane_kit_core.operations import RunId
@@ -685,6 +686,79 @@ class FailureEvidence:
             raise OperationsRecordError("failure details must be BoundedEvidence")
 
 
+_CLAIM_RECOVERY_DECISIONS = frozenset(
+    {
+        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+        RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+        RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
+        RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM,
+    }
+)
+
+
+@dataclass(frozen=True)
+class ExecutionLeaseRecoveryEvidence:
+    """Bounded durable evidence for one accepted claim-recovery decision."""
+
+    decision_kind: RecoveryDecisionKind
+    retained_run_id: RunId
+    prior_fence: ExecutionLeaseFence
+    replacement_fence: ExecutionLeaseFence | None
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.decision_kind) is not RecoveryDecisionKind
+            or self.decision_kind not in _CLAIM_RECOVERY_DECISIONS
+        ):
+            raise OperationsRecordError("recovery decision kind is invalid")
+        if type(self.retained_run_id) is not RunId:
+            raise OperationsRecordError("recovery retained run identity is invalid")
+        if type(self.prior_fence) is not ExecutionLeaseFence:
+            raise OperationsRecordError("recovery prior fence is invalid")
+        if self.replacement_fence is not None and type(
+            self.replacement_fence
+        ) is not ExecutionLeaseFence:
+            raise OperationsRecordError("recovery replacement fence is invalid")
+        self._validate_fence_transition()
+
+    def _validate_fence_transition(self) -> None:
+        replacement = self.replacement_fence
+        if self.decision_kind is RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM:
+            if replacement is not None:
+                raise OperationsRecordError(
+                    "claim abandonment must not carry a replacement fence"
+                )
+            return
+        if replacement is None:
+            raise OperationsRecordError(
+                "claim recovery requires a replacement fence"
+            )
+        if (
+            self.prior_fence.generation == 2**63 - 1
+            or replacement.generation != self.prior_fence.generation + 1
+        ):
+            raise OperationsRecordError("claim recovery generation is invalid")
+        takeover = (
+            self.decision_kind
+            is RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM
+        )
+        same_worker = replacement.worker_id == self.prior_fence.worker_id
+        if takeover == same_worker:
+            raise OperationsRecordError("claim recovery worker transition is invalid")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "decision": self.decision_kind.value,
+            "retained_run_id": self.retained_run_id.value,
+            "prior_fence": self.prior_fence.descriptor(),
+            "replacement_fence": (
+                None
+                if self.replacement_fence is None
+                else self.replacement_fence.descriptor()
+            ),
+        }
+
+
 @dataclass(frozen=True)
 class ExecutionRequestIdentity:
     """Stable ownership coordinates for one execution request."""
@@ -783,6 +857,7 @@ class ActivityEventRecord:
     activity_id: str | None = None
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
     failure: FailureEvidence | None = None
+    recovery: ExecutionLeaseRecoveryEvidence | None = None
 
     def __post_init__(self) -> None:
         _validate_text(self.event_id, "event_id")
@@ -801,6 +876,23 @@ class ActivityEventRecord:
         ):
             raise OperationsRecordError(
                 "activity event failure must be FailureEvidence when present"
+            )
+        if self.kind is ActivityEventKind.RECOVERY_DECISION_RECORDED:
+            if type(self.recovery) is not ExecutionLeaseRecoveryEvidence:
+                raise OperationsRecordError(
+                    "recovery decision event requires typed recovery evidence"
+                )
+            if self.recovery.retained_run_id.value != self.run_id:
+                raise OperationsRecordError(
+                    "recovery decision event run identity is incongruent"
+                )
+            if self.evidence != BoundedEvidence() or self.failure is not None:
+                raise OperationsRecordError(
+                    "recovery decision event carries contradictory evidence"
+                )
+        elif self.recovery is not None:
+            raise OperationsRecordError(
+                "only a recovery decision event may carry recovery evidence"
             )
         if activity_event_scope(self.kind) is ActivityEventScope.ACTIVITY:
             if self.activity_id is None:
