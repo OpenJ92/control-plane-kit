@@ -367,6 +367,22 @@ class PostgresExecutionLeaseRecoveryConcurrencyTests(
                             blocker_pid,
                             label=f"clock {label} blocker",
                         )
+                        with psycopg.connect(self.database_url) as probe:
+                            if label == "request":
+                                probe.execute(
+                                    "SELECT run_id FROM cpk_activity_runs "
+                                    "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                                )
+                            else:
+                                with self.assertRaises(
+                                    psycopg.errors.LockNotAvailable
+                                ):
+                                    probe.execute(
+                                        "SELECT request_id "
+                                        "FROM cpk_execution_requests "
+                                        "WHERE request_id = 'request-a' "
+                                        "FOR UPDATE NOWAIT"
+                                    )
                         released_at = blocker.execute(
                             "SELECT clock_timestamp()"
                         ).fetchone()[0]
