@@ -301,6 +301,9 @@ class RetryIdentityAndEvidenceTests(unittest.TestCase):
             self.assertNotIn(canary, rendered)
 
     def test_retry_identity_matches_exact_postgres_integer_domain(self) -> None:
+        class HostileInt(int):
+            pass
+
         self.assertEqual(RetryIdentity(1), RetryIdentity(1, None))
         self.assertEqual(
             RetryIdentity(MAX_ATTEMPT, "run-prior"),
@@ -308,6 +311,8 @@ class RetryIdentityAndEvidenceTests(unittest.TestCase):
         )
         rejected = (
             (True, None),
+            (1.0, None),
+            (HostileInt(2), "run-prior"),
             (0, None),
             (-1, None),
             (1, "run-prior"),

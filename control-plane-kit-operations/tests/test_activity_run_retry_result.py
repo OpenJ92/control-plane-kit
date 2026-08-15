@@ -404,6 +404,24 @@ class ActivityRunRetryResultTests(unittest.TestCase):
         )
 
     def test_prior_run_metadata_is_exactly_congruent_with_retry_identity(self) -> None:
+        initial = self.result()
+        initial_candidates = (
+            {},
+            {"attempt": 2},
+            {"attempt": 1, "prior_run_id": "run-before"},
+            {"attempt": 1, "extra": "initial-metadata-canary"},
+        )
+        for candidate in initial_candidates:
+            with self.subTest(prior_attempt=1, candidate=candidate):
+                self.assert_result_rejected(
+                    initial,
+                    "initial-metadata-canary",
+                    prior_run=dataclasses.replace(
+                        initial.prior_run,
+                        metadata=BoundedEvidence.from_mapping(candidate),
+                    ),
+                )
+
         valid = self.result(prior_attempt=2, attempt=3)
         metadata = valid.prior_run.metadata.descriptor()
         candidates = (
@@ -536,6 +554,10 @@ class ActivityRunRetryResultTests(unittest.TestCase):
     def test_result_accepts_exact_maximum_attempt_and_rejects_no_successor(
         self,
     ) -> None:
+        with self.assertRaises(OperationsRecordError) as captured:
+            self.result(prior_attempt=2, attempt=4)
+        self.assert_safe_error(captured.exception)
+
         maximum = self.result(
             prior_attempt=MAX_ATTEMPT - 1,
             attempt=MAX_ATTEMPT,
@@ -544,7 +566,7 @@ class ActivityRunRetryResultTests(unittest.TestCase):
 
         with self.assertRaises(OperationsRecordError) as captured:
             RetryIdentity(MAX_ATTEMPT + 1, "run-a")
-        self.assert_safe_error(captured.exception)
+        self.assert_safe_error(captured.exception, str(MAX_ATTEMPT + 1))
 
     def test_direct_result_is_claimed_and_replay_uses_closed_lawful_status_set(
         self,
@@ -565,6 +587,7 @@ class ActivityRunRetryResultTests(unittest.TestCase):
                 "cancelled",
             ),
         )
+        self.assertEqual(REPLAY_STATUSES, tuple(ActivityRunStatus))
         for status in REPLAY_STATUSES:
             with self.subTest(status=status):
                 replay = self.result(replayed=True, run_status=status)
