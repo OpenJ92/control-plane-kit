@@ -4,18 +4,30 @@ import importlib
 
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
+    ActivityEventKind,
+    ActivityRunStatus,
+    FailureCategory,
     RecoveryDecisionKind,
     RecoveryScope,
 )
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.activity_run_retry import RetryFailedActivityRun
 from control_plane_kit_operations.execution_lease_recovery import RecoveryAuthority
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.lifecycle import (
+    ExecutionWorkerAuthority,
+    FailActivityRun,
+    RunLifecycleCommandService,
+    StartActivityRun,
+)
 from control_plane_kit_operations.records import (
+    ActivityEventRecord,
     ActivityRunRecord,
     AdmittedRun,
+    BoundedEvidence,
+    FailureEvidence,
     RetryIdentity,
 )
-from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 from control_plane_kit_operations.workflows import IdempotencyKey
 
 from tests.execution_lease_recovery_fixture import (
@@ -132,6 +144,71 @@ class PostgresActivityRunRetryFixture(PostgresExecutionLeaseRecoveryFixture):
                 )
             )
             unit_of_work.commit()
+
+    def _fail_run_for_retry(
+        self,
+        run_id: str,
+        fence: ExecutionLeaseFence,
+    ) -> None:
+        authority = ExecutionWorkerAuthority(
+            fence.worker_id,
+            (PolicyScope.EXECUTION_OPERATE,),
+        )
+        observed_at = "2026-08-15T04:31:00Z"
+        RunLifecycleCommandService(
+            self.unit_of_work,
+            clock=lambda: observed_at,
+            id_factory=Sequence("run-b-started", "run-b-start-action"),
+        ).execute(
+            StartActivityRun(
+                run_id,
+                authority,
+                fence,
+                IdempotencyKey("run-b-start"),
+            )
+        )
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            ordinal = stores.execution.next_event_ordinal(run_id)
+            stores.execution.add_event(
+                ActivityEventRecord(
+                    "run-b-step-started",
+                    run_id,
+                    ordinal,
+                    ActivityEventKind.STEP_STARTED,
+                    observed_at,
+                    activity_id="start-runtime",
+                )
+            )
+            stores.execution.add_event(
+                ActivityEventRecord(
+                    "run-b-step-failed",
+                    run_id,
+                    ordinal + 1,
+                    ActivityEventKind.STEP_FAILED,
+                    observed_at,
+                    activity_id="start-runtime",
+                )
+            )
+            unit_of_work.commit()
+        RunLifecycleCommandService(
+            self.unit_of_work,
+            clock=lambda: observed_at,
+            id_factory=Sequence("run-b-failed", "run-b-fail-action"),
+        ).execute(
+            FailActivityRun(
+                run_id,
+                authority,
+                fence,
+                IdempotencyKey("run-b-fail"),
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "adapter-error",
+                    "adapter returned a terminal failure",
+                    BoundedEvidence(),
+                ),
+            )
+        )
 
 
 __all__ = [

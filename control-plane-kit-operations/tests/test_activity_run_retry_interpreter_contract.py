@@ -144,6 +144,7 @@ class ActivityRunRetryInterpreterContractTests(unittest.TestCase):
         expected = {
             "locked_recovery_approval",
             "require_recovery_eligible_journal",
+            "require_replay_run_evolution",
         }
         self.assertEqual(imported, expected)
         self.assertIs(
@@ -154,6 +155,17 @@ class ActivityRunRetryInterpreterContractTests(unittest.TestCase):
             retry_interpreter.require_recovery_eligible_journal,
             support.require_recovery_eligible_journal,
         )
+        self.assertIs(
+            retry_interpreter.require_replay_run_evolution,
+            support.require_replay_run_evolution,
+        )
+        recovery_interpreter = importlib.import_module(
+            "control_plane_kit_operations.execution_lease_recovery_interpreter"
+        )
+        self.assertIs(
+            recovery_interpreter.require_replay_run_evolution,
+            support.require_replay_run_evolution,
+        )
         owned = {
             node.name
             for node in tree.body
@@ -163,6 +175,8 @@ class ActivityRunRetryInterpreterContractTests(unittest.TestCase):
             {
                 "locked_recovery_approval",
                 "require_recovery_eligible_journal",
+                "require_replay_run_evolution",
+                "_require_replay_run_evolution",
                 "_approval",
                 "_require_journal",
                 "_journal_without_recovery_pairs",

@@ -9347,7 +9347,8 @@
         "tests/test_activity_run_retry_interpreter_contract.py",
         "tests/test_postgres_activity_run_retry_concurrency.py",
         "tests/test_postgres_activity_run_retry_eligibility_rollback.py",
-        "tests/test_postgres_activity_run_retry_first_replay.py"
+        "tests/test_postgres_activity_run_retry_first_replay.py",
+        "tests/test_postgres_activity_run_retry_store_boundaries.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [

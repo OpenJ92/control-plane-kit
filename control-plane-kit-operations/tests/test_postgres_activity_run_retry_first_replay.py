@@ -27,9 +27,9 @@ from tests.activity_run_retry_interpreter_fixture import (
     PostgresActivityRunRetryFixture,
     retry_interpreter,
 )
-from tests.execution_lease_recovery_fixture import safe_error
 from tests.execution_lease_recovery_fixture import (
     ExecutionLeaseRecoveryCommandService,
+    safe_error,
 )
 
 
@@ -229,6 +229,80 @@ class PostgresActivityRunRetryFirstReplayTests(
                     )
                 self.assertTrue(replay.replayed)
                 self.assertEqual(replay.run.status.value, status)
+
+    def test_historical_retry_replay_survives_a_later_linked_retry(self) -> None:
+        command, first, second = self._two_linked_retries()
+        before = self.snapshot()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("historical retry replay sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            replay = ActivityRunRetryCommandService(
+                self.unit_of_work,
+                id_factory=lambda: (_ for _ in ()).throw(
+                    AssertionError("historical retry replay allocated identity")
+                ),
+            ).execute(command)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
+
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.prior_run.run_id, first.prior_run.run_id)
+        self.assertEqual(replay.run.run_id, first.run.run_id)
+        self.assertIs(replay.run.status, ActivityRunStatus.FAILED)
+        self.assertEqual(second.prior_run.run_id, first.run.run_id)
+        self.assertEqual(second.run.run_id, "run-c")
+        self.assertEqual(replay.request.claim.fence, second.request.claim.fence)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_historical_retry_replay_rejects_a_broken_successor_chain(self) -> None:
+        command, _first, _second = self._two_linked_retries()
+        self.connection.execute(
+            "UPDATE cpk_activity_runs SET prior_run_id = 'run-a' "
+            "WHERE run_id = 'run-c'"
+        )
+        before = self.snapshot()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("broken retry replay sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            with self.assertRaises(RunLifecycleConflict) as raised:
+                ActivityRunRetryCommandService(
+                    self.unit_of_work,
+                    id_factory=lambda: (_ for _ in ()).throw(
+                        AssertionError("broken retry replay allocated identity")
+                    ),
+                ).execute(command)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
+        safe_error(self, raised.exception, "run-a", "run-b", "run-c")
+        self.assertEqual(self.snapshot(), before)
+
+    def _two_linked_retries(self):
+        self.reset_retry_truth()
+        command = self.retry_command()
+        first = self.retry_service(
+            "run-b", "retry-decision", "run-b-opened", "retry-action"
+        ).execute(command)
+        fence = first.request.claim.fence
+        assert fence is not None
+        self._fail_run_for_retry("run-b", fence)
+        second = self.retry_service(
+            "run-c", "retry-c-decision", "run-c-opened", "retry-c-action"
+        ).execute(
+            self.retry_command(
+                key="retry-c",
+                prior_run_id="run-b",
+                expected_fence=fence,
+            )
+        )
+        return command, first, second
 
     def test_replay_revalidates_current_fence_and_complete_result_truth(self) -> None:
         mutations = {
