@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import unittest
 from pathlib import Path
 
 import control_plane_kit_operations as operations_root
@@ -64,7 +65,8 @@ CONSEQUENCE = {
 
 
 class PostgresExecutionLeaseRecoveryFirstReplayTests(
-    PostgresExecutionLeaseRecoveryFixture
+    PostgresExecutionLeaseRecoveryFixture,
+    unittest.TestCase,
 ):
     def test_exact_scope_is_required_before_unit_of_work(self) -> None:
         self.require_service()

@@ -101,7 +101,7 @@ def safe_error(
         test.assertNotIn(canary, rendered)
 
 
-class PostgresExecutionLeaseRecoveryFixture(unittest.TestCase):
+class PostgresExecutionLeaseRecoveryFixture:
     maxDiff = None
 
     def setUp(self) -> None:

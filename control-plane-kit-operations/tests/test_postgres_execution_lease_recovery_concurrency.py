@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import unittest
 import dataclasses
 from datetime import datetime
 import queue
@@ -36,7 +37,8 @@ from tests.execution_lease_recovery_fixture import (
 
 
 class PostgresExecutionLeaseRecoveryConcurrencyTests(
-    PostgresExecutionLeaseRecoveryFixture
+    PostgresExecutionLeaseRecoveryFixture,
+    unittest.TestCase,
 ):
     def _wait_until_blocked_by(
         self,

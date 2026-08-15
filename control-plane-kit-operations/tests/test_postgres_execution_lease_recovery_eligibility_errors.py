@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import unittest
 
 import psycopg
 
@@ -29,7 +30,8 @@ from tests.execution_lease_recovery_fixture import (
 
 
 class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
-    PostgresExecutionLeaseRecoveryFixture
+    PostgresExecutionLeaseRecoveryFixture,
+    unittest.TestCase,
 ):
     def test_recovery_suffix_is_anchored_to_current_fence_and_raw_ordinals(
         self,
