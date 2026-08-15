@@ -401,15 +401,15 @@ def _require_journal(
         projection = None
     if projection is None:
         raise RunLifecycleConflict("retained run journal is invalid")
+    event_kinds = tuple(event.kind for event in events)
     if isinstance(command, RenewActiveExecutionClaim):
         if (
             activity_journal_events(events)
-            or tuple(event.kind for event in events)
-            != (ActivityEventKind.RUN_OPENED,)
+            or event_kinds.count(ActivityEventKind.RUN_OPENED) != 1
         ):
             raise RunLifecycleConflict("active retained run has effect history")
         return
-    if events[-1].kind is not ActivityEventKind.RUN_FAILED:
+    if event_kinds.count(ActivityEventKind.RUN_FAILED) != 1:
         raise RunLifecycleConflict("failed retained run lacks terminal evidence")
     if (
         projection.state.status is not SagaStatus.FAILED
@@ -439,6 +439,18 @@ def _require_replay_command(
         != command.lease_duration.seconds
     ):
         raise RunLifecycleConflict("persisted recovery duration changed")
+    if not isinstance(command, AbandonExpiredExecutionClaim):
+        claim = result.request.claim
+        assert claim is not None
+        if (
+            claim.claimed_at != result.decision_event.occurred_at
+            or claim.lease_expires_at
+            != _expires_at(
+                result.decision_event.occurred_at,
+                command.lease_duration.seconds,
+            )
+        ):
+            raise RunLifecycleConflict("persisted recovery lease time changed")
 
 
 def _planned_request(
