@@ -35,7 +35,6 @@ from control_plane_kit_operations.workflows import (
 )
 
 
-_MAX_ATTEMPT = 2_147_483_647
 _REPLAY_STATUSES = frozenset(
     {
         ActivityRunStatus.CLAIMED,
@@ -176,7 +175,6 @@ def _validate_result_lineage(result: ActivityRunRetryResult) -> None:
         or run.plan_id != request.identity.plan_id
         or run.retry.prior_run_id != prior.run_id
         or run.retry.attempt != prior.retry.attempt + 1
-        or run.retry.attempt > _MAX_ATTEMPT
         or prior.metadata.descriptor() != _run_metadata(prior)
         or run.metadata.descriptor() != _run_metadata(run)
     ):

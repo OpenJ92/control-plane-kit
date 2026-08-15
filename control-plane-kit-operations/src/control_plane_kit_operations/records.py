@@ -609,7 +609,9 @@ class RetryIdentity:
             or self.attempt < 1
             or self.attempt > 2_147_483_647
         ):
-            raise OperationsRecordError("retry attempt must be a positive integer")
+            raise OperationsRecordError(
+                "retry attempt must be an integer from 1 through 2147483647"
+            )
         if self.attempt == 1 and self.prior_run_id is not None:
             raise OperationsRecordError("first attempt cannot reference a prior run")
         if self.attempt > 1:
