@@ -124,7 +124,7 @@ class ExecutionLeaseRecoveryResultTests(unittest.TestCase):
             ActivityRunStatus.CLAIMED if active else ActivityRunStatus.FAILED,
             "created",
             started_at=None if active else "started",
-            settled_at=None if active else "failed",
+            settled_at=None,
         )
         decision_event = ActivityEventRecord(
             "decision-event-a",
@@ -396,7 +396,7 @@ class ExecutionLeaseRecoveryResultTests(unittest.TestCase):
 
         active_as_failed = ActivityRunRecord(
             "run-a", "plan-a", AdmittedRun("request-a"), RetryIdentity(1),
-            ActivityRunStatus.FAILED, "created", "started", "failed"
+            ActivityRunStatus.FAILED, "created", "started"
         )
         self.assert_result_rejected(active, retained_run=active_as_failed)
         for result in (renewed, takeover, abandoned):

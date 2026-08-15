@@ -9218,6 +9218,44 @@
       "source": "control_plane_kit/workflows/verification.py"
     },
     {
+      "canonical_public_exports": [
+        "AbandonExpiredExecutionClaim",
+        "ExecutionLeaseRecoveryCommand",
+        "ExecutionLeaseRecoveryResult",
+        "RecoveryAuthority",
+        "RenewActiveExecutionClaim",
+        "RenewExpiredExecutionClaim",
+        "TakeOverExpiredExecutionClaim"
+      ],
+      "destination": "control_plane_kit_operations.execution_lease_recovery",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.execution_lease_recovery",
+      "motivation": "Owns the pure command and result language for durable execution-lease recovery without interpreting mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_execution_lease_recovery_contract.py",
+        "tests/test_execution_lease_recovery_result.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery.py"
+    },
+    {
       "module": "control_plane_kit.operations",
       "source": "control_plane_kit/operations/__init__.py",
       "owner": "operation",

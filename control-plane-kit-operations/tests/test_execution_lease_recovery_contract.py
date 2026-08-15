@@ -74,7 +74,8 @@ class ExecutionLeaseRecoveryLanguageTests(unittest.TestCase):
         rendered = f"{error!s} {error!r}"
         self.assertLessEqual(len(rendered), 512)
         for canary in canaries:
-            self.assertNotIn(canary, rendered)
+            if canary:
+                self.assertNotIn(canary, rendered)
 
     def require_language(self) -> None:
         required = {
