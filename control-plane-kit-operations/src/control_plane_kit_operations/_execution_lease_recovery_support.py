@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from control_plane_kit_core.approval_subjects import (
     ActivityPlanApprovalSubject,
@@ -10,6 +10,7 @@ from control_plane_kit_core.approval_subjects import (
 )
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
+    LifecycleOperationKind,
     RecoveryDecisionKind,
 )
 from control_plane_kit_core.planning import (
@@ -22,6 +23,7 @@ from control_plane_kit_operations.activity_journal import (
     EVENT_KIND_TO_JOURNAL_KIND,
     activity_journal_events,
 )
+from control_plane_kit_operations.activity_run_retry import ActivityRunRetryResult
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
     RunLifecycleConflict,
@@ -36,6 +38,7 @@ from control_plane_kit_operations.records import (
     ApprovalRequestRecord,
     BoundedEvidence,
     ExecutionRequestRecord,
+    OperationActionRecord,
     OperationsRecordError,
 )
 
@@ -164,6 +167,163 @@ def require_recovery_eligible_journal(
         or projection.compensation_uncertain
     ):
         raise RunLifecycleConflict("retained run effect failure is unresolved")
+
+
+def require_replay_run_evolution(
+    stores: Any,
+    request: ExecutionRequestRecord,
+    retained_run: ActivityRunRecord,
+) -> None:
+    actions = _replay_actions_for_session(
+        stores,
+        request.identity.session_id,
+    )
+    current = retained_run
+    visited = {current.run_id}
+    for _ in range(len(actions)):
+        candidates = tuple(
+            action
+            for action in actions
+            if _retry_action_prior_run_id(action) == current.run_id
+        )
+        if not candidates:
+            break
+        if len(candidates) != 1:
+            raise RunLifecycleConflict(
+                "persisted recovery run evolution changed"
+            )
+        action = candidates[0]
+        payload = action.payload
+        assert isinstance(payload, Mapping)
+        run_id = payload.get("run_id")
+        decision_event_id = payload.get("decision_event_id")
+        opened_event_id = payload.get("opened_event_id")
+        if (
+            type(run_id) is not str
+            or type(decision_event_id) is not str
+            or type(opened_event_id) is not str
+            or run_id in visited
+        ):
+            raise RunLifecycleConflict(
+                "persisted recovery run evolution changed"
+            )
+        try:
+            successor = _replay_run_for_update(
+                stores,
+                request.identity.request_id,
+                run_id,
+            )
+            decision_event = _replay_event(stores, decision_event_id)
+            opened_event = _replay_event(stores, opened_event_id)
+        except (RunLifecycleConflict, RunLifecycleNotFound):
+            successor = None
+        if successor is None:
+            raise RunLifecycleConflict(
+                "persisted recovery run evolution changed"
+            )
+        try:
+            ActivityRunRetryResult(
+                request,
+                current,
+                successor,
+                decision_event,
+                opened_event,
+                action,
+                replayed=True,
+            )
+        except OperationsRecordError:
+            valid_retry = False
+        else:
+            valid_retry = True
+        if not valid_retry:
+            raise RunLifecycleConflict(
+                "persisted recovery run evolution changed"
+            )
+        visited.add(successor.run_id)
+        current = successor
+    latest_run = _replay_latest_run_for_update(
+        stores,
+        request.identity.request_id,
+    )
+    if current != latest_run:
+        raise RunLifecycleConflict("persisted recovery run evolution changed")
+
+
+def _retry_action_prior_run_id(action: OperationActionRecord) -> str | None:
+    if action.action_type is not LifecycleOperationKind.RECORD_RECOVERY_DECISION:
+        return None
+    payload = action.payload
+    if not isinstance(payload, Mapping):
+        return None
+    recovery = payload.get("recovery")
+    if not isinstance(recovery, Mapping):
+        return None
+    if recovery.get("decision") != RecoveryDecisionKind.RETRY_AS_NEW_RUN.value:
+        return None
+    retained_run_id = recovery.get("retained_run_id")
+    return retained_run_id if type(retained_run_id) is str else None
+
+
+def _replay_actions_for_session(
+    stores: Any,
+    session_id: str,
+) -> tuple[OperationActionRecord, ...]:
+    try:
+        actions = stores.activity_history.actions_for_session(session_id)
+    except (OperationsRecordError, ValueError):
+        pass
+    else:
+        return actions
+    raise RunLifecycleConflict("persisted recovery run evolution changed")
+
+
+def _replay_run_for_update(
+    stores: Any,
+    request_id: str,
+    run_id: str,
+) -> ActivityRunRecord:
+    try:
+        run = stores.execution.get_run_for_request_for_update(request_id, run_id)
+    except KeyError:
+        failure = "missing"
+    except (OperationsRecordError, ValueError):
+        failure = "invalid"
+    else:
+        return run
+    if failure == "missing":
+        raise RunLifecycleNotFound("recovery retained run was not found")
+    raise RunLifecycleConflict("recovery retained run history is invalid")
+
+
+def _replay_latest_run_for_update(
+    stores: Any,
+    request_id: str,
+) -> ActivityRunRecord:
+    try:
+        run = stores.execution.get_latest_run_for_request_for_update(request_id)
+    except KeyError:
+        failure = "missing"
+    except (OperationsRecordError, ValueError):
+        failure = "invalid"
+    else:
+        return run
+    if failure == "missing":
+        raise RunLifecycleNotFound("activity run was not found")
+    raise RunLifecycleConflict("activity run history is invalid")
+
+
+def _replay_event(stores: Any, event_id: str) -> ActivityEventRecord:
+    try:
+        event = stores.execution.get_event(event_id)
+    except KeyError:
+        failure = "missing"
+    except (OperationsRecordError, ValueError):
+        failure = "invalid"
+    else:
+        return event
+    if failure == "missing":
+        raise RunLifecycleNotFound("recovery event was not found")
+    raise RunLifecycleConflict("recovery event history is invalid")
 
 
 def _journal_without_recovery_pairs(

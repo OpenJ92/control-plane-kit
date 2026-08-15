@@ -9297,6 +9297,7 @@
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.planning",
         "control_plane_kit_operations.activity_journal",
+        "control_plane_kit_operations.activity_run_retry",
         "control_plane_kit_operations.execution_leases",
         "control_plane_kit_operations.lifecycle",
         "control_plane_kit_operations.records"
@@ -9307,13 +9308,16 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations._execution_lease_recovery_support",
-      "motivation": "Owns private total approval and journal transformations shared by recovery interpreters without exposing a root package surface.",
+      "motivation": "Owns private total approval, journal, and retry-chain transformations shared by recovery interpreters without exposing a root package surface.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
+        "tests/test_activity_run_retry_interpreter_contract.py",
         "tests/test_execution_lease_recovery_retry_totality.py",
-        "tests/test_execution_lease_recovery_support_contract.py"
+        "tests/test_execution_lease_recovery_support_contract.py",
+        "tests/test_postgres_activity_run_retry_first_replay.py",
+        "tests/test_postgres_execution_lease_recovery_first_replay.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [

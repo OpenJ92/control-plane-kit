@@ -16,6 +16,7 @@ from control_plane_kit_core.operations.lifecycle import (
 from control_plane_kit_operations._execution_lease_recovery_support import (
     locked_recovery_approval,
     require_recovery_eligible_journal,
+    require_replay_run_evolution,
 )
 from control_plane_kit_operations.activity_run_retry import (
     ActivityRunRetryResult,
@@ -64,10 +65,17 @@ class ActivityRunRetryCommandService:
                 locator.identity.session_id,
                 command.idempotency_key.value,
             )
-            existing = history.action_for_idempotency(
-                locator.identity.session_id,
-                command.idempotency_key.value,
-            )
+            try:
+                existing = history.action_for_idempotency(
+                    locator.identity.session_id,
+                    command.idempotency_key.value,
+                )
+            except (OperationsRecordError, ValueError):
+                action_failure = True
+            else:
+                action_failure = False
+            if action_failure:
+                raise RunLifecycleConflict("operation action history is invalid")
             if existing is not None:
                 if existing.intent_fingerprint != fingerprint:
                     raise RunLifecycleIdempotencyConflict(
@@ -83,7 +91,7 @@ class ActivityRunRetryCommandService:
                 )
             except KeyError:
                 session_failure = "missing"
-            except OperationsRecordError:
+            except (OperationsRecordError, ValueError):
                 session_failure = "invalid"
             else:
                 session_failure = None
@@ -245,9 +253,7 @@ def _replay(
     ):
         raise RunLifecycleConflict("persisted retry action is malformed")
     run = _run_for_request_for_update(stores, command.request_id, run_id)
-    latest_run = _latest_run_for_update(stores, command.request_id)
-    if run != latest_run:
-        raise RunLifecycleConflict("persisted retry successor changed")
+    require_replay_run_evolution(stores, request, run)
     locked_recovery_approval(stores, request)
     decision_event = _event(stores, decision_event_id)
     opened_event = _event(stores, opened_event_id)
@@ -324,7 +330,7 @@ def _request(stores: Any, request_id: str) -> ExecutionRequestRecord:
         request = stores.execution.get_request(request_id)
     except KeyError:
         failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         failure = "invalid"
     else:
         return request
@@ -338,7 +344,7 @@ def _request_for_update(stores: Any, request_id: str) -> ExecutionRequestRecord:
         request = stores.execution.get_request_for_update(request_id)
     except KeyError:
         failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         failure = "invalid"
     else:
         return request
@@ -356,7 +362,7 @@ def _run_for_request_for_update(
         run = stores.execution.get_run_for_request_for_update(request_id, run_id)
     except KeyError:
         failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         failure = "invalid"
     else:
         return run
@@ -370,7 +376,7 @@ def _latest_run_for_update(stores: Any, request_id: str) -> ActivityRunRecord:
         run = stores.execution.get_latest_run_for_request_for_update(request_id)
     except KeyError:
         failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         failure = "invalid"
     else:
         return run
