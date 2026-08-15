@@ -203,6 +203,8 @@ _CONSEQUENCE_KINDS = {
 
 
 def _validate_command(command: ExecutionLeaseRecoveryCommand) -> None:
+    if type(command) not in _COMMAND_KINDS:
+        raise InvalidOperationCommand("recovery command variant is invalid")
     _bounded_command_text(command.request_id, "request_id")
     if type(command.retained_run_id) is not RunId:
         raise InvalidOperationCommand("retained_run_id must be RunId")
