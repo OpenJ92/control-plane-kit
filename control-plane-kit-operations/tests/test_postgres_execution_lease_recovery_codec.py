@@ -53,7 +53,9 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
 
     def evidence(self, decision: RecoveryDecisionKind):
         prior = ExecutionLeaseFence("worker-a", 7)
-        if decision in (
+        if decision is RecoveryDecisionKind.RETRY_AS_NEW_RUN:
+            replacement = prior
+        elif decision in (
             RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
             RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
         ):
@@ -148,6 +150,7 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
 
     def test_typed_recovery_round_trips_after_connection_restart(self) -> None:
         decisions = (
+            RecoveryDecisionKind.RETRY_AS_NEW_RUN,
             RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
             RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
             RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
@@ -168,7 +171,7 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                 self.assertEqual(restarted.events_for_run("run-a"), (event,))
 
     def test_internal_constructor_failures_escape_without_translation(self) -> None:
-        decision = RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+        decision = RecoveryDecisionKind.RETRY_AS_NEW_RUN
         self.seed_run(decision)
         event = self.event("event-internal-failure", decision)
         self.insert_raw_event(
@@ -212,6 +215,9 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
         self.seed_run()
         valid = self.evidence(
             RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM
+        ).descriptor()
+        retry = self.evidence(
+            RecoveryDecisionKind.RETRY_AS_NEW_RUN
         ).descriptor()
         oversized = "oversized-fixed-key-canary-" + "x" * 200
         nested = "nested-secret-canary"
@@ -340,6 +346,33 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                 {
                     **valid,
                     "decision": RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM.value,
+                },
+                (),
+            ),
+            (
+                "retry-missing-replacement",
+                {**retry, "replacement_fence": None},
+                (),
+            ),
+            (
+                "retry-rotated-worker",
+                {
+                    **retry,
+                    "replacement_fence": {
+                        "worker_id": "worker-b",
+                        "generation": 7,
+                    },
+                },
+                (),
+            ),
+            (
+                "retry-rotated-generation",
+                {
+                    **retry,
+                    "replacement_fence": {
+                        "worker_id": "worker-a",
+                        "generation": 8,
+                    },
                 },
                 (),
             ),
