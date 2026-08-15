@@ -408,6 +408,20 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                         requires_expired_claim=expired,
                     )
 
+    def test_claim_authority_error_is_fixed_and_candidate_free(self) -> None:
+        with self.assertRaises(InvalidExecutionLifecycleContract) as captured:
+            RecoveryDecisionContract(
+                kind=RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                required_scope=RecoveryScope.OPERATE,
+                allowed_run_statuses=(ActivityRunStatus.CLAIMED,),
+                requires_unexpired_claim=True,
+            )
+
+        self.assertEqual(
+            str(captured.exception),
+            "claim-authority decision has invalid status or expiry requirement",
+        )
+
     def test_claim_authority_descriptor_requires_exact_predicate_matrix(self) -> None:
         contract = canonical_execution_lifecycle_contract_set()
         active = contract.recovery_decision(
