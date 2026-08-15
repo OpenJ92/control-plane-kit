@@ -359,11 +359,11 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                 {
                     **retry,
                     "replacement_fence": {
-                        "worker_id": "worker-b",
+                        "worker_id": "retry-worker-canary",
                         "generation": 7,
                     },
                 },
-                (),
+                ("retry-worker-canary",),
             ),
             (
                 "retry-rotated-generation",
@@ -371,10 +371,10 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                     **retry,
                     "replacement_fence": {
                         "worker_id": "worker-a",
-                        "generation": 8,
+                        "generation": 917263,
                     },
                 },
-                (),
+                ("917263",),
             ),
             (
                 "oversized",
