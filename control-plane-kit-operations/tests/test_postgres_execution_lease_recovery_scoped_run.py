@@ -225,6 +225,99 @@ class PostgresExecutionLeaseRecoveryScopedRunTests(
                     )
                 self.assertEqual(self.snapshot(), before)
 
+    def test_decoder_value_errors_are_categorical_before_clock_ids_or_writes(
+        self,
+    ) -> None:
+        cases = (
+            (
+                PostgresActivityHistoryStore,
+                "action_for_idempotency",
+                True,
+                "recovery action history is invalid",
+            ),
+            (
+                PostgresActivityHistoryStore,
+                "get_session_for_update",
+                False,
+                "operation session history is invalid",
+            ),
+            (
+                PostgresExecutionStore,
+                "get_request",
+                False,
+                "execution request history is invalid",
+            ),
+            (
+                PostgresExecutionStore,
+                "get_request_for_update",
+                False,
+                "execution request history is invalid",
+            ),
+            (
+                PostgresExecutionStore,
+                "get_latest_run_for_request_for_update",
+                False,
+                "activity run history is invalid",
+            ),
+            (
+                PostgresExecutionStore,
+                "get_run_for_request_for_update",
+                True,
+                "recovery retained run history is invalid",
+            ),
+        )
+        for store_type, method_name, replay, expected_message in cases:
+            with self.subTest(read=method_name):
+                self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+                command = self.command(
+                    RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                    key="recover-a",
+                )
+                if replay:
+                    self.service(
+                        "decision-a",
+                        "consequence-a",
+                        "action-a",
+                    ).execute(command)
+                before = self.snapshot()
+                original_read = getattr(store_type, method_name)
+                original_observe = (
+                    PostgresExecutionStore.observe_request_lease_for_update
+                )
+                canary = f"{method_name}-value-canary"
+
+                def fail_read(*_args, **_kwargs):
+                    raise ValueError(canary)
+
+                def fail_observe(*_args, **_kwargs):
+                    raise AssertionError(
+                        f"{method_name} failure sampled database time"
+                    )
+
+                setattr(store_type, method_name, fail_read)
+                PostgresExecutionStore.observe_request_lease_for_update = (
+                    fail_observe
+                )
+                try:
+                    with self.assertRaises(RunLifecycleConflict) as captured:
+                        ExecutionLeaseRecoveryCommandService(
+                            self.unit_of_work,
+                            id_factory=lambda: (_ for _ in ()).throw(
+                                AssertionError(
+                                    f"{method_name} failure allocated identity"
+                                )
+                            ),
+                        ).execute(command)
+                finally:
+                    setattr(store_type, method_name, original_read)
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
+                    )
+
+                self.assertEqual(str(captured.exception), expected_message)
+                safe_error(self, captured.exception, canary)
+                self.assertEqual(self.snapshot(), before)
+
     def test_public_replay_rejects_foreign_run_without_locking_it(self) -> None:
         self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
         original_command = self.command(
