@@ -489,6 +489,10 @@ def _journal_without_recovery_pairs(
         if (
             recovery is None
             or (
+                recovery.decision_kind
+                is RecoveryDecisionKind.RETRY_AS_NEW_RUN
+            )
+            or (
                 has_prior_recovery
                 and recovery.prior_fence != prior_replacement
             )
