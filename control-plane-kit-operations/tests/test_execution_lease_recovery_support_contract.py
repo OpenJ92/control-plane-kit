@@ -45,6 +45,11 @@ class ExecutionLeaseRecoverySupportContractTests(unittest.TestCase):
                 "plan",
                 "events",
             ),
+            "require_replay_run_evolution": (
+                "stores",
+                "request",
+                "retained_run",
+            ),
         }
         self.assertEqual(
             {
@@ -91,6 +96,23 @@ class ExecutionLeaseRecoverySupportContractTests(unittest.TestCase):
             if isinstance(node, ast.ImportFrom)
         }
         self.assertIn(SUPPORT_MODULE, imports)
+        interpreter_module = (
+            "control_plane_kit_operations.execution_lease_recovery_interpreter"
+        )
+        interpreter_rows = [
+            candidate
+            for candidate in inventory["modules"]
+            if candidate["module"] == interpreter_module
+        ]
+        self.assertEqual(len(interpreter_rows), 1)
+        self.assertEqual(
+            set(interpreter_rows[0]["internal_dependencies"]),
+            {
+                module
+                for module in imports
+                if module is not None and module.startswith("control_plane_kit")
+            },
+        )
         owned_functions = {
             node.name
             for node in ast.walk(tree)

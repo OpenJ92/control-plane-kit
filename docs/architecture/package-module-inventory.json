@@ -9369,7 +9369,6 @@
       "internal_dependencies": [
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_operations._execution_lease_recovery_support",
-        "control_plane_kit_operations.activity_run_retry",
         "control_plane_kit_operations.execution_lease_recovery",
         "control_plane_kit_operations.execution_leases",
         "control_plane_kit_operations.lifecycle",
