@@ -402,9 +402,17 @@ def _require_journal(
     plan: ActivityPlanRecord,
     events: tuple[ActivityEventRecord, ...],
 ) -> None:
-    if not events or any(event.run_id != run.run_id for event in events):
+    if (
+        not events
+        or any(event.run_id != run.run_id for event in events)
+        or tuple(event.ordinal for event in events)
+        != tuple(range(1, len(events) + 1))
+    ):
         raise RunLifecycleConflict("retained run journal is invalid")
-    base_events = _journal_before_recovery_suffix(events)
+    base_events = _journal_before_recovery_suffix(
+        events,
+        command.expected_fence,
+    )
     if base_events is None:
         raise RunLifecycleConflict("retained run journal is invalid")
     try:
@@ -446,6 +454,7 @@ def _require_journal(
 
 def _journal_before_recovery_suffix(
     events: tuple[ActivityEventRecord, ...],
+    expected_fence: ExecutionLeaseFence,
 ) -> tuple[ActivityEventRecord, ...] | None:
     first_recovery = next(
         (
@@ -463,6 +472,7 @@ def _journal_before_recovery_suffix(
     if len(recovery_events) % 2:
         return None
     expected_ordinal = base_events[-1].ordinal + 1 if base_events else 1
+    has_prior_recovery = False
     prior_replacement: ExecutionLeaseFence | None = None
     for index in range(0, len(recovery_events), 2):
         decision = recovery_events[index]
@@ -473,7 +483,7 @@ def _journal_before_recovery_suffix(
             or recovery is None
             or decision.ordinal != expected_ordinal
             or (
-                prior_replacement is not None
+                has_prior_recovery
                 and recovery.prior_fence != prior_replacement
             )
             or consequence.kind is not _CONSEQUENCE_KIND[recovery.decision_kind]
@@ -484,7 +494,10 @@ def _journal_before_recovery_suffix(
         ):
             return None
         expected_ordinal += 2
+        has_prior_recovery = True
         prior_replacement = recovery.replacement_fence
+    if prior_replacement != expected_fence:
+        return None
     return base_events
 
 
