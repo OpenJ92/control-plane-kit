@@ -6,16 +6,93 @@ import unittest
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
+    ActivityRunStatus,
+    ExecutionRequestStatus,
     RecoveryDecisionKind,
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.read_pages import (
+    OrdinalReadCursor,
+    ReadCollection,
+    ReadPage,
+    ReadPageCandidate,
+    ReadPageRequest,
+    RunReadScope,
+)
+from control_plane_kit_operations.read_services import InstanceReadService
 from control_plane_kit_operations.read_services.operations_history import (
     _event_descriptor as public_event_descriptor,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
+    ActivityRunRecord,
+    AdmittedRun,
+    ClaimIdentity,
+    ExecutionIdempotency,
     ExecutionLeaseRecoveryEvidence,
+    ExecutionRequestIdentity,
+    ExecutionRequestRecord,
+    RetryIdentity,
+    WorkspaceRecord,
 )
+
+
+class _WorkspaceStore:
+    def get(self, workspace_id):
+        if workspace_id != "workspace-a":
+            raise KeyError(workspace_id)
+        return WorkspaceRecord("workspace-a", "Workspace A")
+
+
+class _ExecutionStore:
+    def __init__(self, event: ActivityEventRecord) -> None:
+        self.event = event
+
+    def get_run(self, run_id):
+        return ActivityRunRecord(
+            "run-a",
+            "plan-a",
+            AdmittedRun("request-a"),
+            RetryIdentity(1),
+            ActivityRunStatus.FAILED,
+            "2026-08-15T03:59:10Z",
+            started_at="2026-08-15T03:59:20Z",
+        )
+
+    def get_request(self, request_id):
+        return ExecutionRequestRecord(
+            ExecutionRequestIdentity(
+                "request-a", "workspace-a", "session-a", "plan-a"
+            ),
+            ExecutionRequestStatus.CLAIMED,
+            "operator-a",
+            "2026-08-15T03:59:00Z",
+            "approval-request-a",
+            "approval-decision-a",
+            ExecutionIdempotency("execute-a", "a" * 64),
+            ClaimIdentity(
+                "worker-b",
+                8,
+                "2026-08-15T04:01:00Z",
+                "2026-08-15T04:11:00Z",
+            ),
+        )
+
+    def event_page(self, request):
+        return ReadPage.from_candidates(
+            request,
+            (
+                ReadPageCandidate(
+                    self.event,
+                    OrdinalReadCursor(
+                        ReadCollection.RUN_EVENTS,
+                        request.scope,
+                        self.event.ordinal,
+                        self.event.event_id,
+                    ),
+                ),
+            ),
+        )
 
 
 class ExecutionLeaseRecoveryReadProjectionTests(unittest.TestCase):
@@ -70,6 +147,57 @@ class ExecutionLeaseRecoveryReadProjectionTests(unittest.TestCase):
             },
         )
         rendered = json.dumps(descriptor, sort_keys=True)
+        for forbidden in (
+            "authority_reference",
+            "scopes",
+            "claimed_at",
+            "lease_expires_at",
+            "idempotency",
+            "fingerprint",
+            "secret",
+            "endpoint",
+        ):
+            self.assertNotIn(forbidden, rendered)
+
+    def test_instance_read_service_exposes_conditional_recovery_evidence(self) -> None:
+        recovery = ActivityEventRecord(
+            "event-recovery",
+            "run-a",
+            2,
+            ActivityEventKind.RECOVERY_DECISION_RECORDED,
+            "2026-08-15T04:01:00Z",
+            recovery=ExecutionLeaseRecoveryEvidence(
+                RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
+                RunId("run-a"),
+                ExecutionLeaseFence("worker-a", 7),
+                ExecutionLeaseFence("worker-b", 8),
+            ),
+        )
+        request = ReadPageRequest(
+            ReadCollection.RUN_EVENTS,
+            RunReadScope("workspace-a", "run-a"),
+            10,
+        )
+        service = InstanceReadService(
+            workspace_store=_WorkspaceStore(),
+            graph_topology_store=object(),
+            execution_store=_ExecutionStore(recovery),
+        )
+
+        page = service.run_events(request)
+
+        self.assertEqual(page.request, request)
+        self.assertEqual(len(page.items), 1)
+        self.assertIn(
+            "recovery",
+            page.items[0],
+            "typed recovery evidence is absent from InstanceReadService",
+        )
+        self.assertEqual(
+            page.items[0]["recovery"],
+            recovery.recovery.descriptor(),
+        )
+        rendered = json.dumps(page.items, sort_keys=True)
         for forbidden in (
             "authority_reference",
             "scopes",

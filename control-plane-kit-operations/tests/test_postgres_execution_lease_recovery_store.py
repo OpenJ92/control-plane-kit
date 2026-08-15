@@ -16,6 +16,20 @@ class _NoSqlConnection:
         raise AssertionError("invalid store input reached SQL")
 
 
+class _EmptyCursor:
+    def fetchone(self):
+        return None
+
+
+class _RecordingConnection:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, ...]] = []
+
+    def execute(self, *args):
+        self.calls.append(args)
+        return _EmptyCursor()
+
+
 class _TextSubclass(str):
     pass
 
@@ -43,16 +57,38 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
             "execution-lease recovery store operations are missing",
         )
 
+    def test_invalid_latest_run_inputs_execute_zero_sql(self) -> None:
+        self.require_store_methods()
+        for request_id in (
+            object(),
+            _TextSubclass("request-a"),
+            "",
+            "request\ncanary",
+            "r" * 513,
+        ):
+            with self.subTest(request_type=type(request_id).__name__):
+                connection = _NoSqlConnection()
+                store = PostgresExecutionStore(connection)
+                with self.assertRaises(OperationsRecordError) as captured:
+                    store.get_latest_run_for_request_for_update(request_id)
+                self.assertEqual(connection.calls, [])
+                _safe_error(self, captured.exception)
+
     def test_invalid_rotate_inputs_execute_zero_sql(self) -> None:
         self.require_store_methods()
         cases = (
             (object(), ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 600),
             (_TextSubclass("request-a"), ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 600),
+            ("", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 600),
+            ("request\ncanary", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 600),
+            ("r" * 513, ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 600),
             ("request-a", _FenceSubclass("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 600),
             ("request-a", ExecutionLeaseFence("worker-a", 7), _FenceSubclass("worker-a", 8), "2026-08-15T04:00:00Z", 600),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 9), "2026-08-15T04:00:00Z", 600),
             ("request-a", ExecutionLeaseFence("worker-a", 2**63 - 1), ExecutionLeaseFence("worker-a", 2**63 - 1), "2026-08-15T04:00:00Z", 600),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), object(), 600),
+            ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), _TextSubclass("2026-08-15T04:00:00Z"), 600),
+            ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15 04:00:00Z", 600),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", True),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 0),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 3601),
@@ -83,8 +119,13 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
         cases = (
             (object(), ExecutionLeaseFence("worker-a", 7), "2026-08-15T04:00:00Z"),
             (_TextSubclass("request-a"), ExecutionLeaseFence("worker-a", 7), "2026-08-15T04:00:00Z"),
+            ("", ExecutionLeaseFence("worker-a", 7), "2026-08-15T04:00:00Z"),
+            ("request\ncanary", ExecutionLeaseFence("worker-a", 7), "2026-08-15T04:00:00Z"),
+            ("r" * 513, ExecutionLeaseFence("worker-a", 7), "2026-08-15T04:00:00Z"),
             ("request-a", _FenceSubclass("worker-a", 7), "2026-08-15T04:00:00Z"),
             ("request-a", ExecutionLeaseFence("worker-a", 7), object()),
+            ("request-a", ExecutionLeaseFence("worker-a", 7), _TextSubclass("2026-08-15T04:00:00Z")),
+            ("request-a", ExecutionLeaseFence("worker-a", 7), "2026-08-15 04:00:00Z"),
         )
         for request_id, expected, observed_at in cases:
             with self.subTest(
@@ -102,6 +143,33 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
                     )
                 self.assertEqual(connection.calls, [])
                 _safe_error(self, captured.exception)
+
+    def test_exact_duration_boundaries_reach_sql(self) -> None:
+        self.require_store_methods()
+        for duration in (1, 3600):
+            with self.subTest(duration=duration):
+                connection = _RecordingConnection()
+                store = PostgresExecutionStore(connection)
+                result = store.rotate_request_claim(
+                    "request-a",
+                    expected_fence=ExecutionLeaseFence("worker-a", 7),
+                    replacement_fence=ExecutionLeaseFence("worker-a", 8),
+                    observed_at="2026-08-15T04:00:00Z",
+                    lease_duration_seconds=duration,
+                )
+                self.assertIsNone(result)
+                self.assertEqual(len(connection.calls), 1)
+
+    def test_maximum_request_identity_reaches_latest_run_sql(self) -> None:
+        self.require_store_methods()
+        connection = _RecordingConnection()
+        store = PostgresExecutionStore(connection)
+        try:
+            result = store.get_latest_run_for_request_for_update("r" * 512)
+        except KeyError:
+            result = None
+        self.assertIsNone(result)
+        self.assertEqual(len(connection.calls), 1)
 
 
 if __name__ == "__main__":
