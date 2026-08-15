@@ -267,56 +267,94 @@ class PostgresExecutionLeaseRecoveryScopedRunTests(
             ),
         )
         for store_type, method_name, replay, expected_message in cases:
-            with self.subTest(read=method_name):
-                self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
-                command = self.command(
-                    RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
-                    key="recover-a",
+            injected_errors = [
+                ValueError(f"{method_name}-value-canary"),
+                TypeError(f"{method_name}-type-canary"),
+                RuntimeError(f"{method_name}-runtime-canary"),
+            ]
+            if method_name == "action_for_idempotency":
+                injected_errors.insert(
+                    1,
+                    OperationsRecordError(
+                        "action_for_idempotency-record-canary"
+                    ),
                 )
-                if replay:
-                    self.service(
-                        "decision-a",
-                        "consequence-a",
-                        "action-a",
-                    ).execute(command)
-                before = self.snapshot()
-                original_read = getattr(store_type, method_name)
-                original_observe = (
-                    PostgresExecutionStore.observe_request_lease_for_update
-                )
-                canary = f"{method_name}-value-canary"
-
-                def fail_read(*_args, **_kwargs):
-                    raise ValueError(canary)
-
-                def fail_observe(*_args, **_kwargs):
-                    raise AssertionError(
-                        f"{method_name} failure sampled database time"
+            for injected in injected_errors:
+                with self.subTest(
+                    read=method_name,
+                    error=type(injected).__name__,
+                ):
+                    self._assert_decoder_read_boundary(
+                        store_type,
+                        method_name,
+                        replay,
+                        expected_message,
+                        injected,
                     )
 
-                setattr(store_type, method_name, fail_read)
-                PostgresExecutionStore.observe_request_lease_for_update = (
-                    fail_observe
-                )
-                try:
-                    with self.assertRaises(RunLifecycleConflict) as captured:
-                        ExecutionLeaseRecoveryCommandService(
-                            self.unit_of_work,
-                            id_factory=lambda: (_ for _ in ()).throw(
-                                AssertionError(
-                                    f"{method_name} failure allocated identity"
-                                )
-                            ),
-                        ).execute(command)
-                finally:
-                    setattr(store_type, method_name, original_read)
-                    PostgresExecutionStore.observe_request_lease_for_update = (
-                        original_observe
-                    )
+    def _assert_decoder_read_boundary(
+        self,
+        store_type,
+        method_name: str,
+        replay: bool,
+        expected_message: str,
+        injected: Exception,
+    ) -> None:
+        self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+        command = self.command(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+            key="recover-a",
+        )
+        if replay:
+            self.service(
+                "decision-a",
+                "consequence-a",
+                "action-a",
+            ).execute(command)
+        before = self.snapshot()
+        original_read = getattr(store_type, method_name)
+        original_observe = (
+            PostgresExecutionStore.observe_request_lease_for_update
+        )
+        canary = str(injected)
 
-                self.assertEqual(str(captured.exception), expected_message)
-                safe_error(self, captured.exception, canary)
-                self.assertEqual(self.snapshot(), before)
+        def fail_read(*_args, **_kwargs):
+            raise injected
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError(
+                f"{method_name} failure sampled database time"
+            )
+
+        setattr(store_type, method_name, fail_read)
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            expected_error = (
+                RunLifecycleConflict
+                if type(injected) in {ValueError, OperationsRecordError}
+                else type(injected)
+            )
+            with self.assertRaises(expected_error) as captured:
+                ExecutionLeaseRecoveryCommandService(
+                    self.unit_of_work,
+                    id_factory=lambda: (_ for _ in ()).throw(
+                        AssertionError(
+                            f"{method_name} failure allocated identity"
+                        )
+                    ),
+                ).execute(command)
+        finally:
+            setattr(store_type, method_name, original_read)
+            PostgresExecutionStore.observe_request_lease_for_update = (
+                original_observe
+            )
+
+        if type(injected) in {TypeError, RuntimeError}:
+            self.assertIs(captured.exception, injected)
+        else:
+            self.assertEqual(str(captured.exception), expected_message)
+            safe_error(self, captured.exception, canary)
+        self.assertEqual(self.snapshot(), before)
 
     def test_public_replay_rejects_foreign_run_without_locking_it(self) -> None:
         self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
