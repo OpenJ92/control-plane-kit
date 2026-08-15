@@ -39,7 +39,6 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
         self.connection = self.connect()
         install_schema(self.connection)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
-        self.seed_run()
 
     def tearDown(self) -> None:
         if not self.connection.closed:
@@ -87,6 +86,7 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
             self.assertNotIn(canary, rendered)
 
     def test_current_named_check_already_rejects_impossible_recovery_shapes(self) -> None:
+        self.seed_run()
         cases = (
             (
                 "missing",
@@ -152,32 +152,24 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
             RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
             RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM,
         )
-        expected = []
-        store = PostgresExecutionStore(self.connection)
-        for ordinal, decision in enumerate(decisions, start=1):
-            event = self.event(f"event-{ordinal}", decision)
-            event = ActivityEventRecord(
-                event.event_id,
-                event.run_id,
-                ordinal,
-                event.kind,
-                event.occurred_at,
-                recovery=event.recovery,
-            )
-            self.assertIs(store.add_event(event), event)
-            expected.append(event)
+        for decision in decisions:
+            with self.subTest(decision=decision):
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                self.seed_run(decision)
+                event = self.event(f"event-{decision.value}", decision)
+                store = PostgresExecutionStore(self.connection)
+                self.assertIs(store.add_event(event), event)
 
-        self.connection.close()
-        self.connection = self.connect()
-        restarted = PostgresExecutionStore(self.connection)
-        for event in expected:
-            with self.subTest(decision=event.recovery.decision_kind):
+                self.connection.close()
+                self.connection = self.connect()
+                restarted = PostgresExecutionStore(self.connection)
                 self.assertEqual(restarted.get_event(event.event_id), event)
-        self.assertEqual(restarted.events_for_run("run-a"), tuple(expected))
+                self.assertEqual(restarted.events_for_run("run-a"), (event,))
 
     def test_schema_admissible_malformed_objects_fail_bounded_and_candidate_free(
         self,
     ) -> None:
+        self.seed_run()
         valid = self.evidence(
             RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM
         ).descriptor()
@@ -213,6 +205,21 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                 (),
             ),
             (
+                "prior-fence-null",
+                {**valid, "prior_fence": None},
+                (),
+            ),
+            (
+                "prior-fence-list",
+                {**valid, "prior_fence": ["prior-list-canary"]},
+                ("prior-list-canary",),
+            ),
+            (
+                "prior-fence-scalar",
+                {**valid, "prior_fence": "prior-scalar-canary"},
+                ("prior-scalar-canary",),
+            ),
+            (
                 "replacement-fence",
                 {
                     **valid,
@@ -224,13 +231,75 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                 (),
             ),
             (
-                "impossible",
+                "replacement-fence-null",
+                {**valid, "replacement_fence": None},
+                (),
+            ),
+            (
+                "replacement-fence-list",
+                {
+                    **valid,
+                    "replacement_fence": ["replacement-list-canary"],
+                },
+                ("replacement-list-canary",),
+            ),
+            (
+                "replacement-fence-scalar",
+                {
+                    **valid,
+                    "replacement_fence": "replacement-scalar-canary",
+                },
+                ("replacement-scalar-canary",),
+            ),
+            (
+                "takeover-same-worker",
                 {
                     **valid,
                     "replacement_fence": {
                         "worker_id": "worker-a",
                         "generation": 8,
                     },
+                },
+                (),
+            ),
+            (
+                "renew-missing-replacement",
+                {
+                    **valid,
+                    "decision": RecoveryDecisionKind.RENEW_ACTIVE_CLAIM.value,
+                    "replacement_fence": None,
+                },
+                (),
+            ),
+            (
+                "renew-wrong-worker",
+                {
+                    **valid,
+                    "decision": RecoveryDecisionKind.RENEW_ACTIVE_CLAIM.value,
+                    "replacement_fence": {
+                        "worker_id": "worker-b",
+                        "generation": 8,
+                    },
+                },
+                (),
+            ),
+            (
+                "renew-wrong-generation",
+                {
+                    **valid,
+                    "decision": RecoveryDecisionKind.RENEW_ACTIVE_CLAIM.value,
+                    "replacement_fence": {
+                        "worker_id": "worker-a",
+                        "generation": 9,
+                    },
+                },
+                (),
+            ),
+            (
+                "abandon-with-replacement",
+                {
+                    **valid,
+                    "decision": RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM.value,
                 },
                 (),
             ),
@@ -288,7 +357,27 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
             (event_id, ordinal, event_type, json.dumps(payload)),
         )
 
-    def seed_run(self) -> None:
+    def seed_run(self, decision: RecoveryDecisionKind | None = None) -> None:
+        abandoned = decision is RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM
+        if decision is None:
+            request_status = "claimed"
+            claim_worker_id = "worker-a"
+            claim_generation = 7
+        elif abandoned:
+            request_status = "abandoned"
+            claim_worker_id = None
+            claim_generation = None
+        else:
+            replacement = self.evidence(decision).replacement_fence
+            assert replacement is not None
+            request_status = "claimed"
+            claim_worker_id = replacement.worker_id
+            claim_generation = replacement.generation
+        claimed_at = None if abandoned else "2026-08-15T03:59:10Z"
+        lease_expires_at = None if abandoned else "2026-08-15T04:30:00Z"
+        run_status = "failed" if abandoned else "claimed"
+        started_at = "2026-08-15T03:59:40Z" if abandoned else None
+
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -347,20 +436,30 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
             INSERT INTO cpk_execution_requests
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
+               approval_decision_id, idempotency_key, intent_fingerprint,
+               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
+            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', %s,
                     'operator-a', '2026-08-15T03:59:00Z', 'approval-request-a',
-                    'approval-decision-a', 'execute-a', 'fingerprint-a')
-            """
+                    'approval-decision-a', 'execute-a', 'fingerprint-a',
+                    %s, %s, %s, %s)
+            """,
+            (
+                request_status,
+                claim_worker_id,
+                claim_generation,
+                claimed_at,
+                lease_expires_at,
+            ),
         )
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, status, created_at,
-               metadata)
-            VALUES ('run-a', 'plan-a', 'request-a', 1, 'claimed',
-                    '2026-08-15T03:59:30Z', '{}'::jsonb)
-            """
+               started_at, metadata)
+            VALUES ('run-a', 'plan-a', 'request-a', 1, %s,
+                    '2026-08-15T03:59:30Z', %s, '{}'::jsonb)
+            """,
+            (run_status, started_at),
         )
 
 
