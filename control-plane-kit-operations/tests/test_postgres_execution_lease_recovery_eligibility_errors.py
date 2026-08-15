@@ -33,6 +33,99 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
     PostgresExecutionLeaseRecoveryFixture,
     unittest.TestCase,
 ):
+    def test_recovery_pairs_are_admitted_only_in_their_lifecycle_phase(
+        self,
+    ) -> None:
+        cases = (
+            "expired-before-start",
+            "active-after-failure",
+            "expired-while-running",
+        )
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("invalid recovery phase sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            for case in cases:
+                with self.subTest(case=case):
+                    current_decision = (
+                        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+                        if case == "expired-before-start"
+                        else RecoveryDecisionKind.RENEW_EXPIRED_CLAIM
+                    )
+                    historical_decision = (
+                        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+                        if case == "active-after-failure"
+                        else RecoveryDecisionKind.RENEW_EXPIRED_CLAIM
+                    )
+                    self.reset_truth(current_decision)
+                    ordinal = 2 if case == "expired-before-start" else 6
+                    if case == "expired-while-running":
+                        self.connection.execute(
+                            "UPDATE cpk_activity_events SET ordinal = ordinal + 100 "
+                            "WHERE run_id = 'run-a' AND ordinal >= 3"
+                        )
+                        self.connection.execute(
+                            "UPDATE cpk_activity_events SET ordinal = ordinal - 98 "
+                            "WHERE run_id = 'run-a' AND ordinal >= 103"
+                        )
+                        ordinal = 3
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claim_generation = 8 "
+                        "WHERE request_id = 'request-a'"
+                    )
+                    occurred_at = "2026-08-15T04:10:00Z"
+                    recovery = ExecutionLeaseRecoveryEvidence(
+                        historical_decision,
+                        RunId("run-a"),
+                        ExecutionLeaseFence("worker-a", 7),
+                        ExecutionLeaseFence("worker-a", 8),
+                    )
+                    with self.unit_of_work() as unit_of_work:
+                        unit_of_work.stores.execution.add_event(
+                            ActivityEventRecord(
+                                f"{case}-decision",
+                                "run-a",
+                                ordinal,
+                                ActivityEventKind.RECOVERY_DECISION_RECORDED,
+                                occurred_at,
+                                recovery=recovery,
+                            )
+                        )
+                        unit_of_work.stores.execution.add_event(
+                            ActivityEventRecord(
+                                f"{case}-consequence",
+                                "run-a",
+                                ordinal + 1,
+                                ActivityEventKind.REQUEST_CLAIM_RENEWED,
+                                occurred_at,
+                            )
+                        )
+                        unit_of_work.commit()
+                    before = self.snapshot()
+                    service, sequence = self.service_with_sequence(
+                        "unused-a", "unused-b", "unused-c"
+                    )
+                    with self.assertRaises(RunLifecycleConflict) as captured:
+                        service.execute(
+                            self.command(
+                                current_decision,
+                                key=f"reject-{case}",
+                                expected_fence=ExecutionLeaseFence(
+                                    "worker-a", 8
+                                ),
+                            )
+                        )
+                    self.assertEqual(sequence.calls, [])
+                    safe_error(self, captured.exception, case)
+                    self.assertEqual(self.snapshot(), before)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = (
+                original_observe
+            )
+
     def test_recovery_suffix_is_anchored_to_current_fence_and_raw_ordinals(
         self,
     ) -> None:

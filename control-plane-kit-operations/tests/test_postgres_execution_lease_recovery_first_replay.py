@@ -10,29 +10,42 @@ import control_plane_kit_operations as operations_root
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ExecutionRequestStatus,
+    FailureCategory,
     LifecycleOperationKind,
     RecoveryDecisionKind,
     RecoveryScope,
 )
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.execution_lease_recovery import (
     ExecutionLeaseRecoveryResult,
 )
 from control_plane_kit_operations.lifecycle import (
+    ExecutionWorkerAuthority,
+    FailActivityRun,
+    RunLifecycleCommandService,
     RunLifecycleConflict,
     RunLifecycleDenied,
     RunLifecycleError,
     RunLifecycleIdempotencyConflict,
     RunLifecycleNotFound,
+    StartActivityRun,
 )
 from control_plane_kit_operations.postgres import (
     GatewayKeyRotationStore,
     PostgresActivityHistoryStore,
     PostgresExecutionStore,
 )
+from control_plane_kit_operations.records import (
+    ActivityEventRecord,
+    BoundedEvidence,
+    FailureEvidence,
+)
+from control_plane_kit_operations.workflows import IdempotencyKey
 
 from tests.execution_lease_recovery_fixture import (
     ExecutionLeaseRecoveryCommandService,
     PostgresExecutionLeaseRecoveryFixture,
+    Sequence,
     TARGET_MODULE,
     safe_error,
 )
@@ -305,6 +318,107 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         self.assertEqual(
             tuple(row[0] for row in snapshot[2]),
             ("action-a", "action-b"),
+        )
+
+    def test_active_renewal_can_continue_through_start_failure_and_recovery(
+        self,
+    ) -> None:
+        self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+        active = self.service(
+            "decision-a", "consequence-a", "action-a"
+        ).execute(
+            self.command(
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                key="recover-a",
+            )
+        )
+        fence = active.request.claim.fence
+        authority = ExecutionWorkerAuthority(
+            fence.worker_id,
+            (PolicyScope.EXECUTION_OPERATE,),
+        )
+        started_at = active.request.claim.claimed_at
+        RunLifecycleCommandService(
+            self.unit_of_work,
+            clock=lambda: started_at,
+            id_factory=Sequence("start-event", "start-action"),
+        ).execute(
+            StartActivityRun(
+                "run-a",
+                authority,
+                fence,
+                IdempotencyKey("start-after-renewal"),
+            )
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.execution.add_event(
+                ActivityEventRecord(
+                    "step-started",
+                    "run-a",
+                    5,
+                    ActivityEventKind.STEP_STARTED,
+                    started_at,
+                    activity_id="start-runtime",
+                )
+            )
+            unit_of_work.stores.execution.add_event(
+                ActivityEventRecord(
+                    "step-failed",
+                    "run-a",
+                    6,
+                    ActivityEventKind.STEP_FAILED,
+                    started_at,
+                    activity_id="start-runtime",
+                )
+            )
+            unit_of_work.commit()
+        RunLifecycleCommandService(
+            self.unit_of_work,
+            clock=lambda: started_at,
+            id_factory=Sequence("run-failed", "fail-action"),
+        ).execute(
+            FailActivityRun(
+                "run-a",
+                authority,
+                fence,
+                IdempotencyKey("fail-after-renewal"),
+                FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "adapter-error",
+                    "adapter returned a terminal failure",
+                    BoundedEvidence(),
+                ),
+            )
+        )
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET lease_expires_at = "
+            "'2000-01-01T00:00:00Z' WHERE request_id = 'request-a'"
+        )
+
+        recovered = self.service(
+            "decision-b", "consequence-b", "action-b"
+        ).execute(
+            self.command(
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                key="recover-b",
+                expected_fence=fence,
+            )
+        )
+
+        self.assertEqual(recovered.request.claim.fence.generation, 9)
+        self.assertEqual(
+            tuple(row[2] for row in self.snapshot()[1]),
+            (
+                "run_opened",
+                "recovery_decision_recorded",
+                "request_claim_renewed",
+                "run_started",
+                "step_started",
+                "step_failed",
+                "run_failed",
+                "recovery_decision_recorded",
+                "request_claim_renewed",
+            ),
         )
 
     def test_replay_requires_durable_semantics_to_equal_submitted_command(
