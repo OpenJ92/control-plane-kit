@@ -9263,6 +9263,8 @@
       "internal_dependencies": [
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.activity_journal",
         "control_plane_kit_operations.execution_lease_recovery",
         "control_plane_kit_operations.execution_leases",
         "control_plane_kit_operations.lifecycle",
