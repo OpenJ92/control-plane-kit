@@ -310,6 +310,13 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                 True,
                 False,
             ),
+            (
+                RecoveryDecisionKind.REMAIN_PAUSED,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.PAUSED,),
+                1,
+                False,
+            ),
         )
 
         for kind, scope, statuses, unexpired, expired in cases:
@@ -344,6 +351,8 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                 {**expired, "allowed_run_statuses": [ActivityRunStatus.CLAIMED.value]},
                 {**expired, "requires_expired_claim": False},
                 {**expired, "requires_unexpired_claim": True},
+                {**expired, "requires_unexpired_claim": 1},
+                {**expired, "extra": False},
             )
         )
 
