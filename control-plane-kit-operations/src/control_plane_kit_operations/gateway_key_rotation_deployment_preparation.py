@@ -9,6 +9,7 @@ from control_plane_kit_operations.admission import RequestPlanExecution
 from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotation,
     GatewayKeyRotationDeploymentCheckpoint,
+    GatewayKeyRotationDeploymentHandoff,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
 )
@@ -28,6 +29,7 @@ class GatewayKeyRotationPreparedChild:
     """Started ordinary run plus immutable phase checkpoint."""
 
     checkpoint: GatewayKeyRotationDeploymentCheckpoint
+    handoff: GatewayKeyRotationDeploymentHandoff
 
 
 def prepare_gateway_key_rotation_child(
@@ -109,27 +111,31 @@ def prepare_gateway_key_rotation_child(
     decision_id = admitted.request.approval_decision_id
     if not isinstance(decision_id, str):
         raise ValueError("admitted rotation child lacks approval decision evidence")
+    checkpoint = GatewayKeyRotationDeploymentCheckpoint(
+        phase=phase,
+        status=GatewayKeyRotationDeploymentStatus.PREPARED,
+        session_id=session.session.session_id,
+        plan_id=plan.plan_record.plan_id,
+        approval_request_id=admitted.request.approval_request_id,
+        approval_decision_id=decision_id,
+        execution_request_id=admitted.request.identity.request_id,
+        run_id=started.run.run_id,
+        base_authored_graph_id=plan.plan_record.base_graph_id,
+        base_realized_projection_id=plan.plan_record.base_realized_projection_id,
+        desired_authored_graph_id=plan.plan_record.desired_graph_id,
+        desired_realized_projection_id=(
+            plan.plan_record.desired_realized_projection_id
+        ),
+        desired_revision=plan.plan_record.desired_graph_revision,
+        prepared_at=started.event.occurred_at,
+    )
     return GatewayKeyRotationPreparedChild(
-        GatewayKeyRotationDeploymentCheckpoint(
-            phase=phase,
-            status=GatewayKeyRotationDeploymentStatus.PREPARED,
-            session_id=session.session.session_id,
-            plan_id=plan.plan_record.plan_id,
-            approval_request_id=admitted.request.approval_request_id,
-            approval_decision_id=decision_id,
-            execution_request_id=admitted.request.identity.request_id,
-            run_id=started.run.run_id,
-            base_authored_graph_id=plan.plan_record.base_graph_id,
-            base_realized_projection_id=(
-                plan.plan_record.base_realized_projection_id
-            ),
-            desired_authored_graph_id=plan.plan_record.desired_graph_id,
-            desired_realized_projection_id=(
-                plan.plan_record.desired_realized_projection_id
-            ),
-            desired_revision=plan.plan_record.desired_graph_revision,
-            prepared_at=started.event.occurred_at,
-        )
+        checkpoint,
+        GatewayKeyRotationDeploymentHandoff(
+            rotation.rotation_id,
+            checkpoint,
+            claim.request.claim.fence,
+        ),
     )
 
 

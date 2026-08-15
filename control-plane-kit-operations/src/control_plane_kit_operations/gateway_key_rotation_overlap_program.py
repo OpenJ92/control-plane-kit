@@ -24,14 +24,18 @@ from control_plane_kit_operations.gateway_key_rotation_deployment_preparation im
     prepare_gateway_key_rotation_child,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotationDeployment,
     AdvanceGatewayKeyRotation,
     GatewayKeyRotation,
+    GatewayKeyRotationAuthorizationDenied,
     GatewayKeyRotationDeploymentCheckpoint,
+    GatewayKeyRotationDeploymentHandoff,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationError,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
+    ReadGatewayKeyRotationDeploymentHandoff,
 )
 from control_plane_kit_operations.lifecycle import (
     ExecutionLeaseDuration,
@@ -167,6 +171,7 @@ class GatewayKeyRotationOverlapPreparationResult:
     rotation: GatewayKeyRotation
     outcome: GatewayKeyRotationOverlapPreparationOutcome
     checkpoint: GatewayKeyRotationDeploymentCheckpoint
+    handoff: GatewayKeyRotationDeploymentHandoff | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.rotation, GatewayKeyRotation):
@@ -186,6 +191,17 @@ class GatewayKeyRotationOverlapPreparationResult:
         ):
             raise GatewayKeyRotationOverlapPreparationError(
                 "preparation checkpoint is malformed"
+            )
+        prepared = self.outcome in {
+            GatewayKeyRotationOverlapPreparationOutcome.PREPARED,
+            GatewayKeyRotationOverlapPreparationOutcome.PREPARED_REPLAY,
+        }
+        if prepared != isinstance(
+            self.handoff,
+            GatewayKeyRotationDeploymentHandoff,
+        ):
+            raise GatewayKeyRotationOverlapPreparationError(
+                "preparation handoff is incomplete"
             )
 
 
@@ -264,42 +280,45 @@ class GatewayKeyRotationOverlapPreparationProgram:
                 projections=self._projections,
                 projection_command=lambda session_id: (
                     PublishGatewayKeyRotationOverlapProjection(
-                    rotation_id=rotation.rotation_id,
-                    session_id=session_id,
-                    actor_id=command.actor_id,
-                    expected_rotation_version=command.expected_rotation_version,
-                    expected_authored_graph_id=(
-                        command.expected_authored_graph_id
-                    ),
-                    expected_current_realized_projection_id=(
-                        command.expected_current_realized_projection_id
-                    ),
-                    expected_desired_realized_projection_id=(
-                        command.expected_desired_realized_projection_id
-                    ),
-                    expected_desired_graph_revision=(
-                        command.expected_desired_graph_revision
-                    ),
-                    actor_scopes=command.actor_scopes,
-                    idempotency_key=IdempotencyKey(f"{prefix}:projection"),
-                )
+                        rotation_id=rotation.rotation_id,
+                        session_id=session_id,
+                        actor_id=command.actor_id,
+                        expected_rotation_version=command.expected_rotation_version,
+                        expected_authored_graph_id=(
+                            command.expected_authored_graph_id
+                        ),
+                        expected_current_realized_projection_id=(
+                            command.expected_current_realized_projection_id
+                        ),
+                        expected_desired_realized_projection_id=(
+                            command.expected_desired_realized_projection_id
+                        ),
+                        expected_desired_graph_revision=(
+                            command.expected_desired_graph_revision
+                        ),
+                        actor_scopes=command.actor_scopes,
+                        idempotency_key=IdempotencyKey(f"{prefix}:projection"),
+                    )
                 ),
                 planning=self._planning,
                 admission=self._admission,
                 lifecycle=self._lifecycle,
             )
             checkpoint = child.checkpoint
-            prepared = self._rotations.advance(
-                AdvanceGatewayKeyRotation(
-                    rotation_id=rotation.rotation_id,
-                    transition_id=f"{prefix}:prepared",
-                    expected_status=GatewayKeyRotationStatus.KEY_GENERATED,
-                    expected_version=rotation.version,
-                    target_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                    advanced_by=command.actor_id,
-                    advanced_at=checkpoint.prepared_at,
-                    actor_scopes=command.actor_scopes,
-                    deployment=checkpoint,
+            prepared = self._rotations.advance_deployment(
+                AdvanceGatewayKeyRotationDeployment(
+                    transition=AdvanceGatewayKeyRotation(
+                        rotation_id=rotation.rotation_id,
+                        transition_id=f"{prefix}:prepared",
+                        expected_status=GatewayKeyRotationStatus.KEY_GENERATED,
+                        expected_version=rotation.version,
+                        target_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                        advanced_by=command.actor_id,
+                        advanced_at=checkpoint.prepared_at,
+                        actor_scopes=command.actor_scopes,
+                        deployment=checkpoint,
+                    ),
+                    handoff=child.handoff,
                 )
             )
         except (
@@ -320,19 +339,20 @@ class GatewayKeyRotationOverlapPreparationProgram:
             ):
                 raise GatewayKeyRotationOverlapPreparationAuthorizationDenied(
                     str(error)
-                ) from error
-            raise GatewayKeyRotationOverlapPreparationConflict(str(error)) from error
+                ) from None
+            raise GatewayKeyRotationOverlapPreparationConflict(str(error)) from None
         return GatewayKeyRotationOverlapPreparationResult(
             rotation=prepared,
             outcome=GatewayKeyRotationOverlapPreparationOutcome.PREPARED,
             checkpoint=checkpoint,
+            handoff=child.handoff,
         )
 
     def _rotation(self, rotation_id: str) -> GatewayKeyRotation:
         try:
             return self._rotations.get(rotation_id)
         except GatewayKeyRotationError as error:
-            raise GatewayKeyRotationOverlapPreparationConflict(str(error)) from error
+            raise GatewayKeyRotationOverlapPreparationConflict(str(error)) from None
 
     def _classify_existing(
         self,
@@ -350,12 +370,29 @@ class GatewayKeyRotationOverlapPreparationProgram:
                 expected_status=GatewayKeyRotationDeploymentStatus.PREPARED,
                 expected_version=command.expected_rotation_version + 1,
             )
+            try:
+                handoff = self._rotations.deployment_handoff(
+                    ReadGatewayKeyRotationDeploymentHandoff(
+                        rotation.rotation_id,
+                        GatewayKeyRotationDeploymentPhase.OVERLAP,
+                        command.worker_authority,
+                    )
+                )
+            except GatewayKeyRotationAuthorizationDenied as error:
+                raise GatewayKeyRotationOverlapPreparationAuthorizationDenied(
+                    str(error)
+                ) from None
+            except GatewayKeyRotationError as error:
+                raise GatewayKeyRotationOverlapPreparationConflict(
+                    str(error)
+                ) from None
             return GatewayKeyRotationOverlapPreparationResult(
                 rotation=rotation,
                 outcome=(
                     GatewayKeyRotationOverlapPreparationOutcome.PREPARED_REPLAY
                 ),
                 checkpoint=checkpoint,
+                handoff=handoff,
             )
         later = rotation.status in _POST_OVERLAP_STATUSES or (
             rotation.status is GatewayKeyRotationStatus.BLOCKED
