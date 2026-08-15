@@ -49,6 +49,10 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
                 RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
                 "active-corruption-effect",
             ),
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                "active-run-started",
+            ),
             (RecoveryDecisionKind.RENEW_EXPIRED_CLAIM, "in-flight"),
             (RecoveryDecisionKind.RENEW_EXPIRED_CLAIM, "uncertain"),
             (
@@ -61,6 +65,14 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
             ),
             (RecoveryDecisionKind.RENEW_EXPIRED_CLAIM, "foreign-step"),
             (RecoveryDecisionKind.RENEW_EXPIRED_CLAIM, "duplicate-start"),
+            (
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                "post-terminal-success",
+            ),
+            (
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                "orphan-recovery-consequence",
+            ),
         )
         original_observe = PostgresExecutionStore.observe_request_lease_for_update
 

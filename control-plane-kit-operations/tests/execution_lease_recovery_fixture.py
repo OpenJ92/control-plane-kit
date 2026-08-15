@@ -470,6 +470,10 @@ class PostgresExecutionLeaseRecoveryFixture(unittest.TestCase):
                 (ActivityEventKind.RUN_OPENED, None),
                 (ActivityEventKind.STEP_STARTED, "start-runtime"),
             ),
+            "active-run-started": (
+                (ActivityEventKind.RUN_OPENED, None),
+                (ActivityEventKind.RUN_STARTED, None),
+            ),
             "failed": (
                 (ActivityEventKind.RUN_OPENED, None),
                 (ActivityEventKind.RUN_STARTED, None),
@@ -484,6 +488,22 @@ class PostgresExecutionLeaseRecoveryFixture(unittest.TestCase):
                 (ActivityEventKind.STEP_STARTED, "start-runtime"),
                 (ActivityEventKind.STEP_FAILED, "start-runtime"),
                 (ActivityEventKind.RUN_FAILED, None),
+            ),
+            "post-terminal-success": (
+                (ActivityEventKind.RUN_OPENED, None),
+                (ActivityEventKind.RUN_STARTED, None),
+                (ActivityEventKind.STEP_STARTED, "start-runtime"),
+                (ActivityEventKind.STEP_FAILED, "start-runtime"),
+                (ActivityEventKind.RUN_FAILED, None),
+                (ActivityEventKind.RUN_SUCCEEDED, None),
+            ),
+            "orphan-recovery-consequence": (
+                (ActivityEventKind.RUN_OPENED, None),
+                (ActivityEventKind.RUN_STARTED, None),
+                (ActivityEventKind.STEP_STARTED, "start-runtime"),
+                (ActivityEventKind.STEP_FAILED, "start-runtime"),
+                (ActivityEventKind.RUN_FAILED, None),
+                (ActivityEventKind.REQUEST_CLAIM_RENEWED, None),
             ),
             "resolved-forward-failure": (
                 (ActivityEventKind.RUN_OPENED, None),
