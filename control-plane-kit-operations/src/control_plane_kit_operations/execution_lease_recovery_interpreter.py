@@ -518,12 +518,6 @@ def _require_replay_run_evolution(
     request: ExecutionRequestRecord,
     retained_run: ActivityRunRecord,
 ) -> None:
-    latest_run = _latest_run_for_update(
-        stores,
-        request.identity.request_id,
-    )
-    if latest_run.run_id == retained_run.run_id:
-        return
     actions = _actions_for_session(
         stores,
         request.identity.session_id,
@@ -536,8 +530,12 @@ def _require_replay_run_evolution(
             for action in actions
             if _retry_action_prior_run_id(action) == current.run_id
         )
-        if len(candidates) != 1:
+        if not candidates:
             break
+        if len(candidates) != 1:
+            raise RunLifecycleConflict(
+                "persisted recovery run evolution changed"
+            )
         action = candidates[0]
         payload = action.payload
         assert isinstance(payload, Mapping)
@@ -550,7 +548,9 @@ def _require_replay_run_evolution(
             or type(opened_event_id) is not str
             or run_id in visited
         ):
-            break
+            raise RunLifecycleConflict(
+                "persisted recovery run evolution changed"
+            )
         try:
             successor = _run_for_request_for_update(
                 stores,
@@ -562,7 +562,9 @@ def _require_replay_run_evolution(
         except (RunLifecycleConflict, RunLifecycleNotFound):
             successor = None
         if successor is None:
-            break
+            raise RunLifecycleConflict(
+                "persisted recovery run evolution changed"
+            )
         try:
             ActivityRunRetryResult(
                 request,
@@ -574,12 +576,21 @@ def _require_replay_run_evolution(
                 replayed=True,
             )
         except OperationsRecordError:
-            break
+            valid_retry = False
+        else:
+            valid_retry = True
+        if not valid_retry:
+            raise RunLifecycleConflict(
+                "persisted recovery run evolution changed"
+            )
         visited.add(successor.run_id)
         current = successor
-        if current == latest_run:
-            return
-    raise RunLifecycleConflict("persisted recovery run evolution changed")
+    latest_run = _latest_run_for_update(
+        stores,
+        request.identity.request_id,
+    )
+    if current != latest_run:
+        raise RunLifecycleConflict("persisted recovery run evolution changed")
 
 
 def _retry_action_prior_run_id(action: OperationActionRecord) -> str | None:
