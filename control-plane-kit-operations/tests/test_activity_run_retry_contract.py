@@ -63,7 +63,8 @@ class ActivityRunRetryLanguageTests(unittest.TestCase):
         rendered = f"{error!s} {error!r}"
         self.assertLessEqual(len(rendered), 512)
         for canary in canaries:
-            self.assertNotIn(canary, rendered)
+            if canary:
+                self.assertNotIn(canary, rendered)
 
     def authority(
         self,
@@ -155,16 +156,18 @@ class ActivityRunRetryLanguageTests(unittest.TestCase):
                 "idempotency_key": "retry-a",
             },
         )
-        rendered = f"{command!r} {command.descriptor()!r}"
+        descriptor = repr(command.descriptor())
+        rendered = f"{command!r} {descriptor}"
         for forbidden in (
             "authority-a",
-            "scopes",
             "claimed_at",
             "lease_expires_at",
             "secret",
             "endpoint",
         ):
             self.assertNotIn(forbidden, rendered)
+        self.assertNotIn("scopes", descriptor)
+        self.assertIn("scopes", repr(command))
 
     def test_command_fingerprint_has_four_exact_golden_vectors(self) -> None:
         vectors = (
@@ -249,8 +252,15 @@ class ActivityRunRetryLanguageTests(unittest.TestCase):
         class HostileIdempotency(IdempotencyKey):
             pass
 
+        class HostileText(str):
+            pass
+
         cases = (
             ({"request_id": ""}, ""),
+            ({"request_id": None}, ""),
+            ({"request_id": True}, ""),
+            ({"request_id": 7}, ""),
+            ({"request_id": HostileText("hostile-request")}, "hostile-request"),
             ({"request_id": "x" * 513}, "x" * 513),
             ({"request_id": "request\ncanary"}, "request\ncanary"),
             ({"prior_run_id": "run-a"}, "run-a"),

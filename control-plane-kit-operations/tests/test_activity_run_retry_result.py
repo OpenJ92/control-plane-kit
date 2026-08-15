@@ -32,6 +32,18 @@ from control_plane_kit_operations.records import (
 
 RETRY_MODULE = "control_plane_kit_operations.activity_run_retry"
 MAX_ATTEMPT = 2_147_483_647
+REPLAY_STATUSES = (
+    ActivityRunStatus.CLAIMED,
+    ActivityRunStatus.RUNNING,
+    ActivityRunStatus.PAUSED,
+    ActivityRunStatus.SUCCEEDED,
+    ActivityRunStatus.FAILED,
+    ActivityRunStatus.COMPENSATING,
+    ActivityRunStatus.COMPENSATED,
+    ActivityRunStatus.PARTIALLY_FAILED,
+    ActivityRunStatus.UNCOMPENSATED_FAILURE,
+    ActivityRunStatus.CANCELLED,
+)
 
 
 try:
@@ -79,7 +91,7 @@ class ActivityRunRetryResultTests(unittest.TestCase):
                 "request-a", "workspace-a", "session-a", "plan-a"
             ),
             ExecutionRequestStatus.CLAIMED,
-            "operator-a",
+            "request-operator",
             "requested",
             "approval-request-a",
             "approval-decision-a",
@@ -168,7 +180,7 @@ class ActivityRunRetryResultTests(unittest.TestCase):
             "session-a",
             8,
             LifecycleOperationKind.RECORD_RECOVERY_DECISION,
-            "operator-a",
+            "retry-operator",
             {
                 "execution_request_id": "request-a",
                 "plan_id": "plan-a",
@@ -200,7 +212,7 @@ class ActivityRunRetryResultTests(unittest.TestCase):
         values.update(changes)
         return ActivityRunRetryResult(**values)
 
-    def assert_result_rejected(self, valid, **changes) -> None:
+    def assert_result_rejected(self, valid, *canaries: str, **changes) -> None:
         values = {
             "request": valid.request,
             "prior_run": valid.prior_run,
@@ -213,7 +225,7 @@ class ActivityRunRetryResultTests(unittest.TestCase):
         values.update(changes)
         with self.assertRaises(OperationsRecordError) as captured:
             ActivityRunRetryResult(**values)
-        self.assert_safe_error(captured.exception)
+        self.assert_safe_error(captured.exception, *canaries)
 
     def test_public_result_has_exact_shape_descriptor_and_root_identity(self) -> None:
         self.require_language()
@@ -295,6 +307,28 @@ class ActivityRunRetryResultTests(unittest.TestCase):
             )
         self.assert_safe_error(captured.exception)
 
+    def test_result_rejects_every_hostile_nested_record_subclass(self) -> None:
+        valid = self.result()
+        record_fields = (
+            ("request", valid.request),
+            ("prior_run", valid.prior_run),
+            ("run", valid.run),
+            ("decision_event", valid.decision_event),
+            ("opened_event", valid.opened_event),
+            ("action", valid.action),
+        )
+        for field_name, record in record_fields:
+            with self.subTest(field=field_name):
+                hostile_type = type(
+                    f"Hostile{type(record).__name__}",
+                    (type(record),),
+                    {},
+                )
+                hostile = hostile_type(
+                    *(getattr(record, field.name) for field in dataclasses.fields(record))
+                )
+                self.assert_result_rejected(valid, **{field_name: hostile})
+
     def test_result_enforces_complete_lineage_and_record_identity(self) -> None:
         valid = self.result()
         mutations = (
@@ -327,6 +361,12 @@ class ActivityRunRetryResultTests(unittest.TestCase):
                     "worker-a", 8, "claimed-before", "lease-expires-after"
                 ),
             )},
+            {"request": dataclasses.replace(
+                valid.request,
+                claim=ClaimIdentity(
+                    "worker-other", 7, "claimed-before", "lease-expires-after"
+                ),
+            )},
             {"prior_run": dataclasses.replace(valid.prior_run, run_id="run-other")},
             {"prior_run": dataclasses.replace(valid.prior_run, plan_id="plan-other")},
             {"prior_run": dataclasses.replace(
@@ -356,6 +396,61 @@ class ActivityRunRetryResultTests(unittest.TestCase):
             with self.subTest(mutation=tuple(mutation)):
                 self.assert_result_rejected(valid, **mutation)
 
+        lineage_canary = "run-lineage-canary"
+        self.assert_result_rejected(
+            valid,
+            lineage_canary,
+            run=dataclasses.replace(valid.run, run_id=lineage_canary),
+        )
+
+    def test_prior_run_metadata_is_exactly_congruent_with_retry_identity(self) -> None:
+        valid = self.result(prior_attempt=2, attempt=3)
+        metadata = valid.prior_run.metadata.descriptor()
+        candidates = (
+            {"prior_run_id": "run-before"},
+            {"attempt": 2},
+            {"attempt": 3, "prior_run_id": "run-before"},
+            {"attempt": 2, "prior_run_id": "run-other"},
+            {**metadata, "extra": "prior-metadata-canary"},
+        )
+        for candidate in candidates:
+            with self.subTest(candidate=candidate):
+                self.assert_result_rejected(
+                    valid,
+                    "prior-metadata-canary",
+                    prior_run=dataclasses.replace(
+                        valid.prior_run,
+                        metadata=BoundedEvidence.from_mapping(candidate),
+                    ),
+                )
+
+    def test_new_run_metadata_and_opened_evidence_are_exact(self) -> None:
+        valid = self.result()
+        expected = {"attempt": 2, "prior_run_id": "run-a"}
+        candidates = (
+            {"prior_run_id": "run-a"},
+            {"attempt": 2},
+            {"attempt": 3, "prior_run_id": "run-a"},
+            {"attempt": 2, "prior_run_id": "run-other"},
+            {**expected, "extra": "retry-evidence-canary"},
+        )
+        for candidate in candidates:
+            evidence = BoundedEvidence.from_mapping(candidate)
+            with self.subTest(surface="run-metadata", candidate=candidate):
+                self.assert_result_rejected(
+                    valid,
+                    "retry-evidence-canary",
+                    run=dataclasses.replace(valid.run, metadata=evidence),
+                )
+            with self.subTest(surface="opened-evidence", candidate=candidate):
+                self.assert_result_rejected(
+                    valid,
+                    "retry-evidence-canary",
+                    opened_event=dataclasses.replace(
+                        valid.opened_event, evidence=evidence
+                    ),
+                )
+
     def test_result_enforces_exact_events_recovery_and_one_time(self) -> None:
         valid = self.result()
         fence = ExecutionLeaseFence("worker-a", 7)
@@ -373,14 +468,29 @@ class ActivityRunRetryResultTests(unittest.TestCase):
             "observed",
             recovery=changed_recovery,
         )
+        claim_recovery = ExecutionLeaseRecoveryEvidence(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+            RunId("run-a"),
+            fence,
+            ExecutionLeaseFence("worker-a", 8),
+        )
         mutations = (
             {"run": dataclasses.replace(valid.run, created_at="later")},
             {"decision_event": foreign_decision},
+            {"decision_event": dataclasses.replace(
+                valid.decision_event, event_id="decision-event-other"
+            )},
+            {"decision_event": dataclasses.replace(
+                valid.decision_event, recovery=claim_recovery
+            )},
             {"decision_event": dataclasses.replace(valid.decision_event, ordinal=5)},
             {"decision_event": dataclasses.replace(
                 valid.decision_event, occurred_at="later"
             )},
             {"opened_event": dataclasses.replace(valid.opened_event, run_id="run-other")},
+            {"opened_event": dataclasses.replace(
+                valid.opened_event, event_id="opened-event-other"
+            )},
             {"opened_event": dataclasses.replace(valid.opened_event, ordinal=2)},
             {"opened_event": dataclasses.replace(
                 valid.opened_event, kind=ActivityEventKind.RUN_STARTED
@@ -400,6 +510,29 @@ class ActivityRunRetryResultTests(unittest.TestCase):
             with self.subTest(mutation=tuple(mutation)):
                 self.assert_result_rejected(valid, **mutation)
 
+        duplicate_opened = dataclasses.replace(
+            valid.opened_event,
+            event_id=valid.decision_event.event_id,
+        )
+        duplicate_payload = {
+            **valid.action.payload,
+            "opened_event_id": valid.decision_event.event_id,
+        }
+        self.assert_result_rejected(
+            valid,
+            opened_event=duplicate_opened,
+            action=dataclasses.replace(valid.action, payload=duplicate_payload),
+        )
+
+        event_canary = "event-identity-canary"
+        self.assert_result_rejected(
+            valid,
+            event_canary,
+            opened_event=dataclasses.replace(
+                valid.opened_event, event_id=event_canary
+            ),
+        )
+
     def test_result_accepts_exact_maximum_attempt_and_rejects_no_successor(
         self,
     ) -> None:
@@ -409,27 +542,36 @@ class ActivityRunRetryResultTests(unittest.TestCase):
         )
         self.assertEqual(maximum.run.retry.attempt, MAX_ATTEMPT)
 
-        valid = self.result()
-        exhausted_prior = dataclasses.replace(
-            valid.prior_run,
-            retry=RetryIdentity(MAX_ATTEMPT, "run-before"),
-            metadata=BoundedEvidence.from_mapping(
-                {"attempt": MAX_ATTEMPT, "prior_run_id": "run-before"}
-            ),
-        )
-        self.assert_result_rejected(valid, prior_run=exhausted_prior)
+        with self.assertRaises(OperationsRecordError) as captured:
+            RetryIdentity(MAX_ATTEMPT + 1, "run-a")
+        self.assert_safe_error(captured.exception)
 
     def test_direct_result_is_claimed_and_replay_uses_closed_lawful_status_set(
         self,
     ) -> None:
         self.assertIs(self.result().run.status, ActivityRunStatus.CLAIMED)
-        for status in ActivityRunStatus:
+        self.assertEqual(
+            tuple(status.value for status in REPLAY_STATUSES),
+            (
+                "claimed",
+                "running",
+                "paused",
+                "succeeded",
+                "failed",
+                "compensating",
+                "compensated",
+                "partially_failed",
+                "uncompensated_failure",
+                "cancelled",
+            ),
+        )
+        for status in REPLAY_STATUSES:
             with self.subTest(status=status):
                 replay = self.result(replayed=True, run_status=status)
                 self.assertTrue(replay.replayed)
                 self.assertIs(replay.run.status, status)
 
-        for status in ActivityRunStatus:
+        for status in REPLAY_STATUSES:
             if status is ActivityRunStatus.CLAIMED:
                 continue
             with self.subTest(direct_status=status):
@@ -484,9 +626,20 @@ class ActivityRunRetryResultTests(unittest.TestCase):
                     )
         self.assert_result_rejected(
             valid,
+            "extra-canary",
             action=dataclasses.replace(
                 valid.action,
                 payload={**payload, "extra": "extra-canary"},
+            ),
+        )
+
+        payload_canary = "action-payload-canary"
+        self.assert_result_rejected(
+            valid,
+            payload_canary,
+            action=dataclasses.replace(
+                valid.action,
+                payload={**payload, "run_id": payload_canary},
             ),
         )
 
