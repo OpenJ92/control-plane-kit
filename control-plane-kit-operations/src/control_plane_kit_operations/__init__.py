@@ -499,6 +499,9 @@ from .execution_lease_recovery import (
     RenewExpiredExecutionClaim,
     TakeOverExpiredExecutionClaim,
 )
+from .execution_lease_recovery_interpreter import (
+    ExecutionLeaseRecoveryCommandService,
+)
 from .read_pages import (
     READ_COLLECTION_SPECS,
     DelegationKeyReadCursor,
@@ -653,6 +656,7 @@ __all__ = [
     "ExecutionLeaseDuration",
     "ExecutionLeaseFence",
     "ExecutionLeaseRecoveryCommand",
+    "ExecutionLeaseRecoveryCommandService",
     "ExecutionLeaseRecoveryEvidence",
     "ExecutionLeaseRecoveryResult",
     "GeneratedIngressSecretReference",
