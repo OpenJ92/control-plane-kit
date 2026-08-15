@@ -352,6 +352,8 @@ class RetryIdentityAndEvidenceTests(unittest.TestCase):
         )
 
     def test_retry_evidence_rejects_every_nonidentical_fence_shape(self) -> None:
+        self.retry_evidence()
+
         class HostileFence(ExecutionLeaseFence):
             pass
 
