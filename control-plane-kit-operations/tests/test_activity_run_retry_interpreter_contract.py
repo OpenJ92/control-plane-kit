@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ from control_plane_kit_operations.lifecycle import RunLifecycleDenied
 from tests.activity_run_retry_interpreter_fixture import (
     ActivityRunRetryCommandService,
     TARGET_MODULE,
+    retry_interpreter,
 )
 from tests.execution_lease_recovery_fixture import safe_error
 
@@ -118,6 +120,54 @@ class ActivityRunRetryInterpreterContractTests(unittest.TestCase):
         self.assertIn(
             "control_plane_kit_operations.activity_run_retry",
             entry["internal_dependencies"],
+        )
+
+    def test_interpreter_binds_exact_shared_recovery_support(self) -> None:
+        self.assertIsNotNone(retry_interpreter)
+        support_module = (
+            "control_plane_kit_operations._execution_lease_recovery_support"
+        )
+        support = importlib.import_module(support_module)
+        path = (
+            REPOSITORY_ROOT
+            / "control-plane-kit-operations"
+            / "src"
+            / "control_plane_kit_operations"
+            / "activity_run_retry_interpreter.py"
+        )
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        imported = {
+            alias.name
+            for node in tree.body
+            if isinstance(node, ast.ImportFrom) and node.module == support_module
+            for alias in node.names
+        }
+        expected = {
+            "locked_recovery_approval",
+            "require_recovery_eligible_journal",
+        }
+        self.assertEqual(imported, expected)
+        self.assertIs(
+            retry_interpreter.locked_recovery_approval,
+            support.locked_recovery_approval,
+        )
+        self.assertIs(
+            retry_interpreter.require_recovery_eligible_journal,
+            support.require_recovery_eligible_journal,
+        )
+        owned = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        self.assertTrue(
+            {
+                "locked_recovery_approval",
+                "require_recovery_eligible_journal",
+                "_approval",
+                "_require_journal",
+                "_journal_without_recovery_pairs",
+            }.isdisjoint(owned)
         )
 
 

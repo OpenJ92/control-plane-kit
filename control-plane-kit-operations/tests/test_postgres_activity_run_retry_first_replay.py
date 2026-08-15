@@ -266,6 +266,13 @@ class PostgresActivityRunRetryFirstReplayTests(
                 ),
                 RunLifecycleConflict,
             ),
+            "action-actor": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_operation_actions SET actor_id = "
+                    "'actor-canary' WHERE action_id = 'retry-action'"
+                ),
+                RunLifecycleConflict,
+            ),
             "event-time": (
                 lambda: self.connection.execute(
                     "UPDATE cpk_activity_events SET occurred_at = "
@@ -292,17 +299,33 @@ class PostgresActivityRunRetryFirstReplayTests(
                 ).execute(command)
                 mutate()
                 before = self.snapshot()
-                with self.assertRaises(expected) as raised:
-                    ActivityRunRetryCommandService(
-                        self.unit_of_work,
-                        id_factory=lambda: (_ for _ in ()).throw(
-                            AssertionError("invalid replay allocated identity")
-                        ),
-                    ).execute(command)
+                original_observe = (
+                    PostgresExecutionStore.observe_request_lease_for_update
+                )
+
+                def fail_observe(*_args, **_kwargs):
+                    raise AssertionError("invalid replay sampled database time")
+
+                PostgresExecutionStore.observe_request_lease_for_update = (
+                    fail_observe
+                )
+                try:
+                    with self.assertRaises(expected) as raised:
+                        ActivityRunRetryCommandService(
+                            self.unit_of_work,
+                            id_factory=lambda: (_ for _ in ()).throw(
+                                AssertionError("invalid replay allocated identity")
+                            ),
+                        ).execute(command)
+                finally:
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
+                    )
                 safe_error(
                     self,
                     raised.exception,
                     "request-canary",
+                    "actor-canary",
                     "authority-reference-a",
                 )
                 self.assertEqual(self.snapshot(), before)
@@ -342,11 +365,20 @@ class PostgresActivityRunRetryFirstReplayTests(
                 ).execute(command)
                 before = self.snapshot()
                 original = PostgresExecutionStore.get_run_for_request_for_update
+                original_observe = (
+                    PostgresExecutionStore.observe_request_lease_for_update
+                )
 
                 def fail_selector(*_args, **_kwargs):
                     raise injected
 
+                def fail_observe(*_args, **_kwargs):
+                    raise AssertionError("selector failure sampled database time")
+
                 PostgresExecutionStore.get_run_for_request_for_update = fail_selector
+                PostgresExecutionStore.observe_request_lease_for_update = (
+                    fail_observe
+                )
                 try:
                     with self.assertRaises(expected) as raised:
                         ActivityRunRetryCommandService(
@@ -357,6 +389,9 @@ class PostgresActivityRunRetryFirstReplayTests(
                         ).execute(command)
                 finally:
                     PostgresExecutionStore.get_run_for_request_for_update = original
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
+                    )
                 if type(injected) is RuntimeError:
                     self.assertIs(raised.exception, injected)
                 else:
@@ -373,6 +408,7 @@ class PostgresActivityRunRetryFirstReplayTests(
         before = self.snapshot()
         original_lookup = PostgresActivityHistoryStore.action_for_idempotency
         original_selector = PostgresExecutionStore.get_run_for_request_for_update
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
         calls: list[tuple[str, str]] = []
 
         def foreign_action(store, session_id, idempotency_key):
@@ -397,8 +433,12 @@ class PostgresActivityRunRetryFirstReplayTests(
                     probe.rollback()
             return original_selector(store, request_id, run_id)
 
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("foreign replay sampled database time")
+
         PostgresActivityHistoryStore.action_for_idempotency = foreign_action
         PostgresExecutionStore.get_run_for_request_for_update = selector
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
         try:
             with self.assertRaises(RunLifecycleNotFound) as raised:
                 ActivityRunRetryCommandService(
@@ -410,6 +450,7 @@ class PostgresActivityRunRetryFirstReplayTests(
         finally:
             PostgresActivityHistoryStore.action_for_idempotency = original_lookup
             PostgresExecutionStore.get_run_for_request_for_update = original_selector
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
         self.assertEqual(calls, [("request-a", "run-a"), ("request-a", "run-foreign")])
         safe_error(self, raised.exception, "run-foreign")
         self.assertEqual(self.snapshot(), before)
@@ -423,13 +464,22 @@ class PostgresActivityRunRetryFirstReplayTests(
         changed = self.retry_command(
             expected_fence=ExecutionLeaseFence("worker-a", 8),
         )
-        with self.assertRaises(RunLifecycleIdempotencyConflict) as raised:
-            ActivityRunRetryCommandService(
-                self.unit_of_work,
-                id_factory=lambda: (_ for _ in ()).throw(
-                    AssertionError("changed intent allocated identity")
-                ),
-            ).execute(changed)
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("changed replay sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            with self.assertRaises(RunLifecycleIdempotencyConflict) as raised:
+                ActivityRunRetryCommandService(
+                    self.unit_of_work,
+                    id_factory=lambda: (_ for _ in ()).throw(
+                        AssertionError("changed intent allocated identity")
+                    ),
+                ).execute(changed)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
         safe_error(self, raised.exception, "authority-reference-a", "worker-a")
         self.assertEqual(self.snapshot(), before)
 
