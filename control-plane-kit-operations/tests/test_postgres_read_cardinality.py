@@ -326,15 +326,11 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
                 ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             )
 
-        advance_scope = (
+        advance_locked_scope = (
             "control_plane_kit_operations.gateway_key_rotations."
-            "GatewayKeyRotationService.advance"
+            "GatewayKeyRotationService._advance_locked"
         )
-        advance_deployment_scope = (
-            "control_plane_kit_operations.gateway_key_rotations."
-            "GatewayKeyRotationService.advance_deployment"
-        )
-        expected_rotation_writers = [advance_scope, advance_deployment_scope]
+        expected_rotation_writers = [advance_locked_scope]
         self.assertEqual(
             [scope for scope, _line in add_transition_calls],
             expected_rotation_writers,

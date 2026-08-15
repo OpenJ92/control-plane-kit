@@ -15,6 +15,7 @@ from gateway_rotation_overlap_fixture import (
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     FailureCategory,
+    LifecycleOperationKind,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
@@ -35,7 +36,13 @@ from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     PrepareGatewayKeyRotationOverlap,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotationDeployment,
+    AdvanceGatewayKeyRotation,
+    GatewayKeyRotationDeploymentHandoff,
+    GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
+    ReadGatewayKeyRotationDeploymentHandoff,
+    GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.lifecycle import (
@@ -402,6 +409,24 @@ class GatewayKeyRotationOverlapExecutionTests(
                         activity_count,
                     )
                 if crash_after_commit == 6:
+                    rotations = GatewayKeyRotationService(
+                        self.unit_of_work,
+                        clock=lambda: 3_000,
+                    )
+                    rotation_before_stale = rotations.get(self.rotation_id)
+                    transitions_before_stale = rotations.transitions(
+                        self.rotation_id
+                    )
+                    events_before_stale = tuple(self._event_kinds())
+                    actions_before_stale = self._current_advancement_action_count()
+                    self.assertIs(
+                        rotation_before_stale.status,
+                        GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                    )
+                    self.assertEqual(
+                        rotation_before_stale.overlap_deployment,
+                        self.checkpoint,
+                    )
                     self.assertEqual(
                         self._workspace().current_realized_projection_id,
                         self.checkpoint.desired_realized_projection_id,
@@ -424,26 +449,81 @@ class GatewayKeyRotationOverlapExecutionTests(
                         "overlap checkpoint does not match durable child truth",
                     )
                     self.assertEqual(stale_adapter.calls, [])
-                    self.connection.execute(
-                        "UPDATE cpk_execution_requests SET claim_generation=1 "
-                        "WHERE request_id=%s",
-                        (self.checkpoint.execution_request_id,),
+                    self.assertEqual(
+                        rotations.get(self.rotation_id),
+                        rotation_before_stale,
                     )
+                    self.assertEqual(
+                        rotations.transitions(self.rotation_id),
+                        transitions_before_stale,
+                    )
+                    self.assertEqual(tuple(self._event_kinds()), events_before_stale)
+                    self.assertEqual(self._current_advancement_count(), 1)
+                    self.assertEqual(
+                        self._current_advancement_action_count(),
+                        actions_before_stale,
+                    )
+                    replacement_handoff = rotations.deployment_handoff(
+                        ReadGatewayKeyRotationDeploymentHandoff(
+                            self.rotation_id,
+                            GatewayKeyRotationDeploymentPhase.OVERLAP,
+                            self.command().worker_authority,
+                        )
+                    )
+                    accepted_checkpoint = replace(
+                        self.checkpoint,
+                        status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+                        accepted_current_graph_id=(
+                            self.checkpoint.desired_authored_graph_id
+                        ),
+                        accepted_current_projection_id=(
+                            self.checkpoint.desired_realized_projection_id
+                        ),
+                        accepted_at="2026-08-02T03:00:00Z",
+                    )
+                    recovered_rotation = rotations.advance_deployment(
+                        AdvanceGatewayKeyRotationDeployment(
+                            transition=AdvanceGatewayKeyRotation(
+                                rotation_id=self.rotation_id,
+                                transition_id="replacement-overlap-fold",
+                                expected_status=(
+                                    GatewayKeyRotationStatus.OVERLAP_DEPLOYING
+                                ),
+                                expected_version=rotation_before_stale.version,
+                                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
+                                advanced_by="operator-a",
+                                advanced_at=accepted_checkpoint.accepted_at,
+                                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                                deployment=accepted_checkpoint,
+                            ),
+                            handoff=GatewayKeyRotationDeploymentHandoff(
+                                self.rotation_id,
+                                accepted_checkpoint,
+                                replacement_handoff.fence,
+                            ),
+                        )
+                    )
+                    recovered_adapter = RecordingAdapter()
+                    self.assertIs(
+                        recovered_rotation.status,
+                        GatewayKeyRotationStatus.OVERLAP_READY,
+                    )
+                else:
+                    recovered_adapter = RecordingAdapter()
+                    recovered = self.program(
+                        recovered_adapter,
+                        prefix=f"recover-{crash_after_commit}",
+                    ).progress(self.command())
 
-                recovered_adapter = RecordingAdapter()
-                recovered = self.program(
-                    recovered_adapter,
-                    prefix=f"recover-{crash_after_commit}",
-                ).progress(self.command())
-
-                self.assertIn(
-                    recovered.outcome,
-                    {
-                        GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED,
-                        GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED_REPLAY,
-                    },
-                    recovered.failure_code,
-                )
+                if crash_after_commit != 6:
+                    self.assertIn(
+                        recovered.outcome,
+                        {
+                            GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED,
+                            GatewayKeyRotationOverlapExecutionOutcome.ACCEPTED_REPLAY,
+                        },
+                        recovered.failure_code,
+                    )
                 self.assertEqual(len(prior_adapter.calls), activity_count - 1)
                 self.assertEqual(len(adapter.calls), 1)
                 self.assertEqual(recovered_adapter.calls, [])
@@ -510,6 +590,12 @@ class GatewayKeyRotationOverlapExecutionTests(
 
     def _current_advancement_count(self) -> int:
         return self._event_kinds().count(ActivityEventKind.CURRENT_GRAPH_ADVANCED)
+
+    def _current_advancement_action_count(self) -> int:
+        return self.connection.execute(
+            "SELECT count(*) FROM cpk_operation_actions WHERE action_type=%s",
+            (LifecycleOperationKind.ADVANCE_CURRENT_GRAPH.value,),
+        ).fetchone()[0]
 
 
 if __name__ == "__main__":

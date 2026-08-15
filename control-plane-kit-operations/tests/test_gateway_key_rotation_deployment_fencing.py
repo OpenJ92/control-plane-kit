@@ -16,10 +16,13 @@ from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     PrepareGatewayKeyRotationOverlap,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
+    AdvanceGatewayKeyRotationDeployment,
     AdvanceGatewayKeyRotation,
     GatewayKeyRotationAuthorizationDenied,
     GatewayKeyRotationConflict,
     GatewayKeyRotationDeploymentPhase,
+    GatewayKeyRotationDeploymentHandoff,
+    GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
@@ -90,6 +93,7 @@ class GatewayKeyRotationDeploymentFencingTests(
         self.prepared = self._prepare()
 
     def tearDown(self) -> None:
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.connection.close()
 
     def unit_of_work(self) -> PostgresUnitOfWork:
@@ -172,6 +176,83 @@ class GatewayKeyRotationDeploymentFencingTests(
             handoff=handoff or self.prepared.handoff,
         )
 
+    def first_prepared_command(self, handoff):
+        rotation = self.service().get(self.rotation_id)
+        return AdvanceGatewayKeyRotationDeployment(
+            transition=AdvanceGatewayKeyRotation(
+                rotation_id=self.rotation_id,
+                transition_id="deployment-overlap-prepared-amendment",
+                expected_status=GatewayKeyRotationStatus.KEY_GENERATED,
+                expected_version=rotation.version,
+                target_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                advanced_by="operator-a",
+                advanced_at=handoff.checkpoint.prepared_at,
+                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                deployment=handoff.checkpoint,
+            ),
+            handoff=handoff,
+        )
+
+    def rewind_to_key_generated(self):
+        self.connection.execute(
+            "DELETE FROM cpk_gateway_key_rotation_transitions "
+            "WHERE rotation_id=%s AND to_status='overlap-deploying'",
+            (self.rotation_id,),
+        )
+        self.connection.execute(
+            "DELETE FROM cpk_gateway_key_rotation_deployments "
+            "WHERE rotation_id=%s AND phase='overlap'",
+            (self.rotation_id,),
+        )
+        self.connection.execute(
+            "UPDATE cpk_gateway_key_rotations "
+            "SET status='key-generated', version=version-1 "
+            "WHERE rotation_id=%s",
+            (self.rotation_id,),
+        )
+        return self.service().get(self.rotation_id)
+
+    def foreign_approval(self) -> tuple[str, str]:
+        checkpoint = self.prepared.checkpoint
+        request_id = "foreign-plan-approval-request"
+        decision_id = "foreign-plan-approval-decision"
+        self.connection.execute(
+            """
+            INSERT INTO cpk_approval_requests
+              (request_id, session_id, plan_id, rotation_id, subject_kind,
+               subject_payload, review_digest, requested_by, requested_at,
+               required_scope, max_risk, destructive, comment,
+               idempotency_key, intent_fingerprint)
+            SELECT %s, session_id, %s, NULL, 'activity-plan',
+                   jsonb_build_object(
+                       'kind', 'activity-plan', 'plan_id', %s::text
+                   ),
+                   review_digest, requested_by, requested_at,
+                   required_scope, max_risk, destructive, NULL, NULL, NULL
+            FROM cpk_approval_requests
+            WHERE request_id=%s
+            """,
+            (
+                request_id,
+                checkpoint.plan_id,
+                checkpoint.plan_id,
+                checkpoint.approval_request_id,
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at,
+               comment, idempotency_key, intent_fingerprint)
+            SELECT %s, %s, actor_id, decision, scope, decided_at,
+                   NULL, NULL, NULL
+            FROM cpk_approval_decisions
+            WHERE decision_id=%s
+            """,
+            (decision_id, request_id, checkpoint.approval_decision_id),
+        )
+        return request_id, decision_id
+
     @staticmethod
     def _required_type(name: str):
         value = getattr(rotations, name, None)
@@ -232,6 +313,168 @@ class GatewayKeyRotationDeploymentFencingTests(
         restarted = self.read_handoff()
         self.assertEqual(restarted.fence, ExecutionLeaseFence("worker-a", 2))
         self.assertEqual(restarted.checkpoint, self.prepared.checkpoint)
+
+    def test_generic_writer_rejects_all_deployment_owned_transition_shapes(
+        self,
+    ) -> None:
+        prepared_overlap = self.prepared.checkpoint
+        accepted_overlap = replace(
+            prepared_overlap,
+            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+            accepted_current_graph_id=prepared_overlap.desired_authored_graph_id,
+            accepted_current_projection_id=(
+                prepared_overlap.desired_realized_projection_id
+            ),
+            accepted_at="2026-08-02T03:00:00Z",
+        )
+        prepared_retirement = replace(
+            prepared_overlap,
+            phase=GatewayKeyRotationDeploymentPhase.RETIREMENT,
+        )
+        accepted_retirement = replace(
+            prepared_retirement,
+            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
+            accepted_current_graph_id=prepared_retirement.desired_authored_graph_id,
+            accepted_current_projection_id=(
+                prepared_retirement.desired_realized_projection_id
+            ),
+            accepted_at="2026-08-02T03:00:00Z",
+        )
+        cases = (
+            (
+                GatewayKeyRotationStatus.KEY_GENERATED,
+                GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                prepared_overlap,
+            ),
+            (
+                GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                GatewayKeyRotationStatus.OVERLAP_READY,
+                accepted_overlap,
+            ),
+            (
+                GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
+                GatewayKeyRotationStatus.BLOCKED,
+                None,
+            ),
+            (
+                GatewayKeyRotationStatus.DRAINING_OLD_GRANTS,
+                GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+                prepared_retirement,
+            ),
+            (
+                GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+                GatewayKeyRotationStatus.RETIREMENT_READY,
+                accepted_retirement,
+            ),
+            (
+                GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
+                GatewayKeyRotationStatus.BLOCKED,
+                None,
+            ),
+        )
+        before = self.service().get(self.rotation_id)
+        transitions = self.service().transitions(self.rotation_id)
+        for index, (source, target, deployment) in enumerate(cases):
+            with self.subTest(source=source, target=target):
+                command = AdvanceGatewayKeyRotation(
+                    rotation_id=self.rotation_id,
+                    transition_id=f"generic-deployment-bypass-{index}",
+                    expected_status=source,
+                    expected_version=before.version,
+                    target_status=target,
+                    advanced_by="operator-a",
+                    advanced_at="2026-08-02T03:00:00Z",
+                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+                    deployment=deployment,
+                    failure_code=(
+                        "deployment-effect-failed"
+                        if target is GatewayKeyRotationStatus.BLOCKED
+                        else None
+                    ),
+                )
+                with self.assertRaises(GatewayKeyRotationConflict) as captured:
+                    self.service().advance(command)
+                self.assertEqual(
+                    str(captured.exception),
+                    "deployment-owned rotation transition requires fenced writer",
+                )
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                self.assertEqual(self.service().get(self.rotation_id), before)
+                self.assertEqual(
+                    self.service().transitions(self.rotation_id),
+                    transitions,
+                )
+
+    def test_first_prepared_write_requires_rotation_approval_congruence(
+        self,
+    ) -> None:
+        before = self.rewind_to_key_generated()
+        transition_count = len(self.service().transitions(self.rotation_id))
+        request_id, decision_id = self.foreign_approval()
+        self.connection.execute(
+            "UPDATE cpk_execution_requests "
+            "SET approval_request_id=%s, approval_decision_id=%s "
+            "WHERE request_id=%s",
+            (
+                request_id,
+                decision_id,
+                self.prepared.checkpoint.execution_request_id,
+            ),
+        )
+        checkpoint = replace(
+            self.prepared.checkpoint,
+            approval_request_id=request_id,
+            approval_decision_id=decision_id,
+        )
+        handoff = GatewayKeyRotationDeploymentHandoff(
+            self.rotation_id,
+            checkpoint,
+            self.prepared.handoff.fence,
+        )
+
+        with self.assertRaises(GatewayKeyRotationConflict) as captured:
+            self.service().advance_deployment(self.first_prepared_command(handoff))
+
+        self.assertEqual(
+            str(captured.exception),
+            "gateway deployment approval does not match rotation truth",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(self.service().get(self.rotation_id), before)
+        self.assertEqual(
+            len(self.service().transitions(self.rotation_id)),
+            transition_count,
+        )
+
+    def test_first_prepared_write_requires_immutable_plan_congruence(self) -> None:
+        before = self.rewind_to_key_generated()
+        transition_count = len(self.service().transitions(self.rotation_id))
+        checkpoint = replace(
+            self.prepared.checkpoint,
+            desired_revision=self.prepared.checkpoint.desired_revision + 1,
+        )
+        handoff = GatewayKeyRotationDeploymentHandoff(
+            self.rotation_id,
+            checkpoint,
+            self.prepared.handoff.fence,
+        )
+
+        with self.assertRaises(GatewayKeyRotationConflict) as captured:
+            self.service().advance_deployment(self.first_prepared_command(handoff))
+
+        self.assertEqual(
+            str(captured.exception),
+            "gateway deployment plan linkage changed",
+        )
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(self.service().get(self.rotation_id), before)
+        self.assertEqual(
+            len(self.service().transitions(self.rotation_id)),
+            transition_count,
+        )
 
     def test_deployment_transition_locks_request_run_rotation_and_replays_semantics(
         self,
