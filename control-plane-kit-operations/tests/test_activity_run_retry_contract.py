@@ -317,13 +317,20 @@ class RetryIdentityAndEvidenceTests(unittest.TestCase):
             (-1, None),
             (1, "run-prior"),
             (2, None),
-            (MAX_ATTEMPT + 1, "run-prior"),
         )
         for attempt, prior in rejected:
             with self.subTest(attempt=attempt, prior=prior):
                 with self.assertRaises(OperationsRecordError) as captured:
                     RetryIdentity(attempt, prior)
                 self.assert_safe_record_error(captured.exception)
+
+        with self.assertRaises(OperationsRecordError) as captured:
+            RetryIdentity(MAX_ATTEMPT + 1, "run-prior")
+        self.assertEqual(
+            str(captured.exception),
+            "retry attempt must be an integer from 1 through 2147483647",
+        )
+        self.assert_safe_record_error(captured.exception)
 
     def retry_evidence(
         self,
