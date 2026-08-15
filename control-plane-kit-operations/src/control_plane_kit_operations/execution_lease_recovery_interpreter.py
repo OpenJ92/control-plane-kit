@@ -24,7 +24,10 @@ from control_plane_kit_core.planning import (
     SagaStatus,
     project_activity_journal,
 )
-from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.activity_journal import (
+    EVENT_KIND_TO_JOURNAL_KIND,
+    activity_journal_events,
+)
 from control_plane_kit_operations.execution_lease_recovery import (
     AbandonExpiredExecutionClaim,
     ExecutionLeaseRecoveryCommand,
@@ -47,6 +50,7 @@ from control_plane_kit_operations.records import (
     ApprovalDecisionKind,
     ApprovalDecisionRecord,
     ApprovalRequestRecord,
+    BoundedEvidence,
     ClaimIdentity,
     ExecutionLeaseRecoveryEvidence,
     ExecutionRequestRecord,
@@ -70,6 +74,14 @@ _CONSEQUENCE_KIND = {
         ActivityEventKind.REQUEST_CLAIM_ABANDONED
     ),
 }
+
+_RECOVERY_EVENT_KINDS = frozenset(
+    {
+        ActivityEventKind.RECOVERY_DECISION_RECORDED,
+        *_CONSEQUENCE_KIND.values(),
+    }
+)
+
 
 class ExecutionLeaseRecoveryCommandService:
     """Interpret one admitted recovery command as one atomic transaction."""
@@ -392,24 +404,34 @@ def _require_journal(
 ) -> None:
     if not events or any(event.run_id != run.run_id for event in events):
         raise RunLifecycleConflict("retained run journal is invalid")
+    base_events = _journal_before_recovery_suffix(events)
+    if base_events is None:
+        raise RunLifecycleConflict("retained run journal is invalid")
     try:
         projection = project_activity_journal(
             plan.plan,
-            activity_journal_events(events),
+            activity_journal_events(base_events),
         )
     except (SagaJournalError, SagaStateError):
         projection = None
     if projection is None:
         raise RunLifecycleConflict("retained run journal is invalid")
-    event_kinds = tuple(event.kind for event in events)
+    lifecycle_kinds = tuple(
+        event.kind
+        for event in base_events
+        if event.kind not in EVENT_KIND_TO_JOURNAL_KIND
+    )
     if isinstance(command, RenewActiveExecutionClaim):
-        if (
-            activity_journal_events(events)
-            or event_kinds.count(ActivityEventKind.RUN_OPENED) != 1
+        if activity_journal_events(base_events) or lifecycle_kinds != (
+            ActivityEventKind.RUN_OPENED,
         ):
             raise RunLifecycleConflict("active retained run has effect history")
         return
-    if event_kinds.count(ActivityEventKind.RUN_FAILED) != 1:
+    if lifecycle_kinds != (
+        ActivityEventKind.RUN_OPENED,
+        ActivityEventKind.RUN_STARTED,
+        ActivityEventKind.RUN_FAILED,
+    ):
         raise RunLifecycleConflict("failed retained run lacks terminal evidence")
     if (
         projection.state.status is not SagaStatus.FAILED
@@ -420,6 +442,50 @@ def _require_journal(
         or projection.compensation_uncertain
     ):
         raise RunLifecycleConflict("retained run effect failure is unresolved")
+
+
+def _journal_before_recovery_suffix(
+    events: tuple[ActivityEventRecord, ...],
+) -> tuple[ActivityEventRecord, ...] | None:
+    first_recovery = next(
+        (
+            index
+            for index, event in enumerate(events)
+            if event.kind in _RECOVERY_EVENT_KINDS
+        ),
+        None,
+    )
+    if first_recovery is None:
+        return events
+
+    base_events = events[:first_recovery]
+    recovery_events = events[first_recovery:]
+    if len(recovery_events) % 2:
+        return None
+    expected_ordinal = base_events[-1].ordinal + 1 if base_events else 1
+    prior_replacement: ExecutionLeaseFence | None = None
+    for index in range(0, len(recovery_events), 2):
+        decision = recovery_events[index]
+        consequence = recovery_events[index + 1]
+        recovery = decision.recovery
+        if (
+            decision.kind is not ActivityEventKind.RECOVERY_DECISION_RECORDED
+            or recovery is None
+            or decision.ordinal != expected_ordinal
+            or (
+                prior_replacement is not None
+                and recovery.prior_fence != prior_replacement
+            )
+            or consequence.kind is not _CONSEQUENCE_KIND[recovery.decision_kind]
+            or consequence.ordinal != decision.ordinal + 1
+            or consequence.occurred_at != decision.occurred_at
+            or consequence.evidence != BoundedEvidence()
+            or consequence.failure is not None
+        ):
+            return None
+        expected_ordinal += 2
+        prior_replacement = recovery.replacement_fence
+    return base_events
 
 
 def _require_replay_command(
