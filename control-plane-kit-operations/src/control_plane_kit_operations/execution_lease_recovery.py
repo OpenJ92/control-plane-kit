@@ -201,6 +201,19 @@ _CONSEQUENCE_KINDS = {
     ),
 }
 
+_ACTIVE_RENEW_REPLAY_STATUSES = (
+    ActivityRunStatus.CLAIMED,
+    ActivityRunStatus.RUNNING,
+    ActivityRunStatus.PAUSED,
+    ActivityRunStatus.SUCCEEDED,
+    ActivityRunStatus.FAILED,
+    ActivityRunStatus.COMPENSATING,
+    ActivityRunStatus.COMPENSATED,
+    ActivityRunStatus.PARTIALLY_FAILED,
+    ActivityRunStatus.UNCOMPENSATED_FAILURE,
+    ActivityRunStatus.CANCELLED,
+)
+
 
 def _validate_command(command: ExecutionLeaseRecoveryCommand) -> None:
     if type(command) not in _COMMAND_KINDS:
@@ -319,10 +332,16 @@ def _validate_result_decision(result: ExecutionLeaseRecoveryResult) -> None:
         raise OperationsRecordError("recovery consequence event is incongruent")
 
     active = recovery.decision_kind is RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
-    expected_run_status = (
-        ActivityRunStatus.CLAIMED if active else ActivityRunStatus.FAILED
-    )
-    if result.retained_run.status is not expected_run_status:
+    if active and result.replayed:
+        accepted_run_statuses = _ACTIVE_RENEW_REPLAY_STATUSES
+    else:
+        expected_run_status = (
+            ActivityRunStatus.CLAIMED
+            if active
+            else ActivityRunStatus.FAILED
+        )
+        accepted_run_statuses = (expected_run_status,)
+    if result.retained_run.status not in accepted_run_statuses:
         raise OperationsRecordError("recovery retained run status is incongruent")
 
     abandoned = (
