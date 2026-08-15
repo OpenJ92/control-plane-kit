@@ -246,6 +246,40 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
             "cpk_activity_events_shape_check",
         )
 
+    def test_persisted_abandonment_failure_is_rejected_after_restart(self) -> None:
+        self.seed_run()
+        canaries = (
+            "failure-code-canary",
+            "failure-message-canary",
+            "failure-detail-canary",
+        )
+        self.insert_raw_event(
+            "event-abandonment-with-failure",
+            "step_uncertainty_abandoned",
+            {
+                "activity_id": "start-runtime",
+                "evidence": {},
+                "failure": {
+                    "category": "operator_review",
+                    "code": canaries[0],
+                    "message": canaries[1],
+                    "details": {"detail": canaries[2]},
+                },
+            },
+        )
+        self.connection.close()
+        self.connection = self.connect()
+
+        with self.assertRaises(OperationsRecordError) as captured:
+            PostgresExecutionStore(self.connection).get_event(
+                "event-abandonment-with-failure"
+            )
+        self.assertEqual(
+            str(captured.exception),
+            "event kind does not permit failure evidence",
+        )
+        self.assert_safe_record_error(captured.exception, *canaries)
+
     def test_internal_constructor_failures_escape_without_translation(self) -> None:
         decision = RecoveryDecisionKind.RETRY_AS_NEW_RUN
         self.seed_run(decision)

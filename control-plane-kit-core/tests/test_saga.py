@@ -559,6 +559,43 @@ class SagaJournalSuccessorTests(unittest.TestCase):
                 ),
                 event(4, forward),
             ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, compensation),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAIN),
+                event(6, forward),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAIN),
+                event(6, compensation),
+                event(7, compensation),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAIN),
+                event(
+                    6,
+                    ActivityJournalEventKind
+                    .STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED,
+                ),
+                event(7, compensation),
+            ),
         )
         for events in cases:
             with self.subTest(kinds=tuple(value.kind for value in events)):

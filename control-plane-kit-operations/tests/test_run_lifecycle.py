@@ -18,10 +18,12 @@ from tests.graph_lineage_fixture import seed_identity_graphs
 
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
+    ActivityEventScope,
     ActivityRunStatus,
     ExecutionRequestStatus,
     FailureCategory,
     LifecycleOperationKind,
+    canonical_execution_lifecycle_contract_set,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.lifecycle import (
@@ -146,6 +148,63 @@ class RunRecordLawTests(unittest.TestCase):
                     "step event requires activity_id",
                 ):
                     dataclasses.replace(record, activity_id=None)
+
+    def test_event_failure_evidence_exactly_follows_the_canonical_contract(
+        self,
+    ) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+        failure = FailureEvidence(
+            FailureCategory.OPERATOR_REVIEW,
+            "failure-code-canary",
+            "failure-message-canary",
+            BoundedEvidence.from_mapping({"detail": "failure-detail-canary"}),
+        )
+        for index, event_contract in enumerate(contract.events, start=1):
+            kind = event_contract.kind
+            if kind is ActivityEventKind.RECOVERY_DECISION_RECORDED:
+                continue
+            activity_id = (
+                "start-api"
+                if event_contract.scope is ActivityEventScope.ACTIVITY
+                else None
+            )
+            with self.subTest(kind=kind):
+                if event_contract.may_carry_failure:
+                    record = ActivityEventRecord(
+                        f"event-failure-{index}",
+                        "run-a",
+                        index,
+                        kind,
+                        "occurred",
+                        activity_id=activity_id,
+                        failure=failure,
+                    )
+                    self.assertIs(record.failure, failure)
+                    continue
+
+                with self.assertRaises(OperationsRecordError) as captured:
+                    ActivityEventRecord(
+                        f"event-nonfailure-{index}",
+                        "run-a",
+                        index,
+                        kind,
+                        "occurred",
+                        activity_id=activity_id,
+                        failure=failure,
+                    )
+                self.assertEqual(
+                    str(captured.exception),
+                    "event kind does not permit failure evidence",
+                )
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                rendered = f"{captured.exception!s} {captured.exception!r}"
+                for canary in (
+                    "failure-code-canary",
+                    "failure-message-canary",
+                    "failure-detail-canary",
+                ):
+                    self.assertNotIn(canary, rendered)
 
     @staticmethod
     def run_record(
