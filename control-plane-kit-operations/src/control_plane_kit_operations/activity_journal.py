@@ -22,6 +22,9 @@ EVENT_KIND_TO_JOURNAL_KIND = {
     ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED: (
         ActivityJournalEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED
     ),
+    ActivityEventKind.STEP_UNCERTAINTY_ABANDONED: (
+        ActivityJournalEventKind.STEP_UNCERTAINTY_ABANDONED
+    ),
     ActivityEventKind.RUN_COMPENSATION_STARTED: (
         ActivityJournalEventKind.RUN_COMPENSATION_STARTED
     ),
@@ -45,6 +48,9 @@ EVENT_KIND_TO_JOURNAL_KIND = {
     ),
     ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED: (
         ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED
+    ),
+    ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_ABANDONED: (
+        ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAINTY_ABANDONED
     ),
 }
 

@@ -863,6 +863,7 @@ class ActivityJournalEventKind(StrEnum):
     STEP_UNCERTAIN = "step_uncertain"
     STEP_UNCERTAINTY_RESOLVED_SUCCEEDED = "step_uncertainty_resolved_succeeded"
     STEP_UNCERTAINTY_RESOLVED_FAILED = "step_uncertainty_resolved_failed"
+    STEP_UNCERTAINTY_ABANDONED = "step_uncertainty_abandoned"
     RUN_COMPENSATION_STARTED = "run_compensation_started"
     STEP_COMPENSATION_STARTED = "step_compensation_started"
     STEP_COMPENSATION_SUCCEEDED = "step_compensation_succeeded"
@@ -874,6 +875,9 @@ class ActivityJournalEventKind(StrEnum):
     )
     STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED = (
         "step_compensation_uncertainty_resolved_failed"
+    )
+    STEP_COMPENSATION_UNCERTAINTY_ABANDONED = (
+        "step_compensation_uncertainty_abandoned"
     )
 
 
@@ -981,6 +985,13 @@ def project_activity_journal(
                     )
                 saga_events.append(SagaStepFailed(step_id))
                 uncertain_by_step.pop(event.activity_id)
+            case ActivityJournalEventKind.STEP_UNCERTAINTY_ABANDONED:
+                if event.activity_id not in uncertain_by_step:
+                    raise SagaJournalError(
+                        "abandonment requires prior uncertain evidence"
+                    )
+                saga_events.append(SagaStepFailed(step_id))
+                uncertain_by_step.pop(event.activity_id)
             case ActivityJournalEventKind.STEP_COMPENSATION_STARTED:
                 saga_events.append(SagaCompensationStarted(step_id))
                 compensation_event_by_step[event.activity_id] = event
@@ -1015,6 +1026,13 @@ def project_activity_journal(
                 if event.activity_id not in compensation_uncertain_by_step:
                     raise SagaJournalError(
                         "compensation failure resolution requires prior uncertain evidence"
+                    )
+                saga_events.append(SagaCompensationFailed(step_id))
+                compensation_uncertain_by_step.pop(event.activity_id)
+            case ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAINTY_ABANDONED:
+                if event.activity_id not in compensation_uncertain_by_step:
+                    raise SagaJournalError(
+                        "compensation abandonment requires prior uncertain evidence"
                     )
                 saga_events.append(SagaCompensationFailed(step_id))
                 compensation_uncertain_by_step.pop(event.activity_id)

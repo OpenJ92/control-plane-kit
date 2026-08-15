@@ -66,6 +66,7 @@ class ActivityEventKind(StrEnum):
     STEP_UNCERTAIN = "step_uncertain"
     STEP_UNCERTAINTY_RESOLVED_SUCCEEDED = "step_uncertainty_resolved_succeeded"
     STEP_UNCERTAINTY_RESOLVED_FAILED = "step_uncertainty_resolved_failed"
+    STEP_UNCERTAINTY_ABANDONED = "step_uncertainty_abandoned"
     STEP_COMPENSATION_STARTED = "step_compensation_started"
     STEP_COMPENSATION_SUCCEEDED = "step_compensation_succeeded"
     STEP_COMPENSATION_FAILED = "step_compensation_failed"
@@ -76,6 +77,9 @@ class ActivityEventKind(StrEnum):
     )
     STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED = (
         "step_compensation_uncertainty_resolved_failed"
+    )
+    STEP_COMPENSATION_UNCERTAINTY_ABANDONED = (
+        "step_compensation_uncertainty_abandoned"
     )
     RECOVERY_DECISION_RECORDED = "recovery_decision_recorded"
     RUN_COMPENSATION_STARTED = "run_compensation_started"
@@ -871,6 +875,7 @@ _STEP_EVENT_KINDS = frozenset(
         ActivityEventKind.STEP_UNCERTAIN,
         ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
         ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED,
+        ActivityEventKind.STEP_UNCERTAINTY_ABANDONED,
         ActivityEventKind.STEP_COMPENSATION_STARTED,
         ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
         ActivityEventKind.STEP_COMPENSATION_FAILED,
@@ -878,6 +883,7 @@ _STEP_EVENT_KINDS = frozenset(
         ActivityEventKind.STEP_COMPENSATION_UNCERTAIN,
         ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED,
         ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED,
+        ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_ABANDONED,
     }
 )
 
