@@ -37,9 +37,27 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
         self,
     ) -> None:
         cases = (
-            "expired-before-start",
-            "active-after-failure",
-            "expired-while-running",
+            (
+                "expired-before-start",
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                2,
+                "2026-08-15T03:59:21.500000Z",
+                "2026-08-15T04:09:21.500000Z",
+            ),
+            (
+                "active-after-failure",
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                6,
+                "2026-08-15T03:59:26Z",
+                "2026-08-15T04:09:26Z",
+            ),
+            (
+                "expired-while-running",
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                3,
+                "2026-08-15T03:59:22.500000Z",
+                "2026-08-15T04:09:22.500000Z",
+            ),
         )
         original_observe = PostgresExecutionStore.observe_request_lease_for_update
 
@@ -48,62 +66,84 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
 
         PostgresExecutionStore.observe_request_lease_for_update = fail_observe
         try:
-            for case in cases:
+            for (
+                case,
+                historical_decision,
+                ordinal,
+                occurred_at,
+                lease_expires_at,
+            ) in cases:
                 with self.subTest(case=case):
-                    current_decision = (
-                        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
-                        if case == "expired-before-start"
-                        else RecoveryDecisionKind.RENEW_EXPIRED_CLAIM
+                    self.reset_truth(historical_decision)
+                    original_observe_method = (
+                        PostgresExecutionStore.observe_request_lease_for_update
                     )
-                    historical_decision = (
-                        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
-                        if case == "active-after-failure"
-                        else RecoveryDecisionKind.RENEW_EXPIRED_CLAIM
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
                     )
-                    self.reset_truth(current_decision)
-                    ordinal = 2 if case == "expired-before-start" else 6
-                    if case == "expired-while-running":
-                        self.connection.execute(
-                            "UPDATE cpk_activity_events SET ordinal = ordinal + 100 "
-                            "WHERE run_id = 'run-a' AND ordinal >= 3"
+                    try:
+                        historical = self.service(
+                            "historical-decision",
+                            "historical-consequence",
+                            "historical-action",
+                        ).execute(
+                            self.command(
+                                historical_decision,
+                                key="historical-recovery",
+                            )
                         )
-                        self.connection.execute(
-                            "UPDATE cpk_activity_events SET ordinal = ordinal - 98 "
-                            "WHERE run_id = 'run-a' AND ordinal >= 103"
+                    finally:
+                        PostgresExecutionStore.observe_request_lease_for_update = (
+                            original_observe_method
                         )
-                        ordinal = 3
+
                     self.connection.execute(
-                        "UPDATE cpk_execution_requests SET claim_generation = 8 "
-                        "WHERE request_id = 'request-a'"
+                        "UPDATE cpk_activity_events SET ordinal = ordinal + 100 "
+                        "WHERE event_id IN "
+                        "('historical-decision', 'historical-consequence')"
                     )
-                    occurred_at = "2026-08-15T04:10:00Z"
-                    recovery = ExecutionLeaseRecoveryEvidence(
-                        historical_decision,
-                        RunId("run-a"),
-                        ExecutionLeaseFence("worker-a", 7),
-                        ExecutionLeaseFence("worker-a", 8),
+                    if case == "active-after-failure":
+                        self.connection.execute(
+                            "UPDATE cpk_activity_runs SET status = 'failed', "
+                            "started_at = '2026-08-15T03:59:22Z' "
+                            "WHERE run_id = 'run-a'"
+                        )
+                        with self.unit_of_work() as unit_of_work:
+                            for event in self.history_events("failed")[1:]:
+                                unit_of_work.stores.execution.add_event(event)
+                            unit_of_work.commit()
+                    else:
+                        self.connection.execute(
+                            "UPDATE cpk_activity_events SET ordinal = ordinal + 200 "
+                            "WHERE run_id = 'run-a' AND ordinal >= %s "
+                            "AND ordinal < 100",
+                            (ordinal,),
+                        )
+                        self.connection.execute(
+                            "UPDATE cpk_activity_events SET ordinal = ordinal - 198 "
+                            "WHERE run_id = 'run-a' AND ordinal >= %s",
+                            (ordinal + 200,),
+                        )
+                    self.connection.execute(
+                        "UPDATE cpk_activity_events SET ordinal = CASE event_id "
+                        "WHEN 'historical-decision' THEN %s ELSE %s END, "
+                        "occurred_at = %s WHERE event_id IN "
+                        "('historical-decision', 'historical-consequence')",
+                        (ordinal, ordinal + 1, occurred_at),
                     )
-                    with self.unit_of_work() as unit_of_work:
-                        unit_of_work.stores.execution.add_event(
-                            ActivityEventRecord(
-                                f"{case}-decision",
-                                "run-a",
-                                ordinal,
-                                ActivityEventKind.RECOVERY_DECISION_RECORDED,
-                                occurred_at,
-                                recovery=recovery,
-                            )
-                        )
-                        unit_of_work.stores.execution.add_event(
-                            ActivityEventRecord(
-                                f"{case}-consequence",
-                                "run-a",
-                                ordinal + 1,
-                                ActivityEventKind.REQUEST_CLAIM_RENEWED,
-                                occurred_at,
-                            )
-                        )
-                        unit_of_work.commit()
+                    self.connection.execute(
+                        "UPDATE cpk_operation_actions SET created_at = %s, "
+                        "payload = jsonb_set(jsonb_set(payload, "
+                        "'{decision_event_ordinal}', to_jsonb(%s::integer)), "
+                        "'{consequence_event_ordinal}', to_jsonb(%s::integer)) "
+                        "WHERE action_id = 'historical-action'",
+                        (occurred_at, ordinal, ordinal + 1),
+                    )
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claimed_at = %s, "
+                        "lease_expires_at = %s WHERE request_id = 'request-a'",
+                        (occurred_at, lease_expires_at),
+                    )
                     before = self.snapshot()
                     service, sequence = self.service_with_sequence(
                         "unused-a", "unused-b", "unused-c"
@@ -111,11 +151,9 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
                     with self.assertRaises(RunLifecycleConflict) as captured:
                         service.execute(
                             self.command(
-                                current_decision,
+                                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
                                 key=f"reject-{case}",
-                                expected_fence=ExecutionLeaseFence(
-                                    "worker-a", 8
-                                ),
+                                expected_fence=historical.request.claim.fence,
                             )
                         )
                     self.assertEqual(sequence.calls, [])
