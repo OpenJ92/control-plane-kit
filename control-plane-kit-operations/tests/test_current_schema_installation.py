@@ -416,6 +416,31 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
             hashlib.sha256(payload).hexdigest(),
         )
 
+    def test_current_contract_contains_exact_uncertainty_abandonment_events(
+        self,
+    ) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import schema
+
+        constraints = {
+            value.name: value.check_expression
+            for value in current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints
+        }
+        for event_type in (
+            "step_uncertainty_abandoned",
+            "step_compensation_uncertainty_abandoned",
+        ):
+            with self.subTest(event_type=event_type):
+                self.assertIn(
+                    event_type,
+                    constraints["cpk_activity_events_kind_check"],
+                )
+                self.assertIn(
+                    event_type,
+                    constraints["cpk_activity_events_shape_check"],
+                )
+                self.assertEqual(schema._CURRENT_SCHEMA_SQL.count(event_type), 2)
+
     def test_direct_schema_program_is_unconditional_and_nonhistorical(self) -> None:
         from control_plane_kit_operations.postgres import schema
 

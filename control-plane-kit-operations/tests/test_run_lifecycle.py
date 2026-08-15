@@ -12,6 +12,7 @@ import unittest
 import psycopg
 import control_plane_kit_operations.lifecycle as lifecycle_module
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.activity_journal import activity_journal_events
 
 from tests.graph_lineage_fixture import seed_identity_graphs
 
@@ -97,6 +98,54 @@ class RunRecordLawTests(unittest.TestCase):
             BoundedEvidence.from_mapping({"activity_ids": ("start-api",)})
         with self.assertRaisesRegex(OperationsRecordError, "finite"):
             BoundedEvidence.from_mapping({"latency": float("inf")})
+
+    def test_uncertainty_abandonment_records_are_activity_scoped_nonfailure_truth(
+        self,
+    ) -> None:
+        for index, (name, value) in enumerate(
+            (
+                ("STEP_UNCERTAINTY_ABANDONED", "step_uncertainty_abandoned"),
+                (
+                    "STEP_COMPENSATION_UNCERTAINTY_ABANDONED",
+                    "step_compensation_uncertainty_abandoned",
+                ),
+            ),
+            start=1,
+        ):
+            with self.subTest(name=name):
+                kind = getattr(ActivityEventKind, name)
+                record = ActivityEventRecord(
+                    f"event-{index}",
+                    "run-a",
+                    index,
+                    kind,
+                    "occurred",
+                    activity_id="start-api",
+                    evidence=BoundedEvidence.from_mapping(
+                        {"recovery_decision_id": f"decision-{index}"}
+                    ),
+                )
+                self.assertEqual(
+                    activity_journal_events((record,))[0].kind.value,
+                    value,
+                )
+                with self.assertRaisesRegex(
+                    OperationsRecordError,
+                    "event kind does not permit failure evidence",
+                ):
+                    dataclasses.replace(
+                        record,
+                        failure=FailureEvidence(
+                            FailureCategory.OPERATOR_REVIEW,
+                            "abandoned",
+                            "provider outcome remains unknown",
+                        ),
+                    )
+                with self.assertRaisesRegex(
+                    OperationsRecordError,
+                    "step event requires activity_id",
+                ):
+                    dataclasses.replace(record, activity_id=None)
 
     @staticmethod
     def run_record(

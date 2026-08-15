@@ -17,6 +17,8 @@ from control_plane_kit_core.operations.recovery import (
     InvalidEffectRecoveryContract,
     fold_effect_attempt,
 )
+from control_plane_kit_core.operations.lifecycle import ActivityEventKind
+from control_plane_kit_core.planning.saga import ActivityJournalEventKind
 
 
 REQUEST_FINGERPRINT = "a" * 64
@@ -148,6 +150,107 @@ class EffectRecoveryContractTests(unittest.TestCase):
                 )
                 self.assertEqual(state.status, expected)
                 self.assertEqual(state.outcome_fingerprint, OUTCOME_FINGERPRINT)
+
+    def test_effect_attempt_transitions_have_total_phase_event_representations(
+        self,
+    ) -> None:
+        rows = {
+            ("forward", "started", None): "step_started",
+            ("forward", "succeeded", None): "step_succeeded",
+            ("forward", "failed", None): "step_failed",
+            ("forward", "unsupported", None): "step_unsupported",
+            ("forward", "uncertain", None): "step_uncertain",
+            (
+                "forward",
+                "reconciled",
+                "succeeded",
+            ): "step_uncertainty_resolved_succeeded",
+            (
+                "forward",
+                "reconciled",
+                "failed",
+            ): "step_uncertainty_resolved_failed",
+            (
+                "forward",
+                "abandoned",
+                "abandoned",
+            ): "step_uncertainty_abandoned",
+            ("compensation", "started", None): "step_compensation_started",
+            ("compensation", "succeeded", None): "step_compensation_succeeded",
+            ("compensation", "failed", None): "step_compensation_failed",
+            (
+                "compensation",
+                "unsupported",
+                None,
+            ): "step_compensation_unsupported",
+            ("compensation", "uncertain", None): "step_compensation_uncertain",
+            (
+                "compensation",
+                "reconciled",
+                "succeeded",
+            ): "step_compensation_uncertainty_resolved_succeeded",
+            (
+                "compensation",
+                "reconciled",
+                "failed",
+            ): "step_compensation_uncertainty_resolved_failed",
+            (
+                "compensation",
+                "abandoned",
+                "abandoned",
+            ): "step_compensation_uncertainty_abandoned",
+        }
+        direct = {
+            kind.value
+            for kind in EffectAttemptTransitionKind
+            if kind
+            not in {
+                EffectAttemptTransitionKind.RECONCILED,
+                EffectAttemptTransitionKind.ABANDONED,
+            }
+        }
+        expected_keys = {
+            (phase, transition, None)
+            for phase in ("forward", "compensation")
+            for transition in direct
+        } | {
+            (phase, "reconciled", resolution.value)
+            for phase in ("forward", "compensation")
+            for resolution in EffectRecoveryResolution
+            if resolution is not EffectRecoveryResolution.ABANDONED
+        } | {
+            (phase, "abandoned", EffectRecoveryResolution.ABANDONED.value)
+            for phase in ("forward", "compensation")
+        }
+
+        self.assertEqual(len(rows), 16)
+        self.assertEqual(set(rows), expected_keys)
+        for key, value in rows.items():
+            with self.subTest(key=key):
+                self.assertEqual(ActivityEventKind(value).value, value)
+                self.assertEqual(ActivityJournalEventKind(value).value, value)
+
+        for kind, resolution in (
+            (
+                EffectAttemptTransitionKind.RECONCILED,
+                EffectRecoveryResolution.ABANDONED,
+            ),
+            (
+                EffectAttemptTransitionKind.ABANDONED,
+                EffectRecoveryResolution.SUCCEEDED,
+            ),
+            (
+                EffectAttemptTransitionKind.ABANDONED,
+                EffectRecoveryResolution.FAILED,
+            ),
+        ):
+            with self.subTest(invalid=(kind, resolution)):
+                with self.assertRaises(InvalidEffectRecoveryContract):
+                    EffectAttemptTransition(
+                        kind=kind,
+                        identity=self.identity(),
+                        recovery_decision=self.decision(resolution),
+                    )
 
     def test_uncertainty_cannot_be_resolved_by_ordinary_result(self) -> None:
         uncertain = fold_effect_attempt(

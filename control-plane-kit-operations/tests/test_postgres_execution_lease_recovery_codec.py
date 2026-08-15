@@ -170,6 +170,82 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                 self.assertEqual(restarted.get_event(event.event_id), event)
                 self.assertEqual(restarted.events_for_run("run-a"), (event,))
 
+    def test_uncertainty_abandonment_events_round_trip_after_connection_restart(
+        self,
+    ) -> None:
+        self.seed_run()
+        events = tuple(
+            ActivityEventRecord(
+                f"event-{index}",
+                "run-a",
+                index,
+                getattr(ActivityEventKind, name),
+                "2026-08-15T04:00:00Z",
+                activity_id="start-runtime",
+            )
+            for index, name in enumerate(
+                (
+                    "STEP_UNCERTAINTY_ABANDONED",
+                    "STEP_COMPENSATION_UNCERTAINTY_ABANDONED",
+                ),
+                start=1,
+            )
+        )
+        store = PostgresExecutionStore(self.connection)
+        for event in events:
+            self.assertIs(store.add_event(event), event)
+
+        self.connection.close()
+        self.connection = self.connect()
+        restarted = PostgresExecutionStore(self.connection)
+        self.assertEqual(
+            tuple(restarted.get_event(event.event_id) for event in events),
+            events,
+        )
+        self.assertEqual(restarted.events_for_run("run-a"), events)
+
+    def test_current_schema_closes_uncertainty_abandonment_event_shapes(self) -> None:
+        constraints = {
+            row[0]: row[1]
+            for row in self.connection.execute(
+                """
+                SELECT conname, pg_get_constraintdef(oid, true)
+                FROM pg_constraint
+                WHERE conrelid = 'cpk_activity_events'::regclass
+                """
+            ).fetchall()
+        }
+        expected = (
+            "step_uncertainty_abandoned",
+            "step_compensation_uncertainty_abandoned",
+        )
+        for value in expected:
+            with self.subTest(value=value):
+                self.assertIn(value, constraints["cpk_activity_events_kind_check"])
+                self.assertIn(value, constraints["cpk_activity_events_shape_check"])
+
+        self.seed_run()
+        with self.assertRaises(psycopg.errors.CheckViolation) as invented:
+            self.insert_raw_event(
+                "event-invented",
+                "step_uncertainty_abandoned_alias",
+                {"activity_id": "start-runtime", "evidence": {}, "failure": None},
+            )
+        self.assertEqual(
+            invented.exception.diag.constraint_name,
+            "cpk_activity_events_kind_check",
+        )
+        with self.assertRaises(psycopg.errors.CheckViolation) as run_scoped:
+            self.insert_raw_event(
+                "event-run-scoped",
+                expected[0],
+                {"activity_id": None, "evidence": {}, "failure": None},
+            )
+        self.assertEqual(
+            run_scoped.exception.diag.constraint_name,
+            "cpk_activity_events_shape_check",
+        )
+
     def test_internal_constructor_failures_escape_without_translation(self) -> None:
         decision = RecoveryDecisionKind.RETRY_AS_NEW_RUN
         self.seed_run(decision)
