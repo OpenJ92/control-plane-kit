@@ -10,6 +10,7 @@ from control_plane_kit_core.operations import (
     FailureCategory,
     InvalidExecutionLifecycleContract,
     LifecycleOperationKind,
+    RecoveryDecisionContract,
     RecoveryDecisionKind,
     RecoveryScope,
     activity_event_scope,
@@ -203,6 +204,153 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                 decision = contract.recovery_decision(kind)
                 self.assertIs(decision.required_scope, scope)
                 self.assertTrue(decision.requires_expired_claim)
+
+    def test_active_claim_renewal_is_an_explicit_closed_decision(self) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+        decision = contract.recovery_decision(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+        )
+
+        self.assertIs(decision.required_scope, RecoveryScope.RENEW_CLAIM)
+        self.assertEqual(
+            decision.allowed_run_statuses,
+            (ActivityRunStatus.CLAIMED,),
+        )
+        self.assertTrue(decision.requires_unexpired_claim)
+        self.assertFalse(decision.requires_expired_claim)
+        self.assertIn(
+            ActivityRunStatus.CLAIMED,
+            contract.operation("recovery.decide").accepted_run_statuses,
+        )
+
+    def test_claim_recovery_predicates_are_explicit_and_exact(self) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+        claim_matrix = {
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM: (
+                (ActivityRunStatus.CLAIMED,),
+                True,
+                False,
+            ),
+            RecoveryDecisionKind.RENEW_EXPIRED_CLAIM: (
+                (ActivityRunStatus.FAILED,),
+                False,
+                True,
+            ),
+            RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM: (
+                (ActivityRunStatus.FAILED,),
+                False,
+                True,
+            ),
+            RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM: (
+                (ActivityRunStatus.FAILED,),
+                False,
+                True,
+            ),
+        }
+
+        for decision in contract.recovery_decisions:
+            with self.subTest(kind=decision.kind):
+                expected = claim_matrix.get(
+                    decision.kind,
+                    (decision.allowed_run_statuses, False, False),
+                )
+                self.assertEqual(
+                    (
+                        decision.allowed_run_statuses,
+                        decision.requires_unexpired_claim,
+                        decision.requires_expired_claim,
+                    ),
+                    expected,
+                )
+                self.assertIs(
+                    decision.descriptor()["requires_unexpired_claim"], expected[1]
+                )
+
+    def test_claim_recovery_contract_rejects_incongruent_direct_values(self) -> None:
+        cases = (
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.FAILED,),
+                True,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.CLAIMED,),
+                False,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.CLAIMED,),
+                True,
+                True,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.CLAIMED,),
+                False,
+                True,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.FAILED,),
+                False,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.REMAIN_PAUSED,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.PAUSED,),
+                True,
+                False,
+            ),
+        )
+
+        for kind, scope, statuses, unexpired, expired in cases:
+            with self.subTest(kind=kind, statuses=statuses):
+                with self.assertRaises(InvalidExecutionLifecycleContract):
+                    RecoveryDecisionContract(
+                        kind=kind,
+                        required_scope=scope,
+                        allowed_run_statuses=statuses,
+                        requires_unexpired_claim=unexpired,
+                        requires_expired_claim=expired,
+                    )
+
+    def test_claim_recovery_descriptor_requires_exact_predicate_matrix(self) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+        active = contract.recovery_decision(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+        ).descriptor()
+        expired = contract.recovery_decision(
+            RecoveryDecisionKind.RENEW_EXPIRED_CLAIM
+        ).descriptor()
+
+        malformed = []
+        missing = dict(active)
+        del missing["requires_unexpired_claim"]
+        malformed.append(missing)
+        malformed.extend(
+            (
+                {**active, "allowed_run_statuses": [ActivityRunStatus.FAILED.value]},
+                {**active, "requires_unexpired_claim": False},
+                {**active, "requires_expired_claim": True},
+                {**expired, "allowed_run_statuses": [ActivityRunStatus.CLAIMED.value]},
+                {**expired, "requires_expired_claim": False},
+                {**expired, "requires_unexpired_claim": True},
+            )
+        )
+
+        for descriptor in malformed:
+            with self.subTest(descriptor=descriptor):
+                with self.assertRaises(InvalidExecutionLifecycleContract):
+                    RecoveryDecisionContract.from_descriptor(descriptor)
 
     def test_durable_enforcement_and_graph_advancement_are_handoff_obligations(self) -> None:
         contract = canonical_execution_lifecycle_contract_set()
