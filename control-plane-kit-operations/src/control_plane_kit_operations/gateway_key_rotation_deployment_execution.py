@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from hashlib import sha256
 import re
 from typing import Any, Callable
 
@@ -34,6 +33,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
     ReadGatewayKeyRotationDeploymentHandoff,
+    _gateway_key_rotation_deployment_prefix as _prefix,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import (
@@ -632,13 +632,6 @@ def _failure_code(
         CoordinatorStatus.IN_FLIGHT: f"{label}-effect-uncertain",
         CoordinatorStatus.BLOCKED: f"{label}-run-blocked",
     }.get(status, f"{label}-execution-unexpected")
-
-
-def _prefix(rotation_id: str, phase: GatewayKeyRotationDeploymentPhase) -> str:
-    return (
-        f"gkrot-{phase.value}:"
-        + sha256(rotation_id.encode("utf-8")).hexdigest()
-    )
 
 
 def _identifier(value: object, name: str) -> None:

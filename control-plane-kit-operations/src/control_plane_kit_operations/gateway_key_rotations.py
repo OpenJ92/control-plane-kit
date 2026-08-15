@@ -20,6 +20,10 @@ from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations._temporal import (
     validate_canonical_utc_timestamp,
 )
+from control_plane_kit_operations.advancement import (
+    CurrentGraphAdvancementError,
+    CurrentGraphAdvancementResult,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import OperationsRecordError
@@ -701,6 +705,12 @@ class GatewayKeyRotationService:
                     "gateway deployment execution authority is stale"
                 ) from None
             _validate_deployment_current(command, current)
+            _validate_deployment_acceptance(
+                stores,
+                current,
+                checkpoint,
+                transition,
+            )
             return self._advance_locked(uow, current, transition, fingerprint)
 
     def _advance_locked(
@@ -829,6 +839,16 @@ def _is_deployment_owned_transition(
     }
 
 
+def _gateway_key_rotation_deployment_prefix(
+    rotation_id: str,
+    phase: GatewayKeyRotationDeploymentPhase,
+) -> str:
+    return (
+        f"gkrot-{phase.value}:"
+        + sha256(rotation_id.encode("utf-8")).hexdigest()
+    )
+
+
 def _validate_deployment_current(
     command: AdvanceGatewayKeyRotationDeployment,
     current: GatewayKeyRotation,
@@ -891,6 +911,74 @@ def _validate_deployment_linkage(
         raise GatewayKeyRotationConflict(
             "gateway deployment plan linkage changed"
         )
+
+
+def _validate_deployment_acceptance(
+    stores: Any,
+    rotation: GatewayKeyRotation,
+    checkpoint: GatewayKeyRotationDeploymentCheckpoint,
+    transition: AdvanceGatewayKeyRotation,
+) -> None:
+    if transition.target_status not in {
+        GatewayKeyRotationStatus.OVERLAP_READY,
+        GatewayKeyRotationStatus.RETIREMENT_READY,
+    }:
+        return
+    valid = True
+    try:
+        action = stores.activity_history.action_for_idempotency(
+            checkpoint.session_id,
+            (
+                f"{_gateway_key_rotation_deployment_prefix(rotation.rotation_id, checkpoint.phase)}"
+                ":advance"
+            ),
+        )
+        if action is None:
+            raise CurrentGraphAdvancementError(
+                "gateway deployment advancement action is missing"
+            )
+        event_id = action.payload.get("event_id")
+        projection_digest = action.payload.get("to_realized_projection_digest")
+        if not isinstance(event_id, str) or not isinstance(
+            projection_digest,
+            str,
+        ):
+            raise CurrentGraphAdvancementError(
+                "gateway deployment advancement evidence is malformed"
+            )
+        event = stores.execution.get_event(event_id)
+        CurrentGraphAdvancementResult(
+            workspace_id=rotation.workspace_id,
+            from_authored_graph_id=checkpoint.base_authored_graph_id,
+            from_realized_projection_id=checkpoint.base_realized_projection_id,
+            to_authored_graph_id=checkpoint.accepted_current_graph_id,
+            to_realized_projection_id=(
+                checkpoint.accepted_current_projection_id
+            ),
+            to_realized_projection_digest=projection_digest,
+            desired_graph_revision=checkpoint.desired_revision,
+            run_id=checkpoint.run_id,
+            plan_id=checkpoint.plan_id,
+            event=event,
+            action=action,
+        )
+        if (
+            action.session_id != checkpoint.session_id
+            or action.payload.get("execution_request_id")
+            != checkpoint.execution_request_id
+            or action.created_at != checkpoint.accepted_at
+            or event.occurred_at != checkpoint.accepted_at
+            or transition.advanced_at != checkpoint.accepted_at
+        ):
+            raise CurrentGraphAdvancementError(
+                "gateway deployment advancement linkage changed"
+            )
+    except (CurrentGraphAdvancementError, KeyError, OperationsRecordError, ValueError):
+        valid = False
+    if not valid:
+        raise GatewayKeyRotationConflict(
+            "gateway deployment acceptance evidence is incongruent"
+        ) from None
 
 
 def _deployment_checkpoint(
