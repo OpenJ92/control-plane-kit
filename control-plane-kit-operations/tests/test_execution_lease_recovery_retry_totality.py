@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import unittest
 
 from control_plane_kit_core.operations import RunId
@@ -7,19 +8,10 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
     RecoveryDecisionKind,
-    RecoveryScope,
 )
 from control_plane_kit_core.planning import ActivityPlan
-import control_plane_kit_operations.execution_lease_recovery_interpreter as interpreter
-from control_plane_kit_operations.execution_lease_recovery import (
-    RecoveryAuthority,
-    RenewExpiredExecutionClaim,
-)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
-from control_plane_kit_operations.lifecycle import (
-    ExecutionLeaseDuration,
-    RunLifecycleConflict,
-)
+from control_plane_kit_operations.lifecycle import RunLifecycleConflict
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
@@ -29,24 +21,21 @@ from control_plane_kit_operations.records import (
     ExecutionLeaseRecoveryEvidence,
     RetryIdentity,
 )
-from control_plane_kit_operations.workflows import IdempotencyKey
+
+
+SUPPORT_MODULE = "control_plane_kit_operations._execution_lease_recovery_support"
+
+try:
+    support = importlib.import_module(SUPPORT_MODULE)
+except ModuleNotFoundError as error:
+    if error.name != SUPPORT_MODULE:
+        raise
+    support = None
 
 
 class ExecutionLeaseRecoveryRetryTotalityTests(unittest.TestCase):
     def setUp(self) -> None:
         self.fence = ExecutionLeaseFence("worker-a", 7)
-        self.command = RenewExpiredExecutionClaim(
-            "request-a",
-            RunId("run-a"),
-            self.fence,
-            RecoveryAuthority(
-                "operator-a",
-                "authority-reference-a",
-                (RecoveryScope.RENEW_CLAIM,),
-            ),
-            ExecutionLeaseDuration(600),
-            IdempotencyKey("recover-a"),
-        )
         self.run = ActivityRunRecord(
             "run-a",
             "plan-a",
@@ -126,9 +115,14 @@ class ExecutionLeaseRecoveryRetryTotalityTests(unittest.TestCase):
         snapshot = repr(events)
         identities = tuple(id(event) for event in events)
 
+        self.assertIsNotNone(
+            support,
+            "shared execution-lease recovery support is missing",
+        )
         with self.assertRaises(RunLifecycleConflict) as captured:
-            interpreter._require_journal(
-                self.command,
+            support.require_recovery_eligible_journal(
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                self.fence,
                 self.run,
                 self.plan,
                 events,

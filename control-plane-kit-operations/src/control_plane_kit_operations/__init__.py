@@ -503,6 +503,9 @@ from .activity_run_retry import (
     ActivityRunRetryResult,
     RetryFailedActivityRun,
 )
+from .activity_run_retry_interpreter import (
+    ActivityRunRetryCommandService,
+)
 from .execution_lease_recovery_interpreter import (
     ExecutionLeaseRecoveryCommandService,
 )
@@ -632,6 +635,7 @@ __all__ = [
     "ActivityPlanningWorkspaceNotFound",
     "ActivityRunRecord",
     "ActivityRunRetryResult",
+    "ActivityRunRetryCommandService",
     "AdvanceCurrentGraph",
     "AdmittedRun",
     "ApprovalAuthorizationDenied",

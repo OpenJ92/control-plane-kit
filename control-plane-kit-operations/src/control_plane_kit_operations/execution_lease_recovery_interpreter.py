@@ -6,10 +6,6 @@ import dataclasses
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
 
-from control_plane_kit_core.approval_subjects import (
-    ActivityPlanApprovalSubject,
-    GatewayKeyRotationApprovalSubject,
-)
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -18,15 +14,11 @@ from control_plane_kit_core.operations.lifecycle import (
     RecoveryDecisionKind,
     RecoveryScope,
 )
-from control_plane_kit_core.planning import (
-    SagaJournalError,
-    SagaStateError,
-    SagaStatus,
-    project_activity_journal,
-)
-from control_plane_kit_operations.activity_journal import (
-    EVENT_KIND_TO_JOURNAL_KIND,
-    activity_journal_events,
+from control_plane_kit_operations._execution_lease_recovery_support import (
+    _CONSEQUENCE_KIND,
+    locked_recovery_approval,
+    require_recovery_eligible_journal,
+    require_replay_run_evolution,
 )
 from control_plane_kit_operations.execution_lease_recovery import (
     AbandonExpiredExecutionClaim,
@@ -45,41 +37,13 @@ from control_plane_kit_operations.lifecycle import (
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
-    ActivityPlanRecord,
     ActivityRunRecord,
-    ApprovalDecisionKind,
-    ApprovalDecisionRecord,
-    ApprovalRequestRecord,
-    BoundedEvidence,
     ClaimIdentity,
     ExecutionLeaseRecoveryEvidence,
     ExecutionRequestRecord,
     OperationActionRecord,
     OperationSessionStatus,
     OperationsRecordError,
-)
-
-
-_CONSEQUENCE_KIND = {
-    RecoveryDecisionKind.RENEW_ACTIVE_CLAIM: (
-        ActivityEventKind.REQUEST_CLAIM_RENEWED
-    ),
-    RecoveryDecisionKind.RENEW_EXPIRED_CLAIM: (
-        ActivityEventKind.REQUEST_CLAIM_RENEWED
-    ),
-    RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM: (
-        ActivityEventKind.REQUEST_CLAIM_TAKEN_OVER
-    ),
-    RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM: (
-        ActivityEventKind.REQUEST_CLAIM_ABANDONED
-    ),
-}
-
-_RECOVERY_EVENT_KINDS = frozenset(
-    {
-        ActivityEventKind.RECOVERY_DECISION_RECORDED,
-        *_CONSEQUENCE_KIND.values(),
-    }
 )
 
 
@@ -109,7 +73,8 @@ class ExecutionLeaseRecoveryCommandService:
                 locator.identity.session_id,
                 command.idempotency_key.value,
             )
-            existing = history.action_for_idempotency(
+            existing = _action_for_idempotency(
+                history,
                 locator.identity.session_id,
                 command.idempotency_key.value,
             )
@@ -127,9 +92,13 @@ class ExecutionLeaseRecoveryCommandService:
             run = _latest_run_for_update(stores, command.request_id)
             _require_locked_identity(command, locator, request, run, session.session_id)
             _require_first_state(command, request, run)
-            approval, decision, plan = _approval(stores, request)
-            _require_journal(
-                command,
+            _, _, plan = locked_recovery_approval(
+                stores,
+                request,
+            )
+            require_recovery_eligible_journal(
+                _decision_kind(command),
+                command.expected_fence,
                 run,
                 plan,
                 _events_for_run(stores, run.run_id),
@@ -238,7 +207,11 @@ def _replay(
     action: OperationActionRecord,
 ) -> ExecutionLeaseRecoveryResult:
     request = _request_for_update(stores, command.request_id)
-    run = _latest_run_for_update(stores, command.request_id)
+    run = _run_for_request_for_update(
+        stores,
+        command.request_id,
+        command.retained_run_id.value,
+    )
     if (
         locator.identity != request.identity
         or run.run_id != command.retained_run_id.value
@@ -247,7 +220,12 @@ def _replay(
         or action.actor_id != command.authority.actor_id
     ):
         raise RunLifecycleConflict("persisted recovery identity changed")
-    _approval(stores, request)
+    require_replay_run_evolution(
+        stores,
+        request,
+        run,
+    )
+    locked_recovery_approval(stores, request)
     payload = action.payload
     if not isinstance(payload, Mapping):
         raise RunLifecycleConflict("persisted recovery action is malformed")
@@ -257,12 +235,16 @@ def _replay(
         raise RunLifecycleConflict("persisted recovery action is malformed")
     decision_event = _event(stores, decision_id)
     consequence_event = _event(stores, consequence_id)
-    result = _result(request, run, decision_event, consequence_event, action)
-    _require_replay_command(command, result)
-    return dataclasses.replace(
-        result,
+    result = _result(
+        request,
+        run,
+        decision_event,
+        consequence_event,
+        action,
         replayed=True,
     )
+    _require_replay_command(command, result)
+    return result
 
 
 def _persist_claim(
@@ -352,173 +334,6 @@ def _require_expiry(
             raise RunLifecycleConflict("active execution claim has expired")
     elif not expired:
         raise RunLifecycleConflict("expired execution claim remains active")
-
-
-def _approval(
-    stores: Any,
-    request: ExecutionRequestRecord,
-) -> tuple[ApprovalRequestRecord, ApprovalDecisionRecord, ActivityPlanRecord]:
-    try:
-        approval = stores.activity_history.get_approval_request(
-            request.approval_request_id
-        )
-        decision = stores.activity_history.approval_decision_for_request(
-            approval.request_id
-        )
-        plan = stores.activity_history.get_plan(request.identity.plan_id)
-    except KeyError:
-        read_failure = "missing"
-    except (OperationsRecordError, ValueError):
-        read_failure = "invalid"
-    else:
-        read_failure = None
-    if read_failure == "missing":
-        raise RunLifecycleNotFound("recovery approval history was not found")
-    if read_failure == "invalid":
-        raise RunLifecycleConflict("recovery approval history is invalid")
-    if decision is None:
-        raise RunLifecycleNotFound("recovery approval decision was not found")
-    if (
-        approval.request_id != request.approval_request_id
-        or approval.session_id != request.identity.session_id
-        or decision.decision_id != request.approval_decision_id
-        or decision.request_id != approval.request_id
-        or decision.decision is not ApprovalDecisionKind.APPROVED
-        or decision.scope is not approval.required_scope
-        or plan.plan_id != request.identity.plan_id
-        or plan.session_id != request.identity.session_id
-    ):
-        raise RunLifecycleConflict("recovery approval history changed")
-    subject = approval.subject
-    if isinstance(subject, ActivityPlanApprovalSubject):
-        if subject.plan_id != plan.plan_id:
-            raise RunLifecycleConflict("recovery plan approval changed")
-    elif not isinstance(subject, GatewayKeyRotationApprovalSubject):
-        raise RunLifecycleConflict("recovery approval subject is unsupported")
-    return approval, decision, plan
-
-
-def _require_journal(
-    command: ExecutionLeaseRecoveryCommand,
-    run: ActivityRunRecord,
-    plan: ActivityPlanRecord,
-    events: tuple[ActivityEventRecord, ...],
-) -> None:
-    if (
-        not events
-        or any(event.run_id != run.run_id for event in events)
-        or tuple(event.ordinal for event in events)
-        != tuple(range(1, len(events) + 1))
-    ):
-        raise RunLifecycleConflict("retained run journal is invalid")
-    base_events = _journal_without_recovery_pairs(
-        events,
-        command.expected_fence,
-    )
-    if base_events is None:
-        raise RunLifecycleConflict("retained run journal is invalid")
-    try:
-        projection = project_activity_journal(
-            plan.plan,
-            activity_journal_events(base_events),
-        )
-    except (SagaJournalError, SagaStateError):
-        projection = None
-    if projection is None:
-        raise RunLifecycleConflict("retained run journal is invalid")
-    lifecycle_kinds = tuple(
-        event.kind
-        for event in base_events
-        if event.kind not in EVENT_KIND_TO_JOURNAL_KIND
-    )
-    if isinstance(command, RenewActiveExecutionClaim):
-        if activity_journal_events(base_events) or lifecycle_kinds != (
-            ActivityEventKind.RUN_OPENED,
-        ):
-            raise RunLifecycleConflict("active retained run has effect history")
-        return
-    if lifecycle_kinds != (
-        ActivityEventKind.RUN_OPENED,
-        ActivityEventKind.RUN_STARTED,
-        ActivityEventKind.RUN_FAILED,
-    ):
-        raise RunLifecycleConflict("failed retained run lacks terminal evidence")
-    if (
-        projection.state.status is not SagaStatus.FAILED
-        or projection.state.compensation_requested
-        or projection.in_flight
-        or projection.uncertain
-        or projection.compensation_in_flight
-        or projection.compensation_uncertain
-    ):
-        raise RunLifecycleConflict("retained run effect failure is unresolved")
-
-
-def _journal_without_recovery_pairs(
-    events: tuple[ActivityEventRecord, ...],
-    expected_fence: ExecutionLeaseFence,
-) -> tuple[ActivityEventRecord, ...] | None:
-    base_events: list[ActivityEventRecord] = []
-    has_prior_recovery = False
-    prior_replacement: ExecutionLeaseFence | None = None
-    run_opened = False
-    run_started = False
-    run_failed = False
-    index = 0
-    while index < len(events):
-        decision = events[index]
-        if decision.kind is not ActivityEventKind.RECOVERY_DECISION_RECORDED:
-            if decision.kind in _RECOVERY_EVENT_KINDS:
-                return None
-            base_events.append(decision)
-            run_opened = (
-                run_opened or decision.kind is ActivityEventKind.RUN_OPENED
-            )
-            run_started = (
-                run_started or decision.kind is ActivityEventKind.RUN_STARTED
-            )
-            run_failed = (
-                run_failed or decision.kind is ActivityEventKind.RUN_FAILED
-            )
-            index += 1
-            continue
-        if index + 1 >= len(events):
-            return None
-        consequence = events[index + 1]
-        recovery = decision.recovery
-        if (
-            recovery is None
-            or (
-                recovery.decision_kind
-                is RecoveryDecisionKind.RETRY_AS_NEW_RUN
-            )
-            or (
-                has_prior_recovery
-                and recovery.prior_fence != prior_replacement
-            )
-            or (
-                recovery.decision_kind
-                is RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
-                and (not run_opened or run_started or run_failed)
-            )
-            or (
-                recovery.decision_kind
-                is not RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
-                and (not run_opened or not run_started or not run_failed)
-            )
-            or consequence.kind is not _CONSEQUENCE_KIND[recovery.decision_kind]
-            or consequence.ordinal != decision.ordinal + 1
-            or consequence.occurred_at != decision.occurred_at
-            or consequence.evidence != BoundedEvidence()
-            or consequence.failure is not None
-        ):
-            return None
-        has_prior_recovery = True
-        prior_replacement = recovery.replacement_fence
-        index += 2
-    if has_prior_recovery and prior_replacement != expected_fence:
-        return None
-    return tuple(base_events)
 
 
 def _require_replay_command(
@@ -641,7 +456,7 @@ def _request(stores: Any, request_id: str) -> ExecutionRequestRecord:
         request = stores.execution.get_request(request_id)
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         return request
@@ -655,7 +470,7 @@ def _request_for_update(stores: Any, request_id: str) -> ExecutionRequestRecord:
         request = stores.execution.get_request_for_update(request_id)
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         return request
@@ -669,13 +484,34 @@ def _latest_run_for_update(stores: Any, request_id: str) -> ActivityRunRecord:
         run = stores.execution.get_latest_run_for_request_for_update(request_id)
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         return run
     if read_failure == "missing":
         raise RunLifecycleNotFound("activity run was not found")
     raise RunLifecycleConflict("activity run history is invalid")
+
+
+def _run_for_request_for_update(
+    stores: Any,
+    request_id: str,
+    run_id: str,
+) -> ActivityRunRecord:
+    try:
+        run = stores.execution.get_run_for_request_for_update(
+            request_id,
+            run_id,
+        )
+    except KeyError:
+        read_failure = "missing"
+    except (OperationsRecordError, ValueError):
+        read_failure = "invalid"
+    else:
+        return run
+    if read_failure == "missing":
+        raise RunLifecycleNotFound("recovery retained run was not found")
+    raise RunLifecycleConflict("recovery retained run history is invalid")
 
 
 def _events_for_run(
@@ -710,7 +546,7 @@ def _open_session(history: Any, session_id: str) -> Any:
         session = history.get_session_for_update(session_id)
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         read_failure = None
@@ -723,12 +559,28 @@ def _open_session(history: Any, session_id: str) -> Any:
     return session
 
 
+def _action_for_idempotency(
+    history: Any,
+    session_id: str,
+    idempotency_key: str,
+) -> OperationActionRecord | None:
+    try:
+        action = history.action_for_idempotency(session_id, idempotency_key)
+    except (OperationsRecordError, ValueError):
+        pass
+    else:
+        return action
+    raise RunLifecycleConflict("recovery action history is invalid")
+
+
 def _result(
     request: ExecutionRequestRecord,
     run: ActivityRunRecord,
     decision: ActivityEventRecord,
     consequence: ActivityEventRecord,
     action: OperationActionRecord,
+    *,
+    replayed: bool = False,
 ) -> ExecutionLeaseRecoveryResult:
     try:
         return ExecutionLeaseRecoveryResult(
@@ -737,6 +589,7 @@ def _result(
             decision,
             consequence,
             action,
+            replayed,
         )
     except OperationsRecordError:
         pass

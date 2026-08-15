@@ -265,6 +265,27 @@ class PostgresExecutionStore:
             raise KeyError("missing activity run")
         return _activity_run(row)
 
+    def get_run_for_request_for_update(
+        self,
+        request_id: str,
+        run_id: str,
+    ) -> ActivityRunRecord:
+        _recovery_request_id(request_id)
+        _require_run_id(run_id)
+        row = self._connection.execute(
+            """
+            SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
+                   created_at, started_at, settled_at, metadata
+            FROM cpk_activity_runs
+            WHERE request_id = %s AND run_id = %s
+            FOR UPDATE
+            """,
+            (request_id, run_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError("activity run was not found for request")
+        return _activity_run(row)
+
     def rotate_request_claim(
         self,
         request_id: str,

@@ -30,6 +30,7 @@ EXPECTED_COMMANDS = {
     "claim-run",
     "transition-run",
     "record-recovery-decision",
+    "retry-failed-activity-run",
     "advance-current-graph",
 }
 
@@ -75,11 +76,19 @@ class SessionCommandSerializationContractTests(unittest.TestCase):
         for item in self.contract["command_roles"]:
             if item["command"] == "start-operation-session":
                 continue
+            self.assertIn(
+                item["writer"],
+                writers,
+                f"missing declared session writer {item['writer']}",
+            )
             calls = writers[item["writer"]]
             with self.subTest(command=item["command"]):
                 identity = calls.index("lock_action_idempotency")
                 session = calls.index("get_session_for_update")
-                if item["command"] == "record-recovery-decision":
+                if item["command"] in {
+                    "record-recovery-decision",
+                    "retry-failed-activity-run",
+                }:
                     observation = calls.index(
                         "observe_request_lease_for_update"
                     )
@@ -89,7 +98,10 @@ class SessionCommandSerializationContractTests(unittest.TestCase):
                 ordinal = calls.index("next_action_ordinal")
                 self.assertLess(identity, session)
                 self.assertLess(session, ordinal)
-                if item["command"] == "record-recovery-decision":
+                if item["command"] in {
+                    "record-recovery-decision",
+                    "retry-failed-activity-run",
+                }:
                     self.assertLess(event_ordinal, ordinal)
 
     def test_rotation_projection_locks_workspace_before_rotation_truth(self) -> None:
