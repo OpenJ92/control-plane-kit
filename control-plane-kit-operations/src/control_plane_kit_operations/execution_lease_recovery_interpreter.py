@@ -73,7 +73,8 @@ class ExecutionLeaseRecoveryCommandService:
                 locator.identity.session_id,
                 command.idempotency_key.value,
             )
-            existing = history.action_for_idempotency(
+            existing = _action_for_idempotency(
+                history,
                 locator.identity.session_id,
                 command.idempotency_key.value,
             )
@@ -455,7 +456,7 @@ def _request(stores: Any, request_id: str) -> ExecutionRequestRecord:
         request = stores.execution.get_request(request_id)
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         return request
@@ -469,7 +470,7 @@ def _request_for_update(stores: Any, request_id: str) -> ExecutionRequestRecord:
         request = stores.execution.get_request_for_update(request_id)
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         return request
@@ -483,7 +484,7 @@ def _latest_run_for_update(stores: Any, request_id: str) -> ActivityRunRecord:
         run = stores.execution.get_latest_run_for_request_for_update(request_id)
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         return run
@@ -504,7 +505,7 @@ def _run_for_request_for_update(
         )
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         return run
@@ -545,7 +546,7 @@ def _open_session(history: Any, session_id: str) -> Any:
         session = history.get_session_for_update(session_id)
     except KeyError:
         read_failure = "missing"
-    except OperationsRecordError:
+    except (OperationsRecordError, ValueError):
         read_failure = "invalid"
     else:
         read_failure = None
@@ -556,6 +557,20 @@ def _open_session(history: Any, session_id: str) -> Any:
     if session.status is not OperationSessionStatus.OPEN:
         raise RunLifecycleConflict("operation session is not open")
     return session
+
+
+def _action_for_idempotency(
+    history: Any,
+    session_id: str,
+    idempotency_key: str,
+) -> OperationActionRecord | None:
+    try:
+        action = history.action_for_idempotency(session_id, idempotency_key)
+    except (OperationsRecordError, ValueError):
+        pass
+    else:
+        return action
+    raise RunLifecycleConflict("recovery action history is invalid")
 
 
 def _result(
