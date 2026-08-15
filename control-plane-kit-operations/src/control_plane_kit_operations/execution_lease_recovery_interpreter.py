@@ -19,6 +19,7 @@ from control_plane_kit_operations._execution_lease_recovery_support import (
     locked_recovery_approval,
     require_recovery_eligible_journal,
 )
+from control_plane_kit_operations.activity_run_retry import ActivityRunRetryResult
 from control_plane_kit_operations.execution_lease_recovery import (
     AbandonExpiredExecutionClaim,
     ExecutionLeaseRecoveryCommand,
@@ -523,51 +524,90 @@ def _require_replay_run_evolution(
     )
     if latest_run.run_id == retained_run.run_id:
         return
-    retained_events = _events_for_run(stores, retained_run.run_id)
-    latest_events = _events_for_run(stores, latest_run.run_id)
-    retry_events = tuple(
-        event
-        for event in retained_events
-        if event.kind is ActivityEventKind.RECOVERY_DECISION_RECORDED
-        and event.recovery is not None
-        and event.recovery.decision_kind
-        is RecoveryDecisionKind.RETRY_AS_NEW_RUN
+    actions = _actions_for_session(
+        stores,
+        request.identity.session_id,
     )
-    metadata = {
-        "attempt": latest_run.retry.attempt,
-        "prior_run_id": retained_run.run_id,
-    }
-    if (
-        len(retry_events) != 1
-        or not latest_events
-        or request.claim is None
-        or latest_run.admission.request_id
-        != request.identity.request_id
-        or latest_run.plan_id != request.identity.plan_id
-        or latest_run.retry.prior_run_id != retained_run.run_id
-        or latest_run.retry.attempt != retained_run.retry.attempt + 1
-        or latest_run.metadata.descriptor() != metadata
-    ):
-        raise RunLifecycleConflict("persisted recovery run evolution changed")
-    retry_event = retry_events[0]
-    opened_event = latest_events[0]
-    recovery = retry_event.recovery
-    assert recovery is not None
-    if (
-        recovery.retained_run_id.value != retained_run.run_id
-        or recovery.prior_fence != request.claim.fence
-        or recovery.replacement_fence != request.claim.fence
-        or opened_event.kind is not ActivityEventKind.RUN_OPENED
-        or opened_event.ordinal != 1
-        or opened_event.evidence.descriptor() != metadata
-        or opened_event.failure is not None
-        or not (
-            latest_run.created_at
-            == retry_event.occurred_at
-            == opened_event.occurred_at
+    current = retained_run
+    visited = {current.run_id}
+    for _ in range(len(actions)):
+        candidates = tuple(
+            action
+            for action in actions
+            if _retry_action_prior_run_id(action) == current.run_id
         )
-    ):
-        raise RunLifecycleConflict("persisted recovery run evolution changed")
+        if len(candidates) != 1:
+            break
+        action = candidates[0]
+        payload = action.payload
+        assert isinstance(payload, Mapping)
+        run_id = payload.get("run_id")
+        decision_event_id = payload.get("decision_event_id")
+        opened_event_id = payload.get("opened_event_id")
+        if (
+            type(run_id) is not str
+            or type(decision_event_id) is not str
+            or type(opened_event_id) is not str
+            or run_id in visited
+        ):
+            break
+        try:
+            successor = _run_for_request_for_update(
+                stores,
+                request.identity.request_id,
+                run_id,
+            )
+            decision_event = _event(stores, decision_event_id)
+            opened_event = _event(stores, opened_event_id)
+        except (RunLifecycleConflict, RunLifecycleNotFound):
+            successor = None
+        if successor is None:
+            break
+        try:
+            ActivityRunRetryResult(
+                request,
+                current,
+                successor,
+                decision_event,
+                opened_event,
+                action,
+                replayed=True,
+            )
+        except OperationsRecordError:
+            break
+        visited.add(successor.run_id)
+        current = successor
+        if current == latest_run:
+            return
+    raise RunLifecycleConflict("persisted recovery run evolution changed")
+
+
+def _retry_action_prior_run_id(action: OperationActionRecord) -> str | None:
+    if action.action_type is not LifecycleOperationKind.RECORD_RECOVERY_DECISION:
+        return None
+    payload = action.payload
+    if not isinstance(payload, Mapping):
+        return None
+    recovery = payload.get("recovery")
+    if not isinstance(recovery, Mapping):
+        return None
+    if recovery.get("decision") != RecoveryDecisionKind.RETRY_AS_NEW_RUN.value:
+        return None
+    retained_run_id = recovery.get("retained_run_id")
+    return retained_run_id if type(retained_run_id) is str else None
+
+
+def _actions_for_session(
+    stores: Any,
+    session_id: str,
+) -> tuple[OperationActionRecord, ...]:
+    try:
+        actions = stores.activity_history.actions_for_session(session_id)
+    except OperationsRecordError:
+        pass
+    else:
+        return actions
+    raise RunLifecycleConflict("persisted recovery run evolution changed")
 
 
 def _events_for_run(
