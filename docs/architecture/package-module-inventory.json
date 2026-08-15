@@ -9256,6 +9256,39 @@
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery.py"
     },
     {
+      "canonical_public_exports": [
+        "ExecutionLeaseRecoveryCommandService"
+      ],
+      "destination": "control_plane_kit_operations.execution_lease_recovery_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_operations.execution_lease_recovery",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.execution_lease_recovery_interpreter",
+      "motivation": "Interprets one admitted recovery command as one atomic claim, event, and action transaction with exact replay.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_execution_lease_recovery_eligibility_errors.py",
+        "tests/test_postgres_execution_lease_recovery_first_replay.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery_interpreter.py"
+    },
+    {
       "module": "control_plane_kit.operations",
       "source": "control_plane_kit/operations/__init__.py",
       "owner": "operation",

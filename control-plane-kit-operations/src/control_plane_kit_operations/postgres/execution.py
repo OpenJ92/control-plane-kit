@@ -244,6 +244,113 @@ class PostgresExecutionStore:
             expired=observed[1],
         )
 
+    def get_latest_run_for_request_for_update(
+        self,
+        request_id: str,
+    ) -> ActivityRunRecord:
+        _recovery_request_id(request_id)
+        row = self._connection.execute(
+            """
+            SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
+                   created_at, started_at, settled_at, metadata
+            FROM cpk_activity_runs
+            WHERE request_id = %s
+            ORDER BY attempt DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError("missing activity run")
+        return _activity_run(row)
+
+    def rotate_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_fence: ExecutionLeaseFence,
+        replacement_fence: ExecutionLeaseFence,
+        observed_at: str,
+        lease_duration_seconds: int,
+    ) -> ExecutionRequestRecord | None:
+        _recovery_request_id(request_id)
+        _recovery_fence_pair(expected_fence, replacement_fence)
+        encoded_observed_at = _recovery_observed_at(observed_at)
+        if (
+            type(lease_duration_seconds) is not int
+            or not 1 <= lease_duration_seconds <= 3600
+        ):
+            raise OperationsRecordError("recovery lease duration is invalid")
+        row = self._connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET claim_worker_id = %s,
+                claim_generation = %s,
+                claimed_at = %s,
+                lease_expires_at = %s + (%s * interval '1 second')
+            WHERE request_id = %s
+              AND status = 'claimed'
+              AND claim_worker_id = %s
+              AND claim_generation = %s
+            RETURNING request_id, workspace_id, session_id, plan_id, status,
+                      requested_by, requested_at, approval_request_id,
+                      approval_decision_id, idempotency_key, intent_fingerprint,
+                      claim_worker_id, claim_generation, claimed_at,
+                      lease_expires_at
+            """,
+            (
+                replacement_fence.worker_id,
+                replacement_fence.generation,
+                encoded_observed_at,
+                encoded_observed_at,
+                lease_duration_seconds,
+                request_id,
+                expected_fence.worker_id,
+                expected_fence.generation,
+            ),
+        ).fetchone()
+        return None if row is None else _execution_request(row)
+
+    def abandon_request_claim(
+        self,
+        request_id: str,
+        *,
+        expected_fence: ExecutionLeaseFence,
+        observed_at: str,
+    ) -> ExecutionRequestRecord | None:
+        _recovery_request_id(request_id)
+        if type(expected_fence) is not ExecutionLeaseFence:
+            raise OperationsRecordError("recovery claim fence is invalid")
+        encoded_observed_at = _recovery_observed_at(observed_at)
+        row = self._connection.execute(
+            """
+            UPDATE cpk_execution_requests
+            SET status = 'abandoned',
+                claim_worker_id = NULL,
+                claim_generation = NULL,
+                claimed_at = NULL,
+                lease_expires_at = NULL
+            WHERE request_id = %s
+              AND status = 'claimed'
+              AND claim_worker_id = %s
+              AND claim_generation = %s
+              AND lease_expires_at <= %s
+            RETURNING request_id, workspace_id, session_id, plan_id, status,
+                      requested_by, requested_at, approval_request_id,
+                      approval_decision_id, idempotency_key, intent_fingerprint,
+                      claim_worker_id, claim_generation, claimed_at,
+                      lease_expires_at
+            """,
+            (
+                request_id,
+                expected_fence.worker_id,
+                expected_fence.generation,
+                encoded_observed_at,
+            ),
+        ).fetchone()
+        return None if row is None else _execution_request(row)
+
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
         self._connection.execute(
             """
@@ -684,6 +791,39 @@ def _encode_optional_timestamp(value: str | None) -> object:
 
 def _decode_optional_timestamp(value: object) -> str | None:
     return None if value is None else decode_postgres_timestamp(value)
+
+
+def _recovery_request_id(value: object) -> None:
+    if (
+        type(value) is not str
+        or not value
+        or len(value) > 512
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise OperationsRecordError("recovery request identity is invalid")
+
+
+def _recovery_observed_at(value: object) -> object:
+    if type(value) is not str:
+        raise OperationsRecordError("recovery observation time is invalid")
+    try:
+        return encode_postgres_timestamp(value)
+    except ValueError:
+        pass
+    raise OperationsRecordError("recovery observation time is invalid")
+
+
+def _recovery_fence_pair(
+    expected: object,
+    replacement: object,
+) -> None:
+    if (
+        type(expected) is not ExecutionLeaseFence
+        or type(replacement) is not ExecutionLeaseFence
+        or expected.generation >= 2**63 - 1
+        or replacement.generation != expected.generation + 1
+    ):
+        raise OperationsRecordError("recovery claim fence is invalid")
 
 
 def _require_run_id(value: object) -> None:
