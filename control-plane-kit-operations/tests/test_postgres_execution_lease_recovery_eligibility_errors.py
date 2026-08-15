@@ -4,7 +4,9 @@ import dataclasses
 
 import psycopg
 
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
+    ActivityEventKind,
     RecoveryDecisionKind,
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
@@ -13,6 +15,10 @@ from control_plane_kit_operations.postgres import (
     PostgresActivityHistoryStore,
     PostgresExecutionStore,
     PostgresUnitOfWork,
+)
+from control_plane_kit_operations.records import (
+    ActivityEventRecord,
+    ExecutionLeaseRecoveryEvidence,
 )
 
 from tests.execution_lease_recovery_fixture import (
@@ -25,6 +31,129 @@ from tests.execution_lease_recovery_fixture import (
 class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
     PostgresExecutionLeaseRecoveryFixture
 ):
+    def test_recovery_suffix_is_anchored_to_current_fence_and_raw_ordinals(
+        self,
+    ) -> None:
+        def add_pair(
+            *,
+            prefix: str,
+            ordinal: int,
+            decision: RecoveryDecisionKind,
+            prior: ExecutionLeaseFence,
+            replacement: ExecutionLeaseFence | None,
+        ) -> None:
+            consequence = {
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM: (
+                    ActivityEventKind.REQUEST_CLAIM_RENEWED
+                ),
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM: (
+                    ActivityEventKind.REQUEST_CLAIM_RENEWED
+                ),
+                RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM: (
+                    ActivityEventKind.REQUEST_CLAIM_TAKEN_OVER
+                ),
+                RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM: (
+                    ActivityEventKind.REQUEST_CLAIM_ABANDONED
+                ),
+            }[decision]
+            occurred_at = f"2026-08-15T04:10:{ordinal:02d}Z"
+            recovery = ExecutionLeaseRecoveryEvidence(
+                decision,
+                RunId("run-a"),
+                prior,
+                replacement,
+            )
+            with self.unit_of_work() as unit_of_work:
+                unit_of_work.stores.execution.add_event(
+                    ActivityEventRecord(
+                        f"{prefix}-decision",
+                        "run-a",
+                        ordinal,
+                        ActivityEventKind.RECOVERY_DECISION_RECORDED,
+                        occurred_at,
+                        recovery=recovery,
+                    )
+                )
+                unit_of_work.stores.execution.add_event(
+                    ActivityEventRecord(
+                        f"{prefix}-consequence",
+                        "run-a",
+                        ordinal + 1,
+                        consequence,
+                        occurred_at,
+                    )
+                )
+                unit_of_work.commit()
+
+        cases = (
+            "disconnected-current-fence",
+            "abandonment-then-renewal",
+            "base-ordinal-gap",
+        )
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def fail_observe(*_args, **_kwargs):
+            raise AssertionError("invalid recovery suffix sampled database time")
+
+        PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+        try:
+            for case in cases:
+                with self.subTest(case=case):
+                    if case == "disconnected-current-fence":
+                        decision = RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+                        self.reset_truth(decision)
+                        add_pair(
+                            prefix="disconnected",
+                            ordinal=2,
+                            decision=decision,
+                            prior=ExecutionLeaseFence("worker-a", 5),
+                            replacement=ExecutionLeaseFence("worker-a", 6),
+                        )
+                    elif case == "abandonment-then-renewal":
+                        decision = RecoveryDecisionKind.RENEW_EXPIRED_CLAIM
+                        self.reset_truth(decision)
+                        add_pair(
+                            prefix="abandoned",
+                            ordinal=6,
+                            decision=RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM,
+                            prior=ExecutionLeaseFence("worker-a", 5),
+                            replacement=None,
+                        )
+                        add_pair(
+                            prefix="renewed-after-abandonment",
+                            ordinal=8,
+                            decision=decision,
+                            prior=ExecutionLeaseFence("worker-a", 6),
+                            replacement=ExecutionLeaseFence("worker-a", 7),
+                        )
+                    else:
+                        decision = RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+                        self.reset_truth(decision)
+                        self.connection.execute(
+                            "UPDATE cpk_activity_events SET ordinal = 2 "
+                            "WHERE event_id = 'seed-event-1'"
+                        )
+                    before = self.snapshot()
+                    service, sequence = self.service_with_sequence(
+                        "unused-a", "unused-b", "unused-c"
+                    )
+                    with self.assertRaises(RunLifecycleConflict) as captured:
+                        service.execute(
+                            self.command(decision, key=f"reject-{case}")
+                        )
+                    self.assertEqual(sequence.calls, [])
+                    safe_error(
+                        self,
+                        captured.exception,
+                        "disconnected-decision",
+                        "renewed-after-abandonment-decision",
+                    )
+                    self.assertEqual(self.snapshot(), before)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = (
+                original_observe
+            )
+
     def test_activity_journal_eligibility_is_exact(self) -> None:
         accepted = (
             (RecoveryDecisionKind.RENEW_ACTIVE_CLAIM, "active-empty"),
