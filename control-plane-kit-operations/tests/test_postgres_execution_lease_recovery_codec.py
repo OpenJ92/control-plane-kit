@@ -375,8 +375,9 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
             claim_generation = replacement.generation
         claimed_at = None if abandoned else "2026-08-15T03:59:10Z"
         lease_expires_at = None if abandoned else "2026-08-15T04:30:00Z"
-        run_status = "failed" if abandoned else "claimed"
-        started_at = "2026-08-15T03:59:40Z" if abandoned else None
+        active = decision in (None, RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
+        run_status = "claimed" if active else "failed"
+        started_at = None if active else "2026-08-15T03:59:40Z"
 
         self.connection.execute(
             """
