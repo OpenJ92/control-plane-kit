@@ -206,12 +206,27 @@ class PostgresActivityRunRetryFirstReplayTests(
                     "WHERE run_id = 'run-b'",
                     (status,),
                 )
-                replay = ActivityRunRetryCommandService(
-                    self.unit_of_work,
-                    id_factory=lambda: (_ for _ in ()).throw(
-                        AssertionError("evolved replay allocated identity")
-                    ),
-                ).execute(command)
+                original_observe = (
+                    PostgresExecutionStore.observe_request_lease_for_update
+                )
+
+                def fail_observe(*_args, **_kwargs):
+                    raise AssertionError("evolved replay sampled database time")
+
+                PostgresExecutionStore.observe_request_lease_for_update = (
+                    fail_observe
+                )
+                try:
+                    replay = ActivityRunRetryCommandService(
+                        self.unit_of_work,
+                        id_factory=lambda: (_ for _ in ()).throw(
+                            AssertionError("evolved replay allocated identity")
+                        ),
+                    ).execute(command)
+                finally:
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
+                    )
                 self.assertTrue(replay.replayed)
                 self.assertEqual(replay.run.status.value, status)
 

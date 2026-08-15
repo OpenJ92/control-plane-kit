@@ -50,6 +50,15 @@ class PostgresActivityRunRetryConcurrencyTests(
         self.require_retry_service()
         self.reset_retry_truth()
         barrier = threading.Barrier(2)
+        observations = 0
+        observation_lock = threading.Lock()
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def observe(store, request_id):
+            nonlocal observations
+            with observation_lock:
+                observations += 1
+            return original_observe(store, request_id)
 
         def execute(prefix: str):
             barrier.wait(timeout=5)
@@ -65,14 +74,21 @@ class PostgresActivityRunRetryConcurrencyTests(
                 ).__next__,
             ).execute(self.retry_command())
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            futures = tuple(executor.submit(execute, prefix) for prefix in ("b", "c"))
-            results = tuple(future.result(timeout=10) for future in futures)
+        PostgresExecutionStore.observe_request_lease_for_update = observe
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                futures = tuple(
+                    executor.submit(execute, prefix) for prefix in ("b", "c")
+                )
+                results = tuple(future.result(timeout=10) for future in futures)
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
 
         self.assertEqual(sum(not result.replayed for result in results), 1)
         self.assertEqual(sum(result.replayed for result in results), 1)
         self.assertEqual(results[0].run, results[1].run)
         self.assertEqual(results[0].action, results[1].action)
+        self.assertEqual(observations, 1)
         snapshot = self.snapshot()
         self.assertEqual(len(snapshot[3]), 2)
         self.assertEqual(
