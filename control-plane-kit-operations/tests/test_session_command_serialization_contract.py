@@ -29,6 +29,7 @@ EXPECTED_COMMANDS = {
     "admit-execution",
     "claim-run",
     "transition-run",
+    "record-recovery-decision",
     "advance-current-graph",
 }
 
@@ -173,6 +174,7 @@ def _call_name(node: ast.AST) -> str:
             "_desired_session",
             "_get_open_session_for_update",
             "_get_session_for_update",
+            "_open_session",
             "_session_for_update",
         }:
             return "get_session_for_update"
