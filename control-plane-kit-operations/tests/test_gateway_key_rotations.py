@@ -117,31 +117,10 @@ class GatewayKeyRotationTests(GatewayRotationOverlapFixture, unittest.TestCase):
         )
 
     def accept_fenced_overlap(self, prepared):
-        checkpoint = replace(
-            prepared.checkpoint,
-            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-            accepted_current_graph_id="graph-a",
-            accepted_current_projection_id=(
-                prepared.checkpoint.desired_realized_projection_id
-            ),
-            accepted_at="2026-08-02T03:00:00Z",
-        )
-        return self.service().advance_deployment(
-            AdvanceGatewayKeyRotationDeployment(
-                transition=AdvanceGatewayKeyRotation(
-                    rotation_id=self.rotation_id,
-                    transition_id="direct-overlap-accepted",
-                    expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                    expected_version=prepared.rotation.version,
-                    target_status=GatewayKeyRotationStatus.OVERLAP_READY,
-                    advanced_by="operator-a",
-                    advanced_at="2026-08-02T03:00:00Z",
-                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
-                    deployment=checkpoint,
-                ),
-                handoff=replace(prepared.handoff, checkpoint=checkpoint),
-            )
-        )
+        return self.accept_prepared_overlap(
+            prepared,
+            prefix="direct-overlap-execution",
+        ).rotation
 
     def test_request_is_idempotent_and_one_nonterminal_binding_wins(self) -> None:
         service = self.service()

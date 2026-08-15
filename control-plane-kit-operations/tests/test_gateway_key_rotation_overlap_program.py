@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import os
 import unittest
 
@@ -22,11 +21,7 @@ from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     PrepareGatewayKeyRotationOverlap,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
-    AdvanceGatewayKeyRotation,
-    AdvanceGatewayKeyRotationDeployment,
-    GatewayKeyRotationDeploymentCheckpoint,
     GatewayKeyRotationDeploymentStatus,
-    GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.lifecycle import (
@@ -249,32 +244,11 @@ class GatewayKeyRotationOverlapPreparationTests(
     def test_later_rotation_state_is_bounded_and_never_reprepares(self) -> None:
         prepared = self.program().prepare(self.command())
         assert prepared.checkpoint is not None
-        accepted = replace(
-            prepared.checkpoint,
-            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-            accepted_current_graph_id="graph-a",
-            accepted_current_projection_id=(
-                prepared.checkpoint.desired_realized_projection_id
-            ),
-            accepted_at="2026-08-02T03:00:00Z",
+        accepted_result = self.accept_prepared_overlap(
+            prepared,
+            prefix="later-overlap-execution",
         )
-        rotations = GatewayKeyRotationService(self.unit_of_work, clock=lambda: 3_000)
-        rotations.advance_deployment(
-            AdvanceGatewayKeyRotationDeployment(
-                transition=AdvanceGatewayKeyRotation(
-                    rotation_id=self.rotation_id,
-                    transition_id=f"{self.rotation_id}:overlap-accepted",
-                    expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                    expected_version=prepared.rotation.version,
-                    target_status=GatewayKeyRotationStatus.OVERLAP_READY,
-                    advanced_by="operator-a",
-                    advanced_at="2026-08-02T03:00:00Z",
-                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
-                    deployment=accepted,
-                ),
-                handoff=replace(prepared.handoff, checkpoint=accepted),
-            ),
-        )
+        accepted = accepted_result.checkpoint
         counts = self._child_counts()
 
         result = self.program(prefix="late").prepare(self.command())

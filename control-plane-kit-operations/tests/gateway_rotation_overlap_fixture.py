@@ -20,6 +20,11 @@ from control_plane_kit_operations.approvals import (
     DecideApproval,
     RequestGatewayKeyRotationApproval,
 )
+from control_plane_kit_operations.coordinator import (
+    ActivityExecutionOutcome,
+    ActivityRealizationContext,
+    ExecutionCoordinator,
+)
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKey,
     RegisteredDelegationSigningKeyStatus,
@@ -30,6 +35,14 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
     RequestGatewayKeyRotation,
+)
+from control_plane_kit_operations.gateway_key_rotation_overlap_execution import (
+    GatewayKeyRotationOverlapExecutionProgram,
+    ProgressGatewayKeyRotationOverlap,
+)
+from control_plane_kit_operations.lifecycle import (
+    ExecutionWorkerAuthority,
+    RunLifecycleCommandService,
 )
 from control_plane_kit_operations.records import (
     ApprovalDecisionKind,
@@ -66,6 +79,24 @@ class Sequence:
 
     def __call__(self) -> str:
         return next(self._values)
+
+
+class CountingIds:
+    def __init__(self, prefix: str) -> None:
+        self.prefix = prefix
+        self.count = 0
+
+    def __call__(self) -> str:
+        self.count += 1
+        return f"{self.prefix}-{self.count}"
+
+
+class SuccessfulAdapter:
+    def execute(
+        self,
+        _context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        return ActivityExecutionOutcome.succeeded()
 
 
 class SimulatedProcessLoss(BaseException):
@@ -304,6 +335,55 @@ class GatewayRotationOverlapFixture:
         self.approval_request_id = approval.request.request_id
         self.approval_decision_id = decision.decision.decision_id
         self.approval_review_digest = approval.request.subject.review_digest
+
+    def accept_prepared_overlap(
+        self,
+        prepared,
+        *,
+        prefix: str = "accept-overlap",
+        accepted_at: str = "2026-08-02T03:00:00Z",
+    ):
+        ids = CountingIds(prefix)
+        lifecycle = RunLifecycleCommandService(
+            self.unit_of_work,
+            clock=lambda: accepted_at,
+            id_factory=ids,
+        )
+        coordinator = ExecutionCoordinator(
+            self.unit_of_work,
+            lifecycle=lifecycle,
+            adapter=SuccessfulAdapter(),
+            clock=lambda: accepted_at,
+            id_factory=ids,
+        )
+        program = GatewayKeyRotationOverlapExecutionProgram(
+            self.unit_of_work,
+            coordinator=coordinator,
+            clock=lambda: accepted_at,
+            trusted_epoch_clock=lambda: 3_000,
+            id_factory=ids,
+        )
+        command = ProgressGatewayKeyRotationOverlap(
+            rotation_id=self.rotation_id,
+            expected_prepared_rotation_version=prepared.rotation.version,
+            actor_id="operator-a",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            worker_authority=ExecutionWorkerAuthority(
+                "worker-a",
+                (PolicyScope.EXECUTION_OPERATE,),
+            ),
+            fence=prepared.handoff.fence,
+        )
+        with self.unit_of_work() as unit_of_work:
+            plan = unit_of_work.stores.activity_history.get_plan(
+                prepared.checkpoint.plan_id
+            )
+        result = None
+        for _ in plan.plan.activities:
+            result = program.progress(command)
+        if result is None:
+            raise AssertionError("overlap deployment plan must contain activities")
+        return result
 
     @staticmethod
     def authored_graph() -> DeploymentGraph:

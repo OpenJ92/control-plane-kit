@@ -39,9 +39,6 @@ from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     PrepareGatewayKeyRotationOverlap,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
-    AdvanceGatewayKeyRotation,
-    AdvanceGatewayKeyRotationDeployment,
-    GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
@@ -250,10 +247,6 @@ class GatewayKeyRotationActivationTests(
         self.assertEqual(self._write_counts(), (2, 2))
 
     def _accept_overlap(self) -> None:
-        rotations = GatewayKeyRotationService(
-            self.unit_of_work,
-            clock=lambda: self.epoch,
-        )
         ids = iter(f"activation-overlap-{index}" for index in range(1, 30))
         timestamps = iter(
             f"2026-08-02T02:{minute:02d}:00Z" for minute in range(30)
@@ -284,40 +277,12 @@ class GatewayKeyRotationActivationTests(
                 lease_duration=ExecutionLeaseDuration(1800),
             )
         )
-        prepared_checkpoint = prepared.checkpoint
-        accepted_checkpoint = replace(
-            prepared_checkpoint,
-            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-            accepted_current_graph_id="graph-a",
-            accepted_current_projection_id=(
-                prepared_checkpoint.desired_realized_projection_id
-            ),
+        accepted = self.accept_prepared_overlap(
+            prepared,
+            prefix="activation-overlap-execution",
             accepted_at="2026-08-02T03:30:00Z",
         )
-        accepted = rotations.advance_deployment(
-            AdvanceGatewayKeyRotationDeployment(
-                transition=AdvanceGatewayKeyRotation(
-                    rotation_id=self.rotation_id,
-                    transition_id="overlap-accepted",
-                    expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                    expected_version=prepared.rotation.version,
-                    target_status=GatewayKeyRotationStatus.OVERLAP_READY,
-                    advanced_by="operator-a",
-                    advanced_at="2026-08-02T03:30:00Z",
-                    actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
-                    deployment=accepted_checkpoint,
-                ),
-                handoff=replace(prepared.handoff, checkpoint=accepted_checkpoint),
-            ),
-        )
-        with self.unit_of_work() as unit_of_work:
-            unit_of_work.stores.workspaces.set_current_graph(
-                "workspace-a",
-                "graph-a",
-                prepared_checkpoint.desired_realized_projection_id,
-            )
-            unit_of_work.commit()
-        self.overlap_version = accepted.version
+        self.overlap_version = accepted.rotation.version
 
     def _admit_key_references(self) -> None:
         service = SecretProviderRegistrationService(self.unit_of_work)
