@@ -21,6 +21,7 @@ from control_plane_kit_operations.lifecycle import (
     RunLifecycleDenied,
     RunLifecycleError,
     RunLifecycleIdempotencyConflict,
+    RunLifecycleNotFound,
 )
 from control_plane_kit_operations.postgres import (
     GatewayKeyRotationStore,
@@ -273,63 +274,123 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         self.assertEqual(self.snapshot(), snapshot)
 
     def test_replay_revalidates_complete_authoritative_history(self) -> None:
+        def drift_action_session() -> None:
+            self.connection.execute(
+                "INSERT INTO cpk_operation_sessions "
+                "(session_id, workspace_id, actor_id, title, status, created_at, "
+                "closed_at, metadata, idempotency_key, intent_fingerprint) "
+                "SELECT 'session-drift-canary', workspace_id, actor_id, title, "
+                "status, created_at, closed_at, metadata, NULL, NULL "
+                "FROM cpk_operation_sessions WHERE session_id = 'session-a'"
+            )
+            self.connection.execute(
+                "UPDATE cpk_operation_actions SET session_id = "
+                "'session-drift-canary' WHERE action_id = 'action-a'"
+            )
+
         mutations = {
-            "current-fence": lambda: self.connection.execute(
-                "UPDATE cpk_execution_requests SET claim_generation = 9 "
-                "WHERE request_id = 'request-a'"
+            "current-fence": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_execution_requests SET claim_generation = 9 "
+                    "WHERE request_id = 'request-a'"
+                ),
+                RunLifecycleConflict,
             ),
-            "newer-run": self.add_newer_failed_run,
-            "approval": lambda: self.connection.execute(
-                "UPDATE cpk_approval_requests SET review_digest = %s "
-                "WHERE request_id = 'approval-request-a'",
-                ("f" * 64,),
+            "newer-run": (self.add_newer_failed_run, RunLifecycleConflict),
+            "approval": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_approval_requests SET review_digest = %s "
+                    "WHERE request_id = 'approval-request-a'",
+                    ("f" * 64,),
+                ),
+                RunLifecycleConflict,
             ),
-            "approval-decision": lambda: self.connection.execute(
-                "UPDATE cpk_approval_decisions SET scope = "
-                "'plan:approve-destructive' "
-                "WHERE decision_id = 'approval-decision-a'"
+            "approval-decision": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_approval_decisions SET scope = "
+                    "'plan:approve-destructive' "
+                    "WHERE decision_id = 'approval-decision-a'"
+                ),
+                RunLifecycleConflict,
             ),
-            "missing-decision-event": lambda: self.connection.execute(
-                "DELETE FROM cpk_activity_events "
-                "WHERE event_id = 'decision-a'"
+            "missing-decision-event": (
+                lambda: self.connection.execute(
+                    "DELETE FROM cpk_activity_events "
+                    "WHERE event_id = 'decision-a'"
+                ),
+                RunLifecycleNotFound,
             ),
-            "missing-consequence-event": lambda: self.connection.execute(
-                "DELETE FROM cpk_activity_events "
-                "WHERE event_id = 'consequence-a'"
+            "missing-consequence-event": (
+                lambda: self.connection.execute(
+                    "DELETE FROM cpk_activity_events "
+                    "WHERE event_id = 'consequence-a'"
+                ),
+                RunLifecycleNotFound,
             ),
-            "decision-evidence": lambda: self.connection.execute(
-                "UPDATE cpk_activity_events SET payload = "
-                "jsonb_set(payload, '{recovery,retained_run_id}', '" + '"run-drift"' + "') "
-                "WHERE event_id = 'decision-a'"
+            "decision-evidence": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_activity_events SET payload = "
+                    "jsonb_set(payload, '{recovery,retained_run_id}', '"
+                    + '"run-drift"'
+                    + "') WHERE event_id = 'decision-a'"
+                ),
+                RunLifecycleConflict,
             ),
-            "decision-time": lambda: self.connection.execute(
-                "UPDATE cpk_activity_events SET occurred_at = "
-                "'2026-08-15T05:00:00Z' WHERE event_id = 'decision-a'"
+            "decision-time": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_activity_events SET occurred_at = "
+                    "'2026-08-15T05:00:00Z' WHERE event_id = 'decision-a'"
+                ),
+                RunLifecycleConflict,
             ),
-            "consequence-kind": lambda: self.connection.execute(
-                "UPDATE cpk_activity_events SET event_type = "
-                "'request_claim_abandoned' WHERE event_id = 'consequence-a'"
+            "consequence-kind": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_activity_events SET event_type = "
+                    "'request_claim_abandoned' WHERE event_id = 'consequence-a'"
+                ),
+                RunLifecycleConflict,
             ),
-            "action-type": lambda: self.connection.execute(
-                "UPDATE cpk_operation_actions SET action_type = "
-                "'record-operation-action' WHERE action_id = 'action-a'"
+            "action-type": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_operation_actions SET action_type = "
+                    "'record-operation-action' WHERE action_id = 'action-a'"
+                ),
+                RunLifecycleConflict,
             ),
-            "action-actor": lambda: self.connection.execute(
-                "UPDATE cpk_operation_actions SET actor_id = 'actor-drift-canary' "
-                "WHERE action_id = 'action-a'"
+            "action-actor": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_operation_actions SET actor_id = "
+                    "'actor-drift-canary' WHERE action_id = 'action-a'"
+                ),
+                RunLifecycleConflict,
             ),
-            "action-fingerprint": lambda: self.connection.execute(
-                "UPDATE cpk_operation_actions SET intent_fingerprint = %s "
-                "WHERE action_id = 'action-a'",
-                ("e" * 64,),
+            "action-session": (drift_action_session, RunLifecycleConflict),
+            "action-idempotency": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_operation_actions SET idempotency_key = "
+                    "'key-drift-canary' WHERE action_id = 'action-a'"
+                ),
+                RunLifecycleConflict,
             ),
-            "action-payload": lambda: self.connection.execute(
-                "UPDATE cpk_operation_actions SET payload = "
-                "jsonb_set(payload, '{retained_run_id}', '" + '"run-drift"' + "') "
-                "WHERE action_id = 'action-a'"
+            "action-fingerprint": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_operation_actions SET intent_fingerprint = %s "
+                    "WHERE action_id = 'action-a'",
+                    ("e" * 64,),
+                ),
+                RunLifecycleIdempotencyConflict,
+            ),
+            "action-payload": (
+                lambda: self.connection.execute(
+                    "UPDATE cpk_operation_actions SET payload = "
+                    "jsonb_set(payload, '{retained_run_id}', '"
+                    + '"run-drift"'
+                    + "') WHERE action_id = 'action-a'"
+                ),
+                RunLifecycleConflict,
             ),
         }
-        for name, mutate in mutations.items():
+        for name, (mutate, expected_error) in mutations.items():
             with self.subTest(name=name):
                 self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
                 command = self.command(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
@@ -338,19 +399,34 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 )
                 mutate()
                 before = self.snapshot()
-                with self.assertRaises((RunLifecycleConflict, RunLifecycleError)) as captured:
-                    ExecutionLeaseRecoveryCommandService(
-                        self.unit_of_work,
-                        id_factory=lambda: (_ for _ in ()).throw(
-                            AssertionError("invalid replay allocated identity")
-                        ),
-                    ).execute(command)
+                original_observe = (
+                    PostgresExecutionStore.observe_request_lease_for_update
+                )
+
+                def fail_observe(*_args, **_kwargs):
+                    raise AssertionError("replay mutation sampled database time")
+
+                PostgresExecutionStore.observe_request_lease_for_update = fail_observe
+                try:
+                    with self.assertRaises(expected_error) as captured:
+                        ExecutionLeaseRecoveryCommandService(
+                            self.unit_of_work,
+                            id_factory=lambda: (_ for _ in ()).throw(
+                                AssertionError("invalid replay allocated identity")
+                            ),
+                        ).execute(command)
+                finally:
+                    PostgresExecutionStore.observe_request_lease_for_update = (
+                        original_observe
+                    )
                 safe_error(
                     self,
                     captured.exception,
                     "actor-drift-canary",
                     "run-drift",
                     "f" * 32,
+                    "session-drift-canary",
+                    "key-drift-canary",
                 )
                 self.assertEqual(self.snapshot(), before)
 

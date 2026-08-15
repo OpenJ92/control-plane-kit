@@ -38,10 +38,29 @@ class _FenceSubclass(ExecutionLeaseFence):
     pass
 
 
-def _safe_error(test: unittest.TestCase, error: BaseException) -> None:
+def _safe_error(
+    test: unittest.TestCase,
+    error: BaseException,
+    *canaries: str,
+) -> None:
     test.assertIsNone(error.__cause__)
     test.assertIsNone(error.__context__)
-    test.assertLessEqual(len(f"{error!s} {error!r}"), 512)
+    rendered = f"{error!s} {error!r}"
+    test.assertLessEqual(len(rendered), 512)
+    for canary in canaries:
+        test.assertNotIn(canary, rendered)
+
+
+def _candidate_canaries(*values: object) -> tuple[str, ...]:
+    canaries: list[str] = []
+    for value in values:
+        if type(value) is _TextSubclass:
+            canaries.append(str(value))
+        elif type(value) is str and "canary" in value:
+            canaries.append("canary")
+        elif type(value) is str and len(value) > 512:
+            canaries.append(value[:32])
+    return tuple(canaries)
 
 
 class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
@@ -72,7 +91,11 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
                 with self.assertRaises(OperationsRecordError) as captured:
                     store.get_latest_run_for_request_for_update(request_id)
                 self.assertEqual(connection.calls, [])
-                _safe_error(self, captured.exception)
+                _safe_error(
+                    self,
+                    captured.exception,
+                    *_candidate_canaries(request_id),
+                )
 
     def test_invalid_rotate_inputs_execute_zero_sql(self) -> None:
         self.require_store_methods()
@@ -88,7 +111,7 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
             ("request-a", ExecutionLeaseFence("worker-a", 2**63 - 1), ExecutionLeaseFence("worker-a", 2**63 - 1), "2026-08-15T04:00:00Z", 600),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), object(), 600),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), _TextSubclass("2026-08-15T04:00:00Z"), 600),
-            ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15 04:00:00Z", 600),
+            ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "timestamp-canary", 600),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", True),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 0),
             ("request-a", ExecutionLeaseFence("worker-a", 7), ExecutionLeaseFence("worker-a", 8), "2026-08-15T04:00:00Z", 3601),
@@ -112,7 +135,11 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
                         lease_duration_seconds=duration,
                     )
                 self.assertEqual(connection.calls, [])
-                _safe_error(self, captured.exception)
+                _safe_error(
+                    self,
+                    captured.exception,
+                    *_candidate_canaries(request_id, observed_at),
+                )
 
     def test_invalid_abandon_inputs_execute_zero_sql(self) -> None:
         self.require_store_methods()
@@ -125,7 +152,7 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
             ("request-a", _FenceSubclass("worker-a", 7), "2026-08-15T04:00:00Z"),
             ("request-a", ExecutionLeaseFence("worker-a", 7), object()),
             ("request-a", ExecutionLeaseFence("worker-a", 7), _TextSubclass("2026-08-15T04:00:00Z")),
-            ("request-a", ExecutionLeaseFence("worker-a", 7), "2026-08-15 04:00:00Z"),
+            ("request-a", ExecutionLeaseFence("worker-a", 7), "timestamp-canary"),
         )
         for request_id, expected, observed_at in cases:
             with self.subTest(
@@ -142,7 +169,11 @@ class ExecutionLeaseRecoveryStoreContractTests(unittest.TestCase):
                         observed_at=observed_at,
                     )
                 self.assertEqual(connection.calls, [])
-                _safe_error(self, captured.exception)
+                _safe_error(
+                    self,
+                    captured.exception,
+                    *_candidate_canaries(request_id, observed_at),
+                )
 
     def test_exact_duration_boundaries_reach_sql(self) -> None:
         self.require_store_methods()

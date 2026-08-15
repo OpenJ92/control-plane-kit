@@ -169,17 +169,102 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
         safe_error(self, captured.exception)
         self.assertEqual(self.snapshot(), before)
 
+    def test_expiry_equality_is_expired_for_all_four_decisions(self) -> None:
+        self.require_service()
+        decisions = (
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+            RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+            RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
+            RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM,
+        )
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def observe_at_expiry(store, request_id):
+            observed = original_observe(store, request_id)
+            return dataclasses.replace(
+                observed,
+                observed_at=observed.request.claim.lease_expires_at,
+                expired=True,
+            )
+
+        PostgresExecutionStore.observe_request_lease_for_update = observe_at_expiry
+        try:
+            for decision in decisions:
+                with self.subTest(decision=decision):
+                    self.reset_truth(decision)
+                    before = self.snapshot()
+                    service, sequence = self.service_with_sequence(
+                        "decision-a", "consequence-a", "action-a"
+                    )
+                    if decision is RecoveryDecisionKind.RENEW_ACTIVE_CLAIM:
+                        with self.assertRaises(RunLifecycleConflict) as captured:
+                            service.execute(self.command(decision))
+                        safe_error(self, captured.exception)
+                        self.assertEqual(sequence.calls, [])
+                        self.assertEqual(self.snapshot(), before)
+                    else:
+                        result = service.execute(self.command(decision))
+                        self.assertFalse(result.replayed)
+                        self.assertEqual(
+                            sequence.calls,
+                            ["decision-a", "consequence-a", "action-a"],
+                        )
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
+
     def test_nonexpiry_rejections_do_not_sample_database_clock(self) -> None:
         self.require_service()
         cases = (
             (
                 "wrong-run-status",
-                "UPDATE cpk_activity_runs SET status = 'running' "
-                "WHERE run_id = 'run-a'",
+                lambda: self.connection.execute(
+                    "UPDATE cpk_activity_runs SET status = 'running' "
+                    "WHERE run_id = 'run-a'"
+                ),
                 {},
             ),
-            ("wrong-fence", None, {"expected_fence": ExecutionLeaseFence("worker-z", 7)}),
-            ("wrong-generation", None, {"expected_fence": ExecutionLeaseFence("worker-a", 6)}),
+            (
+                "wrong-request-status",
+                lambda: self.connection.execute(
+                    "UPDATE cpk_execution_requests SET status = 'queued', "
+                    "claim_worker_id = NULL, claim_generation = NULL, "
+                    "claimed_at = NULL, lease_expires_at = NULL "
+                    "WHERE request_id = 'request-a'"
+                ),
+                {},
+            ),
+            (
+                "wrong-fence",
+                lambda: None,
+                {"expected_fence": ExecutionLeaseFence("worker-z", 7)},
+            ),
+            (
+                "wrong-generation",
+                lambda: None,
+                {"expected_fence": ExecutionLeaseFence("worker-a", 6)},
+            ),
+            (
+                "generation-exhausted",
+                lambda: self.connection.execute(
+                    "UPDATE cpk_execution_requests SET claim_generation = "
+                    "9223372036854775807 WHERE request_id = 'request-a'"
+                ),
+                {
+                    "expected_fence": ExecutionLeaseFence(
+                        "worker-a", 9223372036854775807
+                    )
+                },
+            ),
+            ("latest-run", self.add_newer_failed_run, {}),
+            (
+                "approval-drift",
+                lambda: self.connection.execute(
+                    "UPDATE cpk_approval_requests SET review_digest = %s "
+                    "WHERE request_id = 'approval-request-a'",
+                    ("f" * 64,),
+                ),
+                {},
+            ),
         )
         original_observe = PostgresExecutionStore.observe_request_lease_for_update
 
@@ -188,11 +273,10 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
 
         PostgresExecutionStore.observe_request_lease_for_update = fail_observe
         try:
-            for name, mutation, command_changes in cases:
+            for name, setup, command_changes in cases:
                 with self.subTest(name=name):
                     self.reset_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
-                    if mutation is not None:
-                        self.connection.execute(mutation)
+                    setup()
                     before = self.snapshot()
                     service, sequence = self.service_with_sequence(
                         "unused-a", "unused-b", "unused-c"
@@ -228,7 +312,10 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
                         service.execute(self.command(decision))
                 finally:
                     setattr(PostgresExecutionStore, method_name, original)
-                self.assertEqual(sequence.calls, [])
+                self.assertEqual(
+                    sequence.calls,
+                    ["unused-a", "unused-b", "unused-c"],
+                )
                 safe_error(self, captured.exception)
                 self.assertEqual(self.snapshot(), before)
 
@@ -280,6 +367,39 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
                     PostgresActivityHistoryStore.add_action = original_action
                 self.assertIs(captured.exception, injected)
                 self.assertEqual(self.snapshot(), before)
+
+    def test_identity_factory_error_escapes_after_observation_before_write(self) -> None:
+        self.require_service()
+        self.seed_truth(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+        before = self.snapshot()
+        observed = False
+        original_observe = PostgresExecutionStore.observe_request_lease_for_update
+
+        def record_observation(store, request_id):
+            nonlocal observed
+            result = original_observe(store, request_id)
+            observed = True
+            return result
+
+        injected = RuntimeError("identity-factory-canary")
+
+        def fail_identity():
+            self.assertTrue(observed, "identity allocated before lease observation")
+            raise injected
+
+        PostgresExecutionStore.observe_request_lease_for_update = record_observation
+        try:
+            with self.assertRaises(RuntimeError) as captured:
+                ExecutionLeaseRecoveryCommandService(
+                    self.unit_of_work,
+                    id_factory=fail_identity,
+                ).execute(
+                    self.command(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
+                )
+        finally:
+            PostgresExecutionStore.observe_request_lease_for_update = original_observe
+        self.assertIs(captured.exception, injected)
+        self.assertEqual(self.snapshot(), before)
 
     def test_factory_and_commit_errors_escape_and_rollback(self) -> None:
         self.require_service()
