@@ -13,6 +13,7 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     RecoveryDecisionKind,
 )
+import control_plane_kit_operations.postgres.execution as execution_module
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.postgres import (
     PostgresExecutionStore,
@@ -165,6 +166,45 @@ class PostgresExecutionLeaseRecoveryCodecTests(unittest.TestCase):
                 restarted = PostgresExecutionStore(self.connection)
                 self.assertEqual(restarted.get_event(event.event_id), event)
                 self.assertEqual(restarted.events_for_run("run-a"), (event,))
+
+    def test_internal_constructor_failures_escape_without_translation(self) -> None:
+        decision = RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+        self.seed_run(decision)
+        event = self.event("event-internal-failure", decision)
+        self.insert_raw_event(
+            event.event_id,
+            event.kind.value,
+            {
+                "activity_id": None,
+                "evidence": {},
+                "failure": None,
+                "recovery": event.recovery.descriptor(),
+            },
+        )
+        self.connection.close()
+        self.connection = self.connect()
+
+        original_constructor = execution_module.ExecutionLeaseRecoveryEvidence
+        failures = (
+            TypeError("internal-type-canary"),
+            KeyError("internal-key-canary"),
+        )
+        for expected in failures:
+            with self.subTest(exception=type(expected).__name__):
+                def fail_constructor(*args, _error=expected, **kwargs):
+                    raise _error
+
+                execution_module.ExecutionLeaseRecoveryEvidence = fail_constructor
+                try:
+                    with self.assertRaises(type(expected)) as captured:
+                        PostgresExecutionStore(self.connection).get_event(
+                            event.event_id
+                        )
+                    self.assertIs(captured.exception, expected)
+                finally:
+                    execution_module.ExecutionLeaseRecoveryEvidence = (
+                        original_constructor
+                    )
 
     def test_schema_admissible_malformed_objects_fail_bounded_and_candidate_free(
         self,
