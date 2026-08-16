@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
+from dataclasses import replace
 import unittest
 from unittest import mock
 
@@ -52,6 +54,21 @@ class _CommitFailureConnection:
 
     def commit(self) -> None:
         raise self._error
+
+
+class _ClockRejectingConnection:
+    def __init__(self, connection) -> None:
+        self._connection = connection
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+    def execute(self, query, params=None):
+        if "clock_timestamp()" in str(query):
+            raise AssertionError("claimless request sampled database time")
+        if params is None:
+            return self._connection.execute(query)
+        return self._connection.execute(query, params)
 
 
 class PostgresEffectAttemptStartEligibilityRollbackTests(
@@ -163,6 +180,32 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 self.assertEqual(ids.calls, [])
                 self.assertEqual(self.attempt_snapshot(), before)
 
+    def test_claimless_request_rejects_before_clock_ids_or_writes(self) -> None:
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET status='queued', "
+            "claim_worker_id=NULL, claim_generation=NULL, claimed_at=NULL, "
+            "lease_expires_at=NULL WHERE request_id='request-a'"
+        )
+        before = self.attempt_snapshot()
+        ids = Sequence("claimless-request-must-not-allocate")
+
+        def unit_of_work():
+            return PostgresUnitOfWork(
+                lambda: _ClockRejectingConnection(
+                    psycopg.connect(self.database_url)
+                )
+            )
+
+        with self.assertRaises(EffectAttemptStartDenied) as caught:
+            EffectAttemptStartService(
+                unit_of_work,
+                id_factory=ids,
+            ).execute(self.start_command())
+        self.assert_safe_error(caught.exception)
+        self.assertEqual(str(caught.exception), AUTHORITY_ERROR)
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.attempt_snapshot(), before)
+
     def test_existing_attempt_rejects_replaced_authority_without_clock(self) -> None:
         self.persisted_started()
         self.replace_claim()
@@ -196,6 +239,36 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 self.start_service_with_id_factory(ids).execute(command)
         self.assert_safe_error(caught.exception, "worker-a", "worker-b")
         self.assertEqual(str(caught.exception), REPLAY_ERROR)
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.attempt_snapshot(), before)
+
+    def test_lease_observation_must_match_the_locked_request(self) -> None:
+        original = PostgresExecutionStore.observe_request_lease_for_update
+        before = self.attempt_snapshot()
+        ids = Sequence("changed-observation-must-not-allocate")
+
+        def changed_observation(store, request_id):
+            observation = original(store, request_id)
+            changed_request = replace(
+                observation.request,
+                requested_by="changed-observation-request-canary",
+            )
+            return replace(observation, request=changed_request)
+
+        with mock.patch.object(
+            PostgresExecutionStore,
+            "observe_request_lease_for_update",
+            changed_observation,
+        ):
+            with self.assertRaises(EffectAttemptStartConflict) as caught:
+                self.start_service_with_id_factory(ids).execute(
+                    self.start_command()
+                )
+        self.assert_safe_error(
+            caught.exception,
+            "changed-observation-request-canary",
+        )
+        self.assertEqual(str(caught.exception), INVALID_TRUTH_ERROR)
         self.assertEqual(ids.calls, [])
         self.assertEqual(self.attempt_snapshot(), before)
 
@@ -274,6 +347,11 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
             (PostgresActivityHistoryStore, "get_plan", EffectAttemptStartConflict),
             (PostgresExecutionStore, "events_for_run", EffectAttemptStartConflict),
             (EffectAttemptStore, "get_for_update", EffectAttemptStartConflict),
+            (
+                PostgresExecutionStore,
+                "observe_request_lease_for_update",
+                EffectAttemptStartConflict,
+            ),
         )
         for owner, method, category in boundaries:
             for error_type in (ValueError, OperationsRecordError):
@@ -283,10 +361,15 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                     canary = f"{method}-{error_type.__name__}-canary"
                     error = error_type(canary)
                     ids = Sequence("decoder-rejection-must-not-allocate")
-                    with mock.patch.object(owner, method, side_effect=error):
-                        with self.reject_database_observation(
+                    clock_guard = (
+                        nullcontext()
+                        if method == "observe_request_lease_for_update"
+                        else self.reject_database_observation(
                             "decoder rejection sampled database time"
-                        ):
+                        )
+                    )
+                    with mock.patch.object(owner, method, side_effect=error):
+                        with clock_guard:
                             with self.assertRaises(category) as caught:
                                 self.start_service_with_id_factory(ids).execute(
                                     self.start_command()
@@ -445,6 +528,52 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
         self.assert_safe_error(caught.exception)
         self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
         self.assertEqual(self.attempt_snapshot(), before)
+
+    def test_changed_store_returns_are_conflicts_and_roll_back(self) -> None:
+        for target in ("event", "attempt"):
+            with self.subTest(target=target):
+                self.reset_start_truth()
+                before = self.attempt_snapshot()
+                ids = Sequence(f"changed-{target}-return-event")
+                original_event = PostgresExecutionStore.add_event
+                original_attempt = EffectAttemptStore.insert_absent
+
+                def changed_event(store, event):
+                    original_event(store, event)
+                    return replace(
+                        event,
+                        event_id="changed-event-return-canary",
+                    )
+
+                def changed_attempt(store, record):
+                    original_attempt(store, record)
+                    return self.record(
+                        "started",
+                        run_id=record.state.identity.run_id.value,
+                        activity_id=record.state.identity.activity_id,
+                        event_prefix="changed-attempt-return-canary",
+                        original_ordinal=record.original_start_event.ordinal,
+                        original_time=record.original_start_event.occurred_at,
+                    )
+
+                owner = (
+                    PostgresExecutionStore
+                    if target == "event"
+                    else EffectAttemptStore
+                )
+                method = "add_event" if target == "event" else "insert_absent"
+                replacement = (
+                    changed_event if target == "event" else changed_attempt
+                )
+                with mock.patch.object(owner, method, replacement):
+                    with self.assertRaises(EffectAttemptStartConflict) as caught:
+                        self.start_service_with_id_factory(ids).execute(
+                            self.start_command()
+                        )
+                self.assert_safe_error(caught.exception, "return-canary")
+                self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
+                self.assertEqual(ids.calls, [f"changed-{target}-return-event"])
+                self.assertEqual(self.attempt_snapshot(), before)
 
 
 if __name__ == "__main__":
