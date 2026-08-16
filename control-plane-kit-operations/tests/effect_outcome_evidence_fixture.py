@@ -5,6 +5,8 @@ import hashlib
 import importlib
 import json
 
+import rfc8785
+
 from control_plane_kit_core import (
     FailureCategory,
     RuntimeEffectFailure,
@@ -35,6 +37,8 @@ from control_plane_kit_core.operations import (
     EffectAttemptState,
     EffectAttemptStatus,
     EffectAttemptTransitionKind,
+    EffectRecoveryDecision,
+    EffectRecoveryResolution,
     RunId,
 )
 from control_plane_kit_operations.effect_attempts import (
@@ -57,6 +61,10 @@ from effect_attempt_record_fixture import EffectAttemptRecordFixture
 MODULE_NAME = "control_plane_kit_operations.effect_outcome_evidence"
 REQUEST_FINGERPRINT = "a" * 64
 WORKSPACE_ID = "workspace-a"
+OUTCOME_MAX_BYTES = 8_192
+ENDPOINT_TEXT_MAX = 512
+BRIDGE_EVIDENCE_MAX_BYTES = 4_096
+_UNSET = object()
 
 
 def _load_language(import_module=importlib.import_module):
@@ -223,6 +231,113 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
             context=EndpointContext.RUNTIME_PRIVATE,
             address=LiteralEndpointMaterial(f"http://service-{suffix}:8080"),
         )
+
+    def endpoint_for_bridge_size(self, target: int) -> RuntimeEndpointObservation:
+        marker = "\U0001f4a1"
+        for marker_count in range(ENDPOINT_TEXT_MAX + 1):
+            base = marker * marker_count
+            endpoint = self.endpoint("bridge")
+            raw = endpoint.descriptor()
+            raw["subject_id"] = base
+            size = len(
+                json.dumps(
+                    {"runtime_endpoint": raw},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
+            remaining = target - size
+            if 0 <= remaining <= ENDPOINT_TEXT_MAX - marker_count:
+                candidate = base + "s" * remaining
+                raw["subject_id"] = candidate
+                measured = len(
+                    json.dumps(
+                        {"runtime_endpoint": raw},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
+                if measured == target:
+                    if target <= BRIDGE_EVIDENCE_MAX_BYTES:
+                        return RuntimeEndpointObservation(
+                            candidate,
+                            endpoint.socket_name,
+                            endpoint.graph_id,
+                            endpoint.protocol,
+                            endpoint.context,
+                            endpoint.address,
+                        )
+                    return forge_exact(
+                        RuntimeEndpointObservation,
+                        subject_id=candidate,
+                        socket_name=endpoint.socket_name,
+                        graph_id=endpoint.graph_id,
+                        protocol=endpoint.protocol,
+                        context=endpoint.context,
+                        address=endpoint.address,
+                    )
+        raise AssertionError(f"cannot construct {target}-byte endpoint evidence")
+
+    def live_result_for_size(self, target: int) -> RuntimeEffectResult:
+        observations = (self.endpoint("z"), self.endpoint("a"))
+        for full_fields in range(32):
+            evidence = {
+                f"padding-{index:02d}": "x" * ENDPOINT_TEXT_MAX
+                for index in range(full_fields)
+            }
+            evidence["tail"] = ""
+            seed = RuntimeEffectResult.succeeded(
+                "event-start",
+                evidence=evidence,
+                observations=observations,
+            )
+            remaining = target - len(rfc8785.dumps(seed.descriptor()))
+            if 0 <= remaining <= ENDPOINT_TEXT_MAX:
+                evidence["tail"] = "x" * remaining
+                candidate = RuntimeEffectResult.succeeded(
+                    "event-start",
+                    evidence=evidence,
+                    observations=observations,
+                )
+                if len(rfc8785.dumps(candidate.descriptor())) == target:
+                    return candidate
+        raise AssertionError(f"cannot construct {target}-byte live result")
+
+    def observed_result_for_size(self, target: int):
+        def evidence(marker: str, size: int) -> RuntimeEffectObservationEvidence:
+            values = {}
+            remaining = size
+            index = 0
+            while remaining:
+                chunk = min(remaining, 500)
+                values[f"padding-{index}"] = marker * chunk
+                remaining -= chunk
+                index += 1
+            return RuntimeEffectObservationEvidence(values)
+
+        def value(message: str, padding_size: int):
+            return RuntimeEffectObservedFailed(
+                "event-start",
+                REQUEST_FINGERPRINT,
+                evidence("x", padding_size),
+                RuntimeEffectObservationFailure(
+                    "observer.failed",
+                    message,
+                    evidence("y", 3_500),
+                ),
+                (self.endpoint("a"), self.endpoint("b")),
+            )
+
+        padding_size = 1
+        message = "msgmax7"
+        for _ in range(4):
+            padding_size += target - len(
+                rfc8785.dumps(value(message, padding_size).descriptor())
+            )
+        candidate = value(message, padding_size)
+        if len(rfc8785.dumps(candidate.descriptor())) != target:
+            raise AssertionError(f"cannot construct {target}-byte observed result")
+        return candidate
 
     def raw_rows(self) -> tuple[tuple[str, str, object, EffectAttemptStatus, EffectAttemptTransitionKind, str | None], ...]:
         endpoint_a = self.endpoint("a")
@@ -427,6 +542,106 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
                     )
                 )
         return tuple(stories)
+
+    def direct_attempt_for(
+        self,
+        story: OutcomeStory,
+        *,
+        identity: EffectAttemptIdentity | None = None,
+        request_fingerprint: str | None = None,
+        status: EffectAttemptStatus | None = None,
+        outcome_fingerprint: str | None = None,
+        original_event_id: str = "event-start",
+        latest_event_id: str | None = None,
+        original_ordinal: int = 3,
+        latest_ordinal: int = 7,
+        original_kind: ActivityEventKind | None = None,
+        latest_kind: ActivityEventKind | None = None,
+        failure: FailureEvidence | None | object = _UNSET,
+    ) -> EffectAttemptRecord:
+        identity = story.attempt.state.identity if identity is None else identity
+        request_fingerprint = (
+            story.attempt.state.request_fingerprint
+            if request_fingerprint is None
+            else request_fingerprint
+        )
+        status = story.status if status is None else status
+        outcome_fingerprint = (
+            story.fingerprint if outcome_fingerprint is None else outcome_fingerprint
+        )
+        state = EffectAttemptState(
+            identity=identity,
+            request_fingerprint=request_fingerprint,
+            fence=story.attempt.state.fence,
+            status=status,
+            outcome_fingerprint=outcome_fingerprint,
+        )
+        compensation = story.compensation
+        original = self.event(
+            self.started_state(state),
+            original_kind
+            or self.event_kind("started", compensation=compensation),
+            event_id=original_event_id,
+            ordinal=original_ordinal,
+            occurred_at="2030-01-01T00:00:01Z",
+        )
+        if failure is _UNSET:
+            row = (
+                story.failure_row
+                if status is story.status
+                else {
+                    EffectAttemptStatus.SUCCEEDED: None,
+                    EffectAttemptStatus.FAILED: "execution-failed",
+                    EffectAttemptStatus.UNSUPPORTED: "execution-unsupported",
+                    EffectAttemptStatus.UNCERTAIN: "execution-uncertain",
+                }[status]
+            )
+            failure = self.failure_for(row, outcome_fingerprint)
+        latest = self.event(
+            state,
+            latest_kind or self.event_kind(status.value, compensation=compensation),
+            event_id=latest_event_id or f"event-{story.name}",
+            ordinal=latest_ordinal,
+            occurred_at="2030-01-01T00:00:02Z",
+        )
+        latest = replace(latest, failure=failure)
+        return EffectAttemptRecord(state, original, latest)
+
+    def recovery_attempt_for(self, story: OutcomeStory) -> EffectAttemptRecord:
+        decision = EffectRecoveryDecision(
+            "decision-a",
+            story.attempt.state.identity,
+            EffectRecoveryResolution.FAILED,
+            "c" * 64,
+            story.fingerprint,
+        )
+        state = EffectAttemptState(
+            identity=story.attempt.state.identity,
+            request_fingerprint=story.attempt.state.request_fingerprint,
+            fence=story.attempt.state.fence,
+            status=EffectAttemptStatus.FAILED,
+            outcome_fingerprint=story.fingerprint,
+            recovery_decision=decision,
+        )
+        original = self.event(
+            self.started_state(state),
+            self.event_kind("started", compensation=story.compensation),
+            event_id="event-start",
+            ordinal=3,
+            occurred_at="2030-01-01T00:00:01Z",
+        )
+        latest = self.event(
+            state,
+            self.event_kind("recovered-failed", compensation=story.compensation),
+            event_id="event-recovered-failed",
+            ordinal=7,
+            occurred_at="2030-01-01T00:00:02Z",
+        )
+        latest = replace(
+            latest,
+            failure=self.failure_for("execution-failed", story.fingerprint),
+        )
+        return EffectAttemptRecord(state, original, latest)
 
     def outcome_for(self, story: OutcomeStory):
         self.require_outcome_language()

@@ -11,12 +11,19 @@ from control_plane_kit_core.operations import (
     EffectAttemptStatus,
     RunId,
 )
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
+)
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     BoundedEvidence,
     FailureEvidence,
+    ObservationFreshness,
     ObservationRecord,
+    ObservationStatus,
     OperationsRecordError,
 )
 
@@ -57,6 +64,55 @@ class EffectOutcomeRecordPredecessorTest(
                         for record in records
                     )
                 )
+
+    def test_alternate_snapshots_and_row_mutations_are_predecessor_valid(self) -> None:
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == "execution-succeeded" and not item.compensation
+        )
+        candidates = (
+            self.direct_attempt_for(
+                story,
+                identity=EffectAttemptIdentity(RunId("run-b"), "activity-b", 1),
+            ),
+            self.direct_attempt_for(
+                story,
+                original_event_id="alternate-start-event",
+            ),
+            self.direct_attempt_for(story, request_fingerprint="b" * 64),
+            self.direct_attempt_for(story, status=EffectAttemptStatus.FAILED),
+            self.direct_attempt_for(story, outcome_fingerprint="c" * 64),
+            self.recovery_attempt_for(story),
+        )
+        self.assertTrue(all(type(value) is EffectAttemptRecord for value in candidates))
+
+        rows = self.expected_observation_records(story)
+        valid_mutations = (
+            replace(rows[0], observation_id="observation-foreign"),
+            replace(rows[0], workspace_id="workspace-foreign"),
+            replace(rows[0], observed_at="2040-01-01T00:00:00Z"),
+            replace(rows[0], subject_id="subject-foreign"),
+            replace(rows[0], graph_id="graph-foreign"),
+            replace(
+                rows[0],
+                evidence=BoundedEvidence.from_mapping(
+                    {"runtime_endpoint": {"foreign": True}}
+                ),
+            ),
+            replace(
+                rows[0],
+                probe_kind=ProbeKind.APPLICATION_HEALTH,
+                probe_outcome=ProbeOutcome.HEALTHY,
+            ),
+            replace(rows[0], probe_outcome=ProbeOutcome.REACHABLE),
+            replace(rows[0], endpoint_context=EndpointContext.PUBLIC),
+            replace(rows[0], status=ObservationStatus.HEALTHY),
+            replace(rows[0], freshness=ObservationFreshness.STALE),
+        )
+        self.assertTrue(
+            all(type(value) is ObservationRecord for value in valid_mutations)
+        )
 
 
 class EffectOutcomeRecordContractTest(
@@ -113,66 +169,105 @@ class EffectOutcomeRecordContractTest(
             item for item in self.stories() if item.name == "execution-succeeded"
         )
         outcome = self.outcome_for(story)
-        base = story.attempt
+        rows = self.expected_observation_records(story)
         other_identity = EffectAttemptIdentity(RunId("run-b"), "activity-b", 1)
+        cases = (
+            self.direct_attempt_for(story, identity=other_identity),
+            self.direct_attempt_for(
+                story,
+                original_event_id="foreign-start-event-canary",
+            ),
+            self.direct_attempt_for(
+                story,
+                request_fingerprint="b" * 64,
+            ),
+            self.direct_attempt_for(
+                story,
+                status=EffectAttemptStatus.FAILED,
+            ),
+            self.direct_attempt_for(
+                story,
+                outcome_fingerprint="c" * 64,
+            ),
+            self.recovery_attempt_for(story),
+        )
+        for attempt in cases:
+            with self.subTest(attempt=attempt):
+                self.assertIs(type(attempt), EffectAttemptRecord)
+                self.assert_fixed_error(
+                    lambda attempt=attempt: EffectAttemptOutcomeRecord(
+                        WORKSPACE_ID,
+                        outcome,
+                        attempt,
+                        rows,
+                    ),
+                    "effect outcome record is invalid",
+                    "foreign-start-event-canary",
+                    "run-b",
+                    "activity-b",
+                    "b" * 64,
+                    "decision-a",
+                )
+
+    def test_snapshot_rejects_only_impossible_latest_event_joins(self) -> None:
+        self.require_outcome_language()
+        story = next(item for item in self.stories() if item.name == "execution-failed")
+        outcome = self.outcome_for(story)
+        base = story.attempt
         cases = (
             forge_exact(
                 EffectAttemptRecord,
-                state=forge_exact(
-                    EffectAttemptState,
-                    identity=other_identity,
-                    request_fingerprint=base.state.request_fingerprint,
-                    fence=base.state.fence,
-                    status=base.state.status,
-                    outcome_fingerprint=base.state.outcome_fingerprint,
-                    prior_attempt=None,
-                    recovery_decision=None,
-                ),
+                state=base.state,
                 original_start_event=base.original_start_event,
-                latest_transition_event=base.latest_transition_event,
+                latest_transition_event=replace(
+                    base.latest_transition_event,
+                    event_id=base.original_start_event.event_id,
+                ),
             ),
             forge_exact(
                 EffectAttemptRecord,
                 state=base.state,
-                original_start_event=replace(
-                    base.original_start_event,
-                    event_id="foreign-start-event-canary",
+                original_start_event=base.original_start_event,
+                latest_transition_event=replace(
+                    base.latest_transition_event,
+                    ordinal=base.original_start_event.ordinal,
                 ),
-                latest_transition_event=base.latest_transition_event,
             ),
             forge_exact(
                 EffectAttemptRecord,
                 state=base.state,
-                original_start_event=replace(
-                    base.original_start_event,
-                    evidence=BoundedEvidence.from_mapping(
-                        {
-                            "effect_attempt": {
-                                "attempt": 1,
-                                "state_fingerprint": "d" * 64,
-                            }
-                        }
-                    ),
+                original_start_event=base.original_start_event,
+                latest_transition_event=replace(
+                    base.latest_transition_event,
+                    run_id="run-foreign",
                 ),
-                latest_transition_event=base.latest_transition_event,
             ),
             forge_exact(
                 EffectAttemptRecord,
-                state=replace(base.state, request_fingerprint="b" * 64),
+                state=base.state,
                 original_start_event=base.original_start_event,
-                latest_transition_event=base.latest_transition_event,
+                latest_transition_event=replace(
+                    base.latest_transition_event,
+                    activity_id="activity-foreign",
+                ),
             ),
             forge_exact(
                 EffectAttemptRecord,
-                state=replace(base.state, status=EffectAttemptStatus.FAILED),
+                state=base.state,
                 original_start_event=base.original_start_event,
-                latest_transition_event=base.latest_transition_event,
+                latest_transition_event=replace(
+                    base.latest_transition_event,
+                    kind=ActivityEventKind.STEP_COMPENSATION_FAILED,
+                ),
             ),
             forge_exact(
                 EffectAttemptRecord,
-                state=replace(base.state, outcome_fingerprint="c" * 64),
+                state=base.state,
                 original_start_event=base.original_start_event,
-                latest_transition_event=base.latest_transition_event,
+                latest_transition_event=replace(
+                    base.latest_transition_event,
+                    event_id="event-invalid-\x00canary",
+                ),
             ),
         )
         for attempt in cases:
@@ -185,14 +280,39 @@ class EffectOutcomeRecordContractTest(
                         (),
                     ),
                     "effect outcome record is invalid",
-                    "foreign-start-event-canary",
-                    "run-b",
-                    "activity-b",
-                    "b" * 64,
-                    "c" * 64,
+                    "foreign",
+                    "canary",
                 )
 
-    def test_snapshot_binds_latest_event_failure_and_rejects_recovery(self) -> None:
+    def test_distinct_valid_terminal_event_ids_identify_distinct_records(self) -> None:
+        self.require_outcome_language()
+        story = next(item for item in self.stories() if item.name == "execution-failed")
+        first = self.direct_attempt_for(story, latest_event_id="terminal-event-a")
+        second = self.direct_attempt_for(story, latest_event_id="terminal-event-b")
+
+        first_record = EffectAttemptOutcomeRecord(
+            WORKSPACE_ID,
+            self.outcome_for(story),
+            first,
+            (),
+        )
+        second_record = EffectAttemptOutcomeRecord(
+            WORKSPACE_ID,
+            self.outcome_for(story),
+            second,
+            (),
+        )
+        self.assertNotEqual(first_record, second_record)
+        self.assertEqual(
+            first_record.attempt.latest_transition_event.event_id,
+            "terminal-event-a",
+        )
+        self.assertEqual(
+            second_record.attempt.latest_transition_event.event_id,
+            "terminal-event-b",
+        )
+
+    def test_snapshot_binds_the_exact_fixed_failure_projection(self) -> None:
         self.require_outcome_language()
         story = next(item for item in self.stories() if item.name == "execution-failed")
         outcome = self.outcome_for(story)
@@ -201,77 +321,20 @@ class EffectOutcomeRecordContractTest(
             base.latest_transition_event.failure,
             code="private-failure-canary",
         )
-        cases = (
-            forge_exact(
-                EffectAttemptRecord,
-                state=base.state,
-                original_start_event=base.original_start_event,
-                latest_transition_event=replace(
-                    base.latest_transition_event,
-                    kind=ActivityEventKind.STEP_UNCERTAIN,
-                ),
+        candidates = (
+            EffectAttemptRecord(
+                base.state,
+                base.original_start_event,
+                replace(base.latest_transition_event, failure=None),
             ),
-            forge_exact(
-                EffectAttemptRecord,
-                state=base.state,
-                original_start_event=base.original_start_event,
-                latest_transition_event=replace(
-                    base.latest_transition_event,
-                    event_id="foreign-latest-event-canary",
-                ),
-            ),
-            forge_exact(
-                EffectAttemptRecord,
-                state=base.state,
-                original_start_event=base.original_start_event,
-                latest_transition_event=replace(
-                    base.latest_transition_event,
-                    evidence=BoundedEvidence.from_mapping(
-                        {
-                            "effect_attempt": {
-                                "attempt": 1,
-                                "state_fingerprint": "e" * 64,
-                            }
-                        }
-                    ),
-                ),
-            ),
-            forge_exact(
-                EffectAttemptRecord,
-                state=base.state,
-                original_start_event=base.original_start_event,
-                latest_transition_event=replace(
-                    base.latest_transition_event,
-                    failure=None,
-                ),
-            ),
-            forge_exact(
-                EffectAttemptRecord,
-                state=base.state,
-                original_start_event=base.original_start_event,
-                latest_transition_event=replace(
-                    base.latest_transition_event,
-                    failure=wrong_failure,
-                ),
-            ),
-            forge_exact(
-                EffectAttemptRecord,
-                state=forge_exact(
-                    EffectAttemptState,
-                    identity=base.state.identity,
-                    request_fingerprint=base.state.request_fingerprint,
-                    fence=base.state.fence,
-                    status=base.state.status,
-                    outcome_fingerprint=base.state.outcome_fingerprint,
-                    prior_attempt=None,
-                    recovery_decision="recovery-canary",
-                ),
-                original_start_event=base.original_start_event,
-                latest_transition_event=base.latest_transition_event,
+            EffectAttemptRecord(
+                base.state,
+                base.original_start_event,
+                replace(base.latest_transition_event, failure=wrong_failure),
             ),
         )
-        for attempt in cases:
-            with self.subTest(attempt=attempt):
+        for attempt in candidates:
+            with self.subTest(failure=attempt.latest_transition_event.failure):
                 self.assert_fixed_error(
                     lambda attempt=attempt: EffectAttemptOutcomeRecord(
                         WORKSPACE_ID,
@@ -281,8 +344,6 @@ class EffectOutcomeRecordContractTest(
                     ),
                     "effect outcome record is invalid",
                     "private-failure-canary",
-                    "foreign-latest-event-canary",
-                    "recovery-canary",
                 )
 
     def test_projection_is_ordered_unique_counted_and_snapshot_timed(self) -> None:
@@ -299,6 +360,10 @@ class EffectOutcomeRecordContractTest(
                     story.attempt,
                     workspace_id=WORKSPACE_ID,
                     observation_ids=ids,
+                )
+                self.assertIs(type(records), tuple)
+                self.assertTrue(
+                    all(type(record) is ObservationRecord for record in records)
                 )
                 self.assertEqual(records, self.expected_observation_records(story))
                 self.assertEqual(tuple(row.observation_id for row in records), ids)
@@ -326,16 +391,74 @@ class EffectOutcomeRecordContractTest(
                     *ids,
                 )
 
+    def test_projection_preserves_the_exact_4096_byte_bridge_boundary(self) -> None:
+        self.require_outcome_language()
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == "execution-succeeded" and not item.compensation
+        )
+        endpoint = self.endpoint_for_bridge_size(4_096)
+        value = replace(story.value, observations=(endpoint,))
+        bounded_story = replace(story, value=value)
+        bounded_story = replace(
+            bounded_story,
+            attempt=self.direct_attempt_for(bounded_story),
+        )
+        records = effect_outcome_observation_records(
+            self.outcome_for(bounded_story),
+            bounded_story.attempt,
+            workspace_id=WORKSPACE_ID,
+            observation_ids=("observation-max",),
+        )
+
+        self.assertIs(type(records), tuple)
+        self.assertEqual(len(records), 1)
+        self.assertIs(type(records[0]), ObservationRecord)
+        self.assertEqual(
+            len(records[0].evidence.canonical_json.encode("utf-8")),
+            4_096,
+        )
+
     def test_projection_rejects_workspace_and_coordinate_hostility(self) -> None:
         self.require_outcome_language()
         story = next(item for item in self.stories() if item.endpoint_observations)
         outcome = self.outcome_for(story)
         ids = self.observation_ids(story)
+        maximum_workspace = "w" * 512
+        maximum_ids = ("a" * 512, "b" * 512)
+        projected = effect_outcome_observation_records(
+            outcome,
+            story.attempt,
+            workspace_id=maximum_workspace,
+            observation_ids=maximum_ids,
+        )
+        self.assertEqual(
+            tuple(record.workspace_id for record in projected),
+            (maximum_workspace, maximum_workspace),
+        )
+        self.assertEqual(
+            tuple(record.observation_id for record in projected),
+            maximum_ids,
+        )
+
+        class HostileTuple(tuple):
+            pass
+
         candidates = (
             (HostileStr(WORKSPACE_ID), ids),
+            ("", ids),
+            ("w" * 513, ids),
             ("workspace\ncanary", ids),
+            ("workspace-surrogate-\ud800", ids),
             (WORKSPACE_ID, tuple(HostileStr(value) for value in ids)),
+            (WORKSPACE_ID, ("", ids[1])),
+            (WORKSPACE_ID, ("o" * 513, ids[1])),
+            (WORKSPACE_ID, ("observation\x00canary", ids[1])),
+            (WORKSPACE_ID, ("observation-surrogate-\ud800", ids[1])),
             (WORKSPACE_ID, tuple(HostileInt(index) for index, _ in enumerate(ids))),
+            (WORKSPACE_ID, list(ids)),
+            (WORKSPACE_ID, HostileTuple(ids)),
         )
         for workspace, observation_ids in candidates:
             with self.subTest(workspace=workspace, observation_ids=observation_ids):
@@ -348,6 +471,8 @@ class EffectOutcomeRecordContractTest(
                     ),
                     "effect outcome observation projection is invalid",
                     "workspace\ncanary",
+                    "surrogate",
+                    "observation\x00canary",
                 )
 
     def test_record_requires_an_exact_tuple_of_exact_observation_rows(self) -> None:
@@ -386,6 +511,81 @@ class EffectOutcomeRecordContractTest(
                     ),
                     "effect outcome record is invalid",
                 )
+
+    def test_record_owns_the_complete_valid_observation_row_inverse(self) -> None:
+        self.require_outcome_language()
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == "execution-succeeded" and not item.compensation
+        )
+        outcome = self.outcome_for(story)
+        rows = self.expected_observation_records(story)
+        extra = replace(rows[1], observation_id="observation-extra")
+        changed_rows = (
+            (rows[1],),
+            (rows[0], rows[1], extra),
+            (rows[0], rows[0]),
+            tuple(reversed(rows)),
+            (replace(rows[0], observation_id="observation-foreign"), rows[1]),
+            (replace(rows[0], workspace_id="workspace-foreign"), rows[1]),
+            (replace(rows[0], observed_at="2040-01-01T00:00:00Z"), rows[1]),
+            (replace(rows[0], subject_id="subject-foreign"), rows[1]),
+            (replace(rows[0], graph_id="graph-foreign"), rows[1]),
+            (
+                replace(
+                    rows[0],
+                    evidence=BoundedEvidence.from_mapping(
+                        {"runtime_endpoint": {"foreign": True}}
+                    ),
+                ),
+                rows[1],
+            ),
+            (
+                replace(
+                    rows[0],
+                    probe_kind=ProbeKind.APPLICATION_HEALTH,
+                    probe_outcome=ProbeOutcome.HEALTHY,
+                ),
+                rows[1],
+            ),
+            (replace(rows[0], probe_outcome=ProbeOutcome.REACHABLE), rows[1]),
+            (replace(rows[0], endpoint_context=EndpointContext.PUBLIC), rows[1]),
+            (replace(rows[0], status=ObservationStatus.HEALTHY), rows[1]),
+            (replace(rows[0], freshness=ObservationFreshness.STALE), rows[1]),
+            (),
+        )
+        for candidate in changed_rows:
+            self.assertIs(type(candidate), tuple)
+            self.assertTrue(all(type(row) is ObservationRecord for row in candidate))
+            with self.subTest(candidate=candidate):
+                self.assert_fixed_error(
+                    lambda candidate=candidate: EffectAttemptOutcomeRecord(
+                        WORKSPACE_ID,
+                        outcome,
+                        story.attempt,
+                        candidate,
+                    ),
+                    "effect outcome record is invalid",
+                    "foreign",
+                    "2040-01-01",
+                )
+
+        empty_story = next(
+            item
+            for item in self.stories()
+            if item.name == "observed-absent" and not item.compensation
+        )
+        self.assertEqual(empty_story.endpoint_observations, ())
+        self.assert_fixed_error(
+            lambda: EffectAttemptOutcomeRecord(
+                WORKSPACE_ID,
+                self.outcome_for(empty_story),
+                empty_story.attempt,
+                (rows[0],),
+            ),
+            "effect outcome record is invalid",
+        )
 
     def test_subclass_and_exact_forgery_graph_is_rejected_at_new_boundary(self) -> None:
         self.require_outcome_language()
