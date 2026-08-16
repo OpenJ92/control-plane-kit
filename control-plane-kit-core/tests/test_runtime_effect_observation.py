@@ -133,7 +133,7 @@ def _grant(
         intent=intent,
         actor_subject=f"worker-{fresh}",
         correlation_id="secret-use-" + fresh * 64,
-        intent_fingerprint=fresh * 64,
+        intent_fingerprint=hashlib.sha256(fresh.encode("utf-8")).hexdigest(),
         run_id="run-a",
         activity_id="activity-a",
         effect_id=effect_id,
@@ -643,13 +643,17 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
         for name, construct in (
             (
                 "absent",
-                lambda: language.RuntimeEffectObservedAbsent(**common),
+                lambda: language.RuntimeEffectObservedAbsent(
+                    **common,
+                    observations=_observations(),
+                ),
             ),
             (
                 "observer unsupported",
                 lambda: language.RuntimeEffectObserverUnsupported(
                     **common,
                     failure=failure,
+                    observations=_observations(),
                 ),
             ),
         ):
@@ -790,11 +794,11 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
         )
         self.assertEqual(
             language.runtime_effect_observation_fingerprint(golden),
-            "249b45e6e627abbadb32d9dfe7d329ab97734f92dacdcf97ce84883b0bbc3a08",
+            "8dae30a2619a074a210645c438c5372e0825d1c4d92419a3980deef2cfd4be0d",
         )
         self.assertEqual(
             hashlib.sha256(OBSERVATION_DOMAIN + canonical).hexdigest(),
-            "249b45e6e627abbadb32d9dfe7d329ab97734f92dacdcf97ce84883b0bbc3a08",
+            "8dae30a2619a074a210645c438c5372e0825d1c4d92419a3980deef2cfd4be0d",
         )
         fingerprints = {
             language.runtime_effect_observation_fingerprint(value)
@@ -1002,27 +1006,36 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
     def test_complete_observation_fingerprint_input_has_exact_byte_ceiling(self) -> None:
         language = _language()
 
+        def padding(marker: str, size: int):
+            values = {}
+            remaining = size
+            index = 0
+            while remaining:
+                chunk = min(remaining, 500)
+                values[f"padding-{index}"] = marker * chunk
+                remaining -= chunk
+                index += 1
+            return language.RuntimeEffectObservationEvidence(values)
+
         def value(message: str, padding_size: int):
             return language.RuntimeEffectObservedFailed(
                 effect_id="event-started-a",
                 request_fingerprint="a" * 64,
-                evidence=language.RuntimeEffectObservationEvidence(
-                    {"padding": "x" * padding_size}
-                ),
+                evidence=padding("x", padding_size),
                 failure=language.RuntimeEffectObservationFailure(
                     "observer.failed",
                     message,
-                    language.RuntimeEffectObservationEvidence(
-                        {"padding": "y" * 3_974}
-                    ),
+                    padding("y", 3_500),
                 ),
                 observations=_observations(),
             )
 
-        seed = value("msgmax7", 1)
-        padding_size = 1 + OUTCOME_FINGERPRINT_MAX_BYTES - len(
-            rfc8785.dumps(seed.descriptor())
-        )
+        padding_size = 1
+        for _ in range(4):
+            candidate_size = len(
+                rfc8785.dumps(value("msgmax7", padding_size).descriptor())
+            )
+            padding_size += OUTCOME_FINGERPRINT_MAX_BYTES - candidate_size
         maximum = value("msgmax7", padding_size)
         plus_one = value("msgmax88", padding_size)
         self.assertEqual(
