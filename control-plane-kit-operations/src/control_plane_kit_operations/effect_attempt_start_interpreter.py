@@ -62,7 +62,7 @@ def _representable_effect_fence(worker_id: object, generation: object) -> bool:
         type(worker_id) is not str
         or not worker_id.strip()
         or len(worker_id) > 256
-        or "\x00" in worker_id
+        or any(ord(character) < 32 for character in worker_id)
         or type(generation) is not int
         or not 1 <= generation <= 2**63 - 1
     ):

@@ -107,10 +107,15 @@ def _valid_start_command(command: object) -> bool:
         or not _valid_start_transition(transition)
         or type(authority) is not ExecutionWorkerAuthority
         or type(authority.worker_id) is not str
+        or any(
+            0 < ord(character) < 32
+            for character in authority.worker_id
+        )
         or type(authority.scopes) is not tuple
         or any(type(scope) is not PolicyScope for scope in authority.scopes)
         or type(fence) is not ExecutionLeaseFence
         or type(fence.worker_id) is not str
+        or any(0 < ord(character) < 32 for character in fence.worker_id)
         or type(fence.generation) is not int
         or authority.worker_id != fence.worker_id
     ):
@@ -145,11 +150,18 @@ def _valid_start_transition(transition: EffectAttemptTransition) -> bool:
 
 
 def _bounded_command_text(value: object) -> bool:
-    return (
+    valid = (
         type(value) is str
         and 1 <= len(value) <= 512
         and not any(ord(character) < 32 for character in value)
     )
+    if not valid:
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 __all__ = [
