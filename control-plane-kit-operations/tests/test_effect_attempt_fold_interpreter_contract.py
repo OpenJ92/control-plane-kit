@@ -18,12 +18,18 @@ from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import BoundedEvidence, FailureEvidence
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.effect_attempt_fold_fixture import (
+    EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
+    EffectAttemptFoldError,
     EffectAttemptFoldFixture,
+    EffectAttemptFoldNotFound,
+    EffectAttemptFoldResult,
     EffectAttemptFoldService,
+    ExistingFold,
     FOLD_MODULE,
     FoldEffectAttempt,
     INTERPRETER_MODULE,
+    NewlyFolded,
 )
 
 
@@ -75,10 +81,21 @@ class EffectAttemptFoldInterpreterContractTests(
 
     def test_service_is_exact_root_export_with_one_command_surface(self) -> None:
         self.require_fold_service()
-        self.assertIs(
-            getattr(operations_root, "EffectAttemptFoldService", None),
-            EffectAttemptFoldService,
-        )
+        public_exports = {
+            "FoldEffectAttempt": FoldEffectAttempt,
+            "NewlyFolded": NewlyFolded,
+            "ExistingFold": ExistingFold,
+            "EffectAttemptFoldResult": EffectAttemptFoldResult,
+            "EffectAttemptFoldError": EffectAttemptFoldError,
+            "EffectAttemptFoldNotFound": EffectAttemptFoldNotFound,
+            "EffectAttemptFoldConflict": EffectAttemptFoldConflict,
+            "EffectAttemptFoldDenied": EffectAttemptFoldDenied,
+            "EffectAttemptFoldService": EffectAttemptFoldService,
+        }
+        for name, value in public_exports.items():
+            with self.subTest(export=name):
+                self.assertIn(name, operations_root.__all__)
+                self.assertIs(getattr(operations_root, name, None), value)
         self.assertEqual(EffectAttemptFoldService.__module__, INTERPRETER_MODULE)
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptFoldService).parameters),
@@ -375,6 +392,21 @@ class EffectAttemptFoldInterpreterContractTests(
             interpreter["canonical_public_exports"],
             ["EffectAttemptFoldService"],
         )
+        self.assertEqual(
+            set(interpreter["internal_dependencies"]),
+            {
+                "control_plane_kit_core.operations",
+                "control_plane_kit_core.policies",
+                "control_plane_kit_operations.effect_attempt_fold",
+                "control_plane_kit_operations.effect_attempts",
+                "control_plane_kit_operations.records",
+                "control_plane_kit_operations.workflows",
+            },
+        )
+        motivation = interpreter["motivation"].lower()
+        for required in ("provider-free", "atomic", "durable", "fold"):
+            self.assertIn(required, motivation)
+        self.assertNotIn("held", motivation)
         self.assertEqual(language["optional_external_dependencies"], [])
         self.assertEqual(interpreter["optional_external_dependencies"], [])
         self.assertIn(
