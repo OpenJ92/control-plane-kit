@@ -495,6 +495,17 @@ from .effect_attempts import (
     EffectAttemptRecord,
     effect_attempt_state_fingerprint,
 )
+from .effect_attempt_start import (
+    EffectAttemptStartConflict,
+    EffectAttemptStartDenied,
+    EffectAttemptStartError,
+    EffectAttemptStartNotFound,
+    EffectAttemptStartResult,
+    ExistingAttempt,
+    NewlyStarted,
+    StartEffectAttempt,
+)
+from .effect_attempt_start_interpreter import EffectAttemptStartService
 from .execution_lease_recovery import (
     AbandonExpiredExecutionClaim,
     ExecutionLeaseRecoveryCommand,
@@ -670,6 +681,13 @@ __all__ = [
     "ExecutionLeaseDuration",
     "EffectAttemptEventEvidence",
     "EffectAttemptRecord",
+    "EffectAttemptStartConflict",
+    "EffectAttemptStartDenied",
+    "EffectAttemptStartError",
+    "EffectAttemptStartNotFound",
+    "EffectAttemptStartResult",
+    "EffectAttemptStartService",
+    "ExistingAttempt",
     "ExecutionLeaseFence",
     "ExecutionLeaseRecoveryCommand",
     "ExecutionLeaseRecoveryCommandService",
@@ -902,6 +920,7 @@ __all__ = [
     "OperationSessionRecord",
     "OperationSessionStateConflict",
     "OperationSessionStatus",
+    "NewlyStarted",
     "OperationWorkspaceNotFound",
     "OperationsPackageBoundary",
     "OperationsRecordError",
@@ -1005,6 +1024,7 @@ __all__ = [
     "PrepareGatewayKeyRotationOverlap",
     "StartOperationSession",
     "StartActivityRun",
+    "StartEffectAttempt",
     "TakeOverExpiredExecutionClaim",
     "StaleDesiredGraph",
     "WorkspaceRecord",

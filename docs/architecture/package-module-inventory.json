@@ -9250,6 +9250,77 @@
     },
     {
       "canonical_public_exports": [
+        "EffectAttemptStartConflict",
+        "EffectAttemptStartDenied",
+        "EffectAttemptStartError",
+        "EffectAttemptStartNotFound",
+        "EffectAttemptStartResult",
+        "ExistingAttempt",
+        "NewlyStarted",
+        "StartEffectAttempt"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_start",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.effect_attempt_start_interpreter"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_start",
+      "motivation": "Owns the command, observational replay, and ephemeral newly-started result language for one effect attempt without interpreting durable mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_start_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptStartService"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_start_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_start_interpreter",
+      "motivation": "Owns exact command, scope, and fence-representation preflight before the effect-attempt start transaction boundary.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_start_interpreter_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start_interpreter.py"
+    },
+    {
+      "canonical_public_exports": [
         "EffectAttemptStore"
       ],
       "destination": "control_plane_kit_operations.postgres.effect_attempt_store",
