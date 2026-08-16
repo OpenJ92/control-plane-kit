@@ -8,6 +8,9 @@ from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+from control_plane_kit_operations.postgres.effect_attempt_store import (
+    EffectAttemptStore,
+)
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
 )
@@ -75,6 +78,7 @@ class PostgresStoreBundle:
     secret_use_authorizations: SecretUseAuthorizationStore = field(init=False)
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
+    effect_attempts: EffectAttemptStore = field(init=False)
     observed_state: PostgresObservedStateStore = field(init=False)
     gateway_probes: GatewayProbeStore = field(init=False)
     node_control_attempts: NodeControlAttemptStore = field(init=False)
@@ -159,6 +163,11 @@ class PostgresStoreBundle:
             self,
             "execution",
             PostgresExecutionStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "effect_attempts",
+            EffectAttemptStore(self.connection),
         )
         object.__setattr__(
             self,

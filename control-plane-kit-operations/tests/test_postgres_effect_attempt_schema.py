@@ -79,8 +79,9 @@ EXPECTED_CHECKS = {
         "(char_length(latest_event_id) >= 1) AND "
         "(char_length(latest_event_id) <= 512) AND "
         "(((status = 'started'::text) AND "
-        "((latest_event_id, latest_event_run_id, latest_event_ordinal) = "
-        "(original_event_id, original_event_run_id, original_event_ordinal))) OR "
+        "((latest_event_id = original_event_id) AND "
+        "(latest_event_run_id = original_event_run_id) AND "
+        "(latest_event_ordinal = original_event_ordinal))) OR "
         "((status <> 'started'::text) AND "
         "(latest_event_ordinal > original_event_ordinal))))"
     ),

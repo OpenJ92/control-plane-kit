@@ -9250,6 +9250,41 @@
     },
     {
       "canonical_public_exports": [
+        "EffectAttemptStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.effect_attempt_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.effect_attempt_store",
+      "motivation": "Owns the exact PostgreSQL representation and complete-prior compare-and-set for durable effect-attempt records.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_effect_attempt_store_contract.py",
+        "tests/test_postgres_effect_attempt_store.py",
+        "tests/test_postgres_effect_attempt_schema.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_store.py"
+    },
+    {
+      "canonical_public_exports": [
         "ActivityRunRetryResult",
         "RetryFailedActivityRun"
       ],

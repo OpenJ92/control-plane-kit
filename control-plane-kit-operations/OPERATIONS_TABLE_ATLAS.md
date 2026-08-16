@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=cd2abc48b0f556e75a6acce79eca87e212c16574baed0cd870c8ac381fc71e30 relations=29 columns=381 constraints=274 indexes=94 foreign-keys=54 -->
+<!-- current-schema-contract: sha256=9d3426339ef9e03e0e5b1ee32a7da0c7888c34896c695b47de4b1c5ff4d866f3 relations=30 columns=402 constraints=289 indexes=98 foreign-keys=58 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -28,7 +28,7 @@ repair, data conversion, or inference from an older layout.
 ## Dependency Shape
 
 <!-- multi-table-scc: cpk_graph_versions,cpk_realized_graph_projections,cpk_workspaces -->
-<!-- self-reference: cpk_activity_runs,cpk_secret_providers,cpk_secret_references -->
+<!-- self-reference: cpk_activity_runs,cpk_effect_attempts,cpk_secret_providers,cpk_secret_references -->
 <!-- future-impact: 1553,1554,1555,1556,1243,1244 -->
 
 The only multi-table strongly connected component is the workspace lineage
@@ -45,9 +45,10 @@ current and desired heads. Physical deletion reverses that order or clears the
 heads first. The public stores do not expose a general physical workspace
 delete operation.
 
-Self-references express retry ancestry for activity runs and supersession chains
-for provider and secret-reference registrations. Restore roots before their
-descendants and reject missing or cyclic application-level histories.
+Self-references express retry ancestry for activity runs, immediate retry
+ancestry for effect attempts, and supersession chains for provider and
+secret-reference registrations. Restore roots before their descendants and
+reject missing or cyclic application-level histories.
 
 ## Deterministic Assembly And Logical Restore
 
@@ -81,7 +82,8 @@ foreign key and the accepted lineage cycle:
    transitions and revocations; and approval requests.
 6. Restore approval decisions, then execution requests.
 7. Restore root activity runs before retry descendants, then restore activity
-   events in run/ordinal order.
+   events in run/ordinal order and effect attempts in attempt order after all
+   of their original/latest event coordinates exist.
 8. Restore secret-use authorizations, rotation deployments,
    `cpk_cloudflare_ingress_resources`, and
    `cpk_generated_ingress_secret_references` after any optional
@@ -264,6 +266,10 @@ cpk_approval_requests -->|cpk_approval_requests_rotation_fk| cpk_gateway_key_rot
 cpk_approval_requests -->|cpk_approval_requests_session_id_fkey| cpk_operation_sessions
 cpk_cloudflare_ingress_resources -->|cpk_cloudflare_ingress_resources_workspace_id_fkey| cpk_workspaces
 cpk_delegation_signing_keys -->|cpk_delegation_signing_keys_workspace_id_fkey| cpk_workspaces
+cpk_effect_attempts -->|cpk_effect_attempts_latest_event_fk| cpk_activity_events
+cpk_effect_attempts -->|cpk_effect_attempts_original_event_fk| cpk_activity_events
+cpk_effect_attempts -->|cpk_effect_attempts_prior_fkey| cpk_effect_attempts
+cpk_effect_attempts -->|cpk_effect_attempts_run_id_fkey| cpk_activity_runs
 cpk_execution_requests -->|cpk_execution_requests_approval_identity_fk| cpk_approval_decisions
 cpk_execution_requests -->|cpk_execution_requests_approval_request_id_fkey| cpk_approval_requests
 cpk_execution_requests -->|cpk_execution_requests_plan_session_fk| cpk_activity_plans
@@ -329,6 +335,10 @@ order is semantically significant for every composite identity.
 | `cpk_approval_requests_session_id_fkey` | `cpk_approval_requests` | `session_id` | `cpk_operation_sessions` | `session_id` | Every approval request belongs to an operation session. |
 | `cpk_cloudflare_ingress_resources_workspace_id_fkey` | `cpk_cloudflare_ingress_resources` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Observed ingress resources are owned by a workspace. |
 | `cpk_delegation_signing_keys_workspace_id_fkey` | `cpk_delegation_signing_keys` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Delegation signing-key registrations are workspace scoped. |
+| `cpk_effect_attempts_latest_event_fk` | `cpk_effect_attempts` | `latest_event_id, latest_event_run_id, latest_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | The retained state is committed by one exact latest activity event. |
+| `cpk_effect_attempts_original_event_fk` | `cpk_effect_attempts` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Every attempt retains its exact immutable start event. |
+| `cpk_effect_attempts_prior_fkey` | `cpk_effect_attempts` | `prior_run_id, prior_activity_id, prior_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | A retry names the immediately preceding attempt for the same run and activity. |
+| `cpk_effect_attempts_run_id_fkey` | `cpk_effect_attempts` | `run_id` | `cpk_activity_runs` | `run_id` | Every effect attempt belongs to one durable activity run. |
 | `cpk_execution_requests_approval_identity_fk` | `cpk_execution_requests` | `approval_decision_id, approval_request_id` | `cpk_approval_decisions` | `decision_id, request_id` | The selected decision must resolve the selected request. |
 | `cpk_execution_requests_approval_request_id_fkey` | `cpk_execution_requests` | `approval_request_id` | `cpk_approval_requests` | `request_id` | An approved execution names an existing request. |
 | `cpk_execution_requests_plan_session_fk` | `cpk_execution_requests` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The execution request and plan share one session. |
@@ -379,7 +389,7 @@ order is semantically significant for every composite identity.
 - **Durable meaning and owner:** `PostgresExecutionStore` owns the ordered, bounded event stream emitted by one activity run.
 - **Identity and cardinality:** `event_id` is primary; `(run_id, ordinal)` permits exactly one event at each run position, and the validated immediate run foreign key derives the canonical run-identity law from `cpk_activity_runs`.
 - **Outgoing foreign keys:** `run_id` requires the owning `cpk_activity_runs` row.
-- **Inbound dependents:** Generated ingress-secret records may cite event identifiers as provenance, but no database foreign key couples that external provenance tuple.
+- **Inbound dependents:** Effect-attempt rows bind exact original and latest event triples. Generated ingress-secret records may also cite event identifiers as provenance without a database foreign key.
 - **Writers and transactions:** `PostgresExecutionStore.add_event` performs one direct insert in the caller's run transaction; it does not compare an existing event for replay equivalence.
 - **Readers and projections:** Activity-history queries read events by run and ordinal for operator-facing execution narratives.
 - **Mutation, locks, retries, and idempotency:** Inserts are append-only; duplicate `event_id` or `(run_id, ordinal)` is rejected by PostgreSQL, while command/workflow idempotency is owned outside this row.
@@ -465,6 +475,19 @@ order is semantically significant for every composite identity.
 - **JSON boundary:** None; public key material and references use bounded typed text columns.
 - **Sensitive material:** `public_key_pem` and its fingerprint are public material; `private_key_reference` is a sensitive locator, never a private key or signing result.
 - **Future impact:** #1553 and #1554 add transit authority language but must preserve exact purpose separation and defer private-key resolution to immediate I/O.
+
+### `cpk_effect_attempts`
+- **Durable meaning and owner:** `EffectAttemptStore` owns the exact retained Operations representation of one Core effect-attempt state and the activity events that commit its beginning and latest transition.
+- **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary. Original and latest event triples are independently unique, so one event cannot silently commit two attempt roles.
+- **Outgoing foreign keys:** `run_id` names the activity run; an optional predecessor triple names the immediately prior same-run/activity attempt; original and latest event triples name exact activity events.
+- **Inbound dependents:** Retry descendants may cite a row through the self-reference. No other current relation consumes effect-attempt identity.
+- **Writers and transactions:** `insert_absent` and complete-prior `compare_and_set` execute within the caller's transaction after the caller has appended the referenced event; the store never commits or appends events itself.
+- **Readers and projections:** Exact reads and row-locking reads reconstruct typed Core state plus authoritative event records. Current-schema verification scans every row in bounded deterministic primary-key pages.
+- **Mutation, locks, retries, and idempotency:** Identity-targeted insert is first-write-wins. Compare-and-set matches the complete physical prior row with null-safe equality; retry appends a new attempt linked to its immediate predecessor.
+- **Lifecycle, retention, deletion, and restore:** Restore runs and events first, then attempts in ascending attempt order. Restrictive event, run, and predecessor references retain the evidence chain.
+- **JSON boundary:** None; state, fence, recovery, predecessor, and event coordinates are represented as bounded typed columns and reconstructed through the existing record algebra.
+- **Sensitive material:** Only fingerprints, bounded worker/decision identifiers, and event coordinates are retained. Provider payloads, exception text, credentials, addresses, and secret values are excluded.
+- **Future impact:** #1684 and #1685 may read and mutate this representation through explicit transaction programs; they must preserve store-owned exact decoding, complete-prior CAS, and caller-owned effect authority.
 
 ### `cpk_execution_requests`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns durable requests to execute an approved activity plan, including database-timed, generation-fenced claim leases.
