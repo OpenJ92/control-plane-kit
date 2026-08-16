@@ -238,7 +238,7 @@ class RuntimeEndpointObservation:
                 raise ValueError(
                     f"{name} identity must not contain control characters"
                 )
-        if not isinstance(self.protocol, Protocol):
+        if type(self.protocol) is not Protocol:
             raise TypeError("runtime endpoint protocol must be Protocol")
         if not isinstance(self.context, EndpointContext):
             raise TypeError("runtime endpoint context must be EndpointContext")
@@ -544,7 +544,10 @@ def _runtime_endpoint_descriptor(
         "subject_id": endpoint.subject_id,
         "socket_name": endpoint.socket_name,
         "graph_id": endpoint.graph_id,
-        "protocol": endpoint.protocol.descriptor(),
+        "protocol": {
+            "transport": endpoint.protocol.transport.value,
+            "application": endpoint.protocol.application.value,
+        },
         "context": endpoint.context.value,
         "address": address,
     }
