@@ -8,8 +8,14 @@ from pathlib import Path
 import unittest
 
 import control_plane_kit_operations as operations_root
-from control_plane_kit_core.operations import EffectAttemptTransition
+from control_plane_kit_core.operations import (
+    EffectAttemptIdentity,
+    EffectAttemptTransition,
+    EffectRecoveryDecision,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.records import BoundedEvidence, FailureEvidence
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.effect_attempt_fold_fixture import (
     EffectAttemptFoldDenied,
@@ -102,15 +108,95 @@ class EffectAttemptFoldInterpreterContractTests(
         class HostileText(str):
             pass
 
+        class HostileIdentity(EffectAttemptIdentity):
+            def __eq__(self, other) -> bool:
+                return (
+                    isinstance(other, EffectAttemptIdentity)
+                    and self.descriptor() == other.descriptor()
+                )
+
+        class HostileAuthority(ExecutionWorkerAuthority):
+            pass
+
+        class HostileFence(ExecutionLeaseFence):
+            pass
+
+        class HostileDetails(BoundedEvidence):
+            pass
+
         hostile_fingerprint = EffectAttemptTransition(
             valid.transition.kind,
             valid.transition.identity,
             outcome_fingerprint=HostileText(valid.transition.outcome_fingerprint),
         )
         hostile_worker = HostileText("hostile-worker-canary")
+        recovery = self.command("recovered-failed")
+        decision = recovery.transition.recovery_decision
+        hostile_identity = HostileIdentity(**decision.attempt_identity.__dict__)
+        hostile_identity_decision = EffectRecoveryDecision(
+            decision.decision_id,
+            hostile_identity,
+            decision.resolution,
+            decision.uncertain_fingerprint,
+            decision.evidence_fingerprint,
+        )
+        hostile_identity_transition = EffectAttemptTransition(
+            recovery.transition.kind,
+            recovery.transition.identity,
+            recovery_decision=hostile_identity_decision,
+        )
+        hostile_text_decision = EffectRecoveryDecision(
+            HostileText("decision-id-canary"),
+            decision.attempt_identity,
+            decision.resolution,
+            HostileText(decision.uncertain_fingerprint),
+            HostileText(decision.evidence_fingerprint),
+        )
+        hostile_text_transition = EffectAttemptTransition(
+            recovery.transition.kind,
+            recovery.transition.identity,
+            recovery_decision=hostile_text_decision,
+        )
+        failure = valid.failure
+        hostile_failure_code = FailureEvidence(
+            failure.category,
+            HostileText("failure-code-canary"),
+            failure.message,
+            failure.details,
+        )
+        hostile_failure_message = FailureEvidence(
+            failure.category,
+            failure.code,
+            HostileText("failure-message-canary"),
+            failure.details,
+        )
+        hostile_failure_details = FailureEvidence(
+            failure.category,
+            failure.code,
+            failure.message,
+            HostileDetails(failure.details.canonical_json),
+        )
         candidates = (
             ("raw-object", object(), ()),
             ("hostile-command", bypass(HostileCommand, valid), ()),
+            (
+                "hostile-authority",
+                bypass(
+                    FoldEffectAttempt,
+                    valid,
+                    authority=HostileAuthority(**valid.authority.__dict__),
+                ),
+                (),
+            ),
+            (
+                "hostile-fence",
+                bypass(
+                    FoldEffectAttempt,
+                    valid,
+                    fence=HostileFence(**valid.fence.__dict__),
+                ),
+                (),
+            ),
             (
                 "hostile-fingerprint",
                 bypass(FoldEffectAttempt, valid, transition=hostile_fingerprint),
@@ -125,6 +211,43 @@ class EffectAttemptFoldInterpreterContractTests(
                     fence=self.execution_fence(hostile_worker),
                 ),
                 ("hostile-worker-canary",),
+            ),
+            (
+                "hostile-recovery-identity",
+                bypass(
+                    FoldEffectAttempt,
+                    recovery,
+                    transition=hostile_identity_transition,
+                ),
+                (),
+            ),
+            (
+                "hostile-recovery-text",
+                bypass(
+                    FoldEffectAttempt,
+                    recovery,
+                    transition=hostile_text_transition,
+                ),
+                (
+                    "decision-id-canary",
+                    decision.uncertain_fingerprint,
+                    decision.evidence_fingerprint,
+                ),
+            ),
+            (
+                "hostile-failure-code",
+                bypass(FoldEffectAttempt, valid, failure=hostile_failure_code),
+                ("failure-code-canary",),
+            ),
+            (
+                "hostile-failure-message",
+                bypass(FoldEffectAttempt, valid, failure=hostile_failure_message),
+                ("failure-message-canary",),
+            ),
+            (
+                "hostile-failure-details",
+                bypass(FoldEffectAttempt, valid, failure=hostile_failure_details),
+                (),
             ),
             (
                 "non-utf8-request",

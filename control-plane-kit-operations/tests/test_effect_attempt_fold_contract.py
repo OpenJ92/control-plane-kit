@@ -14,6 +14,7 @@ from control_plane_kit_core.operations import (
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import (
+    ActivityEventRecord,
     BoundedEvidence,
     FailureEvidence,
     OperationsRecordError,
@@ -119,7 +120,11 @@ class EffectAttemptFoldLanguageTests(
             pass
 
         class HostileIdentity(EffectAttemptIdentity):
-            pass
+            def __eq__(self, other) -> bool:
+                return (
+                    isinstance(other, EffectAttemptIdentity)
+                    and self.descriptor() == other.descriptor()
+                )
 
         class HostileAuthority(ExecutionWorkerAuthority):
             pass
@@ -170,6 +175,71 @@ class EffectAttemptFoldLanguageTests(
             failure.message,
             hostile_details,
         )
+        hostile_decision_identity = HostileIdentity(**decision.attempt_identity.__dict__)
+        decision_with_hostile_identity = EffectRecoveryDecision(
+            decision.decision_id,
+            hostile_decision_identity,
+            decision.resolution,
+            decision.uncertain_fingerprint,
+            decision.evidence_fingerprint,
+        )
+        transition_with_hostile_decision_identity = EffectAttemptTransition(
+            recovery.kind,
+            recovery.identity,
+            recovery_decision=decision_with_hostile_identity,
+        )
+        hostile_decision_texts = (
+            (
+                "decision-id-canary",
+                EffectRecoveryDecision(
+                    HostileText("decision-id-canary"),
+                    decision.attempt_identity,
+                    decision.resolution,
+                    decision.uncertain_fingerprint,
+                    decision.evidence_fingerprint,
+                ),
+            ),
+            (
+                decision.uncertain_fingerprint,
+                EffectRecoveryDecision(
+                    decision.decision_id,
+                    decision.attempt_identity,
+                    decision.resolution,
+                    HostileText(decision.uncertain_fingerprint),
+                    decision.evidence_fingerprint,
+                ),
+            ),
+            (
+                decision.evidence_fingerprint,
+                EffectRecoveryDecision(
+                    decision.decision_id,
+                    decision.attempt_identity,
+                    decision.resolution,
+                    decision.uncertain_fingerprint,
+                    HostileText(decision.evidence_fingerprint),
+                ),
+            ),
+        )
+        hostile_failure_leaves = (
+            (
+                "failure-code-canary",
+                FailureEvidence(
+                    failure.category,
+                    HostileText("failure-code-canary"),
+                    failure.message,
+                    failure.details,
+                ),
+            ),
+            (
+                "failure-message-canary",
+                FailureEvidence(
+                    failure.category,
+                    failure.code,
+                    HostileText("failure-message-canary"),
+                    failure.details,
+                ),
+            ),
+        )
         cases = (
             ({"transition": hostile_transition}, ()),
             ({"transition": nested_identity}, ()),
@@ -179,6 +249,24 @@ class EffectAttemptFoldLanguageTests(
             ({"failure": hostile_failure}, ("nested-canary",)),
             ({"failure": nested_failure}, ("nested-canary",)),
             ({"transition": nested_decision}, ()),
+            ({"transition": transition_with_hostile_decision_identity}, ()),
+            *tuple(
+                (
+                    {
+                        "transition": EffectAttemptTransition(
+                            recovery.kind,
+                            recovery.identity,
+                            recovery_decision=hostile_text_decision,
+                        )
+                    },
+                    (canary,),
+                )
+                for canary, hostile_text_decision in hostile_decision_texts
+            ),
+            *tuple(
+                ({"failure": hostile_leaf}, (canary,))
+                for canary, hostile_leaf in hostile_failure_leaves
+            ),
             (
                 {
                     "authority": self.authority(hostile_worker),
@@ -270,6 +358,9 @@ class EffectAttemptFoldLanguageTests(
         class HostileState(EffectAttemptState):
             pass
 
+        class HostileEvent(ActivityEventRecord):
+            pass
+
         hostile_record = object.__new__(HostileRecord)
         for field in dataclasses.fields(EffectAttemptRecord):
             object.__setattr__(hostile_record, field.name, getattr(record, field.name))
@@ -282,6 +373,26 @@ class EffectAttemptFoldLanguageTests(
                 hostile_state if field.name == "state" else getattr(record, field.name),
             )
 
+        recovered = self.record("recovered-failed")
+        hostile_original = HostileEvent(**recovered.original_start_event.__dict__)
+        hostile_latest = HostileEvent(**recovered.latest_transition_event.__dict__)
+
+        def forged_record(*, original, latest):
+            forged = object.__new__(EffectAttemptRecord)
+            object.__setattr__(forged, "state", recovered.state)
+            object.__setattr__(forged, "original_start_event", original)
+            object.__setattr__(forged, "latest_transition_event", latest)
+            return forged
+
+        hostile_original_record = forged_record(
+            original=hostile_original,
+            latest=recovered.latest_transition_event,
+        )
+        hostile_latest_record = forged_record(
+            original=recovered.original_start_event,
+            latest=hostile_latest,
+        )
+
         class HostileNewlyFolded(NewlyFolded):
             pass
 
@@ -293,6 +404,10 @@ class EffectAttemptFoldLanguageTests(
             lambda: ExistingFold(hostile_record),
             lambda: NewlyFolded(nested_record),
             lambda: ExistingFold(nested_record),
+            lambda: NewlyFolded(hostile_original_record),
+            lambda: ExistingFold(hostile_original_record),
+            lambda: NewlyFolded(hostile_latest_record),
+            lambda: ExistingFold(hostile_latest_record),
             lambda: HostileNewlyFolded(record),
             lambda: HostileExistingFold(record),
         )
