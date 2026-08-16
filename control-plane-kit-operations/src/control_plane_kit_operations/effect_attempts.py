@@ -9,11 +9,22 @@ import re
 
 from control_plane_kit_core.operations import (
     ActivityEventKind,
+    EffectAttemptFence,
+    EffectAttemptIdentity,
     EffectAttemptState,
     EffectAttemptStatus,
+    EffectRecoveryDecision,
+    EffectRecoveryResolution,
+    FailureCategory,
+    RunId,
 )
 
-from .records import ActivityEventRecord, BoundedEvidence, OperationsRecordError
+from .records import (
+    ActivityEventRecord,
+    BoundedEvidence,
+    FailureEvidence,
+    OperationsRecordError,
+)
 
 
 _MAX_EFFECT_ATTEMPT = 2_147_483_647
@@ -77,11 +88,9 @@ def _record_is_valid(record: EffectAttemptRecord) -> bool:
     original = record.original_start_event
     latest = record.latest_transition_event
     if (
-        type(state) is not EffectAttemptState
-        or type(original) is not ActivityEventRecord
-        or type(latest) is not ActivityEventRecord
-        or type(original.evidence) is not BoundedEvidence
-        or type(latest.evidence) is not BoundedEvidence
+        not _state_is_exact(state)
+        or not _event_is_exact(original)
+        or not _event_is_exact(latest)
     ):
         return False
 
@@ -113,6 +122,102 @@ def _record_is_valid(record: EffectAttemptRecord) -> bool:
         latest.event_id != original.event_id
         and latest.ordinal > original.ordinal
         and _event_commits_to(latest, state, expected_latest_kind)
+    )
+
+
+def _state_is_exact(state: object) -> bool:
+    if type(state) is not EffectAttemptState:
+        return False
+    return (
+        _identity_is_exact(state.identity)
+        and type(state.request_fingerprint) is str
+        and _fence_is_exact(state.fence)
+        and type(state.status) is EffectAttemptStatus
+        and (
+            state.outcome_fingerprint is None
+            or type(state.outcome_fingerprint) is str
+        )
+        and (
+            state.prior_attempt is None
+            or _identity_is_exact(state.prior_attempt)
+        )
+        and (
+            state.recovery_decision is None
+            or _recovery_decision_is_exact(state.recovery_decision)
+        )
+    )
+
+
+def _identity_is_exact(identity: object) -> bool:
+    return (
+        type(identity) is EffectAttemptIdentity
+        and type(identity.run_id) is RunId
+        and type(identity.run_id.value) is str
+        and type(identity.activity_id) is str
+        and type(identity.attempt) is int
+    )
+
+
+def _fence_is_exact(fence: object) -> bool:
+    return (
+        type(fence) is EffectAttemptFence
+        and type(fence.worker_id) is str
+        and type(fence.generation) is int
+    )
+
+
+def _recovery_decision_is_exact(decision: object) -> bool:
+    return (
+        type(decision) is EffectRecoveryDecision
+        and type(decision.decision_id) is str
+        and _identity_is_exact(decision.attempt_identity)
+        and type(decision.resolution) is EffectRecoveryResolution
+        and type(decision.uncertain_fingerprint) is str
+        and type(decision.evidence_fingerprint) is str
+    )
+
+
+def _event_is_exact(event: object) -> bool:
+    if type(event) is not ActivityEventRecord:
+        return False
+    return (
+        _postgres_text_is_valid(event.event_id)
+        and type(event.run_id) is str
+        and type(event.ordinal) is int
+        and 1 <= event.ordinal <= _MAX_EFFECT_ATTEMPT
+        and type(event.kind) is ActivityEventKind
+        and type(event.occurred_at) is str
+        and (event.activity_id is None or type(event.activity_id) is str)
+        and _bounded_evidence_is_exact(event.evidence)
+        and (event.failure is None or _failure_is_exact(event.failure))
+        and event.recovery is None
+    )
+
+
+def _postgres_text_is_valid(value: object) -> bool:
+    if type(value) is not str:
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _bounded_evidence_is_exact(evidence: object) -> bool:
+    return (
+        type(evidence) is BoundedEvidence
+        and type(evidence.canonical_json) is str
+    )
+
+
+def _failure_is_exact(failure: object) -> bool:
+    return (
+        type(failure) is FailureEvidence
+        and type(failure.category) is FailureCategory
+        and type(failure.code) is str
+        and type(failure.message) is str
+        and _bounded_evidence_is_exact(failure.details)
     )
 
 
