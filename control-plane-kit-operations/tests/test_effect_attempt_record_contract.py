@@ -96,6 +96,17 @@ class EffectAttemptRecordContractTests(
         valid = self.record("succeeded")
         state = valid.state
         evidence = {
+            "absent": BoundedEvidence.from_mapping({}),
+            "missing-attempt": BoundedEvidence.from_mapping(
+                {
+                    "effect_attempt": {
+                        "state_fingerprint": canonical_state_fingerprint(state),
+                    }
+                }
+            ),
+            "missing-fingerprint": BoundedEvidence.from_mapping(
+                {"effect_attempt": {"attempt": 1}}
+            ),
             "wrong-attempt": BoundedEvidence.from_mapping(
                 {
                     "effect_attempt": {
@@ -133,6 +144,18 @@ class EffectAttemptRecordContractTests(
             ),
             dataclasses.replace(
                 valid.latest_transition_event,
+                evidence=evidence["absent"],
+            ),
+            dataclasses.replace(
+                valid.latest_transition_event,
+                evidence=evidence["missing-attempt"],
+            ),
+            dataclasses.replace(
+                valid.latest_transition_event,
+                evidence=evidence["missing-fingerprint"],
+            ),
+            dataclasses.replace(
+                valid.latest_transition_event,
                 evidence=evidence["wrong-attempt"],
             ),
             dataclasses.replace(
@@ -164,6 +187,17 @@ class EffectAttemptRecordContractTests(
         valid = self.record("recovered-failed")
         started = self.started_state(valid.state)
         evidence = {
+            "absent": BoundedEvidence.from_mapping({}),
+            "missing-attempt": BoundedEvidence.from_mapping(
+                {
+                    "effect_attempt": {
+                        "state_fingerprint": canonical_state_fingerprint(started),
+                    }
+                }
+            ),
+            "missing-fingerprint": BoundedEvidence.from_mapping(
+                {"effect_attempt": {"attempt": 1}}
+            ),
             "wrong-attempt": BoundedEvidence.from_mapping(
                 {
                     "effect_attempt": {
@@ -198,6 +232,18 @@ class EffectAttemptRecordContractTests(
             dataclasses.replace(
                 valid.original_start_event,
                 activity_id="activity-original-canary",
+            ),
+            dataclasses.replace(
+                valid.original_start_event,
+                evidence=evidence["absent"],
+            ),
+            dataclasses.replace(
+                valid.original_start_event,
+                evidence=evidence["missing-attempt"],
+            ),
+            dataclasses.replace(
+                valid.original_start_event,
+                evidence=evidence["missing-fingerprint"],
             ),
             dataclasses.replace(
                 valid.original_start_event,
