@@ -208,11 +208,6 @@ class PostgresEffectAttemptStoreTests(
             barrier.abort()
             for future in futures:
                 future.cancel()
-            for future in futures:
-                try:
-                    future.result(timeout=15)
-                except BaseException:
-                    pass
             executor.shutdown(wait=True, cancel_futures=True)
             raise
         else:
