@@ -612,6 +612,32 @@ class RuntimeEffectIntentTests(unittest.TestCase):
         self.assertTrue(language.RuntimeEffectIntentSource.__dataclass_params__.frozen)
         self.assertTrue(language.RuntimeEffectIntent.__dataclass_params__.frozen)
 
+    def test_operation_validation_translates_only_categorical_input_errors(self) -> None:
+        language = _language()
+        intent = language.runtime_effect_intent_for_request(_request())
+
+        with self.assertRaises(RuntimeEffectContractError) as caught:
+            replace(intent, operation=object())
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+
+        original = language.activity_operation_descriptor
+        for injected in (
+            RuntimeError("internal operation descriptor canary"),
+            TypeError("internal operation descriptor type canary"),
+        ):
+            with self.subTest(error_type=type(injected).__name__):
+                def fail_if_called(_operation, error=injected):
+                    raise error
+
+                language.activity_operation_descriptor = fail_if_called
+                try:
+                    with self.assertRaises(type(injected)) as raised:
+                        replace(intent, operation=intent.operation)
+                    self.assertIs(raised.exception, injected)
+                finally:
+                    language.activity_operation_descriptor = original
+
     def test_canonical_intent_has_a_one_mebibyte_ceiling(self) -> None:
         language = _language()
         request = _request(complete=False)

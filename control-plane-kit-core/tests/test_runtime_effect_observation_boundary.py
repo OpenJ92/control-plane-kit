@@ -12,6 +12,7 @@ import unittest
 import rfc8785
 
 import control_plane_kit_core as root
+from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, NodeTarget, StartNode
 from control_plane_kit_core.probe_intents import (
@@ -265,6 +266,51 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
             )
         with self.assertRaises(RuntimeEffectContractError):
             language.runtime_effect_result_fingerprint(forged)
+
+    def test_result_fingerprint_revalidates_semantics_and_preserves_internal_errors(self) -> None:
+        language = _language()
+        failure = RuntimeEffectFailure("runtime.failed", "runtime failed")
+
+        def forged(kind, nested_failure):
+            value = object.__new__(RuntimeEffectResult)
+            object.__setattr__(value, "effect_id", "event-started-a")
+            object.__setattr__(value, "kind", kind)
+            object.__setattr__(value, "evidence", {})
+            object.__setattr__(value, "failure", nested_failure)
+            object.__setattr__(value, "observations", ())
+            return value
+
+        for kind, nested_failure in (
+            (EffectResultKind.SUCCEEDED, failure),
+            (EffectResultKind.FAILED, None),
+            (EffectResultKind.UNSUPPORTED, None),
+            (EffectResultKind.UNCERTAIN, None),
+        ):
+            with self.subTest(kind=kind.value):
+                with self.assertRaises(RuntimeEffectContractError) as caught:
+                    language.runtime_effect_result_fingerprint(
+                        forged(kind, nested_failure)
+                    )
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+
+        valid = RuntimeEffectResult.succeeded("event-started-a")
+        original = RuntimeEffectResult.descriptor
+        for injected in (
+            RuntimeError("internal result descriptor canary"),
+            TypeError("internal result descriptor type canary"),
+        ):
+            with self.subTest(error_type=type(injected).__name__):
+                def fail_if_called(_result, error=injected):
+                    raise error
+
+                RuntimeEffectResult.descriptor = fail_if_called
+                try:
+                    with self.assertRaises(type(injected)) as raised:
+                        language.runtime_effect_result_fingerprint(valid)
+                    self.assertIs(raised.exception, injected)
+                finally:
+                    RuntimeEffectResult.descriptor = original
 
     def test_live_result_fingerprint_commits_complete_nested_result(self) -> None:
         language = _language()

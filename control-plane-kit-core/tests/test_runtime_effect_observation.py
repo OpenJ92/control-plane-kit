@@ -595,6 +595,10 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
                     ),
                 )
                 self.assertTrue(value_type.__dataclass_params__.frozen)
+                self.assertEqual(
+                    typing.get_type_hints(value_type)["observations"],
+                    tuple[RuntimeEndpointObservation, ...],
+                )
 
     def test_failure_congruence_and_exact_nested_nominality_are_total(self) -> None:
         language = _language()
@@ -746,6 +750,77 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
         oversized = {f"field-{index}": "x" * 500 for index in range(9)}
         with self.assertRaisesRegex(RuntimeEffectContractError, "too large"):
             language.RuntimeEffectObservationEvidence(oversized)
+
+    def test_evidence_is_deeply_immutable_across_every_alias(self) -> None:
+        language = _language()
+
+        def admitted():
+            candidate = {
+                "state": "running",
+                "nested": {"items": ["one", "two"]},
+            }
+            evidence = language.RuntimeEffectObservationEvidence(candidate)
+            result = language.RuntimeEffectObservedSucceeded(
+                effect_id="event-started-a",
+                request_fingerprint="a" * 64,
+                evidence=evidence,
+            )
+            return (
+                candidate,
+                evidence,
+                result,
+                evidence.descriptor(),
+                language.runtime_effect_observation_fingerprint(result),
+            )
+
+        candidate, evidence, result, descriptor, fingerprint = admitted()
+        candidate["state"] = "stopped"
+        candidate["nested"]["items"].append("three")
+        self.assertEqual(evidence.descriptor(), descriptor)
+        self.assertEqual(
+            language.runtime_effect_observation_fingerprint(result), fingerprint
+        )
+
+        for name, mutate in (
+            (
+                "direct top level",
+                lambda value: value.values.__setitem__("state", "stopped"),
+            ),
+            (
+                "direct nested mapping",
+                lambda value: value.values["nested"].__setitem__("extra", True),
+            ),
+            (
+                "direct nested sequence",
+                lambda value: value.values["nested"]["items"].__setitem__(
+                    0, "changed"
+                ),
+            ),
+        ):
+            with self.subTest(name=name):
+                _, value, _, expected, _ = admitted()
+                with self.assertRaises((TypeError, AttributeError)):
+                    mutate(value)
+                self.assertEqual(value.descriptor(), expected)
+
+        _, evidence, result, descriptor, fingerprint = admitted()
+        exported = evidence.descriptor()
+        exported["nested"]["items"].append("three")
+        exported["nested"]["extra"] = True
+        self.assertEqual(evidence.descriptor(), descriptor)
+        self.assertEqual(
+            language.runtime_effect_observation_fingerprint(result), fingerprint
+        )
+
+        _, details, _, descriptor, _ = admitted()
+        failure = language.RuntimeEffectObservationFailure(
+            "observer.failed",
+            "provider observation failed",
+            details,
+        )
+        with self.assertRaises(TypeError):
+            failure.details.values["state"] = "stopped"
+        self.assertEqual(failure.details.descriptor(), descriptor)
 
     def test_failure_is_bounded_categorical_and_candidate_free(self) -> None:
         language = _language()
