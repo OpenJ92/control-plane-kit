@@ -592,15 +592,19 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
 
     def test_runtime_endpoint_text_owners_reject_hostile_subclasses_first(self) -> None:
         injected = RuntimeError("hostile text dispatch canary")
+        dispatches: list[str] = []
 
         class HostileText(str):
             def __len__(self) -> int:
+                dispatches.append("__len__")
                 raise injected
 
             def startswith(self, *args, **kwargs) -> bool:
+                dispatches.append("startswith")
                 raise injected
 
             def strip(self, *args, **kwargs) -> str:
+                dispatches.append("strip")
                 raise injected
 
         candidates = {
@@ -636,20 +640,24 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
         }
         for name, (constructor, message, canary) in candidates.items():
             with self.subTest(name=name):
+                dispatches.clear()
                 try:
                     constructor()
-                except ValueError as caught:
-                    self.assertIs(type(caught), ValueError)
-                    self.assertEqual(str(caught), message)
-                    self.assertIsNone(caught.__cause__)
-                    self.assertIsNone(caught.__context__)
-                    rendered = f"{caught!s} {caught!r}"
-                    self.assertNotIn(canary, rendered)
-                except RuntimeError as caught:
-                    self.assertIs(caught, injected)
-                    self.fail(f"{name} dispatched a hostile text method")
+                except (ValueError, RuntimeError) as caught:
+                    pass
                 else:
                     self.fail(f"{name} admitted a hostile text subclass")
+                self.assertEqual(
+                    dispatches,
+                    [],
+                    f"{name} dispatched a hostile text method",
+                )
+                self.assertIs(type(caught), ValueError)
+                self.assertEqual(str(caught), message)
+                self.assertIsNone(caught.__cause__)
+                self.assertIsNone(caught.__context__)
+                rendered = f"{caught!s} {caught!r}"
+                self.assertNotIn(canary, rendered)
 
     def test_runtime_endpoint_rejects_subclassed_nested_values(self) -> None:
         endpoint = _endpoint(subject_id="endpoint-subclass-canary")
