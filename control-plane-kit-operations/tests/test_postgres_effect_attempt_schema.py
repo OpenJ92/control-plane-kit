@@ -206,6 +206,59 @@ class PostgresEffectAttemptSchemaTests(
             before_payload,
         )
 
+    def test_missing_failure_keys_are_categorical_current_row_drift(self) -> None:
+        self.require_store()
+        record = self.record(
+            "failed",
+            event_prefix="missing-failure",
+            original_ordinal=10,
+            latest_ordinal=20,
+        )
+        self.persist(record)
+        target = record.latest_transition_event.event_id
+        canary = "failure-payload-canary"
+        self.connection.execute(
+            """
+            UPDATE cpk_activity_events
+            SET payload = jsonb_set(
+              payload,
+              '{failure}',
+              jsonb_build_object('audit_canary', %s::text)
+            )
+            WHERE event_id=%s
+            """,
+            (canary, target),
+        )
+
+        for method in ("get", "get_for_update"):
+            with self.subTest(method=method):
+                with self.unit_of_work() as unit_of_work:
+                    with self.assertRaises(OperationsRecordError) as caught:
+                        getattr(unit_of_work.stores.effect_attempts, method)(
+                            record.state.identity
+                        )
+                self.assertEqual(
+                    str(caught.exception),
+                    "effect attempt row is invalid",
+                )
+                self.assert_safe_error(caught.exception, target, canary, "category")
+
+        before_payload = self.connection.execute(
+            "SELECT payload FROM cpk_activity_events WHERE event_id=%s",
+            (target,),
+        ).fetchone()
+        with self.assertRaises(SchemaInstallationError) as caught:
+            install_schema(self.connection)
+        self.assertEqual(str(caught.exception), "operations schema reset is required")
+        self.assert_safe_error(caught.exception, target, canary, "category")
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT payload FROM cpk_activity_events WHERE event_id=%s",
+                (target,),
+            ).fetchone(),
+            before_payload,
+        )
+
     def test_current_schema_contract_freezes_columns_constraints_and_indexes(self) -> None:
         relation_names = tuple(
             value.name for value in CURRENT_POSTGRES_SCHEMA_CONTRACT.relations
