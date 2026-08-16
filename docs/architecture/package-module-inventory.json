@@ -9267,9 +9267,7 @@
       "module": "control_plane_kit_operations.postgres.effect_attempt_store",
       "motivation": "Owns the exact PostgreSQL representation and complete-prior compare-and-set for durable effect-attempt records.",
       "movement": "remain",
-      "optional_external_dependencies": [
-        "psycopg"
-      ],
+      "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
         "tests/test_postgres_effect_attempt_store_contract.py",

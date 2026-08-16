@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=9d3426339ef9e03e0e5b1ee32a7da0c7888c34896c695b47de4b1c5ff4d866f3 relations=30 columns=402 constraints=289 indexes=98 foreign-keys=58 -->
+<!-- current-schema-contract: sha256=b23921a90fc7b1804726c63418b82e67681ba1152a0c9a985cfdb141e62d3379 relations=30 columns=402 constraints=289 indexes=98 foreign-keys=58 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
