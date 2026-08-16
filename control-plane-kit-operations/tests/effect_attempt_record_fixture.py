@@ -288,8 +288,8 @@ class EffectAttemptRecordFixture:
         event_prefix: str = "event",
         original_ordinal: int = 3,
         latest_ordinal: int = 7,
-        original_time: str = "2030-01-01T00:00:02.000000Z",
-        latest_time: str = "2030-01-01T00:00:01.000000Z",
+        original_time: str = "2030-01-01T00:00:02Z",
+        latest_time: str = "2030-01-01T00:00:01Z",
     ):
         self.require_language()
         state = self.state(

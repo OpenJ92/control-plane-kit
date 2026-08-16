@@ -82,7 +82,7 @@ class PostgresEffectAttemptStoreFixture(
             ),
             event_id=event_id,
             ordinal=ordinal,
-            occurred_at="2030-01-01T00:00:01.000000Z",
+            occurred_at="2030-01-01T00:00:01Z",
         )
         return EffectAttemptRecord(state, current.original_start_event, latest)
 
