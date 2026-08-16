@@ -54,7 +54,7 @@ class PostgresEffectAttemptStoreTests(
             self.event_kind("started", compensation=False),
             event_id="e" * 512,
             ordinal=10,
-            occurred_at="2030-01-01T00:00:01.000000Z",
+            occurred_at="2030-01-01T00:00:01Z",
         )
         record = EffectAttemptRecord(state, event, event)
         self.assertEqual(self.persist(record), record)
@@ -322,7 +322,7 @@ class PostgresEffectAttemptStoreTests(
                         current.original_start_event.kind,
                         event_id="drift-original-alternate",
                         ordinal=11,
-                        occurred_at="2030-01-01T00:00:01.000000Z",
+                        occurred_at="2030-01-01T00:00:01Z",
                     )
                     with self.unit_of_work() as unit_of_work:
                         unit_of_work.stores.execution.add_event(alternate)
@@ -342,7 +342,7 @@ class PostgresEffectAttemptStoreTests(
                         current.latest_transition_event.kind,
                         event_id="drift-latest-alternate",
                         ordinal=30,
-                        occurred_at="2030-01-01T00:00:01.000000Z",
+                        occurred_at="2030-01-01T00:00:01Z",
                     )
                     with self.unit_of_work() as unit_of_work:
                         unit_of_work.stores.execution.add_event(alternate)
