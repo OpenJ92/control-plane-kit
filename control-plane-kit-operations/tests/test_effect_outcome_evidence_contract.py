@@ -227,6 +227,17 @@ def _builtins_namespace_accesses(tree: ast.AST) -> tuple[str, ...]:
     )
 
 
+def _namespace_declarations(tree: ast.AST) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            f"{type(node).__name__}:{name}"
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Global, ast.Nonlocal))
+            for name in node.names
+        )
+    )
+
+
 def _resolved_path(
     node: ast.AST,
     bindings: dict[str, str],
@@ -429,6 +440,13 @@ class EffectOutcomeEvidencePredecessorTest(
             '__builtins__["tuple"] = __builtins__["open"]\n'
             'tuple("candidate")'
         )
+        global_mutation = ast.parse(
+            "_state = 0\n"
+            "def mutate():\n"
+            "    global _state\n"
+            "    _state += 1\n"
+            "mutate()"
+        )
         direct_targets, direct_unresolved = _call_contract(direct_output)
         dynamic_targets, dynamic_unresolved = _call_contract(dynamic_open)
         smuggled_targets, smuggled_unresolved = _call_contract(smuggled_output)
@@ -439,6 +457,7 @@ class EffectOutcomeEvidencePredecessorTest(
         namespace_targets, namespace_unresolved = _call_contract(
             namespace_laundered_open
         )
+        global_targets, global_unresolved = _call_contract(global_mutation)
         smuggled_symbols, _, _ = _import_contract(smuggled_output)
 
         self.assertEqual(direct_targets, set())
@@ -476,6 +495,15 @@ class EffectOutcomeEvidencePredecessorTest(
         self.assertEqual(
             _builtins_namespace_accesses(namespace_laundered_open),
             ("Load", "Load"),
+        )
+        self.assertEqual(global_targets, {"local.mutate"})
+        self.assertEqual(global_unresolved, ())
+        self.assertEqual(_forbidden_rebindings(global_mutation), ())
+        self.assertEqual(_nonlocal_mutation_targets(global_mutation), ())
+        self.assertEqual(_builtins_namespace_accesses(global_mutation), ())
+        self.assertEqual(
+            _namespace_declarations(global_mutation),
+            ("Global:_state",),
         )
 
 
@@ -991,6 +1019,7 @@ class EffectOutcomeEvidenceContractTest(
         self.assertEqual(_forbidden_rebindings(tree), ())
         self.assertEqual(_nonlocal_mutation_targets(tree), ())
         self.assertEqual(_builtins_namespace_accesses(tree), ())
+        self.assertEqual(_namespace_declarations(tree), ())
         call_targets, unresolved_calls = _call_contract(tree)
         self.assertEqual(unresolved_calls, ())
         self.assertEqual(
