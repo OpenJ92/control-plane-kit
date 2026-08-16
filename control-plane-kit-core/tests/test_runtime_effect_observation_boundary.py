@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import fields, replace
 import hashlib
 import importlib
 import json
@@ -13,6 +14,11 @@ import rfc8785
 import control_plane_kit_core as root
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, NodeTarget, StartNode
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    RuntimeEndpointObservation,
+)
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectFailure,
     RuntimeEffectKind,
@@ -27,7 +33,7 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_core.runtime_authority import RuntimeEffectContractError
-from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.types import Protocol, RuntimeKind
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +41,7 @@ REPOSITORY_ROOT = PACKAGE_ROOT.parent
 SOURCE_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_core"
 MODULE = "control_plane_kit_core.runtime_effect_observation"
 RESULT_DOMAIN = b"control-plane-kit.runtime-effect-result.v1\x00"
+OUTCOME_FINGERPRINT_MAX_BYTES = 8_192
 PUBLIC_NAMES = {
     "RuntimeEffectIntent",
     "RuntimeEffectIntentSource",
@@ -100,6 +107,35 @@ def _grant() -> SecretResolutionGrant:
     )
 
 
+def _subclass_copy(value):
+    hostile_type = type(f"Hostile{type(value).__name__}", (type(value),), {})
+    arguments = {
+        item.name: getattr(value, item.name)
+        for item in fields(value)
+        if item.init
+    }
+    return hostile_type(**arguments)
+
+
+def _endpoint(
+    *,
+    subject_id: str = "api",
+    socket_name: str = "http",
+    graph_id: str = "graph-desired",
+    protocol: Protocol = Protocol.HTTP,
+    context: EndpointContext = EndpointContext.RUNTIME_PRIVATE,
+    address: str = "http://api:8000",
+) -> RuntimeEndpointObservation:
+    return RuntimeEndpointObservation(
+        subject_id=subject_id,
+        socket_name=socket_name,
+        graph_id=graph_id,
+        protocol=protocol,
+        context=context,
+        address=LiteralEndpointMaterial(address),
+    )
+
+
 class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
     def test_request_requires_effect_and_intent_event_congruence(self) -> None:
         class HostileText(str):
@@ -151,6 +187,13 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
         ):
             self.assertNotIn(candidate, repr(request))
             self.assertNotIn(candidate, repr(request.descriptor()))
+        grant_field = next(
+            item
+            for item in fields(RuntimeEffectRequest)
+            if item.name == "secret_resolution_grants"
+        )
+        self.assertTrue(grant_field.init)
+        self.assertFalse(grant_field.repr)
 
     def test_live_result_fingerprint_has_exact_golden_and_distinct_domain(self) -> None:
         language = _language()
@@ -187,23 +230,141 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
     def test_result_fingerprint_rejects_hostile_nominal_and_json_values(self) -> None:
         language = _language()
 
-        class HostileResult(RuntimeEffectResult):
-            pass
-
         result = RuntimeEffectResult.failed(
             "event-started-a",
             RuntimeEffectFailure("runtime.failed", "runtime failed"),
         )
         with self.assertRaises(RuntimeEffectContractError):
             language.runtime_effect_result_fingerprint(
-                HostileResult(**result.__dict__)
+                _subclass_copy(result)
             )
 
         forged = object.__new__(RuntimeEffectResult)
-        forged.__dict__.update(result.__dict__)
-        forged.__dict__["evidence"] = {"unsafe": float("nan")}
+        for item in fields(result):
+            object.__setattr__(
+                forged,
+                item.name,
+                {"unsafe": float("nan")}
+                if item.name == "evidence"
+                else getattr(result, item.name),
+            )
         with self.assertRaises(RuntimeEffectContractError):
             language.runtime_effect_result_fingerprint(forged)
+
+    def test_live_result_fingerprint_commits_complete_nested_result(self) -> None:
+        language = _language()
+        succeeded = RuntimeEffectResult.succeeded(
+            "event-started-a",
+            evidence={"container_state": "running", "exit_code": 0},
+            observations=(_endpoint(),),
+        )
+        baseline = language.runtime_effect_result_fingerprint(succeeded)
+        endpoint = succeeded.observations[0]
+        mutations = {
+            "effect_id": replace(succeeded, effect_id="event-started-b"),
+            "kind": RuntimeEffectResult.failed(
+                "event-started-a",
+                RuntimeEffectFailure("runtime.failed", "runtime failed"),
+            ),
+            "evidence_key": replace(
+                succeeded,
+                evidence={"provider_state": "running", "exit_code": 0},
+            ),
+            "evidence_text": replace(
+                succeeded,
+                evidence={"container_state": "stopped", "exit_code": 0},
+            ),
+            "evidence_integer": replace(
+                succeeded,
+                evidence={"container_state": "running", "exit_code": 1},
+            ),
+            "endpoint_subject": replace(
+                succeeded,
+                observations=(replace(endpoint, subject_id="worker"),),
+            ),
+            "endpoint_socket": replace(
+                succeeded,
+                observations=(replace(endpoint, socket_name="admin"),),
+            ),
+            "endpoint_graph": replace(
+                succeeded,
+                observations=(replace(endpoint, graph_id="graph-next"),),
+            ),
+            "endpoint_protocol": replace(
+                succeeded,
+                observations=(
+                    _endpoint(
+                        protocol=Protocol.POSTGRES,
+                        address="postgres://api:5432",
+                    ),
+                ),
+            ),
+            "endpoint_context": replace(
+                succeeded,
+                observations=(replace(endpoint, context=EndpointContext.PUBLIC),),
+            ),
+            "endpoint_address": replace(
+                succeeded,
+                observations=(
+                    replace(
+                        endpoint,
+                        address=LiteralEndpointMaterial("http://api:8001"),
+                    ),
+                ),
+            ),
+        }
+        for name, candidate in mutations.items():
+            with self.subTest(name=name):
+                self.assertNotEqual(
+                    language.runtime_effect_result_fingerprint(candidate), baseline
+                )
+
+        failure = RuntimeEffectFailure(
+            "runtime.failed",
+            "runtime failed",
+            {"reason": "provider-error"},
+        )
+        failed = RuntimeEffectResult.failed("event-started-a", failure)
+        failed_fingerprint = language.runtime_effect_result_fingerprint(failed)
+        for name, changed in {
+            "failure_code": replace(failure, code="runtime.changed"),
+            "failure_message": replace(failure, message="runtime changed"),
+            "failure_details_key": replace(failure, details={"cause": "provider-error"}),
+            "failure_details_value": replace(failure, details={"reason": "timeout"}),
+        }.items():
+            with self.subTest(name=name):
+                self.assertNotEqual(
+                    language.runtime_effect_result_fingerprint(
+                        replace(failed, failure=changed)
+                    ),
+                    failed_fingerprint,
+                )
+
+    def test_complete_live_result_fingerprint_input_has_exact_byte_ceiling(self) -> None:
+        language = _language()
+
+        def result_for_size(target: int) -> RuntimeEffectResult:
+            seed = RuntimeEffectResult.succeeded(
+                "event-started-a",
+                observations=(_endpoint(subject_id="s"),),
+            )
+            seed_size = len(rfc8785.dumps(seed.descriptor()))
+            subject_size = target - seed_size + 1
+            candidate = RuntimeEffectResult.succeeded(
+                "event-started-a",
+                observations=(_endpoint(subject_id="s" * subject_size),),
+            )
+            self.assertEqual(len(rfc8785.dumps(candidate.descriptor())), target)
+            return candidate
+
+        maximum = result_for_size(OUTCOME_FINGERPRINT_MAX_BYTES)
+        plus_one = result_for_size(OUTCOME_FINGERPRINT_MAX_BYTES + 1)
+        self.assertEqual(len(language.runtime_effect_result_fingerprint(maximum)), 64)
+        with self.assertRaisesRegex(RuntimeEffectContractError, "too large") as caught:
+            language.runtime_effect_result_fingerprint(plus_one)
+        self.assertNotIn("s" * 64, str(caught.exception) + repr(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
 
 
 class RuntimeEffectObservationPackageBoundaryTests(unittest.TestCase):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 import hashlib
 import importlib
 import unittest
@@ -8,12 +8,16 @@ import unittest
 import rfc8785
 
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
-from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.environment import (
+    PublicStaticEnvironmentBinding,
+    SocketDerivedEnvironmentBinding,
+)
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, NodeTarget, StartNode, StopNode
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
+    OciPlatform,
     ProductDescriptorDigest,
     ProductIdentity,
     ProductReference,
@@ -28,12 +32,24 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeEffectContractError,
 )
 from control_plane_kit_core.runtime_effects import (
+    ImagePullAuthority,
     RuntimeEffectKind,
     RuntimeEffectRequest,
     RuntimeEffectSource,
     RuntimeProductMaterial,
 )
+from control_plane_kit_core.secrets import (
+    CredentialReference,
+    SecretEnvironmentDelivery,
+    SecretReference,
+    SecretUseIntent,
+)
 from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.verification import (
+    PostgresPasswordAuthentication,
+    PostgresQueryCheck,
+    VerificationContract,
+)
 
 
 MODULE = "control_plane_kit_core.runtime_effect_observation"
@@ -79,29 +95,105 @@ def _delivery() -> RuntimeAuthorityAccessDelivery:
     )
 
 
-def _product_material(*, node_id: str = "api") -> RuntimeProductMaterial:
-    identity = ProductIdentity("openj92", "hello-server", 1)
+def _product_material(
+    *,
+    node_id: str = "api",
+    runtime_id: str = "docker",
+    product_namespace: str = "openj92",
+    product_name: str = "hello-server",
+    contract_revision: int = 1,
+    descriptor_digest: str = "b" * 64,
+    image_registry: str = "ghcr.io",
+    image_repository: str = "openj92/control-plane-kit-servers/hello-server",
+    image_digest: str = "sha256:" + "a" * 64,
+    image_tag: str | None = "stable",
+    image_architecture: str = "amd64",
+    image_provenance: str = "build-a",
+    provider_port: int = 8000,
+    public_name: str = "HELLO_MESSAGE",
+    public_value: str = "Hello from graph",
+    socket_name: str = "UPSTREAM_URL",
+    socket_value: str = "http://upstream:8080",
+    socket_edge: str = "upstream.internal->api.upstream",
+    delivery_reference: str = "secret://local/workspace-a/app/token",
+    verification_reference: str = "secret://local/workspace-a/postgres/password",
+    pull_registry: str = "ghcr.io",
+    pull_repository: str | None = "openj92",
+    pull_reference: str = "secret://local/workspace-a/oci/pull",
+) -> RuntimeProductMaterial:
+    identity = ProductIdentity(product_namespace, product_name, contract_revision)
     product = ContainerServerProduct(
         identity=identity,
         image=OciImageReference(
-            registry="ghcr.io",
-            repository="openj92/control-plane-kit-servers/hello-server",
-            digest="sha256:" + "a" * 64,
+            registry=image_registry,
+            repository=image_repository,
+            digest=image_digest,
+            tag=image_tag,
+            platforms=(OciPlatform("linux", image_architecture),),
+            provenance={"build": image_provenance},
         ),
         runtime_contract=ProductRuntimeContract(
-            sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
-            provider_ports=(ProviderRuntimePort("http", 8000),),
+            sockets=BlockSockets(
+                providers=(
+                    ProviderSocket("http", Protocol.HTTP),
+                    ProviderSocket("database", Protocol.POSTGRES),
+                )
+            ),
+            provider_ports=(
+                ProviderRuntimePort("http", provider_port),
+                ProviderRuntimePort("database", 5432),
+            ),
+            secret_deliveries=(
+                SecretEnvironmentDelivery(
+                    "APP_CONTROL_TOKEN",
+                    SecretReference(delivery_reference),
+                    SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                ),
+            ),
+            verification=VerificationContract(
+                (
+                    PostgresQueryCheck(
+                        check_id="database-ready",
+                        provider_socket="database",
+                        authentication=PostgresPasswordAuthentication(
+                            database="app",
+                            username="app",
+                            password_reference=SecretReference(
+                                verification_reference
+                            ),
+                        ),
+                    ),
+                )
+            ),
         ),
     )
     return RuntimeProductMaterial(
         node_id=node_id,
-        runtime_id="docker",
-        reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
+        runtime_id=runtime_id,
+        reference=ProductReference(identity, ProductDescriptorDigest(descriptor_digest)),
         product=product,
         public_environment=(
-            PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello from graph"),
+            PublicStaticEnvironmentBinding(public_name, public_value),
+        ),
+        socket_environment=(
+            SocketDerivedEnvironmentBinding(socket_name, socket_value, socket_edge),
+        ),
+        pull_authority=ImagePullAuthority(
+            registry=pull_registry,
+            repository=pull_repository,
+            credential_reference=CredentialReference(pull_reference),
         ),
     )
+
+
+def _subclass_copy(value):
+    hostile_type = type(f"Hostile{type(value).__name__}", (type(value),), {})
+    arguments = {
+        item.name: getattr(value, item.name)
+        for item in fields(value)
+        if item.init
+    }
+    return hostile_type(**arguments)
 
 
 def _request(
@@ -257,6 +349,134 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             ),
             "authority_deliveries": replace(intent, authority_deliveries=()),
             "products": replace(intent, products=(_product_material(node_id="api-b"),)),
+            "authority_delivery_kind": replace(
+                intent,
+                authority_ref=other_delivery.authority_ref,
+                authority_deliveries=(other_delivery,),
+            ),
+            "authority_delivery_secret_label": replace(
+                intent,
+                authority_deliveries=(
+                    RuntimeAuthorityAccessDelivery(
+                        intent.authority_ref,
+                        RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
+                        (
+                            RuntimeAuthorityDeliverySecretReference(
+                                "ca-chain",
+                                "secret://local/workspace-a/docker/ca-cert",
+                            ),
+                            *intent.authority_deliveries[0].secret_references[1:],
+                        ),
+                    ),
+                ),
+            ),
+            "authority_delivery_secret_reference": replace(
+                intent,
+                authority_deliveries=(
+                    RuntimeAuthorityAccessDelivery(
+                        intent.authority_ref,
+                        RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
+                        (
+                            RuntimeAuthorityDeliverySecretReference(
+                                "ca-cert",
+                                "secret://local/workspace-a/docker/ca-cert-b",
+                            ),
+                            *intent.authority_deliveries[0].secret_references[1:],
+                        ),
+                    ),
+                ),
+            ),
+            "product_runtime_id": replace(
+                intent, products=(_product_material(runtime_id="docker-b"),)
+            ),
+            "product_reference_identity": replace(
+                intent, products=(_product_material(product_name="hello-worker"),)
+            ),
+            "product_reference_namespace": replace(
+                intent,
+                products=(_product_material(product_namespace="example"),),
+            ),
+            "product_reference_revision": replace(
+                intent,
+                products=(_product_material(contract_revision=2),),
+            ),
+            "product_reference_digest": replace(
+                intent, products=(_product_material(descriptor_digest="c" * 64),)
+            ),
+            "product_image_registry": replace(
+                intent, products=(_product_material(image_registry="registry.example"),)
+            ),
+            "product_image_repository": replace(
+                intent,
+                products=(_product_material(image_repository="openj92/hello-worker"),),
+            ),
+            "product_image_digest": replace(
+                intent,
+                products=(_product_material(image_digest="sha256:" + "c" * 64),),
+            ),
+            "product_image_tag": replace(
+                intent, products=(_product_material(image_tag="candidate"),)
+            ),
+            "product_image_platform": replace(
+                intent,
+                products=(_product_material(image_architecture="arm64"),),
+            ),
+            "product_image_provenance": replace(
+                intent,
+                products=(_product_material(image_provenance="build-b"),),
+            ),
+            "product_runtime_contract": replace(
+                intent, products=(_product_material(provider_port=8001),)
+            ),
+            "product_secret_delivery": replace(
+                intent,
+                products=(
+                    _product_material(
+                        delivery_reference="secret://local/workspace-a/app/token-b"
+                    ),
+                ),
+            ),
+            "product_verification_material": replace(
+                intent,
+                products=(
+                    _product_material(
+                        verification_reference=(
+                            "secret://local/workspace-a/postgres/password-b"
+                        )
+                    ),
+                ),
+            ),
+            "product_public_environment_name": replace(
+                intent, products=(_product_material(public_name="GREETING"),)
+            ),
+            "product_public_environment_value": replace(
+                intent, products=(_product_material(public_value="Hello again"),)
+            ),
+            "product_socket_environment_name": replace(
+                intent, products=(_product_material(socket_name="BACKEND_URL"),)
+            ),
+            "product_socket_environment_value": replace(
+                intent,
+                products=(_product_material(socket_value="http://upstream:8081"),),
+            ),
+            "product_socket_environment_edge": replace(
+                intent,
+                products=(_product_material(socket_edge="upstream.other->api.upstream"),),
+            ),
+            "product_pull_registry": replace(
+                intent, products=(_product_material(pull_registry="registry.example"),)
+            ),
+            "product_pull_repository": replace(
+                intent, products=(_product_material(pull_repository="openj92/private"),)
+            ),
+            "product_pull_credential": replace(
+                intent,
+                products=(
+                    _product_material(
+                        pull_reference="secret://local/workspace-a/oci/pull-b"
+                    ),
+                ),
+            ),
         }
 
         for name, candidate in mutations.items():
@@ -280,8 +500,8 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             pass
 
         request = _request()
-        hostile_request = HostileRequest(**request.__dict__)
-        hostile_source = HostileSource(**request.source.__dict__)
+        hostile_request = _subclass_copy(request)
+        hostile_source = _subclass_copy(request.source)
 
         with self.assertRaises(RuntimeEffectContractError):
             language.runtime_effect_intent_for_request(hostile_request)
@@ -306,8 +526,38 @@ class RuntimeEffectIntentTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeEffectContractError):
             language.runtime_effect_intent_fingerprint(
-                HostileIntent(**intent.__dict__)
+                _subclass_copy(intent)
             )
+
+    def test_public_intent_dataclass_fields_are_exact_and_frozen(self) -> None:
+        language = _language()
+
+        self.assertEqual(
+            tuple((item.name, item.init) for item in fields(language.RuntimeEffectIntentSource)),
+            (
+                ("workspace_id", True),
+                ("request_id", True),
+                ("run_id", True),
+                ("plan_id", True),
+                ("base_graph_id", True),
+                ("desired_graph_id", True),
+            ),
+        )
+        self.assertEqual(
+            tuple((item.name, item.init) for item in fields(language.RuntimeEffectIntent)),
+            (
+                ("kind", True),
+                ("runtime_kind", True),
+                ("source", True),
+                ("activity_id", True),
+                ("operation", True),
+                ("authority_ref", True),
+                ("authority_deliveries", True),
+                ("products", True),
+            ),
+        )
+        self.assertTrue(language.RuntimeEffectIntentSource.__dataclass_params__.frozen)
+        self.assertTrue(language.RuntimeEffectIntent.__dataclass_params__.frozen)
 
     def test_canonical_intent_has_a_one_mebibyte_ceiling(self) -> None:
         language = _language()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import UserDict
-from dataclasses import replace
+from dataclasses import fields, replace
 import hashlib
 import importlib
 import typing
@@ -11,6 +11,16 @@ import rfc8785
 
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, NodeTarget, StartNode
+from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
+from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    OciImageReference,
+    ProductDescriptorDigest,
+    ProductIdentity,
+    ProductReference,
+    ProductRuntimeContract,
+    ProviderRuntimePort,
+)
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDelivery,
     RuntimeAuthorityAccessDeliveryKind,
@@ -19,21 +29,30 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeEffectContractError,
 )
 from control_plane_kit_core.runtime_effects import (
+    ImagePullAuthority,
     RuntimeEffectKind,
     RuntimeEffectRequest,
     RuntimeEffectSource,
+    RuntimeProductMaterial,
 )
 from control_plane_kit_core.secrets import (
+    SecretEnvironmentDelivery,
     SecretProviderEndpointReference,
     SecretReference,
     SecretResolutionGrant,
     SecretUseIntent,
 )
-from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.verification import (
+    PostgresPasswordAuthentication,
+    PostgresQueryCheck,
+    VerificationContract,
+)
 
 
 MODULE = "control_plane_kit_core.runtime_effect_observation"
 OBSERVATION_DOMAIN = b"control-plane-kit.runtime-effect-observation.v1\x00"
+OUTCOME_FINGERPRINT_MAX_BYTES = 8_192
 VARIANT_NAMES = (
     "RuntimeEffectObservedSucceeded",
     "RuntimeEffectObservedFailed",
@@ -141,10 +160,84 @@ def _grant_set(fresh: str) -> tuple[SecretResolutionGrant, ...]:
     )
 
 
+def _grant_product() -> RuntimeProductMaterial:
+    identity = ProductIdentity("openj92", "secret-using-server", 1)
+    return RuntimeProductMaterial(
+        node_id="api",
+        runtime_id="docker",
+        reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
+        product=ContainerServerProduct(
+            identity=identity,
+            image=OciImageReference(
+                registry="ghcr.io",
+                repository="openj92/secret-using-server",
+                digest="sha256:" + "a" * 64,
+            ),
+            runtime_contract=ProductRuntimeContract(
+                sockets=BlockSockets(
+                    providers=(ProviderSocket("database", Protocol.POSTGRES),)
+                ),
+                provider_ports=(ProviderRuntimePort("database", 5432),),
+                secret_deliveries=(
+                    SecretEnvironmentDelivery(
+                        "APP_CONTROL_TOKEN",
+                        SecretReference("secret://local/workspace-a/app/token"),
+                        SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                    ),
+                ),
+                verification=VerificationContract(
+                    (
+                        PostgresQueryCheck(
+                            check_id="database-ready",
+                            provider_socket="database",
+                            authentication=PostgresPasswordAuthentication(
+                                database="app",
+                                username="app",
+                                password_reference=SecretReference(
+                                    "secret://local/workspace-a/postgres/password"
+                                ),
+                            ),
+                        ),
+                    )
+                ),
+            ),
+        ),
+        pull_authority=ImagePullAuthority(
+            registry="ghcr.io",
+            repository="openj92",
+            credential_reference=SecretReference(
+                "secret://local/workspace-a/oci/pull"
+            ),
+        ),
+    )
+
+
+def _subclass_copy(value):
+    hostile_type = type(f"Hostile{type(value).__name__}", (type(value),), {})
+    arguments = {
+        item.name: getattr(value, item.name)
+        for item in fields(value)
+        if item.init
+    }
+    return hostile_type(**arguments)
+
+
+def _forged_dataclass(value, **changes):
+    forged = object.__new__(type(value))
+    for item in fields(value):
+        object.__setattr__(
+            forged,
+            item.name,
+            changes.get(item.name, getattr(value, item.name)),
+        )
+    return forged
+
+
 def _request(
     *,
     grants: tuple[SecretResolutionGrant, ...] = (),
     effect_id: str = "event-started-a",
+    products: tuple[RuntimeProductMaterial, ...] = (),
 ) -> RuntimeEffectRequest:
     delivery = _delivery()
     return RuntimeEffectRequest(
@@ -165,6 +258,7 @@ def _request(
         authority_ref=delivery.authority_ref,
         authority_deliveries=(delivery,),
         secret_resolution_grants=grants,
+        products=products,
     )
 
 
@@ -227,40 +321,101 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
         self.assertNotEqual(first.effect_id, second.effect_id)
         self.assertNotEqual(first.descriptor(), second.descriptor())
 
-    def test_grant_admission_is_exact_and_closed(self) -> None:
+    def test_each_closed_grant_use_family_is_admitted_exactly_once(self) -> None:
         language = _language()
-        complete = _grant_set("a")
-        invalid = {
-            "unrelated reference": replace(
-                complete[0],
-                reference=SecretReference(
-                    "secret://local/workspace-a/docker/unrelated"
-                ),
+        families = {
+            "product secret delivery": (
+                "secret://local/workspace-a/app/token",
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN,
             ),
-            "wrong intent": replace(
-                complete[0],
-                intent=SecretUseIntent.OCI_PULL_CREDENTIAL,
+            "image pull authority": (
+                "secret://local/workspace-a/oci/pull",
+                SecretUseIntent.OCI_PULL_CREDENTIAL,
             ),
-            "wrong workspace": replace(complete[0], workspace_id="workspace-b"),
-            "wrong effect": replace(complete[0], effect_id="event-started-b"),
+            "verification material": (
+                "secret://local/workspace-a/postgres/password",
+                SecretUseIntent.POSTGRES_PASSWORD,
+            ),
+            "runtime authority delivery": (
+                "secret://local/workspace-a/docker/client-key",
+                SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_KEY,
+            ),
         }
+        for index, (name, (reference, intent)) in enumerate(families.items()):
+            fresh = chr(ord("h") + index)
+            admitted = _grant(
+                fresh=fresh,
+                label=name,
+                reference=reference,
+                intent=intent,
+            )
+            wrong_intent = replace(
+                admitted,
+                intent=(
+                    SecretUseIntent.POSTGRES_PASSWORD
+                    if intent is not SecretUseIntent.POSTGRES_PASSWORD
+                    else SecretUseIntent.APPLICATION_CONTROL_TOKEN
+                ),
+            )
+            unrelated = replace(
+                admitted,
+                reference=SecretReference(
+                    f"secret://local/workspace-a/unrelated/{index}"
+                ),
+            )
 
-        for name, grant in invalid.items():
+            with self.subTest(family=name, case="positive"):
+                request = _request(grants=(admitted,), products=(_grant_product(),))
+                observation = language.RuntimeEffectObservationRequest(request)
+                self.assertIs(observation.runtime_request.secret_resolution_grants[0], admitted)
+
+            for case, rejected in (
+                ("wrong intent", wrong_intent),
+                ("unrelated reference", unrelated),
+            ):
+                with self.subTest(family=name, case=case):
+                    request = _request(
+                        grants=(rejected,),
+                        products=(_grant_product(),),
+                    )
+                    with self.assertRaises(RuntimeEffectContractError) as caught:
+                        language.RuntimeEffectObservationRequest(request)
+                    message = str(caught.exception) + repr(caught.exception)
+                    self.assertNotIn(rejected.reference.reference_id, message)
+                    self.assertNotIn(rejected.authorization_id, message)
+                    self.assertIsNone(caught.exception.__cause__)
+                    self.assertIsNone(caught.exception.__context__)
+
+        admitted = _grant(
+            fresh="n",
+            label="product secret delivery",
+            reference="secret://local/workspace-a/app/token",
+            intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+        )
+        request = _request(grants=(admitted,), products=(_grant_product(),))
+        duplicate = _forged_dataclass(
+            request,
+            secret_resolution_grants=(admitted, admitted),
+        )
+        with self.assertRaises(RuntimeEffectContractError) as caught:
+            language.RuntimeEffectObservationRequest(duplicate)
+        self.assertNotIn(admitted.authorization_id, str(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+
+    def test_grant_workspace_and_effect_coordinates_remain_closed(self) -> None:
+        language = _language()
+        admitted = _grant_set("a")[0]
+        for name, grant in (
+            ("wrong workspace", replace(admitted, workspace_id="workspace-b")),
+            ("wrong effect", replace(admitted, effect_id="event-started-b")),
+        ):
             with self.subTest(name=name):
-                try:
-                    request = _request(grants=(grant,))
-                except RuntimeEffectContractError as error:
-                    if name not in {"wrong workspace", "wrong effect"}:
-                        raise
-                    self.assertIsNone(error.__cause__)
-                    self.assertIsNone(error.__context__)
-                    continue
                 with self.assertRaises(RuntimeEffectContractError) as caught:
-                    language.RuntimeEffectObservationRequest(request)
+                    _request(grants=(grant,))
+                self.assertNotIn(grant.authorization_id, repr(caught.exception))
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
-                self.assertNotIn(grant.reference.reference_id, str(caught.exception))
-                self.assertNotIn(grant.authorization_id, repr(caught.exception))
 
     def test_observation_request_requires_exact_request_and_event_congruence(self) -> None:
         language = _language()
@@ -270,13 +425,36 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
 
         request = _request()
         with self.assertRaises(RuntimeEffectContractError):
-            language.RuntimeEffectObservationRequest(HostileRequest(**request.__dict__))
+            language.RuntimeEffectObservationRequest(_subclass_copy(request))
 
-        forged = object.__new__(RuntimeEffectRequest)
-        forged.__dict__.update(request.__dict__)
-        forged.__dict__["effect_id"] = "different-event"
+        forged = _forged_dataclass(request, effect_id="different-event")
         with self.assertRaises(RuntimeEffectContractError):
             language.RuntimeEffectObservationRequest(forged)
+
+        intent = language.runtime_effect_intent_for_request(request)
+        with self.assertRaises(RuntimeEffectContractError):
+            language.runtime_effect_request_for_intent(
+                _subclass_copy(intent),
+                effect_id="event-started-a",
+            )
+
+    def test_observation_request_fields_are_exact_and_derived(self) -> None:
+        language = _language()
+
+        self.assertEqual(
+            tuple(
+                (item.name, item.init, item.repr)
+                for item in fields(language.RuntimeEffectObservationRequest)
+            ),
+            (
+                ("runtime_request", True, False),
+                ("intent", False, True),
+                ("request_fingerprint", False, True),
+            ),
+        )
+        self.assertTrue(
+            language.RuntimeEffectObservationRequest.__dataclass_params__.frozen
+        )
 
 
 class RuntimeEffectObservationResultTests(unittest.TestCase):
@@ -333,6 +511,31 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
         self.assertIsNone(values[2].descriptor()["failure"])
         for value in (values[1], *values[3:]):
             self.assertIsNotNone(value.descriptor()["failure"])
+
+    def test_public_evidence_failure_and_variant_fields_are_exact(self) -> None:
+        language = _language()
+
+        self.assertEqual(
+            tuple((item.name, item.init) for item in fields(language.RuntimeEffectObservationEvidence)),
+            (("values", True),),
+        )
+        self.assertEqual(
+            tuple((item.name, item.init) for item in fields(language.RuntimeEffectObservationFailure)),
+            (("code", True), ("message", True), ("details", True)),
+        )
+        for name in VARIANT_NAMES:
+            with self.subTest(name=name):
+                value_type = getattr(language, name)
+                self.assertEqual(
+                    tuple((item.name, item.init) for item in fields(value_type)),
+                    (
+                        ("effect_id", True),
+                        ("request_fingerprint", True),
+                        ("evidence", True),
+                        ("failure", True),
+                    ),
+                )
+                self.assertTrue(value_type.__dataclass_params__.frozen)
 
     def test_failure_congruence_and_exact_nested_nominality_are_total(self) -> None:
         language = _language()
@@ -392,32 +595,34 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
             pass
 
         invalid = (
-            {},
-            HostileDict({"state": "running"}),
-            UserDict({"state": "running"}),
-            {"state": HostileList(["running"])},
-            {"state": HostileText("running")},
-            {"count": HostileInt(1)},
-            {"float": 1.5},
-            {"tuple": ("running",)},
-            {1: "non-text-key"},
-            {"count": 9_007_199_254_740_992},
-            {"text": "x" * 513},
-            {"text": "unpaired-\ud800"},
-            {"text": "nul\x00text"},
-            {"nested": [[[[["too-deep"]]]]]},
-            {f"field-{index}": index for index in range(33)},
-            {"items": list(range(33))},
-            {"credential": "token=do-not-store"},
-            {"endpoint": "tcp://docker.example:2376"},
-            {"address": "10.0.0.8"},
-            {"raw": "BEGIN PRIVATE KEY"},
+            ({}, None),
+            (HostileDict({"state": "running"}), None),
+            (UserDict({"state": "running"}), None),
+            ({"state": HostileList(["running"])}, None),
+            ({"state": HostileText("running")}, None),
+            ({"count": HostileInt(1)}, None),
+            ({"float": 1.5}, None),
+            ({"tuple": ("running",)}, None),
+            ({1: "non-text-key"}, None),
+            ({"count": 9_007_199_254_740_992}, None),
+            ({"text": "x" * 513}, None),
+            ({"text": "unpaired-\ud800"}, None),
+            ({"text": "nul\x00text"}, None),
+            ({"nested": [[[[["too-deep"]]]]]}, None),
+            ({f"field-{index}": index for index in range(33)}, None),
+            ({"items": list(range(33))}, None),
+            ({"credential": "token=do-not-store"}, "do-not-store"),
+            ({"endpoint": "tcp://docker.example:2376"}, "tcp://docker.example:2376"),
+            ({"address": "10.0.0.8"}, "10.0.0.8"),
+            ({"raw": "BEGIN PRIVATE KEY"}, "BEGIN PRIVATE KEY"),
         )
-        for index, candidate in enumerate(invalid):
+        for index, (candidate, sensitive) in enumerate(invalid):
             with self.subTest(case=index):
                 with self.assertRaises(RuntimeEffectContractError) as caught:
                     language.RuntimeEffectObservationEvidence(candidate)
-                self.assertNotIn("do-not-store", str(caught.exception))
+                message = str(caught.exception) + repr(caught.exception)
+                if sensitive is not None:
+                    self.assertNotIn(sensitive, message)
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
 
@@ -490,6 +695,131 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
             for value in self._values(language)
         }
         self.assertEqual(len(fingerprints), 6)
+
+    def test_observation_fingerprint_commits_every_nested_coordinate(self) -> None:
+        language = _language()
+        values = self._values(language)
+        succeeded = values[0]
+        succeeded_fingerprint = language.runtime_effect_observation_fingerprint(
+            succeeded
+        )
+        succeeded_mutations = {
+            "effect_id": replace(succeeded, effect_id="event-started-b"),
+            "request_fingerprint": replace(
+                succeeded, request_fingerprint="b" * 64
+            ),
+            "evidence_key": replace(
+                succeeded,
+                evidence=language.RuntimeEffectObservationEvidence(
+                    {"provider_state": "running", "exit_code": 0}
+                ),
+            ),
+            "evidence_text": replace(
+                succeeded,
+                evidence=language.RuntimeEffectObservationEvidence(
+                    {"container_state": "stopped", "exit_code": 0}
+                ),
+            ),
+            "evidence_integer": replace(
+                succeeded,
+                evidence=language.RuntimeEffectObservationEvidence(
+                    {"container_state": "running", "exit_code": 1}
+                ),
+            ),
+        }
+        for name, candidate in succeeded_mutations.items():
+            with self.subTest(group="common", name=name):
+                self.assertNotEqual(
+                    language.runtime_effect_observation_fingerprint(candidate),
+                    succeeded_fingerprint,
+                )
+
+        failed = values[1]
+        failed_fingerprint = language.runtime_effect_observation_fingerprint(failed)
+        failure = failed.failure
+        assert failure is not None
+        failure_mutations = {
+            "failure_code": replace(
+                failed, failure=replace(failure, code="observer.changed")
+            ),
+            "failure_message": replace(
+                failed,
+                failure=replace(failure, message="provider state changed"),
+            ),
+            "failure_details_key": replace(
+                failed,
+                failure=replace(
+                    failure,
+                    details=language.RuntimeEffectObservationEvidence(
+                        {"cause": "identity-drift"}
+                    ),
+                ),
+            ),
+            "failure_details_value": replace(
+                failed,
+                failure=replace(
+                    failure,
+                    details=language.RuntimeEffectObservationEvidence(
+                        {"reason": "state-drift"}
+                    ),
+                ),
+            ),
+        }
+        for name, candidate in failure_mutations.items():
+            with self.subTest(group="failure", name=name):
+                self.assertNotEqual(
+                    language.runtime_effect_observation_fingerprint(candidate),
+                    failed_fingerprint,
+                )
+
+    def test_observation_fingerprint_rejects_every_hostile_outer_variant(self) -> None:
+        language = _language()
+
+        for value in self._values(language):
+            with self.subTest(kind=value.descriptor()["kind"]):
+                with self.assertRaises(RuntimeEffectContractError):
+                    language.runtime_effect_observation_fingerprint(
+                        _subclass_copy(value)
+                    )
+
+    def test_complete_observation_fingerprint_input_has_exact_byte_ceiling(self) -> None:
+        language = _language()
+
+        def value(message_size: int):
+            return language.RuntimeEffectObservedFailed(
+                effect_id="event-started-a",
+                request_fingerprint="a" * 64,
+                evidence=language.RuntimeEffectObservationEvidence(
+                    {"padding": "x" * 3_974}
+                ),
+                failure=language.RuntimeEffectObservationFailure(
+                    "observer.failed",
+                    "f" * message_size,
+                    language.RuntimeEffectObservationEvidence(
+                        {"padding": "y" * 3_974}
+                    ),
+                ),
+            )
+
+        maximum = value(7)
+        plus_one = value(8)
+        self.assertEqual(
+            len(rfc8785.dumps(maximum.descriptor())),
+            OUTCOME_FINGERPRINT_MAX_BYTES,
+        )
+        self.assertEqual(
+            len(rfc8785.dumps(plus_one.descriptor())),
+            OUTCOME_FINGERPRINT_MAX_BYTES + 1,
+        )
+        self.assertEqual(
+            len(language.runtime_effect_observation_fingerprint(maximum)),
+            64,
+        )
+        with self.assertRaisesRegex(RuntimeEffectContractError, "too large") as caught:
+            language.runtime_effect_observation_fingerprint(plus_one)
+        self.assertNotIn("x" * 64, str(caught.exception) + repr(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
 
 
 if __name__ == "__main__":
