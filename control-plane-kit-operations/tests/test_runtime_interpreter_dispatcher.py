@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec, ProviderSocket
@@ -89,6 +90,44 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
     RetryIdentity,
 )
+
+
+ENDPOINT_TEXT_MAX = 512
+BRIDGE_EVIDENCE_MAX_BYTES = 4_096
+
+
+def _raw_endpoint_descriptor(*, subject_id: str) -> dict[str, object]:
+    descriptor = RuntimeEndpointObservation(
+        "api",
+        "http",
+        "graph-desired",
+        Protocol.HTTP,
+        EndpointContext.RUNTIME_PRIVATE,
+        LiteralEndpointMaterial("http://api-http:8000"),
+    ).descriptor()
+    descriptor["subject_id"] = subject_id
+    return descriptor
+
+
+def _bridge_evidence_size(*, subject_id: str) -> int:
+    document = {
+        "runtime_endpoint": _raw_endpoint_descriptor(subject_id=subject_id),
+    }
+    return len(
+        json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+
+
+def _subject_for_bridge_evidence_size(target: int) -> str:
+    marker = "\U0001f4a1"
+    for marker_count in range(ENDPOINT_TEXT_MAX + 1):
+        base = marker * marker_count
+        remaining = target - _bridge_evidence_size(subject_id=base)
+        if 0 <= remaining <= ENDPOINT_TEXT_MAX - marker_count:
+            candidate = base + "s" * remaining
+            if _bridge_evidence_size(subject_id=candidate) == target:
+                return candidate
+    raise AssertionError(f"cannot construct {target}-byte endpoint evidence")
 
 
 class RecordingInterpreter:
@@ -487,6 +526,45 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         self.assertEqual(observation.graph_id, "graph-desired")
         self.assertEqual(observation.endpoint_context, EndpointContext.RUNTIME_PRIVATE)
         self.assertEqual(observation.evidence.descriptor()["runtime_endpoint"]["subject_id"], "api")
+
+    def test_maximum_runtime_endpoint_shape_becomes_operations_observation(self) -> None:
+        subject_id = _subject_for_bridge_evidence_size(BRIDGE_EVIDENCE_MAX_BYTES)
+        endpoint = RuntimeEndpointObservation(
+            subject_id,
+            "http",
+            "graph-desired",
+            Protocol.HTTP,
+            EndpointContext.RUNTIME_PRIVATE,
+            LiteralEndpointMaterial("http://api-http:8000"),
+        )
+        self.assertLessEqual(len(subject_id), ENDPOINT_TEXT_MAX)
+        self.assertEqual(
+            _bridge_evidence_size(subject_id=subject_id),
+            BRIDGE_EVIDENCE_MAX_BYTES,
+        )
+        interpreter = RecordingInterpreter(
+            "docker",
+            RuntimeEffectResult.succeeded(
+                "event-intent",
+                observations=(endpoint,),
+            ),
+        )
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+
+        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("api"))))
+
+        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertEqual(len(outcome.observations), 1)
+        translated = outcome.observations[0]
+        self.assertEqual(translated.subject_id, subject_id)
+        self.assertEqual(
+            translated.evidence.descriptor(),
+            {"runtime_endpoint": endpoint.descriptor()},
+        )
+        self.assertEqual(
+            len(translated.evidence.canonical_json.encode("utf-8")),
+            BRIDGE_EVIDENCE_MAX_BYTES,
+        )
 
     def test_secret_use_is_authorized_before_runtime_interpreter_io(self) -> None:
         interpreter = RecordingInterpreter("docker")

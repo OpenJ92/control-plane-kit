@@ -19,6 +19,7 @@ from control_plane_kit_core.probe_intents import (
     EndpointContext,
     LiteralEndpointMaterial,
     RuntimeEndpointObservation,
+    SecretEndpointMaterial,
 )
 from control_plane_kit_core.runtime_effects import (
     RuntimeEffectFailure,
@@ -43,6 +44,8 @@ SOURCE_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_core"
 MODULE = "control_plane_kit_core.runtime_effect_observation"
 RESULT_DOMAIN = b"control-plane-kit.runtime-effect-result.v1\x00"
 OUTCOME_FINGERPRINT_MAX_BYTES = 8_192
+ENDPOINT_TEXT_MAX = 512
+BRIDGE_EVIDENCE_MAX_BYTES = 4_096
 PUBLIC_NAMES = {
     "RuntimeEffectIntent",
     "RuntimeEffectIntentSource",
@@ -135,6 +138,39 @@ def _endpoint(
         context=context,
         address=LiteralEndpointMaterial(address),
     )
+
+
+def _literal_address(length: int) -> str:
+    prefix = "http://"
+    suffix = ":8000"
+    return prefix + "a" * (length - len(prefix) - len(suffix)) + suffix
+
+
+def _raw_endpoint_descriptor(*, subject_id: str) -> dict[str, object]:
+    descriptor = _endpoint().descriptor()
+    descriptor["subject_id"] = subject_id
+    return descriptor
+
+
+def _bridge_evidence_size(*, subject_id: str) -> int:
+    document = {
+        "runtime_endpoint": _raw_endpoint_descriptor(subject_id=subject_id),
+    }
+    return len(
+        json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+
+
+def _subject_for_bridge_evidence_size(target: int) -> str:
+    marker = "\U0001f4a1"
+    for marker_count in range(ENDPOINT_TEXT_MAX + 1):
+        base = marker * marker_count
+        remaining = target - _bridge_evidence_size(subject_id=base)
+        if 0 <= remaining <= ENDPOINT_TEXT_MAX - marker_count:
+            candidate = base + "s" * remaining
+            if _bridge_evidence_size(subject_id=candidate) == target:
+                return candidate
+    raise AssertionError(f"cannot construct {target}-byte endpoint evidence")
 
 
 class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
@@ -421,25 +457,182 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
                     failed_fingerprint,
                 )
 
+    def test_live_result_descriptor_preserves_endpoint_order(self) -> None:
+        first = _endpoint(subject_id="z-endpoint")
+        second = _endpoint(subject_id="a-endpoint")
+        forward = RuntimeEffectResult.succeeded(
+            "event-started-a",
+            observations=(first, second),
+        )
+        reverse = RuntimeEffectResult.succeeded(
+            "event-started-a",
+            observations=(second, first),
+        )
+
+        self.assertEqual(
+            forward.descriptor()["observations"],
+            [item.descriptor() for item in forward.observations],
+        )
+        self.assertEqual(
+            reverse.descriptor()["observations"],
+            [item.descriptor() for item in reverse.observations],
+        )
+        self.assertNotEqual(forward.descriptor(), reverse.descriptor())
+
+    def test_live_result_fingerprint_preserves_endpoint_order(self) -> None:
+        language = _language()
+        first = _endpoint(subject_id="z-endpoint")
+        second = _endpoint(subject_id="a-endpoint")
+        forward = RuntimeEffectResult.succeeded(
+            "event-started-a",
+            observations=(first, second),
+        )
+        reverse = RuntimeEffectResult.succeeded(
+            "event-started-a",
+            observations=(second, first),
+        )
+
+        self.assertNotEqual(
+            language.runtime_effect_result_fingerprint(forward),
+            language.runtime_effect_result_fingerprint(reverse),
+        )
+
+    def test_runtime_endpoint_observation_fits_operations_text_bounds(self) -> None:
+        maximum_literal = _literal_address(ENDPOINT_TEXT_MAX)
+        maximum_secret = "secret://" + "s" * (ENDPOINT_TEXT_MAX - len("secret://"))
+        maximum = {
+            "subject": lambda: _endpoint(subject_id="s" * ENDPOINT_TEXT_MAX),
+            "socket": lambda: _endpoint(socket_name="s" * ENDPOINT_TEXT_MAX),
+            "graph": lambda: _endpoint(graph_id="g" * ENDPOINT_TEXT_MAX),
+            "literal": lambda: _endpoint(address=maximum_literal),
+            "secret-reference": lambda: RuntimeEndpointObservation(
+                "api",
+                "http",
+                "graph-desired",
+                Protocol.HTTP,
+                EndpointContext.RUNTIME_PRIVATE,
+                SecretEndpointMaterial(maximum_secret),
+            ),
+        }
+        for name, constructor in maximum.items():
+            with self.subTest(name=name, boundary="maximum"):
+                self.assertIsInstance(constructor(), RuntimeEndpointObservation)
+
+        candidates = {
+            "subject": (
+                lambda: _endpoint(subject_id="subject-canary-" + "s" * 498),
+                "endpoint subject identity must be bounded text",
+                "subject-canary-",
+            ),
+            "socket": (
+                lambda: _endpoint(socket_name="socket-canary-" + "s" * 499),
+                "endpoint socket identity must be bounded text",
+                "socket-canary-",
+            ),
+            "graph": (
+                lambda: _endpoint(graph_id="graph-canary-" + "g" * 500),
+                "endpoint graph identity must be bounded text",
+                "graph-canary-",
+            ),
+            "literal": (
+                lambda: _endpoint(address=_literal_address(ENDPOINT_TEXT_MAX + 1)),
+                "literal endpoint material must be bounded text",
+                "http://",
+            ),
+            "secret-reference": (
+                lambda: RuntimeEndpointObservation(
+                    "api",
+                    "http",
+                    "graph-desired",
+                    Protocol.HTTP,
+                    EndpointContext.RUNTIME_PRIVATE,
+                    SecretEndpointMaterial(maximum_secret + "s"),
+                ),
+                "secret endpoint material must be bounded text",
+                maximum_secret[:64],
+            ),
+        }
+        for name, (constructor, message, canary) in candidates.items():
+            with self.subTest(name=name, boundary="plus-one"):
+                with self.assertRaises(ValueError) as caught:
+                    constructor()
+                self.assertIs(type(caught.exception), ValueError)
+                self.assertEqual(str(caught.exception), message)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                rendered = f"{caught.exception!s} {caught.exception!r}"
+                self.assertNotIn(canary, rendered)
+
+    def test_runtime_endpoint_observation_fits_operations_evidence_bound(self) -> None:
+        maximum_subject = _subject_for_bridge_evidence_size(
+            BRIDGE_EVIDENCE_MAX_BYTES
+        )
+        plus_one_subject = _subject_for_bridge_evidence_size(
+            BRIDGE_EVIDENCE_MAX_BYTES + 1
+        )
+        self.assertLessEqual(len(maximum_subject), ENDPOINT_TEXT_MAX)
+        self.assertLessEqual(len(plus_one_subject), ENDPOINT_TEXT_MAX)
+
+        maximum = _endpoint(subject_id=maximum_subject)
+        self.assertEqual(
+            _bridge_evidence_size(subject_id=maximum.subject_id),
+            BRIDGE_EVIDENCE_MAX_BYTES,
+        )
+        with self.assertRaises(ValueError) as caught:
+            _endpoint(subject_id=plus_one_subject)
+        self.assertIs(type(caught.exception), ValueError)
+        self.assertEqual(
+            str(caught.exception),
+            "runtime endpoint evidence must not exceed 4096 encoded bytes",
+        )
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+        rendered = f"{caught.exception!s} {caught.exception!r}"
+        self.assertNotIn(plus_one_subject[:64], rendered)
+
     def test_complete_live_result_fingerprint_input_has_exact_byte_ceiling(self) -> None:
         language = _language()
 
         def result_for_size(target: int) -> RuntimeEffectResult:
-            seed = RuntimeEffectResult.succeeded(
-                "event-started-a",
-                observations=(_endpoint(subject_id="s"),),
+            observations = (
+                _endpoint(subject_id="endpoint-z"),
+                _endpoint(subject_id="endpoint-a", socket_name="admin"),
             )
-            seed_size = len(rfc8785.dumps(seed.descriptor()))
-            subject_size = target - seed_size + 1
-            candidate = RuntimeEffectResult.succeeded(
-                "event-started-a",
-                observations=(_endpoint(subject_id="s" * subject_size),),
-            )
-            self.assertEqual(len(rfc8785.dumps(candidate.descriptor())), target)
-            return candidate
+            for full_fields in range(32):
+                evidence = {
+                    f"padding-{index:02d}": "x" * ENDPOINT_TEXT_MAX
+                    for index in range(full_fields)
+                }
+                evidence["tail"] = ""
+                seed = RuntimeEffectResult.succeeded(
+                    "event-started-a",
+                    evidence=evidence,
+                    observations=observations,
+                )
+                remaining = target - len(rfc8785.dumps(seed.descriptor()))
+                if 0 <= remaining <= ENDPOINT_TEXT_MAX:
+                    evidence["tail"] = "x" * remaining
+                    candidate = RuntimeEffectResult.succeeded(
+                        "event-started-a",
+                        evidence=evidence,
+                        observations=observations,
+                    )
+                    self.assertEqual(
+                        len(rfc8785.dumps(candidate.descriptor())),
+                        target,
+                    )
+                    return candidate
+            raise AssertionError(f"cannot construct {target}-byte live result")
 
         maximum = result_for_size(OUTCOME_FINGERPRINT_MAX_BYTES)
         plus_one = result_for_size(OUTCOME_FINGERPRINT_MAX_BYTES + 1)
+        self.assertGreaterEqual(len(maximum.observations), 2)
+        self.assertTrue(
+            all(
+                len(value) <= ENDPOINT_TEXT_MAX
+                for value in maximum.evidence.values()
+            )
+        )
         self.assertEqual(len(language.runtime_effect_result_fingerprint(maximum)), 64)
         with self.assertRaisesRegex(RuntimeEffectContractError, "too large") as caught:
             language.runtime_effect_result_fingerprint(plus_one)
