@@ -60,6 +60,7 @@ EXPECTED_CHECKS = {
         "(recovery_evidence_fingerprint IS NULL) AND "
         "(status <> 'abandoned'::text)) OR "
         "((recovery_decision_id IS NOT NULL) AND "
+        "(recovery_resolution IS NOT NULL) AND "
         "(char_length(recovery_decision_id) >= 1) AND "
         "(char_length(recovery_decision_id) <= 256) AND "
         "(((recovery_resolution = 'succeeded'::text) AND "
@@ -433,6 +434,28 @@ class PostgresEffectAttemptSchemaTests(
         self.assertEqual(
             caught.exception.diag.constraint_name,
             "cpk_effect_attempts_prior_check",
+        )
+
+    def test_partial_recovery_sum_is_rejected(self) -> None:
+        self.require_store()
+        self.persist(
+            self.record(
+                "recovered-failed",
+                event_prefix="partial-recovery",
+                original_ordinal=10,
+                latest_ordinal=11,
+            )
+        )
+
+        with self.assertRaises(CheckViolation) as caught:
+            self.connection.execute(
+                "UPDATE cpk_effect_attempts SET recovery_resolution=NULL "
+                "WHERE run_id='run-a' AND activity_id='activity-a' AND attempt=1"
+            )
+
+        self.assertEqual(
+            caught.exception.diag.constraint_name,
+            "cpk_effect_attempts_recovery_check",
         )
 
     def test_nonempty_prior_shape_requires_reset_instead_of_table_creation(self) -> None:
