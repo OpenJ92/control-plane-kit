@@ -221,9 +221,24 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
             evidence=language.RuntimeEffectObservationEvidence(
                 {"container_state": "running", "exit_code": 0}
             ),
+            observations=(_endpoint(),),
+        )
+        live = RuntimeEffectResult.succeeded(
+            "event-started-a",
+            evidence={"container_state": "running", "exit_code": 0},
+            observations=(_endpoint(),),
+        )
+        self.assertEqual(observation.effect_id, live.effect_id)
+        self.assertEqual(observation.descriptor()["kind"], live.descriptor()["kind"])
+        self.assertEqual(
+            observation.descriptor()["evidence"], live.descriptor()["evidence"]
+        )
+        self.assertEqual(
+            observation.descriptor()["observations"],
+            live.descriptor()["observations"],
         )
         self.assertNotEqual(
-            language.runtime_effect_result_fingerprint(result),
+            language.runtime_effect_result_fingerprint(live),
             language.runtime_effect_observation_fingerprint(observation),
         )
 

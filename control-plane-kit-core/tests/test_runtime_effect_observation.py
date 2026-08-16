@@ -11,6 +11,11 @@ import rfc8785
 
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, NodeTarget, StartNode
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    RuntimeEndpointObservation,
+)
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
 from control_plane_kit_core.products import (
     ContainerServerProduct,
@@ -262,6 +267,27 @@ def _request(
     )
 
 
+def _observations() -> tuple[RuntimeEndpointObservation, ...]:
+    return (
+        RuntimeEndpointObservation(
+            subject_id="api",
+            socket_name="http",
+            graph_id="graph-desired",
+            protocol=Protocol.HTTP,
+            context=EndpointContext.RUNTIME_PRIVATE,
+            address=LiteralEndpointMaterial("http://api:8000"),
+        ),
+        RuntimeEndpointObservation(
+            subject_id="database",
+            socket_name="postgres",
+            graph_id="graph-desired",
+            protocol=Protocol.POSTGRES,
+            context=EndpointContext.RUNTIME_PRIVATE,
+            address=LiteralEndpointMaterial("postgres://database:5432"),
+        ),
+    )
+
+
 class RuntimeEffectObservationRequestTests(unittest.TestCase):
     def test_two_fresh_complete_tls_grant_sets_preserve_public_intent(self) -> None:
         language = _language()
@@ -471,6 +497,7 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
             "effect_id": "event-started-a",
             "request_fingerprint": "a" * 64,
             "evidence": evidence,
+            "observations": _observations(),
         }
         return (
             language.RuntimeEffectObservedSucceeded(**common),
@@ -504,9 +531,25 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
             self.assertIs(type(value), getattr(language, type(value).__name__))
             self.assertEqual(
                 set(value.descriptor()),
-                {"kind", "effect_id", "request_fingerprint", "evidence", "failure"},
+                {
+                    "kind",
+                    "effect_id",
+                    "request_fingerprint",
+                    "evidence",
+                    "failure",
+                    "observations",
+                },
             )
             self.assertTrue(value.descriptor()["evidence"])
+            self.assertEqual(
+                value.descriptor()["observations"],
+                [item.descriptor() for item in _observations()],
+            )
+            self.assertEqual(value.observations, _observations())
+            self.assertNotIn("container_state", repr(value))
+            self.assertNotIn("http://api:8000", repr(value))
+            if value.failure is not None:
+                self.assertNotIn(value.failure.message, repr(value))
         self.assertIsNone(values[0].descriptor()["failure"])
         self.assertIsNone(values[2].descriptor()["failure"])
         for value in (values[1], *values[3:]):
@@ -527,12 +570,16 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
             with self.subTest(name=name):
                 value_type = getattr(language, name)
                 self.assertEqual(
-                    tuple((item.name, item.init) for item in fields(value_type)),
+                    tuple(
+                        (item.name, item.init, item.repr)
+                        for item in fields(value_type)
+                    ),
                     (
-                        ("effect_id", True),
-                        ("request_fingerprint", True),
-                        ("evidence", True),
-                        ("failure", True),
+                        ("effect_id", True, True),
+                        ("request_fingerprint", True, True),
+                        ("evidence", True, False),
+                        ("failure", True, False),
+                        ("observations", True, False),
                     ),
                 )
                 self.assertTrue(value_type.__dataclass_params__.frozen)
@@ -569,6 +616,9 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
         class HostileFailure(language.RuntimeEffectObservationFailure):
             pass
 
+        class HostileObservations(tuple):
+            pass
+
         with self.assertRaises(RuntimeEffectContractError):
             language.RuntimeEffectObservedSucceeded(
                 **{**common, "evidence": HostileEvidence({"state": "running"})}
@@ -578,6 +628,17 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
                 **common,
                 failure=HostileFailure("observer.failed", "inspection failed"),
             )
+        endpoint = _observations()[0]
+        for observations in (
+            list(_observations()),
+            HostileObservations(_observations()),
+            (_subclass_copy(endpoint),),
+        ):
+            with self.subTest(observations_type=type(observations).__name__):
+                with self.assertRaises(RuntimeEffectContractError):
+                    language.RuntimeEffectObservedSucceeded(
+                        **{**common, "observations": observations},
+                    )
 
     def test_evidence_is_nonempty_bounded_exact_json_and_redacted(self) -> None:
         language = _language()
@@ -676,19 +737,26 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
     def test_observation_fingerprint_has_golden_domain_and_commits_variant(self) -> None:
         language = _language()
         succeeded = self._values(language)[0]
-        canonical = rfc8785.dumps(succeeded.descriptor())
+        golden = language.RuntimeEffectObservedSucceeded(
+            effect_id="event-started-a",
+            request_fingerprint="a" * 64,
+            evidence=language.RuntimeEffectObservationEvidence(
+                {"container_state": "running", "exit_code": 0}
+            ),
+        )
+        canonical = rfc8785.dumps(golden.descriptor())
 
         self.assertEqual(
             canonical,
-            b'{"effect_id":"event-started-a","evidence":{"container_state":"running","exit_code":0},"failure":null,"kind":"succeeded","request_fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
+            b'{"effect_id":"event-started-a","evidence":{"container_state":"running","exit_code":0},"failure":null,"kind":"succeeded","observations":[],"request_fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
         )
         self.assertEqual(
-            language.runtime_effect_observation_fingerprint(succeeded),
-            "f24dfe5d2953ea82bd2832cf7777f98b21dae8f5790350fd080a6e60b98ff18c",
+            language.runtime_effect_observation_fingerprint(golden),
+            "249b45e6e627abbadb32d9dfe7d329ab97734f92dacdcf97ce84883b0bbc3a08",
         )
         self.assertEqual(
             hashlib.sha256(OBSERVATION_DOMAIN + canonical).hexdigest(),
-            "f24dfe5d2953ea82bd2832cf7777f98b21dae8f5790350fd080a6e60b98ff18c",
+            "249b45e6e627abbadb32d9dfe7d329ab97734f92dacdcf97ce84883b0bbc3a08",
         )
         fingerprints = {
             language.runtime_effect_observation_fingerprint(value)
@@ -724,6 +792,62 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
                 succeeded,
                 evidence=language.RuntimeEffectObservationEvidence(
                     {"container_state": "running", "exit_code": 1}
+                ),
+            ),
+            "observation_order": replace(
+                succeeded,
+                observations=tuple(reversed(succeeded.observations)),
+            ),
+            "observation_subject": replace(
+                succeeded,
+                observations=(
+                    replace(succeeded.observations[0], subject_id="worker"),
+                    *succeeded.observations[1:],
+                ),
+            ),
+            "observation_socket": replace(
+                succeeded,
+                observations=(
+                    replace(succeeded.observations[0], socket_name="admin"),
+                    *succeeded.observations[1:],
+                ),
+            ),
+            "observation_graph": replace(
+                succeeded,
+                observations=(
+                    replace(succeeded.observations[0], graph_id="graph-next"),
+                    *succeeded.observations[1:],
+                ),
+            ),
+            "observation_protocol": replace(
+                succeeded,
+                observations=(
+                    replace(
+                        succeeded.observations[0],
+                        protocol=Protocol.TCP,
+                        address=LiteralEndpointMaterial("tcp://api:8000"),
+                    ),
+                    *succeeded.observations[1:],
+                ),
+            ),
+            "observation_context": replace(
+                succeeded,
+                observations=(
+                    replace(
+                        succeeded.observations[0],
+                        context=EndpointContext.HOST_LOCAL,
+                    ),
+                    *succeeded.observations[1:],
+                ),
+            ),
+            "observation_address": replace(
+                succeeded,
+                observations=(
+                    replace(
+                        succeeded.observations[0],
+                        address=LiteralEndpointMaterial("http://api:8001"),
+                    ),
+                    *succeeded.observations[1:],
                 ),
             ),
         }
@@ -785,12 +909,12 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
     def test_complete_observation_fingerprint_input_has_exact_byte_ceiling(self) -> None:
         language = _language()
 
-        def value(message: str):
+        def value(message: str, padding_size: int):
             return language.RuntimeEffectObservedFailed(
                 effect_id="event-started-a",
                 request_fingerprint="a" * 64,
                 evidence=language.RuntimeEffectObservationEvidence(
-                    {"padding": "x" * 3_974}
+                    {"padding": "x" * padding_size}
                 ),
                 failure=language.RuntimeEffectObservationFailure(
                     "observer.failed",
@@ -799,10 +923,15 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
                         {"padding": "y" * 3_974}
                     ),
                 ),
+                observations=_observations(),
             )
 
-        maximum = value("msgmax7")
-        plus_one = value("msgmax88")
+        seed = value("msgmax7", 1)
+        padding_size = 1 + OUTCOME_FINGERPRINT_MAX_BYTES - len(
+            rfc8785.dumps(seed.descriptor())
+        )
+        maximum = value("msgmax7", padding_size)
+        plus_one = value("msgmax88", padding_size)
         self.assertEqual(
             len(rfc8785.dumps(maximum.descriptor())),
             OUTCOME_FINGERPRINT_MAX_BYTES,
