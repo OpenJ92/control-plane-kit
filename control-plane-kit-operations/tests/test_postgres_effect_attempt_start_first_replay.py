@@ -135,6 +135,7 @@ class PostgresEffectAttemptStartFirstReplayTests(
         calls: list[str] = []
         original_request = PostgresExecutionStore.get_request_for_update
         original_run = PostgresExecutionStore.get_run_for_request_for_update
+        original_attempt = EffectAttemptStore.get_for_update
 
         def request(store, request_id):
             calls.append("request")
@@ -144,6 +145,10 @@ class PostgresEffectAttemptStartFirstReplayTests(
             calls.append("run")
             return original_run(store, request_id, run_id)
 
+        def attempt(store, identity):
+            calls.append("attempt")
+            return original_attempt(store, identity)
+
         with mock.patch.object(
             PostgresExecutionStore,
             "get_request_for_update",
@@ -152,19 +157,46 @@ class PostgresEffectAttemptStartFirstReplayTests(
             PostgresExecutionStore,
             "get_run_for_request_for_update",
             run,
+        ), mock.patch.object(
+            EffectAttemptStore,
+            "get_for_update",
+            attempt,
         ):
             self.start_service("unused").execute(self.start_command())
 
-        self.assertEqual(calls[:2], ["request", "run"])
+        self.assertEqual(calls, ["request", "run", "attempt"])
 
-    def test_first_start_observes_once_then_allocates_ordinal_before_identity(self) -> None:
+    def test_first_start_locks_complete_truth_before_clock_and_uses_db_time(self) -> None:
         calls: list[str] = []
+        observations = []
+        original_request = PostgresExecutionStore.get_request_for_update
+        original_run = PostgresExecutionStore.get_run_for_request_for_update
+        original_attempt = EffectAttemptStore.get_for_update
+        original_latest = PostgresExecutionStore.get_latest_run_for_request_for_update
         original_observe = PostgresExecutionStore.observe_request_lease_for_update
         original_ordinal = PostgresExecutionStore.next_event_ordinal
 
+        def request(store, request_id):
+            calls.append("request")
+            return original_request(store, request_id)
+
+        def run(store, request_id, run_id):
+            calls.append("run")
+            return original_run(store, request_id, run_id)
+
+        def attempt(store, identity):
+            calls.append("attempt")
+            return original_attempt(store, identity)
+
+        def latest(store, request_id):
+            calls.append("latest")
+            return original_latest(store, request_id)
+
         def observe(store, request_id):
+            observation = original_observe(store, request_id)
             calls.append("clock")
-            return original_observe(store, request_id)
+            observations.append(observation)
+            return observation
 
         def ordinal(store, run_id):
             calls.append("ordinal")
@@ -175,6 +207,22 @@ class PostgresEffectAttemptStartFirstReplayTests(
             return "ordered-effect-start"
 
         with mock.patch.object(
+            PostgresExecutionStore,
+            "get_request_for_update",
+            request,
+        ), mock.patch.object(
+            PostgresExecutionStore,
+            "get_run_for_request_for_update",
+            run,
+        ), mock.patch.object(
+            EffectAttemptStore,
+            "get_for_update",
+            attempt,
+        ), mock.patch.object(
+            PostgresExecutionStore,
+            "get_latest_run_for_request_for_update",
+            latest,
+        ), mock.patch.object(
             PostgresExecutionStore,
             "observe_request_lease_for_update",
             observe,
@@ -188,7 +236,24 @@ class PostgresEffectAttemptStartFirstReplayTests(
             )
 
         self.assertIsInstance(result, NewlyStarted)
-        self.assertEqual(calls, ["clock", "ordinal", "identity"])
+        self.assertEqual(
+            calls,
+            [
+                "request",
+                "run",
+                "attempt",
+                "latest",
+                "request",
+                "clock",
+                "ordinal",
+                "identity",
+            ],
+        )
+        self.assertEqual(len(observations), 1)
+        self.assertEqual(
+            result.attempt.original_start_event.occurred_at,
+            observations[0].observed_at,
+        )
 
     def test_complete_result_and_event_exist_before_attempt_insert(self) -> None:
         calls: list[str] = []

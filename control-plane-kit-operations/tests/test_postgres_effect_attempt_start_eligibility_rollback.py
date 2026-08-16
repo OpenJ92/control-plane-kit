@@ -101,6 +101,30 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 self.assertEqual(ids.calls, [])
                 self.assertEqual(self.attempt_snapshot(), before)
 
+    def test_first_start_requires_the_exact_ready_activity(self) -> None:
+        for compensation in (False, True):
+            with self.subTest(compensation=compensation):
+                self.reset_start_truth(compensation=compensation)
+                before = self.attempt_snapshot()
+                ids = Sequence("foreign-activity-must-not-allocate")
+                command = self.start_command(
+                    transition=self.transition(
+                        identity=self.identity(
+                            run_id="run-a",
+                            activity_id="foreign-activity-canary",
+                        )
+                    )
+                )
+                with self.reject_database_observation(
+                    "foreign activity sampled database time"
+                ):
+                    with self.assertRaises(EffectAttemptStartConflict) as caught:
+                        self.start_service_with_id_factory(ids).execute(command)
+                self.assert_safe_error(caught.exception, "foreign-activity-canary")
+                self.assertEqual(str(caught.exception), ELIGIBILITY_ERROR)
+                self.assertEqual(ids.calls, [])
+                self.assertEqual(self.attempt_snapshot(), before)
+
     def test_absent_start_requires_current_unexpired_exact_fence(self) -> None:
         cases = (
             ("expired", "worker-a", 7, True),
@@ -151,6 +175,27 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 )
         self.assert_safe_error(caught.exception, "worker-b")
         self.assertEqual(str(caught.exception), AUTHORITY_ERROR)
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.attempt_snapshot(), before)
+
+    def test_current_rotated_authority_rejects_old_attempt_fence_without_clock(
+        self,
+    ) -> None:
+        self.persisted_started()
+        self.replace_claim(worker_id="worker-b", generation=8)
+        before = self.attempt_snapshot()
+        ids = Sequence("rotated-current-replay-must-not-allocate")
+        command = self.start_command(
+            authority=self.authority("worker-b"),
+            fence=self.fence("worker-b", 8),
+        )
+        with self.reject_database_observation(
+            "rotated-current replay sampled database time"
+        ):
+            with self.assertRaises(EffectAttemptStartConflict) as caught:
+                self.start_service_with_id_factory(ids).execute(command)
+        self.assert_safe_error(caught.exception, "worker-a", "worker-b")
+        self.assertEqual(str(caught.exception), REPLAY_ERROR)
         self.assertEqual(ids.calls, [])
         self.assertEqual(self.attempt_snapshot(), before)
 
@@ -228,6 +273,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
             ),
             (PostgresActivityHistoryStore, "get_plan", EffectAttemptStartConflict),
             (PostgresExecutionStore, "events_for_run", EffectAttemptStartConflict),
+            (EffectAttemptStore, "get_for_update", EffectAttemptStartConflict),
         )
         for owner, method, category in boundaries:
             for error_type in (ValueError, OperationsRecordError):

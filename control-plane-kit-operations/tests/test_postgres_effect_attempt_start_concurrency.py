@@ -25,6 +25,7 @@ from tests.effect_attempt_start_fixture import (
 from tests.postgres_effect_attempt_start_fixture import (
     PostgresEffectAttemptStartFixture,
 )
+from tests.execution_lease_recovery_fixture import Sequence
 
 
 class _BlockingId:
@@ -97,7 +98,7 @@ class PostgresEffectAttemptStartConcurrencyTests(
                     (value,),
                 )
 
-    def _assert_foreign_request_and_run_lockable(self) -> None:
+    def _assert_foreign_truth_lockable(self) -> None:
         with psycopg.connect(self.database_url) as probe:
             self.assertEqual(
                 probe.execute(
@@ -113,11 +114,21 @@ class PostgresEffectAttemptStartConcurrencyTests(
                 ).fetchone(),
                 ("run-foreign",),
             )
+            self.assertEqual(
+                probe.execute(
+                    "SELECT run_id, activity_id, attempt "
+                    "FROM cpk_effect_attempts WHERE run_id='run-foreign' "
+                    "AND activity_id='start-runtime' AND attempt=1 "
+                    "FOR UPDATE NOWAIT"
+                ).fetchone(),
+                ("run-foreign", "start-runtime", 1),
+            )
 
     def _blocked_execution(self, blocker: str, *, existing: bool):
         if existing:
             self.persisted_started()
             self.seed_foreign_run()
+            self.seed_foreign_attempt()
         blocker_connection = psycopg.connect(self.database_url)
         if blocker == "request":
             blocker_connection.execute(
@@ -164,7 +175,7 @@ class PostgresEffectAttemptStartConcurrencyTests(
                     self._assert_retained(
                         "cpk_activity_runs", "run_id", "run-a"
                     )
-                    self._assert_foreign_request_and_run_lockable()
+                    self._assert_foreign_truth_lockable()
                 blocker_connection.rollback()
                 blocker_connection.close()
                 return future.result(timeout=5)
@@ -211,9 +222,10 @@ class PostgresEffectAttemptStartConcurrencyTests(
                     self._factory_with_pids(pids),
                     id_factory=first_id,
                 )
+                second_ids = Sequence(f"{second_label}-must-not-allocate")
                 second = EffectAttemptStartService(
                     self._factory_with_pids(pids),
-                    id_factory=lambda: f"{second_label}-must-not-allocate",
+                    id_factory=second_ids,
                 )
                 executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
                 with mock.patch.object(
@@ -254,6 +266,7 @@ class PostgresEffectAttemptStartConcurrencyTests(
                 )
                 self.assertEqual(observations, 1)
                 self.assertEqual(first_id.calls, 1)
+                self.assertEqual(second_ids.calls, [])
                 self.assertEqual(
                     self.connection.execute(
                         "SELECT COUNT(*) FROM cpk_effect_attempts"

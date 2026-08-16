@@ -250,6 +250,43 @@ class PostgresEffectAttemptStartFixture(
         fixture.unit_of_work = self.unit_of_work
         fixture.seed_foreign_run()
 
+    def seed_foreign_attempt(self) -> EffectAttemptRecord:
+        self.connection.execute(
+            "UPDATE cpk_activity_runs SET status='running', "
+            "started_at='2026-08-15T04:20:01Z' WHERE run_id='run-foreign'"
+        )
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution.add_event(
+                ActivityEventRecord(
+                    "foreign-run-opened",
+                    "run-foreign",
+                    1,
+                    ActivityEventKind.RUN_OPENED,
+                    "2026-08-15T04:20:00Z",
+                )
+            )
+            stores.execution.add_event(
+                ActivityEventRecord(
+                    "foreign-run-started",
+                    "run-foreign",
+                    2,
+                    ActivityEventKind.RUN_STARTED,
+                    "2026-08-15T04:20:01Z",
+                )
+            )
+            unit_of_work.commit()
+        record = self.record(
+            "started",
+            run_id="run-foreign",
+            activity_id="start-runtime",
+            event_prefix="foreign-effect",
+            original_ordinal=3,
+            original_time="2026-08-15T04:20:02Z",
+        )
+        self.assertEqual(self.persist(record), record)
+        return record
+
     @contextmanager
     def reject_database_observation(self, message: str):
         with mock.patch.object(
