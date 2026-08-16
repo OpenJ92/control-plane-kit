@@ -131,6 +131,14 @@ consumer_kind = "production"
 consumer = "current-backend admission verifies every authored and realized graph row"
 
 [[read]]
+module = "control_plane_kit_operations.postgres.effect_attempt_store"
+selector = "_validate_current_rows"
+category = "exact-verifier"
+sql = "effect-attempt identity keyset batches bounded by fixed batch size until exact exhaustion"
+consumer_kind = "production"
+consumer = "current-backend admission verifies every durable effect-attempt row"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.current_schema_verification"
 selector = "namespace_is_object_free"
 category = "exact-verifier"

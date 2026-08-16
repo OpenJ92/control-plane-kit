@@ -43,6 +43,37 @@ CREATE TABLE cpk_activity_runs (
     CONSTRAINT cpk_activity_runs_status_check CHECK ((status = ANY (ARRAY['claimed'::text, 'running'::text, 'paused'::text, 'succeeded'::text, 'failed'::text, 'compensating'::text, 'compensated'::text, 'partially_failed'::text, 'uncompensated_failure'::text, 'cancelled'::text])))
 );
 
+CREATE TABLE cpk_effect_attempts (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    request_fingerprint text NOT NULL,
+    fence_worker_id text NOT NULL,
+    fence_generation bigint NOT NULL,
+    status text NOT NULL,
+    outcome_fingerprint text,
+    prior_run_id text,
+    prior_activity_id text,
+    prior_attempt integer,
+    recovery_decision_id text,
+    recovery_resolution text,
+    recovery_uncertain_fingerprint text,
+    recovery_evidence_fingerprint text,
+    original_event_id text NOT NULL,
+    original_event_run_id text NOT NULL,
+    original_event_ordinal integer NOT NULL,
+    latest_event_id text NOT NULL,
+    latest_event_run_id text NOT NULL,
+    latest_event_ordinal integer NOT NULL,
+    CONSTRAINT cpk_effect_attempts_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_effect_attempts_fence_check CHECK (((fence_generation > 0) AND (char_length(fence_worker_id) >= 1) AND (char_length(fence_worker_id) <= 256))),
+    CONSTRAINT cpk_effect_attempts_fingerprint_check CHECK (((request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND ((outcome_fingerprint IS NULL) OR (outcome_fingerprint ~ '^[0-9a-f]{64}$'::text)) AND ((recovery_uncertain_fingerprint IS NULL) OR (recovery_uncertain_fingerprint ~ '^[0-9a-f]{64}$'::text)) AND ((recovery_evidence_fingerprint IS NULL) OR (recovery_evidence_fingerprint ~ '^[0-9a-f]{64}$'::text)))),
+    CONSTRAINT cpk_effect_attempts_prior_check CHECK ((((prior_run_id IS NULL) AND (prior_activity_id IS NULL) AND (prior_attempt IS NULL) AND (attempt = 1)) OR ((prior_run_id IS NOT NULL) AND (prior_activity_id IS NOT NULL) AND (prior_attempt IS NOT NULL) AND (prior_run_id = run_id) AND (prior_activity_id = activity_id) AND (prior_attempt = (attempt - 1)) AND (attempt > 1)))),
+    CONSTRAINT cpk_effect_attempts_state_check CHECK (((status = ANY (ARRAY['started'::text, 'succeeded'::text, 'failed'::text, 'unsupported'::text, 'uncertain'::text, 'abandoned'::text])) AND (((status = 'started'::text) AND (outcome_fingerprint IS NULL)) OR ((status <> 'started'::text) AND (outcome_fingerprint IS NOT NULL))))),
+    CONSTRAINT cpk_effect_attempts_recovery_check CHECK ((((recovery_decision_id IS NULL) AND (recovery_resolution IS NULL) AND (recovery_uncertain_fingerprint IS NULL) AND (recovery_evidence_fingerprint IS NULL) AND (status <> 'abandoned'::text)) OR ((recovery_decision_id IS NOT NULL) AND (recovery_resolution IS NOT NULL) AND (char_length(recovery_decision_id) >= 1) AND (char_length(recovery_decision_id) <= 256) AND (((recovery_resolution = 'succeeded'::text) AND (status = 'succeeded'::text)) OR ((recovery_resolution = 'failed'::text) AND (status = 'failed'::text)) OR ((recovery_resolution = 'abandoned'::text) AND (status = 'abandoned'::text))) AND (recovery_uncertain_fingerprint IS NOT NULL) AND (recovery_evidence_fingerprint IS NOT NULL) AND (outcome_fingerprint = recovery_evidence_fingerprint)))),
+    CONSTRAINT cpk_effect_attempts_event_progression_check CHECK (((original_event_run_id = run_id) AND (latest_event_run_id = run_id) AND (original_event_ordinal > 0) AND (latest_event_ordinal > 0) AND (char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (char_length(latest_event_id) >= 1) AND (char_length(latest_event_id) <= 512) AND (((status = 'started'::text) AND ((latest_event_id, latest_event_run_id, latest_event_ordinal) = (original_event_id, original_event_run_id, original_event_ordinal))) OR ((status <> 'started'::text) AND (latest_event_ordinal > original_event_ordinal)))))
+);
+
 CREATE TABLE cpk_approval_decisions (
     decision_id text NOT NULL,
     request_id text NOT NULL,
@@ -636,6 +667,9 @@ ALTER TABLE ONLY cpk_activity_events
 ALTER TABLE ONLY cpk_activity_events
     ADD CONSTRAINT cpk_activity_events_run_id_ordinal_key UNIQUE (run_id, ordinal);
 
+ALTER TABLE ONLY cpk_activity_events
+    ADD CONSTRAINT cpk_activity_events_event_id_run_id_ordinal_key UNIQUE (event_id, run_id, ordinal);
+
 ALTER TABLE ONLY cpk_activity_plans
     ADD CONSTRAINT cpk_activity_plans_pkey PRIMARY KEY (plan_id);
 
@@ -644,6 +678,15 @@ ALTER TABLE ONLY cpk_activity_plans
 
 ALTER TABLE ONLY cpk_activity_runs
     ADD CONSTRAINT cpk_activity_runs_pkey PRIMARY KEY (run_id);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_pkey PRIMARY KEY (run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_original_event_key UNIQUE (original_event_id, original_event_run_id, original_event_ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_latest_event_key UNIQUE (latest_event_id, latest_event_run_id, latest_event_ordinal);
 
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_pkey PRIMARY KEY (decision_id);
@@ -883,6 +926,18 @@ ALTER TABLE ONLY cpk_activity_runs
 
 ALTER TABLE ONLY cpk_activity_runs
     ADD CONSTRAINT cpk_activity_runs_request_plan_fk FOREIGN KEY (request_id, plan_id) REFERENCES cpk_execution_requests(request_id, plan_id);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_run_id_fkey FOREIGN KEY (run_id) REFERENCES cpk_activity_runs(run_id);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_prior_fkey FOREIGN KEY (prior_run_id, prior_activity_id, prior_attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_original_event_fk FOREIGN KEY (original_event_id, original_event_run_id, original_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_latest_event_fk FOREIGN KEY (latest_event_id, latest_event_run_id, latest_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
 
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_request_id_fkey FOREIGN KEY (request_id) REFERENCES cpk_approval_requests(request_id);

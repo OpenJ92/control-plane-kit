@@ -490,6 +490,11 @@ from .records import (
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
+from .effect_attempts import (
+    EffectAttemptEventEvidence,
+    EffectAttemptRecord,
+    effect_attempt_state_fingerprint,
+)
 from .execution_lease_recovery import (
     AbandonExpiredExecutionClaim,
     ExecutionLeaseRecoveryCommand,
@@ -663,11 +668,14 @@ __all__ = [
     "CloudflareZoneIngressAuthority",
     "CloudflareZoneIngressAuthorityCodec",
     "ExecutionLeaseDuration",
+    "EffectAttemptEventEvidence",
+    "EffectAttemptRecord",
     "ExecutionLeaseFence",
     "ExecutionLeaseRecoveryCommand",
     "ExecutionLeaseRecoveryCommandService",
     "ExecutionLeaseRecoveryEvidence",
     "ExecutionLeaseRecoveryResult",
+    "effect_attempt_state_fingerprint",
     "GeneratedIngressSecretReference",
     "GeneratedSecretPurpose",
     "GeneratedSecretRecordingConflict",

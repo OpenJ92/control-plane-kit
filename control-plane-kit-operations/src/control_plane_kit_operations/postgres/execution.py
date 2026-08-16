@@ -791,6 +791,8 @@ def _failure_evidence(value: object) -> FailureEvidence | None:
         return None
     if not isinstance(value, dict):
         raise ValueError("persisted activity failure must be an object")
+    if not {"category", "code", "message"} <= value.keys():
+        raise ValueError("persisted activity failure is malformed")
     details = value.get("details", {})
     if not isinstance(details, dict):
         raise ValueError("persisted activity failure details must be an object")
