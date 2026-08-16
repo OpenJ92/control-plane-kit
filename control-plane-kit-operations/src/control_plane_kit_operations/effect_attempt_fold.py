@@ -264,6 +264,15 @@ def _valid_fold_result(value: object) -> bool:
     return (
         reconstructed == value
         and value.state.status is not EffectAttemptStatus.STARTED
+        and (value.latest_transition_event.failure is not None)
+        is (
+            value.state.status
+            in {
+                EffectAttemptStatus.FAILED,
+                EffectAttemptStatus.UNSUPPORTED,
+                EffectAttemptStatus.UNCERTAIN,
+            }
+        )
     )
 
 
