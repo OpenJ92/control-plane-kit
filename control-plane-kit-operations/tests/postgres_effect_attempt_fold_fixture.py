@@ -241,6 +241,41 @@ class PostgresEffectAttemptFoldFixture(PostgresEffectAttemptStartFixture):
             ).fetchone()[0],
         )
 
+    def non_advancement_snapshot(self) -> tuple[object, ...]:
+        return (
+            tuple(
+                self.connection.execute(
+                    "SELECT workspace_id, lifecycle, current_graph_id, "
+                    "desired_graph_id, current_realized_projection_id, "
+                    "desired_realized_projection_id, desired_graph_revision "
+                    "FROM cpk_workspaces ORDER BY workspace_id"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
+                    "SELECT graph_id, workspace_id, version, graph_descriptor, "
+                    "created_by, created_at, metadata FROM cpk_graph_versions "
+                    "ORDER BY graph_id"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
+                    "SELECT projection_id, workspace_id, source_authored_graph_id, "
+                    "projection_kind, projection_key, projection_digest, "
+                    "graph_descriptor, created_by, created_at "
+                    "FROM cpk_realized_graph_projections ORDER BY projection_id"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
+                    "SELECT observation_id, workspace_id, subject_id, status, "
+                    "observed_at, evidence, freshness, graph_id, probe_kind, "
+                    "probe_outcome, endpoint_context FROM cpk_observations "
+                    "ORDER BY observation_id"
+                ).fetchall()
+            ),
+        )
+
     def persisted_event_count(self) -> int:
         return self.connection.execute(
             "SELECT COUNT(*) FROM cpk_activity_events WHERE run_id='run-a'"
