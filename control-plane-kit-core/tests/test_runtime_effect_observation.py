@@ -502,10 +502,15 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
         return (
             language.RuntimeEffectObservedSucceeded(**common),
             language.RuntimeEffectObservedFailed(**common, failure=failure),
-            language.RuntimeEffectObservedAbsent(**common),
+            language.RuntimeEffectObservedAbsent(
+                **{**common, "observations": ()}
+            ),
             language.RuntimeEffectObservedConflict(**common, failure=failure),
             language.RuntimeEffectObservedIndeterminate(**common, failure=failure),
-            language.RuntimeEffectObserverUnsupported(**common, failure=failure),
+            language.RuntimeEffectObserverUnsupported(
+                **{**common, "observations": ()},
+                failure=failure,
+            ),
         )
 
     def test_six_way_sum_and_exact_descriptors_are_closed(self) -> None:
@@ -527,7 +532,7 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
                 "observer-unsupported",
             ),
         )
-        for value in values:
+        for index, value in enumerate(values):
             self.assertIs(type(value), getattr(language, type(value).__name__))
             self.assertEqual(
                 set(value.descriptor()),
@@ -543,9 +548,16 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
             self.assertTrue(value.descriptor()["evidence"])
             self.assertEqual(
                 value.descriptor()["observations"],
-                [item.descriptor() for item in _observations()],
+                (
+                    []
+                    if index in {2, 5}
+                    else [item.descriptor() for item in _observations()]
+                ),
             )
-            self.assertEqual(value.observations, _observations())
+            self.assertEqual(
+                value.observations,
+                () if index in {2, 5} else _observations(),
+            )
             self.assertNotIn("container_state", repr(value))
             self.assertNotIn("http://api:8000", repr(value))
             if value.failure is not None:
@@ -628,6 +640,32 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
                 **common,
                 failure=HostileFailure("observer.failed", "inspection failed"),
             )
+        for name, construct in (
+            (
+                "absent",
+                lambda: language.RuntimeEffectObservedAbsent(**common),
+            ),
+            (
+                "observer unsupported",
+                lambda: language.RuntimeEffectObserverUnsupported(
+                    **common,
+                    failure=failure,
+                ),
+            ),
+        ):
+            with self.subTest(name=name, case="nonempty observations"):
+                with self.assertRaises(RuntimeEffectContractError) as caught:
+                    construct()
+                error = str(caught.exception) + repr(caught.exception)
+                for candidate in (
+                    "api",
+                    "http",
+                    "graph-desired",
+                    "http://api:8000",
+                ):
+                    self.assertNotIn(candidate, error)
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
         endpoint = _observations()[0]
         for observations in (
             list(_observations()),
@@ -763,6 +801,61 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
             for value in self._values(language)
         }
         self.assertEqual(len(fingerprints), 6)
+
+        evidence = language.RuntimeEffectObservationEvidence({"state": "observed"})
+        failure = language.RuntimeEffectObservationFailure(
+            "observer.failed",
+            "provider observation failed",
+            language.RuntimeEffectObservationEvidence({"reason": "provider-state"}),
+        )
+        common = {
+            "effect_id": "event-started-a",
+            "request_fingerprint": "a" * 64,
+            "evidence": evidence,
+        }
+        pairs = (
+            (
+                language.RuntimeEffectObservedSucceeded(**common),
+                language.RuntimeEffectObservedAbsent(**common),
+            ),
+            (
+                language.RuntimeEffectObservedFailed(**common, failure=failure),
+                language.RuntimeEffectObserverUnsupported(
+                    **common,
+                    failure=failure,
+                ),
+            ),
+            (
+                language.RuntimeEffectObservedConflict(
+                    **common,
+                    failure=failure,
+                    observations=_observations(),
+                ),
+                language.RuntimeEffectObservedIndeterminate(
+                    **common,
+                    failure=failure,
+                    observations=_observations(),
+                ),
+            ),
+        )
+        for left, right in pairs:
+            with self.subTest(left=type(left).__name__, right=type(right).__name__):
+                self.assertEqual(
+                    {
+                        key: value
+                        for key, value in left.descriptor().items()
+                        if key != "kind"
+                    },
+                    {
+                        key: value
+                        for key, value in right.descriptor().items()
+                        if key != "kind"
+                    },
+                )
+                self.assertNotEqual(
+                    language.runtime_effect_observation_fingerprint(left),
+                    language.runtime_effect_observation_fingerprint(right),
+                )
 
     def test_observation_fingerprint_commits_every_nested_coordinate(self) -> None:
         language = _language()
