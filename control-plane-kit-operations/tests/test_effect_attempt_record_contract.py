@@ -3,9 +3,10 @@ from __future__ import annotations
 import dataclasses
 import unittest
 
-from control_plane_kit_core.operations import ActivityEventKind
+from control_plane_kit_core.operations import ActivityEventKind, FailureCategory
 from control_plane_kit_operations.records import (
     BoundedEvidence,
+    FailureEvidence,
     OperationsRecordError,
 )
 from tests.effect_attempt_record_fixture import (
@@ -13,7 +14,11 @@ from tests.effect_attempt_record_fixture import (
     EffectAttemptRecordFixture,
     HostileActivityEventRecord,
     HostileBoundedEvidence,
+    HostileEffectAttemptFence,
+    HostileEffectAttemptIdentity,
     HostileEffectAttemptState,
+    HostileEffectRecoveryDecision,
+    HostileFailureEvidence,
     STORIES,
     canonical_state_fingerprint,
 )
@@ -90,6 +95,162 @@ class EffectAttemptRecordContractTests(
         ):
             with self.subTest(values=tuple(type(value).__name__ for value in values)):
                 self.assert_invalid_record(*values)
+
+    def test_nested_state_and_failure_values_must_survive_exact_restart(self) -> None:
+        self.require_language()
+        candidates = []
+
+        direct = self.state("succeeded")
+        candidates.append(
+            dataclasses.replace(
+                direct,
+                identity=HostileEffectAttemptIdentity(**direct.identity.__dict__),
+            )
+        )
+        candidates.append(
+            dataclasses.replace(
+                direct,
+                fence=HostileEffectAttemptFence(**direct.fence.__dict__),
+            )
+        )
+
+        retry = self.state("succeeded", attempt=2)
+        candidates.append(
+            dataclasses.replace(
+                retry,
+                prior_attempt=HostileEffectAttemptIdentity(
+                    **retry.prior_attempt.__dict__
+                ),
+            )
+        )
+
+        recovered = self.state("recovered-succeeded")
+        candidates.append(
+            dataclasses.replace(
+                recovered,
+                recovery_decision=HostileEffectRecoveryDecision(
+                    **recovered.recovery_decision.__dict__
+                ),
+            )
+        )
+
+        for state in candidates:
+            with self.subTest(nested=state):
+                started = self.started_state(state)
+                original = self.event(
+                    started,
+                    self.event_kind("started", compensation=False),
+                    event_id="event-start",
+                    ordinal=3,
+                    occurred_at="2030-01-01T00:00:02.000000Z",
+                )
+                latest = self.event(
+                    state,
+                    self.event_kind(
+                        "recovered-succeeded"
+                        if state.recovery_decision is not None
+                        else "succeeded",
+                        compensation=False,
+                    ),
+                    event_id="event-latest",
+                    ordinal=7,
+                    occurred_at="2030-01-01T00:00:01.000000Z",
+                )
+                self.assert_invalid_record(state, original, latest)
+
+        failed = self.record("failed")
+        failure = FailureEvidence(
+            FailureCategory.TERMINAL,
+            "failure-code",
+            "bounded failure",
+        )
+        hostile_failure = HostileFailureEvidence(**failure.__dict__)
+        self.assert_invalid_record(
+            failed.state,
+            failed.original_start_event,
+            dataclasses.replace(
+                failed.latest_transition_event,
+                failure=hostile_failure,
+            ),
+        )
+
+    def test_event_coordinates_are_exactly_postgres_representable(self) -> None:
+        self.require_language()
+        maximum = 2_147_483_647
+
+        started = self.record()
+        maximum_started = dataclasses.replace(
+            started.original_start_event,
+            ordinal=maximum,
+        )
+        self.assertEqual(
+            EffectAttemptRecord(started.state, maximum_started, maximum_started),
+            dataclasses.replace(
+                started,
+                original_start_event=maximum_started,
+                latest_transition_event=maximum_started,
+            ),
+        )
+
+        settled = self.record("succeeded")
+        maximum_original = dataclasses.replace(
+            settled.original_start_event,
+            ordinal=maximum - 1,
+        )
+        maximum_latest = dataclasses.replace(
+            settled.latest_transition_event,
+            ordinal=maximum,
+        )
+        EffectAttemptRecord(settled.state, maximum_original, maximum_latest)
+
+        oversized_original = dataclasses.replace(
+            settled.original_start_event,
+            ordinal=maximum + 1,
+        )
+        oversized_latest = dataclasses.replace(
+            settled.latest_transition_event,
+            ordinal=maximum + 2,
+        )
+        for label, original, latest in (
+            ("original", oversized_original, oversized_latest),
+            (
+                "latest",
+                settled.original_start_event,
+                dataclasses.replace(
+                    settled.latest_transition_event,
+                    ordinal=maximum + 1,
+                ),
+            ),
+        ):
+            with self.subTest(coordinate=label):
+                self.assert_invalid_record(settled.state, original, latest)
+
+        surrogate = "event-\ud800-canary"
+        for label, original, latest in (
+            (
+                "original-event-id",
+                dataclasses.replace(
+                    settled.original_start_event,
+                    event_id=surrogate,
+                ),
+                settled.latest_transition_event,
+            ),
+            (
+                "latest-event-id",
+                settled.original_start_event,
+                dataclasses.replace(
+                    settled.latest_transition_event,
+                    event_id=surrogate,
+                ),
+            ),
+        ):
+            with self.subTest(coordinate=label):
+                self.assert_invalid_record(
+                    settled.state,
+                    original,
+                    latest,
+                    "canary",
+                )
 
     def test_latest_event_coordinates_and_commitment_must_match(self) -> None:
         self.require_language()

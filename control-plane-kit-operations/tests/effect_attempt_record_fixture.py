@@ -18,6 +18,7 @@ from control_plane_kit_core.operations import (
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     BoundedEvidence,
+    FailureEvidence,
 )
 
 
@@ -69,6 +70,22 @@ class HostileActivityEventRecord(ActivityEventRecord):
 
 
 class HostileBoundedEvidence(BoundedEvidence):
+    pass
+
+
+class HostileEffectAttemptIdentity(EffectAttemptIdentity):
+    pass
+
+
+class HostileEffectAttemptFence(EffectAttemptFence):
+    pass
+
+
+class HostileEffectRecoveryDecision(EffectRecoveryDecision):
+    pass
+
+
+class HostileFailureEvidence(FailureEvidence):
     pass
 
 
@@ -276,7 +293,11 @@ __all__ = [
     "EffectAttemptRecordFixture",
     "HostileActivityEventRecord",
     "HostileBoundedEvidence",
+    "HostileEffectAttemptFence",
+    "HostileEffectAttemptIdentity",
     "HostileEffectAttemptState",
+    "HostileEffectRecoveryDecision",
+    "HostileFailureEvidence",
     "HostileInt",
     "HostileStr",
     "STORIES",
