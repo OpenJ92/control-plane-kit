@@ -460,13 +460,32 @@ class RuntimeEffectRequest:
     operation: ActivityOperation
     authority_ref: RuntimeAuthorityReference | None = None
     authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
-    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = ()
+    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = field(
+        default=(),
+        repr=False,
+    )
     products: tuple[RuntimeProductMaterial, ...] = ()
 
     def __post_init__(self) -> None:
         _required_text(self.effect_id, "effect_id")
         if not isinstance(self.source, RuntimeEffectSource):
             raise RuntimeEffectContractError("runtime effect source is malformed")
+        if (
+            type(self.effect_id) is not str
+            or type(self.source.intent_event_id) is not str
+            or self.effect_id != self.source.intent_event_id
+            or "\x00" in self.effect_id
+        ):
+            raise RuntimeEffectContractError(
+                "runtime effect identity must match intent event identity"
+            )
+        if any(
+            0xD800 <= ord(character) <= 0xDFFF
+            for character in self.effect_id
+        ):
+            raise RuntimeEffectContractError(
+                "runtime effect identity must match intent event identity"
+            )
         if not isinstance(self.kind, RuntimeEffectKind):
             raise RuntimeEffectContractError("runtime effect kind must be closed")
         if not isinstance(self.runtime_kind, RuntimeKind):
@@ -573,9 +592,6 @@ class RuntimeEffectRequest:
             else self.authority_ref.descriptor(),
             "authority_deliveries": [
                 value.descriptor() for value in self.authority_deliveries
-            ],
-            "secret_resolution_grants": [
-                value.descriptor() for value in self.secret_resolution_grants
             ],
             "source": self.source.descriptor(),
             "activity_id": self.activity_id.value,

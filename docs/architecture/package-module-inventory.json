@@ -4295,6 +4295,53 @@
     },
     {
       "canonical_public_exports": [
+        "RuntimeEffectIntent",
+        "RuntimeEffectIntentSource",
+        "RuntimeEffectObservationEvidence",
+        "RuntimeEffectObservationFailure",
+        "RuntimeEffectObservationRequest",
+        "RuntimeEffectObservationResult",
+        "RuntimeEffectObservedAbsent",
+        "RuntimeEffectObservedConflict",
+        "RuntimeEffectObservedFailed",
+        "RuntimeEffectObservedIndeterminate",
+        "RuntimeEffectObservedSucceeded",
+        "RuntimeEffectObserverUnsupported",
+        "runtime_effect_intent_fingerprint",
+        "runtime_effect_intent_for_request",
+        "runtime_effect_observation_fingerprint",
+        "runtime_effect_request_for_intent",
+        "runtime_effect_result_fingerprint"
+      ],
+      "destination": "control_plane_kit_core.runtime_effect_observation",
+      "internal_dependencies": [
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.secrets"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#1693"
+      ],
+      "module": "control_plane_kit_core.runtime_effect_observation",
+      "motivation": "Own the pure pre-start runtime-effect intent and closed read-only observation language without provider or durable-operation effects.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_runtime_effect_intent.py",
+        "tests/test_runtime_effect_observation.py",
+        "tests/test_runtime_effect_observation_boundary.py"
+      ],
+      "role": "pure-contract",
+      "semantic_roles": [
+        "transformations",
+        "values",
+        "validation"
+      ],
+      "source": "control_plane_kit_core/runtime_effect_observation.py"
+    },
+    {
+      "canonical_public_exports": [
         "ActivityId",
         "ActivityDependency",
         "NodeTarget",
