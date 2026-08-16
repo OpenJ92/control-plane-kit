@@ -51,67 +51,59 @@ ROOT_EXPORTS = {
     "effect_outcome_observation_records",
 }
 
-EXACT_MODULE_IMPORTS = {
-    "__future__",
-    "dataclasses",
-    "enum",
-    "control_plane_kit_core.operations",
-    "control_plane_kit_core.runtime_effect_observation",
-    "control_plane_kit_core.runtime_effects",
-    "control_plane_kit_operations.effect_attempts",
-    "control_plane_kit_operations.records",
+EXACT_IMPORT_SYMBOLS = {
+    "__future__": {("annotations", "annotations")},
+    "dataclasses": {("dataclass", "dataclass"), ("field", "field")},
+    "enum": {("StrEnum", "StrEnum")},
+    "control_plane_kit_core.operations": {
+        ("EffectAttemptIdentity", "EffectAttemptIdentity"),
+        ("EffectAttemptStatus", "EffectAttemptStatus"),
+        ("EffectAttemptTransition", "EffectAttemptTransition"),
+        ("EffectAttemptTransitionKind", "EffectAttemptTransitionKind"),
+        ("EffectResultKind", "EffectResultKind"),
+        ("FailureCategory", "FailureCategory"),
+    },
+    "control_plane_kit_core.runtime_effect_observation": {
+        ("RuntimeEffectObservationResult", "RuntimeEffectObservationResult"),
+        ("RuntimeEffectObservedAbsent", "RuntimeEffectObservedAbsent"),
+        ("RuntimeEffectObservedConflict", "RuntimeEffectObservedConflict"),
+        ("RuntimeEffectObservedFailed", "RuntimeEffectObservedFailed"),
+        ("RuntimeEffectObservedIndeterminate", "RuntimeEffectObservedIndeterminate"),
+        ("RuntimeEffectObservedSucceeded", "RuntimeEffectObservedSucceeded"),
+        ("RuntimeEffectObserverUnsupported", "RuntimeEffectObserverUnsupported"),
+        ("runtime_effect_observation_fingerprint", "runtime_effect_observation_fingerprint"),
+        ("runtime_effect_result_fingerprint", "runtime_effect_result_fingerprint"),
+    },
+    "control_plane_kit_core.runtime_effects": {
+        ("RuntimeEffectContractError", "RuntimeEffectContractError"),
+        ("RuntimeEffectResult", "RuntimeEffectResult"),
+    },
+    "control_plane_kit_operations.effect_attempts": {
+        ("EffectAttemptRecord", "EffectAttemptRecord"),
+    },
+    "control_plane_kit_operations.records": {
+        ("BoundedEvidence", "BoundedEvidence"),
+        ("FailureEvidence", "FailureEvidence"),
+        ("ObservationFreshness", "ObservationFreshness"),
+        ("ObservationRecord", "ObservationRecord"),
+        ("ObservationStatus", "ObservationStatus"),
+        ("OperationsRecordError", "OperationsRecordError"),
+        ("ProbeKind", "ProbeKind"),
+        ("ProbeOutcome", "ProbeOutcome"),
+    },
 }
-_BUILTIN_EFFECT_CALLS = {
-    "builtins.__import__",
-    "builtins.breakpoint",
-    "builtins.compile",
-    "builtins.eval",
-    "builtins.exec",
-    "builtins.input",
-    "builtins.open",
+_PURE_BUILTIN_CALLS = {
+    "all",
+    "any",
+    "enumerate",
+    "len",
+    "ord",
+    "set",
+    "type",
+    "tuple",
+    "zip",
 }
-_EFFECTFUL_CALL_ROOTS = {
-    "datetime",
-    "docker",
-    "http",
-    "io",
-    "os",
-    "pathlib",
-    "random",
-    "requests",
-    "secrets",
-    "shutil",
-    "socket",
-    "subprocess",
-    "tempfile",
-    "time",
-    "urllib",
-    "uuid",
-}
-_EFFECTFUL_CALL_LEAVES = {
-    "connect",
-    "execute",
-    "from_env",
-    "id_factory",
-    "mkdtemp",
-    "mkstemp",
-    "now",
-    "open",
-    "read_bytes",
-    "read_text",
-    "request",
-    "run",
-    "socket",
-    "time",
-    "token_bytes",
-    "token_hex",
-    "token_urlsafe",
-    "utcnow",
-    "uuid1",
-    "uuid4",
-    "write_bytes",
-    "write_text",
-}
+_ALLOWED_INSTANCE_CALLS = {"descriptor", "encode"}
 
 
 def _normalized_import_module(node: ast.ImportFrom) -> str:
@@ -125,40 +117,63 @@ def _normalized_import_module(node: ast.ImportFrom) -> str:
 
 def _import_contract(
     tree: ast.AST,
-) -> tuple[set[str], dict[str, str], tuple[str, ...]]:
-    modules: set[str] = set()
+) -> tuple[
+    dict[str, set[tuple[str, str]]],
+    dict[str, str],
+    tuple[str, ...],
+]:
+    symbols: dict[str, set[tuple[str, str]]] = {}
     bindings: dict[str, str] = {}
     wildcard_imports: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                modules.add(alias.name)
-                bindings[alias.asname or alias.name.split(".", 1)[0]] = alias.name
+                binding = alias.asname or alias.name.split(".", 1)[0]
+                symbols.setdefault(alias.name, set()).add(("<module>", binding))
+                bindings[binding] = alias.name
         elif isinstance(node, ast.ImportFrom):
             module = _normalized_import_module(node)
-            modules.add(module)
             for alias in node.names:
                 if alias.name == "*":
                     wildcard_imports.append(module)
                     continue
-                bindings[alias.asname or alias.name] = f"{module}.{alias.name}"
-    return modules, bindings, tuple(wildcard_imports)
+                binding = alias.asname or alias.name
+                symbols.setdefault(module, set()).add((alias.name, binding))
+                bindings[binding] = f"{module}.{alias.name}"
+    return symbols, bindings, tuple(wildcard_imports)
 
 
-def _resolved_path(node: ast.AST, bindings: dict[str, str]) -> str | None:
+def _resolved_path(
+    node: ast.AST,
+    bindings: dict[str, str],
+    local_callables: set[str],
+) -> str | None:
     if isinstance(node, ast.Name):
         if node.id in bindings:
             return bindings[node.id]
-        builtin = f"builtins.{node.id}"
-        return builtin if builtin in _BUILTIN_EFFECT_CALLS else node.id
+        if node.id in _PURE_BUILTIN_CALLS:
+            return f"builtins.{node.id}"
+        if node.id in local_callables:
+            return f"local.{node.id}"
+        return None
     if isinstance(node, ast.Attribute):
-        owner = _resolved_path(node.value, bindings)
-        return f"{owner}.{node.attr}" if owner is not None else None
+        owner = _resolved_path(node.value, bindings, local_callables)
+        if owner is not None:
+            return f"{owner}.{node.attr}"
+        if node.attr in local_callables:
+            return f"local.{node.attr}"
+        if node.attr in _ALLOWED_INSTANCE_CALLS:
+            return f"instance.{node.attr}"
     return None
 
 
-def _effectful_call_paths(tree: ast.AST) -> set[str]:
+def _call_contract(tree: ast.AST) -> tuple[set[str], tuple[str, ...]]:
     _, bindings, _ = _import_contract(tree)
+    local_callables = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
     assignments = [
         node
         for node in ast.walk(tree)
@@ -168,7 +183,11 @@ def _effectful_call_paths(tree: ast.AST) -> set[str]:
         changed = False
         for node in assignments:
             value = node.value
-            path = _resolved_path(value, bindings) if value is not None else None
+            path = (
+                _resolved_path(value, bindings, local_callables)
+                if value is not None
+                else None
+            )
             targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
             if path is None:
                 continue
@@ -179,22 +198,38 @@ def _effectful_call_paths(tree: ast.AST) -> set[str]:
         if not changed:
             break
 
-    effectful: set[str] = set()
+    targets: set[str] = set()
+    unresolved: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        path = _resolved_path(node.func, bindings)
+        path = _resolved_path(node.func, bindings, local_callables)
         if path is None:
-            continue
-        root = path.split(".", 1)[0]
-        leaf = path.rsplit(".", 1)[-1]
-        if (
-            path in _BUILTIN_EFFECT_CALLS
-            or root in _EFFECTFUL_CALL_ROOTS
-            or leaf in _EFFECTFUL_CALL_LEAVES
-        ):
-            effectful.add(path)
-    return effectful
+            unresolved.append(ast.dump(node.func, include_attributes=False))
+        else:
+            targets.add(path)
+    return targets, tuple(sorted(unresolved))
+
+
+def _allowed_call_targets(tree: ast.AST) -> set[str]:
+    imported = {
+        f"{module}.{symbol}"
+        for module, values in EXACT_IMPORT_SYMBOLS.items()
+        for symbol, _ in values
+        if module != "__future__"
+    }
+    local = {
+        f"local.{node.name}"
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+    return (
+        imported
+        | local
+        | {f"builtins.{name}" for name in _PURE_BUILTIN_CALLS}
+        | {f"instance.{name}" for name in _ALLOWED_INSTANCE_CALLS}
+        | {"control_plane_kit_operations.records.BoundedEvidence.from_mapping"}
+    )
 
 
 def inventory_path() -> Path:
@@ -292,34 +327,31 @@ class EffectOutcomeEvidencePredecessorTest(
             ),
             4_097,
         )
-        alias_tree = ast.parse(
-            """
-import builtins as runtime_builtins
-from secrets import token_hex as mint_token
-import tempfile as scratch
-from io import open as io_open
-import shutil as file_tree
-
-open_alias = runtime_builtins.open
-token_alias = mint_token
-
-def forbidden_aliases():
-    open_alias("candidate")
-    token_alias()
-    scratch.NamedTemporaryFile()
-    io_open("candidate")
-    file_tree.copy("source", "destination")
-"""
+        direct_output = ast.parse('print("candidate")')
+        dynamic_open = ast.parse('__builtins__["open"]("candidate")')
+        smuggled_output = ast.parse(
+            "from dataclasses import sys\nsys.stdout.write('candidate')"
         )
+        direct_targets, direct_unresolved = _call_contract(direct_output)
+        dynamic_targets, dynamic_unresolved = _call_contract(dynamic_open)
+        smuggled_targets, smuggled_unresolved = _call_contract(smuggled_output)
+        smuggled_symbols, _, _ = _import_contract(smuggled_output)
+
+        self.assertEqual(direct_targets, set())
+        self.assertEqual(len(direct_unresolved), 1)
+        self.assertIn("print", direct_unresolved[0])
+        self.assertEqual(dynamic_targets, set())
+        self.assertEqual(len(dynamic_unresolved), 1)
+        self.assertIn("Subscript", dynamic_unresolved[0])
         self.assertEqual(
-            _effectful_call_paths(alias_tree),
-            {
-                "builtins.open",
-                "io.open",
-                "secrets.token_hex",
-                "shutil.copy",
-                "tempfile.NamedTemporaryFile",
-            },
+            smuggled_symbols,
+            {"dataclasses": {("sys", "sys")}},
+        )
+        self.assertEqual(smuggled_unresolved, ())
+        self.assertEqual(smuggled_targets, {"dataclasses.sys.stdout.write"})
+        self.assertNotEqual(smuggled_symbols, EXACT_IMPORT_SYMBOLS)
+        self.assertTrue(
+            smuggled_targets.difference(_allowed_call_targets(smuggled_output))
         )
 
 
@@ -829,10 +861,15 @@ class EffectOutcomeEvidenceContractTest(
         module = __import__(MODULE_NAME, fromlist=("__file__",))
         source_path = Path(inspect.getsourcefile(module))
         tree = ast.parse(source_path.read_text())
-        imported, _, wildcard_imports = _import_contract(tree)
-        self.assertEqual(imported, EXACT_MODULE_IMPORTS)
+        imported_symbols, _, wildcard_imports = _import_contract(tree)
+        self.assertEqual(imported_symbols, EXACT_IMPORT_SYMBOLS)
         self.assertEqual(wildcard_imports, ())
-        self.assertEqual(_effectful_call_paths(tree), set())
+        call_targets, unresolved_calls = _call_contract(tree)
+        self.assertEqual(unresolved_calls, ())
+        self.assertEqual(
+            call_targets.difference(_allowed_call_targets(tree)),
+            set(),
+        )
 
         inventory = json.loads(inventory_path().read_text())
         row = next(
