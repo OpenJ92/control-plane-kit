@@ -21,7 +21,10 @@ from control_plane_kit_core.environment import (
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, ActivityOperation, ReviewChange
-from control_plane_kit_core.planning.codec import activity_operation_descriptor
+from control_plane_kit_core.planning.codec import (
+    ActivityPlanDescriptorError,
+    activity_operation_descriptor,
+)
 from control_plane_kit_core.probe_intents import RuntimeEndpointObservation
 from control_plane_kit_core.products import (
     ContainerServerProduct,

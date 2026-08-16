@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 import hashlib
 import re
+from types import MappingProxyType
 from typing import TypeAlias
 
 import rfc8785
 
 from control_plane_kit_core.runtime_effects import (
     ActivityId,
+    ActivityPlanDescriptorError,
     EffectResultKind,
     RunId,
     RuntimeAuthorityAccessDelivery,
@@ -102,7 +105,7 @@ class RuntimeEffectIntent:
         malformed_operation = False
         try:
             activity_operation_descriptor(self.operation)
-        except Exception:
+        except ActivityPlanDescriptorError:
             malformed_operation = True
         if malformed_operation:
             raise RuntimeEffectContractError(
@@ -258,7 +261,7 @@ class RuntimeEffectObservationRequest:
 
 @dataclass(frozen=True)
 class RuntimeEffectObservationEvidence:
-    values: dict[str, object]
+    values: Mapping[str, object]
 
     def __post_init__(self) -> None:
         values = _evidence(self.values)
@@ -339,7 +342,9 @@ class RuntimeEffectObservedSucceeded:
     request_fingerprint: str
     evidence: RuntimeEffectObservationEvidence = field(repr=False)
     failure: RuntimeEffectObservationFailure | None = field(default=None, repr=False)
-    observations: tuple[object, ...] = field(default=(), repr=False)
+    observations: tuple[RuntimeEndpointObservation, ...] = field(
+        default=(), repr=False
+    )
 
     def __post_init__(self) -> None:
         _validate_observation_result(self, requires_failure=False)
@@ -354,7 +359,9 @@ class RuntimeEffectObservedFailed:
     request_fingerprint: str
     evidence: RuntimeEffectObservationEvidence = field(repr=False)
     failure: RuntimeEffectObservationFailure | None = field(default=None, repr=False)
-    observations: tuple[object, ...] = field(default=(), repr=False)
+    observations: tuple[RuntimeEndpointObservation, ...] = field(
+        default=(), repr=False
+    )
 
     def __post_init__(self) -> None:
         _validate_observation_result(self, requires_failure=True)
@@ -369,7 +376,9 @@ class RuntimeEffectObservedAbsent:
     request_fingerprint: str
     evidence: RuntimeEffectObservationEvidence = field(repr=False)
     failure: RuntimeEffectObservationFailure | None = field(default=None, repr=False)
-    observations: tuple[object, ...] = field(default=(), repr=False)
+    observations: tuple[RuntimeEndpointObservation, ...] = field(
+        default=(), repr=False
+    )
 
     def __post_init__(self) -> None:
         _validate_observation_result(
@@ -386,7 +395,9 @@ class RuntimeEffectObservedConflict:
     request_fingerprint: str
     evidence: RuntimeEffectObservationEvidence = field(repr=False)
     failure: RuntimeEffectObservationFailure | None = field(default=None, repr=False)
-    observations: tuple[object, ...] = field(default=(), repr=False)
+    observations: tuple[RuntimeEndpointObservation, ...] = field(
+        default=(), repr=False
+    )
 
     def __post_init__(self) -> None:
         _validate_observation_result(self, requires_failure=True)
@@ -401,7 +412,9 @@ class RuntimeEffectObservedIndeterminate:
     request_fingerprint: str
     evidence: RuntimeEffectObservationEvidence = field(repr=False)
     failure: RuntimeEffectObservationFailure | None = field(default=None, repr=False)
-    observations: tuple[object, ...] = field(default=(), repr=False)
+    observations: tuple[RuntimeEndpointObservation, ...] = field(
+        default=(), repr=False
+    )
 
     def __post_init__(self) -> None:
         _validate_observation_result(self, requires_failure=True)
@@ -416,7 +429,9 @@ class RuntimeEffectObserverUnsupported:
     request_fingerprint: str
     evidence: RuntimeEffectObservationEvidence = field(repr=False)
     failure: RuntimeEffectObservationFailure | None = field(default=None, repr=False)
-    observations: tuple[object, ...] = field(default=(), repr=False)
+    observations: tuple[RuntimeEndpointObservation, ...] = field(
+        default=(), repr=False
+    )
 
     def __post_init__(self) -> None:
         _validate_observation_result(
@@ -560,17 +575,17 @@ def _exact_text(value: object, label: str) -> None:
         raise RuntimeEffectContractError(f"{label} contains secret-shaped text")
 
 
-def _evidence(values: object) -> dict[str, object]:
+def _evidence(values: object) -> Mapping[str, object]:
     if type(values) is not dict or len(values) > _MAX_FIELDS:
         raise RuntimeEffectContractError("runtime observation evidence is malformed")
     normalized = {
         _evidence_key(key): _evidence_value(value, depth=0)
         for key, value in values.items()
     }
-    canonical = rfc8785.dumps(normalized)
+    canonical = rfc8785.dumps(_copy_json(normalized))
     if len(canonical) > _EVIDENCE_MAX_BYTES:
         raise RuntimeEffectContractError("runtime observation evidence is too large")
-    return dict(sorted(normalized.items()))
+    return MappingProxyType(dict(sorted(normalized.items())))
 
 
 def _evidence_key(value: object) -> str:
@@ -600,7 +615,7 @@ def _evidence_value(value: object, *, depth: int) -> object:
     if type(value) is list:
         if depth >= 4 or len(value) > _MAX_ITEMS:
             raise RuntimeEffectContractError("runtime observation evidence is too deeply nested")
-        return [_evidence_value(item, depth=depth + 1) for item in value]
+        return tuple(_evidence_value(item, depth=depth + 1) for item in value)
     if type(value) is dict:
         if depth >= 4 or len(value) > _MAX_FIELDS:
             raise RuntimeEffectContractError("runtime observation evidence is too deeply nested")
@@ -608,18 +623,18 @@ def _evidence_value(value: object, *, depth: int) -> object:
             _evidence_key(key): _evidence_value(item, depth=depth + 1)
             for key, item in value.items()
         }
-        return dict(sorted(normalized.items()))
+        return MappingProxyType(dict(sorted(normalized.items())))
     raise RuntimeEffectContractError("runtime observation evidence contains unsupported value")
 
 
-def _copy_json(value: dict[str, object]) -> dict[str, object]:
+def _copy_json(value: Mapping[str, object]) -> dict[str, object]:
     return {key: _copy_json_value(item) for key, item in value.items()}
 
 
 def _copy_json_value(value: object) -> object:
-    if type(value) is dict:
+    if isinstance(value, Mapping):
         return _copy_json(value)
-    if type(value) is list:
+    if type(value) is tuple:
         return [_copy_json_value(item) for item in value]
     return value
 
@@ -627,6 +642,14 @@ def _copy_json_value(value: object) -> object:
 def _validate_live_result(result: RuntimeEffectResult) -> None:
     _exact_text(result.effect_id, "runtime effect result identity")
     if type(result.kind) is not EffectResultKind:
+        raise RuntimeEffectContractError("runtime effect result kind is malformed")
+    executable_kinds = {
+        EffectResultKind.SUCCEEDED,
+        EffectResultKind.FAILED,
+        EffectResultKind.UNSUPPORTED,
+        EffectResultKind.UNCERTAIN,
+    }
+    if result.kind not in executable_kinds:
         raise RuntimeEffectContractError("runtime effect result kind is malformed")
     if type(result.evidence) is not dict:
         raise RuntimeEffectContractError("runtime effect result evidence is malformed")
@@ -641,6 +664,14 @@ def _validate_live_result(result: RuntimeEffectResult) -> None:
                 "runtime effect result failure details are malformed"
             )
         _validate_live_json(result.failure.details)
+    if result.kind is EffectResultKind.SUCCEEDED and result.failure is not None:
+        raise RuntimeEffectContractError(
+            "successful runtime effect result cannot carry failure"
+        )
+    if result.kind is not EffectResultKind.SUCCEEDED and result.failure is None:
+        raise RuntimeEffectContractError(
+            "non-success runtime effect result requires failure"
+        )
     if type(result.observations) is not tuple or not all(
         type(item) is RuntimeEndpointObservation for item in result.observations
     ):
