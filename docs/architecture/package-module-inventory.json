@@ -9296,8 +9296,13 @@
       "destination": "control_plane_kit_operations.effect_attempt_start_interpreter",
       "internal_dependencies": [
         "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.policies",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.activity_journal",
         "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.records",
         "control_plane_kit_operations.workflows"
       ],
       "known_package_consumers": [
@@ -9305,7 +9310,7 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_start_interpreter",
-      "motivation": "Owns exact command, scope, and fence-representation preflight before the effect-attempt start transaction boundary.",
+      "motivation": "Owns exact command, scope, fence, replay, and atomic durable mutation interpretation for one effect-attempt start.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
