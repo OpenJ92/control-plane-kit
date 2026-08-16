@@ -206,6 +206,27 @@ def _forbidden_rebindings(tree: ast.AST) -> tuple[str, ...]:
     return tuple(sorted((rebound & protected) | declared_collisions))
 
 
+def _nonlocal_mutation_targets(tree: ast.AST) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            type(node).__name__
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Attribute, ast.Subscript))
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+        )
+    )
+
+
+def _builtins_namespace_accesses(tree: ast.AST) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            type(node.ctx).__name__
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id == "__builtins__"
+        )
+    )
+
+
 def _resolved_path(
     node: ast.AST,
     bindings: dict[str, str],
@@ -404,12 +425,19 @@ class EffectOutcomeEvidencePredecessorTest(
             '    case tuple:\n'
             '        tuple("candidate")'
         )
+        namespace_laundered_open = ast.parse(
+            '__builtins__["tuple"] = __builtins__["open"]\n'
+            'tuple("candidate")'
+        )
         direct_targets, direct_unresolved = _call_contract(direct_output)
         dynamic_targets, dynamic_unresolved = _call_contract(dynamic_open)
         smuggled_targets, smuggled_unresolved = _call_contract(smuggled_output)
         laundered_targets, laundered_unresolved = _call_contract(laundered_open)
         pattern_targets, pattern_unresolved = _call_contract(
             pattern_laundered_open
+        )
+        namespace_targets, namespace_unresolved = _call_contract(
+            namespace_laundered_open
         )
         smuggled_symbols, _, _ = _import_contract(smuggled_output)
 
@@ -437,6 +465,17 @@ class EffectOutcomeEvidencePredecessorTest(
         self.assertEqual(
             _forbidden_rebindings(pattern_laundered_open),
             ("tuple",),
+        )
+        self.assertEqual(namespace_targets, {"builtins.tuple"})
+        self.assertEqual(namespace_unresolved, ())
+        self.assertEqual(_forbidden_rebindings(namespace_laundered_open), ())
+        self.assertEqual(
+            _nonlocal_mutation_targets(namespace_laundered_open),
+            ("Subscript",),
+        )
+        self.assertEqual(
+            _builtins_namespace_accesses(namespace_laundered_open),
+            ("Load", "Load"),
         )
 
 
@@ -950,6 +989,8 @@ class EffectOutcomeEvidenceContractTest(
         self.assertEqual(imported_symbols, EXACT_IMPORT_SYMBOLS)
         self.assertEqual(wildcard_imports, ())
         self.assertEqual(_forbidden_rebindings(tree), ())
+        self.assertEqual(_nonlocal_mutation_targets(tree), ())
+        self.assertEqual(_builtins_namespace_accesses(tree), ())
         call_targets, unresolved_calls = _call_contract(tree)
         self.assertEqual(unresolved_calls, ())
         self.assertEqual(
