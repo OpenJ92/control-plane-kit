@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 import unittest
 import uuid
@@ -7,11 +8,18 @@ import uuid
 import psycopg
 from psycopg.errors import CheckViolation
 
+from control_plane_kit_core.operations import FailureCategory
 from control_plane_kit_operations.postgres import SchemaInstallationError, install_schema
+from control_plane_kit_operations.postgres import execution as execution_module
 from control_plane_kit_operations.postgres.current_schema_contract import (
     CURRENT_POSTGRES_SCHEMA_CONTRACT,
 )
-from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+from control_plane_kit_operations.records import (
+    BoundedEvidence,
+    FailureEvidence,
+    OperationsRecordError,
+)
 from tests.postgres_effect_attempt_store_fixture import (
     PostgresEffectAttemptStoreFixture,
 )
@@ -208,26 +216,66 @@ class PostgresEffectAttemptSchemaTests(
 
     def test_missing_failure_keys_are_categorical_current_row_drift(self) -> None:
         self.require_store()
-        record = self.record(
+        record_without_failure = self.record(
             "failed",
             event_prefix="missing-failure",
             original_ordinal=10,
             latest_ordinal=20,
         )
+        record = dataclasses.replace(
+            record_without_failure,
+            latest_transition_event=dataclasses.replace(
+                record_without_failure.latest_transition_event,
+                failure=FailureEvidence(
+                    FailureCategory.TERMINAL,
+                    "failure-code",
+                    "failure-message",
+                    BoundedEvidence(),
+                ),
+            ),
+        )
         self.persist(record)
         target = record.latest_transition_event.event_id
-        canary = "failure-payload-canary"
+
+        internal = KeyError("internal-failure-canary")
+        real_failure_evidence = execution_module.FailureEvidence
+
+        def fail_if_called(**_kwargs):
+            raise internal
+
+        execution_module.FailureEvidence = fail_if_called
+        try:
+            with self.assertRaises(KeyError) as caught:
+                PostgresExecutionStore(self.connection).get_event(target)
+            self.assertIs(caught.exception, internal)
+        finally:
+            execution_module.FailureEvidence = real_failure_evidence
+
         self.connection.execute(
             """
             UPDATE cpk_activity_events
             SET payload = jsonb_set(
               payload,
               '{failure}',
-              jsonb_build_object('audit_canary', %s::text)
+              '{}'::jsonb
             )
             WHERE event_id=%s
             """,
-            (canary, target),
+            (target,),
+        )
+
+        with self.assertRaises(ValueError) as decoded:
+            PostgresExecutionStore(self.connection).get_event(target)
+        self.assertEqual(
+            str(decoded.exception),
+            "persisted activity failure is malformed",
+        )
+        self.assert_safe_error(
+            decoded.exception,
+            target,
+            "category",
+            "code",
+            "message",
         )
 
         for method in ("get", "get_for_update"):
@@ -241,7 +289,7 @@ class PostgresEffectAttemptSchemaTests(
                     str(caught.exception),
                     "effect attempt row is invalid",
                 )
-                self.assert_safe_error(caught.exception, target, canary, "category")
+                self.assert_safe_error(caught.exception, target, "category")
 
         before_payload = self.connection.execute(
             "SELECT payload FROM cpk_activity_events WHERE event_id=%s",
@@ -250,7 +298,7 @@ class PostgresEffectAttemptSchemaTests(
         with self.assertRaises(SchemaInstallationError) as caught:
             install_schema(self.connection)
         self.assertEqual(str(caught.exception), "operations schema reset is required")
-        self.assert_safe_error(caught.exception, target, canary, "category")
+        self.assert_safe_error(caught.exception, target, "category")
         self.assertEqual(
             self.connection.execute(
                 "SELECT payload FROM cpk_activity_events WHERE event_id=%s",
