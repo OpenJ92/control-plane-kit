@@ -9219,6 +9219,37 @@
     },
     {
       "canonical_public_exports": [
+        "EffectAttemptEventEvidence",
+        "EffectAttemptRecord",
+        "effect_attempt_state_fingerprint"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempts",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempts",
+      "motivation": "Owns the exact immutable Operations commitment between one Core effect-attempt state and its original/latest activity events.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_evidence_contract.py",
+        "tests/test_effect_attempt_record_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempts.py"
+    },
+    {
+      "canonical_public_exports": [
         "ActivityRunRetryResult",
         "RetryFailedActivityRun"
       ],
