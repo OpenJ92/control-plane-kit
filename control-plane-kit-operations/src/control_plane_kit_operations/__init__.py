@@ -506,6 +506,17 @@ from .effect_attempt_start import (
     StartEffectAttempt,
 )
 from .effect_attempt_start_interpreter import EffectAttemptStartService
+from .effect_attempt_fold import (
+    EffectAttemptFoldConflict,
+    EffectAttemptFoldDenied,
+    EffectAttemptFoldError,
+    EffectAttemptFoldNotFound,
+    EffectAttemptFoldResult,
+    ExistingFold,
+    FoldEffectAttempt,
+    NewlyFolded,
+)
+from .effect_attempt_fold_interpreter import EffectAttemptFoldService
 from .execution_lease_recovery import (
     AbandonExpiredExecutionClaim,
     ExecutionLeaseRecoveryCommand,
@@ -680,6 +691,12 @@ __all__ = [
     "CloudflareZoneIngressAuthorityCodec",
     "ExecutionLeaseDuration",
     "EffectAttemptEventEvidence",
+    "EffectAttemptFoldConflict",
+    "EffectAttemptFoldDenied",
+    "EffectAttemptFoldError",
+    "EffectAttemptFoldNotFound",
+    "EffectAttemptFoldResult",
+    "EffectAttemptFoldService",
     "EffectAttemptRecord",
     "EffectAttemptStartConflict",
     "EffectAttemptStartDenied",
@@ -688,6 +705,7 @@ __all__ = [
     "EffectAttemptStartResult",
     "EffectAttemptStartService",
     "ExistingAttempt",
+    "ExistingFold",
     "ExecutionLeaseFence",
     "ExecutionLeaseRecoveryCommand",
     "ExecutionLeaseRecoveryCommandService",
@@ -921,6 +939,7 @@ __all__ = [
     "OperationSessionStateConflict",
     "OperationSessionStatus",
     "NewlyStarted",
+    "NewlyFolded",
     "OperationWorkspaceNotFound",
     "OperationsPackageBoundary",
     "OperationsRecordError",
@@ -1025,6 +1044,7 @@ __all__ = [
     "StartOperationSession",
     "StartActivityRun",
     "StartEffectAttempt",
+    "FoldEffectAttempt",
     "TakeOverExpiredExecutionClaim",
     "StaleDesiredGraph",
     "WorkspaceRecord",
