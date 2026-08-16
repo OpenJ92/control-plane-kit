@@ -55,6 +55,7 @@ EXPECTED_MODULES = {
     "products",
     "public_ingress",
     "runtime_authority",
+    "runtime_effect_observation",
     "runtime_effects",
     "secrets",
     "topology.__init__",

@@ -21,7 +21,10 @@ from control_plane_kit_core.environment import (
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, ActivityOperation, ReviewChange
-from control_plane_kit_core.planning.codec import activity_operation_descriptor
+from control_plane_kit_core.planning.codec import (
+    ActivityPlanDescriptorError,
+    activity_operation_descriptor,
+)
 from control_plane_kit_core.probe_intents import RuntimeEndpointObservation
 from control_plane_kit_core.products import (
     ContainerServerProduct,
@@ -460,13 +463,32 @@ class RuntimeEffectRequest:
     operation: ActivityOperation
     authority_ref: RuntimeAuthorityReference | None = None
     authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
-    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = ()
+    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = field(
+        default=(),
+        repr=False,
+    )
     products: tuple[RuntimeProductMaterial, ...] = ()
 
     def __post_init__(self) -> None:
         _required_text(self.effect_id, "effect_id")
         if not isinstance(self.source, RuntimeEffectSource):
             raise RuntimeEffectContractError("runtime effect source is malformed")
+        if (
+            type(self.effect_id) is not str
+            or type(self.source.intent_event_id) is not str
+            or self.effect_id != self.source.intent_event_id
+            or "\x00" in self.effect_id
+        ):
+            raise RuntimeEffectContractError(
+                "runtime effect identity must match intent event identity"
+            )
+        if any(
+            0xD800 <= ord(character) <= 0xDFFF
+            for character in self.effect_id
+        ):
+            raise RuntimeEffectContractError(
+                "runtime effect identity must match intent event identity"
+            )
         if not isinstance(self.kind, RuntimeEffectKind):
             raise RuntimeEffectContractError("runtime effect kind must be closed")
         if not isinstance(self.runtime_kind, RuntimeKind):
@@ -574,9 +596,6 @@ class RuntimeEffectRequest:
             "authority_deliveries": [
                 value.descriptor() for value in self.authority_deliveries
             ],
-            "secret_resolution_grants": [
-                value.descriptor() for value in self.secret_resolution_grants
-            ],
             "source": self.source.descriptor(),
             "activity_id": self.activity_id.value,
             "operation": activity_operation_descriptor(self.operation),
@@ -670,12 +689,12 @@ class RuntimeEffectResult:
         object.__setattr__(self, "evidence", evidence)
         if self.failure is not None and not isinstance(self.failure, RuntimeEffectFailure):
             raise RuntimeEffectContractError("runtime effect failure is malformed")
-        observations = tuple(self.observations)
-        if not all(isinstance(value, RuntimeEndpointObservation) for value in observations):
+        if type(self.observations) is not tuple or not all(
+            type(value) is RuntimeEndpointObservation for value in self.observations
+        ):
             raise RuntimeEffectContractError(
                 "runtime effect observations must be RuntimeEndpointObservation"
             )
-        object.__setattr__(self, "observations", observations)
         if self.kind is EffectResultKind.SUCCEEDED and self.failure is not None:
             raise RuntimeEffectContractError("successful runtime effect cannot fail")
         if self.kind is not EffectResultKind.SUCCEEDED and self.failure is None:
@@ -687,18 +706,7 @@ class RuntimeEffectResult:
             "kind": self.kind.value,
             "evidence": dict(self.evidence),
             "failure": None if self.failure is None else self.failure.descriptor(),
-            "observations": [
-                value.descriptor()
-                for value in sorted(
-                    self.observations,
-                    key=lambda item: (
-                        item.subject_id,
-                        item.socket_name,
-                        item.graph_id,
-                        item.context.value,
-                    ),
-                )
-            ],
+            "observations": [value.descriptor() for value in self.observations],
         }
 
 

@@ -257,7 +257,6 @@ class RuntimeEffectContractTests(unittest.TestCase):
         self.assertEqual(descriptor["runtime_kind"], "docker")
         self.assertIsNone(descriptor["authority_ref"])
         self.assertEqual(descriptor["authority_deliveries"], [])
-        self.assertEqual(descriptor["secret_resolution_grants"], [])
         self.assertEqual(
             descriptor["source"],
             {
@@ -267,7 +266,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 "plan_id": "plan-a",
                 "base_graph_id": "graph-base",
                 "desired_graph_id": "graph-desired",
-                "intent_event_id": "event-started",
+                "intent_event_id": "effect-a",
             },
         )
         self.assertEqual(
@@ -433,10 +432,6 @@ class RuntimeEffectContractTests(unittest.TestCase):
         )
 
         self.assertEqual(request.secret_resolution_grants, (grant,))
-        self.assertEqual(
-            request.descriptor()["secret_resolution_grants"],
-            [grant.descriptor()],
-        )
         with self.assertRaises(RuntimeEffectContractError):
             RuntimeEffectRequest(
                 effect_id="other-effect",
@@ -854,7 +849,7 @@ def _source() -> RuntimeEffectSource:
         plan_id="plan-a",
         base_graph_id="graph-base",
         desired_graph_id="graph-desired",
-        intent_event_id="event-started",
+        intent_event_id="effect-a",
     )
 
 

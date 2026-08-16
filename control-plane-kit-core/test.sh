@@ -24,7 +24,9 @@ docker run --rm \
 
 docker run --rm \
   -v "$ROOT:/source:ro" \
+  -v "$REPO_ROOT/docs/architecture/package-module-inventory.json:/package-module-inventory.json:ro" \
   -e PYTHONDONTWRITEBYTECODE=1 \
+  -e CPK_PACKAGE_MODULE_INVENTORY=/package-module-inventory.json \
   "$IMAGE" \
   sh -c 'cp -a /source /tmp/pkg && cd /tmp/pkg && python -m pip install --root-user-action=ignore . >/tmp/pip.log && python -m unittest discover -s tests'
 
