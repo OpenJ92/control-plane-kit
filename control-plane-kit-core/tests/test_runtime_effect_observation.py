@@ -785,7 +785,7 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
     def test_complete_observation_fingerprint_input_has_exact_byte_ceiling(self) -> None:
         language = _language()
 
-        def value(message_size: int):
+        def value(message: str):
             return language.RuntimeEffectObservedFailed(
                 effect_id="event-started-a",
                 request_fingerprint="a" * 64,
@@ -794,15 +794,15 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
                 ),
                 failure=language.RuntimeEffectObservationFailure(
                     "observer.failed",
-                    "f" * message_size,
+                    message,
                     language.RuntimeEffectObservationEvidence(
                         {"padding": "y" * 3_974}
                     ),
                 ),
             )
 
-        maximum = value(7)
-        plus_one = value(8)
+        maximum = value("msgmax7")
+        plus_one = value("msgmax88")
         self.assertEqual(
             len(rfc8785.dumps(maximum.descriptor())),
             OUTCOME_FINGERPRINT_MAX_BYTES,
@@ -817,7 +817,9 @@ class RuntimeEffectObservationResultTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(RuntimeEffectContractError, "too large") as caught:
             language.runtime_effect_observation_fingerprint(plus_one)
-        self.assertNotIn("x" * 64, str(caught.exception) + repr(caught.exception))
+        error = str(caught.exception) + repr(caught.exception)
+        for candidate in ("x" * 64, "y" * 64, "msgmax88"):
+            self.assertNotIn(candidate, error)
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
 

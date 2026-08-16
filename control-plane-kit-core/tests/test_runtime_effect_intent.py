@@ -109,13 +109,21 @@ def _product_material(
     image_tag: str | None = "stable",
     image_architecture: str = "amd64",
     image_provenance: str = "build-a",
+    provider_socket_name: str = "http",
+    provider_socket_protocol: Protocol = Protocol.HTTP,
     provider_port: int = 8000,
+    secret_environment_name: str = "APP_CONTROL_TOKEN",
+    secret_use_intent: SecretUseIntent = SecretUseIntent.APPLICATION_CONTROL_TOKEN,
     public_name: str = "HELLO_MESSAGE",
     public_value: str = "Hello from graph",
     socket_name: str = "UPSTREAM_URL",
     socket_value: str = "http://upstream:8080",
     socket_edge: str = "upstream.internal->api.upstream",
     delivery_reference: str = "secret://local/workspace-a/app/token",
+    verification_check_id: str = "database-ready",
+    verification_socket: str = "database",
+    verification_database: str = "app",
+    verification_username: str = "app",
     verification_reference: str = "secret://local/workspace-a/postgres/password",
     pull_registry: str = "ghcr.io",
     pull_repository: str | None = "openj92",
@@ -135,29 +143,31 @@ def _product_material(
         runtime_contract=ProductRuntimeContract(
             sockets=BlockSockets(
                 providers=(
-                    ProviderSocket("http", Protocol.HTTP),
+                    ProviderSocket(provider_socket_name, provider_socket_protocol),
                     ProviderSocket("database", Protocol.POSTGRES),
+                    ProviderSocket("database-alt", Protocol.POSTGRES),
                 )
             ),
             provider_ports=(
-                ProviderRuntimePort("http", provider_port),
+                ProviderRuntimePort(provider_socket_name, provider_port),
                 ProviderRuntimePort("database", 5432),
+                ProviderRuntimePort("database-alt", 5433),
             ),
             secret_deliveries=(
                 SecretEnvironmentDelivery(
-                    "APP_CONTROL_TOKEN",
+                    secret_environment_name,
                     SecretReference(delivery_reference),
-                    SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                    secret_use_intent,
                 ),
             ),
             verification=VerificationContract(
                 (
                     PostgresQueryCheck(
-                        check_id="database-ready",
-                        provider_socket="database",
+                        check_id=verification_check_id,
+                        provider_socket=verification_socket,
                         authentication=PostgresPasswordAuthentication(
-                            database="app",
-                            username="app",
+                            database=verification_database,
+                            username=verification_username,
                             password_reference=SecretReference(
                                 verification_reference
                             ),
@@ -319,6 +329,10 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             RuntimeAuthorityReference("local-docker"),
             RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
         )
+        other_delivery_kind = RuntimeAuthorityAccessDelivery(
+            intent.authority_ref,
+            RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+        )
         mutations = {
             "runtime_kind": replace(intent, runtime_kind=RuntimeKind.EXTERNAL),
             "workspace_id": replace(
@@ -351,8 +365,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             "products": replace(intent, products=(_product_material(node_id="api-b"),)),
             "authority_delivery_kind": replace(
                 intent,
-                authority_ref=other_delivery.authority_ref,
-                authority_deliveries=(other_delivery,),
+                authority_deliveries=(other_delivery_kind,),
             ),
             "authority_delivery_secret_label": replace(
                 intent,
@@ -428,11 +441,31 @@ class RuntimeEffectIntentTests(unittest.TestCase):
             "product_runtime_contract": replace(
                 intent, products=(_product_material(provider_port=8001),)
             ),
+            "product_provider_socket_identity": replace(
+                intent,
+                products=(_product_material(provider_socket_name="admin"),),
+            ),
+            "product_provider_socket_protocol": replace(
+                intent,
+                products=(_product_material(provider_socket_protocol=Protocol.TCP),),
+            ),
             "product_secret_delivery": replace(
                 intent,
                 products=(
                     _product_material(
                         delivery_reference="secret://local/workspace-a/app/token-b"
+                    ),
+                ),
+            ),
+            "product_secret_environment_name": replace(
+                intent,
+                products=(_product_material(secret_environment_name="CONTROL_TOKEN"),),
+            ),
+            "product_secret_use_intent": replace(
+                intent,
+                products=(
+                    _product_material(
+                        secret_use_intent=SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY
                     ),
                 ),
             ),
@@ -445,6 +478,22 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                         )
                     ),
                 ),
+            ),
+            "product_verification_check_id": replace(
+                intent,
+                products=(_product_material(verification_check_id="database-live"),),
+            ),
+            "product_verification_socket": replace(
+                intent,
+                products=(_product_material(verification_socket="database-alt"),),
+            ),
+            "product_verification_database": replace(
+                intent,
+                products=(_product_material(verification_database="control"),),
+            ),
+            "product_verification_username": replace(
+                intent,
+                products=(_product_material(verification_username="control"),),
             ),
             "product_public_environment_name": replace(
                 intent, products=(_product_material(public_name="GREETING"),)
@@ -527,6 +576,10 @@ class RuntimeEffectIntentTests(unittest.TestCase):
         with self.assertRaises(RuntimeEffectContractError):
             language.runtime_effect_intent_fingerprint(
                 _subclass_copy(intent)
+            )
+        with self.assertRaises(RuntimeEffectContractError):
+            language.runtime_effect_intent_fingerprint(
+                replace(intent, source=_subclass_copy(intent.source))
             )
 
     def test_public_intent_dataclass_fields_are_exact_and_frozen(self) -> None:

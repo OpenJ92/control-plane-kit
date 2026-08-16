@@ -325,6 +325,26 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
             {"reason": "provider-error"},
         )
         failed = RuntimeEffectResult.failed("event-started-a", failure)
+        unsupported = RuntimeEffectResult.unsupported("event-started-a", failure)
+        uncertain = RuntimeEffectResult.uncertain("event-started-a", failure)
+        self.assertEqual(
+            len(
+                {
+                    language.runtime_effect_result_fingerprint(value)
+                    for value in (failed, unsupported, uncertain)
+                }
+            ),
+            3,
+        )
+        self.assertEqual(failed.failure, unsupported.failure)
+        self.assertEqual(failed.failure, uncertain.failure)
+        without_kind = lambda value: {
+            key: nested
+            for key, nested in value.descriptor().items()
+            if key != "kind"
+        }
+        self.assertEqual(without_kind(failed), without_kind(unsupported))
+        self.assertEqual(without_kind(failed), without_kind(uncertain))
         failed_fingerprint = language.runtime_effect_result_fingerprint(failed)
         for name, changed in {
             "failure_code": replace(failure, code="runtime.changed"),
