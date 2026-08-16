@@ -506,6 +506,17 @@ from .effect_attempt_start import (
     StartEffectAttempt,
 )
 from .effect_attempt_start_interpreter import EffectAttemptStartService
+from .effect_attempt_fold import (
+    EffectAttemptFoldConflict,
+    EffectAttemptFoldDenied,
+    EffectAttemptFoldError,
+    EffectAttemptFoldNotFound,
+    EffectAttemptFoldResult,
+    ExistingFold,
+    FoldEffectAttempt,
+    NewlyFolded,
+)
+from .effect_attempt_fold_interpreter import EffectAttemptFoldService
 from .execution_lease_recovery import (
     AbandonExpiredExecutionClaim,
     ExecutionLeaseRecoveryCommand,
