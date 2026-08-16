@@ -130,17 +130,37 @@ class EffectAttemptRecordFixture:
         for canary in canaries:
             self.assertNotIn(canary, rendered)
 
-    def identity(self, *, attempt: int = 1) -> EffectAttemptIdentity:
-        return EffectAttemptIdentity(RunId("run-a"), "activity-a", attempt)
+    def identity(
+        self,
+        *,
+        attempt: int = 1,
+        run_id: str = "run-a",
+        activity_id: str = "activity-a",
+    ) -> EffectAttemptIdentity:
+        return EffectAttemptIdentity(RunId(run_id), activity_id, attempt)
 
     def state(
         self,
         story: str = "started",
         *,
         attempt: int = 1,
+        run_id: str = "run-a",
+        activity_id: str = "activity-a",
     ) -> EffectAttemptState:
-        identity = self.identity(attempt=attempt)
-        prior_attempt = self.identity(attempt=attempt - 1) if attempt > 1 else None
+        identity = self.identity(
+            attempt=attempt,
+            run_id=run_id,
+            activity_id=activity_id,
+        )
+        prior_attempt = (
+            self.identity(
+                attempt=attempt - 1,
+                run_id=run_id,
+                activity_id=activity_id,
+            )
+            if attempt > 1
+            else None
+        )
         status = {
             "started": EffectAttemptStatus.STARTED,
             "succeeded": EffectAttemptStatus.SUCCEEDED,
@@ -263,16 +283,26 @@ class EffectAttemptRecordFixture:
         *,
         compensation: bool = False,
         attempt: int = 1,
+        run_id: str = "run-a",
+        activity_id: str = "activity-a",
+        event_prefix: str = "event",
+        original_ordinal: int = 3,
+        latest_ordinal: int = 7,
         original_time: str = "2030-01-01T00:00:02.000000Z",
         latest_time: str = "2030-01-01T00:00:01.000000Z",
     ):
         self.require_language()
-        state = self.state(story, attempt=attempt)
+        state = self.state(
+            story,
+            attempt=attempt,
+            run_id=run_id,
+            activity_id=activity_id,
+        )
         original = self.event(
             self.started_state(state),
             self.event_kind("started", compensation=compensation),
-            event_id="event-start",
-            ordinal=3,
+            event_id=f"{event_prefix}-start",
+            ordinal=original_ordinal,
             occurred_at=original_time,
         )
         latest = original
@@ -280,8 +310,8 @@ class EffectAttemptRecordFixture:
             latest = self.event(
                 state,
                 self.event_kind(story, compensation=compensation),
-                event_id="event-latest",
-                ordinal=7,
+                event_id=f"{event_prefix}-latest",
+                ordinal=latest_ordinal,
                 occurred_at=latest_time,
             )
         return EffectAttemptRecord(state, original, latest)
