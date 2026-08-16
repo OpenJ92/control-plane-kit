@@ -641,10 +641,11 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
         for name, (constructor, message, canary) in candidates.items():
             with self.subTest(name=name):
                 dispatches.clear()
+                captured: ValueError | RuntimeError | None = None
                 try:
                     constructor()
-                except (ValueError, RuntimeError) as caught:
-                    pass
+                except (ValueError, RuntimeError) as error:
+                    captured = error
                 else:
                     self.fail(f"{name} admitted a hostile text subclass")
                 self.assertEqual(
@@ -652,11 +653,13 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
                     [],
                     f"{name} dispatched a hostile text method",
                 )
-                self.assertIs(type(caught), ValueError)
-                self.assertEqual(str(caught), message)
-                self.assertIsNone(caught.__cause__)
-                self.assertIsNone(caught.__context__)
-                rendered = f"{caught!s} {caught!r}"
+                self.assertIsNotNone(captured)
+                assert captured is not None
+                self.assertIs(type(captured), ValueError)
+                self.assertEqual(str(captured), message)
+                self.assertIsNone(captured.__cause__)
+                self.assertIsNone(captured.__context__)
+                rendered = f"{captured!s} {captured!r}"
                 self.assertNotIn(canary, rendered)
 
     def test_runtime_endpoint_rejects_subclassed_nested_values(self) -> None:
