@@ -143,6 +143,62 @@ def _import_contract(
     return symbols, bindings, tuple(wildcard_imports)
 
 
+def _bound_target_names(target: ast.AST) -> set[str]:
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, ast.Starred):
+        return _bound_target_names(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return {
+            name
+            for element in target.elts
+            for name in _bound_target_names(element)
+        }
+    return set()
+
+
+def _forbidden_rebindings(tree: ast.AST) -> tuple[str, ...]:
+    _, imported_bindings, _ = _import_contract(tree)
+    local_callables = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+    protected = set(imported_bindings) | _PURE_BUILTIN_CALLS | local_callables
+    rebound: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                rebound.update(_bound_target_names(target))
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+            rebound.update(_bound_target_names(node.target))
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+            rebound.update(_bound_target_names(node.target))
+        elif isinstance(node, ast.withitem) and node.optional_vars is not None:
+            rebound.update(_bound_target_names(node.optional_vars))
+        elif isinstance(node, ast.ExceptHandler) and node.name is not None:
+            rebound.add(node.name)
+        elif isinstance(node, ast.arguments):
+            rebound.update(
+                argument.arg
+                for argument in (
+                    *node.posonlyargs,
+                    *node.args,
+                    *node.kwonlyargs,
+                )
+            )
+            if node.vararg is not None:
+                rebound.add(node.vararg.arg)
+            if node.kwarg is not None:
+                rebound.add(node.kwarg.arg)
+
+    declared_collisions = local_callables.intersection(
+        set(imported_bindings) | _PURE_BUILTIN_CALLS
+    )
+    return tuple(sorted((rebound & protected) | declared_collisions))
+
+
 def _resolved_path(
     node: ast.AST,
     bindings: dict[str, str],
@@ -332,9 +388,14 @@ class EffectOutcomeEvidencePredecessorTest(
         smuggled_output = ast.parse(
             "from dataclasses import sys\nsys.stdout.write('candidate')"
         )
+        laundered_open = ast.parse(
+            'tuple = __builtins__["open"]\n'
+            'tuple("candidate")'
+        )
         direct_targets, direct_unresolved = _call_contract(direct_output)
         dynamic_targets, dynamic_unresolved = _call_contract(dynamic_open)
         smuggled_targets, smuggled_unresolved = _call_contract(smuggled_output)
+        laundered_targets, laundered_unresolved = _call_contract(laundered_open)
         smuggled_symbols, _, _ = _import_contract(smuggled_output)
 
         self.assertEqual(direct_targets, set())
@@ -353,6 +414,9 @@ class EffectOutcomeEvidencePredecessorTest(
         self.assertTrue(
             smuggled_targets.difference(_allowed_call_targets(smuggled_output))
         )
+        self.assertEqual(laundered_targets, {"builtins.tuple"})
+        self.assertEqual(laundered_unresolved, ())
+        self.assertEqual(_forbidden_rebindings(laundered_open), ("tuple",))
 
 
 class EffectOutcomeEvidenceContractTest(
@@ -864,6 +928,7 @@ class EffectOutcomeEvidenceContractTest(
         imported_symbols, _, wildcard_imports = _import_contract(tree)
         self.assertEqual(imported_symbols, EXACT_IMPORT_SYMBOLS)
         self.assertEqual(wildcard_imports, ())
+        self.assertEqual(_forbidden_rebindings(tree), ())
         call_targets, unresolved_calls = _call_contract(tree)
         self.assertEqual(unresolved_calls, ())
         self.assertEqual(
