@@ -135,9 +135,15 @@ class PostgresEffectAttemptStoreContractTests(
             row for row in inventory["modules"] if row["module"] == MODULE_NAME
         )
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["owner"], "operations")
+        self.assertEqual(rows[0]["owner"], "operation")
+        self.assertEqual(rows[0]["destination"], MODULE_NAME)
         self.assertEqual(
-            tuple(rows[0]["tests"]),
+            rows[0]["source"],
+            "control-plane-kit-operations/src/"
+            "control_plane_kit_operations/postgres/effect_attempt_store.py",
+        )
+        self.assertEqual(
+            tuple(rows[0]["protecting_tests"]),
             (
                 "tests/test_postgres_effect_attempt_store_contract.py",
                 "tests/test_postgres_effect_attempt_store.py",
