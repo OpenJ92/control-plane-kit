@@ -119,6 +119,12 @@ class EffectAttemptStartLanguageTests(
             hostile_identity,
             request_fingerprint=transition.request_fingerprint,
         )
+        hostile_fingerprint = EffectAttemptTransition(
+            transition.kind,
+            transition.identity,
+            request_fingerprint=HostileText(transition.request_fingerprint),
+        )
+        hostile_worker = HostileText("hostile-worker-canary")
         cases = (
             ({"request_id": ""}, ""),
             ({"request_id": None}, ""),
@@ -128,9 +134,17 @@ class EffectAttemptStartLanguageTests(
             ({"request_id": HostileText("request-canary")}, "request-canary"),
             ({"transition": hostile_transition}, ""),
             ({"transition": nested_hostile}, ""),
+            ({"transition": hostile_fingerprint}, transition.request_fingerprint),
             ({"authority": HostileAuthority("worker-a", ())}, ""),
             ({"fence": HostileFence("worker-a", 7)}, ""),
             ({"authority": self.authority("worker-b")}, "worker-b"),
+            (
+                {
+                    "authority": self.authority(hostile_worker),
+                    "fence": self.fence(hostile_worker),
+                },
+                hostile_worker,
+            ),
         )
         for changes, canary in cases:
             with self.subTest(changes=tuple(changes)):
@@ -187,14 +201,14 @@ class EffectAttemptStartLanguageTests(
         self,
     ) -> None:
         self.require_language()
-        started = self.record("started")
-        self.assertEqual(NewlyStarted(started).attempt, started)
         for compensation in (False, True):
             for story in STORIES:
                 record = self.record(story, compensation=compensation)
                 with self.subTest(compensation=compensation, story=story):
                     self.assertEqual(ExistingAttempt(record).attempt, record)
-                    if story != "started":
+                    if story == "started":
+                        self.assertEqual(NewlyStarted(record).attempt, record)
+                    else:
                         with self.assertRaises(OperationsRecordError) as caught:
                             NewlyStarted(record)
                         self.assertEqual(

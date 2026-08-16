@@ -8,6 +8,7 @@ from pathlib import Path
 import unittest
 
 import control_plane_kit_operations as operations_root
+from control_plane_kit_core.operations import EffectAttemptTransition
 from control_plane_kit_operations.execution_leases import (
     ExecutionLeaseFence,
     InvalidExecutionLeaseFence,
@@ -19,6 +20,7 @@ from tests.effect_attempt_start_fixture import (
     EffectAttemptStartService,
     INTERPRETER_MODULE,
     START_MODULE,
+    StartEffectAttempt,
 )
 
 
@@ -91,6 +93,67 @@ class EffectAttemptStartInterpreterContractTests(
         )
         self.assert_safe_error(caught.exception)
         self.assertEqual(fail.calls, 0)
+
+    def test_service_rejects_raw_hostile_and_nested_non_nominal_commands(
+        self,
+    ) -> None:
+        self.require_service()
+        valid = self.command()
+
+        class HostileCommand(StartEffectAttempt):
+            pass
+
+        class HostileText(str):
+            pass
+
+        def bypass(command_type, **changes):
+            values = {
+                "request_id": valid.request_id,
+                "transition": valid.transition,
+                "authority": valid.authority,
+                "fence": valid.fence,
+            }
+            values.update(changes)
+            command = object.__new__(command_type)
+            for name, value in values.items():
+                object.__setattr__(command, name, value)
+            return command
+
+        hostile_fingerprint = EffectAttemptTransition(
+            valid.transition.kind,
+            valid.transition.identity,
+            request_fingerprint=HostileText(
+                valid.transition.request_fingerprint
+            ),
+        )
+        hostile_worker = HostileText("hostile-worker-canary")
+        candidates = (
+            object(),
+            bypass(HostileCommand),
+            bypass(StartEffectAttempt, transition=hostile_fingerprint),
+            bypass(
+                StartEffectAttempt,
+                authority=self.authority(hostile_worker),
+                fence=self.fence(hostile_worker),
+            ),
+        )
+        for candidate in candidates:
+            with self.subTest(candidate=type(candidate).__name__):
+                fail = FailIfUnitOfWork(
+                    "invalid command opened a unit of work"
+                )
+                with self.assertRaises(InvalidOperationCommand) as caught:
+                    self.service(fail).execute(candidate)
+                self.assertEqual(
+                    str(caught.exception),
+                    "effect attempt start command is invalid",
+                )
+                self.assert_safe_error(
+                    caught.exception,
+                    valid.transition.request_fingerprint,
+                    hostile_worker,
+                )
+                self.assertEqual(fail.calls, 0)
 
     def test_fence_translation_is_exact_bounded_and_precedes_unit_of_work(self) -> None:
         self.require_service()
