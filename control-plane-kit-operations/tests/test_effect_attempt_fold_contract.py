@@ -42,6 +42,20 @@ class EffectAttemptFoldLanguageTests(
     EffectAttemptFoldFixture,
     unittest.TestCase,
 ):
+    def fold_result_record(self, story: str, *, compensation: bool):
+        record = self.record(story, compensation=compensation)
+        if story not in FAILURE_STORIES:
+            return record
+        latest = dataclasses.replace(
+            record.latest_transition_event,
+            failure=self.failure(story),
+        )
+        return EffectAttemptRecord(
+            record.state,
+            record.original_start_event,
+            latest,
+        )
+
     def test_missing_module_guard_preserves_nested_import_failures(self) -> None:
         nested = ModuleNotFoundError("nested dependency missing")
         nested.name = "nested_dependency"
@@ -332,7 +346,10 @@ class EffectAttemptFoldLanguageTests(
 
         for compensation in (False, True):
             for story in FOLD_STORIES:
-                record = self.record(story, compensation=compensation)
+                record = self.fold_result_record(
+                    story,
+                    compensation=compensation,
+                )
                 with self.subTest(compensation=compensation, story=story):
                     self.assertEqual(NewlyFolded(record).attempt, record)
                     self.assertEqual(ExistingFold(record).attempt, record)
@@ -347,6 +364,40 @@ class EffectAttemptFoldLanguageTests(
                         "effect attempt fold result is invalid",
                     )
                     self.assert_safe_error(caught.exception)
+
+    def test_result_failure_evidence_is_an_exact_closed_sum(self) -> None:
+        self.require_fold_language()
+        for compensation in (False, True):
+            for story in FAILURE_STORIES:
+                missing_failure = self.record(
+                    story,
+                    compensation=compensation,
+                )
+                self.assertIsNone(missing_failure.latest_transition_event.failure)
+                for variant in (NewlyFolded, ExistingFold):
+                    with self.subTest(
+                        compensation=compensation,
+                        story=story,
+                        variant=variant,
+                    ):
+                        with self.assertRaises(OperationsRecordError) as caught:
+                            variant(missing_failure)
+                        self.assertEqual(
+                            str(caught.exception),
+                            "effect attempt fold result is invalid",
+                        )
+                        self.assert_safe_error(caught.exception)
+
+            for story in (
+                "succeeded",
+                "recovered-succeeded",
+                "abandoned",
+            ):
+                no_failure = self.record(story, compensation=compensation)
+                self.assertIsNone(no_failure.latest_transition_event.failure)
+                with self.subTest(compensation=compensation, story=story):
+                    self.assertEqual(NewlyFolded(no_failure).attempt, no_failure)
+                    self.assertEqual(ExistingFold(no_failure).attempt, no_failure)
 
     def test_result_variants_reject_hostile_outer_and_nested_records(self) -> None:
         self.require_fold_language()
