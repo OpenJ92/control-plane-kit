@@ -127,18 +127,41 @@ class EffectAttemptStartInterpreterContractTests(
             ),
         )
         hostile_worker = HostileText("hostile-worker-canary")
+        control_worker = "worker\ncontrol-canary"
         candidates = (
-            object(),
-            bypass(HostileCommand),
-            bypass(StartEffectAttempt, transition=hostile_fingerprint),
-            bypass(
-                StartEffectAttempt,
-                authority=self.authority(hostile_worker),
-                fence=self.fence(hostile_worker),
+            ("raw-object", object(), ()),
+            ("hostile-command", bypass(HostileCommand), ()),
+            (
+                "hostile-fingerprint",
+                bypass(StartEffectAttempt, transition=hostile_fingerprint),
+                (valid.transition.request_fingerprint,),
+            ),
+            (
+                "hostile-worker",
+                bypass(
+                    StartEffectAttempt,
+                    authority=self.authority(hostile_worker),
+                    fence=self.fence(hostile_worker),
+                ),
+                (hostile_worker,),
+            ),
+            (
+                "non-utf8-request",
+                bypass(StartEffectAttempt, request_id="request-\ud800-canary"),
+                ("canary",),
+            ),
+            (
+                "control-worker",
+                bypass(
+                    StartEffectAttempt,
+                    authority=self.authority(control_worker),
+                    fence=malformed_fence(control_worker, 7),
+                ),
+                ("canary",),
             ),
         )
-        for candidate in candidates:
-            with self.subTest(candidate=type(candidate).__name__):
+        for label, candidate, canaries in candidates:
+            with self.subTest(candidate=label):
                 fail = FailIfUnitOfWork(
                     "invalid command opened a unit of work"
                 )
@@ -150,8 +173,7 @@ class EffectAttemptStartInterpreterContractTests(
                 )
                 self.assert_safe_error(
                     caught.exception,
-                    valid.transition.request_fingerprint,
-                    hostile_worker,
+                    *canaries,
                 )
                 self.assertEqual(fail.calls, 0)
 
