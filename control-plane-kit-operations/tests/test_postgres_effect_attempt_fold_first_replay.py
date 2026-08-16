@@ -13,7 +13,6 @@ from control_plane_kit_operations.effect_attempt_fold import (
     ExistingFold,
     NewlyFolded,
 )
-from control_plane_kit_operations import effect_attempt_fold_interpreter
 from control_plane_kit_operations.effect_attempts import (
     EffectAttemptEventEvidence,
     effect_attempt_state_fingerprint,
@@ -328,13 +327,12 @@ class PostgresEffectAttemptFoldFirstReplayTests(
         planned_results = []
         original_event = PostgresExecutionStore.add_event
         original_cas = EffectAttemptStore.compare_and_set
-        real_result = NewlyFolded
+        real_post_init = NewlyFolded.__post_init__
 
-        def result(record):
+        def result_post_init(value):
+            real_post_init(value)
             calls.append("result")
-            planned = real_result(record)
-            planned_results.append(planned)
-            return planned
+            planned_results.append(value)
 
         def add_event(store, event):
             calls.append("event")
@@ -351,15 +349,15 @@ class PostgresEffectAttemptFoldFirstReplayTests(
             calls.append("cas")
             self.assertEqual(calls, ["result", "event", "cas"])
             self.assertEqual(observed, current)
-            self.assertEqual(planned_results, [real_result(replacement)])
+            self.assertEqual(len(planned_results), 1)
+            self.assertEqual(planned_results[0].attempt, replacement)
             self.assertEqual(appended, [replacement.latest_transition_event])
             return original_cas(store, observed, replacement)
 
         with mock.patch.object(
-            effect_attempt_fold_interpreter,
-            "NewlyFolded",
-            result,
-            create=True,
+            NewlyFolded,
+            "__post_init__",
+            result_post_init,
         ), mock.patch.object(PostgresExecutionStore, "add_event", add_event), \
             mock.patch.object(EffectAttemptStore, "compare_and_set", compare_and_set):
             result = self.fold_service("complete-before-write").execute(
