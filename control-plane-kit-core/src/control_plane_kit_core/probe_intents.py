@@ -9,10 +9,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+import json
 from typing import TypeAlias
 from urllib.parse import urlsplit
 
 from control_plane_kit_core.types import Protocol
+
+
+_MAX_ENDPOINT_TEXT = 512
+_MAX_ENDPOINT_EVIDENCE_BYTES = 4_096
 
 
 class EndpointContext(StrEnum):
@@ -143,6 +148,8 @@ class LiteralEndpointMaterial:
     def __post_init__(self) -> None:
         if not isinstance(self.value, str) or not self.value:
             raise ValueError("literal endpoint material must be nonempty text")
+        if len(self.value) > _MAX_ENDPOINT_TEXT:
+            raise ValueError("literal endpoint material must be bounded text")
 
 
 @dataclass(frozen=True, order=True)
@@ -154,6 +161,8 @@ class SecretEndpointMaterial:
             "secret://"
         ):
             raise ValueError("secret endpoint material must be a secret reference")
+        if len(self.reference_id) > _MAX_ENDPOINT_TEXT:
+            raise ValueError("secret endpoint material must be bounded text")
 
 
 EndpointAddressMaterial: TypeAlias = LiteralEndpointMaterial | SecretEndpointMaterial
@@ -213,6 +222,8 @@ class RuntimeEndpointObservation:
         ):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} identity must not be empty")
+            if len(value) > _MAX_ENDPOINT_TEXT:
+                raise ValueError(f"{name} identity must be bounded text")
         if not isinstance(self.protocol, Protocol):
             raise TypeError("runtime endpoint protocol must be Protocol")
         if not isinstance(self.context, EndpointContext):
@@ -224,6 +235,10 @@ class RuntimeEndpointObservation:
             raise TypeError("runtime endpoint address must be typed material")
         if isinstance(self.address, LiteralEndpointMaterial):
             _validate_literal_endpoint(self.address.value, self.protocol)
+        if _runtime_endpoint_evidence_size(self) > _MAX_ENDPOINT_EVIDENCE_BYTES:
+            raise ValueError(
+                "runtime endpoint evidence must not exceed 4096 encoded bytes"
+            )
 
     def descriptor(self) -> dict[str, object]:
         address = (
@@ -500,6 +515,16 @@ def _validate_endpoint_identity(
             subject.subject_id,
         )
     return None
+
+
+def _runtime_endpoint_evidence_size(endpoint: RuntimeEndpointObservation) -> int:
+    canonical = json.dumps(
+        {"runtime_endpoint": endpoint.descriptor()},
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return len(canonical.encode("utf-8"))
 
 
 def _validate_literal_endpoint(value: str, protocol: Protocol) -> None:

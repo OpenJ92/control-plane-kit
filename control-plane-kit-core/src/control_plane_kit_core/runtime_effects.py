@@ -706,18 +706,7 @@ class RuntimeEffectResult:
             "kind": self.kind.value,
             "evidence": dict(self.evidence),
             "failure": None if self.failure is None else self.failure.descriptor(),
-            "observations": [
-                value.descriptor()
-                for value in sorted(
-                    self.observations,
-                    key=lambda item: (
-                        item.subject_id,
-                        item.socket_name,
-                        item.graph_id,
-                        item.context.value,
-                    ),
-                )
-            ],
+            "observations": [value.descriptor() for value in self.observations],
         }
 
 
