@@ -611,7 +611,7 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
         decision = EffectRecoveryDecision(
             "decision-a",
             story.attempt.state.identity,
-            EffectRecoveryResolution.FAILED,
+            EffectRecoveryResolution.SUCCEEDED,
             "c" * 64,
             story.fingerprint,
         )
@@ -619,7 +619,7 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
             identity=story.attempt.state.identity,
             request_fingerprint=story.attempt.state.request_fingerprint,
             fence=story.attempt.state.fence,
-            status=EffectAttemptStatus.FAILED,
+            status=EffectAttemptStatus.SUCCEEDED,
             outcome_fingerprint=story.fingerprint,
             recovery_decision=decision,
         )
@@ -632,14 +632,10 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
         )
         latest = self.event(
             state,
-            self.event_kind("recovered-failed", compensation=story.compensation),
-            event_id="event-recovered-failed",
+            self.event_kind("recovered-succeeded", compensation=story.compensation),
+            event_id="event-recovered-succeeded",
             ordinal=7,
             occurred_at="2030-01-01T00:00:02Z",
-        )
-        latest = replace(
-            latest,
-            failure=self.failure_for("execution-failed", story.fingerprint),
         )
         return EffectAttemptRecord(state, original, latest)
 

@@ -51,6 +51,151 @@ ROOT_EXPORTS = {
     "effect_outcome_observation_records",
 }
 
+EXACT_MODULE_IMPORTS = {
+    "__future__",
+    "dataclasses",
+    "enum",
+    "control_plane_kit_core.operations",
+    "control_plane_kit_core.runtime_effect_observation",
+    "control_plane_kit_core.runtime_effects",
+    "control_plane_kit_operations.effect_attempts",
+    "control_plane_kit_operations.records",
+}
+_BUILTIN_EFFECT_CALLS = {
+    "builtins.__import__",
+    "builtins.breakpoint",
+    "builtins.compile",
+    "builtins.eval",
+    "builtins.exec",
+    "builtins.input",
+    "builtins.open",
+}
+_EFFECTFUL_CALL_ROOTS = {
+    "datetime",
+    "docker",
+    "http",
+    "io",
+    "os",
+    "pathlib",
+    "random",
+    "requests",
+    "secrets",
+    "shutil",
+    "socket",
+    "subprocess",
+    "tempfile",
+    "time",
+    "urllib",
+    "uuid",
+}
+_EFFECTFUL_CALL_LEAVES = {
+    "connect",
+    "execute",
+    "from_env",
+    "id_factory",
+    "mkdtemp",
+    "mkstemp",
+    "now",
+    "open",
+    "read_bytes",
+    "read_text",
+    "request",
+    "run",
+    "socket",
+    "time",
+    "token_bytes",
+    "token_hex",
+    "token_urlsafe",
+    "utcnow",
+    "uuid1",
+    "uuid4",
+    "write_bytes",
+    "write_text",
+}
+
+
+def _normalized_import_module(node: ast.ImportFrom) -> str:
+    if node.level == 0:
+        return node.module or ""
+    if node.level == 1:
+        suffix = f".{node.module}" if node.module else ""
+        return f"control_plane_kit_operations{suffix}"
+    return f"relative-level-{node.level}:{node.module or ''}"
+
+
+def _import_contract(
+    tree: ast.AST,
+) -> tuple[set[str], dict[str, str], tuple[str, ...]]:
+    modules: set[str] = set()
+    bindings: dict[str, str] = {}
+    wildcard_imports: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                modules.add(alias.name)
+                bindings[alias.asname or alias.name.split(".", 1)[0]] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            module = _normalized_import_module(node)
+            modules.add(module)
+            for alias in node.names:
+                if alias.name == "*":
+                    wildcard_imports.append(module)
+                    continue
+                bindings[alias.asname or alias.name] = f"{module}.{alias.name}"
+    return modules, bindings, tuple(wildcard_imports)
+
+
+def _resolved_path(node: ast.AST, bindings: dict[str, str]) -> str | None:
+    if isinstance(node, ast.Name):
+        if node.id in bindings:
+            return bindings[node.id]
+        builtin = f"builtins.{node.id}"
+        return builtin if builtin in _BUILTIN_EFFECT_CALLS else node.id
+    if isinstance(node, ast.Attribute):
+        owner = _resolved_path(node.value, bindings)
+        return f"{owner}.{node.attr}" if owner is not None else None
+    return None
+
+
+def _effectful_call_paths(tree: ast.AST) -> set[str]:
+    _, bindings, _ = _import_contract(tree)
+    assignments = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+    ]
+    for _ in range(len(assignments) + 1):
+        changed = False
+        for node in assignments:
+            value = node.value
+            path = _resolved_path(value, bindings) if value is not None else None
+            targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+            if path is None:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name) and bindings.get(target.id) != path:
+                    bindings[target.id] = path
+                    changed = True
+        if not changed:
+            break
+
+    effectful: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        path = _resolved_path(node.func, bindings)
+        if path is None:
+            continue
+        root = path.split(".", 1)[0]
+        leaf = path.rsplit(".", 1)[-1]
+        if (
+            path in _BUILTIN_EFFECT_CALLS
+            or root in _EFFECTFUL_CALL_ROOTS
+            or leaf in _EFFECTFUL_CALL_LEAVES
+        ):
+            effectful.add(path)
+    return effectful
+
 
 def inventory_path() -> Path:
     return Path(
@@ -146,6 +291,35 @@ class EffectOutcomeEvidencePredecessorTest(
                 ).encode("utf-8")
             ),
             4_097,
+        )
+        alias_tree = ast.parse(
+            """
+import builtins as runtime_builtins
+from secrets import token_hex as mint_token
+import tempfile as scratch
+from io import open as io_open
+import shutil as file_tree
+
+open_alias = runtime_builtins.open
+token_alias = mint_token
+
+def forbidden_aliases():
+    open_alias("candidate")
+    token_alias()
+    scratch.NamedTemporaryFile()
+    io_open("candidate")
+    file_tree.copy("source", "destination")
+"""
+        )
+        self.assertEqual(
+            _effectful_call_paths(alias_tree),
+            {
+                "builtins.open",
+                "io.open",
+                "secrets.token_hex",
+                "shutil.copy",
+                "tempfile.NamedTemporaryFile",
+            },
         )
 
 
@@ -597,6 +771,18 @@ class EffectOutcomeEvidenceContractTest(
             ),
             forge_exact(
                 EffectAttemptIdentity,
+                run_id=forge_exact(RunId, value="r" * 201),
+                activity_id="activity-a",
+                attempt=1,
+            ),
+            forge_exact(
+                EffectAttemptIdentity,
+                run_id=RunId("run-a"),
+                activity_id="a" * 201,
+                attempt=1,
+            ),
+            forge_exact(
+                EffectAttemptIdentity,
                 run_id=RunId("run-a"),
                 activity_id="activity/canary",
                 attempt=1,
@@ -613,6 +799,8 @@ class EffectOutcomeEvidenceContractTest(
                     "effect outcome evidence is invalid",
                     "canary",
                     "surrogate",
+                    "r" * 201,
+                    "a" * 201,
                 )
 
     def test_invalid_candidates_are_cause_free_and_candidate_free(self) -> None:
@@ -641,51 +829,10 @@ class EffectOutcomeEvidenceContractTest(
         module = __import__(MODULE_NAME, fromlist=("__file__",))
         source_path = Path(inspect.getsourcefile(module))
         tree = ast.parse(source_path.read_text())
-        imported = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imported.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module is not None:
-                imported.add(node.module)
-        forbidden_import_roots = {
-            "datetime",
-            "docker",
-            "http",
-            "os",
-            "pathlib",
-            "random",
-            "requests",
-            "socket",
-            "subprocess",
-            "time",
-            "urllib",
-            "uuid",
-        }
-        self.assertEqual(
-            {name.split(".", 1)[0] for name in imported}
-            & forbidden_import_roots,
-            set(),
-        )
-        forbidden_package_fragments = (
-            "clock",
-            "filesystem",
-            "id_factory",
-            "network",
-            "postgres",
-            "providers",
-            "store",
-            "unit_of_work",
-            "coordinator",
-            "interpreter",
-            "effect_attempt_fold",
-        )
-        self.assertFalse(
-            any(
-                fragment in module_name
-                for fragment in forbidden_package_fragments
-                for module_name in imported
-            )
-        )
+        imported, _, wildcard_imports = _import_contract(tree)
+        self.assertEqual(imported, EXACT_MODULE_IMPORTS)
+        self.assertEqual(wildcard_imports, ())
+        self.assertEqual(_effectful_call_paths(tree), set())
 
         inventory = json.loads(inventory_path().read_text())
         row = next(
@@ -701,36 +848,12 @@ class EffectOutcomeEvidenceContractTest(
             {
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.runtime_effect_observation",
+                "control_plane_kit_core.runtime_effects",
                 "control_plane_kit_operations.effect_attempts",
                 "control_plane_kit_operations.records",
             },
         )
         self.assertEqual(row["optional_external_dependencies"], [])
-
-        calls = {
-            node.func.id
-            if isinstance(node.func, ast.Name)
-            else node.func.attr
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, (ast.Name, ast.Attribute))
-        }
-        self.assertEqual(
-            calls
-            & {
-                "connect",
-                "datetime",
-                "execute",
-                "open",
-                "random",
-                "read_text",
-                "socket",
-                "time",
-                "uuid4",
-                "write_text",
-            },
-            set(),
-        )
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ from control_plane_kit_operations.records import (
 from effect_outcome_evidence_fixture import (
     EffectAttemptOutcomeRecord,
     EffectOutcomeEvidenceFixture,
+    ExecutionEffectOutcome,
     HostileActivityEventRecord,
     HostileBoundedEvidence,
     HostileEffectAttemptRecord,
@@ -38,10 +39,19 @@ from effect_outcome_evidence_fixture import (
     HostileInt,
     HostileStr,
     REQUEST_FINGERPRINT,
+    ObservedEffectOutcome,
     WORKSPACE_ID,
     effect_outcome_observation_records,
     forge_exact,
 )
+
+
+class HostileExecutionEffectOutcome(ExecutionEffectOutcome or object):
+    pass
+
+
+class HostileObservedEffectOutcome(ObservedEffectOutcome or object):
+    pass
 
 
 class EffectOutcomeRecordPredecessorTest(
@@ -81,7 +91,11 @@ class EffectOutcomeRecordPredecessorTest(
                 original_event_id="alternate-start-event",
             ),
             self.direct_attempt_for(story, request_fingerprint="b" * 64),
-            self.direct_attempt_for(story, status=EffectAttemptStatus.FAILED),
+            self.direct_attempt_for(
+                story,
+                status=EffectAttemptStatus.FAILED,
+                failure=None,
+            ),
             self.direct_attempt_for(story, outcome_fingerprint="c" * 64),
             self.recovery_attempt_for(story),
         )
@@ -163,6 +177,133 @@ class EffectOutcomeRecordContractTest(
                     },
                 )
 
+    def test_record_revalidates_workspace_without_projection_helper(self) -> None:
+        self.require_outcome_language()
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == "observed-absent" and not item.compensation
+        )
+        outcome = self.outcome_for(story)
+        maximum = "w" * 512
+        record = EffectAttemptOutcomeRecord(
+            maximum,
+            outcome,
+            story.attempt,
+            (),
+        )
+        self.assertEqual(record.workspace_id, maximum)
+
+        for workspace_id in (
+            "",
+            "w" * 513,
+            "workspace\x00canary",
+            "workspace\ncanary",
+            "workspace-surrogate-\ud800",
+            HostileStr(WORKSPACE_ID),
+        ):
+            with self.subTest(workspace_id=repr(workspace_id)):
+                self.assert_fixed_error(
+                    lambda workspace_id=workspace_id: EffectAttemptOutcomeRecord(
+                        workspace_id,
+                        outcome,
+                        story.attempt,
+                        (),
+                    ),
+                    "effect outcome record is invalid",
+                    "canary",
+                    "surrogate",
+                    "w" * 513,
+                )
+
+    def test_record_revalidates_exact_outcome_and_nested_preimage(self) -> None:
+        self.require_outcome_language()
+        execution_story = next(
+            item
+            for item in self.stories()
+            if item.name == "execution-succeeded" and not item.compensation
+        )
+        observed_story = next(
+            item
+            for item in self.stories()
+            if item.name == "observed-succeeded" and not item.compensation
+        )
+        execution = self.outcome_for(execution_story)
+        observed = self.outcome_for(observed_story)
+
+        def forge_like(value, cls=None, **changes):
+            forged = object.__new__(cls or type(value))
+            for field in fields(value):
+                object.__setattr__(
+                    forged,
+                    field.name,
+                    changes.get(field.name, getattr(value, field.name)),
+                )
+            return forged
+
+        hostile_identity = forge_exact(
+            EffectAttemptIdentity,
+            run_id=forge_exact(RunId, value=HostileStr("run-a")),
+            activity_id=HostileStr("activity-a"),
+            attempt=HostileInt(1),
+        )
+        hostile_execution_result = forge_like(
+            execution_story.value,
+            effect_id=HostileStr(execution_story.value.effect_id),
+        )
+        hostile_observation_result = forge_like(
+            observed_story.value,
+            request_fingerprint=HostileStr(REQUEST_FINGERPRINT),
+        )
+        candidates = (
+            (
+                execution_story,
+                forge_like(execution, HostileExecutionEffectOutcome),
+            ),
+            (
+                execution_story,
+                forge_like(execution, identity=hostile_identity),
+            ),
+            (
+                execution_story,
+                forge_like(
+                    execution,
+                    request_fingerprint=HostileStr(REQUEST_FINGERPRINT),
+                ),
+            ),
+            (
+                execution_story,
+                forge_like(execution, result=hostile_execution_result),
+            ),
+            (
+                observed_story,
+                forge_like(observed, HostileObservedEffectOutcome),
+            ),
+            (
+                observed_story,
+                forge_like(observed, identity=hostile_identity),
+            ),
+            (
+                observed_story,
+                forge_like(observed, observation=hostile_observation_result),
+            ),
+        )
+        for story, candidate in candidates:
+            self.assertIsInstance(
+                candidate,
+                (ExecutionEffectOutcome, ObservedEffectOutcome),
+            )
+            with self.subTest(story=story.name, candidate=type(candidate)):
+                self.assert_fixed_error(
+                    lambda story=story, candidate=candidate: EffectAttemptOutcomeRecord(
+                        WORKSPACE_ID,
+                        candidate,
+                        story.attempt,
+                        self.expected_observation_records(story),
+                    ),
+                    "effect outcome record is invalid",
+                )
+
     def test_snapshot_binds_identity_start_effect_request_and_direct_state(self) -> None:
         self.require_outcome_language()
         story = next(
@@ -184,6 +325,7 @@ class EffectOutcomeRecordContractTest(
             self.direct_attempt_for(
                 story,
                 status=EffectAttemptStatus.FAILED,
+                failure=None,
             ),
             self.direct_attempt_for(
                 story,
@@ -475,6 +617,63 @@ class EffectOutcomeRecordContractTest(
                     "observation\x00canary",
                 )
 
+    def test_distinct_valid_observation_ids_identify_distinct_records(self) -> None:
+        self.require_outcome_language()
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == "execution-succeeded" and not item.compensation
+        )
+        outcome = self.outcome_for(story)
+        base_rows = self.expected_observation_records(story)
+        first_ids = ("observation-first-a", "observation-first-b")
+        second_ids = ("observation-second-a", "observation-second-b")
+        first_rows = tuple(
+            replace(row, observation_id=observation_id)
+            for row, observation_id in zip(base_rows, first_ids, strict=True)
+        )
+        second_rows = tuple(
+            replace(row, observation_id=observation_id)
+            for row, observation_id in zip(base_rows, second_ids, strict=True)
+        )
+
+        first = EffectAttemptOutcomeRecord(
+            WORKSPACE_ID,
+            outcome,
+            story.attempt,
+            first_rows,
+        )
+        second = EffectAttemptOutcomeRecord(
+            WORKSPACE_ID,
+            outcome,
+            story.attempt,
+            second_rows,
+        )
+        self.assertNotEqual(first, second)
+        self.assertEqual(
+            tuple(row.observation_id for row in first.endpoint_observations),
+            first_ids,
+        )
+        self.assertEqual(
+            tuple(row.observation_id for row in second.endpoint_observations),
+            second_ids,
+        )
+        semantic_fields = tuple(
+            field.name
+            for field in fields(ObservationRecord)
+            if field.name != "observation_id"
+        )
+        self.assertEqual(
+            tuple(
+                tuple(getattr(row, name) for name in semantic_fields)
+                for row in first.endpoint_observations
+            ),
+            tuple(
+                tuple(getattr(row, name) for name in semantic_fields)
+                for row in second.endpoint_observations
+            ),
+        )
+
     def test_record_requires_an_exact_tuple_of_exact_observation_rows(self) -> None:
         self.require_outcome_language()
         story = next(item for item in self.stories() if item.endpoint_observations)
@@ -525,9 +724,11 @@ class EffectOutcomeRecordContractTest(
         changed_rows = (
             (rows[1],),
             (rows[0], rows[1], extra),
-            (rows[0], rows[0]),
+            (
+                rows[0],
+                replace(rows[1], observation_id=rows[0].observation_id),
+            ),
             tuple(reversed(rows)),
-            (replace(rows[0], observation_id="observation-foreign"), rows[1]),
             (replace(rows[0], workspace_id="workspace-foreign"), rows[1]),
             (replace(rows[0], observed_at="2040-01-01T00:00:00Z"), rows[1]),
             (replace(rows[0], subject_id="subject-foreign"), rows[1]),
