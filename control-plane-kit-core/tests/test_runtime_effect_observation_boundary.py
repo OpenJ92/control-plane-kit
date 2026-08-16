@@ -590,6 +590,214 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
         rendered = f"{caught.exception!s} {caught.exception!r}"
         self.assertNotIn(plus_one_subject[:64], rendered)
 
+    def test_runtime_endpoint_text_owners_reject_hostile_subclasses_first(self) -> None:
+        injected = RuntimeError("hostile text dispatch canary")
+
+        class HostileText(str):
+            def __len__(self) -> int:
+                raise injected
+
+            def startswith(self, *args, **kwargs) -> bool:
+                raise injected
+
+            def strip(self, *args, **kwargs) -> str:
+                raise injected
+
+        candidates = {
+            "subject": (
+                lambda: _endpoint(subject_id=HostileText("subject-canary")),
+                "endpoint subject identity must be bounded text",
+                "subject-canary",
+            ),
+            "socket": (
+                lambda: _endpoint(socket_name=HostileText("socket-canary")),
+                "endpoint socket identity must be bounded text",
+                "socket-canary",
+            ),
+            "graph": (
+                lambda: _endpoint(graph_id=HostileText("graph-canary")),
+                "endpoint graph identity must be bounded text",
+                "graph-canary",
+            ),
+            "literal": (
+                lambda: LiteralEndpointMaterial(
+                    HostileText("http://literal-canary:8000")
+                ),
+                "literal endpoint material must be bounded text",
+                "literal-canary",
+            ),
+            "secret-reference": (
+                lambda: SecretEndpointMaterial(
+                    HostileText("secret://reference-canary")
+                ),
+                "secret endpoint material must be bounded text",
+                "reference-canary",
+            ),
+        }
+        for name, (constructor, message, canary) in candidates.items():
+            with self.subTest(name=name):
+                try:
+                    constructor()
+                except ValueError as caught:
+                    self.assertIs(type(caught), ValueError)
+                    self.assertEqual(str(caught), message)
+                    self.assertIsNone(caught.__cause__)
+                    self.assertIsNone(caught.__context__)
+                    rendered = f"{caught!s} {caught!r}"
+                    self.assertNotIn(canary, rendered)
+                except RuntimeError as caught:
+                    self.assertIs(caught, injected)
+                    self.fail(f"{name} dispatched a hostile text method")
+                else:
+                    self.fail(f"{name} admitted a hostile text subclass")
+
+    def test_runtime_endpoint_rejects_subclassed_nested_values(self) -> None:
+        endpoint = _endpoint(subject_id="endpoint-subclass-canary")
+        hostile_endpoint = _subclass_copy(endpoint)
+        hostile_literal = type(
+            "HostileLiteralEndpointMaterial",
+            (LiteralEndpointMaterial,),
+            {},
+        )("http://literal-subclass-canary:8000")
+        hostile_secret = type(
+            "HostileSecretEndpointMaterial",
+            (SecretEndpointMaterial,),
+            {},
+        )("secret://material-subclass-canary")
+
+        for name, address in (
+            ("literal", hostile_literal),
+            ("secret-reference", hostile_secret),
+        ):
+            with self.subTest(name=name):
+                with self.assertRaises(TypeError) as caught:
+                    RuntimeEndpointObservation(
+                        "api",
+                        "http",
+                        "graph-desired",
+                        Protocol.HTTP,
+                        EndpointContext.RUNTIME_PRIVATE,
+                        address,
+                    )
+                self.assertIs(type(caught.exception), TypeError)
+                self.assertEqual(
+                    str(caught.exception),
+                    "runtime endpoint address must be typed material",
+                )
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assertNotIn(
+                    "subclass-canary",
+                    f"{caught.exception!s} {caught.exception!r}",
+                )
+
+        with self.assertRaises(RuntimeEffectContractError) as caught:
+            RuntimeEffectResult.succeeded(
+                "event-started-a",
+                observations=(hostile_endpoint,),
+            )
+        self.assertIs(type(caught.exception), RuntimeEffectContractError)
+        self.assertEqual(
+            str(caught.exception),
+            "runtime effect observations must be RuntimeEndpointObservation",
+        )
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+        self.assertNotIn(
+            "endpoint-subclass-canary",
+            f"{caught.exception!s} {caught.exception!r}",
+        )
+
+    def test_runtime_endpoint_construction_does_not_call_virtual_descriptor(self) -> None:
+        injected = RuntimeError("runtime endpoint descriptor dispatch canary")
+        original = RuntimeEndpointObservation.descriptor
+
+        def fail_if_called(_endpoint):
+            raise injected
+
+        RuntimeEndpointObservation.descriptor = fail_if_called
+        try:
+            try:
+                endpoint = _endpoint(subject_id="nonvirtual-sizing")
+            except RuntimeError as caught:
+                self.assertIs(caught, injected)
+                self.fail("endpoint construction called the virtual descriptor")
+            self.assertEqual(endpoint.subject_id, "nonvirtual-sizing")
+        finally:
+            RuntimeEndpointObservation.descriptor = original
+
+    def test_runtime_endpoint_identities_reject_all_c0_controls(self) -> None:
+        constructors = {
+            "subject": lambda candidate: _endpoint(subject_id=candidate),
+            "socket": lambda candidate: _endpoint(socket_name=candidate),
+            "graph": lambda candidate: _endpoint(graph_id=candidate),
+        }
+        for name, constructor in constructors.items():
+            admitted: list[int] = []
+            message = f"endpoint {name} identity must not contain control characters"
+            for codepoint in range(32):
+                candidate = f"{name}-control-canary-{chr(codepoint)}-value"
+                try:
+                    constructor(candidate)
+                except ValueError as caught:
+                    self.assertIs(type(caught), ValueError)
+                    self.assertEqual(str(caught), message)
+                    self.assertIsNone(caught.__cause__)
+                    self.assertIsNone(caught.__context__)
+                    rendered = f"{caught!s} {caught!r}"
+                    self.assertNotIn(f"{name}-control-canary", rendered)
+                else:
+                    admitted.append(codepoint)
+            with self.subTest(name=name, boundary="c0"):
+                self.assertEqual(admitted, [])
+
+            printable_boundary = f"{name}-" + " " * (ENDPOINT_TEXT_MAX - len(name) - 1)
+            with self.subTest(name=name, boundary="space"):
+                self.assertEqual(len(printable_boundary), ENDPOINT_TEXT_MAX)
+                self.assertIsInstance(
+                    constructor(printable_boundary),
+                    RuntimeEndpointObservation,
+                )
+
+    def test_live_result_requires_exact_observation_tuple_and_values(self) -> None:
+        endpoint = _endpoint(subject_id="tuple-canary")
+        hostile_endpoint = _subclass_copy(endpoint)
+
+        class HostileTuple(tuple):
+            pass
+
+        consumed: list[RuntimeEndpointObservation] = []
+
+        def generated():
+            consumed.append(endpoint)
+            yield endpoint
+
+        candidates = {
+            "list": [endpoint],
+            "generator": generated(),
+            "tuple-subclass": HostileTuple((endpoint,)),
+            "endpoint-subclass": (hostile_endpoint,),
+        }
+        for name, observations in candidates.items():
+            with self.subTest(name=name):
+                with self.assertRaises(RuntimeEffectContractError) as caught:
+                    RuntimeEffectResult.succeeded(
+                        "event-started-a",
+                        observations=observations,
+                    )
+                self.assertIs(type(caught.exception), RuntimeEffectContractError)
+                self.assertEqual(
+                    str(caught.exception),
+                    "runtime effect observations must be RuntimeEndpointObservation",
+                )
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assertNotIn(
+                    "tuple-canary",
+                    f"{caught.exception!s} {caught.exception!r}",
+                )
+        self.assertEqual(consumed, [])
+
     def test_complete_live_result_fingerprint_input_has_exact_byte_ceiling(self) -> None:
         language = _language()
 
