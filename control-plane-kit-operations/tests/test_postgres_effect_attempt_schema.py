@@ -42,7 +42,9 @@ EXPECTED_CHECKS = {
     "cpk_effect_attempts_prior_check": (
         "(((prior_run_id IS NULL) AND (prior_activity_id IS NULL) AND "
         "(prior_attempt IS NULL) AND (attempt = 1)) OR "
-        "((prior_run_id = run_id) AND (prior_activity_id = activity_id) AND "
+        "((prior_run_id IS NOT NULL) AND (prior_activity_id IS NOT NULL) AND "
+        "(prior_attempt IS NOT NULL) AND (prior_run_id = run_id) AND "
+        "(prior_activity_id = activity_id) AND "
         "(prior_attempt = (attempt - 1)) AND (attempt > 1)))"
     ),
     "cpk_effect_attempts_state_check": (
@@ -408,6 +410,28 @@ class PostgresEffectAttemptSchemaTests(
         self.assertEqual(
             caught.exception.diag.constraint_name,
             "cpk_effect_attempts_fence_check",
+        )
+
+    def test_partial_prior_coordinate_is_rejected(self) -> None:
+        self.require_store()
+        self.persist(self.record(event_prefix="prior-one", original_ordinal=10))
+        self.persist(
+            self.record(
+                attempt=2,
+                event_prefix="prior-two",
+                original_ordinal=11,
+            )
+        )
+
+        with self.assertRaises(CheckViolation) as caught:
+            self.connection.execute(
+                "UPDATE cpk_effect_attempts SET prior_activity_id=NULL "
+                "WHERE run_id='run-a' AND activity_id='activity-a' AND attempt=2"
+            )
+
+        self.assertEqual(
+            caught.exception.diag.constraint_name,
+            "cpk_effect_attempts_prior_check",
         )
 
     def test_nonempty_prior_shape_requires_reset_instead_of_table_creation(self) -> None:
