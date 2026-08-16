@@ -3,6 +3,9 @@ from __future__ import annotations
 import ast
 import dataclasses
 import importlib
+import inspect
+import json
+import os
 from pathlib import Path
 import unittest
 
@@ -14,7 +17,10 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.records import OperationsRecordError
-from tests.effect_attempt_record_fixture import EffectAttemptRecordFixture
+from tests.effect_attempt_record_fixture import (
+    EffectAttemptRecord,
+    EffectAttemptRecordFixture,
+)
 
 
 MODULE_NAME = "control_plane_kit_operations.postgres.effect_attempt_store"
@@ -68,6 +74,10 @@ class _HostileIdentity(EffectAttemptIdentity):
     pass
 
 
+class _HostileRecord(EffectAttemptRecord):
+    pass
+
+
 class PostgresEffectAttemptStoreContractTests(
     EffectAttemptRecordFixture,
     unittest.TestCase,
@@ -89,17 +99,51 @@ class PostgresEffectAttemptStoreContractTests(
         self.assertEqual(
             tuple(
                 name
-                for name in ("get", "get_for_update", "insert_absent", "compare_and_set")
-                if hasattr(EffectAttemptStore, name)
+                for name, value in vars(EffectAttemptStore).items()
+                if callable(value) and not name.startswith("_")
             ),
             ("get", "get_for_update", "insert_absent", "compare_and_set"),
         )
+        signatures = {
+            name: tuple(inspect.signature(getattr(EffectAttemptStore, name)).parameters)
+            for name in ("get", "get_for_update", "insert_absent", "compare_and_set")
+        }
+        self.assertEqual(
+            signatures,
+            {
+                "get": ("self", "identity"),
+                "get_for_update": ("self", "identity"),
+                "insert_absent": ("self", "record"),
+                "compare_and_set": ("self", "current", "replacement"),
+            },
+        )
         self.assertIn("effect_attempts", PostgresStoreBundle.__dataclass_fields__)
+        connection = _RecordingConnection()
+        bundle = PostgresStoreBundle(connection)
+        self.assertIs(type(bundle.effect_attempts), EffectAttemptStore)
+        self.assertIs(bundle.effect_attempts._connection, connection)
         import control_plane_kit_operations as operations_root
         import control_plane_kit_operations.postgres as postgres_root
 
         self.assertFalse(hasattr(operations_root, "EffectAttemptStore"))
         self.assertFalse(hasattr(postgres_root, "EffectAttemptStore"))
+
+        inventory_path = os.environ.get("CPK_PACKAGE_MODULE_INVENTORY")
+        self.assertIsNotNone(inventory_path)
+        inventory = json.loads(Path(inventory_path).read_text(encoding="utf-8"))
+        rows = tuple(
+            row for row in inventory["modules"] if row["module"] == MODULE_NAME
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["owner"], "operations")
+        self.assertEqual(
+            tuple(rows[0]["tests"]),
+            (
+                "tests/test_postgres_effect_attempt_store_contract.py",
+                "tests/test_postgres_effect_attempt_store.py",
+                "tests/test_postgres_effect_attempt_schema.py",
+            ),
+        )
 
     def test_get_inputs_are_exact_and_rejected_before_sql(self) -> None:
         self.require_store()
@@ -155,8 +199,30 @@ class PostgresEffectAttemptStoreContractTests(
                 event_id="other-start",
             ),
         )
+        hostile_record = _HostileRecord(**current.__dict__)
+
+        uncertain = self.record(
+            "uncertain",
+            event_prefix="regression",
+            original_ordinal=3,
+            latest_ordinal=20,
+        )
+        recovered_state = self.state("recovered-succeeded")
+        regressed_latest = self.event(
+            recovered_state,
+            self.event_kind("recovered-succeeded", compensation=False),
+            event_id="regression-recovered",
+            ordinal=15,
+            occurred_at="2030-01-01T00:00:00.000000Z",
+        )
+        ordinal_regression = EffectAttemptRecord(
+            recovered_state,
+            uncertain.original_start_event,
+            regressed_latest,
+        )
         cases = (
             ("insert", lambda store: store.insert_absent(object())),
+            ("insert-hostile", lambda store: store.insert_absent(hostile_record)),
             ("cas-current", lambda store: store.compare_and_set(object(), current)),
             ("cas-replacement", lambda store: store.compare_and_set(current, object())),
             (
@@ -171,12 +237,68 @@ class PostgresEffectAttemptStoreContractTests(
                 "cas-original",
                 lambda store: store.compare_and_set(current, changed_original),
             ),
+            (
+                "cas-latest-regression",
+                lambda store: store.compare_and_set(uncertain, ordinal_regression),
+            ),
         )
         for label, operation in cases:
             with self.subTest(label=label):
                 connection = _NoSqlConnection()
                 self.assert_store_error(lambda: operation(EffectAttemptStore(connection)))
                 self.assertEqual(connection.calls, [])
+
+    def test_compare_and_set_matches_every_physical_prior_column_null_safely(self) -> None:
+        self.require_store()
+        current = self.record(
+            "uncertain",
+            attempt=2,
+            event_prefix="complete-prior",
+            original_ordinal=10,
+            latest_ordinal=20,
+        )
+        replacement_state = self.state("recovered-succeeded", attempt=2)
+        replacement_event = self.event(
+            replacement_state,
+            self.event_kind("recovered-succeeded", compensation=False),
+            event_id="complete-prior-recovered",
+            ordinal=30,
+            occurred_at="2030-01-01T00:00:01.000000Z",
+        )
+        replacement = EffectAttemptRecord(
+            replacement_state,
+            current.original_start_event,
+            replacement_event,
+        )
+        connection = _RecordingConnection()
+        self.assertIsNone(
+            EffectAttemptStore(connection).compare_and_set(current, replacement)
+        )
+        self.assertEqual(len(connection.calls), 1)
+        query = " ".join(str(connection.calls[0][0]).split())
+        prior_columns = (
+            "request_fingerprint",
+            "fence_worker_id",
+            "fence_generation",
+            "status",
+            "outcome_fingerprint",
+            "prior_run_id",
+            "prior_activity_id",
+            "prior_attempt",
+            "recovery_decision_id",
+            "recovery_resolution",
+            "recovery_uncertain_fingerprint",
+            "recovery_evidence_fingerprint",
+            "original_event_id",
+            "original_event_run_id",
+            "original_event_ordinal",
+            "latest_event_id",
+            "latest_event_run_id",
+            "latest_event_ordinal",
+        )
+        for column in prior_columns:
+            with self.subTest(column=column):
+                self.assertIn(f"{column} IS NOT DISTINCT FROM %s", query)
 
     def test_read_miss_is_fixed_candidate_free_and_lock_is_explicit(self) -> None:
         self.require_store()
@@ -217,11 +339,25 @@ class PostgresEffectAttemptStoreContractTests(
     def test_unexpected_sql_errors_escape_with_identity(self) -> None:
         self.require_store()
         canary = RuntimeError("effect-store-sql-canary")
+        current = self.record(event_prefix="sql-current")
+        replacement_state = self.state("succeeded")
+        replacement_event = self.event(
+            replacement_state,
+            self.event_kind("succeeded", compensation=False),
+            event_id="sql-replacement-latest",
+            ordinal=8,
+            occurred_at="2030-01-01T00:00:01.000000Z",
+        )
+        replacement = EffectAttemptRecord(
+            replacement_state,
+            current.original_start_event,
+            replacement_event,
+        )
         operations = (
             lambda store: store.get(self.identity()),
             lambda store: store.get_for_update(self.identity()),
             lambda store: store.insert_absent(self.record()),
-            lambda store: store.compare_and_set(self.record(), self.record()),
+            lambda store: store.compare_and_set(current, replacement),
         )
         for operation in operations:
             with self.subTest(operation=operation):
@@ -253,6 +389,8 @@ class PostgresEffectAttemptStoreContractTests(
             "httpx",
             "control_plane_kit_operations.policies",
             "control_plane_kit_operations.effects",
+            "control_plane_kit_operations.postgres.unit_of_work",
+            "control_plane_kit_core.operations.recovery",
         }
         imported = set()
         for node in ast.walk(tree):
@@ -261,6 +399,8 @@ class PostgresEffectAttemptStoreContractTests(
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported.add(node.module)
         self.assertEqual(imported & forbidden_import_roots, set())
+        self.assertNotIn("fold_effect_attempt", source)
+        self.assertNotIn("EffectAttemptTransition", source)
 
 
 if __name__ == "__main__":
