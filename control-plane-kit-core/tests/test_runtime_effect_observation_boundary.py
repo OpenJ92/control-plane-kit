@@ -719,6 +719,59 @@ class RuntimeEffectExistingBoundaryTests(unittest.TestCase):
             f"{caught.exception!s} {caught.exception!r}",
         )
 
+    def test_runtime_endpoint_rejects_hostile_protocol_before_dispatch(self) -> None:
+        endpoint_schemes_canary = "protocol endpoint-schemes dispatch canary"
+        descriptor_canary = "protocol descriptor dispatch canary"
+        injected = RuntimeError(endpoint_schemes_canary)
+        dispatches: list[str] = []
+        active_seam = "endpoint_schemes"
+
+        class HostileProtocol(Protocol):
+            def endpoint_schemes(self) -> frozenset[str]:
+                dispatches.append("endpoint_schemes")
+                if active_seam == "endpoint_schemes":
+                    raise injected
+                return Protocol.HTTP.endpoint_schemes()
+
+            def descriptor(self) -> dict[str, str]:
+                dispatches.append("descriptor")
+                return {
+                    "transport": descriptor_canary,
+                    "application": "http",
+                }
+
+        hostile = HostileProtocol(
+            Protocol.HTTP.transport,
+            Protocol.HTTP.application,
+        )
+        for seam in ("endpoint_schemes", "descriptor"):
+            with self.subTest(seam=seam):
+                active_seam = seam
+                dispatches.clear()
+                captured: TypeError | RuntimeError | None = None
+                try:
+                    _endpoint(protocol=hostile)
+                except (TypeError, RuntimeError) as error:
+                    captured = error
+
+                self.assertEqual(
+                    dispatches,
+                    [],
+                    f"runtime endpoint dispatched hostile protocol {seam}",
+                )
+                self.assertIsNotNone(captured)
+                assert captured is not None
+                self.assertIs(type(captured), TypeError)
+                self.assertEqual(
+                    str(captured),
+                    "runtime endpoint protocol must be Protocol",
+                )
+                self.assertIsNone(captured.__cause__)
+                self.assertIsNone(captured.__context__)
+                rendered = f"{captured!s} {captured!r}"
+                self.assertNotIn(endpoint_schemes_canary, rendered)
+                self.assertNotIn(descriptor_canary, rendered)
+
     def test_runtime_endpoint_construction_does_not_call_virtual_descriptor(self) -> None:
         injected = RuntimeError("runtime endpoint descriptor dispatch canary")
         original = RuntimeEndpointObservation.descriptor
