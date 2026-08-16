@@ -146,7 +146,11 @@ class LiteralEndpointMaterial:
     value: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.value, str) or not self.value:
+        if type(self.value) is not str:
+            if isinstance(self.value, str):
+                raise ValueError("literal endpoint material must be bounded text")
+            raise ValueError("literal endpoint material must be nonempty text")
+        if not self.value:
             raise ValueError("literal endpoint material must be nonempty text")
         if len(self.value) > _MAX_ENDPOINT_TEXT:
             raise ValueError("literal endpoint material must be bounded text")
@@ -157,9 +161,11 @@ class SecretEndpointMaterial:
     reference_id: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.reference_id, str) or not self.reference_id.startswith(
-            "secret://"
-        ):
+        if type(self.reference_id) is not str:
+            if isinstance(self.reference_id, str):
+                raise ValueError("secret endpoint material must be bounded text")
+            raise ValueError("secret endpoint material must be a secret reference")
+        if not self.reference_id.startswith("secret://"):
             raise ValueError("secret endpoint material must be a secret reference")
         if len(self.reference_id) > _MAX_ENDPOINT_TEXT:
             raise ValueError("secret endpoint material must be bounded text")
@@ -220,20 +226,28 @@ class RuntimeEndpointObservation:
             (self.socket_name, "endpoint socket"),
             (self.graph_id, "endpoint graph"),
         ):
-            if not isinstance(value, str) or not value.strip():
+            if type(value) is not str:
+                if isinstance(value, str):
+                    raise ValueError(f"{name} identity must be bounded text")
+                raise ValueError(f"{name} identity must not be empty")
+            if not value.strip():
                 raise ValueError(f"{name} identity must not be empty")
             if len(value) > _MAX_ENDPOINT_TEXT:
                 raise ValueError(f"{name} identity must be bounded text")
+            if any(ord(character) < 32 for character in value):
+                raise ValueError(
+                    f"{name} identity must not contain control characters"
+                )
         if not isinstance(self.protocol, Protocol):
             raise TypeError("runtime endpoint protocol must be Protocol")
         if not isinstance(self.context, EndpointContext):
             raise TypeError("runtime endpoint context must be EndpointContext")
-        if not isinstance(
-            self.address,
-            (LiteralEndpointMaterial, SecretEndpointMaterial),
-        ):
+        if type(self.address) not in {
+            LiteralEndpointMaterial,
+            SecretEndpointMaterial,
+        }:
             raise TypeError("runtime endpoint address must be typed material")
-        if isinstance(self.address, LiteralEndpointMaterial):
+        if type(self.address) is LiteralEndpointMaterial:
             _validate_literal_endpoint(self.address.value, self.protocol)
         if _runtime_endpoint_evidence_size(self) > _MAX_ENDPOINT_EVIDENCE_BYTES:
             raise ValueError(
@@ -241,19 +255,7 @@ class RuntimeEndpointObservation:
             )
 
     def descriptor(self) -> dict[str, object]:
-        address = (
-            {"kind": "literal", "value": self.address.value}
-            if isinstance(self.address, LiteralEndpointMaterial)
-            else {"kind": "secret-reference", "reference_id": self.address.reference_id}
-        )
-        return {
-            "subject_id": self.subject_id,
-            "socket_name": self.socket_name,
-            "graph_id": self.graph_id,
-            "protocol": self.protocol.descriptor(),
-            "context": self.context.value,
-            "address": address,
-        }
+        return _runtime_endpoint_descriptor(self)
 
 
 @dataclass(frozen=True)
@@ -519,12 +521,33 @@ def _validate_endpoint_identity(
 
 def _runtime_endpoint_evidence_size(endpoint: RuntimeEndpointObservation) -> int:
     canonical = json.dumps(
-        {"runtime_endpoint": endpoint.descriptor()},
+        {"runtime_endpoint": _runtime_endpoint_descriptor(endpoint)},
         ensure_ascii=True,
         sort_keys=True,
         separators=(",", ":"),
     )
     return len(canonical.encode("utf-8"))
+
+
+def _runtime_endpoint_descriptor(
+    endpoint: RuntimeEndpointObservation,
+) -> dict[str, object]:
+    address = (
+        {"kind": "literal", "value": endpoint.address.value}
+        if type(endpoint.address) is LiteralEndpointMaterial
+        else {
+            "kind": "secret-reference",
+            "reference_id": endpoint.address.reference_id,
+        }
+    )
+    return {
+        "subject_id": endpoint.subject_id,
+        "socket_name": endpoint.socket_name,
+        "graph_id": endpoint.graph_id,
+        "protocol": endpoint.protocol.descriptor(),
+        "context": endpoint.context.value,
+        "address": address,
+    }
 
 
 def _validate_literal_endpoint(value: str, protocol: Protocol) -> None:

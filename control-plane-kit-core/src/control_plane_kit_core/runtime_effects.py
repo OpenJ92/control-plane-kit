@@ -689,12 +689,12 @@ class RuntimeEffectResult:
         object.__setattr__(self, "evidence", evidence)
         if self.failure is not None and not isinstance(self.failure, RuntimeEffectFailure):
             raise RuntimeEffectContractError("runtime effect failure is malformed")
-        observations = tuple(self.observations)
-        if not all(isinstance(value, RuntimeEndpointObservation) for value in observations):
+        if type(self.observations) is not tuple or not all(
+            type(value) is RuntimeEndpointObservation for value in self.observations
+        ):
             raise RuntimeEffectContractError(
                 "runtime effect observations must be RuntimeEndpointObservation"
             )
-        object.__setattr__(self, "observations", observations)
         if self.kind is EffectResultKind.SUCCEEDED and self.failure is not None:
             raise RuntimeEffectContractError("successful runtime effect cannot fail")
         if self.kind is not EffectResultKind.SUCCEEDED and self.failure is None:
