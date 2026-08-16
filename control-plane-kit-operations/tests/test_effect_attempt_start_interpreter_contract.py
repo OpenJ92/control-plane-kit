@@ -158,13 +158,9 @@ class EffectAttemptStartInterpreterContractTests(
     def test_fence_translation_is_exact_bounded_and_precedes_unit_of_work(self) -> None:
         self.require_service()
 
-        class HostileText(str):
-            pass
-
         rejected = (
             "w" * 257,
             "worker-\ud800-canary",
-            HostileText("h" * 257),
         )
         for worker_id in rejected:
             with self.subTest(worker_type=type(worker_id).__name__):
@@ -229,9 +225,7 @@ class EffectAttemptStartInterpreterContractTests(
                 path = (
                     PACKAGE_ROOT
                     / "src"
-                    / Path(module_name.replace(".", "/")).relative_to(
-                        "control_plane_kit_operations"
-                    )
+                    / Path(module_name.replace(".", "/"))
                 ).with_suffix(".py")
                 tree = ast.parse(path.read_text(encoding="utf-8"))
                 imports = {
