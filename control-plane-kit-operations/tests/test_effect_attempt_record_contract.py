@@ -128,7 +128,7 @@ class EffectAttemptRecordContractTests(
                     "effect_attempt": {
                         "attempt": 1,
                         "state_fingerprint": canonical_state_fingerprint(state),
-                        "secret-canary": "must-not-render",
+                        "unexpected_canary": "must-not-render",
                     }
                 }
             ),
@@ -178,7 +178,7 @@ class EffectAttemptRecordContractTests(
                     valid.original_start_event,
                     latest,
                     "foreign-canary",
-                    "secret-canary",
+                    "unexpected_canary",
                     "must-not-render",
                 )
 
@@ -219,7 +219,7 @@ class EffectAttemptRecordContractTests(
                     "effect_attempt": {
                         "attempt": 1,
                         "state_fingerprint": canonical_state_fingerprint(started),
-                        "secret-canary": "must-not-render",
+                        "unexpected_canary": "must-not-render",
                     }
                 }
             ),
@@ -269,7 +269,7 @@ class EffectAttemptRecordContractTests(
                     original,
                     valid.latest_transition_event,
                     "original-canary",
-                    "secret-canary",
+                    "unexpected_canary",
                     "must-not-render",
                 )
 
