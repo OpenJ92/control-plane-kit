@@ -179,6 +179,13 @@ def _forbidden_rebindings(tree: ast.AST) -> tuple[str, ...]:
             rebound.update(_bound_target_names(node.optional_vars))
         elif isinstance(node, ast.ExceptHandler) and node.name is not None:
             rebound.add(node.name)
+        elif (
+            isinstance(node, (ast.MatchAs, ast.MatchStar))
+            and node.name is not None
+        ):
+            rebound.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest is not None:
+            rebound.add(node.rest)
         elif isinstance(node, ast.arguments):
             rebound.update(
                 argument.arg
@@ -392,10 +399,18 @@ class EffectOutcomeEvidencePredecessorTest(
             'tuple = __builtins__["open"]\n'
             'tuple("candidate")'
         )
+        pattern_laundered_open = ast.parse(
+            'match __builtins__["open"]:\n'
+            '    case tuple:\n'
+            '        tuple("candidate")'
+        )
         direct_targets, direct_unresolved = _call_contract(direct_output)
         dynamic_targets, dynamic_unresolved = _call_contract(dynamic_open)
         smuggled_targets, smuggled_unresolved = _call_contract(smuggled_output)
         laundered_targets, laundered_unresolved = _call_contract(laundered_open)
+        pattern_targets, pattern_unresolved = _call_contract(
+            pattern_laundered_open
+        )
         smuggled_symbols, _, _ = _import_contract(smuggled_output)
 
         self.assertEqual(direct_targets, set())
@@ -417,6 +432,12 @@ class EffectOutcomeEvidencePredecessorTest(
         self.assertEqual(laundered_targets, {"builtins.tuple"})
         self.assertEqual(laundered_unresolved, ())
         self.assertEqual(_forbidden_rebindings(laundered_open), ("tuple",))
+        self.assertEqual(pattern_targets, {"builtins.tuple"})
+        self.assertEqual(pattern_unresolved, ())
+        self.assertEqual(
+            _forbidden_rebindings(pattern_laundered_open),
+            ("tuple",),
+        )
 
 
 class EffectOutcomeEvidenceContractTest(
