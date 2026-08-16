@@ -23,8 +23,8 @@ EXPECTED_CHECKS = {
     "cpk_effect_attempts_identity_check": (
         "((attempt > 0) AND ((run_id COLLATE \"C\") ~ "
         "'^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND "
-        "(char_length(activity_id) >= 1) AND "
-        "(char_length(activity_id) <= 256))"
+        "((activity_id COLLATE \"C\") ~ "
+        "'^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))"
     ),
     "cpk_effect_attempts_fence_check": (
         "((fence_generation > 0) AND (char_length(fence_worker_id) >= 1) "
@@ -73,9 +73,9 @@ EXPECTED_CHECKS = {
         "((original_event_run_id = run_id) AND (latest_event_run_id = run_id) "
         "AND (original_event_ordinal > 0) AND (latest_event_ordinal > 0) AND "
         "(char_length(original_event_id) >= 1) AND "
-        "(char_length(original_event_id) <= 256) AND "
+        "(char_length(original_event_id) <= 512) AND "
         "(char_length(latest_event_id) >= 1) AND "
-        "(char_length(latest_event_id) <= 256) AND "
+        "(char_length(latest_event_id) <= 512) AND "
         "(((status = 'started'::text) AND "
         "((latest_event_id, latest_event_run_id, latest_event_ordinal) = "
         "(original_event_id, original_event_run_id, original_event_ordinal))) OR "
@@ -157,19 +157,28 @@ class PostgresEffectAttemptSchemaTests(
         scans = tuple(
             (" ".join(str(query).split()), parameters)
             for query, parameters in traced.calls
-            if "FROM cpk_effect_attempts AS attempt" in str(query)
+            if "FROM cpk_effect_attempts" in str(query)
         )
         self.assertEqual(len(scans), 3)
         for query, parameters in scans:
-            self.assertIn("ORDER BY run_id, activity_id, attempt", query)
+            self.assertRegex(
+                query,
+                r"ORDER BY (?:[a-z_]+\.)?run_id, "
+                r"(?:[a-z_]+\.)?activity_id, (?:[a-z_]+\.)?attempt",
+            )
             self.assertIn("LIMIT %s", query)
             self.assertNotIn("FOR UPDATE", query)
             self.assertEqual(parameters[-1], 64)
-        self.assertNotIn("WHERE (run_id, activity_id, attempt) >", scans[0][0])
+        self.assertNotRegex(
+            scans[0][0],
+            r"WHERE \((?:[a-z_]+\.)?run_id, (?:[a-z_]+\.)?activity_id, "
+            r"(?:[a-z_]+\.)?attempt\) >",
+        )
         for query, parameters in scans[1:]:
-            self.assertIn(
-                "WHERE (run_id, activity_id, attempt) > (%s, %s, %s)",
+            self.assertRegex(
                 query,
+                r"WHERE \((?:[a-z_]+\.)?run_id, (?:[a-z_]+\.)?activity_id, "
+                r"(?:[a-z_]+\.)?attempt\) > \(%s, %s, %s\)",
             )
             self.assertEqual(len(parameters), 4)
 
@@ -369,6 +378,17 @@ class PostgresEffectAttemptSchemaTests(
                 ),
             },
         )
+        event_index = tuple(
+            value
+            for value in CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes
+            if value.name == "cpk_activity_events_event_id_run_id_ordinal_key"
+        )
+        self.assertEqual(len(event_index), 1)
+        self.assertEqual(event_index[0].owning_constraint, event_unique[0].name)
+        self.assertEqual(
+            event_index[0].key_entries,
+            ("event_id", "run_id", "ordinal"),
+        )
 
         atlas = (
             Path(__file__).resolve().parents[1] / "OPERATIONS_TABLE_ATLAS.md"
@@ -382,12 +402,12 @@ class PostgresEffectAttemptSchemaTests(
         self.persist(record)
         with self.assertRaises(CheckViolation) as caught:
             self.connection.execute(
-                "UPDATE cpk_effect_attempts SET attempt=0 "
+                "UPDATE cpk_effect_attempts SET fence_generation=0 "
                 "WHERE run_id='run-a' AND activity_id='activity-a' AND attempt=1"
             )
         self.assertEqual(
             caught.exception.diag.constraint_name,
-            "cpk_effect_attempts_identity_check",
+            "cpk_effect_attempts_fence_check",
         )
 
     def test_nonempty_prior_shape_requires_reset_instead_of_table_creation(self) -> None:

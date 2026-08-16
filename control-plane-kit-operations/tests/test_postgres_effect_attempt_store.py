@@ -10,7 +10,7 @@ from psycopg.errors import ForeignKeyViolation, LockNotAvailable, UniqueViolatio
 from control_plane_kit_core.operations import RecoveryDecisionKind
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.records import OperationsRecordError
-from tests.effect_attempt_record_fixture import STORIES
+from tests.effect_attempt_record_fixture import EffectAttemptRecord, STORIES
 from tests.postgres_effect_attempt_store_fixture import (
     PostgresEffectAttemptStoreFixture,
     store_module,
@@ -45,6 +45,24 @@ class PostgresEffectAttemptStoreTests(
                             ),
                             record,
                         )
+
+    def test_maximum_event_identifier_reconstructs_after_restart(self) -> None:
+        self.require_store()
+        state = self.state()
+        event = self.event(
+            state,
+            self.event_kind("started", compensation=False),
+            event_id="e" * 512,
+            ordinal=10,
+            occurred_at="2030-01-01T00:00:01.000000Z",
+        )
+        record = EffectAttemptRecord(state, event, event)
+        self.assertEqual(self.persist(record), record)
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.effect_attempts.get(state.identity),
+                record,
+            )
 
     def test_insert_duplicate_rollback_and_fixed_read_miss_are_distinct(self) -> None:
         self.require_store()
@@ -171,6 +189,9 @@ class PostgresEffectAttemptStoreTests(
                 unit_of_work.stores.connection.execute(
                     "SET LOCAL lock_timeout = '10s'"
                 )
+                unit_of_work.stores.connection.execute(
+                    "SET LOCAL statement_timeout = '12s'"
+                )
                 barrier.wait(timeout=10)
                 result = unit_of_work.stores.effect_attempts.compare_and_set(
                     current,
@@ -187,7 +208,12 @@ class PostgresEffectAttemptStoreTests(
             barrier.abort()
             for future in futures:
                 future.cancel()
-            executor.shutdown(wait=False, cancel_futures=True)
+            for future in futures:
+                try:
+                    future.result(timeout=15)
+                except BaseException:
+                    pass
+            executor.shutdown(wait=True, cancel_futures=True)
             raise
         else:
             executor.shutdown(wait=True)
@@ -210,7 +236,13 @@ class PostgresEffectAttemptStoreTests(
 
     def test_complete_persisted_prior_drift_misses_and_preserves_row(self) -> None:
         self.require_store()
-        for drift in ("request", "fence", "state", "latest-event"):
+        for drift in (
+            "request",
+            "fence",
+            "state",
+            "original-event",
+            "latest-event",
+        ):
             with self.subTest(drift=drift):
                 self.reset_truth(
                     RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
@@ -282,6 +314,27 @@ class PostgresEffectAttemptStoreTests(
                             drifted.latest_transition_event.run_id,
                             drifted.latest_transition_event.ordinal,
                         ),
+                    )
+                elif drift == "original-event":
+                    original_state = self.started_state(current.state)
+                    alternate = self.event(
+                        original_state,
+                        current.original_start_event.kind,
+                        event_id="drift-original-alternate",
+                        ordinal=11,
+                        occurred_at="2030-01-01T00:00:01.000000Z",
+                    )
+                    with self.unit_of_work() as unit_of_work:
+                        unit_of_work.stores.execution.add_event(alternate)
+                        unit_of_work.commit()
+                    self.connection.execute(
+                        """
+                        UPDATE cpk_effect_attempts
+                        SET original_event_id=%s, original_event_run_id=%s,
+                            original_event_ordinal=%s
+                        WHERE run_id='run-a' AND activity_id='activity-a' AND attempt=1
+                        """,
+                        (alternate.event_id, alternate.run_id, alternate.ordinal),
                     )
                 else:
                     alternate = self.event(

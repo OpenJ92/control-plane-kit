@@ -97,12 +97,12 @@ class PostgresEffectAttemptStoreContractTests(
     def test_store_surface_is_private_bundle_owned_and_exact(self) -> None:
         self.require_store()
         self.assertEqual(
-            tuple(
+            frozenset(
                 name
                 for name, value in vars(EffectAttemptStore).items()
                 if callable(value) and not name.startswith("_")
             ),
-            ("get", "get_for_update", "insert_absent", "compare_and_set"),
+            frozenset(("get", "get_for_update", "insert_absent", "compare_and_set")),
         )
         signatures = {
             name: tuple(inspect.signature(getattr(EffectAttemptStore, name)).parameters)
@@ -121,7 +121,9 @@ class PostgresEffectAttemptStoreContractTests(
         connection = _RecordingConnection()
         bundle = PostgresStoreBundle(connection)
         self.assertIs(type(bundle.effect_attempts), EffectAttemptStore)
-        self.assertIs(bundle.effect_attempts._connection, connection)
+        with self.assertRaises(KeyError):
+            bundle.effect_attempts.get(self.identity())
+        self.assertEqual(len(connection.calls), 1)
         import control_plane_kit_operations as operations_root
         import control_plane_kit_operations.postgres as postgres_root
 
@@ -305,6 +307,13 @@ class PostgresEffectAttemptStoreContractTests(
         for column in prior_columns:
             with self.subTest(column=column):
                 self.assertIn(f"{column} IS NOT DISTINCT FROM %s", query)
+        for predicate in (
+            "run_id = %s",
+            "activity_id = %s",
+            "attempt = %s",
+        ):
+            with self.subTest(identity_predicate=predicate):
+                self.assertIn(predicate, query)
 
     def test_read_miss_is_fixed_candidate_free_and_lock_is_explicit(self) -> None:
         self.require_store()
@@ -382,6 +391,7 @@ class PostgresEffectAttemptStoreContractTests(
             "id_factory",
             "next_event_ordinal",
             "add_event",
+            "transaction",
         }
         called = {
             node.func.attr
@@ -395,6 +405,7 @@ class PostgresEffectAttemptStoreContractTests(
             "httpx",
             "control_plane_kit_operations.policies",
             "control_plane_kit_operations.effects",
+            "control_plane_kit_operations.postgres",
             "control_plane_kit_operations.postgres.unit_of_work",
             "control_plane_kit_core.operations.recovery",
         }
@@ -405,8 +416,28 @@ class PostgresEffectAttemptStoreContractTests(
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported.add(node.module)
         self.assertEqual(imported & forbidden_import_roots, set())
-        self.assertNotIn("fold_effect_attempt", source)
-        self.assertNotIn("EffectAttemptTransition", source)
+        forbidden_names = {
+            "PostgresUnitOfWork",
+            "transaction",
+            "fold_effect_attempt",
+            "EffectAttemptTransition",
+        }
+        used_names = {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name)
+        } | {
+            node.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute)
+        }
+        imported_names = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+            for alias in node.names
+        }
+        self.assertEqual((used_names | imported_names) & forbidden_names, set())
 
 
 if __name__ == "__main__":
