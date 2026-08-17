@@ -6,6 +6,7 @@ import unittest
 
 from control_plane_kit_core.operations import (
     ActivityEventKind,
+    EffectAttemptFence,
     EffectAttemptIdentity,
     EffectAttemptState,
     EffectAttemptStatus,
@@ -349,6 +350,189 @@ class EffectOutcomeRecordContractTest(
                     "activity-b",
                     "b" * 64,
                     "decision-a",
+                )
+
+    def test_record_and_projection_revalidate_complete_retry_snapshot(self) -> None:
+        self.require_outcome_language()
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == "execution-failed" and not item.compensation
+        )
+        prior = EffectAttemptIdentity(RunId("run-a"), "activity-a", 1)
+        identity = EffectAttemptIdentity(RunId("run-a"), "activity-a", 2)
+        state = EffectAttemptState(
+            identity=identity,
+            request_fingerprint=REQUEST_FINGERPRINT,
+            fence=EffectAttemptFence("worker-a", 7),
+            status=story.status,
+            outcome_fingerprint=story.fingerprint,
+            prior_attempt=prior,
+        )
+        original = self.event(
+            self.started_state(state),
+            ActivityEventKind.STEP_STARTED,
+            event_id=story.value.effect_id,
+            ordinal=3,
+            occurred_at="2030-01-01T00:00:01Z",
+        )
+        latest = self.event(
+            state,
+            ActivityEventKind.STEP_FAILED,
+            event_id="event-retry-failed",
+            ordinal=7,
+            occurred_at="2030-01-01T00:00:02Z",
+        )
+        latest = replace(
+            latest,
+            failure=self.failure_for(story.failure_row, story.fingerprint),
+        )
+        lawful_retry = EffectAttemptRecord(state, original, latest)
+        outcome = ExecutionEffectOutcome(identity, REQUEST_FINGERPRINT, story.value)
+
+        self.assertIs(
+            EffectAttemptOutcomeRecord(
+                WORKSPACE_ID,
+                outcome,
+                lawful_retry,
+                (),
+            ).attempt,
+            lawful_retry,
+        )
+        self.assertEqual(
+            effect_outcome_observation_records(
+                outcome,
+                lawful_retry,
+                workspace_id=WORKSPACE_ID,
+                observation_ids=(),
+            ),
+            (),
+        )
+
+        def forged_state(**changes):
+            values = {
+                "identity": state.identity,
+                "request_fingerprint": state.request_fingerprint,
+                "fence": state.fence,
+                "status": state.status,
+                "outcome_fingerprint": state.outcome_fingerprint,
+                "prior_attempt": state.prior_attempt,
+                "recovery_decision": state.recovery_decision,
+            }
+            values.update(changes)
+            return forge_exact(EffectAttemptState, **values)
+
+        wrong_original = replace(
+            original,
+            evidence=BoundedEvidence.from_mapping(
+                {
+                    "effect_attempt": {
+                        "attempt": identity.attempt,
+                        "state_fingerprint": "0" * 64,
+                    }
+                }
+            ),
+        )
+        wrong_latest = replace(
+            latest,
+            evidence=BoundedEvidence.from_mapping(
+                {
+                    "effect_attempt": {
+                        "attempt": identity.attempt,
+                        "state_fingerprint": "1" * 64,
+                    }
+                }
+            ),
+        )
+        hostile_fence = forge_exact(
+            EffectAttemptFence,
+            worker_id=HostileStr(state.fence.worker_id),
+            generation=state.fence.generation,
+        )
+        hostile_prior = forge_exact(
+            EffectAttemptIdentity,
+            run_id=prior.run_id,
+            activity_id=prior.activity_id,
+            attempt=HostileInt(prior.attempt),
+        )
+        candidates = (
+            (
+                "original-commitment",
+                forge_exact(
+                    EffectAttemptRecord,
+                    state=state,
+                    original_start_event=wrong_original,
+                    latest_transition_event=latest,
+                ),
+            ),
+            (
+                "latest-commitment",
+                forge_exact(
+                    EffectAttemptRecord,
+                    state=state,
+                    original_start_event=original,
+                    latest_transition_event=wrong_latest,
+                ),
+            ),
+            (
+                "fence",
+                forge_exact(
+                    EffectAttemptRecord,
+                    state=forged_state(fence=hostile_fence),
+                    original_start_event=original,
+                    latest_transition_event=latest,
+                ),
+            ),
+            (
+                "outcome-fingerprint",
+                forge_exact(
+                    EffectAttemptRecord,
+                    state=forged_state(
+                        outcome_fingerprint=HostileStr(story.fingerprint)
+                    ),
+                    original_start_event=original,
+                    latest_transition_event=latest,
+                ),
+            ),
+            (
+                "prior-attempt",
+                forge_exact(
+                    EffectAttemptRecord,
+                    state=forged_state(prior_attempt=hostile_prior),
+                    original_start_event=original,
+                    latest_transition_event=latest,
+                ),
+            ),
+        )
+        for name, attempt in candidates:
+            with self.subTest(candidate=name, predecessor="record-constructor"):
+                self.assert_fixed_error(
+                    lambda attempt=attempt: EffectAttemptRecord(
+                        attempt.state,
+                        attempt.original_start_event,
+                        attempt.latest_transition_event,
+                    ),
+                    "effect attempt record is invalid",
+                )
+            with self.subTest(candidate=name, boundary="outcome-record"):
+                self.assert_fixed_error(
+                    lambda attempt=attempt: EffectAttemptOutcomeRecord(
+                        WORKSPACE_ID,
+                        outcome,
+                        attempt,
+                        (),
+                    ),
+                    "effect outcome record is invalid",
+                )
+            with self.subTest(candidate=name, boundary="observation-projection"):
+                self.assert_fixed_error(
+                    lambda attempt=attempt: effect_outcome_observation_records(
+                        outcome,
+                        attempt,
+                        workspace_id=WORKSPACE_ID,
+                        observation_ids=(),
+                    ),
+                    "effect outcome observation projection is invalid",
                 )
 
     def test_snapshot_rejects_only_impossible_latest_event_joins(self) -> None:

@@ -85,6 +85,36 @@ EXACT_IMPORT_SURFACE = (
         None,
     ),
     architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations",
+        "RunId",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.probe_intents",
+        "LiteralEndpointMaterial",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.probe_intents",
+        "RuntimeEndpointObservation",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.probe_intents",
+        "SecretEndpointMaterial",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObservationEvidence",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObservationFailure",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
         "control_plane_kit_core.runtime_effect_observation",
         "RuntimeEffectObservationResult",
         None,
@@ -137,6 +167,11 @@ EXACT_IMPORT_SURFACE = (
     architecture_testing.ImportSurfaceEntry(
         "control_plane_kit_core.runtime_effects",
         "RuntimeEffectResult",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.types",
+        "Protocol",
         None,
     ),
     architecture_testing.ImportSurfaceEntry(
@@ -200,6 +235,9 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.runtime_effect_observation."
         "runtime_effect_result_fingerprint"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.effect_attempts.EffectAttemptRecord"
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.records.BoundedEvidence.from_mapping"
@@ -873,6 +911,273 @@ class EffectOutcomeEvidenceContractTest(
             canary,
         )
 
+    def test_metadata_spoofs_and_unhashable_kind_reject_before_dispatch(self) -> None:
+        self.require_outcome_language()
+        execution_story = next(
+            item for item in self.stories() if item.name == "execution-succeeded"
+        )
+        observed_story = next(
+            item for item in self.stories() if item.name == "observed-succeeded"
+        )
+        failed_story = next(
+            item for item in self.stories() if item.name == "observed-failed"
+        )
+
+        run_dispatches = []
+
+        class UnrelatedRunId:
+            @property
+            def value(self):
+                run_dispatches.append("run-id.value")
+                raise RuntimeError("private-run-id-canary")
+
+            def descriptor(self):
+                run_dispatches.append("run-id.descriptor")
+                raise RuntimeError("private-run-id-canary")
+
+        UnrelatedRunId.__module__ = "control_plane_kit_core.operations.run_identity"
+        UnrelatedRunId.__qualname__ = "RunId"
+        spoofed_identity = forge_exact(
+            EffectAttemptIdentity,
+            run_id=UnrelatedRunId(),
+            activity_id="activity-a",
+            attempt=1,
+        )
+
+        evidence_dispatches = []
+
+        class UnrelatedObservationEvidence:
+            def descriptor(self):
+                evidence_dispatches.append("observation-evidence.descriptor")
+                raise RuntimeError("private-observation-evidence-canary")
+
+        UnrelatedObservationEvidence.__module__ = (
+            "control_plane_kit_core.runtime_effect_observation"
+        )
+        UnrelatedObservationEvidence.__qualname__ = (
+            "RuntimeEffectObservationEvidence"
+        )
+        spoofed_evidence_observation = forge_exact(
+            type(observed_story.value),
+            effect_id=observed_story.value.effect_id,
+            request_fingerprint=observed_story.value.request_fingerprint,
+            evidence=UnrelatedObservationEvidence(),
+            failure=observed_story.value.failure,
+            observations=observed_story.value.observations,
+        )
+
+        failure_dispatches = []
+
+        class UnrelatedObservationFailure:
+            code = failed_story.value.failure.code
+            message = failed_story.value.failure.message
+            details = failed_story.value.failure.details
+
+            def descriptor(self):
+                failure_dispatches.append("observation-failure.descriptor")
+                raise RuntimeError("private-observation-failure-canary")
+
+        UnrelatedObservationFailure.__module__ = (
+            "control_plane_kit_core.runtime_effect_observation"
+        )
+        UnrelatedObservationFailure.__qualname__ = (
+            "RuntimeEffectObservationFailure"
+        )
+        spoofed_failure_observation = forge_exact(
+            type(failed_story.value),
+            effect_id=failed_story.value.effect_id,
+            request_fingerprint=failed_story.value.request_fingerprint,
+            evidence=failed_story.value.evidence,
+            failure=UnrelatedObservationFailure(),
+            observations=failed_story.value.observations,
+        )
+
+        endpoint_dispatches = []
+        endpoint = observed_story.value.observations[0]
+
+        class UnrelatedEndpoint:
+            subject_id = endpoint.subject_id
+            socket_name = endpoint.socket_name
+            graph_id = endpoint.graph_id
+            protocol = endpoint.protocol
+            context = endpoint.context
+            address = endpoint.address
+
+            def descriptor(self):
+                endpoint_dispatches.append("runtime-endpoint.descriptor")
+                raise RuntimeError("private-endpoint-canary")
+
+        UnrelatedEndpoint.__module__ = "control_plane_kit_core.probe_intents"
+        UnrelatedEndpoint.__qualname__ = "RuntimeEndpointObservation"
+        spoofed_endpoint_observation = forge_exact(
+            type(observed_story.value),
+            effect_id=observed_story.value.effect_id,
+            request_fingerprint=observed_story.value.request_fingerprint,
+            evidence=observed_story.value.evidence,
+            failure=observed_story.value.failure,
+            observations=(UnrelatedEndpoint(),),
+        )
+
+        material_dispatches = []
+
+        class UnrelatedLiteralMaterial:
+            @property
+            def value(self):
+                material_dispatches.append("literal-material.value")
+                raise RuntimeError("private-material-canary")
+
+            def descriptor(self):
+                material_dispatches.append("literal-material.descriptor")
+                raise RuntimeError("private-material-canary")
+
+        UnrelatedLiteralMaterial.__module__ = "control_plane_kit_core.probe_intents"
+        UnrelatedLiteralMaterial.__qualname__ = "LiteralEndpointMaterial"
+        material_endpoint = forge_exact(
+            RuntimeEndpointObservation,
+            subject_id=endpoint.subject_id,
+            socket_name=endpoint.socket_name,
+            graph_id=endpoint.graph_id,
+            protocol=endpoint.protocol,
+            context=endpoint.context,
+            address=UnrelatedLiteralMaterial(),
+        )
+        spoofed_material_observation = forge_exact(
+            type(observed_story.value),
+            effect_id=observed_story.value.effect_id,
+            request_fingerprint=observed_story.value.request_fingerprint,
+            evidence=observed_story.value.evidence,
+            failure=observed_story.value.failure,
+            observations=(material_endpoint,),
+        )
+
+        protocol_dispatches = []
+
+        class UnrelatedProtocol:
+            @property
+            def transport(self):
+                protocol_dispatches.append("protocol.transport")
+                raise RuntimeError("private-protocol-canary")
+
+            @property
+            def application(self):
+                protocol_dispatches.append("protocol.application")
+                raise RuntimeError("private-protocol-canary")
+
+            def descriptor(self):
+                protocol_dispatches.append("protocol.descriptor")
+                raise RuntimeError("private-protocol-canary")
+
+        UnrelatedProtocol.__module__ = "control_plane_kit_core.types"
+        UnrelatedProtocol.__qualname__ = "Protocol"
+        protocol_endpoint = forge_exact(
+            RuntimeEndpointObservation,
+            subject_id=endpoint.subject_id,
+            socket_name=endpoint.socket_name,
+            graph_id=endpoint.graph_id,
+            protocol=UnrelatedProtocol(),
+            context=endpoint.context,
+            address=endpoint.address,
+        )
+        spoofed_protocol_observation = forge_exact(
+            type(observed_story.value),
+            effect_id=observed_story.value.effect_id,
+            request_fingerprint=observed_story.value.request_fingerprint,
+            evidence=observed_story.value.evidence,
+            failure=observed_story.value.failure,
+            observations=(protocol_endpoint,),
+        )
+
+        cases = (
+            (
+                "run-id",
+                run_dispatches,
+                lambda: ExecutionEffectOutcome(
+                    spoofed_identity,
+                    REQUEST_FINGERPRINT,
+                    execution_story.value,
+                ),
+                "private-run-id-canary",
+            ),
+            (
+                "observation-evidence",
+                evidence_dispatches,
+                lambda: ObservedEffectOutcome(
+                    observed_story.attempt.state.identity,
+                    spoofed_evidence_observation,
+                ),
+                "private-observation-evidence-canary",
+            ),
+            (
+                "observation-failure",
+                failure_dispatches,
+                lambda: ObservedEffectOutcome(
+                    failed_story.attempt.state.identity,
+                    spoofed_failure_observation,
+                ),
+                "private-observation-failure-canary",
+            ),
+            (
+                "endpoint",
+                endpoint_dispatches,
+                lambda: ObservedEffectOutcome(
+                    observed_story.attempt.state.identity,
+                    spoofed_endpoint_observation,
+                ),
+                "private-endpoint-canary",
+            ),
+            (
+                "material",
+                material_dispatches,
+                lambda: ObservedEffectOutcome(
+                    observed_story.attempt.state.identity,
+                    spoofed_material_observation,
+                ),
+                "private-material-canary",
+            ),
+            (
+                "protocol",
+                protocol_dispatches,
+                lambda: ObservedEffectOutcome(
+                    observed_story.attempt.state.identity,
+                    spoofed_protocol_observation,
+                ),
+                "private-protocol-canary",
+            ),
+        )
+        for name, dispatches, constructor, canary in cases:
+            with self.subTest(candidate=name):
+                captured = None
+                try:
+                    constructor()
+                except BaseException as error:
+                    captured = error
+                self.assertEqual(dispatches, [], "candidate dispatched before rejection")
+                self.assertIs(type(captured), OperationsRecordError)
+                self.assertEqual(str(captured), "effect outcome evidence is invalid")
+                self.assert_safe_error(captured, canary)
+
+        kind_canary = "private-unhashable-kind-canary"
+        forged_result = forge_exact(
+            RuntimeEffectResult,
+            effect_id=execution_story.value.effect_id,
+            kind=[kind_canary],
+            evidence=execution_story.value.evidence,
+            failure=execution_story.value.failure,
+            observations=execution_story.value.observations,
+        )
+        captured = None
+        try:
+            ExecutionEffectOutcome(
+                execution_story.attempt.state.identity,
+                REQUEST_FINGERPRINT,
+                forged_result,
+            )
+        except BaseException as error:
+            captured = error
+        self.assertIs(type(captured), OperationsRecordError)
+        self.assertEqual(str(captured), "effect outcome evidence is invalid")
+        self.assert_safe_error(captured, kind_canary)
+
     def test_module_has_closed_import_and_lexical_call_surface(self) -> None:
         self.require_outcome_language()
         module = __import__(MODULE_NAME, fromlist=("__file__",))
@@ -922,8 +1227,10 @@ class EffectOutcomeEvidenceContractTest(
             set(row["internal_dependencies"]),
             {
                 "control_plane_kit_core.operations",
+                "control_plane_kit_core.probe_intents",
                 "control_plane_kit_core.runtime_effect_observation",
                 "control_plane_kit_core.runtime_effects",
+                "control_plane_kit_core.types",
                 "control_plane_kit_operations.effect_attempts",
                 "control_plane_kit_operations.records",
             },
