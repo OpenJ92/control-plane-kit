@@ -21,6 +21,7 @@ from tests.effect_outcome_evidence_fixture import (
 from tests.postgres_effect_outcome_store_fixture import (
     EffectAttemptOutcomeStore,
     MODULE_NAME,
+    store_module,
 )
 
 
@@ -36,6 +37,9 @@ class _NoSqlConnection:
 class _EmptyCursor:
     def fetchone(self):
         return None
+
+    def fetchall(self):
+        return ()
 
 
 class _RecordingConnection:
@@ -171,6 +175,11 @@ class PostgresEffectOutcomeStoreContractTests(
             activity_id=HostileStr(identity.activity_id),
             attempt=identity.attempt,
         )
+        missing_identity = forge_exact(
+            EffectAttemptIdentity,
+            run_id=identity.run_id,
+            attempt=identity.attempt,
+        )
         state = record.attempt.state
         forged_state = forge_exact(
             EffectAttemptState,
@@ -195,6 +204,12 @@ class PostgresEffectOutcomeStoreContractTests(
             attempt=forged_attempt,
             endpoint_observations=record.endpoint_observations,
         )
+        missing_record = forge_exact(
+            EffectAttemptOutcomeRecord,
+            outcome=record.outcome,
+            attempt=record.attempt,
+            endpoint_observations=record.endpoint_observations,
+        )
         cases = (
             ("insert-object", lambda store: store.insert(object())),
             (
@@ -209,11 +224,16 @@ class PostgresEffectOutcomeStoreContractTests(
                 ),
             ),
             ("insert-exact-forged-record", lambda store: store.insert(forged_record)),
+            ("insert-missing-record-field", lambda store: store.insert(missing_record)),
             ("insert-exact-forged-identity", lambda store: store.insert(forged_nested)),
             ("get-object", lambda store: store.get(object(), "event-direct")),
             (
                 "get-exact-forged-identity",
                 lambda store: store.get(forged_identity, "event-direct"),
+            ),
+            (
+                "get-missing-identity-field",
+                lambda store: store.get(missing_identity, "event-direct"),
             ),
             (
                 "get-hostile-identity",
@@ -266,6 +286,30 @@ class PostgresEffectOutcomeStoreContractTests(
             ("run-a", "activity-a", 1, "event-direct"),
         )
 
+    def test_read_queries_bound_large_values_before_python_transport(self) -> None:
+        self.require_store()
+        connection = _RecordingConnection()
+        with self.assertRaises(KeyError):
+            EffectAttemptOutcomeStore(connection).get(
+                self.identity(),
+                "event-direct",
+            )
+        get_query = " ".join(str(connection.calls[0][0]).split())
+
+        connection = _RecordingConnection()
+        store_module._validate_current_rows(connection)
+        page_query = " ".join(str(connection.calls[0][0]).split())
+        membership_query = " ".join(store_module._MEMBERSHIP_QUERY.split())
+        for label, query, selected in (
+            ("get-preimage", get_query, "preimage"),
+            ("current-preimage", page_query, "preimage"),
+            ("membership-evidence", membership_query, "observation.evidence"),
+        ):
+            with self.subTest(label=label):
+                self.assertIn("octet_length", query)
+                self.assertIn(selected, query)
+                self.assertIn("8192", query)
+
     def test_miss_is_redacted_and_unexpected_driver_faults_remain_raw(self) -> None:
         self.require_store()
         identity = self.identity()
@@ -315,7 +359,7 @@ class PostgresEffectOutcomeStoreContractTests(
             ),
         )
         self.assertEqual(
-            tuple(row["dependencies"]),
+            tuple(row["internal_dependencies"]),
             (
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.probe_intents",
@@ -330,6 +374,7 @@ class PostgresEffectOutcomeStoreContractTests(
                 "control_plane_kit_operations.records",
             ),
         )
+        self.assertNotIn("dependencies", row)
         self.assertEqual(tuple(row["optional_external_dependencies"]), ("rfc8785",))
 
 

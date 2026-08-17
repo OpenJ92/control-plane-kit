@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import tomllib
 import unittest
 
 from psycopg.errors import CheckViolation, ForeignKeyViolation
@@ -322,11 +323,36 @@ class PostgresEffectOutcomeSchemaTests(
         self.persist_outcome(record)
         with self.assertRaises(ForeignKeyViolation) as caught:
             self.connection.execute(
-                f"UPDATE {MEMBERSHIP} SET observation_count=1"
+                f"UPDATE {MEMBERSHIP} SET observation_count=3"
             )
         self.assertEqual(
             caught.exception.diag.constraint_name,
             "cpk_effect_attempt_outcome_observations_outcome_fk",
+        )
+
+    def test_one_member_position_must_be_zero(self) -> None:
+        self.require_store()
+        record = self.record_for(self.story_named("execution-succeeded"))
+        self.persist_outcome(record)
+
+        with self.assertRaises(CheckViolation) as caught:
+            with self.connection.transaction():
+                self.connection.execute(
+                    f"DELETE FROM {MEMBERSHIP} WHERE position=1"
+                )
+                self.connection.execute(
+                    f"UPDATE {OUTCOME} SET observation_count=1"
+                )
+                self.connection.execute(
+                    f"UPDATE {MEMBERSHIP} SET observation_count=1 "
+                    "WHERE position=0"
+                )
+                self.connection.execute(
+                    f"UPDATE {MEMBERSHIP} SET position=1 WHERE position=0"
+                )
+        self.assertEqual(
+            caught.exception.diag.constraint_name,
+            "cpk_effect_attempt_outcome_observations_position_check",
         )
 
     def test_current_verifier_rejects_late_direct_outcome_drift_without_repair(self) -> None:
@@ -454,11 +480,30 @@ class PostgresEffectOutcomeSchemaTests(
         read_inventory = (package_root / "POSTGRES_READ_CARDINALITY.toml").read_text(
             encoding="utf-8"
         )
-        self.assertEqual(read_inventory.count("effect_outcome_store"), 2)
-        self.assertIn('selector = "EffectAttemptOutcomeStore.get"', read_inventory)
-        self.assertIn('selector = "_validate_current_rows"', read_inventory)
-        self.assertIn("LIMIT observation_count plus one", read_inventory)
-        self.assertIn("identity keyset batches bounded by fixed batch size", read_inventory)
+        outcome_reads = tuple(
+            row
+            for row in tomllib.loads(read_inventory)["read"]
+            if row["module"]
+            == "control_plane_kit_operations.postgres.effect_outcome_store"
+        )
+        self.assertEqual(
+            tuple(
+                (row["selector"], row.get("occurrence"))
+                for row in outcome_reads
+            ),
+            (
+                ("EffectAttemptOutcomeStore.get", None),
+                ("_validate_current_rows", 1),
+                ("_validate_current_rows", 2),
+            ),
+        )
+        self.assertTrue(
+            all("LIMIT observation_count plus one" in row["sql"] for row in outcome_reads)
+        )
+        self.assertIn(
+            "identity keyset batches bounded by fixed batch size",
+            outcome_reads[1]["sql"],
+        )
 
 
 if __name__ == "__main__":

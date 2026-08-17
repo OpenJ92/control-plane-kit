@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 import unittest
 
 import psycopg
@@ -8,6 +9,10 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 
 from control_plane_kit_core import RuntimeEffectResult
 from control_plane_kit_core.operations import RecoveryDecisionKind
+from control_plane_kit_operations.postgres import (
+    SchemaInstallationError,
+    install_schema,
+)
 from control_plane_kit_operations.records import OperationsRecordError
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
@@ -21,6 +26,64 @@ from tests.postgres_effect_outcome_store_fixture import (
 
 OUTCOME = "cpk_effect_attempt_outcomes"
 MEMBERSHIP = "cpk_effect_attempt_outcome_observations"
+
+
+class _TransportCursor:
+    def __init__(self, cursor, query, oversized) -> None:
+        self.cursor = cursor
+        self.query = str(query)
+        self.oversized = oversized
+
+    def _record(self, rows) -> None:
+        if not any(
+            relation in self.query
+            for relation in (OUTCOME, MEMBERSHIP)
+        ):
+            return
+        for row in rows:
+            for value in row:
+                if type(value) is bytes and len(value) > 8_192:
+                    self.oversized.append((self.query, "bytes"))
+                if type(value) is dict and len(
+                    json.dumps(
+                        value,
+                        ensure_ascii=True,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("ascii")
+                ) > 8_192:
+                    self.oversized.append((self.query, "json"))
+
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        if row is not None:
+            self._record((row,))
+        return row
+
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        self._record(rows)
+        return rows
+
+    def __getattr__(self, name):
+        return getattr(self.cursor, name)
+
+
+class _TransportConnection:
+    def __init__(self, connection) -> None:
+        self.connection = connection
+        self.oversized = []
+
+    def execute(self, query, parameters=None):
+        cursor = (
+            self.connection.execute(query)
+            if parameters is None
+            else self.connection.execute(query, parameters)
+        )
+        return _TransportCursor(cursor, query, self.oversized)
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
 
 
 class PostgresEffectOutcomeStoreTests(
@@ -346,6 +409,94 @@ class PostgresEffectOutcomeStoreTests(
                     "b" * 64,
                     "c" * 64,
                 )
+
+    def test_oversized_values_are_not_transferred_to_python_decoders(self) -> None:
+        self.require_store()
+        record = self.record_for(self.story_named("execution-succeeded"))
+        self.persist_outcome(record)
+
+        with self.subTest(boundary="outcome-preimage-get"):
+            connection = psycopg.connect(self.database_url)
+            try:
+                connection.execute(
+                    f"ALTER TABLE {OUTCOME} DROP CONSTRAINT "
+                    "cpk_effect_attempt_outcomes_preimage_check"
+                )
+                connection.execute(
+                    f"UPDATE {OUTCOME} SET preimage=%s",
+                    (b"x" * 8_193,),
+                )
+                traced = _TransportConnection(connection)
+                with self.assertRaises(OperationsRecordError) as caught:
+                    store_module.EffectAttemptOutcomeStore(traced).get(
+                        record.attempt.state.identity,
+                        record.attempt.latest_transition_event.event_id,
+                    )
+                self.assertEqual(
+                    str(caught.exception),
+                    "effect attempt outcome row is invalid",
+                )
+                self.assertEqual(traced.oversized, [])
+            finally:
+                connection.rollback()
+                connection.close()
+
+        self.connection.execute(
+            "UPDATE cpk_observations SET evidence=%s::jsonb "
+            "WHERE observation_id=%s",
+            (
+                json.dumps({"candidate": "x" * 8_193}),
+                record.endpoint_observations[0].observation_id,
+            ),
+        )
+        with self.subTest(boundary="linked-observation-get"):
+            traced = _TransportConnection(self.connection)
+            with self.assertRaises(OperationsRecordError) as caught:
+                store_module.EffectAttemptOutcomeStore(traced).get(
+                    record.attempt.state.identity,
+                    record.attempt.latest_transition_event.event_id,
+                )
+            self.assertEqual(
+                str(caught.exception),
+                "effect attempt outcome row is invalid",
+            )
+            self.assertEqual(traced.oversized, [])
+
+        with self.subTest(boundary="linked-observation-current-verifier"):
+            traced = _TransportConnection(self.connection)
+            with self.assertRaises(SchemaInstallationError) as caught:
+                install_schema(traced)
+            self.assertEqual(
+                str(caught.exception),
+                "operations schema reset is required",
+            )
+            self.assertEqual(traced.oversized, [])
+
+    def test_deep_bounded_json_is_categorical_not_recursion_error(self) -> None:
+        self.require_store()
+        record = self.record_for(self.story_named("execution-succeeded"))
+        valid = self.preimage_for(record)
+        evidence_start = valid.index(b'"evidence":') + len(b'"evidence":')
+        evidence_end = valid.index(b',"failure"', evidence_start)
+        nested = b"[" * 1_100 + b"0" + b"]" * 1_100
+        candidate = valid[:evidence_start] + nested + valid[evidence_end:]
+        self.assertLessEqual(len(candidate), 8_192)
+        self.persist_outcome(record)
+        self.connection.execute(
+            f"UPDATE {OUTCOME} SET preimage=%s",
+            (candidate,),
+        )
+        with self.unit_of_work() as fresh:
+            with self.assertRaises(OperationsRecordError) as caught:
+                fresh.stores.effect_outcomes.get(
+                    record.attempt.state.identity,
+                    record.attempt.latest_transition_event.event_id,
+                )
+        self.assertEqual(
+            str(caught.exception),
+            "effect attempt outcome row is invalid",
+        )
+        self.assert_safe_error(caught.exception, "nested")
 
     def test_unexpected_codec_faults_remain_raw(self) -> None:
         self.require_store()

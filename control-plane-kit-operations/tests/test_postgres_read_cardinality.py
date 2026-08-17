@@ -39,7 +39,7 @@ _CATEGORY_COUNTS = {
     "fixed-cardinality": 1,
     "closed-finite": 2,
     "internal-complete": 22,
-    "exact-verifier": 8,
+    "exact-verifier": 11,
 }
 _GENERIC_CONSUMERS = frozenset({"internal", "module", "test", "tests"})
 _MODULE = re.compile(r"^control_plane_kit_operations\.postgres(?:\.[a-z][a-z0-9_]*)+$")
@@ -204,16 +204,40 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
     def test_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
         identities = _discover()
 
-        self.assertEqual(len(identities), 47)
-        self.assertEqual(len(set(identities)), 47)
+        self.assertEqual(len(identities), 50)
+        self.assertEqual(len(set(identities)), 50)
         grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")
             self.assertNotRegex(identity.selector, r":\d+$")
             grouped[(identity.module, identity.selector)].append(identity.occurrence)
         repeated = {key: values for key, values in grouped.items() if len(values) > 1}
-        self.assertEqual(len(repeated), 1)
-        self.assertEqual(next(iter(repeated.values())), [1, 2])
+        self.assertEqual(len(repeated), 2)
+        self.assertEqual(set(tuple(values) for values in repeated.values()), {(1, 2)})
+        self.assertEqual(
+            tuple(
+                identity
+                for identity in identities
+                if identity.module
+                == "control_plane_kit_operations.postgres.effect_outcome_store"
+            ),
+            (
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.effect_outcome_store",
+                    "EffectAttemptOutcomeStore.get",
+                ),
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.effect_outcome_store",
+                    "_validate_current_rows",
+                    1,
+                ),
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.effect_outcome_store",
+                    "_validate_current_rows",
+                    2,
+                ),
+            ),
+        )
         for key, values in grouped.items():
             if key not in repeated:
                 self.assertEqual(values, [None])
