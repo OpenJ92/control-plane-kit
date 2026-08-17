@@ -604,7 +604,7 @@ class NodeControlAttemptTests(_NodeControlAttemptFixture, unittest.TestCase):
             for value in contract.columns
             if value.relation == "cpk_node_control_attempts"
         )
-        self.assertEqual(contract_columns, tuple(sorted(_ATTEMPT_COLUMNS)))
+        self.assertEqual(contract_columns, _ATTEMPT_COLUMNS)
 
         constraints = {
             value.name: value
