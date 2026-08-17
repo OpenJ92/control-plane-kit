@@ -280,6 +280,7 @@ class _EffectOutcomeValue:
                 self.result.__class__ is not RuntimeEffectResult
                 or self.result.kind.__class__ is not EffectResultKind
                 or self.result.kind not in _EXECUTION_ROWS
+                or self.result.observations.__class__ is not tuple
                 or self.request_fingerprint.__class__ is not str
             ):
                 return False
@@ -387,6 +388,9 @@ class _EffectOutcomeValue:
         for endpoint in self.endpoint_observations:
             admitted = True
             try:
+                material = endpoint.address
+                if material.__class__ is SecretEndpointMaterial:
+                    material = SecretEndpointMaterial(material.reference_id)
                 protocol = Protocol(
                     endpoint.protocol.transport,
                     endpoint.protocol.application,
@@ -397,7 +401,7 @@ class _EffectOutcomeValue:
                     endpoint.graph_id,
                     protocol,
                     endpoint.context,
-                    endpoint.address,
+                    material,
                 )
             except (TypeError, ValueError):
                 admitted = False
