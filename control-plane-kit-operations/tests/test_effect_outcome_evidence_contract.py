@@ -242,6 +242,9 @@ EXACT_CALL_SURFACE = (
         "control_plane_kit_core.probe_intents.RuntimeEndpointObservation"
     ),
     architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.probe_intents.SecretEndpointMaterial"
+    ),
+    architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.runtime_effect_observation."
         "runtime_effect_observation_fingerprint"
     ),
@@ -1331,6 +1334,78 @@ class EffectOutcomeEvidenceContractTest(
         self.assertIs(type(captured), OperationsRecordError)
         self.assertEqual(str(captured), "effect outcome evidence is invalid")
         self.assert_safe_error(captured, kind_canary)
+
+    def test_live_result_rejects_non_tuple_observations_before_iteration(self) -> None:
+        self.require_outcome_language()
+        story = next(
+            item for item in self.stories() if item.name == "execution-succeeded"
+        )
+        dispatches = []
+        canary = "private-observations-iterator-canary"
+
+        class HostileObservations:
+            def __iter__(self):
+                dispatches.append("observations.__iter__")
+                raise RuntimeError(canary)
+
+        forged_result = forge_exact(
+            RuntimeEffectResult,
+            effect_id=story.value.effect_id,
+            kind=story.value.kind,
+            evidence=story.value.evidence,
+            failure=story.value.failure,
+            observations=HostileObservations(),
+        )
+        captured = None
+        try:
+            ExecutionEffectOutcome(
+                story.attempt.state.identity,
+                REQUEST_FINGERPRINT,
+                forged_result,
+            )
+        except BaseException as error:
+            captured = error
+        self.assertEqual(dispatches, [])
+        self.assertIs(type(captured), OperationsRecordError)
+        self.assertEqual(str(captured), "effect outcome evidence is invalid")
+        self.assert_safe_error(captured, canary)
+
+    def test_exact_secret_material_revalidates_reference_grammar(self) -> None:
+        self.require_outcome_language()
+        story = next(
+            item for item in self.stories() if item.name == "observed-succeeded"
+        )
+        endpoint = story.value.observations[0]
+        canary = "private-secret-reference-canary"
+        forged_material = forge_exact(
+            SecretEndpointMaterial,
+            reference_id=canary,
+        )
+        forged_endpoint = forge_exact(
+            RuntimeEndpointObservation,
+            subject_id=endpoint.subject_id,
+            socket_name=endpoint.socket_name,
+            graph_id=endpoint.graph_id,
+            protocol=endpoint.protocol,
+            context=endpoint.context,
+            address=forged_material,
+        )
+        forged_observation = forge_exact(
+            type(story.value),
+            effect_id=story.value.effect_id,
+            request_fingerprint=story.value.request_fingerprint,
+            evidence=story.value.evidence,
+            failure=story.value.failure,
+            observations=(forged_endpoint,),
+        )
+        self.assert_fixed_error(
+            lambda: ObservedEffectOutcome(
+                story.attempt.state.identity,
+                forged_observation,
+            ),
+            "effect outcome evidence is invalid",
+            canary,
+        )
 
     def test_module_has_closed_import_and_lexical_call_surface(self) -> None:
         self.require_outcome_language()
