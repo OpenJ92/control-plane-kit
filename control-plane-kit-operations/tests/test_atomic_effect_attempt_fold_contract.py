@@ -260,6 +260,55 @@ class AtomicEffectAttemptFoldContractTests(
         self.require_fold_service()
         return EffectAttemptFoldService(factory, id_factory=lambda: "unused-event-id")
 
+    def test_all_direct_and_recovery_predecessor_worlds_are_lawful(self) -> None:
+        stories = self.stories()
+        self.assertEqual(len(stories), 20)
+        for story in stories:
+            with self.subTest(
+                arm="direct",
+                story=story.name,
+                compensation=story.compensation,
+            ):
+                outcome = self.outcome_for(story)
+                record = self.direct_outcome_record(story)
+                self.assertEqual(
+                    effect_outcome_transition(outcome),
+                    EffectAttemptTransition(
+                        story.transition,
+                        story.attempt.state.identity,
+                        outcome_fingerprint=story.fingerprint,
+                    ),
+                )
+                self.assertEqual(
+                    effect_outcome_failure(outcome),
+                    story.attempt.latest_transition_event.failure,
+                )
+                self.assertEqual(record.attempt, story.attempt)
+                self.assertEqual(
+                    record.endpoint_observations,
+                    self.expected_observation_records(story),
+                )
+
+        for compensation in (False, True):
+            for story in ("recovered-succeeded", "recovered-failed", "abandoned"):
+                with self.subTest(
+                    arm="recovery",
+                    story=story,
+                    compensation=compensation,
+                ):
+                    record = self.recovery_record(
+                        story,
+                        compensation=compensation,
+                    )
+                    self.assertEqual(
+                        EffectAttemptRecord(
+                            record.state,
+                            record.original_start_event,
+                            record.latest_transition_event,
+                        ),
+                        record,
+                    )
+
     def test_command_is_exact_frozen_dependent_sum_and_hides_outcome(self) -> None:
         self.require_atomic_command_surface()
         story = self.stories()[0]
@@ -338,6 +387,12 @@ class AtomicEffectAttemptFoldContractTests(
                 dispatches.append("outcome_fingerprint")
                 raise RuntimeError("private-outcome-canary")
 
+        class HostileObservedOutcome(ObservedEffectOutcome):
+            @property
+            def outcome_fingerprint(self):
+                dispatches.append("observed_outcome_fingerprint")
+                raise RuntimeError("private-observed-canary")
+
         hostile = object.__new__(HostileOutcome)
         for field in dataclasses.fields(ExecutionEffectOutcome):
             object.__setattr__(hostile, field.name, getattr(outcome, field.name))
@@ -354,15 +409,37 @@ class AtomicEffectAttemptFoldContractTests(
                 observations=outcome.result.observations,
             ),
         )
-        for candidate in (hostile, forged):
+        observed_story = next(
+            value
+            for value in self.stories()
+            if value.name == "observed-succeeded" and not value.compensation
+        )
+        observed = self.outcome_for(observed_story)
+        hostile_observed = object.__new__(HostileObservedOutcome)
+        for field in dataclasses.fields(ObservedEffectOutcome):
+            object.__setattr__(
+                hostile_observed,
+                field.name,
+                getattr(observed, field.name),
+            )
+        forged_observed = forge_exact(
+            ObservedEffectOutcome,
+            identity=observed.identity,
+            observation=object(),
+        )
+        for candidate in (hostile, forged, hostile_observed, forged_observed):
             with self.subTest(candidate=type(candidate).__name__):
                 self.assert_invalid_command(
                     lambda candidate=candidate: self.direct_command(
-                        story,
+                        observed_story
+                        if type(candidate)
+                        in (HostileObservedOutcome, ObservedEffectOutcome)
+                        else story,
                         outcome=candidate,
                     ),
                     "private-outcome-canary",
                     "private-kind-canary",
+                    "private-observed-canary",
                 )
                 self.assertEqual(dispatches, [])
 
@@ -437,13 +514,20 @@ class AtomicEffectAttemptFoldContractTests(
         class HostileNewlyFolded(NewlyFolded):
             pass
 
+        class HostileExistingFold(ExistingFold):
+            pass
+
         for construct in (
             lambda: NewlyFolded(story.attempt, None),
             lambda: ExistingFold(story.attempt, None),
             lambda: NewlyFolded(hostile, outcome_record),
+            lambda: ExistingFold(hostile, outcome_record),
+            lambda: NewlyFolded(story.attempt, forged_record),
             lambda: ExistingFold(story.attempt, forged_record),
+            lambda: NewlyFolded(recovery, outcome_record),
             lambda: ExistingFold(recovery, outcome_record),
             lambda: HostileNewlyFolded(valid.attempt, valid.outcome_record),
+            lambda: HostileExistingFold(valid.attempt, valid.outcome_record),
         ):
             self.assert_invalid_result(construct)
 
@@ -483,7 +567,38 @@ class AtomicEffectAttemptFoldContractTests(
             self.service(fail).execute(denied)
         self.assertEqual(fail.calls, 0)
 
-    def test_root_inventory_and_interpreter_dependency_call_surface_are_exact(self) -> None:
+    def test_interpreter_shared_import_and_call_policy_is_predecessor_green(self) -> None:
+        module = __import__(INTERPRETER_MODULE, fromlist=("__file__",))
+        source_path = Path(inspect.getsourcefile(module))
+        facts = architecture_testing.analyze_source(
+            source_path.read_text(encoding="utf-8"),
+            path=INTERPRETER_SOURCE_PATH,
+            module=INTERPRETER_MODULE,
+        )
+        findings = architecture_testing.evaluate_policies(
+            (facts,),
+            (
+                architecture_testing.ExactImportSurfacePolicy(
+                    architecture_testing.PolicyId("cpk.operations.atomic-fold.imports"),
+                    architecture_testing.RuleId("exact"),
+                    INTERPRETER_SOURCE_PATH,
+                    INTERPRETER_MODULE,
+                    EXACT_INTERPRETER_IMPORTS,
+                    "atomic fold interpreter import surface differs",
+                ),
+                architecture_testing.ExactCallSurfacePolicy(
+                    architecture_testing.PolicyId("cpk.operations.atomic-fold.calls"),
+                    architecture_testing.RuleId("exact"),
+                    INTERPRETER_SOURCE_PATH,
+                    INTERPRETER_MODULE,
+                    EXACT_INTERPRETER_CALLS,
+                    "atomic fold interpreter lexical call surface differs",
+                ),
+            ),
+        )
+        self.assertEqual(findings, ())
+
+    def test_root_and_inventory_publish_the_atomic_dependent_sum(self) -> None:
         expected_exports = {
             "FoldEffectAttempt",
             "NewlyFolded",
@@ -516,36 +631,6 @@ class AtomicEffectAttemptFoldContractTests(
             "tests/test_atomic_effect_attempt_fold_contract.py",
             entries[FOLD_MODULE]["protecting_tests"],
         )
-
-        module = __import__(INTERPRETER_MODULE, fromlist=("__file__",))
-        source_path = Path(inspect.getsourcefile(module))
-        facts = architecture_testing.analyze_source(
-            source_path.read_text(encoding="utf-8"),
-            path=INTERPRETER_SOURCE_PATH,
-            module=INTERPRETER_MODULE,
-        )
-        findings = architecture_testing.evaluate_policies(
-            (facts,),
-            (
-                architecture_testing.ExactImportSurfacePolicy(
-                    architecture_testing.PolicyId("cpk.operations.atomic-fold.imports"),
-                    architecture_testing.RuleId("exact"),
-                    INTERPRETER_SOURCE_PATH,
-                    INTERPRETER_MODULE,
-                    EXACT_INTERPRETER_IMPORTS,
-                    "atomic fold interpreter import surface differs",
-                ),
-                architecture_testing.ExactCallSurfacePolicy(
-                    architecture_testing.PolicyId("cpk.operations.atomic-fold.calls"),
-                    architecture_testing.RuleId("exact"),
-                    INTERPRETER_SOURCE_PATH,
-                    INTERPRETER_MODULE,
-                    EXACT_INTERPRETER_CALLS,
-                    "atomic fold interpreter lexical call surface differs",
-                ),
-            ),
-        )
-        self.assertEqual(findings, ())
 
 
 if __name__ == "__main__":

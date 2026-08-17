@@ -11,7 +11,6 @@ from tests.effect_attempt_fold_fixture import (
 )
 from tests.effect_outcome_evidence_fixture import (
     EffectAttemptOutcomeRecord,
-    EffectOutcomeEvidenceFixture,
     WORKSPACE_ID,
     effect_outcome_failure,
     effect_outcome_observation_records,
@@ -19,10 +18,7 @@ from tests.effect_outcome_evidence_fixture import (
 )
 
 
-class AtomicEffectAttemptFoldFixture(
-    EffectOutcomeEvidenceFixture,
-    EffectAttemptFoldFixture,
-):
+class AtomicEffectAttemptFoldFixture(EffectAttemptFoldFixture):
     def direct_outcome_record(self, story):
         outcome = self.outcome_for(story)
         observations = effect_outcome_observation_records(

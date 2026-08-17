@@ -60,6 +60,7 @@ def bypass(command_type, template, **changes):
         "authority": template.authority,
         "fence": template.fence,
         "failure": template.failure,
+        "outcome": template.outcome,
     }
     values.update(changes)
     command = object.__new__(command_type)
@@ -107,6 +108,7 @@ class EffectAttemptFoldInterpreterContractTests(
         )
 
     def test_scope_rejection_is_categorical_and_precedes_unit_of_work(self) -> None:
+        self.require_atomic_command_surface()
         fail = FailIfUnitOfWork("scope rejection opened a unit of work")
         command = self.command(authority=self.authority(scopes=()))
         with self.assertRaises(EffectAttemptFoldDenied) as caught:
@@ -116,6 +118,7 @@ class EffectAttemptFoldInterpreterContractTests(
         self.assertEqual(fail.calls, 0)
 
     def test_service_rejects_raw_bypassed_and_nested_hostile_commands(self) -> None:
+        self.require_atomic_command_surface()
         self.require_fold_service()
         valid = self.command("failed")
 
@@ -285,6 +288,7 @@ class EffectAttemptFoldInterpreterContractTests(
                 self.assertEqual(fail.calls, 0)
 
     def test_fence_translation_is_exact_bounded_and_precedes_unit_of_work(self) -> None:
+        self.require_atomic_command_surface()
         self.require_fold_service()
         for worker_id in ("w" * 257, "worker-\ud800-canary"):
             with self.subTest(worker=repr(worker_id)):
@@ -303,6 +307,7 @@ class EffectAttemptFoldInterpreterContractTests(
                 self.assertEqual(fail.calls, 0)
 
     def test_maximum_fence_coordinates_reach_unit_of_work_unchanged(self) -> None:
+        self.require_atomic_command_surface()
         fail = FailIfUnitOfWork("valid fence reached unit of work")
         command = self.command(
             authority=self.authority("w" * 256),
@@ -407,10 +412,18 @@ class EffectAttemptFoldInterpreterContractTests(
         for required in ("provider-free", "atomic", "durable", "fold"):
             self.assertIn(required, motivation)
         self.assertNotIn("held", motivation)
+        self.assertIn(
+            "control_plane_kit_operations.effect_outcome_evidence",
+            language["internal_dependencies"],
+        )
         self.assertEqual(language["optional_external_dependencies"], [])
         self.assertEqual(interpreter["optional_external_dependencies"], [])
         self.assertIn(
             "tests/test_effect_attempt_fold_contract.py",
+            language["protecting_tests"],
+        )
+        self.assertIn(
+            "tests/test_atomic_effect_attempt_fold_contract.py",
             language["protecting_tests"],
         )
         self.assertIn(
