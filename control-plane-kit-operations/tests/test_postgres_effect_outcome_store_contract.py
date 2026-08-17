@@ -212,6 +212,10 @@ class PostgresEffectOutcomeStoreContractTests(
             ("insert-exact-forged-identity", lambda store: store.insert(forged_nested)),
             ("get-object", lambda store: store.get(object(), "event-direct")),
             (
+                "get-exact-forged-identity",
+                lambda store: store.get(forged_identity, "event-direct"),
+            ),
+            (
                 "get-hostile-identity",
                 lambda store: store.get(
                     _HostileIdentity(

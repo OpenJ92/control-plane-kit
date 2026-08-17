@@ -331,6 +331,39 @@ class PostgresEffectOutcomeSchemaTests(
 
     def test_current_verifier_rejects_late_direct_outcome_drift_without_repair(self) -> None:
         self.require_store()
+
+        def outcome_scans(trace):
+            return tuple(
+                (" ".join(str(query).split()), parameters)
+                for query, parameters in trace.calls
+                if "FROM cpk_effect_attempt_outcomes" in str(query)
+                and "ORDER BY" in str(query)
+            )
+
+        def assert_three_pk_seek_pages(scans):
+            self.assertEqual(len(scans), 3)
+            for query, parameters in scans:
+                self.assertRegex(
+                    query,
+                    r"ORDER BY (?:[a-z_]+\.)?run_id, "
+                    r"(?:[a-z_]+\.)?activity_id, (?:[a-z_]+\.)?attempt",
+                )
+                self.assertIn("LIMIT %s", query)
+                self.assertNotIn("FOR UPDATE", query)
+                self.assertEqual(parameters[-1], 64)
+            self.assertNotRegex(
+                scans[0][0],
+                r"WHERE \((?:[a-z_]+\.)?run_id, (?:[a-z_]+\.)?activity_id, "
+                r"(?:[a-z_]+\.)?attempt\) >",
+            )
+            for query, parameters in scans[1:]:
+                self.assertRegex(
+                    query,
+                    r"WHERE \((?:[a-z_]+\.)?run_id, (?:[a-z_]+\.)?activity_id, "
+                    r"(?:[a-z_]+\.)?attempt\) > \(%s, %s, %s\)",
+                )
+                self.assertEqual(len(parameters), 4)
+
         records = tuple(
             self.indexed_record(
                 index,
@@ -353,6 +386,24 @@ class PostgresEffectOutcomeSchemaTests(
                     self.assertEqual(stores.observed_state.put(observation), observation)
                 self.assertEqual(stores.effect_outcomes.insert(record), record)
             unit_of_work.commit()
+
+        valid_trace = _TracingConnection(self.connection)
+        install_schema(valid_trace)
+        assert_three_pk_seek_pages(outcome_scans(valid_trace))
+        membership_scans = tuple(
+            (" ".join(str(query).split()), parameters)
+            for query, parameters in valid_trace.calls
+            if "FROM cpk_effect_attempt_outcome_observations" in str(query)
+        )
+        self.assertEqual(len(membership_scans), 129)
+        limits = []
+        for query, parameters in membership_scans:
+            self.assertIn("LIMIT %s", query)
+            self.assertNotIn("FOR UPDATE", query)
+            limits.append(parameters[-1])
+        self.assertEqual(limits.count(1), 128)
+        self.assertEqual(limits.count(3), 1)
+
         record = records[-1]
         before = self.connection.execute(
             f"SELECT preimage FROM {OUTCOME} WHERE activity_id=%s",
@@ -375,49 +426,7 @@ class PostgresEffectOutcomeSchemaTests(
             install_schema(traced)
         self.assertEqual(str(caught.exception), "operations schema reset is required")
         self.assert_safe_error(caught.exception, "late-drift")
-
-        outcome_scans = tuple(
-            (" ".join(str(query).split()), parameters)
-            for query, parameters in traced.calls
-            if "FROM cpk_effect_attempt_outcomes" in str(query)
-            and "ORDER BY" in str(query)
-        )
-        self.assertEqual(len(outcome_scans), 3)
-        for query, parameters in outcome_scans:
-            self.assertRegex(
-                query,
-                r"ORDER BY (?:[a-z_]+\.)?run_id, "
-                r"(?:[a-z_]+\.)?activity_id, (?:[a-z_]+\.)?attempt",
-            )
-            self.assertIn("LIMIT %s", query)
-            self.assertNotIn("FOR UPDATE", query)
-            self.assertEqual(parameters[-1], 64)
-        self.assertNotRegex(
-            outcome_scans[0][0],
-            r"WHERE \((?:[a-z_]+\.)?run_id, (?:[a-z_]+\.)?activity_id, "
-            r"(?:[a-z_]+\.)?attempt\) >",
-        )
-        for query, parameters in outcome_scans[1:]:
-            self.assertRegex(
-                query,
-                r"WHERE \((?:[a-z_]+\.)?run_id, (?:[a-z_]+\.)?activity_id, "
-                r"(?:[a-z_]+\.)?attempt\) > \(%s, %s, %s\)",
-            )
-            self.assertEqual(len(parameters), 4)
-
-        membership_scans = tuple(
-            (" ".join(str(query).split()), parameters)
-            for query, parameters in traced.calls
-            if "FROM cpk_effect_attempt_outcome_observations" in str(query)
-        )
-        self.assertGreaterEqual(len(membership_scans), 129)
-        limits = []
-        for query, parameters in membership_scans:
-            self.assertIn("LIMIT %s", query)
-            self.assertNotIn("FOR UPDATE", query)
-            limits.append(parameters[-1])
-        self.assertEqual(limits.count(1), 128)
-        self.assertEqual(limits.count(3), 1)
+        assert_three_pk_seek_pages(outcome_scans(traced))
         self.assertEqual(
             self.connection.execute(
                 f"SELECT preimage FROM {OUTCOME} WHERE activity_id=%s",

@@ -10,6 +10,7 @@ from control_plane_kit_core.operations import (
     EffectAttemptStatus,
     EffectRecoveryDecision,
     EffectRecoveryResolution,
+    RecoveryDecisionKind,
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.effect_outcome_evidence import (
@@ -49,6 +50,10 @@ class PostgresEffectOutcomeStoreFixture(
 ):
     def setUp(self) -> None:
         PostgresExecutionLeaseRecoveryFixture.setUp(self)
+        self.seed_truth(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+            history="active-empty",
+        )
 
     def tearDown(self) -> None:
         PostgresExecutionLeaseRecoveryFixture.tearDown(self)

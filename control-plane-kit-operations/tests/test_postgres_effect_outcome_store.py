@@ -27,6 +27,41 @@ class PostgresEffectOutcomeStoreTests(
     PostgresEffectOutcomeStoreFixture,
     unittest.TestCase,
 ):
+    def test_predecessor_seed_and_attempt_prerequisites_are_lawful(self) -> None:
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT workspace_id FROM cpk_workspaces WHERE workspace_id='workspace-a'"
+            ).fetchone(),
+            ("workspace-a",),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT request_id FROM cpk_execution_requests "
+                "WHERE request_id='request-a'"
+            ).fetchone(),
+            ("request-a",),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT run_id FROM cpk_activity_runs WHERE run_id='run-a'"
+            ).fetchone(),
+            ("run-a",),
+        )
+        record = self.record_for(self.story_named("execution-succeeded"))
+        self.persist_prerequisites(record)
+        with self.unit_of_work() as fresh:
+            self.assertEqual(
+                fresh.stores.effect_attempts.get(record.attempt.state.identity),
+                record.attempt,
+            )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_observations WHERE observation_id = ANY(%s)",
+                ([value.observation_id for value in record.endpoint_observations],),
+            ).fetchone(),
+            (len(record.endpoint_observations),),
+        )
+
     def test_all_twenty_direct_post_transition_rows_roundtrip_after_restart(self) -> None:
         self.require_store()
         for story in self.stories():
