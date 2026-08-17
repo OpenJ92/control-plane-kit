@@ -38,5 +38,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Check out architecture testing
+        uses: actions/checkout@v4
+        with:
+          repository: OpenJ92/control-plane-kit-architecture-testing
+          ref: 7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef
+          path: architecture-testing
+          persist-credentials: false
+
       - name: Run authoritative package gate
+        env:
+          CPK_ARCHITECTURE_TESTING_ROOT: ${{ github.workspace }}/architecture-testing
         run: ./control-plane-kit-operations/test.sh
