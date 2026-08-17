@@ -6,13 +6,18 @@ import os
 from pathlib import Path
 import unittest
 
-from control_plane_kit_core.operations import EffectAttemptIdentity
+from control_plane_kit_core.operations import EffectAttemptIdentity, EffectAttemptState
+from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
 )
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.records import OperationsRecordError
-from tests.effect_outcome_evidence_fixture import EffectOutcomeEvidenceFixture
+from tests.effect_outcome_evidence_fixture import (
+    EffectOutcomeEvidenceFixture,
+    HostileStr,
+    forge_exact,
+)
 from tests.postgres_effect_outcome_store_fixture import (
     EffectAttemptOutcomeStore,
     MODULE_NAME,
@@ -153,6 +158,43 @@ class PostgresEffectOutcomeStoreContractTests(
         story = self.stories()[0]
         record = self.record_for(story)
         identity = record.attempt.state.identity
+        forged_record = forge_exact(
+            EffectAttemptOutcomeRecord,
+            workspace_id=HostileStr(record.workspace_id),
+            outcome=record.outcome,
+            attempt=record.attempt,
+            endpoint_observations=record.endpoint_observations,
+        )
+        forged_identity = forge_exact(
+            EffectAttemptIdentity,
+            run_id=identity.run_id,
+            activity_id=HostileStr(identity.activity_id),
+            attempt=identity.attempt,
+        )
+        state = record.attempt.state
+        forged_state = forge_exact(
+            EffectAttemptState,
+            identity=forged_identity,
+            request_fingerprint=state.request_fingerprint,
+            fence=state.fence,
+            status=state.status,
+            outcome_fingerprint=state.outcome_fingerprint,
+            prior_attempt=state.prior_attempt,
+            recovery_decision=state.recovery_decision,
+        )
+        forged_attempt = forge_exact(
+            EffectAttemptRecord,
+            state=forged_state,
+            original_start_event=record.attempt.original_start_event,
+            latest_transition_event=record.attempt.latest_transition_event,
+        )
+        forged_nested = forge_exact(
+            EffectAttemptOutcomeRecord,
+            workspace_id=record.workspace_id,
+            outcome=record.outcome,
+            attempt=forged_attempt,
+            endpoint_observations=record.endpoint_observations,
+        )
         cases = (
             ("insert-object", lambda store: store.insert(object())),
             (
@@ -166,6 +208,8 @@ class PostgresEffectOutcomeStoreContractTests(
                     )
                 ),
             ),
+            ("insert-exact-forged-record", lambda store: store.insert(forged_record)),
+            ("insert-exact-forged-identity", lambda store: store.insert(forged_nested)),
             ("get-object", lambda store: store.get(object(), "event-direct")),
             (
                 "get-hostile-identity",

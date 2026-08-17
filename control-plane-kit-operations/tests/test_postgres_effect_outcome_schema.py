@@ -100,6 +100,21 @@ EXPECTED_FOREIGN_KEYS = {
 }
 
 
+class _TracingConnection:
+    def __init__(self, connection) -> None:
+        self.connection = connection
+        self.calls = []
+
+    def execute(self, query, parameters=None):
+        self.calls.append((query, parameters))
+        if parameters is None:
+            return self.connection.execute(query)
+        return self.connection.execute(query, parameters)
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+
 class PostgresEffectOutcomeSchemaTests(
     PostgresEffectOutcomeStoreFixture,
     unittest.TestCase,
@@ -154,7 +169,7 @@ class PostgresEffectOutcomeSchemaTests(
             ),
             "cpk_effect_attempt_outcome_observations_observation_key": (
                 MEMBERSHIP,
-                ("run_id", "activity_id", "attempt", "observation_id"),
+                ("observation_id",),
             ),
         }
         self.assertEqual(set(expected_keys) - set(constraints), set())
@@ -300,27 +315,114 @@ class PostgresEffectOutcomeSchemaTests(
                     )
                 self.assertEqual(caught.exception.diag.constraint_name, constraint)
 
+        self.reset_truth(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+            history="active-empty",
+        )
+        self.persist_outcome(record)
+        with self.assertRaises(ForeignKeyViolation) as caught:
+            self.connection.execute(
+                f"UPDATE {MEMBERSHIP} SET observation_count=1"
+            )
+        self.assertEqual(
+            caught.exception.diag.constraint_name,
+            "cpk_effect_attempt_outcome_observations_outcome_fk",
+        )
+
     def test_current_verifier_rejects_late_direct_outcome_drift_without_repair(self) -> None:
         self.require_store()
-        record = self.record_for(self.story_named("observed-absent"))
-        self.persist_outcome(record)
+        records = tuple(
+            self.indexed_record(
+                index,
+                story_name=(
+                    "execution-succeeded" if index == 64 else "observed-absent"
+                ),
+            )
+            for index in range(129)
+        )
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            for record in records:
+                stores.execution.add_event(record.attempt.original_start_event)
+                stores.execution.add_event(record.attempt.latest_transition_event)
+                self.assertEqual(
+                    stores.effect_attempts.insert_absent(record.attempt),
+                    record.attempt,
+                )
+                for observation in record.endpoint_observations:
+                    self.assertEqual(stores.observed_state.put(observation), observation)
+                self.assertEqual(stores.effect_outcomes.insert(record), record)
+            unit_of_work.commit()
+        record = records[-1]
         before = self.connection.execute(
-            f"SELECT preimage FROM {OUTCOME}"
+            f"SELECT preimage FROM {OUTCOME} WHERE activity_id=%s",
+            (record.attempt.state.identity.activity_id,),
         ).fetchone()
         self.connection.execute(
-            f"UPDATE {OUTCOME} SET preimage=%s",
-            (b'{"candidate":"late-drift"}',),
+            f"UPDATE {OUTCOME} SET preimage=%s WHERE activity_id=%s",
+            (
+                b'{"candidate":"late-drift"}',
+                record.attempt.state.identity.activity_id,
+            ),
         )
         drifted = self.connection.execute(
-            f"SELECT preimage FROM {OUTCOME}"
+            f"SELECT preimage FROM {OUTCOME} WHERE activity_id=%s",
+            (record.attempt.state.identity.activity_id,),
         ).fetchone()
         self.assertNotEqual(before, drifted)
+        traced = _TracingConnection(self.connection)
         with self.assertRaises(SchemaInstallationError) as caught:
-            install_schema(self.connection)
+            install_schema(traced)
         self.assertEqual(str(caught.exception), "operations schema reset is required")
         self.assert_safe_error(caught.exception, "late-drift")
+
+        outcome_scans = tuple(
+            (" ".join(str(query).split()), parameters)
+            for query, parameters in traced.calls
+            if "FROM cpk_effect_attempt_outcomes" in str(query)
+            and "ORDER BY" in str(query)
+        )
+        self.assertEqual(len(outcome_scans), 3)
+        for query, parameters in outcome_scans:
+            self.assertRegex(
+                query,
+                r"ORDER BY (?:[a-z_]+\.)?run_id, "
+                r"(?:[a-z_]+\.)?activity_id, (?:[a-z_]+\.)?attempt",
+            )
+            self.assertIn("LIMIT %s", query)
+            self.assertNotIn("FOR UPDATE", query)
+            self.assertEqual(parameters[-1], 64)
+        self.assertNotRegex(
+            outcome_scans[0][0],
+            r"WHERE \((?:[a-z_]+\.)?run_id, (?:[a-z_]+\.)?activity_id, "
+            r"(?:[a-z_]+\.)?attempt\) >",
+        )
+        for query, parameters in outcome_scans[1:]:
+            self.assertRegex(
+                query,
+                r"WHERE \((?:[a-z_]+\.)?run_id, (?:[a-z_]+\.)?activity_id, "
+                r"(?:[a-z_]+\.)?attempt\) > \(%s, %s, %s\)",
+            )
+            self.assertEqual(len(parameters), 4)
+
+        membership_scans = tuple(
+            (" ".join(str(query).split()), parameters)
+            for query, parameters in traced.calls
+            if "FROM cpk_effect_attempt_outcome_observations" in str(query)
+        )
+        self.assertGreaterEqual(len(membership_scans), 129)
+        limits = []
+        for query, parameters in membership_scans:
+            self.assertIn("LIMIT %s", query)
+            self.assertNotIn("FOR UPDATE", query)
+            limits.append(parameters[-1])
+        self.assertEqual(limits.count(1), 128)
+        self.assertEqual(limits.count(3), 1)
         self.assertEqual(
-            self.connection.execute(f"SELECT preimage FROM {OUTCOME}").fetchone(),
+            self.connection.execute(
+                f"SELECT preimage FROM {OUTCOME} WHERE activity_id=%s",
+                (record.attempt.state.identity.activity_id,),
+            ).fetchone(),
             drifted,
         )
 

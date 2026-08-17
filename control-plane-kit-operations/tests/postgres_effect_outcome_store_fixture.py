@@ -19,6 +19,7 @@ from control_plane_kit_operations.effect_outcome_evidence import (
 )
 from tests.effect_outcome_evidence_fixture import (
     EffectOutcomeEvidenceFixture,
+    REQUEST_FINGERPRINT,
     WORKSPACE_ID,
 )
 from tests.execution_lease_recovery_fixture import (
@@ -78,6 +79,107 @@ class PostgresEffectOutcomeStoreFixture(
             outcome,
             story.attempt,
             observations,
+        )
+
+    def indexed_record(
+        self,
+        index: int,
+        *,
+        story_name: str = "observed-absent",
+        observation_ids: tuple[str, ...] | None = None,
+    ) -> EffectAttemptOutcomeRecord:
+        story = self.story_named(story_name)
+        start_event_id = f"page-{index:03d}-start"
+        direct_event_id = f"page-{index:03d}-direct"
+        value = replace(story.value, effect_id=start_event_id)
+        indexed = replace(story, value=value)
+        indexed = replace(
+            indexed,
+            attempt=self.direct_attempt_for(
+                indexed,
+                identity=self.identity(activity_id=f"activity-{index:03d}"),
+                original_event_id=start_event_id,
+                latest_event_id=direct_event_id,
+                original_ordinal=10 + index * 2,
+                latest_ordinal=11 + index * 2,
+            ),
+        )
+        outcome = self.outcome_for(indexed)
+        observations = effect_outcome_observation_records(
+            outcome,
+            indexed.attempt,
+            workspace_id=WORKSPACE_ID,
+            observation_ids=(
+                tuple(
+                    f"page-{index:03d}-observation-{position}"
+                    for position, _ in enumerate(
+                        indexed.endpoint_observations,
+                        start=1,
+                    )
+                )
+                if observation_ids is None
+                else observation_ids
+            ),
+        )
+        return EffectAttemptOutcomeRecord(
+            WORKSPACE_ID,
+            outcome,
+            indexed.attempt,
+            observations,
+        )
+
+    def indexed_empty_record(self, index: int) -> EffectAttemptOutcomeRecord:
+        return self.indexed_record(index)
+
+    def retry_record(self) -> tuple[EffectAttemptRecord, EffectAttemptOutcomeRecord]:
+        story = self.story_named("execution-succeeded")
+        identity = self.identity(attempt=2)
+        prior_identity = self.identity(attempt=1)
+        value = replace(story.value, effect_id="retry-direct-start")
+        outcome = ExecutionEffectOutcome(identity, REQUEST_FINGERPRINT, value)
+        state = EffectAttemptState(
+            identity=identity,
+            request_fingerprint=REQUEST_FINGERPRINT,
+            fence=story.attempt.state.fence,
+            status=EffectAttemptStatus.SUCCEEDED,
+            outcome_fingerprint=outcome.outcome_fingerprint,
+            prior_attempt=prior_identity,
+        )
+        original = self.event(
+            self.started_state(state),
+            self.event_kind("started", compensation=False),
+            event_id="retry-direct-start",
+            ordinal=5,
+            occurred_at="2030-01-01T00:00:01Z",
+        )
+        latest = self.event(
+            state,
+            self.event_kind("succeeded", compensation=False),
+            event_id="retry-direct-succeeded",
+            ordinal=7,
+            occurred_at="2030-01-01T00:00:02Z",
+        )
+        attempt = EffectAttemptRecord(state, original, latest)
+        observations = effect_outcome_observation_records(
+            outcome,
+            attempt,
+            workspace_id=WORKSPACE_ID,
+            observation_ids=("retry-observation-a", "retry-observation-b"),
+        )
+        prior = self.record(
+            "started",
+            event_prefix="retry-prior",
+            original_ordinal=3,
+            original_time="2030-01-01T00:00:00Z",
+        )
+        return (
+            prior,
+            EffectAttemptOutcomeRecord(
+                WORKSPACE_ID,
+                outcome,
+                attempt,
+                observations,
+            ),
         )
 
     def preimage_for(self, record: EffectAttemptOutcomeRecord) -> bytes:
