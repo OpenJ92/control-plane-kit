@@ -7,9 +7,83 @@ import unittest
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = PACKAGE_ROOT.parent
+ARCHITECTURE_TESTING_COMMIT = "7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef"
 
 
 class OperationsPackageGateTests(unittest.TestCase):
+    def test_ci_checks_out_exact_architecture_testing_source(self) -> None:
+        workflow = (REPOSITORY_ROOT / ".github/workflows/tests.yml").read_text(
+            encoding="utf-8"
+        )
+        core_job, operations_job = workflow.split("\n  operations:\n", 1)
+
+        self.assertIn(
+            "repository: OpenJ92/control-plane-kit-architecture-testing",
+            operations_job,
+        )
+        self.assertIn(f"ref: {ARCHITECTURE_TESTING_COMMIT}", operations_job)
+        self.assertIn("path: architecture-testing", operations_job)
+        self.assertIn("persist-credentials: false", operations_job)
+        self.assertIn(
+            "CPK_ARCHITECTURE_TESTING_ROOT: ${{ github.workspace }}/architecture-testing",
+            operations_job,
+        )
+        self.assertNotIn("control-plane-kit-architecture-testing", core_job)
+
+    def test_behavior_container_alone_receives_architecture_testing(self) -> None:
+        gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
+
+        self.assertIn(ARCHITECTURE_TESTING_COMMIT, gate)
+        self.assertIn("/architecture-testing:ro", gate)
+        self.assertEqual(gate.count("/architecture-testing:ro"), 1)
+        self.assertIn("PYTHONPATH=/architecture-testing/src", gate)
+        self.assertNotIn("git+https", gate)
+        self.assertNotIn("pypi", gate.lower())
+
+    def test_architecture_testing_checkout_rejects_drift_before_test_dispatch(self) -> None:
+        for commit, dirty in (
+            ("f" * 40, False),
+            (ARCHITECTURE_TESTING_COMMIT, True),
+        ):
+            with self.subTest(commit=commit, dirty=dirty):
+                result, events = self._run_gate(
+                    architecture_commit=commit,
+                    architecture_dirty=dirty,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(
+                    [event for event in events if event.startswith("phase:")],
+                    [],
+                )
+
+    def test_clean_import_excludes_architecture_testing(self) -> None:
+        gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'find_spec("control_plane_kit_architecture_testing") is None',
+            gate,
+        )
+
+    def test_production_packages_exclude_architecture_testing(self) -> None:
+        dependency = "control-plane-kit-architecture-testing"
+        for package in ("control-plane-kit-core", "control-plane-kit-operations"):
+            with self.subTest(package=package):
+                metadata = (REPOSITORY_ROOT / package / "pyproject.toml").read_text(
+                    encoding="utf-8"
+                )
+                self.assertNotIn(dependency, metadata)
+                for source in (REPOSITORY_ROOT / package / "src").rglob("*.py"):
+                    self.assertNotIn(
+                        "control_plane_kit_architecture_testing",
+                        source.read_text(encoding="utf-8"),
+                    )
+
+        core_gate = (
+            REPOSITORY_ROOT / "control-plane-kit-core/test.sh"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("architecture-testing", core_gate)
+
     def test_postgres_fixture_uses_ephemeral_storage_and_volume_cleanup(self) -> None:
         gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
 
@@ -172,6 +246,8 @@ class OperationsPackageGateTests(unittest.TestCase):
         unittest_status: int = 0,
         log_status: int = 0,
         health_status: str = "healthy",
+        architecture_commit: str = ARCHITECTURE_TESTING_COMMIT,
+        architecture_dirty: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
@@ -250,6 +326,37 @@ class OperationsPackageGateTests(unittest.TestCase):
                 encoding="utf-8",
             )
             docker.chmod(0o755)
+            architecture_root = temporary / "architecture-testing"
+            architecture_root.mkdir()
+            git = binary_directory / "git"
+            git.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    set -eu
+
+                    if [ "$1" != "-C" ] || [ "$2" != "$FAKE_ARCHITECTURE_ROOT" ]; then
+                      exit 98
+                    fi
+                    shift 2
+                    case "$1" in
+                      rev-parse)
+                        printf '%s\n' "$FAKE_ARCHITECTURE_COMMIT"
+                        ;;
+                      status)
+                        if [ "$FAKE_ARCHITECTURE_DIRTY" = "1" ]; then
+                          printf ' M candidate\n'
+                        fi
+                        ;;
+                      *)
+                        exit 97
+                        ;;
+                    esac
+                    """
+                ),
+                encoding="utf-8",
+            )
+            git.chmod(0o755)
             sleep = binary_directory / "sleep"
             sleep.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             sleep.chmod(0o755)
@@ -261,6 +368,10 @@ class OperationsPackageGateTests(unittest.TestCase):
                     "FAKE_DOCKER_UNITTEST_STATUS": str(unittest_status),
                     "FAKE_DOCKER_LOG_STATUS": str(log_status),
                     "FAKE_DOCKER_HEALTH_STATUS": health_status,
+                    "FAKE_ARCHITECTURE_ROOT": str(architecture_root),
+                    "FAKE_ARCHITECTURE_COMMIT": architecture_commit,
+                    "FAKE_ARCHITECTURE_DIRTY": "1" if architecture_dirty else "0",
+                    "CPK_ARCHITECTURE_TESTING_ROOT": str(architecture_root),
                 }
             )
             result = subprocess.run(
@@ -271,7 +382,11 @@ class OperationsPackageGateTests(unittest.TestCase):
                 text=True,
                 check=False,
             )
-            events = events_path.read_text(encoding="utf-8").splitlines()
+            events = (
+                events_path.read_text(encoding="utf-8").splitlines()
+                if events_path.is_file()
+                else []
+            )
         return result, events
 
 
