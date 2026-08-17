@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from dataclasses import replace
 import unittest
 from unittest import mock
 
@@ -578,8 +579,8 @@ class PostgresAtomicEffectAttemptFoldTests(
         story = self.outcome_story("execution-succeeded", compensation=False)
         self.seed_fold_source(story)
         command = self.fold_command(story)
+        before = self.attempt_snapshot()
         original_request = PostgresExecutionStore.get_request_for_update
-        original_put = PostgresObservedStateStore.put
         locked_workspaces = []
         observations = []
         outcomes = []
@@ -587,20 +588,25 @@ class PostgresAtomicEffectAttemptFoldTests(
 
         def request(store, request_id):
             value = original_request(store, request_id)
-            locked_workspaces.append(value.identity.workspace_id)
-            return value
+            locked = replace(
+                value,
+                identity=replace(
+                    value.identity,
+                    workspace_id="workspace-locked-canary",
+                ),
+            )
+            locked_workspaces.append(locked.identity.workspace_id)
+            return locked
 
         def put(store, record):
-            self.assertEqual(locked_workspaces, ["workspace-a"])
+            self.assertEqual(locked_workspaces, ["workspace-locked-canary"])
             self.assertEqual(record.workspace_id, locked_workspaces[0])
             observations.append(record)
-            persisted = original_put(store, record)
-            self.assertIs(type(persisted), ObservationRecord)
-            self.assertEqual(persisted, record)
-            return persisted
+            self.assertIs(type(record), ObservationRecord)
+            return record
 
         def insert(store, record):
-            self.assertEqual(locked_workspaces, ["workspace-a"])
+            self.assertEqual(locked_workspaces, ["workspace-locked-canary"])
             self.assertEqual(record.workspace_id, locked_workspaces[0])
             self.assertEqual(tuple(observations), record.endpoint_observations)
             outcomes.append(record)
@@ -624,12 +630,7 @@ class PostgresAtomicEffectAttemptFoldTests(
         self.assertIs(caught.exception, error)
         self.assertEqual(len(observations), 2)
         self.assertEqual(len(outcomes), 1)
-        self.assertEqual(
-            self.connection.execute(
-                "SELECT count(*) FROM cpk_effect_attempt_outcomes"
-            ).fetchone(),
-            (0,),
-        )
+        self.assertEqual(self.attempt_snapshot(), before)
 
     def test_duplicate_or_invalid_generated_ids_reject_before_first_write(self) -> None:
         story = self.outcome_story("execution-succeeded", compensation=False)
