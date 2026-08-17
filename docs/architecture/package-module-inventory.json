@@ -9297,6 +9297,47 @@
     },
     {
       "canonical_public_exports": [
+        "EffectAttemptOutcome",
+        "EffectAttemptOutcomeRecord",
+        "EffectOutcomeProfile",
+        "ExecutionEffectOutcome",
+        "ObservedEffectOutcome",
+        "effect_outcome_failure",
+        "effect_outcome_observation_records",
+        "effect_outcome_transition"
+      ],
+      "destination": "control_plane_kit_operations.effect_outcome_evidence",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_outcome_evidence",
+      "motivation": "Owns provider-free direct outcome evidence, exact attempt snapshots, and ordered endpoint-observation projection.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_outcome_evidence_contract.py",
+        "tests/test_effect_outcome_record_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_outcome_evidence.py"
+    },
+    {
+      "canonical_public_exports": [
         "EffectAttemptStartConflict",
         "EffectAttemptStartDenied",
         "EffectAttemptStartError",
