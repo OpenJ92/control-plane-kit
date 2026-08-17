@@ -23,6 +23,29 @@ control-plane-kit-servers      ./test.sh
 A package gate proves the laws owned by that distribution. It does not prove
 that independently versioned repositories compose at specific commits.
 
+### Architecture Testing Dependency
+
+`control-plane-kit-architecture-testing` is test-only architecture tooling and
+is not a runtime dependency of either current Control Plane Kit distribution.
+Its own package gate is the authority that the tooling works. Control Plane Kit
+consumes the accepted tooling source at exact commit
+`7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef` only in Operations behavior tests.
+
+For local development, keep an exact clean sibling checkout. An editable install
+may be used for direct tooling work:
+
+```bash
+git -C ../control-plane-kit-architecture-testing checkout 7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef
+python -m pip install -e ../control-plane-kit-architecture-testing
+```
+
+The Operations gate validates that sibling coordinate and mounts its `src`
+directory read-only into the behavior-test container. CI performs a second
+checkout at the same exact commit and supplies that checkout to the gate. It
+does not acquire the package from PyPI or run an in-container VCS or package
+installation. Integrity, PostgreSQL, compile, and clean-import phases do not
+receive the tooling checkout.
+
 ### Current Backend Gate
 
 Run:
