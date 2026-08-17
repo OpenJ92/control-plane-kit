@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import fields, replace
 import unittest
 from unittest import mock
 
@@ -39,6 +39,30 @@ from tests.postgres_effect_attempt_fold_fixture import (
     REPLAY_ERROR,
     SERIALIZATION_ERROR,
 )
+
+
+def _hostile_acknowledgement(value, dispatches):
+    class HostileAcknowledgement(type(value)):
+        def __getattribute__(self, name):
+            dispatches.append(f"attribute:{name}")
+            return super().__getattribute__(name)
+
+        def __eq__(self, other):
+            dispatches.append("equality")
+            return False
+
+        def __ne__(self, other):
+            dispatches.append("inequality")
+            return True
+
+    hostile = object.__new__(HostileAcknowledgement)
+    for field in fields(value):
+        object.__setattr__(
+            hostile,
+            field.name,
+            object.__getattribute__(value, field.name),
+        )
+    return hostile
 
 
 class PostgresAtomicEffectAttemptFoldTests(
@@ -677,6 +701,174 @@ class PostgresAtomicEffectAttemptFoldTests(
                 self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
                 self.assert_safe_error(caught.exception, "canary", "x" * 513)
                 self.assertEqual(ids.calls, list(values))
+
+    def test_generated_ids_are_exact_before_hashing_or_writes(self) -> None:
+        for direct in (True, False):
+            for candidate_kind in ("unhashable", "hostile"):
+                with self.subTest(direct=direct, candidate=candidate_kind):
+                    story = "succeeded" if direct else "recovered-succeeded"
+                    self.seed_fold_source(story)
+                    before = self.attempt_snapshot()
+                    dispatches = []
+                    canary = f"generated-{candidate_kind}-candidate"
+                    if candidate_kind == "unhashable":
+                        candidate = [canary]
+                    else:
+                        class HostileGeneratedId(str):
+                            def __hash__(self):
+                                dispatches.append("hash")
+                                return super().__hash__()
+
+                        candidate = HostileGeneratedId(canary)
+                    values = (
+                        (candidate, "observation-a", "observation-b")
+                        if direct
+                        else (candidate,)
+                    )
+                    ids = Sequence(*values)
+                    forbidden = AssertionError("invalid generated ID reached a write")
+                    captured = None
+                    with mock.patch.object(
+                        PostgresExecutionStore,
+                        "add_event",
+                        side_effect=forbidden,
+                    ), mock.patch.object(
+                        PostgresObservedStateStore,
+                        "put",
+                        side_effect=forbidden,
+                    ), mock.patch.object(
+                        EffectAttemptOutcomeStore,
+                        "insert",
+                        side_effect=forbidden,
+                    ), mock.patch.object(
+                        EffectAttemptStore,
+                        "compare_and_set",
+                        side_effect=forbidden,
+                    ):
+                        try:
+                            self.fold_service_with_id_factory(ids).execute(
+                                self.fold_command(story)
+                            )
+                        except BaseException as error:
+                            captured = error
+                    self.assertIsNotNone(captured)
+                    self.assertIs(type(captured), EffectAttemptFoldConflict)
+                    self.assertEqual(str(captured), SERIALIZATION_ERROR)
+                    self.assert_safe_error(captured, canary)
+                    self.assertEqual(ids.calls, list(values))
+                    self.assertEqual(dispatches, [])
+                    self.assertEqual(self.attempt_snapshot(), before)
+
+    def test_replay_outcome_acknowledgement_is_exact_before_virtual_access(
+        self,
+    ) -> None:
+        self.seed_fold_source("succeeded")
+        command = self.fold_command("succeeded")
+        first = self.fold_service("hostile-replay-first").execute(command)
+        before = self.attempt_snapshot()
+        dispatches = []
+        hostile = _hostile_acknowledgement(first.outcome_record, dispatches)
+        ids = Sequence("replay-must-not-allocate")
+        forbidden = AssertionError("hostile replay acknowledgement reached mutation")
+        with mock.patch.object(
+            EffectAttemptOutcomeStore,
+            "get",
+            return_value=hostile,
+        ), mock.patch.object(
+            PostgresExecutionStore,
+            "observe_request_lease_for_update",
+            side_effect=forbidden,
+        ), mock.patch.object(
+            PostgresExecutionStore,
+            "add_event",
+            side_effect=forbidden,
+        ), mock.patch.object(
+            PostgresObservedStateStore,
+            "put",
+            side_effect=forbidden,
+        ), mock.patch.object(
+            EffectAttemptOutcomeStore,
+            "insert",
+            side_effect=forbidden,
+        ), mock.patch.object(
+            EffectAttemptStore,
+            "compare_and_set",
+            side_effect=forbidden,
+        ):
+            with self.assertRaises(EffectAttemptFoldConflict) as caught:
+                self.fold_service_with_id_factory(ids).execute(command)
+        self.assertEqual(str(caught.exception), INVALID_TRUTH_ERROR)
+        self.assert_safe_error(caught.exception)
+        self.assertEqual(dispatches, [])
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.attempt_snapshot(), before)
+
+    def test_write_acknowledgements_are_exact_before_virtual_access(self) -> None:
+        for target in ("event", "observation-0", "observation-1", "outcome", "cas"):
+            with self.subTest(target=target):
+                self.seed_fold_source("succeeded")
+                command = self.fold_command("succeeded")
+                before = self.attempt_snapshot()
+                event_id = f"hostile-{target}-acknowledgement"
+                ids = Sequence(*self.fold_ids(event_id, command.outcome))
+                dispatches = []
+                observation_position = 0
+                original_event = PostgresExecutionStore.add_event
+                original_observation = PostgresObservedStateStore.put
+                original_outcome = EffectAttemptOutcomeStore.insert
+                original_cas = EffectAttemptStore.compare_and_set
+
+                def add_event(store, event):
+                    admitted = original_event(store, event)
+                    if target == "event":
+                        return _hostile_acknowledgement(admitted, dispatches)
+                    return admitted
+
+                def put(store, record):
+                    nonlocal observation_position
+                    admitted = original_observation(store, record)
+                    position = observation_position
+                    observation_position += 1
+                    if target == f"observation-{position}":
+                        return _hostile_acknowledgement(admitted, dispatches)
+                    return admitted
+
+                def insert(store, record):
+                    admitted = original_outcome(store, record)
+                    if target == "outcome":
+                        return _hostile_acknowledgement(admitted, dispatches)
+                    return admitted
+
+                def compare_and_set(store, current, replacement):
+                    admitted = original_cas(store, current, replacement)
+                    if target == "cas":
+                        return _hostile_acknowledgement(admitted, dispatches)
+                    return admitted
+
+                with mock.patch.object(
+                    PostgresExecutionStore,
+                    "add_event",
+                    add_event,
+                ), mock.patch.object(
+                    PostgresObservedStateStore,
+                    "put",
+                    put,
+                ), mock.patch.object(
+                    EffectAttemptOutcomeStore,
+                    "insert",
+                    insert,
+                ), mock.patch.object(
+                    EffectAttemptStore,
+                    "compare_and_set",
+                    compare_and_set,
+                ):
+                    with self.assertRaises(EffectAttemptFoldConflict) as caught:
+                        self.fold_service_with_id_factory(ids).execute(command)
+                self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
+                self.assert_safe_error(caught.exception)
+                self.assertEqual(dispatches, [])
+                self.assertEqual(ids.calls, list(self.fold_ids(event_id, command.outcome)))
+                self.assertEqual(self.attempt_snapshot(), before)
 
 
 if __name__ == "__main__":

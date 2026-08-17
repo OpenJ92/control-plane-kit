@@ -139,6 +139,7 @@ EXACT_INTERPRETER_IMPORTS = tuple(
             None,
         ),
         ("control_plane_kit_operations.records", "BoundedEvidence", None),
+        ("control_plane_kit_operations.records", "ObservationRecord", None),
         (
             "control_plane_kit_operations.records",
             "OperationsRecordError",
@@ -202,8 +203,7 @@ EXACT_INTERPRETER_CALLS = (
             "stores.execution.next_event_ordinal",
             "stores.execution.observe_request_lease_for_update",
             "stores.observed_state.put",
-            "type",
-            "type",
+            *("type",) * 8,
             "unit_of_work.commit",
             "unit_of_work.commit",
             "worker_id.encode",
