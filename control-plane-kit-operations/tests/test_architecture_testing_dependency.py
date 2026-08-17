@@ -1,12 +1,25 @@
 from __future__ import annotations
 
 import importlib
+import os
 from pathlib import Path
+import tempfile
 import unittest
+from unittest import mock
 
 
 PACKAGE_NAME = "control_plane_kit_architecture_testing"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+TESTING_DOCUMENT_ENV = "CPK_TESTING_DOCUMENT_PATH"
+
+
+def _testing_document_path() -> Path:
+    return Path(
+        os.environ.get(
+            TESTING_DOCUMENT_ENV,
+            str(REPOSITORY_ROOT / "docs/TESTING.md"),
+        )
+    )
 
 
 def _architecture_testing():
@@ -74,9 +87,7 @@ class ArchitectureTestingDependencyTests(unittest.TestCase):
         self.assertNotIn(source, repr(findings))
 
     def test_testing_document_names_exact_local_and_ci_acquisition(self) -> None:
-        document = (REPOSITORY_ROOT / "docs/TESTING.md").read_text(
-            encoding="utf-8"
-        )
+        document = _testing_document_path().read_text(encoding="utf-8")
         required_markers = (
             "control-plane-kit-architecture-testing",
             "7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef",
@@ -88,6 +99,15 @@ class ArchitectureTestingDependencyTests(unittest.TestCase):
             tuple(marker for marker in required_markers if marker not in document),
             (),
         )
+
+    def test_testing_document_uses_explicit_copied_package_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            document = Path(temporary_directory) / "TESTING.md"
+            with mock.patch.dict(
+                os.environ,
+                {TESTING_DOCUMENT_ENV: str(document)},
+            ):
+                self.assertEqual(_testing_document_path(), document)
 
 
 if __name__ == "__main__":

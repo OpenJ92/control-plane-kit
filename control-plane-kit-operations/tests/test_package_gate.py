@@ -4,11 +4,37 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+from unittest import mock
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PACKAGE_ROOT.parent
 ARCHITECTURE_TESTING_COMMIT = "7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef"
+WORKFLOW_ENV = "CPK_TEST_WORKFLOW_PATH"
+CORE_SOURCE_ENV = "CPK_CORE_SOURCE_ROOT"
+OPERATIONS_SOURCE_ENV = "CPK_OPERATIONS_SOURCE_ROOT"
+
+
+def _workflow_path() -> Path:
+    return Path(
+        os.environ.get(
+            WORKFLOW_ENV,
+            str(REPOSITORY_ROOT / ".github/workflows/tests.yml"),
+        )
+    )
+
+
+def _core_source_root() -> Path:
+    return Path(
+        os.environ.get(
+            CORE_SOURCE_ENV,
+            str(REPOSITORY_ROOT / "control-plane-kit-core"),
+        )
+    )
+
+
+def _operations_source_root() -> Path:
+    return Path(os.environ.get(OPERATIONS_SOURCE_ENV, str(PACKAGE_ROOT)))
 
 
 def _workflow_step(job: str, name: str) -> str:
@@ -22,9 +48,7 @@ def _workflow_step(job: str, name: str) -> str:
 
 class OperationsPackageGateTests(unittest.TestCase):
     def test_ci_checks_out_exact_architecture_testing_source(self) -> None:
-        workflow = (REPOSITORY_ROOT / ".github/workflows/tests.yml").read_text(
-            encoding="utf-8"
-        )
+        workflow = _workflow_path().read_text(encoding="utf-8")
         core_job, operations_job = workflow.split("\n  operations:\n", 1)
         architecture_checkout = _workflow_step(
             operations_job,
@@ -64,6 +88,29 @@ class OperationsPackageGateTests(unittest.TestCase):
                 "core_absent": True,
             },
         )
+
+    def test_copied_package_uses_explicit_repository_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence = Path(temporary_directory)
+            workflow = evidence / "tests.yml"
+            core = evidence / "core"
+            operations = evidence / "operations"
+            with mock.patch.dict(
+                os.environ,
+                {
+                    WORKFLOW_ENV: str(workflow),
+                    CORE_SOURCE_ENV: str(core),
+                    OPERATIONS_SOURCE_ENV: str(operations),
+                },
+            ):
+                self.assertEqual(
+                    (
+                        _workflow_path(),
+                        _core_source_root(),
+                        _operations_source_root(),
+                    ),
+                    (workflow, core, operations),
+                )
 
     def test_behavior_container_alone_receives_architecture_testing(self) -> None:
         gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
@@ -131,6 +178,47 @@ class OperationsPackageGateTests(unittest.TestCase):
                     [],
                 )
 
+    def test_repository_evidence_is_exposed_only_to_behavior(self) -> None:
+        result, events = self._run_gate()
+        run_arguments = {
+            phase: arguments
+            for event in events
+            if event.startswith("run:")
+            for _, phase, arguments in (event.split(":", 2),)
+        }
+        markers = (
+            ":/cpk-test-evidence/tests-workflow.yml:ro",
+            ":/cpk-test-evidence/TESTING.md:ro",
+            "CPK_TEST_WORKFLOW_PATH=/cpk-test-evidence/tests-workflow.yml",
+            "CPK_TESTING_DOCUMENT_PATH=/cpk-test-evidence/TESTING.md",
+            "CPK_CORE_SOURCE_ROOT=/core",
+            "CPK_OPERATIONS_SOURCE_ROOT=/source",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            tuple(
+                (
+                    phase,
+                    tuple(marker in run_arguments[phase] for marker in markers),
+                )
+                for phase in (
+                    "integrity",
+                    "postgres",
+                    "unittest",
+                    "compile",
+                    "clean-import",
+                )
+            ),
+            (
+                ("integrity", (False,) * len(markers)),
+                ("postgres", (False,) * len(markers)),
+                ("unittest", (True,) * len(markers)),
+                ("compile", (False,) * len(markers)),
+                ("clean-import", (False,) * len(markers)),
+            ),
+        )
+
     def test_clean_import_excludes_architecture_testing(self) -> None:
         gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
 
@@ -141,21 +229,20 @@ class OperationsPackageGateTests(unittest.TestCase):
 
     def test_production_packages_exclude_architecture_testing(self) -> None:
         dependency = "control-plane-kit-architecture-testing"
-        for package in ("control-plane-kit-core", "control-plane-kit-operations"):
+        for package, package_root in (
+            ("control-plane-kit-core", _core_source_root()),
+            ("control-plane-kit-operations", _operations_source_root()),
+        ):
             with self.subTest(package=package):
-                metadata = (REPOSITORY_ROOT / package / "pyproject.toml").read_text(
-                    encoding="utf-8"
-                )
+                metadata = (package_root / "pyproject.toml").read_text(encoding="utf-8")
                 self.assertNotIn(dependency, metadata)
-                for source in (REPOSITORY_ROOT / package / "src").rglob("*.py"):
+                for source in (package_root / "src").rglob("*.py"):
                     self.assertNotIn(
                         "control_plane_kit_architecture_testing",
                         source.read_text(encoding="utf-8"),
                     )
 
-        core_gate = (
-            REPOSITORY_ROOT / "control-plane-kit-core/test.sh"
-        ).read_text(encoding="utf-8")
+        core_gate = (_core_source_root() / "test.sh").read_text(encoding="utf-8")
         self.assertNotIn("architecture-testing", core_gate)
 
     def test_postgres_fixture_uses_ephemeral_storage_and_volume_cleanup(self) -> None:
