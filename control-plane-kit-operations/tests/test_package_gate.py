@@ -11,35 +11,109 @@ REPOSITORY_ROOT = PACKAGE_ROOT.parent
 ARCHITECTURE_TESTING_COMMIT = "7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef"
 
 
+def _workflow_step(job: str, name: str) -> str:
+    marker = f"      - name: {name}\n"
+    start = job.find(marker)
+    if start == -1:
+        return ""
+    end = job.find("\n      - name: ", start + len(marker))
+    return job[start:] if end == -1 else job[start:end]
+
+
 class OperationsPackageGateTests(unittest.TestCase):
     def test_ci_checks_out_exact_architecture_testing_source(self) -> None:
         workflow = (REPOSITORY_ROOT / ".github/workflows/tests.yml").read_text(
             encoding="utf-8"
         )
         core_job, operations_job = workflow.split("\n  operations:\n", 1)
+        architecture_checkout = _workflow_step(
+            operations_job,
+            "Check out architecture testing",
+        )
+        operations_gate = _workflow_step(
+            operations_job,
+            "Run authoritative package gate",
+        )
 
-        self.assertIn(
-            "repository: OpenJ92/control-plane-kit-architecture-testing",
-            operations_job,
+        self.assertEqual(
+            {
+                "repository": (
+                    "repository: OpenJ92/control-plane-kit-architecture-testing"
+                    in architecture_checkout
+                ),
+                "ref": f"ref: {ARCHITECTURE_TESTING_COMMIT}" in architecture_checkout,
+                "path": "path: architecture-testing" in architecture_checkout,
+                "credentials": (
+                    "persist-credentials: false" in architecture_checkout
+                ),
+                "gate_root": (
+                    "CPK_ARCHITECTURE_TESTING_ROOT: "
+                    "${{ github.workspace }}/architecture-testing"
+                    in operations_gate
+                ),
+                "core_absent": (
+                    "control-plane-kit-architecture-testing" not in core_job
+                ),
+            },
+            {
+                "repository": True,
+                "ref": True,
+                "path": True,
+                "credentials": True,
+                "gate_root": True,
+                "core_absent": True,
+            },
         )
-        self.assertIn(f"ref: {ARCHITECTURE_TESTING_COMMIT}", operations_job)
-        self.assertIn("path: architecture-testing", operations_job)
-        self.assertIn("persist-credentials: false", operations_job)
-        self.assertIn(
-            "CPK_ARCHITECTURE_TESTING_ROOT: ${{ github.workspace }}/architecture-testing",
-            operations_job,
-        )
-        self.assertNotIn("control-plane-kit-architecture-testing", core_job)
 
     def test_behavior_container_alone_receives_architecture_testing(self) -> None:
         gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
+        result, events = self._run_gate()
+        run_arguments = {
+            phase: arguments
+            for event in events
+            if event.startswith("run:")
+            for _, phase, arguments in (event.split(":", 2),)
+        }
+        phase_exposure = tuple(
+            (
+                phase,
+                ":/architecture-testing:ro" in run_arguments[phase],
+                "PYTHONPATH=/architecture-testing/src" in run_arguments[phase],
+            )
+            for phase in (
+                "integrity",
+                "postgres",
+                "unittest",
+                "compile",
+                "clean-import",
+            )
+        )
 
-        self.assertIn(ARCHITECTURE_TESTING_COMMIT, gate)
-        self.assertIn("/architecture-testing:ro", gate)
-        self.assertEqual(gate.count("/architecture-testing:ro"), 1)
-        self.assertIn("PYTHONPATH=/architecture-testing/src", gate)
-        self.assertNotIn("git+https", gate)
-        self.assertNotIn("pypi", gate.lower())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            (
+                ARCHITECTURE_TESTING_COMMIT in gate,
+                gate.count("/architecture-testing:ro"),
+                gate.count("PYTHONPATH=/architecture-testing/src"),
+                "git+https" not in gate,
+                "pypi" not in gate.lower(),
+                phase_exposure,
+            ),
+            (
+                True,
+                1,
+                1,
+                True,
+                True,
+                (
+                    ("integrity", False, False),
+                    ("postgres", False, False),
+                    ("unittest", True, True),
+                    ("compile", False, False),
+                    ("clean-import", False, False),
+                ),
+            ),
+        )
 
     def test_architecture_testing_checkout_rejects_drift_before_test_dispatch(self) -> None:
         for commit, dirty in (
@@ -290,6 +364,8 @@ class OperationsPackageGateTests(unittest.TestCase):
                           exit 99
                         fi
                         printf 'phase:%s\n' "$phase" \
+                          >>"$FAKE_DOCKER_EVENTS"
+                        printf 'run:%s:%s\n' "$phase" "$*" \
                           >>"$FAKE_DOCKER_EVENTS"
                         if [ "$phase" = "postgres" ]; then
                           for argument in "$@"; do
