@@ -116,7 +116,7 @@ CREATE TABLE cpk_effect_attempt_outcome_observations (
     observation_count integer NOT NULL,
     position integer NOT NULL,
     observation_id text NOT NULL,
-    CONSTRAINT cpk_effect_attempt_outcome_observations_position_check CHECK (((position >= 0) AND ((position < observation_count) OR ((observation_count = 1) AND (position = 1)))))
+    CONSTRAINT cpk_effect_attempt_outcome_observations_position_check CHECK (((position >= 0) AND (position < observation_count)))
 );
 
 CREATE TABLE cpk_approval_decisions (

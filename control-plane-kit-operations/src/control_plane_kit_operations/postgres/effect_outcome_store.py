@@ -74,7 +74,16 @@ _COLUMN_NAMES = (
     "observation_count",
 )
 _COLUMNS = ", ".join(_COLUMN_NAMES)
-_SELECT = f"SELECT {_COLUMNS} FROM cpk_effect_attempt_outcomes"
+_BOUNDED_COLUMNS = ", ".join(
+    (
+        "CASE WHEN octet_length(preimage) BETWEEN 1 AND 8192 "
+        "THEN preimage ELSE NULL END AS preimage"
+        if column == "preimage"
+        else column
+    )
+    for column in _COLUMN_NAMES
+)
+_SELECT = f"SELECT {_BOUNDED_COLUMNS} FROM cpk_effect_attempt_outcomes"
 _OBSERVATION_COLUMNS = (
     "observation_id",
     "workspace_id",
@@ -89,7 +98,13 @@ _OBSERVATION_COLUMNS = (
     "endpoint_context",
 )
 _OBSERVATION_SELECT = ", ".join(
-    f"observation.{column}" for column in _OBSERVATION_COLUMNS
+    (
+        "CASE WHEN octet_length(observation.evidence::text) BETWEEN 1 AND 8192 "
+        "THEN observation.evidence ELSE NULL END AS evidence"
+        if column == "evidence"
+        else f"observation.{column}"
+    )
+    for column in _OBSERVATION_COLUMNS
 )
 _MEMBERSHIP_QUERY = f"""
 SELECT membership.position, membership.observation_count,
@@ -191,18 +206,21 @@ class EffectAttemptOutcomeStore:
 
 
 def _require_identity(value: object) -> EffectAttemptIdentity:
-    valid = type(value) is EffectAttemptIdentity
+    if type(value) is not EffectAttemptIdentity:
+        raise OperationsRecordError("effect attempt outcome store input is invalid")
+    parts = None
+    try:
+        parts = (value.run_id.value, value.activity_id, value.attempt)
+    except AttributeError:
+        pass
+    if parts is None:
+        raise OperationsRecordError("effect attempt outcome store input is invalid")
     admitted = None
-    if valid:
-        try:
-            admitted = EffectAttemptIdentity(
-                RunId(value.run_id.value),
-                value.activity_id,
-                value.attempt,
-            )
-        except (TypeError, ValueError):
-            valid = False
-    if not valid:
+    try:
+        admitted = EffectAttemptIdentity(RunId(parts[0]), parts[1], parts[2])
+    except (TypeError, ValueError):
+        pass
+    if admitted is None:
         raise OperationsRecordError("effect attempt outcome store input is invalid")
     return admitted
 
@@ -226,15 +244,22 @@ def _require_event_id(value: object) -> None:
 def _require_record(value: object) -> EffectAttemptOutcomeRecord:
     if type(value) is not EffectAttemptOutcomeRecord:
         raise OperationsRecordError("effect attempt outcome store input is invalid")
-    admitted = None
-    failed = False
+    parts = None
     try:
-        admitted = EffectAttemptOutcomeRecord(
+        parts = (
             value.workspace_id,
             value.outcome,
             value.attempt,
             value.endpoint_observations,
         )
+    except AttributeError:
+        pass
+    if parts is None:
+        raise OperationsRecordError("effect attempt outcome store input is invalid")
+    admitted = None
+    failed = False
+    try:
+        admitted = EffectAttemptOutcomeRecord(*parts)
         preimage = _encode_preimage(admitted)
     except (TypeError, ValueError, RuntimeEffectContractError, OperationsRecordError):
         failed = True
@@ -298,7 +323,13 @@ def _decode_row(
     failed = False
     try:
         preimage = _decode_preimage(row[6], row[5])
-    except (KeyError, ValueError, RuntimeEffectContractError, OperationsRecordError):
+    except (
+        KeyError,
+        RecursionError,
+        ValueError,
+        RuntimeEffectContractError,
+        OperationsRecordError,
+    ):
         failed = True
         preimage = None
     if not failed:
@@ -528,13 +559,13 @@ def _endpoint(value: object) -> RuntimeEndpointObservation:
 
 
 _FIRST_PAGE = f"""
-SELECT {_COLUMNS}
+SELECT {_BOUNDED_COLUMNS}
 FROM cpk_effect_attempt_outcomes AS outcome
 ORDER BY outcome.run_id, outcome.activity_id, outcome.attempt
 LIMIT %s
 """
 _NEXT_PAGE = f"""
-SELECT {_COLUMNS}
+SELECT {_BOUNDED_COLUMNS}
 FROM cpk_effect_attempt_outcomes AS outcome
 WHERE (outcome.run_id, outcome.activity_id, outcome.attempt) > (%s, %s, %s)
 ORDER BY outcome.run_id, outcome.activity_id, outcome.attempt

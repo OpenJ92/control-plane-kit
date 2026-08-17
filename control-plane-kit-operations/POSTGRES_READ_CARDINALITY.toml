@@ -389,7 +389,17 @@ consumer = "direct outcome restart reconstruction"
 [[read]]
 module = "control_plane_kit_operations.postgres.effect_outcome_store"
 selector = "_validate_current_rows"
+occurrence = 1
 category = "exact-verifier"
 sql = "identity keyset batches bounded by fixed batch size; each ordered membership LIMIT observation_count plus one"
 consumer_kind = "production"
-consumer = "current schema admission validates every immutable direct outcome"
+consumer = "current schema admission reads every immutable direct outcome page"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.effect_outcome_store"
+selector = "_validate_current_rows"
+occurrence = 2
+category = "exact-verifier"
+sql = "identity keyset batches bounded by fixed batch size; each ordered membership LIMIT observation_count plus one"
+consumer_kind = "production"
+consumer = "current schema admission validates every immutable direct outcome membership"
