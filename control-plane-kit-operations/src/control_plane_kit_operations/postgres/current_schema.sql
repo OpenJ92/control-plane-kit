@@ -74,6 +74,51 @@ CREATE TABLE cpk_effect_attempts (
     CONSTRAINT cpk_effect_attempts_event_progression_check CHECK (((original_event_run_id = run_id) AND (latest_event_run_id = run_id) AND (original_event_ordinal > 0) AND (latest_event_ordinal > 0) AND (char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (char_length(latest_event_id) >= 1) AND (char_length(latest_event_id) <= 512) AND (((status = 'started'::text) AND ((latest_event_id, latest_event_run_id, latest_event_ordinal) = (original_event_id, original_event_run_id, original_event_ordinal))) OR ((status <> 'started'::text) AND (latest_event_ordinal > original_event_ordinal)))))
 );
 
+CREATE TABLE cpk_effect_attempt_outcomes (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    request_id text NOT NULL,
+    profile text NOT NULL,
+    preimage bytea NOT NULL,
+    request_fingerprint text NOT NULL,
+    fence_worker_id text NOT NULL,
+    fence_generation bigint NOT NULL,
+    status text NOT NULL,
+    outcome_fingerprint text NOT NULL,
+    prior_run_id text,
+    prior_activity_id text,
+    prior_attempt integer,
+    original_event_id text NOT NULL,
+    original_event_run_id text NOT NULL,
+    original_event_ordinal integer NOT NULL,
+    direct_event_id text NOT NULL,
+    direct_event_run_id text NOT NULL,
+    direct_event_ordinal integer NOT NULL,
+    observation_count integer NOT NULL,
+    CONSTRAINT cpk_effect_attempt_outcomes_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_effect_attempt_outcomes_fence_check CHECK (((fence_generation > 0) AND (char_length(fence_worker_id) >= 1) AND (char_length(fence_worker_id) <= 256))),
+    CONSTRAINT cpk_effect_attempt_outcomes_profile_check CHECK ((profile = ANY (ARRAY['execution-result'::text, 'provider-observation'::text]))),
+    CONSTRAINT cpk_effect_attempt_outcomes_preimage_check CHECK (((octet_length(preimage) >= 1) AND (octet_length(preimage) <= 8192))),
+    CONSTRAINT cpk_effect_attempt_outcomes_fingerprint_check CHECK (((request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (outcome_fingerprint ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT cpk_effect_attempt_outcomes_prior_check CHECK ((((attempt = 1) AND (prior_run_id IS NULL) AND (prior_activity_id IS NULL) AND (prior_attempt IS NULL)) OR ((attempt > 1) AND (prior_run_id IS NOT NULL) AND (prior_activity_id IS NOT NULL) AND (prior_attempt IS NOT NULL) AND (prior_run_id = run_id) AND (prior_activity_id = activity_id) AND (prior_attempt = (attempt - 1))))),
+    CONSTRAINT cpk_effect_attempt_outcomes_state_check CHECK ((status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'unsupported'::text, 'uncertain'::text]))),
+    CONSTRAINT cpk_effect_attempt_outcomes_event_progression_check CHECK (((original_event_run_id = run_id) AND (direct_event_run_id = run_id) AND (original_event_ordinal > 0) AND (direct_event_ordinal > original_event_ordinal) AND (char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (char_length(direct_event_id) >= 1) AND (char_length(direct_event_id) <= 512))),
+    CONSTRAINT cpk_effect_attempt_outcomes_observation_count_check CHECK (((observation_count >= 0) AND (observation_count <= 8192)))
+);
+
+CREATE TABLE cpk_effect_attempt_outcome_observations (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    observation_count integer NOT NULL,
+    position integer NOT NULL,
+    observation_id text NOT NULL,
+    CONSTRAINT cpk_effect_attempt_outcome_observations_position_check CHECK (((position >= 0) AND (position < observation_count)))
+);
+
 CREATE TABLE cpk_approval_decisions (
     decision_id text NOT NULL,
     request_id text NOT NULL,
@@ -679,6 +724,9 @@ ALTER TABLE ONLY cpk_activity_plans
 ALTER TABLE ONLY cpk_activity_runs
     ADD CONSTRAINT cpk_activity_runs_pkey PRIMARY KEY (run_id);
 
+ALTER TABLE ONLY cpk_activity_runs
+    ADD CONSTRAINT cpk_activity_runs_run_id_request_id_key UNIQUE (run_id, request_id);
+
 ALTER TABLE ONLY cpk_effect_attempts
     ADD CONSTRAINT cpk_effect_attempts_pkey PRIMARY KEY (run_id, activity_id, attempt);
 
@@ -687,6 +735,21 @@ ALTER TABLE ONLY cpk_effect_attempts
 
 ALTER TABLE ONLY cpk_effect_attempts
     ADD CONSTRAINT cpk_effect_attempts_latest_event_key UNIQUE (latest_event_id, latest_event_run_id, latest_event_ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_pkey PRIMARY KEY (run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_direct_event_key UNIQUE (direct_event_id, direct_event_run_id, direct_event_ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_membership_key UNIQUE (run_id, activity_id, attempt, workspace_id, observation_count);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
+    ADD CONSTRAINT cpk_effect_attempt_outcome_observations_pkey PRIMARY KEY (run_id, activity_id, attempt, position);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
+    ADD CONSTRAINT cpk_effect_attempt_outcome_observations_observation_key UNIQUE (observation_id) DEFERRABLE INITIALLY IMMEDIATE;
 
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_pkey PRIMARY KEY (decision_id);
@@ -720,6 +783,9 @@ ALTER TABLE ONLY cpk_execution_requests
 
 ALTER TABLE ONLY cpk_execution_requests
     ADD CONSTRAINT cpk_execution_requests_workspace_id_idempotency_key_key UNIQUE (workspace_id, idempotency_key);
+
+ALTER TABLE ONLY cpk_execution_requests
+    ADD CONSTRAINT cpk_execution_requests_request_id_workspace_id_key UNIQUE (request_id, workspace_id);
 
 ALTER TABLE ONLY cpk_gateway_key_rotation_deployments
     ADD CONSTRAINT cpk_gateway_key_rotation_deployments_pkey PRIMARY KEY (rotation_id, phase);
@@ -768,6 +834,9 @@ ALTER TABLE ONLY cpk_ingress_authorities
 
 ALTER TABLE ONLY cpk_observations
     ADD CONSTRAINT cpk_observations_pkey PRIMARY KEY (observation_id);
+
+ALTER TABLE ONLY cpk_observations
+    ADD CONSTRAINT cpk_observations_observation_id_workspace_id_key UNIQUE (observation_id, workspace_id);
 
 ALTER TABLE ONLY cpk_operation_actions
     ADD CONSTRAINT cpk_operation_actions_pkey PRIMARY KEY (action_id);
@@ -938,6 +1007,27 @@ ALTER TABLE ONLY cpk_effect_attempts
 
 ALTER TABLE ONLY cpk_effect_attempts
     ADD CONSTRAINT cpk_effect_attempts_latest_event_fk FOREIGN KEY (latest_event_id, latest_event_run_id, latest_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_attempt_fk FOREIGN KEY (run_id, activity_id, attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_run_request_fk FOREIGN KEY (run_id, request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_request_workspace_fk FOREIGN KEY (request_id, workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_original_event_fk FOREIGN KEY (original_event_id, original_event_run_id, original_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_direct_event_fk FOREIGN KEY (direct_event_id, direct_event_run_id, direct_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
+    ADD CONSTRAINT cpk_effect_attempt_outcome_observations_outcome_fk FOREIGN KEY (run_id, activity_id, attempt, workspace_id, observation_count) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt, workspace_id, observation_count) DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
+    ADD CONSTRAINT cpk_effect_attempt_outcome_observations_observation_fk FOREIGN KEY (observation_id, workspace_id) REFERENCES cpk_observations(observation_id, workspace_id);
 
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_request_id_fkey FOREIGN KEY (request_id) REFERENCES cpk_approval_requests(request_id);

@@ -340,6 +340,29 @@ class PostgresEffectAttemptSchemaTests(
             "run_id": ("text", True),
             "status": ("text", True),
         }
+        physical_columns = (
+            "run_id",
+            "activity_id",
+            "attempt",
+            "request_fingerprint",
+            "fence_worker_id",
+            "fence_generation",
+            "status",
+            "outcome_fingerprint",
+            "prior_run_id",
+            "prior_activity_id",
+            "prior_attempt",
+            "recovery_decision_id",
+            "recovery_resolution",
+            "recovery_uncertain_fingerprint",
+            "recovery_evidence_fingerprint",
+            "original_event_id",
+            "original_event_run_id",
+            "original_event_ordinal",
+            "latest_event_id",
+            "latest_event_run_id",
+            "latest_event_ordinal",
+        )
         self.assertEqual(
             {
                 name: (column.formatted_type, column.not_null)
@@ -347,7 +370,7 @@ class PostgresEffectAttemptSchemaTests(
             },
             expected_columns,
         )
-        self.assertEqual(tuple(columns), tuple(sorted(expected_columns)))
+        self.assertEqual(tuple(columns), physical_columns)
         self.assertTrue(
             all(
                 column.identity == ""

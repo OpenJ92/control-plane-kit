@@ -240,8 +240,12 @@ def validate_current_rows(connection: _Connection) -> None:
         from control_plane_kit_operations.postgres.effect_attempt_store import (
             _validate_current_rows as validate_effect_attempt_rows,
         )
+        from control_plane_kit_operations.postgres.effect_outcome_store import (
+            _validate_current_rows as validate_effect_outcome_rows,
+        )
 
         validate_effect_attempt_rows(connection)
+        validate_effect_outcome_rows(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()
