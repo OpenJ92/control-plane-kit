@@ -85,9 +85,15 @@ if docker run --rm \
   -v "$REPO_ROOT/docs/architecture/package-module-inventory.json:/package-module-inventory.json:ro" \
   -v "$REPO_ROOT/docs/READ_INTERFACES.md:/read-interfaces.md:ro" \
   -v "$ARCHITECTURE_TESTING_ROOT:/architecture-testing:ro" \
+  -v "$REPO_ROOT/.github/workflows/tests.yml:/cpk-test-evidence/tests-workflow.yml:ro" \
+  -v "$REPO_ROOT/docs/TESTING.md:/cpk-test-evidence/TESTING.md:ro" \
   --network "$NETWORK_NAME" \
   -e PYTHONDONTWRITEBYTECODE=1 \
   -e PYTHONPATH=/architecture-testing/src \
+  -e CPK_TEST_WORKFLOW_PATH=/cpk-test-evidence/tests-workflow.yml \
+  -e CPK_TESTING_DOCUMENT_PATH=/cpk-test-evidence/TESTING.md \
+  -e CPK_CORE_SOURCE_ROOT=/core \
+  -e CPK_OPERATIONS_SOURCE_ROOT=/source \
   -e CPK_PACKAGE_MODULE_INVENTORY=/package-module-inventory.json \
   -e CPK_READ_INTERFACES_DOCUMENT=/read-interfaces.md \
   -e CPK_OPERATIONS_TEST_DATABASE_URL=postgresql://cpk:cpk@"$POSTGRES_CONTAINER":5432/cpk \
