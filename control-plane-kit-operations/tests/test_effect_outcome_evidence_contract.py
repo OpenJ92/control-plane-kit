@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import fields, replace
-import ast
 import inspect
 import json
 import os
@@ -10,6 +9,7 @@ import unittest
 
 import rfc8785
 
+import control_plane_kit_architecture_testing as architecture_testing
 import control_plane_kit_operations as operations_root
 from control_plane_kit_core import (
     EffectResultKind,
@@ -51,150 +51,186 @@ ROOT_EXPORTS = {
     "effect_outcome_observation_records",
 }
 
-EXACT_MODULE_IMPORTS = {
-    "__future__",
-    "dataclasses",
-    "enum",
-    "control_plane_kit_core.operations",
-    "control_plane_kit_core.runtime_effect_observation",
-    "control_plane_kit_core.runtime_effects",
-    "control_plane_kit_operations.effect_attempts",
-    "control_plane_kit_operations.records",
-}
-_BUILTIN_EFFECT_CALLS = {
-    "builtins.__import__",
-    "builtins.breakpoint",
-    "builtins.compile",
-    "builtins.eval",
-    "builtins.exec",
-    "builtins.input",
-    "builtins.open",
-}
-_EFFECTFUL_CALL_ROOTS = {
-    "datetime",
-    "docker",
-    "http",
-    "io",
-    "os",
-    "pathlib",
-    "random",
-    "requests",
-    "secrets",
-    "shutil",
-    "socket",
-    "subprocess",
-    "tempfile",
-    "time",
-    "urllib",
-    "uuid",
-}
-_EFFECTFUL_CALL_LEAVES = {
-    "connect",
-    "execute",
-    "from_env",
-    "id_factory",
-    "mkdtemp",
-    "mkstemp",
-    "now",
-    "open",
-    "read_bytes",
-    "read_text",
-    "request",
-    "run",
-    "socket",
-    "time",
-    "token_bytes",
-    "token_hex",
-    "token_urlsafe",
-    "utcnow",
-    "uuid1",
-    "uuid4",
-    "write_bytes",
-    "write_text",
-}
-
-
-def _normalized_import_module(node: ast.ImportFrom) -> str:
-    if node.level == 0:
-        return node.module or ""
-    if node.level == 1:
-        suffix = f".{node.module}" if node.module else ""
-        return f"control_plane_kit_operations{suffix}"
-    return f"relative-level-{node.level}:{node.module or ''}"
-
-
-def _import_contract(
-    tree: ast.AST,
-) -> tuple[set[str], dict[str, str], tuple[str, ...]]:
-    modules: set[str] = set()
-    bindings: dict[str, str] = {}
-    wildcard_imports: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                modules.add(alias.name)
-                bindings[alias.asname or alias.name.split(".", 1)[0]] = alias.name
-        elif isinstance(node, ast.ImportFrom):
-            module = _normalized_import_module(node)
-            modules.add(module)
-            for alias in node.names:
-                if alias.name == "*":
-                    wildcard_imports.append(module)
-                    continue
-                bindings[alias.asname or alias.name] = f"{module}.{alias.name}"
-    return modules, bindings, tuple(wildcard_imports)
-
-
-def _resolved_path(node: ast.AST, bindings: dict[str, str]) -> str | None:
-    if isinstance(node, ast.Name):
-        if node.id in bindings:
-            return bindings[node.id]
-        builtin = f"builtins.{node.id}"
-        return builtin if builtin in _BUILTIN_EFFECT_CALLS else node.id
-    if isinstance(node, ast.Attribute):
-        owner = _resolved_path(node.value, bindings)
-        return f"{owner}.{node.attr}" if owner is not None else None
-    return None
-
-
-def _effectful_call_paths(tree: ast.AST) -> set[str]:
-    _, bindings, _ = _import_contract(tree)
-    assignments = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.Assign, ast.AnnAssign))
-    ]
-    for _ in range(len(assignments) + 1):
-        changed = False
-        for node in assignments:
-            value = node.value
-            path = _resolved_path(value, bindings) if value is not None else None
-            targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
-            if path is None:
-                continue
-            for target in targets:
-                if isinstance(target, ast.Name) and bindings.get(target.id) != path:
-                    bindings[target.id] = path
-                    changed = True
-        if not changed:
-            break
-
-    effectful: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        path = _resolved_path(node.func, bindings)
-        if path is None:
-            continue
-        root = path.split(".", 1)[0]
-        leaf = path.rsplit(".", 1)[-1]
-        if (
-            path in _BUILTIN_EFFECT_CALLS
-            or root in _EFFECTFUL_CALL_ROOTS
-            or leaf in _EFFECTFUL_CALL_LEAVES
-        ):
-            effectful.add(path)
-    return effectful
+OUTCOME_SOURCE_PATH = "control_plane_kit_operations/effect_outcome_evidence.py"
+EXACT_IMPORT_SURFACE = (
+    architecture_testing.ImportSurfaceEntry("__future__", "annotations", None),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations",
+        "EffectAttemptIdentity",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations",
+        "EffectAttemptStatus",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations",
+        "EffectAttemptTransition",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations",
+        "EffectAttemptTransitionKind",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations",
+        "EffectResultKind",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations",
+        "FailureCategory",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObservationResult",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObservedAbsent",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObservedConflict",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObservedFailed",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObservedIndeterminate",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObservedSucceeded",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectObserverUnsupported",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "runtime_effect_observation_fingerprint",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "runtime_effect_result_fingerprint",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effects",
+        "RuntimeEffectContractError",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effects",
+        "RuntimeEffectResult",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.effect_attempts",
+        "EffectAttemptRecord",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records",
+        "BoundedEvidence",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records",
+        "FailureEvidence",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records",
+        "ObservationFreshness",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records",
+        "ObservationRecord",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records",
+        "ObservationStatus",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records",
+        "OperationsRecordError",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records",
+        "ProbeKind",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records",
+        "ProbeOutcome",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry("dataclasses", "dataclass", None),
+    architecture_testing.ImportSurfaceEntry("dataclasses", "field", None),
+    architecture_testing.ImportSurfaceEntry("enum", "StrEnum", None),
+)
+EXACT_CALL_SURFACE = (
+    architecture_testing.ResolvedCallTarget("any"),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.operations.EffectAttemptTransition"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.runtime_effect_observation."
+        "runtime_effect_observation_fingerprint"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.runtime_effect_observation."
+        "runtime_effect_result_fingerprint"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.BoundedEvidence.from_mapping"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.FailureEvidence"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.ObservationRecord"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.OperationsRecordError"
+    ),
+    architecture_testing.ResolvedCallTarget("dataclasses.dataclass"),
+    architecture_testing.ResolvedCallTarget("dataclasses.dataclass"),
+    architecture_testing.ResolvedCallTarget("dataclasses.dataclass"),
+    architecture_testing.ResolvedCallTarget("dataclasses.field"),
+    architecture_testing.ResolvedCallTarget("dataclasses.field"),
+    architecture_testing.ResolvedCallTarget("dataclasses.field"),
+    architecture_testing.ResolvedCallTarget("dataclasses.field"),
+    architecture_testing.ResolvedCallTarget("dataclasses.field"),
+    architecture_testing.ResolvedCallTarget("endpoint.descriptor"),
+    architecture_testing.ResolvedCallTarget("enumerate"),
+    architecture_testing.ResolvedCallTarget("len"),
+    architecture_testing.ResolvedCallTarget("ord"),
+    architecture_testing.ResolvedCallTarget("set"),
+    architecture_testing.ResolvedCallTarget("tuple"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("value.encode"),
+    architecture_testing.ResolvedCallTarget("zip"),
+)
 
 
 def inventory_path() -> Path:
@@ -292,34 +328,47 @@ class EffectOutcomeEvidencePredecessorTest(
             ),
             4_097,
         )
-        alias_tree = ast.parse(
-            """
-import builtins as runtime_builtins
-from secrets import token_hex as mint_token
-import tempfile as scratch
-from io import open as io_open
-import shutil as file_tree
-
-open_alias = runtime_builtins.open
-token_alias = mint_token
-
-def forbidden_aliases():
-    open_alias("candidate")
-    token_alias()
-    scratch.NamedTemporaryFile()
-    io_open("candidate")
-    file_tree.copy("source", "destination")
-"""
+        policy_path = "tests/shared_architecture_policy_canary.py"
+        policy_module = "shared_architecture_policy_canary"
+        facts = architecture_testing.analyze_source(
+            "from sample.tools import inspect as inspect_value\n"
+            "inspect_value()\n",
+            path=policy_path,
+            module=policy_module,
         )
         self.assertEqual(
-            _effectful_call_paths(alias_tree),
-            {
-                "builtins.open",
-                "io.open",
-                "secrets.token_hex",
-                "shutil.copy",
-                "tempfile.NamedTemporaryFile",
-            },
+            architecture_testing.evaluate_policies(
+                (facts,),
+                (
+                    architecture_testing.ExactImportSurfacePolicy(
+                        architecture_testing.PolicyId("cpk.canary.imports"),
+                        architecture_testing.RuleId("exact"),
+                        policy_path,
+                        policy_module,
+                        (
+                            architecture_testing.ImportSurfaceEntry(
+                                "sample.tools",
+                                "inspect",
+                                "inspect_value",
+                            ),
+                        ),
+                        "shared import surface differs",
+                    ),
+                    architecture_testing.ExactCallSurfacePolicy(
+                        architecture_testing.PolicyId("cpk.canary.calls"),
+                        architecture_testing.RuleId("exact"),
+                        policy_path,
+                        policy_module,
+                        (
+                            architecture_testing.ResolvedCallTarget(
+                                "sample.tools.inspect"
+                            ),
+                        ),
+                        "shared call surface differs",
+                    ),
+                ),
+            ),
+            (),
         )
 
 
@@ -824,15 +873,41 @@ class EffectOutcomeEvidenceContractTest(
             canary,
         )
 
-    def test_module_is_effect_free_and_inventory_owned(self) -> None:
+    def test_module_has_closed_import_and_lexical_call_surface(self) -> None:
         self.require_outcome_language()
         module = __import__(MODULE_NAME, fromlist=("__file__",))
         source_path = Path(inspect.getsourcefile(module))
-        tree = ast.parse(source_path.read_text())
-        imported, _, wildcard_imports = _import_contract(tree)
-        self.assertEqual(imported, EXACT_MODULE_IMPORTS)
-        self.assertEqual(wildcard_imports, ())
-        self.assertEqual(_effectful_call_paths(tree), set())
+        facts = architecture_testing.analyze_source(
+            source_path.read_text(),
+            path=OUTCOME_SOURCE_PATH,
+            module=MODULE_NAME,
+        )
+        findings = architecture_testing.evaluate_policies(
+            (facts,),
+            (
+                architecture_testing.ExactImportSurfacePolicy(
+                    architecture_testing.PolicyId(
+                        "cpk.operations.effect-outcome.imports"
+                    ),
+                    architecture_testing.RuleId("exact"),
+                    OUTCOME_SOURCE_PATH,
+                    MODULE_NAME,
+                    EXACT_IMPORT_SURFACE,
+                    "effect outcome import surface differs",
+                ),
+                architecture_testing.ExactCallSurfacePolicy(
+                    architecture_testing.PolicyId(
+                        "cpk.operations.effect-outcome.calls"
+                    ),
+                    architecture_testing.RuleId("exact"),
+                    OUTCOME_SOURCE_PATH,
+                    MODULE_NAME,
+                    EXACT_CALL_SURFACE,
+                    "effect outcome lexical call surface differs",
+                ),
+            ),
+        )
+        self.assertEqual(findings, ())
 
         inventory = json.loads(inventory_path().read_text())
         row = next(
