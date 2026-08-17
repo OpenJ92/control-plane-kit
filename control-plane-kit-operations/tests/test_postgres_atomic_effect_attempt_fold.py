@@ -581,7 +581,7 @@ class PostgresAtomicEffectAttemptFoldTests(
         command = self.fold_command(story)
         before = self.attempt_snapshot()
         original_request = PostgresExecutionStore.get_request_for_update
-        locked_workspaces = []
+        locked_requests = []
         observations = []
         outcomes = []
         error = RuntimeError("workspace-insert-stop")
@@ -595,19 +595,26 @@ class PostgresAtomicEffectAttemptFoldTests(
                     workspace_id="workspace-locked-canary",
                 ),
             )
-            locked_workspaces.append(locked.identity.workspace_id)
+            locked_requests.append(locked)
             return locked
 
+        def locked_workspace():
+            self.assertEqual(len(locked_requests), 2)
+            self.assertEqual(locked_requests[0], locked_requests[1])
+            self.assertEqual(
+                locked_requests[0].identity.workspace_id,
+                "workspace-locked-canary",
+            )
+            return locked_requests[0].identity.workspace_id
+
         def put(store, record):
-            self.assertEqual(locked_workspaces, ["workspace-locked-canary"])
-            self.assertEqual(record.workspace_id, locked_workspaces[0])
+            self.assertEqual(record.workspace_id, locked_workspace())
             observations.append(record)
             self.assertIs(type(record), ObservationRecord)
             return record
 
         def insert(store, record):
-            self.assertEqual(locked_workspaces, ["workspace-locked-canary"])
-            self.assertEqual(record.workspace_id, locked_workspaces[0])
+            self.assertEqual(record.workspace_id, locked_workspace())
             self.assertEqual(tuple(observations), record.endpoint_observations)
             outcomes.append(record)
             raise error
