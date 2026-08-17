@@ -232,6 +232,8 @@ EXACT_IMPORT_SURFACE = (
     architecture_testing.ImportSurfaceEntry("enum", "StrEnum", None),
 )
 EXACT_CALL_SURFACE = (
+    architecture_testing.ResolvedCallTarget("_validated_attempt"),
+    architecture_testing.ResolvedCallTarget("_validated_attempt"),
     architecture_testing.ResolvedCallTarget("any"),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.operations.EffectAttemptTransition"
