@@ -39,6 +39,7 @@ from control_plane_kit_operations.effect_outcome_evidence import (
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     BoundedEvidence,
+    ObservationRecord,
     OperationsRecordError,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
@@ -98,8 +99,7 @@ class EffectAttemptFoldService:
                         replay_error = _INVALID_TRUTH_ERROR
                     else:
                         if (
-                            outcome_record.__class__
-                            is not EffectAttemptOutcomeRecord
+                            type(outcome_record) is not EffectAttemptOutcomeRecord
                             or outcome_record.workspace_id
                             != request.identity.workspace_id
                             or outcome_record.outcome != command.outcome
@@ -125,24 +125,39 @@ class EffectAttemptFoldService:
                 workspace_id=request.identity.workspace_id,
             )
             event = result.attempt.latest_transition_event
-            changed = stores.execution.add_event(event) != event
+            event_acknowledgement = stores.execution.add_event(event)
+            changed = (
+                type(event_acknowledgement) is not ActivityEventRecord
+                or event_acknowledgement != event
+            )
             if not changed and result.outcome_record is not None:
                 for endpoint_observation in result.outcome_record.endpoint_observations:
+                    observation_acknowledgement = stores.observed_state.put(
+                        endpoint_observation
+                    )
                     if (
-                        stores.observed_state.put(endpoint_observation)
-                        != endpoint_observation
+                        type(observation_acknowledgement) is not ObservationRecord
+                        or observation_acknowledgement != endpoint_observation
                     ):
                         changed = True
                         break
                 if not changed:
+                    outcome_acknowledgement = stores.effect_outcomes.insert(
+                        result.outcome_record
+                    )
                     changed = (
-                        stores.effect_outcomes.insert(result.outcome_record)
-                        != result.outcome_record
+                        type(outcome_acknowledgement)
+                        is not EffectAttemptOutcomeRecord
+                        or outcome_acknowledgement != result.outcome_record
                     )
             if not changed:
+                attempt_acknowledgement = stores.effect_attempts.compare_and_set(
+                    attempt,
+                    result.attempt,
+                )
                 changed = (
-                    stores.effect_attempts.compare_and_set(attempt, result.attempt)
-                    != result.attempt
+                    type(attempt_acknowledgement) is not EffectAttemptRecord
+                    or attempt_acknowledgement != result.attempt
                 )
             if changed:
                 raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
@@ -167,9 +182,12 @@ class EffectAttemptFoldService:
         invalid = False
         seen = {}
         for identifier in identifiers:
-            if identifier in seen:
+            if type(identifier) is not str:
                 invalid = True
-            seen[identifier] = None
+            elif identifier in seen:
+                invalid = True
+            else:
+                seen[identifier] = None
 
         result = None
         if not invalid:
