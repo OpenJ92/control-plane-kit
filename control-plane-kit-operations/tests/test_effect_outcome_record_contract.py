@@ -406,9 +406,17 @@ class EffectOutcomeRecordContractTest(
                 EffectAttemptRecord,
                 state=base.state,
                 original_start_event=base.original_start_event,
-                latest_transition_event=replace(
-                    base.latest_transition_event,
+                latest_transition_event=forge_exact(
+                    ActivityEventRecord,
                     event_id="event-invalid-\x00canary",
+                    run_id=base.latest_transition_event.run_id,
+                    ordinal=base.latest_transition_event.ordinal,
+                    kind=base.latest_transition_event.kind,
+                    occurred_at=base.latest_transition_event.occurred_at,
+                    activity_id=base.latest_transition_event.activity_id,
+                    evidence=base.latest_transition_event.evidence,
+                    failure=base.latest_transition_event.failure,
+                    recovery=base.latest_transition_event.recovery,
                 ),
             ),
         )

@@ -857,11 +857,11 @@ class EffectOutcomeEvidenceContractTest(
         story = self.stories()[0]
         canary = "private-outcome-candidate"
         forged = object.__new__(RuntimeEffectResult)
-        object.__setattr__(forged, "effect_id", canary)
-        object.__setattr__(forged, "kind", EffectResultKind.SUCCEEDED)
-        object.__setattr__(forged, "evidence", {})
-        object.__setattr__(forged, "failure", None)
-        object.__setattr__(forged, "observations", ())
+        object.__setattr__(forged, "effect_id", story.value.effect_id)
+        object.__setattr__(forged, "kind", canary)
+        object.__setattr__(forged, "evidence", story.value.evidence)
+        object.__setattr__(forged, "failure", story.value.failure)
+        object.__setattr__(forged, "observations", story.value.observations)
 
         self.assert_fixed_error(
             lambda: ExecutionEffectOutcome(
