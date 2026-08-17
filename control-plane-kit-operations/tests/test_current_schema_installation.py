@@ -110,10 +110,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "84e794142366fa6214016f1ee5106f14ff0c6a774ddad5e9063595542e7be08d"
+    "8cf5dd1390fcbc87fe30b3469b70bbae1516c5c81afb9c86ad58c156b628bf97"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "1afd5b64f7cc12c3dddc5633853cea109527fcfec953399a190a160b8222319b"
+    "da8f0fe5ab70c0d508ecead551c504d62f50af788590e57d93d7077c9cf4c3fa"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1

@@ -441,6 +441,29 @@ class PostgresEffectOutcomeStoreTests(
                 connection.rollback()
                 connection.close()
 
+        with self.subTest(boundary="outcome-preimage-current-verifier"):
+            connection = psycopg.connect(self.database_url)
+            try:
+                connection.execute(
+                    f"ALTER TABLE {OUTCOME} DROP CONSTRAINT "
+                    "cpk_effect_attempt_outcomes_preimage_check"
+                )
+                connection.execute(
+                    f"UPDATE {OUTCOME} SET preimage=%s",
+                    (b"x" * 8_193,),
+                )
+                traced = _TransportConnection(connection)
+                with self.assertRaises(OperationsRecordError) as caught:
+                    store_module._validate_current_rows(traced)
+                self.assertEqual(
+                    str(caught.exception),
+                    "effect attempt outcome row is invalid",
+                )
+                self.assertEqual(traced.oversized, [])
+            finally:
+                connection.rollback()
+                connection.close()
+
         self.connection.execute(
             "UPDATE cpk_observations SET evidence=%s::jsonb "
             "WHERE observation_id=%s",
