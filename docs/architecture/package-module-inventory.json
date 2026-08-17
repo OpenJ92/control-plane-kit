@@ -9520,6 +9520,61 @@
     },
     {
       "canonical_public_exports": [
+        "EffectAttemptOutcomeStore"
+      ],
+      "dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.observed_state",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.records"
+      ],
+      "destination": "control_plane_kit_operations.postgres.effect_outcome_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.observed_state",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.effect_outcome_store",
+      "motivation": "Owns exact immutable PostgreSQL persistence and bounded restart reconstruction for direct effect-attempt outcome evidence.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_effect_outcome_store_contract.py",
+        "tests/test_postgres_effect_outcome_store.py",
+        "tests/test_postgres_effect_outcome_schema.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_outcome_store.py"
+    },
+    {
+      "canonical_public_exports": [
         "ActivityRunRetryResult",
         "RetryFailedActivityRun"
       ],
