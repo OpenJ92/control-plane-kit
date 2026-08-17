@@ -108,6 +108,7 @@ class EffectAttemptFoldLanguageTests(
                 command.authority,
                 command.fence,
                 command.failure,
+                command.outcome,
             ),
         )
 
