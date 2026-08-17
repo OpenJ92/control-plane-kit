@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 import unittest
-from unittest.mock import patch
 
 import psycopg
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
@@ -322,17 +321,21 @@ class PostgresEffectOutcomeStoreTests(
             RuntimeError("codec-runtime-canary"),
         ):
             with self.subTest(error=type(error).__name__):
-                with patch.object(
-                    store_module,
-                    "_decode_preimage",
-                    side_effect=error,
-                ):
+                original = store_module._decode_preimage
+
+                def raise_fault(*_args, error=error, **_kwargs):
+                    raise error
+
+                store_module._decode_preimage = raise_fault
+                try:
                     with self.unit_of_work() as fresh:
                         with self.assertRaises(type(error)) as raw:
                             fresh.stores.effect_outcomes.get(
                                 record.attempt.state.identity,
                                 record.attempt.latest_transition_event.event_id,
                             )
+                finally:
+                    store_module._decode_preimage = original
                 self.assertIs(raw.exception, error)
 
     def test_observation_identity_is_relation_wide_unique(self) -> None:
