@@ -21,6 +21,12 @@ from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.effect_attempt_store import (
     EffectAttemptStore,
 )
+from control_plane_kit_operations.postgres.effect_outcome_store import (
+    EffectAttemptOutcomeStore,
+)
+from control_plane_kit_operations.postgres.observed_state import (
+    PostgresObservedStateStore,
+)
 from tests.execution_lease_recovery_fixture import Sequence
 from tests.postgres_effect_attempt_fold_fixture import (
     FOLD_STORIES,
@@ -64,7 +70,10 @@ class PostgresEffectAttemptFoldFirstReplayTests(
                         result = service.execute(self.fold_command(story))
 
                     self.assertIsInstance(result, NewlyFolded)
-                    self.assertEqual(ids.calls, [f"fold-{int(compensation)}-{story}"])
+                    self.assertEqual(
+                        ids.calls,
+                        list(self.fold_ids(f"fold-{int(compensation)}-{story}")),
+                    )
                     attempt = result.attempt
                     self.assertEqual(attempt.state, expected_state)
                     self.assertEqual(
@@ -103,8 +112,19 @@ class PostgresEffectAttemptFoldFirstReplayTests(
                     )
                     self.assertEqual(self.current_attempt(), attempt)
                     self.assertEqual(self.persisted_event_count(), before_events + 1)
+                    if story in {"succeeded", "failed", "unsupported", "uncertain"}:
+                        self.assertEqual(
+                            result.outcome_record,
+                            self.expected_outcome_record(
+                                attempt,
+                                self.fold_command(story).outcome,
+                                event_id=f"fold-{int(compensation)}-{story}",
+                            ),
+                        )
+                    else:
+                        self.assertIsNone(result.outcome_record)
 
-    def test_non_successful_folds_do_not_advance_graph_projection_or_observation(
+    def test_non_successful_folds_do_not_advance_request_run_graph_or_projection(
         self,
     ) -> None:
         for compensation in (False, True):
@@ -138,7 +158,10 @@ class PostgresEffectAttemptFoldFirstReplayTests(
                         self.fold_command(story)
                     )
 
-                self.assertEqual(replay, ExistingFold(first.attempt))
+                self.assertEqual(
+                    replay,
+                    ExistingFold(first.attempt, first.outcome_record),
+                )
                 self.assertEqual(ids.calls, [])
                 self.assertEqual(self.attempt_snapshot(), before)
 
@@ -150,7 +173,7 @@ class PostgresEffectAttemptFoldFirstReplayTests(
         before = self.attempt_snapshot()
         cases = (
             self.fold_command("succeeded"),
-            self.fold_command("failed", failure=self.failure("changed-canary")),
+            self.fold_command("unsupported"),
         )
         for command in cases:
             with self.subTest(kind=command.transition.kind.value):
@@ -166,13 +189,9 @@ class PostgresEffectAttemptFoldFirstReplayTests(
     def test_same_status_replay_binds_outcome_and_every_recovery_coordinate(
         self,
     ) -> None:
-        direct = self.fold_transition("succeeded")
-        direct_drift = EffectAttemptTransition(
-            EffectAttemptTransitionKind.SUCCEEDED,
-            direct.identity,
-            outcome_fingerprint="e" * 64,
-        )
-        cases = (("direct-outcome-canary", "succeeded", direct_drift),)
+        direct_story = self.outcome_story("execution-succeeded", compensation=False)
+        alternate_story = self.outcome_story("observed-succeeded", compensation=False)
+        cases = (("direct-outcome-canary", direct_story, alternate_story),)
 
         recovery = self.fold_transition("recovered-succeeded")
         decision = recovery.recovery_decision
@@ -221,7 +240,7 @@ class PostgresEffectAttemptFoldFirstReplayTests(
             for label, changed_decision in recovery_drifts
         )
 
-        for label, story, changed_transition in cases:
+        for label, story, changed in cases:
             with self.subTest(case=label):
                 self.seed_fold_source(story)
                 first = self.fold_service(f"first-{label}").execute(
@@ -235,7 +254,9 @@ class PostgresEffectAttemptFoldFirstReplayTests(
                 ):
                     with self.assertRaises(EffectAttemptFoldConflict) as caught:
                         self.fold_service_with_id_factory(ids).execute(
-                            self.fold_command(story, transition=changed_transition)
+                            self.fold_command(changed)
+                            if type(story) is not str
+                            else self.fold_command(story, transition=changed)
                         )
                 self.assert_safe_error(caught.exception, label, "e" * 64, "f" * 64)
                 self.assertEqual(str(caught.exception), REPLAY_ERROR)
@@ -252,6 +273,8 @@ class PostgresEffectAttemptFoldFirstReplayTests(
         original_observe = PostgresExecutionStore.observe_request_lease_for_update
         original_ordinal = PostgresExecutionStore.next_event_ordinal
         original_event = PostgresExecutionStore.add_event
+        original_observation = PostgresObservedStateStore.put
+        original_outcome = EffectAttemptOutcomeStore.insert
         original_cas = EffectAttemptStore.compare_and_set
 
         def request(store, request_id):
@@ -276,13 +299,23 @@ class PostgresEffectAttemptFoldFirstReplayTests(
             calls.append("ordinal")
             return original_ordinal(store, run_id)
 
+        identity_values = iter(self.fold_ids("ordered-fold"))
+
         def identity():
             calls.append("identity")
-            return "ordered-fold"
+            return next(identity_values)
 
         def event(store, value):
             calls.append("event")
             return original_event(store, value)
+
+        def observation(store, value):
+            calls.append("observation")
+            return original_observation(store, value)
+
+        def outcome(store, value):
+            calls.append("outcome")
+            return original_outcome(store, value)
 
         def cas(store, current, replacement):
             calls.append("cas")
@@ -294,6 +327,8 @@ class PostgresEffectAttemptFoldFirstReplayTests(
             mock.patch.object(PostgresExecutionStore, "observe_request_lease_for_update", observe), \
             mock.patch.object(PostgresExecutionStore, "next_event_ordinal", ordinal), \
             mock.patch.object(PostgresExecutionStore, "add_event", event), \
+            mock.patch.object(PostgresObservedStateStore, "put", observation), \
+            mock.patch.object(EffectAttemptOutcomeStore, "insert", outcome), \
             mock.patch.object(EffectAttemptStore, "compare_and_set", cas):
             result = self.fold_service_with_id_factory(identity).execute(
                 self.fold_command("succeeded")
@@ -310,7 +345,12 @@ class PostgresEffectAttemptFoldFirstReplayTests(
                 "clock",
                 "ordinal",
                 "identity",
+                "identity",
+                "identity",
                 "event",
+                "observation",
+                "observation",
+                "outcome",
                 "cas",
             ],
         )
