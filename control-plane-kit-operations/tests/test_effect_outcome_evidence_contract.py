@@ -18,7 +18,10 @@ from control_plane_kit_core import (
     runtime_effect_observation_fingerprint,
     runtime_effect_result_fingerprint,
 )
-from control_plane_kit_core.probe_intents import RuntimeEndpointObservation
+from control_plane_kit_core.probe_intents import (
+    RuntimeEndpointObservation,
+    SecretEndpointMaterial,
+)
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
     EffectAttemptTransition,
@@ -87,6 +90,11 @@ EXACT_IMPORT_SURFACE = (
     architecture_testing.ImportSurfaceEntry(
         "control_plane_kit_core.operations",
         "RunId",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.probe_intents",
+        "EndpointContext",
         None,
     ),
     architecture_testing.ImportSurfaceEntry(
@@ -229,12 +237,18 @@ EXACT_CALL_SURFACE = (
         "control_plane_kit_core.operations.EffectAttemptTransition"
     ),
     architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.probe_intents.RuntimeEndpointObservation"
+    ),
+    architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.runtime_effect_observation."
         "runtime_effect_observation_fingerprint"
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.runtime_effect_observation."
         "runtime_effect_result_fingerprint"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.types.Protocol"
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.effect_attempts.EffectAttemptRecord"
@@ -994,6 +1008,23 @@ class EffectOutcomeEvidenceContractTest(
 
         endpoint_dispatches = []
         endpoint = observed_story.value.observations[0]
+        secret_material = SecretEndpointMaterial("secret://runtime/endpoint-a")
+        secret_endpoint = RuntimeEndpointObservation(
+            subject_id=endpoint.subject_id,
+            socket_name=endpoint.socket_name,
+            graph_id=endpoint.graph_id,
+            protocol=endpoint.protocol,
+            context=endpoint.context,
+            address=secret_material,
+        )
+        secret_outcome = ObservedEffectOutcome(
+            observed_story.attempt.state.identity,
+            replace(observed_story.value, observations=(secret_endpoint,)),
+        )
+        self.assertIs(
+            secret_outcome.endpoint_observations[0].address,
+            secret_material,
+        )
 
         class UnrelatedEndpoint:
             subject_id = endpoint.subject_id
@@ -1050,6 +1081,38 @@ class EffectOutcomeEvidenceContractTest(
             observations=(material_endpoint,),
         )
 
+        context_dispatches = []
+
+        class UnrelatedEndpointContext:
+            @property
+            def value(self):
+                context_dispatches.append("endpoint-context.value")
+                raise RuntimeError("private-context-canary")
+
+            def descriptor(self):
+                context_dispatches.append("endpoint-context.descriptor")
+                raise RuntimeError("private-context-canary")
+
+        UnrelatedEndpointContext.__module__ = "control_plane_kit_core.probe_intents"
+        UnrelatedEndpointContext.__qualname__ = "EndpointContext"
+        context_endpoint = forge_exact(
+            RuntimeEndpointObservation,
+            subject_id=endpoint.subject_id,
+            socket_name=endpoint.socket_name,
+            graph_id=endpoint.graph_id,
+            protocol=endpoint.protocol,
+            context=UnrelatedEndpointContext(),
+            address=endpoint.address,
+        )
+        spoofed_context_observation = forge_exact(
+            type(observed_story.value),
+            effect_id=observed_story.value.effect_id,
+            request_fingerprint=observed_story.value.request_fingerprint,
+            evidence=observed_story.value.evidence,
+            failure=observed_story.value.failure,
+            observations=(context_endpoint,),
+        )
+
         protocol_dispatches = []
 
         class UnrelatedProtocol:
@@ -1085,6 +1148,68 @@ class EffectOutcomeEvidenceContractTest(
             evidence=observed_story.value.evidence,
             failure=observed_story.value.failure,
             observations=(protocol_endpoint,),
+        )
+
+        transport_dispatches = []
+
+        class HostileTransport:
+            @property
+            def value(self):
+                transport_dispatches.append("protocol.transport.value")
+                raise RuntimeError("private-transport-canary")
+
+        forged_transport_protocol = forge_exact(
+            type(endpoint.protocol),
+            transport=HostileTransport(),
+            application=endpoint.protocol.application,
+        )
+        transport_endpoint = forge_exact(
+            RuntimeEndpointObservation,
+            subject_id=endpoint.subject_id,
+            socket_name=endpoint.socket_name,
+            graph_id=endpoint.graph_id,
+            protocol=forged_transport_protocol,
+            context=endpoint.context,
+            address=endpoint.address,
+        )
+        spoofed_transport_observation = forge_exact(
+            type(observed_story.value),
+            effect_id=observed_story.value.effect_id,
+            request_fingerprint=observed_story.value.request_fingerprint,
+            evidence=observed_story.value.evidence,
+            failure=observed_story.value.failure,
+            observations=(transport_endpoint,),
+        )
+
+        application_dispatches = []
+
+        class HostileApplication:
+            @property
+            def value(self):
+                application_dispatches.append("protocol.application.value")
+                raise RuntimeError("private-application-canary")
+
+        forged_application_protocol = forge_exact(
+            type(endpoint.protocol),
+            transport=endpoint.protocol.transport,
+            application=HostileApplication(),
+        )
+        application_endpoint = forge_exact(
+            RuntimeEndpointObservation,
+            subject_id=endpoint.subject_id,
+            socket_name=endpoint.socket_name,
+            graph_id=endpoint.graph_id,
+            protocol=forged_application_protocol,
+            context=endpoint.context,
+            address=endpoint.address,
+        )
+        spoofed_application_observation = forge_exact(
+            type(observed_story.value),
+            effect_id=observed_story.value.effect_id,
+            request_fingerprint=observed_story.value.request_fingerprint,
+            evidence=observed_story.value.evidence,
+            failure=observed_story.value.failure,
+            observations=(application_endpoint,),
         )
 
         cases = (
@@ -1135,6 +1260,15 @@ class EffectOutcomeEvidenceContractTest(
                 "private-material-canary",
             ),
             (
+                "context",
+                context_dispatches,
+                lambda: ObservedEffectOutcome(
+                    observed_story.attempt.state.identity,
+                    spoofed_context_observation,
+                ),
+                "private-context-canary",
+            ),
+            (
                 "protocol",
                 protocol_dispatches,
                 lambda: ObservedEffectOutcome(
@@ -1142,6 +1276,24 @@ class EffectOutcomeEvidenceContractTest(
                     spoofed_protocol_observation,
                 ),
                 "private-protocol-canary",
+            ),
+            (
+                "protocol-transport",
+                transport_dispatches,
+                lambda: ObservedEffectOutcome(
+                    observed_story.attempt.state.identity,
+                    spoofed_transport_observation,
+                ),
+                "private-transport-canary",
+            ),
+            (
+                "protocol-application",
+                application_dispatches,
+                lambda: ObservedEffectOutcome(
+                    observed_story.attempt.state.identity,
+                    spoofed_application_observation,
+                ),
+                "private-application-canary",
             ),
         )
         for name, dispatches, constructor, canary in cases:
