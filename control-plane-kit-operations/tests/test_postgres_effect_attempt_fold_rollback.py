@@ -87,6 +87,8 @@ class PostgresEffectAttemptFoldRollbackTests(
         self.seed_fold_source("succeeded")
         before = self.attempt_snapshot()
         error = RuntimeError("raw-commit-failure-canary")
+        event_id = "commit-event-id"
+        ids = Sequence(*self.fold_ids(event_id))
 
         def failing_uow():
             return PostgresUnitOfWork(
@@ -100,10 +102,11 @@ class PostgresEffectAttemptFoldRollbackTests(
             self.checked_fold_service(
                 EffectAttemptFoldService(
                     failing_uow,
-                    id_factory=Sequence("commit-event-id"),
+                    id_factory=ids,
                 )
             ).execute(self.fold_command("succeeded"))
         self.assertIs(caught.exception, error)
+        self.assertEqual(ids.calls, list(self.fold_ids(event_id)))
         self.assertEqual(self.attempt_snapshot(), before)
 
     def test_lost_cas_rolls_back_candidate_event(self) -> None:
@@ -123,7 +126,8 @@ class PostgresEffectAttemptFoldRollbackTests(
             with self.subTest(target=target):
                 self.seed_fold_source("succeeded")
                 before = self.attempt_snapshot()
-                ids = Sequence(f"changed-{target}-return-event")
+                event_id = f"changed-{target}-return-event"
+                ids = Sequence(*self.fold_ids(event_id))
                 original_event = PostgresExecutionStore.add_event
                 original_observation = PostgresObservedStateStore.put
                 original_outcome = EffectAttemptOutcomeStore.insert
@@ -182,7 +186,7 @@ class PostgresEffectAttemptFoldRollbackTests(
                 self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
                 self.assertEqual(
                     ids.calls,
-                    list(self.fold_ids(f"changed-{target}-return-event")),
+                    list(self.fold_ids(event_id)),
                 )
                 self.assertEqual(self.attempt_snapshot(), before)
 

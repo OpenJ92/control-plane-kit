@@ -404,6 +404,7 @@ class EffectAttemptFoldInterpreterContractTests(
                 "control_plane_kit_core.policies",
                 "control_plane_kit_operations.effect_attempt_fold",
                 "control_plane_kit_operations.effect_attempts",
+                "control_plane_kit_operations.effect_outcome_evidence",
                 "control_plane_kit_operations.records",
                 "control_plane_kit_operations.workflows",
             },
@@ -428,6 +429,10 @@ class EffectAttemptFoldInterpreterContractTests(
         )
         self.assertIn(
             "tests/test_effect_attempt_fold_interpreter_contract.py",
+            interpreter["protecting_tests"],
+        )
+        self.assertIn(
+            "tests/test_atomic_effect_attempt_fold_contract.py",
             interpreter["protecting_tests"],
         )
 

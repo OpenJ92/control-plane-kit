@@ -124,21 +124,69 @@ class PostgresEffectAttemptFoldFirstReplayTests(
                     else:
                         self.assertIsNone(result.outcome_record)
 
-    def test_non_successful_folds_do_not_advance_request_run_graph_or_projection(
+    def test_direct_and_recovery_folds_do_not_advance_program_or_graph_truth(
         self,
     ) -> None:
-        for compensation in (False, True):
-            for story in ("failed", "unsupported", "uncertain", "abandoned"):
-                with self.subTest(compensation=compensation, story=story):
-                    self.seed_fold_source(story, compensation=compensation)
-                    before = self.non_advancement_snapshot()
+        direct_worlds = tuple(self.stories())
+        self.assertEqual(len(direct_worlds), 20)
+        recovery_worlds = tuple(
+            (story, compensation)
+            for compensation in (False, True)
+            for story in ("recovered-succeeded", "recovered-failed", "abandoned")
+        )
+        worlds = direct_worlds + recovery_worlds
 
-                    result = self.fold_service(
-                        f"non-advancing-{int(compensation)}-{story}"
-                    ).execute(self.fold_command(story))
+        for world in worlds:
+            if type(world) is tuple:
+                story, compensation = world
+                label = story
+            else:
+                story = world
+                compensation = world.compensation
+                label = world.name
+            with self.subTest(compensation=compensation, story=label):
+                self.seed_fold_source(story, compensation=compensation)
+                before = self.non_advancement_snapshot()
 
-                    self.assertIsInstance(result, NewlyFolded)
-                    self.assertEqual(self.non_advancement_snapshot(), before)
+                result = self.fold_service(
+                    f"non-advancing-{int(compensation)}-{label}"
+                ).execute(self.fold_command(story))
+
+                self.assertIsInstance(result, NewlyFolded)
+                self.assertEqual(self.non_advancement_snapshot(), before)
+
+    def test_outcome_evidence_relations_are_intentionally_outside_nonadvancement(
+        self,
+    ) -> None:
+        story = self.outcome_story("execution-succeeded", compensation=False)
+        self.seed_fold_source(story)
+        before = self.non_advancement_snapshot()
+
+        result = self.fold_service("evidence-is-not-program-truth").execute(
+            self.fold_command(story)
+        )
+
+        self.assertEqual(self.non_advancement_snapshot(), before)
+        self.assertIsNotNone(result.outcome_record)
+        self.assertEqual(len(result.outcome_record.endpoint_observations), 2)
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_effect_attempt_outcomes"
+            ).fetchone(),
+            (1,),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_effect_attempt_outcome_observations"
+            ).fetchone(),
+            (2,),
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_observations"
+            ).fetchone(),
+            (2,),
+        )
 
     def test_exact_restart_replay_is_clock_id_and_write_free(self) -> None:
         for story in FOLD_STORIES:

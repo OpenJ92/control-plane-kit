@@ -369,6 +369,14 @@ class PostgresEffectAttemptFoldFixture(
         return (
             tuple(
                 self.connection.execute(
+                    "SELECT plan_id, session_id, base_graph_id, desired_graph_id, "
+                    "base_realized_projection_id, desired_realized_projection_id, "
+                    "desired_graph_revision, status, created_at, payload "
+                    "FROM cpk_activity_plans ORDER BY plan_id"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
                     "SELECT request_id, workspace_id, plan_id, status, "
                     "claim_worker_id, claim_generation FROM cpk_execution_requests "
                     "ORDER BY request_id"

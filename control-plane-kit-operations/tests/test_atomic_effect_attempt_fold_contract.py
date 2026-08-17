@@ -124,6 +124,16 @@ EXACT_INTERPRETER_IMPORTS = tuple(
             None,
         ),
         (
+            "control_plane_kit_operations.effect_outcome_evidence",
+            "EffectAttemptOutcomeRecord",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_outcome_evidence",
+            "effect_outcome_observation_records",
+            None,
+        ),
+        (
             "control_plane_kit_operations.records",
             "ActivityEventRecord",
             None,
@@ -173,6 +183,8 @@ EXACT_INTERPRETER_CALLS = (
             "control_plane_kit_operations.effect_attempts.EffectAttemptEventEvidence",
             "control_plane_kit_operations.effect_attempts.EffectAttemptRecord",
             "control_plane_kit_operations.effect_attempts.effect_attempt_state_fingerprint",
+            "control_plane_kit_operations.effect_outcome_evidence.EffectAttemptOutcomeRecord",
+            "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_observation_records",
             "control_plane_kit_operations.records.ActivityEventRecord",
             "control_plane_kit_operations.records.BoundedEvidence.from_mapping",
             *("control_plane_kit_operations.workflows.InvalidOperationCommand",) * 2,
@@ -182,11 +194,14 @@ EXACT_INTERPRETER_CALLS = (
             "self._unit_of_work_factory",
             "stores.effect_attempts.compare_and_set",
             "stores.effect_attempts.get_for_update",
+            "stores.effect_outcomes.get",
+            "stores.effect_outcomes.insert",
             "stores.execution.add_event",
             "stores.execution.get_request_for_update",
             "stores.execution.get_run_for_request_for_update",
             "stores.execution.next_event_ordinal",
             "stores.execution.observe_request_lease_for_update",
+            "stores.observed_state.put",
             "type",
             "type",
             "unit_of_work.commit",
@@ -630,6 +645,22 @@ class AtomicEffectAttemptFoldContractTests(
         self.assertIn(
             "tests/test_atomic_effect_attempt_fold_contract.py",
             entries[FOLD_MODULE]["protecting_tests"],
+        )
+        self.assertEqual(
+            set(entries[INTERPRETER_MODULE]["internal_dependencies"]),
+            {
+                "control_plane_kit_core.operations",
+                "control_plane_kit_core.policies",
+                "control_plane_kit_operations.effect_attempt_fold",
+                "control_plane_kit_operations.effect_attempts",
+                "control_plane_kit_operations.effect_outcome_evidence",
+                "control_plane_kit_operations.records",
+                "control_plane_kit_operations.workflows",
+            },
+        )
+        self.assertIn(
+            "tests/test_atomic_effect_attempt_fold_contract.py",
+            entries[INTERPRETER_MODULE]["protecting_tests"],
         )
 
 

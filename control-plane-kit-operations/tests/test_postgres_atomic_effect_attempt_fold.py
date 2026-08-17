@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import replace
 import unittest
 from unittest import mock
 
@@ -580,29 +579,41 @@ class PostgresAtomicEffectAttemptFoldTests(
         self.seed_fold_source(story)
         command = self.fold_command(story)
         original_request = PostgresExecutionStore.get_request_for_update
-        original_insert = EffectAttemptOutcomeStore.insert
-        captured = []
+        original_put = PostgresObservedStateStore.put
+        locked_workspaces = []
+        observations = []
+        outcomes = []
         error = RuntimeError("workspace-insert-stop")
 
         def request(store, request_id):
             value = original_request(store, request_id)
-            return replace(
-                value,
-                identity=replace(
-                    value.identity,
-                    workspace_id="workspace-locked-canary",
-                ),
-            )
+            locked_workspaces.append(value.identity.workspace_id)
+            return value
+
+        def put(store, record):
+            self.assertEqual(locked_workspaces, ["workspace-a"])
+            self.assertEqual(record.workspace_id, locked_workspaces[0])
+            observations.append(record)
+            persisted = original_put(store, record)
+            self.assertIs(type(persisted), ObservationRecord)
+            self.assertEqual(persisted, record)
+            return persisted
 
         def insert(store, record):
-            captured.append(record)
-            self.assertEqual(record.workspace_id, "workspace-locked-canary")
+            self.assertEqual(locked_workspaces, ["workspace-a"])
+            self.assertEqual(record.workspace_id, locked_workspaces[0])
+            self.assertEqual(tuple(observations), record.endpoint_observations)
+            outcomes.append(record)
             raise error
 
         with mock.patch.object(
             PostgresExecutionStore,
             "get_request_for_update",
             request,
+        ), mock.patch.object(
+            PostgresObservedStateStore,
+            "put",
+            put,
         ), mock.patch.object(
             EffectAttemptOutcomeStore,
             "insert",
@@ -611,7 +622,8 @@ class PostgresAtomicEffectAttemptFoldTests(
             with self.assertRaises(RuntimeError) as caught:
                 self.fold_service("workspace-derived").execute(command)
         self.assertIs(caught.exception, error)
-        self.assertEqual(len(captured), 1)
+        self.assertEqual(len(observations), 2)
+        self.assertEqual(len(outcomes), 1)
         self.assertEqual(
             self.connection.execute(
                 "SELECT count(*) FROM cpk_effect_attempt_outcomes"
