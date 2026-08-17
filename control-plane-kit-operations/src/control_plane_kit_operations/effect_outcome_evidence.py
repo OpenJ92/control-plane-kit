@@ -12,8 +12,17 @@ from control_plane_kit_core.operations import (
     EffectAttemptTransitionKind,
     EffectResultKind,
     FailureCategory,
+    RunId,
+)
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    LiteralEndpointMaterial,
+    RuntimeEndpointObservation,
+    SecretEndpointMaterial,
 )
 from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectObservationEvidence,
+    RuntimeEffectObservationFailure,
     RuntimeEffectObservationResult,
     RuntimeEffectObservedAbsent,
     RuntimeEffectObservedConflict,
@@ -28,6 +37,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectContractError,
     RuntimeEffectResult,
 )
+from control_plane_kit_core.types import Protocol
 
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.records import (
@@ -148,6 +158,26 @@ _OBSERVATION_ROWS = {
 }
 
 
+def _validated_attempt(
+    value: object,
+    error: _OutcomeError,
+) -> EffectAttemptRecord:
+    if value.__class__ is not EffectAttemptRecord:
+        error.raised
+    validated = None
+    try:
+        validated = EffectAttemptRecord(
+            value.state,
+            value.original_start_event,
+            value.latest_transition_event,
+        )
+    except OperationsRecordError:
+        pass
+    if validated is None:
+        error.raised
+    return validated
+
+
 class _EffectOutcomeValue:
     @property
     def profile(self) -> EffectOutcomeProfile:
@@ -236,11 +266,10 @@ class _EffectOutcomeValue:
         if self.identity.__class__ is not EffectAttemptIdentity:
             return False
         identity = self.identity
-        run_class = identity.run_id.__class__
         if (
-            run_class.__module__ != "control_plane_kit_core.operations.run_identity"
-            or run_class.__qualname__ != "RunId"
-            or run_class.__mro__[1:] != (object,)
+            identity.run_id.__class__ is not RunId
+            or identity.run_id.value.__class__ is not str
+            or identity.activity_id.__class__ is not str
             or identity.attempt.__class__ is not int
             or not 1 <= identity.attempt <= 2_147_483_647
         ):
@@ -249,12 +278,19 @@ class _EffectOutcomeValue:
         if self.__class__ is ExecutionEffectOutcome:
             if (
                 self.result.__class__ is not RuntimeEffectResult
+                or self.result.kind.__class__ is not EffectResultKind
                 or self.result.kind not in _EXECUTION_ROWS
                 or self.request_fingerprint.__class__ is not str
             ):
                 return False
-        elif self.observation.__class__ not in _OBSERVATION_ROWS:
-            return False
+        else:
+            if (
+                self.observation.__class__ not in _OBSERVATION_ROWS
+                or self.observation.evidence.__class__
+                is not RuntimeEffectObservationEvidence
+                or self.observation.observations.__class__ is not tuple
+            ):
+                return False
 
         texts = [
             (identity.run_id.value, 200, "identity"),
@@ -263,29 +299,14 @@ class _EffectOutcomeValue:
             (self.request_fingerprint, 64, "fingerprint"),
         ]
         if self.__class__ is ObservedEffectOutcome:
-            evidence = self.observation.evidence
-            if (
-                evidence.__class__.__module__
-                != "control_plane_kit_core.runtime_effect_observation"
-                or evidence.__class__.__qualname__
-                != "RuntimeEffectObservationEvidence"
-            ):
-                return False
             failure = self.observation.failure
             if failure is not None:
-                if (
-                    failure.__class__.__module__
-                    != "control_plane_kit_core.runtime_effect_observation"
-                    or failure.__class__.__qualname__
-                    != "RuntimeEffectObservationFailure"
-                ):
+                if failure.__class__ is not RuntimeEffectObservationFailure:
                     return False
                 texts += [(failure.code, 512, "text"), (failure.message, 512, "text")]
                 if failure.details is not None and (
-                    failure.details.__class__.__module__
-                    != "control_plane_kit_core.runtime_effect_observation"
-                    or failure.details.__class__.__qualname__
-                    != "RuntimeEffectObservationEvidence"
+                    failure.details.__class__
+                    is not RuntimeEffectObservationEvidence
                 ):
                     return False
             requires_failure = self.observation.__class__ in (
@@ -303,24 +324,16 @@ class _EffectOutcomeValue:
                 return False
 
         for endpoint in self.endpoint_observations:
-            endpoint_class = endpoint.__class__
             if (
-                endpoint_class.__module__ != "control_plane_kit_core.probe_intents"
-                or endpoint_class.__qualname__ != "RuntimeEndpointObservation"
-                or endpoint_class.__mro__[1:] != (object,)
-                or endpoint.protocol.__class__.__module__
-                != "control_plane_kit_core.types"
-                or endpoint.protocol.__class__.__qualname__ != "Protocol"
-                or endpoint.context.__class__.__module__
-                != "control_plane_kit_core.probe_intents"
-                or endpoint.context.__class__.__qualname__ != "EndpointContext"
+                endpoint.__class__ is not RuntimeEndpointObservation
+                or endpoint.protocol.__class__ is not Protocol
+                or endpoint.context.__class__ is not EndpointContext
             ):
                 return False
             address_class = endpoint.address.__class__
-            if (
-                address_class.__module__ != "control_plane_kit_core.probe_intents"
-                or address_class.__qualname__
-                not in ("LiteralEndpointMaterial", "SecretEndpointMaterial")
+            if address_class not in (
+                LiteralEndpointMaterial,
+                SecretEndpointMaterial,
             ):
                 return False
             texts += [
@@ -329,7 +342,7 @@ class _EffectOutcomeValue:
                 (endpoint.graph_id, 512, "text"),
                 (
                     endpoint.address.value
-                    if address_class.__qualname__ == "LiteralEndpointMaterial"
+                    if address_class is LiteralEndpointMaterial
                     else endpoint.address.reference_id,
                     512,
                     "text",
@@ -370,6 +383,26 @@ class _EffectOutcomeValue:
                         or character in "._:-"
                     ):
                         return False
+
+        for endpoint in self.endpoint_observations:
+            admitted = True
+            try:
+                protocol = Protocol(
+                    endpoint.protocol.transport,
+                    endpoint.protocol.application,
+                )
+                RuntimeEndpointObservation(
+                    endpoint.subject_id,
+                    endpoint.socket_name,
+                    endpoint.graph_id,
+                    protocol,
+                    endpoint.context,
+                    endpoint.address,
+                )
+            except (TypeError, ValueError):
+                admitted = False
+            if not admitted:
+                return False
 
         accepted = True
         try:
@@ -435,61 +468,34 @@ class EffectAttemptOutcomeRecord:
             and self.outcome.__class__
             in (ExecutionEffectOutcome, ObservedEffectOutcome)
             and self.outcome._admitted
-            and self.attempt.__class__ is EffectAttemptRecord
             and self.endpoint_observations.__class__ is tuple
         )
         for character in self.workspace_id if valid else ():
             if character < " " or "\ud800" <= character <= "\udfff":
                 valid = False
 
+        attempt = None
         if valid:
-            state = self.attempt.state
-            original = self.attempt.original_start_event
-            latest = self.attempt.latest_transition_event
-            state_class = state.__class__
-            run_class = state.identity.run_id.__class__
-            original_class = original.__class__
-            latest_class = latest.__class__
+            attempt = _validated_attempt(self.attempt, _OutcomeError.RECORD)
+            state = attempt.state
+            original = attempt.original_start_event
+            latest = attempt.latest_transition_event
             valid = (
-                state_class.__module__
-                == "control_plane_kit_core.operations.recovery"
-                and state_class.__qualname__ == "EffectAttemptState"
-                and state.identity.__class__ is EffectAttemptIdentity
-                and state.request_fingerprint.__class__ is str
-                and run_class.__module__
-                == "control_plane_kit_core.operations.run_identity"
-                and run_class.__qualname__ == "RunId"
-                and run_class.__mro__[1:] == (object,)
-                and state.identity.run_id.value.__class__ is str
-                and state.identity.activity_id.__class__ is str
-                and state.identity.attempt.__class__ is int
-                and state.identity == self.outcome.identity
+                state.identity == self.outcome.identity
                 and state.request_fingerprint == self.outcome.request_fingerprint
                 and state.status is self.outcome.status
                 and state.outcome_fingerprint == self.outcome.outcome_fingerprint
                 and state.recovery_decision is None
-                and original_class.__module__
-                == "control_plane_kit_operations.records"
-                and original_class.__qualname__ == "ActivityEventRecord"
-                and latest_class.__module__
-                == "control_plane_kit_operations.records"
-                and latest_class.__qualname__ == "ActivityEventRecord"
                 and original.event_id == self.outcome.effect_id
                 and original.event_id != latest.event_id
                 and original.run_id == state.identity.run_id.value
                 and latest.run_id == state.identity.run_id.value
                 and original.activity_id == state.identity.activity_id
                 and latest.activity_id == state.identity.activity_id
-                and original.ordinal.__class__ is int
-                and latest.ordinal.__class__ is int
                 and 1 <= original.ordinal < latest.ordinal <= 2_147_483_647
                 and original.failure is None
                 and original.recovery is None
                 and latest.recovery is None
-                and original.evidence.__class__ is BoundedEvidence
-                and latest.evidence.__class__ is BoundedEvidence
-                and original.evidence.canonical_json.__class__ is str
-                and latest.evidence.canonical_json.__class__ is str
             )
 
         if valid:
@@ -665,17 +671,28 @@ def effect_outcome_observation_records(
     valid = (
         outcome.__class__ in (ExecutionEffectOutcome, ObservedEffectOutcome)
         and outcome._admitted
-        and attempt.__class__ is EffectAttemptRecord
-        and attempt.state.identity == outcome.identity
-        and attempt.state.request_fingerprint == outcome.request_fingerprint
-        and attempt.state.status is outcome.status
-        and attempt.state.outcome_fingerprint == outcome.outcome_fingerprint
-        and attempt.state.recovery_decision is None
         and workspace_id.__class__ is str
         and workspace_id
         and not workspace_id[512:]
         and observation_ids.__class__ is tuple
     )
+    validated_attempt = None
+    if valid:
+        validated_attempt = _validated_attempt(
+            attempt,
+            _OutcomeError.OBSERVATION,
+        )
+        valid = (
+            validated_attempt.state.identity == outcome.identity
+            and validated_attempt.state.request_fingerprint
+            == outcome.request_fingerprint
+            and validated_attempt.state.status is outcome.status
+            and validated_attempt.state.outcome_fingerprint
+            == outcome.outcome_fingerprint
+            and validated_attempt.state.recovery_decision is None
+            and validated_attempt.original_start_event.event_id
+            == outcome.effect_id
+        )
     endpoint_count = 0
     id_count = 0
     for _ in outcome.endpoint_observations if valid else ():
@@ -702,7 +719,7 @@ def effect_outcome_observation_records(
         _OutcomeError.OBSERVATION.raised
 
     evidence = outcome._bounded_evidence
-    occurred_at = attempt.latest_transition_event.occurred_at
+    occurred_at = validated_attempt.latest_transition_event.occurred_at
     return tuple(
         ObservationRecord(
             observation_id=observation_id,

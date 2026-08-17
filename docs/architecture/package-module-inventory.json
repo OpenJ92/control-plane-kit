@@ -9309,8 +9309,10 @@
       "destination": "control_plane_kit_operations.effect_outcome_evidence",
       "internal_dependencies": [
         "control_plane_kit_core.operations",
+        "control_plane_kit_core.probe_intents",
         "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
         "control_plane_kit_operations.effect_attempts",
         "control_plane_kit_operations.records"
       ],
