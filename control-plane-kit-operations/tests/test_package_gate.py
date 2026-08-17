@@ -37,6 +37,16 @@ def _operations_source_root() -> Path:
     return Path(os.environ.get(OPERATIONS_SOURCE_ENV, str(PACKAGE_ROOT)))
 
 
+def _forbidden_evidence_mounts(volumes: tuple[str, ...]) -> tuple[str, ...]:
+    repository_prefix = f"{REPOSITORY_ROOT}:"
+    return tuple(
+        volume
+        for volume in volumes
+        if volume.startswith(repository_prefix)
+        or volume.endswith(":/cpk-test-evidence:ro")
+    )
+
+
 def _workflow_step(job: str, name: str) -> str:
     marker = f"      - name: {name}\n"
     start = job.find(marker)
@@ -186,6 +196,14 @@ class OperationsPackageGateTests(unittest.TestCase):
             if event.startswith("run:")
             for _, phase, arguments in (event.split(":", 2),)
         }
+        volumes = {
+            phase: tuple(
+                event.split(":", 2)[2]
+                for event in events
+                if event.startswith(f"volume:{phase}:")
+            )
+            for phase in run_arguments
+        }
         markers = (
             ":/cpk-test-evidence/tests-workflow.yml:ro",
             ":/cpk-test-evidence/TESTING.md:ro",
@@ -194,28 +212,42 @@ class OperationsPackageGateTests(unittest.TestCase):
             "CPK_CORE_SOURCE_ROOT=/core",
             "CPK_OPERATIONS_SOURCE_ROOT=/source",
         )
+        broad_mount_canary = (
+            f"{REPOSITORY_ROOT}:/repository:ro",
+            "/tmp/evidence:/cpk-test-evidence:ro",
+            f"{PACKAGE_ROOT}:/source:ro",
+            f"{REPOSITORY_ROOT / 'control-plane-kit-core'}:/core:ro",
+            f"{REPOSITORY_ROOT / 'test_support'}:/test-support:ro",
+        )
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            tuple(
-                (
-                    phase,
-                    tuple(marker in run_arguments[phase] for marker in markers),
-                )
-                for phase in (
-                    "integrity",
-                    "postgres",
-                    "unittest",
-                    "compile",
-                    "clean-import",
-                )
+            (
+                tuple(
+                    (
+                        phase,
+                        tuple(marker in run_arguments[phase] for marker in markers),
+                        _forbidden_evidence_mounts(volumes[phase]),
+                    )
+                    for phase in (
+                        "integrity",
+                        "postgres",
+                        "unittest",
+                        "compile",
+                        "clean-import",
+                    )
+                ),
+                _forbidden_evidence_mounts(broad_mount_canary),
             ),
             (
-                ("integrity", (False,) * len(markers)),
-                ("postgres", (False,) * len(markers)),
-                ("unittest", (True,) * len(markers)),
-                ("compile", (False,) * len(markers)),
-                ("clean-import", (False,) * len(markers)),
+                (
+                    ("integrity", (False,) * len(markers), ()),
+                    ("postgres", (False,) * len(markers), ()),
+                    ("unittest", (True,) * len(markers), ()),
+                    ("compile", (False,) * len(markers), ()),
+                    ("clean-import", (False,) * len(markers), ()),
+                ),
+                broad_mount_canary[:2],
             ),
         )
 
@@ -454,6 +486,14 @@ class OperationsPackageGateTests(unittest.TestCase):
                           >>"$FAKE_DOCKER_EVENTS"
                         printf 'run:%s:%s\n' "$phase" "$*" \
                           >>"$FAKE_DOCKER_EVENTS"
+                        previous=""
+                        for argument in "$@"; do
+                          if [ "$previous" = "-v" ]; then
+                            printf 'volume:%s:%s\n' "$phase" "$argument" \
+                              >>"$FAKE_DOCKER_EVENTS"
+                          fi
+                          previous="$argument"
+                        done
                         if [ "$phase" = "postgres" ]; then
                           for argument in "$@"; do
                             printf 'launch:%s\n' "$argument" \
