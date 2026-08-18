@@ -32,9 +32,14 @@ from control_plane_kit_operations.effect_attempts import (
     EffectAttemptRecord,
     effect_attempt_state_fingerprint,
 )
+from control_plane_kit_operations.effect_outcome_evidence import (
+    EffectAttemptOutcomeRecord,
+    effect_outcome_observation_records,
+)
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     BoundedEvidence,
+    ObservationRecord,
     OperationsRecordError,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
@@ -80,8 +85,30 @@ class EffectAttemptFoldService:
             _require_transition_authority(command, fence, attempt)
             next_state = _fold(command, attempt)
             if next_state == attempt.state:
-                _require_exact_replay(command, attempt)
-                result = ExistingFold(attempt)
+                replay_error = None
+                if not _require_exact_replay(command, attempt):
+                    replay_error = _REPLAY_ERROR
+                outcome_record = None
+                if replay_error is None and command.outcome is not None:
+                    try:
+                        outcome_record = stores.effect_outcomes.get(
+                            attempt.state.identity,
+                            attempt.latest_transition_event.event_id,
+                        )
+                    except (KeyError, OperationsRecordError):
+                        replay_error = _INVALID_TRUTH_ERROR
+                    else:
+                        if (
+                            type(outcome_record) is not EffectAttemptOutcomeRecord
+                            or outcome_record.workspace_id
+                            != request.identity.workspace_id
+                            or outcome_record.outcome != command.outcome
+                            or outcome_record.attempt != attempt
+                        ):
+                            replay_error = _INVALID_TRUTH_ERROR
+                if replay_error is not None:
+                    raise EffectAttemptFoldConflict(replay_error)
+                result = ExistingFold(attempt, outcome_record)
                 unit_of_work.commit()
                 return result
 
@@ -95,14 +122,44 @@ class EffectAttemptFoldService:
                 next_state,
                 observed_at=observation.observed_at,
                 event_ordinal=event_ordinal,
+                workspace_id=request.identity.workspace_id,
             )
             event = result.attempt.latest_transition_event
-            if stores.execution.add_event(event) != event:
-                raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
-            if (
-                stores.effect_attempts.compare_and_set(attempt, result.attempt)
-                != result.attempt
-            ):
+            event_acknowledgement = stores.execution.add_event(event)
+            changed = (
+                type(event_acknowledgement) is not ActivityEventRecord
+                or event_acknowledgement != event
+            )
+            if not changed and result.outcome_record is not None:
+                for endpoint_observation in result.outcome_record.endpoint_observations:
+                    observation_acknowledgement = stores.observed_state.put(
+                        endpoint_observation
+                    )
+                    if (
+                        type(observation_acknowledgement) is not ObservationRecord
+                        or observation_acknowledgement != endpoint_observation
+                    ):
+                        changed = True
+                        break
+                if not changed:
+                    outcome_acknowledgement = stores.effect_outcomes.insert(
+                        result.outcome_record
+                    )
+                    changed = (
+                        type(outcome_acknowledgement)
+                        is not EffectAttemptOutcomeRecord
+                        or outcome_acknowledgement != result.outcome_record
+                    )
+            if not changed:
+                attempt_acknowledgement = stores.effect_attempts.compare_and_set(
+                    attempt,
+                    result.attempt,
+                )
+                changed = (
+                    type(attempt_acknowledgement) is not EffectAttemptRecord
+                    or attempt_acknowledgement != result.attempt
+                )
+            if changed:
                 raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
             unit_of_work.commit()
             return result
@@ -115,28 +172,68 @@ class EffectAttemptFoldService:
         *,
         observed_at: str,
         event_ordinal: int,
+        workspace_id: str,
     ) -> NewlyFolded:
         identity = next_state.identity
-        event = ActivityEventRecord(
-            self._id_factory(),
-            identity.run_id.value,
-            event_ordinal,
-            _event_kind(current, next_state),
-            observed_at,
-            activity_id=identity.activity_id,
-            evidence=BoundedEvidence.from_mapping(
-                {
-                    "effect_attempt": EffectAttemptEventEvidence(
-                        identity.attempt,
-                        effect_attempt_state_fingerprint(next_state),
-                    ).descriptor()
-                }
-            ),
-            failure=command.failure,
-        )
-        return NewlyFolded(
-            EffectAttemptRecord(next_state, current.original_start_event, event)
-        )
+        identifiers = ()
+        endpoints = () if command.outcome is None else command.outcome.endpoint_observations
+        for _ in (None, *endpoints):
+            identifiers = (*identifiers, self._id_factory())
+        invalid = False
+        seen = {}
+        for identifier in identifiers:
+            if type(identifier) is not str:
+                invalid = True
+            elif identifier in seen:
+                invalid = True
+            else:
+                seen[identifier] = None
+
+        result = None
+        if not invalid:
+            try:
+                event = ActivityEventRecord(
+                    identifiers[0],
+                    identity.run_id.value,
+                    event_ordinal,
+                    _event_kind(current, next_state),
+                    observed_at,
+                    activity_id=identity.activity_id,
+                    evidence=BoundedEvidence.from_mapping(
+                        {
+                            "effect_attempt": EffectAttemptEventEvidence(
+                                identity.attempt,
+                                effect_attempt_state_fingerprint(next_state),
+                            ).descriptor()
+                        }
+                    ),
+                    failure=command.failure,
+                )
+                attempt = EffectAttemptRecord(
+                    next_state,
+                    current.original_start_event,
+                    event,
+                )
+                outcome_record = None
+                if command.outcome is not None:
+                    endpoint_observations = effect_outcome_observation_records(
+                        command.outcome,
+                        attempt,
+                        workspace_id=workspace_id,
+                        observation_ids=identifiers[1:],
+                    )
+                    outcome_record = EffectAttemptOutcomeRecord(
+                        workspace_id,
+                        command.outcome,
+                        attempt,
+                        endpoint_observations,
+                    )
+                result = NewlyFolded(attempt, outcome_record)
+            except OperationsRecordError:
+                pass
+        if result is None:
+            raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+        return result
 
 
 def _translate_fence(command: FoldEffectAttempt) -> EffectAttemptFence:
@@ -286,9 +383,8 @@ def _fold(
 def _require_exact_replay(
     command: FoldEffectAttempt,
     attempt: EffectAttemptRecord,
-) -> None:
-    if attempt.latest_transition_event.failure != command.failure:
-        raise EffectAttemptFoldConflict(_REPLAY_ERROR)
+) -> bool:
+    return attempt.latest_transition_event.failure == command.failure
 
 
 def _event_kind(

@@ -5,16 +5,17 @@ from dataclasses import replace
 import unittest
 from unittest import mock
 
-from control_plane_kit_core.operations import (
-    EffectAttemptTransition,
-    EffectAttemptTransitionKind,
-)
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
     EffectAttemptFoldNotFound,
     ExistingFold,
     NewlyFolded,
+)
+from control_plane_kit_operations.effect_outcome_evidence import (
+    ExecutionEffectOutcome,
+    effect_outcome_failure,
+    effect_outcome_transition,
 )
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.effect_attempt_store import (
@@ -136,7 +137,7 @@ class PostgresEffectAttemptFoldAuthorityErrorTests(
                 ):
                     if category is None:
                         result = self.fold_service_with_id_factory(ids).execute(command)
-                        self.assertEqual(result, ExistingFold(first.attempt))
+                        self.assertEqual(result, ExistingFold(first.attempt, None))
                     else:
                         with self.assertRaises(category) as caught:
                             self.fold_service_with_id_factory(ids).execute(command)
@@ -161,7 +162,10 @@ class PostgresEffectAttemptFoldAuthorityErrorTests(
                     replay = self.fold_service("must-not-allocate").execute(
                         self.fold_command(story)
                     )
-                self.assertEqual(replay, ExistingFold(first.attempt))
+                self.assertEqual(
+                    replay,
+                    ExistingFold(first.attempt, first.outcome_record),
+                )
                 self.assertEqual(self.attempt_snapshot(), before)
 
     def test_missing_request_run_attempt_and_foreign_activity_are_categorical(self) -> None:
@@ -175,27 +179,39 @@ class PostgresEffectAttemptFoldAuthorityErrorTests(
                         "succeeded", request_id="missing-request-canary"
                     )
                 elif target == "run":
-                    transition = EffectAttemptTransition(
-                        EffectAttemptTransitionKind.SUCCEEDED,
+                    outcome = self.fold_outcome("succeeded")
+                    outcome = ExecutionEffectOutcome(
                         self.identity(
                             run_id="missing-run-canary",
                             activity_id="start-runtime",
                         ),
-                        outcome_fingerprint="b" * 64,
+                        outcome.request_fingerprint,
+                        outcome.result,
                     )
-                    command = self.fold_command("succeeded", transition=transition)
+                    command = self.fold_command(
+                        "succeeded",
+                        outcome=outcome,
+                        transition=effect_outcome_transition(outcome),
+                        failure=effect_outcome_failure(outcome),
+                    )
                 elif target == "attempt":
                     self.connection.execute(
                         "DELETE FROM cpk_effect_attempts WHERE run_id='run-a' "
                         "AND activity_id='start-runtime' AND attempt=1"
                     )
                 else:
-                    transition = EffectAttemptTransition(
-                        EffectAttemptTransitionKind.SUCCEEDED,
+                    outcome = self.fold_outcome("succeeded")
+                    outcome = ExecutionEffectOutcome(
                         self.identity(activity_id="foreign-activity-canary"),
-                        outcome_fingerprint="b" * 64,
+                        outcome.request_fingerprint,
+                        outcome.result,
                     )
-                    command = self.fold_command("succeeded", transition=transition)
+                    command = self.fold_command(
+                        "succeeded",
+                        outcome=outcome,
+                        transition=effect_outcome_transition(outcome),
+                        failure=effect_outcome_failure(outcome),
+                    )
                 before = self.attempt_snapshot()
                 ids = Sequence("missing-must-not-allocate")
                 with self.reject_fold_database_observation(

@@ -20,6 +20,14 @@ from control_plane_kit_operations.effect_attempts import (
     EffectAttemptRecord,
     effect_attempt_state_fingerprint,
 )
+from control_plane_kit_operations.effect_outcome_evidence import (
+    EffectAttemptOutcomeRecord,
+    ExecutionEffectOutcome,
+    ObservedEffectOutcome,
+    effect_outcome_failure,
+    effect_outcome_observation_records,
+    effect_outcome_transition,
+)
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -28,6 +36,11 @@ from control_plane_kit_operations.records import (
     FailureEvidence,
 )
 from tests.effect_attempt_fold_fixture import FAILURE_STORIES
+from tests.effect_outcome_evidence_fixture import (
+    EffectOutcomeEvidenceFixture,
+    REQUEST_FINGERPRINT,
+    WORKSPACE_ID,
+)
 from tests.execution_lease_recovery_fixture import Sequence
 from tests.postgres_effect_attempt_start_fixture import (
     PostgresEffectAttemptStartFixture,
@@ -58,29 +71,65 @@ class _CheckedFoldService:
             return self._service.execute(command)
         except NotImplementedError:
             self._fixture.fail("effect-attempt fold transaction is missing")
+        except TypeError as error:
+            if str(error) in {
+                "NewlyFolded.__init__() missing 1 required positional argument: "
+                "'outcome_record'",
+                "ExistingFold.__init__() missing 1 required positional argument: "
+                "'outcome_record'",
+            }:
+                self._fixture.fail(
+                    "atomic effect-outcome fold transaction is missing"
+                )
+            raise
 
 
-class PostgresEffectAttemptFoldFixture(PostgresEffectAttemptStartFixture):
+class PostgresEffectAttemptFoldFixture(
+    EffectOutcomeEvidenceFixture,
+    PostgresEffectAttemptStartFixture,
+):
     """Lifecycle-coherent PostgreSQL worlds for one effect-attempt fold."""
 
-    def fold_transition(self, story: str):
+    def outcome_story(self, story: str, *, compensation: bool | None = None):
+        if story.startswith(("execution-", "observed-")):
+            name = story
+        else:
+            name = f"execution-{story}"
+        if compensation is None:
+            compensation = getattr(self, "_fold_compensation", False)
+        return next(
+            candidate
+            for candidate in self.stories()
+            if candidate.name == name and candidate.compensation is compensation
+        )
+
+    def fold_outcome(self, story=None):
+        selected = (
+            getattr(self, "_fold_outcome_story", None)
+            if story is None
+            else story
+        )
+        if selected is None:
+            return None
+        if type(selected) is str:
+            selected = self.outcome_story(selected)
+        value = replace(
+            selected.value,
+            effect_id=f"effect-{int(selected.compensation)}-start",
+        )
         identity = self.identity(activity_id="start-runtime")
-        if story in DIRECT_STORIES:
-            kind = {
-                "succeeded": EffectAttemptTransitionKind.SUCCEEDED,
-                "failed": EffectAttemptTransitionKind.FAILED,
-                "unsupported": EffectAttemptTransitionKind.UNSUPPORTED,
-                "uncertain": EffectAttemptTransitionKind.UNCERTAIN,
-            }[story]
-            return EffectAttemptTransition(
-                kind,
+        if selected.profile == "execution-result":
+            return ExecutionEffectOutcome(
                 identity,
-                outcome_fingerprint=(
-                    UNCERTAIN_FINGERPRINT
-                    if story == "uncertain"
-                    else OUTCOME_FINGERPRINT
-                ),
+                REQUEST_FINGERPRINT,
+                value,
             )
+        return ObservedEffectOutcome(identity, value)
+
+    def fold_transition(self, story):
+        identity = self.identity(activity_id="start-runtime")
+        if type(story) is not str or story in DIRECT_STORIES:
+            return effect_outcome_transition(self.fold_outcome(story))
 
         resolution = {
             "recovered-succeeded": EffectRecoveryResolution.SUCCEEDED,
@@ -91,7 +140,7 @@ class PostgresEffectAttemptFoldFixture(PostgresEffectAttemptStartFixture):
             "decision-a",
             identity,
             resolution,
-            UNCERTAIN_FINGERPRINT,
+            self.fold_outcome("uncertain").outcome_fingerprint,
             RECOVERY_FINGERPRINT,
         )
         return EffectAttemptTransition(
@@ -109,18 +158,34 @@ class PostgresEffectAttemptFoldFixture(PostgresEffectAttemptStartFixture):
             f"safe failure {marker}",
         )
 
-    def fold_command(self, story: str = "succeeded", **changes):
+    def fold_command(self, story="succeeded", **changes):
+        direct = type(story) is not str or story in DIRECT_STORIES
+        outcome = self.fold_outcome(story) if direct else None
         values = {
             "request_id": "request-a",
             "transition": self.fold_transition(story),
             "authority": self.authority(),
             "fence": self.fence(),
-            "failure": self.failure(story) if story in FAILURE_STORIES else None,
+            "failure": (
+                effect_outcome_failure(outcome)
+                if outcome is not None
+                else self.failure(story) if story in FAILURE_STORIES else None
+            ),
+            "outcome": outcome,
         }
         values.update(changes)
         return FoldEffectAttempt(**values)
 
     def fold_service_with_sequence(self, *ids: str):
+        if len(ids) == 1:
+            event_id = ids[0]
+            ids = (
+                event_id,
+                *tuple(
+                    f"{event_id}-observation-{position}"
+                    for position in range(1, 65)
+                ),
+            )
         sequence = Sequence(*ids)
         return (
             self.checked_fold_service(
@@ -145,18 +210,63 @@ class PostgresEffectAttemptFoldFixture(PostgresEffectAttemptStartFixture):
 
     def seed_fold_source(
         self,
-        story: str,
+        story,
         *,
         compensation: bool = False,
     ) -> EffectAttemptRecord:
+        direct = type(story) is not str or story in DIRECT_STORIES
+        if type(story) is not str:
+            compensation = story.compensation
+            selected = story
+        elif direct:
+            selected = self.outcome_story(story, compensation=compensation)
+        else:
+            selected = None
+        self._fold_compensation = compensation
+        self._fold_outcome_story = selected
         self.reset_start_truth(compensation=compensation)
         started = self.persisted_started(
             compensation=compensation,
             event_id=f"effect-{int(compensation)}-start",
         )
-        if story not in RECOVERY_STORIES:
+        if direct:
             return started
         return self._persist_uncertain(started, compensation=compensation)
+
+    def fold_ids(self, event_id: str, outcome=None) -> tuple[str, ...]:
+        outcome = self.fold_outcome() if outcome is None else outcome
+        if outcome is None:
+            return (event_id,)
+        return (
+            event_id,
+            *tuple(
+                f"{event_id}-observation-{position}"
+                for position, _ in enumerate(
+                    outcome.endpoint_observations,
+                    start=1,
+                )
+            ),
+        )
+
+    def expected_outcome_record(
+        self,
+        attempt: EffectAttemptRecord,
+        outcome,
+        *,
+        event_id: str,
+    ) -> EffectAttemptOutcomeRecord:
+        observations = effect_outcome_observation_records(
+            outcome,
+            attempt,
+            workspace_id=WORKSPACE_ID,
+            observation_ids=self.fold_ids(event_id, outcome)[1:],
+        )
+        return EffectAttemptOutcomeRecord(
+            WORKSPACE_ID,
+            outcome,
+            attempt,
+            observations,
+        )
 
     def _persist_uncertain(
         self,
@@ -239,10 +349,45 @@ class PostgresEffectAttemptFoldFixture(PostgresEffectAttemptStartFixture):
             self.connection.execute(
                 "SELECT COUNT(*) FROM cpk_observations"
             ).fetchone()[0],
+            tuple(
+                self.connection.execute(
+                    "SELECT run_id, activity_id, attempt, direct_event_id, "
+                    "observation_count FROM cpk_effect_attempt_outcomes "
+                    "ORDER BY run_id, activity_id, attempt"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
+                    "SELECT run_id, activity_id, attempt, position, observation_id "
+                    "FROM cpk_effect_attempt_outcome_observations "
+                    "ORDER BY run_id, activity_id, attempt, position"
+                ).fetchall()
+            ),
         )
 
     def non_advancement_snapshot(self) -> tuple[object, ...]:
         return (
+            tuple(
+                self.connection.execute(
+                    "SELECT plan_id, session_id, base_graph_id, desired_graph_id, "
+                    "base_realized_projection_id, desired_realized_projection_id, "
+                    "desired_graph_revision, status, created_at, payload "
+                    "FROM cpk_activity_plans ORDER BY plan_id"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
+                    "SELECT request_id, workspace_id, plan_id, status, "
+                    "claim_worker_id, claim_generation FROM cpk_execution_requests "
+                    "ORDER BY request_id"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
+                    "SELECT run_id, request_id, plan_id, status, started_at, "
+                    "settled_at FROM cpk_activity_runs ORDER BY run_id"
+                ).fetchall()
+            ),
             tuple(
                 self.connection.execute(
                     "SELECT workspace_id, lifecycle, current_graph_id, "
@@ -264,14 +409,6 @@ class PostgresEffectAttemptFoldFixture(PostgresEffectAttemptStartFixture):
                     "projection_kind, projection_key, projection_digest, "
                     "graph_descriptor, created_by, created_at "
                     "FROM cpk_realized_graph_projections ORDER BY projection_id"
-                ).fetchall()
-            ),
-            tuple(
-                self.connection.execute(
-                    "SELECT observation_id, workspace_id, subject_id, status, "
-                    "observed_at, evidence, freshness, graph_id, probe_kind, "
-                    "probe_outcome, endpoint_context FROM cpk_observations "
-                    "ORDER BY observation_id"
                 ).fetchall()
             ),
         )

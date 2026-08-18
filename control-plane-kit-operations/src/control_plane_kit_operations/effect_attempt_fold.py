@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
@@ -15,6 +15,14 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
+from control_plane_kit_operations.effect_outcome_evidence import (
+    EffectAttemptOutcome,
+    EffectAttemptOutcomeRecord,
+    ExecutionEffectOutcome,
+    ObservedEffectOutcome,
+    effect_outcome_failure,
+    effect_outcome_transition,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import (
@@ -51,6 +59,7 @@ class FoldEffectAttempt:
     authority: ExecutionWorkerAuthority
     fence: ExecutionLeaseFence
     failure: FailureEvidence | None
+    outcome: EffectAttemptOutcome | None = field(repr=False)
 
     def __post_init__(self) -> None:
         if not _valid_fold_command(self):
@@ -62,9 +71,13 @@ class NewlyFolded:
     """One effect attempt newly folded by this invocation."""
 
     attempt: EffectAttemptRecord
+    outcome_record: EffectAttemptOutcomeRecord | None = field(repr=False)
 
     def __post_init__(self) -> None:
-        if type(self) is not NewlyFolded or not _valid_fold_result(self.attempt):
+        if type(self) is not NewlyFolded or not _valid_fold_result(
+            self.attempt,
+            self.outcome_record,
+        ):
             raise OperationsRecordError("effect attempt fold result is invalid")
 
 
@@ -73,9 +86,13 @@ class ExistingFold:
     """One exact committed fold observed without mutation authority."""
 
     attempt: EffectAttemptRecord
+    outcome_record: EffectAttemptOutcomeRecord | None = field(repr=False)
 
     def __post_init__(self) -> None:
-        if type(self) is not ExistingFold or not _valid_fold_result(self.attempt):
+        if type(self) is not ExistingFold or not _valid_fold_result(
+            self.attempt,
+            self.outcome_record,
+        ):
             raise OperationsRecordError("effect attempt fold result is invalid")
 
 
@@ -119,7 +136,38 @@ def _valid_fold_command(command: object) -> bool:
         )
     except (InvalidOperationCommand, ValueError):
         return False
-    return reconstructed_authority == authority and reconstructed_fence == fence
+    if reconstructed_authority != authority or reconstructed_fence != fence:
+        return False
+
+    outcome = _validated_outcome(command.outcome)
+    if transition.recovery_decision is not None:
+        return command.outcome is None
+    if outcome is None:
+        return False
+    try:
+        expected_transition = effect_outcome_transition(outcome)
+        expected_failure = effect_outcome_failure(outcome)
+    except OperationsRecordError:
+        return False
+    return transition == expected_transition and command.failure == expected_failure
+
+
+def _validated_outcome(value: object) -> EffectAttemptOutcome | None:
+    try:
+        if type(value) is ExecutionEffectOutcome:
+            return ExecutionEffectOutcome(
+                value.identity,
+                value.request_fingerprint,
+                value.result,
+            )
+        if type(value) is ObservedEffectOutcome:
+            return ObservedEffectOutcome(
+                value.identity,
+                value.observation,
+            )
+    except (AttributeError, OperationsRecordError):
+        return None
+    return None
 
 
 def _transition_is_exact(transition: object) -> bool:
@@ -250,7 +298,7 @@ def _transition_requires_failure(transition: EffectAttemptTransition) -> bool:
     )
 
 
-def _valid_fold_result(value: object) -> bool:
+def _valid_fold_result(value: object, outcome_record: object) -> bool:
     if type(value) is not EffectAttemptRecord:
         return False
     try:
@@ -261,7 +309,7 @@ def _valid_fold_result(value: object) -> bool:
         )
     except (OperationsRecordError, ValueError):
         return False
-    return (
+    attempt_is_valid = (
         reconstructed == value
         and value.state.status is not EffectAttemptStatus.STARTED
         and (value.latest_transition_event.failure is not None)
@@ -274,6 +322,23 @@ def _valid_fold_result(value: object) -> bool:
             }
         )
     )
+    if not attempt_is_valid:
+        return False
+    if reconstructed.state.recovery_decision is not None:
+        return outcome_record is None
+    if type(outcome_record) is not EffectAttemptOutcomeRecord:
+        return False
+    validated_record = None
+    try:
+        validated_record = EffectAttemptOutcomeRecord(
+            outcome_record.workspace_id,
+            outcome_record.outcome,
+            outcome_record.attempt,
+            outcome_record.endpoint_observations,
+        )
+    except (AttributeError, OperationsRecordError):
+        return False
+    return validated_record.attempt == reconstructed
 
 
 def _bounded_command_text(value: object) -> bool:

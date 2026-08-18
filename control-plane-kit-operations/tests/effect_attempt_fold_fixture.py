@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib
 
 from control_plane_kit_core.operations import (
@@ -16,7 +17,14 @@ from control_plane_kit_operations.records import (
     FailureCategory,
     FailureEvidence,
 )
-from tests.effect_attempt_record_fixture import EffectAttemptRecordFixture
+from tests.effect_outcome_evidence_fixture import (
+    EffectAttemptOutcomeRecord,
+    EffectOutcomeEvidenceFixture,
+    WORKSPACE_ID,
+    effect_outcome_failure,
+    effect_outcome_observation_records,
+    effect_outcome_transition,
+)
 
 
 FOLD_MODULE = "control_plane_kit_operations.effect_attempt_fold"
@@ -79,7 +87,7 @@ EffectAttemptFoldService = getattr(
 )
 
 
-class EffectAttemptFoldFixture(EffectAttemptRecordFixture):
+class EffectAttemptFoldFixture(EffectOutcomeEvidenceFixture):
     maxDiff = None
 
     def require_fold_language(self) -> None:
@@ -105,24 +113,68 @@ class EffectAttemptFoldFixture(EffectAttemptRecordFixture):
             "effect-attempt fold service is missing",
         )
 
+    def require_atomic_command_surface(self) -> None:
+        self.require_fold_language()
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(FoldEffectAttempt)),
+            (
+                "request_id",
+                "transition",
+                "authority",
+                "fence",
+                "failure",
+                "outcome",
+            ),
+            "effect-attempt fold command lacks the direct outcome arm",
+        )
+
+    def require_atomic_result_surface(self) -> None:
+        self.require_fold_language()
+        for variant in (NewlyFolded, ExistingFold):
+            self.assertEqual(
+                tuple(field.name for field in dataclasses.fields(variant)),
+                ("attempt", "outcome_record"),
+                "effect-attempt fold result lacks the durable outcome arm",
+            )
+
+    def outcome_story(self, story: str, *, compensation: bool = False):
+        name = f"execution-{story}"
+        return next(
+            value
+            for value in self.stories()
+            if value.name == name and value.compensation is compensation
+        )
+
+    def direct_outcome(self, story: str, *, compensation: bool = False):
+        return self.outcome_for(
+            self.outcome_story(story, compensation=compensation)
+        )
+
+    def direct_outcome_record(
+        self,
+        story: str,
+        *,
+        compensation: bool = False,
+    ) -> EffectAttemptOutcomeRecord:
+        outcome_story = self.outcome_story(story, compensation=compensation)
+        outcome = self.outcome_for(outcome_story)
+        observations = effect_outcome_observation_records(
+            outcome,
+            outcome_story.attempt,
+            workspace_id=WORKSPACE_ID,
+            observation_ids=self.observation_ids(outcome_story),
+        )
+        return EffectAttemptOutcomeRecord(
+            WORKSPACE_ID,
+            outcome,
+            outcome_story.attempt,
+            observations,
+        )
+
     def transition(self, story: str = "succeeded") -> EffectAttemptTransition:
         identity = self.identity()
         if story in {"succeeded", "failed", "unsupported", "uncertain"}:
-            kind = {
-                "succeeded": EffectAttemptTransitionKind.SUCCEEDED,
-                "failed": EffectAttemptTransitionKind.FAILED,
-                "unsupported": EffectAttemptTransitionKind.UNSUPPORTED,
-                "uncertain": EffectAttemptTransitionKind.UNCERTAIN,
-            }[story]
-            return EffectAttemptTransition(
-                kind,
-                identity,
-                outcome_fingerprint=(
-                    UNCERTAIN_FINGERPRINT
-                    if story == "uncertain"
-                    else OUTCOME_FINGERPRINT
-                ),
-            )
+            return effect_outcome_transition(self.direct_outcome(story))
 
         resolution = {
             "recovered-succeeded": EffectRecoveryResolution.SUCCEEDED,
@@ -166,13 +218,23 @@ class EffectAttemptFoldFixture(EffectAttemptRecordFixture):
         return ExecutionLeaseFence(worker_id, generation)
 
     def command(self, story: str = "succeeded", **changes):
-        self.require_fold_language()
+        self.require_atomic_command_surface()
+        outcome = (
+            self.direct_outcome(story)
+            if story in {"succeeded", "failed", "unsupported", "uncertain"}
+            else None
+        )
         values = {
             "request_id": "request-a",
             "transition": self.transition(story),
             "authority": self.authority(),
             "fence": self.execution_fence(),
-            "failure": self.failure(story) if story in FAILURE_STORIES else None,
+            "failure": (
+                effect_outcome_failure(outcome)
+                if outcome is not None
+                else self.failure(story) if story == "recovered-failed" else None
+            ),
+            "outcome": outcome,
         }
         values.update(changes)
         return FoldEffectAttempt(**values)

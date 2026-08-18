@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import replace
 import unittest
 from unittest import mock
@@ -20,6 +21,12 @@ from control_plane_kit_operations.postgres import (
 )
 from control_plane_kit_operations.postgres.effect_attempt_store import (
     EffectAttemptStore,
+)
+from control_plane_kit_operations.postgres.effect_outcome_store import (
+    EffectAttemptOutcomeStore,
+)
+from control_plane_kit_operations.postgres.observed_state import (
+    PostgresObservedStateStore,
 )
 from tests.execution_lease_recovery_fixture import Sequence
 from tests.postgres_effect_attempt_fold_fixture import (
@@ -49,6 +56,8 @@ class PostgresEffectAttemptFoldRollbackTests(
             ("observation", PostgresExecutionStore, "observe_request_lease_for_update"),
             ("ordinal", PostgresExecutionStore, "next_event_ordinal"),
             ("event", PostgresExecutionStore, "add_event"),
+            ("observation-put", PostgresObservedStateStore, "put"),
+            ("outcome", EffectAttemptOutcomeStore, "insert"),
             ("cas", EffectAttemptStore, "compare_and_set"),
         )
         for label, owner, method in stages:
@@ -78,6 +87,8 @@ class PostgresEffectAttemptFoldRollbackTests(
         self.seed_fold_source("succeeded")
         before = self.attempt_snapshot()
         error = RuntimeError("raw-commit-failure-canary")
+        event_id = "commit-event-id"
+        ids = Sequence(*self.fold_ids(event_id))
 
         def failing_uow():
             return PostgresUnitOfWork(
@@ -91,10 +102,11 @@ class PostgresEffectAttemptFoldRollbackTests(
             self.checked_fold_service(
                 EffectAttemptFoldService(
                     failing_uow,
-                    id_factory=Sequence("commit-event-id"),
+                    id_factory=ids,
                 )
             ).execute(self.fold_command("succeeded"))
         self.assertIs(caught.exception, error)
+        self.assertEqual(ids.calls, list(self.fold_ids(event_id)))
         self.assertEqual(self.attempt_snapshot(), before)
 
     def test_lost_cas_rolls_back_candidate_event(self) -> None:
@@ -109,14 +121,18 @@ class PostgresEffectAttemptFoldRollbackTests(
         self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
         self.assertEqual(self.attempt_snapshot(), before)
 
-    def test_changed_event_and_cas_returns_are_conflicts_and_roll_back(self) -> None:
-        for target in ("event", "cas"):
+    def test_changed_write_returns_are_conflicts_and_roll_back(self) -> None:
+        for target in ("event", "observation-0", "observation-1", "outcome", "cas"):
             with self.subTest(target=target):
                 self.seed_fold_source("succeeded")
                 before = self.attempt_snapshot()
-                ids = Sequence(f"changed-{target}-return-event")
+                event_id = f"changed-{target}-return-event"
+                ids = Sequence(*self.fold_ids(event_id))
                 original_event = PostgresExecutionStore.add_event
+                original_observation = PostgresObservedStateStore.put
+                original_outcome = EffectAttemptOutcomeStore.insert
                 original_cas = EffectAttemptStore.compare_and_set
+                observation_calls = 0
 
                 def changed_event(store, event):
                     original_event(store, event)
@@ -126,9 +142,41 @@ class PostgresEffectAttemptFoldRollbackTests(
                     original_cas(store, current, replacement)
                     return current
 
-                owner = PostgresExecutionStore if target == "event" else EffectAttemptStore
-                method = "add_event" if target == "event" else "compare_and_set"
-                replacement = changed_event if target == "event" else changed_cas
+                def changed_observation(store, record):
+                    nonlocal observation_calls
+                    original_observation(store, record)
+                    position = observation_calls
+                    observation_calls += 1
+                    if target != f"observation-{position}":
+                        return record
+                    return replace(
+                        record,
+                        observation_id="changed-observation-return-canary",
+                    )
+
+                def changed_outcome(store, record):
+                    original_outcome(store, record)
+                    return None
+
+                owner, method, replacement = {
+                    "event": (PostgresExecutionStore, "add_event", changed_event),
+                    "observation-0": (
+                        PostgresObservedStateStore,
+                        "put",
+                        changed_observation,
+                    ),
+                    "observation-1": (
+                        PostgresObservedStateStore,
+                        "put",
+                        changed_observation,
+                    ),
+                    "outcome": (
+                        EffectAttemptOutcomeStore,
+                        "insert",
+                        changed_outcome,
+                    ),
+                    "cas": (EffectAttemptStore, "compare_and_set", changed_cas),
+                }[target]
                 with mock.patch.object(owner, method, replacement):
                     with self.assertRaises(EffectAttemptFoldConflict) as caught:
                         self.fold_service_with_id_factory(ids).execute(
@@ -136,7 +184,48 @@ class PostgresEffectAttemptFoldRollbackTests(
                         )
                 self.assert_safe_error(caught.exception, "return-canary")
                 self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
-                self.assertEqual(ids.calls, [f"changed-{target}-return-event"])
+                self.assertEqual(
+                    ids.calls,
+                    list(self.fold_ids(event_id)),
+                )
+                self.assertEqual(self.attempt_snapshot(), before)
+
+    def test_each_observation_position_and_outcome_insert_roll_back_fully(self) -> None:
+        for target in ("observation-0", "observation-1", "outcome"):
+            with self.subTest(target=target):
+                self.seed_fold_source("succeeded")
+                before = self.attempt_snapshot()
+                original_put = PostgresObservedStateStore.put
+                calls = 0
+                error = RuntimeError(f"raw-{target}-canary")
+
+                def put(store, record):
+                    nonlocal calls
+                    position = calls
+                    calls += 1
+                    if target == f"observation-{position}":
+                        raise error
+                    return original_put(store, record)
+
+                outcome_context = (
+                    mock.patch.object(
+                        EffectAttemptOutcomeStore,
+                        "insert",
+                        side_effect=error,
+                    )
+                    if target == "outcome"
+                    else nullcontext()
+                )
+                with mock.patch.object(
+                    PostgresObservedStateStore,
+                    "put",
+                    put,
+                ), outcome_context:
+                    with self.assertRaises(RuntimeError) as caught:
+                        self.fold_service(f"rollback-{target}").execute(
+                            self.fold_command("succeeded")
+                        )
+                self.assertIs(caught.exception, error)
                 self.assertEqual(self.attempt_snapshot(), before)
 
     def test_exact_replay_never_calls_clock_ordinal_id_event_or_cas(self) -> None:
@@ -170,7 +259,10 @@ class PostgresEffectAttemptFoldRollbackTests(
                 self.fold_command("succeeded")
             )
 
-        self.assertEqual(replay, ExistingFold(first.attempt))
+        self.assertEqual(
+            replay,
+            ExistingFold(first.attempt, first.outcome_record),
+        )
         self.assertEqual(ids.calls, [])
         self.assertEqual(self.attempt_snapshot(), before)
 
@@ -178,6 +270,8 @@ class PostgresEffectAttemptFoldRollbackTests(
         current = self.seed_fold_source("succeeded")
         calls: list[str] = []
         original_event = PostgresExecutionStore.add_event
+        original_observation = PostgresObservedStateStore.put
+        original_outcome = EffectAttemptOutcomeStore.insert
         original_cas = EffectAttemptStore.compare_and_set
 
         def event(store, value):
@@ -204,14 +298,34 @@ class PostgresEffectAttemptFoldRollbackTests(
                 )
             return original_cas(store, observed, replacement)
 
+        def observation(store, value):
+            calls.append("observation")
+            return original_observation(store, value)
+
+        def outcome(store, value):
+            calls.append("outcome")
+            with psycopg.connect(self.database_url) as observer:
+                self.assertEqual(
+                    observer.execute(
+                        "SELECT count(*) FROM cpk_effect_attempt_outcomes"
+                    ).fetchone(),
+                    (0,),
+                )
+            return original_outcome(store, value)
+
         with mock.patch.object(PostgresExecutionStore, "add_event", event), \
+            mock.patch.object(PostgresObservedStateStore, "put", observation), \
+            mock.patch.object(EffectAttemptOutcomeStore, "insert", outcome), \
             mock.patch.object(EffectAttemptStore, "compare_and_set", cas):
             result = self.fold_service("atomic-event").execute(
                 self.fold_command("succeeded")
             )
 
         self.assertIsInstance(result, NewlyFolded)
-        self.assertEqual(calls, ["event", "cas"])
+        self.assertEqual(
+            calls,
+            ["event", "observation", "observation", "outcome", "cas"],
+        )
 
 
 if __name__ == "__main__":

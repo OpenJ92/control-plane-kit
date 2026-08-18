@@ -31,18 +31,22 @@ from tests.postgres_effect_attempt_fold_fixture import (
 
 
 class _BlockingId:
-    def __init__(self, value: str) -> None:
-        self.value = value
+    def __init__(self, *values: str) -> None:
+        self.values = values
         self.entered = threading.Event()
         self.release = threading.Event()
         self.calls = 0
 
     def __call__(self) -> str:
+        if self.calls >= len(self.values):
+            raise AssertionError("effect-fold identity sequence exhausted")
+        value = self.values[self.calls]
         self.calls += 1
-        self.entered.set()
-        if not self.release.wait(timeout=10):
-            raise AssertionError("effect-fold identity blocker timed out")
-        return self.value
+        if self.calls == 1:
+            self.entered.set()
+            if not self.release.wait(timeout=10):
+                raise AssertionError("effect-fold identity blocker timed out")
+        return value
 
 
 class PostgresEffectAttemptFoldConcurrencyTests(
@@ -105,10 +109,11 @@ class PostgresEffectAttemptFoldConcurrencyTests(
         blocker_connection.execute(queries[blocker])
         blocker_pid = blocker_connection.info.backend_pid
         worker_pids: queue.Queue[int] = queue.Queue()
+        identities = iter(self.fold_ids("lock-order-event"))
         service = self.checked_fold_service(
             EffectAttemptFoldService(
                 self._factory_with_pids(worker_pids),
-                id_factory=lambda: "lock-order-event",
+                id_factory=lambda: next(identities),
             )
         )
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -174,7 +179,9 @@ class PostgresEffectAttemptFoldConcurrencyTests(
         for first_label in ("left", "right"):
             with self.subTest(first=first_label):
                 self.seed_fold_source("succeeded")
-                first_id = _BlockingId(f"{first_label}-fold-event")
+                first_id = _BlockingId(
+                    *self.fold_ids(f"{first_label}-fold-event")
+                )
                 second_ids = Sequence("duplicate-must-not-allocate")
                 observations = 0
                 observation_lock = threading.Lock()
@@ -225,8 +232,17 @@ class PostgresEffectAttemptFoldConcurrencyTests(
 
                 self.assertEqual(sum(isinstance(v, NewlyFolded) for v in results), 1)
                 self.assertEqual(sum(isinstance(v, ExistingFold) for v in results), 1)
+                newly = next(value for value in results if isinstance(value, NewlyFolded))
+                existing = next(
+                    value for value in results if isinstance(value, ExistingFold)
+                )
+                self.assertEqual(existing.attempt, newly.attempt)
+                self.assertEqual(existing.outcome_record, newly.outcome_record)
                 self.assertEqual(observations, 1)
-                self.assertEqual(first_id.calls, 1)
+                self.assertEqual(
+                    first_id.calls,
+                    len(self.fold_ids(f"{first_label}-fold-event")),
+                )
                 self.assertEqual(second_ids.calls, [])
 
     def test_incompatible_direct_and_recovery_decisions_have_one_winner(self) -> None:
@@ -239,17 +255,20 @@ class PostgresEffectAttemptFoldConcurrencyTests(
             for first_story, second_story in ((left, right), (right, left)):
                 with self.subTest(first=first_story, second=second_story):
                     self.seed_fold_source(first_story)
-                    first_id = _BlockingId(f"winner-{first_story}")
+                    first_id = _BlockingId(
+                        *self.fold_ids(f"winner-{first_story}")
+                    )
                     pids: queue.Queue[int] = queue.Queue()
                     first = self.checked_fold_service(
                         EffectAttemptFoldService(
                             self._factory_with_pids(pids), id_factory=first_id
                         )
                     )
+                    loser_ids = Sequence("loser-must-not-allocate")
                     second = self.checked_fold_service(
                         EffectAttemptFoldService(
                             self._factory_with_pids(pids),
-                            id_factory=Sequence("loser-must-not-allocate"),
+                            id_factory=loser_ids,
                         )
                     )
                     executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
@@ -272,6 +291,7 @@ class PostgresEffectAttemptFoldConcurrencyTests(
                         first_id.release.set()
                         executor.shutdown(wait=True, cancel_futures=True)
                     self.assertIsInstance(winner, NewlyFolded)
+                    self.assertEqual(loser_ids.calls, [])
                     self.assertEqual(self.current_attempt(), winner.attempt)
 
     def test_direct_fold_and_claim_rotation_force_both_winner_orders(self) -> None:
@@ -281,7 +301,7 @@ class PostgresEffectAttemptFoldConcurrencyTests(
                 self.seed_fold_source("succeeded")
                 pids: queue.Queue[int] = queue.Queue()
                 if winner == "fold":
-                    blocker = _BlockingId("direct-before-rotation")
+                    blocker = _BlockingId(*self.fold_ids("direct-before-rotation"))
                     service = self.checked_fold_service(
                         EffectAttemptFoldService(
                             self._factory_with_pids(pids), id_factory=blocker
@@ -403,7 +423,7 @@ class PostgresEffectAttemptFoldConcurrencyTests(
                                 fence=self.fence("worker-b", 8),
                             )
                         )
-                    self.assertEqual(replay, ExistingFold(first.attempt))
+                    self.assertEqual(replay, ExistingFold(first.attempt, None))
                 else:
                     rotation = psycopg.connect(self.database_url)
                     rotation.execute(
