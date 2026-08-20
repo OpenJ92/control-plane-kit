@@ -94,17 +94,24 @@ class ProductRuntimeContractTests(unittest.TestCase):
                 contract = ProductRuntimeContract(sockets=authored)
 
                 self.assertIs(type(contract.sockets), BlockSockets)
-                self.assertIsNot(contract.sockets, authored)
-                self.assertEqual(
-                    contract.sockets.requirement_names(),
-                    ("alpha-input", "zeta-input"),
-                )
-                self.assertEqual(
-                    contract.sockets.provider_names(),
-                    ("alpha-output", "zeta-output"),
-                )
-                self.assertEqual(contract, canonical)
                 self.assertEqual(contract.descriptor(), canonical.descriptor())
+                checks = (
+                    ("fresh", contract.sockets is not authored, True),
+                    (
+                        "requirements",
+                        contract.sockets.requirement_names(),
+                        ("alpha-input", "zeta-input"),
+                    ),
+                    (
+                        "providers",
+                        contract.sockets.provider_names(),
+                        ("alpha-output", "zeta-output"),
+                    ),
+                    ("equality", contract, canonical),
+                )
+                for law, observed, expected in checks:
+                    with self.subTest(name=name, law=law):
+                        self.assertEqual(observed, expected)
 
     def test_block_sockets_remains_an_author_order_value(self) -> None:
         authored = _permuted_sockets(
@@ -270,42 +277,24 @@ class ProductRuntimeContractTests(unittest.TestCase):
                     caught = error
 
                 self.assertIsNotNone(caught)
-                self.assertIs(type(caught), ProductRuntimeContractError)
-                self.assertEqual(str(caught), expected_message)
-                self.assertIsNone(caught.__cause__)
-                self.assertIsNone(caught.__context__)
-                self.assertNotIn("candidate", str(caught))
-                self.assertEqual(dispatches, [])
+                with self.subTest(name=name, law="zero-dispatch"):
+                    self.assertEqual(dispatches, [])
+                with self.subTest(name=name, law="exact-error"):
+                    self.assertIs(type(caught), ProductRuntimeContractError)
+                with self.subTest(name=name, law="fixed-error"):
+                    self.assertEqual(
+                        (
+                            str(caught),
+                            caught.__cause__,
+                            caught.__context__,
+                            "candidate" in str(caught),
+                        ),
+                        (expected_message, None, None, False),
+                    )
 
     def test_socket_uniqueness_stays_per_direction_without_new_name_grammar(self) -> None:
         requirement = RequirementSocket("shared", Protocol.HTTP, ("SHARED_URL",))
         provider = ProviderSocket("shared", Protocol.HTTP)
-        contract = ProductRuntimeContract(
-            sockets=BlockSockets(
-                requirements=(
-                    RequirementSocket("Mixed name/?", Protocol.HTTP, ("MIXED_URL",)),
-                    RequirementSocket("", Protocol.HTTP, ("EMPTY_URL",)),
-                    requirement,
-                ),
-                providers=(
-                    ProviderSocket("Mixed name/?", Protocol.HTTP),
-                    ProviderSocket("", Protocol.HTTP),
-                    provider,
-                ),
-            )
-        )
-
-        self.assertEqual(
-            contract.sockets.requirement_names(),
-            ("", "Mixed name/?", "shared"),
-        )
-        self.assertEqual(
-            contract.sockets.provider_names(),
-            ("", "Mixed name/?", "shared"),
-        )
-        self.assertEqual(contract.sockets.requirement("shared"), requirement)
-        self.assertEqual(contract.sockets.provider("shared"), provider)
-
         for name, sockets, message in (
             (
                 "requirements",
@@ -322,6 +311,42 @@ class ProductRuntimeContractTests(unittest.TestCase):
                 with self.assertRaises(ProductRuntimeContractError) as raised:
                     ProductRuntimeContract(sockets=sockets)
                 self.assertEqual(str(raised.exception), message)
+
+        contract = ProductRuntimeContract(
+            sockets=BlockSockets(
+                requirements=(
+                    RequirementSocket("Mixed name/?", Protocol.HTTP, ("MIXED_URL",)),
+                    RequirementSocket("", Protocol.HTTP, ("EMPTY_URL",)),
+                    requirement,
+                ),
+                providers=(
+                    ProviderSocket("Mixed name/?", Protocol.HTTP),
+                    ProviderSocket("", Protocol.HTTP),
+                    provider,
+                ),
+            )
+        )
+
+        for name, observed, expected in (
+            (
+                "requirement-order",
+                contract.sockets.requirement_names(),
+                ("", "Mixed name/?", "shared"),
+            ),
+            (
+                "provider-order",
+                contract.sockets.provider_names(),
+                ("", "Mixed name/?", "shared"),
+            ),
+            (
+                "requirement-lookup",
+                contract.sockets.requirement("shared"),
+                requirement,
+            ),
+            ("provider-lookup", contract.sockets.provider("shared"), provider),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(observed, expected)
 
     def test_canonical_socket_order_reaches_instantiation_endpoints_and_findings(
         self,
@@ -347,38 +372,50 @@ class ProductRuntimeContractTests(unittest.TestCase):
             ProductInstanceConfiguration.from_contract(contract),
         )
 
-        self.assertEqual(
-            block.sockets.requirement_names(),
-            ("alpha-input", "zeta-input"),
-        )
-        self.assertEqual(
-            block.sockets.provider_names(),
-            ("alpha-output", "zeta-output"),
-        )
         graph = compile_topology(
             DeploymentTopology("ordered", DockerRuntime(children=(block,)))
         )
         node = graph.node("ordered")
-        self.assertEqual(tuple(node.endpoints), ("alpha-output", "zeta-output"))
-
         without_endpoints = graph.update_node(replace(node, endpoints={}))
         findings = validate_graph(without_endpoints).findings
-        self.assertEqual(
-            tuple(
-                finding.subject.socket_name
-                for finding in findings
-                if finding.code is ValidationCode.MISSING_PROVIDER_ENDPOINT
+        observations = (
+            (
+                "configured-requirements",
+                block.sockets.requirement_names(),
+                ("alpha-input", "zeta-input"),
             ),
-            ("alpha-output", "zeta-output"),
-        )
-        self.assertEqual(
-            tuple(
-                finding.subject.socket_name
-                for finding in findings
-                if finding.code is ValidationCode.MISSING_REQUIRED_CONNECTION
+            (
+                "configured-providers",
+                block.sockets.provider_names(),
+                ("alpha-output", "zeta-output"),
             ),
-            ("alpha-input", "zeta-input"),
+            (
+                "endpoint-insertion",
+                tuple(node.endpoints),
+                ("alpha-output", "zeta-output"),
+            ),
+            (
+                "provider-findings",
+                tuple(
+                    finding.subject.socket_name
+                    for finding in findings
+                    if finding.code is ValidationCode.MISSING_PROVIDER_ENDPOINT
+                ),
+                ("alpha-output", "zeta-output"),
+            ),
+            (
+                "requirement-findings",
+                tuple(
+                    finding.subject.socket_name
+                    for finding in findings
+                    if finding.code is ValidationCode.MISSING_REQUIRED_CONNECTION
+                ),
+                ("alpha-input", "zeta-input"),
+            ),
         )
+        for name, observed, expected in observations:
+            with self.subTest(name=name):
+                self.assertEqual(observed, expected)
 
     def test_unexpected_downstream_validation_faults_remain_raw(self) -> None:
         injected = RuntimeError("internal validation canary")

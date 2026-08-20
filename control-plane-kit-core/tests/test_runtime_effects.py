@@ -529,13 +529,16 @@ class RuntimeEffectContractTests(unittest.TestCase):
                     )
                 )
                 descriptor = material.descriptor()
+                restored = RuntimeProductMaterial.from_descriptor(descriptor)
 
                 self.assertEqual(descriptor, canonical.descriptor())
-                self.assertEqual(material, canonical)
-                self.assertEqual(
-                    RuntimeProductMaterial.from_descriptor(descriptor),
-                    material,
-                )
+                self.assertEqual(restored.descriptor(), descriptor)
+                for law, observed, expected in (
+                    ("permutation-equality", material, canonical),
+                    ("exact-inverse", restored, material),
+                ):
+                    with self.subTest(name=name, law=law):
+                        self.assertEqual(observed, expected)
 
     def test_product_material_rejects_wrong_or_duplicate_environment_material(self) -> None:
         identity = ProductIdentity("openj92", "hello-server", 1)

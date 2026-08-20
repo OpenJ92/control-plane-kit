@@ -376,7 +376,6 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                     language.runtime_effect_intent_fingerprint(intent),
                     language.runtime_effect_intent_fingerprint(canonical),
                 )
-                self.assertEqual(intent, canonical)
                 reconstructed = language.runtime_effect_request_for_intent(
                     intent,
                     effect_id="event-started-permutation",
@@ -385,6 +384,7 @@ class RuntimeEffectIntentTests(unittest.TestCase):
                     language.runtime_effect_intent_for_request(reconstructed),
                     intent,
                 )
+                self.assertEqual(intent, canonical)
 
     def test_noncanonical_product_fixture_retains_accepted_literal_golden(self) -> None:
         language = _language()
