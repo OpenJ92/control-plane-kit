@@ -461,9 +461,41 @@ class ProductRuntimeContract:
     control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.sockets, BlockSockets):
+        sockets = self.sockets
+        if type(sockets) is not BlockSockets:
             raise ProductRuntimeContractError("product sockets must be BlockSockets")
-        _validate_socket_names(self.sockets)
+        requirements = sockets.requirements
+        providers = sockets.providers
+        if type(requirements) is not tuple:
+            raise ProductRuntimeContractError(
+                "product requirement sockets are malformed"
+            )
+        if type(providers) is not tuple:
+            raise ProductRuntimeContractError(
+                "product provider sockets are malformed"
+            )
+        if not all(type(value) is RequirementSocket for value in requirements):
+            raise ProductRuntimeContractError(
+                "product requirement sockets are malformed"
+            )
+        if not all(type(value) is ProviderSocket for value in providers):
+            raise ProductRuntimeContractError(
+                "product provider sockets are malformed"
+            )
+        if not all(type(value.name) is str for value in requirements):
+            raise ProductRuntimeContractError(
+                "product requirement sockets are malformed"
+            )
+        if not all(type(value.name) is str for value in providers):
+            raise ProductRuntimeContractError(
+                "product provider sockets are malformed"
+            )
+        _validate_socket_names(sockets)
+        sockets = BlockSockets(
+            requirements=tuple(sorted(requirements, key=lambda value: value.name)),
+            providers=tuple(sorted(providers, key=lambda value: value.name)),
+        )
+        object.__setattr__(self, "sockets", sockets)
         provider_ports = tuple(sorted(self.provider_ports))
         if not all(isinstance(value, ProviderRuntimePort) for value in provider_ports):
             raise ProductRuntimeContractError(
