@@ -84,7 +84,14 @@ def _encode_runtime_effect_intent(
     intent: RuntimeEffectIntent,
     event_kind: ActivityEventKind | None = None,
 ) -> bytes:
-    invalid = type(intent) is not RuntimeEffectIntent
+    invalid = (
+        type(intent) is not RuntimeEffectIntent
+        or type(intent.source) is not RuntimeEffectIntentSource
+        or type(intent.source.run_id) is not RunId
+        or type(intent.source.run_id.value) is not str
+        or type(intent.activity_id) is not ActivityId
+        or type(intent.activity_id.value) is not str
+    )
     document = b""
     reconstructed = None
     if not invalid:
@@ -210,9 +217,6 @@ class EffectAttemptIntentRecord:
             or type(self.intent) is not RuntimeEffectIntent
             or type(self.identity.run_id) is not RunId
             or type(self.identity.run_id.value) is not str
-            or type(self.intent.source) is not RuntimeEffectIntentSource
-            or type(self.intent.source.run_id) is not RunId
-            or type(self.intent.source.run_id.value) is not str
         )
         identity = None
         event = None

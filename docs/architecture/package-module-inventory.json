@@ -9357,7 +9357,9 @@
       "module": "control_plane_kit_operations.effect_attempt_intent_evidence",
       "motivation": "Owns the exact protected pre-start runtime-effect intent bound to one original effect-attempt start event.",
       "movement": "remain",
-      "optional_external_dependencies": [],
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
       "owner": "operation",
       "protecting_tests": [
         "tests/test_effect_attempt_intent_contract.py"
@@ -9383,6 +9385,7 @@
       "destination": "control_plane_kit_operations.effect_attempt_start",
       "internal_dependencies": [
         "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
         "control_plane_kit_core.policies",
         "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_operations.effect_attempts",

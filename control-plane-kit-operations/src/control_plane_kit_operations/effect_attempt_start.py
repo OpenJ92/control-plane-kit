@@ -11,6 +11,7 @@ from control_plane_kit_core.operations import (
     EffectAttemptTransitionKind,
     RunId,
 )
+from control_plane_kit_core.planning import ActivityId
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectIntent,
@@ -116,6 +117,10 @@ def _valid_start_command(command: object) -> bool:
         or not _valid_start_transition(transition)
         or type(intent) is not RuntimeEffectIntent
         or type(intent.source) is not RuntimeEffectIntentSource
+        or type(intent.source.run_id) is not RunId
+        or type(intent.source.run_id.value) is not str
+        or type(intent.activity_id) is not ActivityId
+        or type(intent.activity_id.value) is not str
         or type(authority) is not ExecutionWorkerAuthority
         or type(authority.worker_id) is not str
         or any(
