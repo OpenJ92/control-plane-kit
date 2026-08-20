@@ -119,6 +119,40 @@ def subclass_copy(value):
     return hostile_type(**arguments)
 
 
+def class_access_hostile_copy(value, dispatches: list[str]):
+    value_type = type(value)
+
+    class HostileValue(value_type):
+        def __getattribute__(self, name):
+            if name == "__class__":
+                dispatches.append("class")
+                raise AssertionError("hostile class access dispatched")
+            return super().__getattribute__(name)
+
+    hostile = object.__new__(HostileValue)
+    for item in fields(value):
+        object.__setattr__(hostile, item.name, getattr(value, item.name))
+    return hostile
+
+
+class ClassAccessHostileBytes(bytes):
+    dispatches: list[str] = []
+
+    def __getattribute__(self, name):
+        if name == "__class__":
+            type(self).dispatches.append("class")
+            raise AssertionError("hostile class access dispatched")
+        return super().__getattribute__(name)
+
+    def __len__(self):
+        type(self).dispatches.append("len")
+        raise AssertionError("hostile length dispatched")
+
+    def decode(self, *_args, **_kwargs):
+        type(self).dispatches.append("decode")
+        raise AssertionError("hostile decode dispatched")
+
+
 def authority_delivery() -> RuntimeAuthorityAccessDelivery:
     authority = RuntimeAuthorityReference("remote-docker")
     return RuntimeAuthorityAccessDelivery(
@@ -374,10 +408,12 @@ __all__ = [
     "INTENT_SOURCE_PATH",
     "RuntimeEffectIntent",
     "RuntimeEffectIntentSource",
+    "ClassAccessHostileBytes",
     "_decode_runtime_effect_intent",
     "_encode_runtime_effect_intent",
     "_load_optional",
     "authority_delivery",
+    "class_access_hostile_copy",
     "forge_exact",
     "intent_module",
     "product_material",

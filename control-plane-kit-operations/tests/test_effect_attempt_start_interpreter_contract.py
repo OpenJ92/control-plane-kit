@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import unittest
 
+import control_plane_kit_architecture_testing as architecture_testing
 import control_plane_kit_operations as operations_root
 from control_plane_kit_core.operations import EffectAttemptTransition
 from control_plane_kit_core.runtime_effect_observation import (
@@ -26,7 +27,10 @@ from tests.effect_attempt_start_fixture import (
     START_MODULE,
     StartEffectAttempt,
 )
-from tests.effect_attempt_intent_fixture import forge_exact
+from tests.effect_attempt_intent_fixture import (
+    class_access_hostile_copy,
+    forge_exact,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -40,6 +44,155 @@ INVENTORY_PATH = Path(
         / "package-module-inventory.json",
     )
 )
+START_SOURCE_PATH = (
+    "control-plane-kit-operations/src/control_plane_kit_operations/"
+    "effect_attempt_start.py"
+)
+
+EXACT_START_IMPORT_SURFACE = (
+    architecture_testing.ImportSurfaceEntry("__future__", "annotations", None),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations", "EffectAttemptIdentity", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations", "EffectAttemptStatus", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations", "EffectAttemptTransition", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations", "EffectAttemptTransitionKind", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.operations", "RunId", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.policies", "PolicyScope", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectIntent",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "RuntimeEffectIntentSource",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "runtime_effect_intent_fingerprint",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "runtime_effect_intent_for_request",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.runtime_effect_observation",
+        "runtime_effect_request_for_intent",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.effect_attempts", "EffectAttemptRecord", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.execution_leases",
+        "ExecutionLeaseFence",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.lifecycle",
+        "ExecutionWorkerAuthority",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.records", "OperationsRecordError", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.workflows", "InvalidOperationCommand", None
+    ),
+    architecture_testing.ImportSurfaceEntry("dataclasses", "dataclass", None),
+)
+
+EXACT_START_CALL_SURFACE = (
+    architecture_testing.ResolvedCallTarget("_bounded_command_text"),
+    architecture_testing.ResolvedCallTarget("_valid_start_command"),
+    architecture_testing.ResolvedCallTarget("_valid_start_transition"),
+    architecture_testing.ResolvedCallTarget("any"),
+    architecture_testing.ResolvedCallTarget("any"),
+    architecture_testing.ResolvedCallTarget("any"),
+    architecture_testing.ResolvedCallTarget("any"),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.operations.EffectAttemptIdentity"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.operations.EffectAttemptTransition"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.runtime_effect_observation."
+        "runtime_effect_intent_fingerprint"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.runtime_effect_observation."
+        "runtime_effect_intent_for_request"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.runtime_effect_observation."
+        "runtime_effect_request_for_intent"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.OperationsRecordError"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.OperationsRecordError"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.workflows.InvalidOperationCommand"
+    ),
+    architecture_testing.ResolvedCallTarget("dataclasses.dataclass"),
+    architecture_testing.ResolvedCallTarget("dataclasses.dataclass"),
+    architecture_testing.ResolvedCallTarget("dataclasses.dataclass"),
+    architecture_testing.ResolvedCallTarget("len"),
+    architecture_testing.ResolvedCallTarget("ord"),
+    architecture_testing.ResolvedCallTarget("ord"),
+    architecture_testing.ResolvedCallTarget("ord"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("value.encode"),
+)
+
+EXACT_START_DEPENDENCIES = {
+    "control_plane_kit_core.operations",
+    "control_plane_kit_core.policies",
+    "control_plane_kit_core.runtime_effect_observation",
+    "control_plane_kit_operations.effect_attempts",
+    "control_plane_kit_operations.execution_leases",
+    "control_plane_kit_operations.lifecycle",
+    "control_plane_kit_operations.records",
+    "control_plane_kit_operations.workflows",
+}
 
 
 class FailIfUnitOfWork:
@@ -152,6 +305,16 @@ class EffectAttemptStartInterpreterContractTests(
             authority_deliveries=valid.intent.authority_deliveries,
             products=valid.intent.products,
         )
+        intent_dispatches: list[str] = []
+        hostile_intent = class_access_hostile_copy(
+            valid.intent,
+            intent_dispatches,
+        )
+        foreign_fingerprint = EffectAttemptTransition(
+            valid.transition.kind,
+            valid.transition.identity,
+            request_fingerprint="f" * 64,
+        )
         control_worker = "worker\ncontrol-canary"
         candidates = (
             ("raw-object", object(), ()),
@@ -165,6 +328,16 @@ class EffectAttemptStartInterpreterContractTests(
                 "forged-intent",
                 bypass(StartEffectAttempt, intent=forged_intent),
                 ("request-forged-canary",),
+            ),
+            (
+                "hostile-intent-class",
+                bypass(StartEffectAttempt, intent=hostile_intent),
+                (),
+            ),
+            (
+                "foreign-intent-fingerprint",
+                bypass(StartEffectAttempt, transition=foreign_fingerprint),
+                ("f" * 64,),
             ),
             (
                 "hostile-worker",
@@ -206,6 +379,37 @@ class EffectAttemptStartInterpreterContractTests(
                     *canaries,
                 )
                 self.assertEqual(fail.calls, 0)
+                self.assertEqual(intent_dispatches, [])
+
+    def test_start_language_has_closed_import_and_lexical_call_surface(self) -> None:
+        path = PACKAGE_ROOT / "src" / Path(START_MODULE.replace(".", "/"))
+        facts = architecture_testing.analyze_source(
+            path.with_suffix(".py").read_text(encoding="utf-8"),
+            path=START_SOURCE_PATH,
+            module=START_MODULE,
+        )
+        findings = architecture_testing.evaluate_policies(
+            (facts,),
+            (
+                architecture_testing.ExactImportSurfacePolicy(
+                    architecture_testing.PolicyId("cpk.operations.start.imports"),
+                    architecture_testing.RuleId("exact"),
+                    START_SOURCE_PATH,
+                    START_MODULE,
+                    EXACT_START_IMPORT_SURFACE,
+                    "effect attempt start import surface differs",
+                ),
+                architecture_testing.ExactCallSurfacePolicy(
+                    architecture_testing.PolicyId("cpk.operations.start.calls"),
+                    architecture_testing.RuleId("exact"),
+                    START_SOURCE_PATH,
+                    START_MODULE,
+                    EXACT_START_CALL_SURFACE,
+                    "effect attempt start lexical call surface differs",
+                ),
+            ),
+        )
+        self.assertEqual(findings, ())
 
     def test_fence_translation_is_exact_bounded_and_precedes_unit_of_work(self) -> None:
         self.require_service()
@@ -340,9 +544,9 @@ class EffectAttemptStartInterpreterContractTests(
         )
         self.assertEqual(language["optional_external_dependencies"], [])
         self.assertEqual(interpreter["optional_external_dependencies"], [])
-        self.assertIn(
-            "control_plane_kit_core.runtime_effect_observation",
-            language["internal_dependencies"],
+        self.assertEqual(
+            set(language["internal_dependencies"]),
+            EXACT_START_DEPENDENCIES,
         )
         self.assertIn(
             "tests/test_effect_attempt_start_contract.py",

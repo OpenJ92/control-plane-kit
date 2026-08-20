@@ -26,6 +26,7 @@ from control_plane_kit_core.runtime_effects import RuntimeEffectContractError
 from control_plane_kit_operations.records import ActivityEventRecord
 
 from tests.effect_attempt_intent_fixture import (
+    ClassAccessHostileBytes,
     EVENT_ID,
     EffectAttemptIntentFixture,
     EffectAttemptIntentRecord,
@@ -36,6 +37,7 @@ from tests.effect_attempt_intent_fixture import (
     _decode_runtime_effect_intent,
     _encode_runtime_effect_intent,
     _load_optional,
+    class_access_hostile_copy,
     forge_exact,
     product_material,
     subclass_copy,
@@ -206,6 +208,11 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("len"),
     architecture_testing.ResolvedCallTarget("rfc8785.dumps"),
     architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
 )
 
 
@@ -289,6 +296,27 @@ class EffectAttemptIntentUngatedControls(
         self.assertLessEqual(size, INTENT_MAX_BYTES)
         self.assertEqual(self.public_round_trip(intent), intent)
         self.assertEqual(len(runtime_effect_intent_fingerprint(intent)), 64)
+
+    def test_forged_sequence_intent_can_hash_but_not_survive_public_round_trip(
+        self,
+    ) -> None:
+        lawful = self.intent()
+        forged = forge_exact(
+            RuntimeEffectIntent,
+            kind=lawful.kind,
+            runtime_kind=lawful.runtime_kind,
+            source=lawful.source,
+            activity_id=lawful.activity_id,
+            operation=lawful.operation,
+            authority_ref=lawful.authority_ref,
+            authority_deliveries=list(lawful.authority_deliveries),
+            products=lawful.products,
+        )
+        self.assertEqual(
+            runtime_effect_intent_fingerprint(forged),
+            runtime_effect_intent_fingerprint(lawful),
+        )
+        self.assertNotEqual(self.public_round_trip(forged), forged)
 
     def test_shared_architecture_policy_has_an_independent_valid_world(self) -> None:
         path = "tests/shared_intent_policy_canary.py"
@@ -442,6 +470,49 @@ class EffectAttemptIntentContractTests(
                 self.assert_intent_error(construct, "run-hostile-canary")
                 self.assertEqual(DispatchText.dispatches, [])
 
+    def test_record_and_codec_reject_class_access_and_hash_only_forgeries(
+        self,
+    ) -> None:
+        self.require_intent_language()
+        lawful = self.intent()
+        event = self.original_event(lawful)
+        identity = self.identity()
+        dispatches: list[str] = []
+        hostile_intent = class_access_hostile_copy(lawful, dispatches)
+        lawful_record = self.record(intent=lawful)
+        hostile_record = class_access_hostile_copy(lawful_record, dispatches)
+        forged_sequence = forge_exact(
+            RuntimeEffectIntent,
+            kind=lawful.kind,
+            runtime_kind=lawful.runtime_kind,
+            source=lawful.source,
+            activity_id=lawful.activity_id,
+            operation=lawful.operation,
+            authority_ref=lawful.authority_ref,
+            authority_deliveries=lawful.authority_deliveries,
+            products=list(lawful.products),
+        )
+        self.assertEqual(
+            runtime_effect_intent_fingerprint(forged_sequence),
+            runtime_effect_intent_fingerprint(lawful),
+        )
+        cases = (
+            lambda: EffectAttemptIntentRecord(identity, event, hostile_intent),
+            lambda: EffectAttemptIntentRecord(identity, event, forged_sequence),
+            lambda: _encode_runtime_effect_intent(hostile_intent),
+            lambda: _encode_runtime_effect_intent(forged_sequence),
+            lambda: hostile_record.__post_init__(),
+        )
+        for construct in cases:
+            with self.subTest(construct=construct):
+                self.assert_intent_error(construct)
+                self.assertEqual(dispatches, [])
+
+        ClassAccessHostileBytes.dispatches = []
+        document = ClassAccessHostileBytes(self.canonical_bytes(lawful))
+        self.assert_intent_error(lambda: _decode_runtime_effect_intent(document))
+        self.assertEqual(ClassAccessHostileBytes.dispatches, [])
+
     def test_record_rejects_every_identity_source_event_and_phase_cross_join(self) -> None:
         self.require_intent_language()
         intent = self.intent()
@@ -591,6 +662,15 @@ class EffectAttemptIntentContractTests(
         self.assertEqual(ROOT_EXPORTS.difference(operations_root.__all__), set())
         self.require_intent_language()
         self.assertIs(operations_root.EffectAttemptIntentRecord, EffectAttemptIntentRecord)
+
+    def test_package_root_does_not_publish_private_intent_codec(self) -> None:
+        for name in (
+            "_encode_runtime_effect_intent",
+            "_decode_runtime_effect_intent",
+        ):
+            with self.subTest(name=name):
+                self.assertNotIn(name, operations_root.__all__)
+                self.assertFalse(hasattr(operations_root, name))
 
     def test_package_inventory_owns_the_stage_one_module_and_dependencies(self) -> None:
         inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
