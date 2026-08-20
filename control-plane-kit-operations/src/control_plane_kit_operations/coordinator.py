@@ -325,8 +325,14 @@ class ActivityRealizationContext:
                 )
         if self.intent_event.run_id != self.run.run_id:
             raise InvalidOperationCommand("realization intent must match run")
-        if self.intent_event.kind is not ActivityEventKind.STEP_STARTED:
-            raise InvalidOperationCommand("realization intent must be step_started")
+        if self.intent_event.kind not in (
+            ActivityEventKind.STEP_STARTED,
+            ActivityEventKind.STEP_COMPENSATION_STARTED,
+        ):
+            raise InvalidOperationCommand(
+                "realization intent must be step_started or "
+                "step_compensation_started"
+            )
         if self.intent_event.activity_id != self.activity.activity_id.value:
             raise InvalidOperationCommand("realization intent must match activity")
 
