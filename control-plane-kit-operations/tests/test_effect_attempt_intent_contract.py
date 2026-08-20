@@ -153,15 +153,20 @@ EXACT_IMPORT_SURFACE = (
 )
 
 EXACT_CALL_SURFACE = (
+    architecture_testing.ResolvedCallTarget("_canonical_runtime_effect_intent"),
+    architecture_testing.ResolvedCallTarget("_canonical_runtime_effect_intent"),
     architecture_testing.ResolvedCallTarget("_decode_runtime_effect_intent"),
     architecture_testing.ResolvedCallTarget("_encode_runtime_effect_intent"),
-    architecture_testing.ResolvedCallTarget(
-        "control_plane_kit_core.planning.ActivityId"
-    ),
+    architecture_testing.ResolvedCallTarget("_raise_intent_error"),
+    architecture_testing.ResolvedCallTarget("_raise_intent_error"),
+    architecture_testing.ResolvedCallTarget("_raise_intent_error"),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.operations.EffectAttemptIdentity"
     ),
     architecture_testing.ResolvedCallTarget("control_plane_kit_core.operations.RunId"),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.planning.ActivityId"
+    ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.planning.activity_operation_from_descriptor"
     ),
@@ -169,10 +174,21 @@ EXACT_CALL_SURFACE = (
         "control_plane_kit_core.runtime_authority.RuntimeAuthorityAccessDeliveryCodec"
     ),
     architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.runtime_authority."
+        "RuntimeAuthorityAccessDeliveryCodec.decode"
+    ),
+    architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.runtime_authority.RuntimeAuthorityReferenceCodec"
     ),
     architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.runtime_authority.RuntimeAuthorityReferenceCodec.decode"
+    ),
+    architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.runtime_effect_observation.RuntimeEffectIntent"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_core.runtime_effect_observation."
+        "RuntimeEffectIntent.descriptor"
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.runtime_effect_observation.RuntimeEffectIntentSource"
