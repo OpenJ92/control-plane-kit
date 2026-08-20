@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 import control_plane_kit_architecture_testing as architecture_testing
-from control_plane_kit_core.operations import EffectAttemptIdentity
+from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_operations.effect_attempt_fold import EffectAttemptFoldResult
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
@@ -239,10 +239,26 @@ class EffectAttemptReconciliationInterpreterContractTests(
                 object.__setattr__(command, name, value)
             return command
 
+        def forge_exact(value_type, **values):
+            value = object.__new__(value_type)
+            for name, field_value in values.items():
+                object.__setattr__(value, name, field_value)
+            return value
+
         hostile_identity = HostileIdentity(
             valid.identity.run_id,
             valid.identity.activity_id,
             valid.identity.attempt,
+        )
+        hostile_run_id = forge_exact(
+            RunId,
+            value=HostileText("run-canary"),
+        )
+        forged_identity = forge_exact(
+            EffectAttemptIdentity,
+            run_id=hostile_run_id,
+            activity_id=valid.identity.activity_id,
+            attempt=valid.identity.attempt,
         )
         malformed = object.__new__(ReconcileEffectAttempt)
         candidates = (
@@ -250,6 +266,7 @@ class EffectAttemptReconciliationInterpreterContractTests(
             ("hostile-outer", bypass(HostileCommand)),
             ("hostile-text", bypass(request_id=HostileText("request-canary"))),
             ("hostile-identity", bypass(identity=hostile_identity)),
+            ("exact-forged-nested-run-id", bypass(identity=forged_identity)),
             ("missing-fields", malformed),
         )
         for label, candidate in candidates:
