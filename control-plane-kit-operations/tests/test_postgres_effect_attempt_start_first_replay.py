@@ -13,6 +13,9 @@ from tests.execution_lease_recovery_fixture import Sequence
 from tests.postgres_effect_attempt_start_fixture import (
     PostgresEffectAttemptStartFixture,
 )
+from tests.postgres_effect_attempt_intent_store_fixture import (
+    EffectAttemptIntentStore,
+)
 
 
 class PostgresEffectAttemptStartFirstReplayTests(
@@ -36,7 +39,10 @@ class PostgresEffectAttemptStartFirstReplayTests(
                 self.assertEqual(attempt.state.identity.run_id.value, "run-a")
                 self.assertEqual(attempt.state.identity.activity_id, "start-runtime")
                 self.assertEqual(attempt.state.identity.attempt, 1)
-                self.assertEqual(attempt.state.request_fingerprint, "a" * 64)
+                self.assertEqual(
+                    attempt.state.request_fingerprint,
+                    self.start_command().transition.request_fingerprint,
+                )
                 self.assertEqual(attempt.state.fence.worker_id, "worker-a")
                 self.assertEqual(attempt.state.fence.generation, 7)
                 self.assertIsNone(attempt.state.prior_attempt)
@@ -131,11 +137,16 @@ class PostgresEffectAttemptStartFirstReplayTests(
         )
 
     def test_existing_replay_uses_request_then_run_then_attempt_reads(self) -> None:
+        self.assertIsNotNone(
+            EffectAttemptIntentStore,
+            "effect-attempt intent replay store is missing",
+        )
         self.persisted_started()
         calls: list[str] = []
         original_request = PostgresExecutionStore.get_request_for_update
         original_run = PostgresExecutionStore.get_run_for_request_for_update
         original_attempt = EffectAttemptStore.get_for_update
+        original_intent = EffectAttemptIntentStore.get if EffectAttemptIntentStore else None
 
         def request(store, request_id):
             calls.append("request")
@@ -149,6 +160,10 @@ class PostgresEffectAttemptStartFirstReplayTests(
             calls.append("attempt")
             return original_attempt(store, identity)
 
+        def intent(store, identity):
+            calls.append("intent")
+            return original_intent(store, identity)
+
         with mock.patch.object(
             PostgresExecutionStore,
             "get_request_for_update",
@@ -161,10 +176,14 @@ class PostgresEffectAttemptStartFirstReplayTests(
             EffectAttemptStore,
             "get_for_update",
             attempt,
+        ), mock.patch.object(
+            EffectAttemptIntentStore,
+            "get",
+            intent,
         ):
             self.start_service("unused").execute(self.start_command())
 
-        self.assertEqual(calls, ["request", "run", "attempt"])
+        self.assertEqual(calls, ["request", "run", "attempt", "intent"])
 
     def test_first_start_locks_complete_truth_before_clock_and_uses_db_time(self) -> None:
         calls: list[str] = []
@@ -256,9 +275,14 @@ class PostgresEffectAttemptStartFirstReplayTests(
         )
 
     def test_complete_result_and_event_exist_before_attempt_insert(self) -> None:
+        self.assertIsNotNone(
+            EffectAttemptIntentStore,
+            "effect-attempt intent write store is missing",
+        )
         calls: list[str] = []
         appended = []
         original_event = PostgresExecutionStore.add_event
+        original_evidence = EffectAttemptIntentStore.insert
         original_insert = EffectAttemptStore.insert_absent
 
         def add_event(store, event):
@@ -272,10 +296,19 @@ class PostgresEffectAttemptStartFirstReplayTests(
             self.assertEqual(appended, [record.original_start_event])
             return original_insert(store, record)
 
+        def insert_evidence(store, record):
+            calls.append("evidence")
+            self.assertEqual(appended, [record.original_start_event])
+            return original_evidence(store, record)
+
         with mock.patch.object(
             PostgresExecutionStore,
             "add_event",
             add_event,
+        ), mock.patch.object(
+            EffectAttemptIntentStore,
+            "insert",
+            insert_evidence,
         ), mock.patch.object(
             EffectAttemptStore,
             "insert_absent",
@@ -286,7 +319,7 @@ class PostgresEffectAttemptStartFirstReplayTests(
             )
 
         self.assertIsInstance(result, NewlyStarted)
-        self.assertEqual(calls, ["event", "attempt"])
+        self.assertEqual(calls, ["event", "evidence", "attempt"])
 
 
 if __name__ == "__main__":

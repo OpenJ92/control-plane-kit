@@ -139,10 +139,10 @@ def _capture_install_error(connection) -> BaseException:
 class RunIdentitySchemaStaticTests(unittest.TestCase):
     def test_contract_has_exact_owned_object_counts(self) -> None:
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 32)
-        self.assertEqual(len(contract.columns), 431)
-        self.assertEqual(len(contract.constraints), 314)
-        self.assertEqual(len(contract.indexes), 106)
+        self.assertEqual(len(contract.relations), 33)
+        self.assertEqual(len(contract.columns), 441)
+        self.assertEqual(len(contract.constraints), 325)
+        self.assertEqual(len(contract.indexes), 109)
 
     def test_contract_has_six_exact_direct_checks(self) -> None:
         constraints = {

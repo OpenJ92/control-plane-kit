@@ -203,6 +203,19 @@ EXACT_START_DEPENDENCIES = {
     "control_plane_kit_operations.workflows",
 }
 
+EXACT_INTERPRETER_DEPENDENCIES = {
+    "control_plane_kit_core.operations",
+    "control_plane_kit_core.operations.lifecycle",
+    "control_plane_kit_core.planning",
+    "control_plane_kit_core.policies",
+    "control_plane_kit_operations.activity_journal",
+    "control_plane_kit_operations.effect_attempt_intent_evidence",
+    "control_plane_kit_operations.effect_attempt_start",
+    "control_plane_kit_operations.effect_attempts",
+    "control_plane_kit_operations.records",
+    "control_plane_kit_operations.workflows",
+}
+
 
 class FailIfUnitOfWork:
     def __init__(self, message: str = "unit of work opened") -> None:
@@ -612,12 +625,20 @@ class EffectAttemptStartInterpreterContractTests(
             set(language["internal_dependencies"]),
             EXACT_START_DEPENDENCIES,
         )
+        self.assertEqual(
+            set(interpreter["internal_dependencies"]),
+            EXACT_INTERPRETER_DEPENDENCIES,
+        )
         self.assertIn(
             "tests/test_effect_attempt_start_contract.py",
             language["protecting_tests"],
         )
         self.assertIn(
             "tests/test_effect_attempt_start_interpreter_contract.py",
+            interpreter["protecting_tests"],
+        )
+        self.assertIn(
+            "tests/test_postgres_effect_attempt_start_intent.py",
             interpreter["protecting_tests"],
         )
 

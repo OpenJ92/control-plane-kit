@@ -55,11 +55,14 @@ from control_plane_kit_operations.records import (
     OperationsRecordError,
 )
 
-from effect_attempt_record_fixture import EffectAttemptRecordFixture
+from effect_attempt_record_fixture import (
+    EffectAttemptRecordFixture,
+    REQUEST_FINGERPRINT,
+)
+from effect_attempt_intent_fixture import EffectAttemptIntentFixture
 
 
 MODULE_NAME = "control_plane_kit_operations.effect_outcome_evidence"
-REQUEST_FINGERPRINT = "a" * 64
 WORKSPACE_ID = "workspace-a"
 OUTCOME_MAX_BYTES = 8_192
 ENDPOINT_TEXT_MAX = 512
@@ -561,7 +564,13 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
     ) -> EffectAttemptRecord:
         identity = story.attempt.state.identity if identity is None else identity
         request_fingerprint = (
-            story.attempt.state.request_fingerprint
+            runtime_effect_intent_fingerprint(
+                EffectAttemptIntentFixture().intent(
+                    compensation=story.compensation,
+                    run_id=identity.run_id.value,
+                    activity_id=identity.activity_id,
+                )
+            )
             if request_fingerprint is None
             else request_fingerprint
         )
@@ -644,7 +653,7 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
         if story.profile == "execution-result":
             return ExecutionEffectOutcome(
                 story.attempt.state.identity,
-                REQUEST_FINGERPRINT,
+                story.attempt.state.request_fingerprint,
                 story.value,
             )
         return ObservedEffectOutcome(story.attempt.state.identity, story.value)

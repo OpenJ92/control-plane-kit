@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from unittest import mock
 
 from control_plane_kit_core.operations import RecoveryDecisionKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
+)
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint,
 )
 from control_plane_kit_operations.activity_run_retry_interpreter import (
     ActivityRunRetryCommandService,
@@ -106,6 +110,22 @@ class PostgresEffectAttemptStartFixture(
         )
 
     def attempt_snapshot(self) -> tuple[object, ...]:
+        relation = self.connection.execute(
+            "SELECT to_regclass('cpk_effect_attempt_intents')"
+        ).fetchone()[0]
+        intents = (
+            ()
+            if relation is None
+            else tuple(
+                self.connection.execute(
+                    "SELECT run_id, activity_id, attempt, workspace_id, request_id, "
+                    "request_fingerprint, original_event_id, original_event_run_id, "
+                    "original_event_ordinal, preimage "
+                    "FROM cpk_effect_attempt_intents "
+                    "ORDER BY run_id, activity_id, attempt"
+                ).fetchall()
+            )
+        )
         return (
             self.snapshot(),
             tuple(
@@ -121,6 +141,7 @@ class PostgresEffectAttemptStartFixture(
                     "FROM cpk_effect_attempts ORDER BY run_id, activity_id, attempt"
                 ).fetchall()
             ),
+            intents,
         )
 
     def persisted_started(
@@ -138,6 +159,16 @@ class PostgresEffectAttemptStartFixture(
             original_ordinal=7 if compensation else 3,
             original_time="2030-01-01T00:00:00Z",
         )
+        intent = self.intent(compensation=compensation)
+        state = replace(
+            record.state,
+            request_fingerprint=runtime_effect_intent_fingerprint(intent),
+        )
+        event = replace(
+            record.original_start_event,
+            evidence=self.evidence_for(state),
+        )
+        record = EffectAttemptRecord(state, event, event)
         self.assertEqual(record.original_start_event.event_id, event_id)
         self.assertEqual(self.persist(record), record)
         return record

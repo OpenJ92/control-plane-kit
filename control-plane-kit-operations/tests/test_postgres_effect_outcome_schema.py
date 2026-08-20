@@ -122,7 +122,7 @@ class PostgresEffectOutcomeSchemaTests(
 ):
     def test_exact_current_contract_adds_two_relations_and_closed_columns(self) -> None:
         relations = tuple(value.name for value in CURRENT_POSTGRES_SCHEMA_CONTRACT.relations)
-        self.assertEqual(len(relations), 32)
+        self.assertEqual(len(relations), 33)
         self.assertIn(OUTCOME, relations)
         self.assertIn(MEMBERSHIP, relations)
         columns = {}
@@ -130,9 +130,9 @@ class PostgresEffectOutcomeSchemaTests(
             columns.setdefault(value.relation, []).append(value.name)
         self.assertEqual(tuple(columns[OUTCOME]), OUTCOME_COLUMNS)
         self.assertEqual(tuple(columns[MEMBERSHIP]), MEMBERSHIP_COLUMNS)
-        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns), 431)
-        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints), 314)
-        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes), 106)
+        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns), 441)
+        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints), 325)
+        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes), 109)
 
     def test_exact_candidate_keys_and_restrictive_composite_foreign_keys(self) -> None:
         constraints = {

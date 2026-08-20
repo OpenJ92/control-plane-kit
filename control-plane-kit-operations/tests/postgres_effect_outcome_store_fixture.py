@@ -13,6 +13,9 @@ from control_plane_kit_core.operations import (
     RecoveryDecisionKind,
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
+from control_plane_kit_operations.effect_attempt_intent_evidence import (
+    EffectAttemptIntentRecord,
+)
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
     ExecutionEffectOutcome,
@@ -23,6 +26,7 @@ from tests.effect_outcome_evidence_fixture import (
     REQUEST_FINGERPRINT,
     WORKSPACE_ID,
 )
+from tests.effect_attempt_intent_fixture import EffectAttemptIntentFixture
 from tests.execution_lease_recovery_fixture import (
     PostgresExecutionLeaseRecoveryFixture,
 )
@@ -200,6 +204,28 @@ class PostgresEffectOutcomeStoreFixture(
             stores = unit_of_work.stores
             stores.execution.add_event(record.attempt.original_start_event)
             stores.execution.add_event(record.attempt.latest_transition_event)
+            if hasattr(stores, "effect_attempt_intents"):
+                compensation = record.attempt.original_start_event.kind.value.startswith(
+                    "step_compensation"
+                )
+                intent = EffectAttemptIntentFixture().intent(
+                    compensation=compensation,
+                    run_id=record.attempt.state.identity.run_id.value,
+                    activity_id=record.attempt.state.identity.activity_id,
+                )
+                evidence = EffectAttemptIntentRecord(
+                    record.attempt.state.identity,
+                    record.attempt.original_start_event,
+                    intent,
+                )
+                self.assertEqual(
+                    evidence.request_fingerprint,
+                    record.attempt.state.request_fingerprint,
+                )
+                self.assertEqual(
+                    stores.effect_attempt_intents.insert(evidence),
+                    evidence,
+                )
             self.assertEqual(
                 stores.effect_attempts.insert_absent(record.attempt),
                 record.attempt,

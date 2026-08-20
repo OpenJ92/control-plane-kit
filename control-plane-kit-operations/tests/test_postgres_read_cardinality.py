@@ -204,8 +204,8 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
     def test_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
         identities = _discover()
 
-        self.assertEqual(len(identities), 50)
-        self.assertEqual(len(set(identities)), 50)
+        self.assertEqual(len(identities), 51)
+        self.assertEqual(len(set(identities)), 51)
         grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")
@@ -235,6 +235,20 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
                     "control_plane_kit_operations.postgres.effect_outcome_store",
                     "_validate_current_rows",
                     2,
+                ),
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                identity
+                for identity in identities
+                if identity.module
+                == "control_plane_kit_operations.postgres.effect_attempt_intent_store"
+            ),
+            (
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+                    "_validate_current_rows",
                 ),
             ),
         )
