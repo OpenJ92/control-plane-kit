@@ -154,11 +154,11 @@ EXACT_INTERPRETER_IMPORTS = (
 EXACT_INTERPRETER_CALLS = (
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.effect_attempt_reconciliation."
-        "_valid_reconcile_command"
+        "EffectAttemptReconciliationDenied"
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.effect_attempt_reconciliation."
-        "EffectAttemptReconciliationDenied"
+        "_valid_reconcile_command"
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.workflows.InvalidOperationCommand"
