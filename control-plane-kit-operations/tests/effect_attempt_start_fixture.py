@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from dataclasses import fields
 
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
@@ -9,15 +10,22 @@ from control_plane_kit_core.operations import (
     RunId,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_effects import RuntimeEffectContractError
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from tests.effect_attempt_intent_fixture import (
+    EffectAttemptIntentFixture,
+    runtime_effect_intent_fingerprint,
+)
 
 
 START_MODULE = "control_plane_kit_operations.effect_attempt_start"
 INTERPRETER_MODULE = (
     "control_plane_kit_operations.effect_attempt_start_interpreter"
 )
-REQUEST_FINGERPRINT = "a" * 64
+REQUEST_FINGERPRINT = runtime_effect_intent_fingerprint(
+    EffectAttemptIntentFixture().intent()
+)
 OUTCOME_FINGERPRINT = "b" * 64
 
 
@@ -104,9 +112,12 @@ class EffectAttemptStartFixture:
         *,
         attempt: int = 1,
         run_id: str = "run-a",
-        activity_id: str = "activity-a",
+        activity_id: str = "start-runtime",
     ) -> EffectAttemptIdentity:
         return EffectAttemptIdentity(RunId(run_id), activity_id, attempt)
+
+    def intent(self, **changes):
+        return EffectAttemptIntentFixture.intent(self, **changes)
 
     def transition(
         self,
@@ -114,11 +125,13 @@ class EffectAttemptStartFixture:
         identity: EffectAttemptIdentity | None = None,
         attempt: int = 1,
         prior_attempt: EffectAttemptIdentity | None = None,
+        intent=None,
     ) -> EffectAttemptTransition:
+        value = intent or self.intent()
         return EffectAttemptTransition(
             EffectAttemptTransitionKind.STARTED,
             identity or self.identity(attempt=attempt),
-            request_fingerprint=REQUEST_FINGERPRINT,
+            request_fingerprint=runtime_effect_intent_fingerprint(value),
             prior_attempt=prior_attempt,
         )
 
@@ -145,14 +158,34 @@ class EffectAttemptStartFixture:
 
     def command(self, **changes):
         self.require_language()
+        intent = changes.pop("intent", self.intent())
+        transition = changes.pop("transition", None)
+        if transition is None:
+            try:
+                transition = self.transition(intent=intent)
+            except RuntimeEffectContractError:
+                transition = self.transition()
         values = {
             "request_id": "request-a",
-            "transition": self.transition(),
+            "transition": transition,
+            "intent": intent,
             "authority": self.authority(),
             "fence": self.fence(),
         }
         values.update(changes)
-        return StartEffectAttempt(**values)
+        if tuple(field.name for field in fields(StartEffectAttempt)) == (
+            "request_id",
+            "transition",
+            "intent",
+            "authority",
+            "fence",
+        ):
+            return StartEffectAttempt(**values)
+        command = object.__new__(StartEffectAttempt)
+        for name, value in values.items():
+            object.__setattr__(command, name, value)
+        StartEffectAttempt.__post_init__(command)
+        return command
 
 
 __all__ = [
