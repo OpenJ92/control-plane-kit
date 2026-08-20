@@ -527,6 +527,17 @@ from .effect_attempt_fold import (
     NewlyFolded,
 )
 from .effect_attempt_fold_interpreter import EffectAttemptFoldService
+from .effect_attempt_reconciliation import (
+    EffectAttemptReconciliationConflict,
+    EffectAttemptReconciliationDenied,
+    EffectAttemptReconciliationError,
+    EffectAttemptReconciliationNotFound,
+    ReconcileEffectAttempt,
+    RuntimeEffectObserver,
+)
+from .effect_attempt_reconciliation_interpreter import (
+    EffectAttemptReconciliationService,
+)
 from .execution_lease_recovery import (
     AbandonExpiredExecutionClaim,
     ExecutionLeaseRecoveryCommand,
@@ -707,6 +718,11 @@ __all__ = [
     "EffectAttemptFoldNotFound",
     "EffectAttemptFoldResult",
     "EffectAttemptFoldService",
+    "EffectAttemptReconciliationConflict",
+    "EffectAttemptReconciliationDenied",
+    "EffectAttemptReconciliationError",
+    "EffectAttemptReconciliationNotFound",
+    "EffectAttemptReconciliationService",
     "EffectAttemptRecord",
     "EffectAttemptOutcome",
     "EffectAttemptOutcomeRecord",
@@ -729,6 +745,8 @@ __all__ = [
     "effect_outcome_failure",
     "effect_outcome_observation_records",
     "effect_outcome_transition",
+    "ReconcileEffectAttempt",
+    "RuntimeEffectObserver",
     "GeneratedIngressSecretReference",
     "GeneratedSecretPurpose",
     "GeneratedSecretRecordingConflict",
