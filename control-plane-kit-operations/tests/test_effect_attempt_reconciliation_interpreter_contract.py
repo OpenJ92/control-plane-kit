@@ -152,7 +152,10 @@ EXACT_INTERPRETER_IMPORTS = (
     architecture_testing.ImportSurfaceEntry("typing", "Callable", None),
 )
 EXACT_INTERPRETER_CALLS = (
-    architecture_testing.ResolvedCallTarget("_valid_reconcile_command"),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.effect_attempt_reconciliation."
+        "_valid_reconcile_command"
+    ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.effect_attempt_reconciliation."
         "EffectAttemptReconciliationDenied"
