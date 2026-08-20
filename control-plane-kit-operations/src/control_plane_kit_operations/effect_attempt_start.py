@@ -12,6 +12,13 @@ from control_plane_kit_core.operations import (
     RunId,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectIntent,
+    RuntimeEffectIntentSource,
+    runtime_effect_intent_fingerprint,
+    runtime_effect_intent_for_request,
+    runtime_effect_request_for_intent,
+)
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
@@ -41,6 +48,7 @@ class StartEffectAttempt:
 
     request_id: str
     transition: EffectAttemptTransition
+    intent: RuntimeEffectIntent
     authority: ExecutionWorkerAuthority
     fence: ExecutionLeaseFence
 
@@ -93,6 +101,7 @@ def _valid_start_command(command: object) -> bool:
     if type(command) is not StartEffectAttempt:
         return False
     transition = command.transition
+    intent = command.intent
     authority = command.authority
     fence = command.fence
     if (
@@ -105,6 +114,8 @@ def _valid_start_command(command: object) -> bool:
         or type(transition.identity.attempt) is not int
         or type(transition.request_fingerprint) is not str
         or not _valid_start_transition(transition)
+        or type(intent) is not RuntimeEffectIntent
+        or type(intent.source) is not RuntimeEffectIntentSource
         or type(authority) is not ExecutionWorkerAuthority
         or type(authority.worker_id) is not str
         or any(
@@ -118,6 +129,25 @@ def _valid_start_command(command: object) -> bool:
         or any(0 < ord(character) < 32 for character in fence.worker_id)
         or type(fence.generation) is not int
         or authority.worker_id != fence.worker_id
+    ):
+        return False
+    try:
+        reconstructed_intent = runtime_effect_intent_for_request(
+            runtime_effect_request_for_intent(
+                intent,
+                effect_id="effect-attempt-start-validation",
+                secret_resolution_grants=(),
+            )
+        )
+        request_fingerprint = runtime_effect_intent_fingerprint(intent)
+    except ValueError:
+        return False
+    if (
+        reconstructed_intent != intent
+        or command.request_id != intent.source.request_id
+        or transition.identity.run_id != intent.source.run_id
+        or transition.identity.activity_id != intent.activity_id.value
+        or transition.request_fingerprint != request_fingerprint
     ):
         return False
     return True
