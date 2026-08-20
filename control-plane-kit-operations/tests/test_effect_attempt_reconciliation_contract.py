@@ -13,6 +13,7 @@ from control_plane_kit_core.operations import (
     ActivityEventKind,
     EffectAttemptIdentity,
     EffectAttemptTransition,
+    RunId,
 )
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservationRequest,
@@ -137,7 +138,49 @@ class EffectAttemptReconciliationContractTests(
         self.require_language()
 
         class HostileText(str):
-            pass
+            dispatches: list[str] = []
+
+            def __len__(self):
+                self.dispatches.append("len")
+                raise AssertionError("hostile text length dispatched")
+
+            def __iter__(self):
+                self.dispatches.append("iter")
+                raise AssertionError("hostile text iteration dispatched")
+
+            def encode(self, *_args, **_kwargs):
+                self.dispatches.append("encode")
+                raise AssertionError("hostile text encoding dispatched")
+
+        class HostileInt(int):
+            dispatches: list[str] = []
+
+            def __index__(self):
+                self.dispatches.append("index")
+                raise AssertionError("hostile integer indexing dispatched")
+
+            def __lt__(self, _other):
+                self.dispatches.append("lt")
+                raise AssertionError("hostile integer comparison dispatched")
+
+            def __le__(self, _other):
+                self.dispatches.append("le")
+                raise AssertionError("hostile integer comparison dispatched")
+
+        class HostileTuple(tuple):
+            dispatches: list[str] = []
+
+            def __iter__(self):
+                self.dispatches.append("iter")
+                raise AssertionError("hostile tuple iteration dispatched")
+
+            def __len__(self):
+                self.dispatches.append("len")
+                raise AssertionError("hostile tuple length dispatched")
+
+            def __getitem__(self, _index):
+                self.dispatches.append("getitem")
+                raise AssertionError("hostile tuple indexing dispatched")
 
         class HostileIdentity(EffectAttemptIdentity):
             pass
@@ -154,6 +197,62 @@ class EffectAttemptReconciliationContractTests(
             identity.activity_id,
             identity.attempt,
         )
+
+        def forge_exact(value_type, **values):
+            value = object.__new__(value_type)
+            for name, field_value in values.items():
+                object.__setattr__(value, name, field_value)
+            return value
+
+        def forged_identity(**changes):
+            values = {
+                "run_id": identity.run_id,
+                "activity_id": identity.activity_id,
+                "attempt": identity.attempt,
+            }
+            values.update(changes)
+            return forge_exact(EffectAttemptIdentity, **values)
+
+        hostile_run_id = forge_exact(
+            RunId,
+            value=HostileText("run-canary"),
+        )
+        malformed_run_id = forge_exact(RunId, value="run\ncanary")
+        hostile_authority_worker = forge_exact(
+            ExecutionWorkerAuthority,
+            worker_id=HostileText("worker-canary"),
+            scopes=self.authority().scopes,
+        )
+        hostile_authority_scopes = forge_exact(
+            ExecutionWorkerAuthority,
+            worker_id="worker-a",
+            scopes=HostileTuple(self.authority().scopes),
+        )
+        malformed_authority_worker = forge_exact(
+            ExecutionWorkerAuthority,
+            worker_id="worker\ncanary",
+            scopes=self.authority().scopes,
+        )
+        malformed_authority_scopes = forge_exact(
+            ExecutionWorkerAuthority,
+            worker_id="worker-a",
+            scopes=("execution:operate",),
+        )
+        hostile_fence_worker = forge_exact(
+            ExecutionLeaseFence,
+            worker_id=HostileText("worker-canary"),
+            generation=7,
+        )
+        hostile_fence_generation = forge_exact(
+            ExecutionLeaseFence,
+            worker_id="worker-a",
+            generation=HostileInt(7),
+        )
+        malformed_fence_worker = forge_exact(
+            ExecutionLeaseFence,
+            worker_id="worker\ncanary",
+            generation=7,
+        )
         cases = (
             ({"request_id": ""}, ""),
             ({"request_id": None}, ""),
@@ -166,10 +265,43 @@ class EffectAttemptReconciliationContractTests(
             ({"identity": hostile_identity}, ""),
             ({"authority": HostileAuthority("worker-a", ())}, ""),
             ({"fence": HostileFence("worker-a", 7)}, ""),
+            ({"identity": forged_identity(run_id=hostile_run_id)}, "canary"),
+            ({"identity": forged_identity(run_id=malformed_run_id)}, "canary"),
+            (
+                {
+                    "identity": forged_identity(
+                        activity_id=HostileText("activity-canary")
+                    )
+                },
+                "canary",
+            ),
+            ({"identity": forged_identity(activity_id="activity\ncanary")}, "canary"),
+            ({"identity": forged_identity(attempt=HostileInt(1))}, ""),
+            ({"identity": forged_identity(attempt=0)}, ""),
+            ({"authority": hostile_authority_worker}, "canary"),
+            ({"authority": malformed_authority_worker}, "canary"),
+            ({"authority": hostile_authority_scopes}, ""),
+            ({"authority": malformed_authority_scopes}, ""),
+            ({"fence": hostile_fence_worker}, "canary"),
+            ({"fence": malformed_fence_worker}, "canary"),
+            ({"fence": hostile_fence_generation}, ""),
+            (
+                {
+                    "fence": forge_exact(
+                        ExecutionLeaseFence,
+                        worker_id="worker-a",
+                        generation=0,
+                    )
+                },
+                "",
+            ),
             ({"authority": self.authority("worker-b")}, "worker-b"),
         )
         for changes, canary in cases:
             with self.subTest(changes=tuple(changes)):
+                HostileText.dispatches.clear()
+                HostileInt.dispatches.clear()
+                HostileTuple.dispatches.clear()
                 with self.assertRaises(InvalidOperationCommand) as caught:
                     self.command(**changes)
                 self.assertEqual(
@@ -177,6 +309,9 @@ class EffectAttemptReconciliationContractTests(
                     "effect attempt reconciliation command is invalid",
                 )
                 self.assert_safe_error(caught.exception, canary)
+                self.assertEqual(HostileText.dispatches, [])
+                self.assertEqual(HostileInt.dispatches, [])
+                self.assertEqual(HostileTuple.dispatches, [])
 
     def test_public_error_sum_is_closed_root_identical_and_candidate_free(self) -> None:
         self.require_language()
@@ -221,6 +356,8 @@ class EffectAttemptReconciliationContractTests(
             RuntimeEffectObserver,
         )
         self.assertEqual(RuntimeEffectObserver.__module__, LANGUAGE_MODULE)
+        self.assertEqual(RuntimeEffectObserver.__bases__, (typing.Protocol,))
+        self.assertIs(RuntimeEffectObserver._is_protocol, True)
         self.assertEqual(
             tuple(inspect.signature(RuntimeEffectObserver.observe).parameters),
             ("self", "request", "authority"),
@@ -236,6 +373,14 @@ class EffectAttemptReconciliationContractTests(
         self.assertIs(
             getattr(operations_root, "EffectAttemptReconciliationService", None),
             EffectAttemptReconciliationService,
+        )
+        self.assertEqual(
+            EffectAttemptReconciliationService.__module__,
+            INTERPRETER_MODULE,
+        )
+        self.assertEqual(
+            tuple(inspect.signature(EffectAttemptReconciliationService).parameters),
+            ("unit_of_work_factory", "observer", "fold_service"),
         )
         self.assertEqual(
             tuple(
