@@ -116,7 +116,7 @@ def _valid_reconcile_command(command: object) -> bool:
 
 
 def _bounded_command_text(value: object) -> bool:
-    if value.__class__ is not str:
+    if type(value) is not str:
         return False
     if not value:
         return False
