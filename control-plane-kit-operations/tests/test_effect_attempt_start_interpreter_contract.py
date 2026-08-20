@@ -9,6 +9,10 @@ import unittest
 
 import control_plane_kit_operations as operations_root
 from control_plane_kit_core.operations import EffectAttemptTransition
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectIntent,
+    RuntimeEffectIntentSource,
+)
 from control_plane_kit_operations.execution_leases import (
     ExecutionLeaseFence,
     InvalidExecutionLeaseFence,
@@ -22,6 +26,7 @@ from tests.effect_attempt_start_fixture import (
     START_MODULE,
     StartEffectAttempt,
 )
+from tests.effect_attempt_intent_fixture import forge_exact
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -110,6 +115,7 @@ class EffectAttemptStartInterpreterContractTests(
             values = {
                 "request_id": valid.request_id,
                 "transition": valid.transition,
+                "intent": valid.intent,
                 "authority": valid.authority,
                 "fence": valid.fence,
             }
@@ -127,6 +133,25 @@ class EffectAttemptStartInterpreterContractTests(
             ),
         )
         hostile_worker = HostileText("hostile-worker-canary")
+        forged_intent = forge_exact(
+            RuntimeEffectIntent,
+            kind=valid.intent.kind,
+            runtime_kind=valid.intent.runtime_kind,
+            source=forge_exact(
+                RuntimeEffectIntentSource,
+                workspace_id=valid.intent.source.workspace_id,
+                request_id="request-forged-canary",
+                run_id=valid.intent.source.run_id,
+                plan_id=valid.intent.source.plan_id,
+                base_graph_id=valid.intent.source.base_graph_id,
+                desired_graph_id=valid.intent.source.desired_graph_id,
+            ),
+            activity_id=valid.intent.activity_id,
+            operation=valid.intent.operation,
+            authority_ref=valid.intent.authority_ref,
+            authority_deliveries=valid.intent.authority_deliveries,
+            products=valid.intent.products,
+        )
         control_worker = "worker\ncontrol-canary"
         candidates = (
             ("raw-object", object(), ()),
@@ -135,6 +160,11 @@ class EffectAttemptStartInterpreterContractTests(
                 "hostile-fingerprint",
                 bypass(StartEffectAttempt, transition=hostile_fingerprint),
                 (valid.transition.request_fingerprint,),
+            ),
+            (
+                "forged-intent",
+                bypass(StartEffectAttempt, intent=forged_intent),
+                ("request-forged-canary",),
             ),
             (
                 "hostile-worker",
@@ -236,7 +266,6 @@ class EffectAttemptStartInterpreterContractTests(
             "coordinator",
             "cpk_server",
             "provider",
-            "runtime_effect",
             "gateway",
             "http",
             "mcp",
@@ -311,6 +340,10 @@ class EffectAttemptStartInterpreterContractTests(
         )
         self.assertEqual(language["optional_external_dependencies"], [])
         self.assertEqual(interpreter["optional_external_dependencies"], [])
+        self.assertIn(
+            "control_plane_kit_core.runtime_effect_observation",
+            language["internal_dependencies"],
+        )
         self.assertIn(
             "tests/test_effect_attempt_start_contract.py",
             language["protecting_tests"],
