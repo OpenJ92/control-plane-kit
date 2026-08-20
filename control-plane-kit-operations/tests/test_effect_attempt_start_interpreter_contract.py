@@ -29,6 +29,7 @@ from tests.effect_attempt_start_fixture import (
 )
 from tests.effect_attempt_intent_fixture import (
     class_access_hostile_copy,
+    deep_coordinate_intent_candidates,
     forge_exact,
 )
 
@@ -65,6 +66,9 @@ EXACT_START_IMPORT_SURFACE = (
     ),
     architecture_testing.ImportSurfaceEntry(
         "control_plane_kit_core.operations", "RunId", None
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.planning", "ActivityId", None
     ),
     architecture_testing.ImportSurfaceEntry(
         "control_plane_kit_core.policies", "PolicyScope", None
@@ -180,11 +184,16 @@ EXACT_START_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("value.encode"),
 )
 
 EXACT_START_DEPENDENCIES = {
     "control_plane_kit_core.operations",
+    "control_plane_kit_core.planning",
     "control_plane_kit_core.policies",
     "control_plane_kit_core.runtime_effect_observation",
     "control_plane_kit_operations.effect_attempts",
@@ -380,6 +389,61 @@ class EffectAttemptStartInterpreterContractTests(
                 )
                 self.assertEqual(fail.calls, 0)
                 self.assertEqual(intent_dispatches, [])
+
+        self.require_service()
+        lawful = self.command()
+        control = FailIfUnitOfWork("lawful command reached unit of work")
+        with self.assertRaises(AssertionError) as caught:
+            self.service(control).execute(lawful)
+        self.assertIs(caught.exception, control.error)
+        self.assertEqual(control.calls, 1)
+
+        def bypass(intent):
+            command = object.__new__(StartEffectAttempt)
+            for name, value in (
+                ("request_id", lawful.request_id),
+                ("transition", lawful.transition),
+                ("intent", intent),
+                ("authority", lawful.authority),
+                ("fence", lawful.fence),
+            ):
+                object.__setattr__(command, name, value)
+            return command
+
+        module = __import__(START_MODULE, fromlist=("__file__",))
+        original_projection = module.runtime_effect_request_for_intent
+        for label, candidate, coordinate_dispatches in (
+            deep_coordinate_intent_candidates(lawful.intent)
+        ):
+            with self.subTest(candidate=label):
+                coordinate_dispatches.clear()
+                projections: list[str] = []
+                fail = FailIfUnitOfWork(
+                    "invalid deep intent opened a unit of work"
+                )
+
+                def forbidden_projection(*_args, **_kwargs):
+                    projections.append("projection")
+                    raise AssertionError("public request projection dispatched")
+
+                captured = None
+                module.runtime_effect_request_for_intent = forbidden_projection
+                try:
+                    try:
+                        self.service(fail).execute(bypass(candidate))
+                    except BaseException as error:
+                        captured = error
+                finally:
+                    module.runtime_effect_request_for_intent = original_projection
+                self.assertEqual(coordinate_dispatches, [])
+                self.assertEqual(projections, [])
+                self.assertEqual(fail.calls, 0)
+                self.assertIs(type(captured), InvalidOperationCommand)
+                self.assertEqual(
+                    str(captured),
+                    "effect attempt start command is invalid",
+                )
+                self.assert_safe_error(captured, label)
 
     def test_start_language_has_closed_import_and_lexical_call_surface(self) -> None:
         path = PACKAGE_ROOT / "src" / Path(START_MODULE.replace(".", "/"))

@@ -23,7 +23,10 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_fingerprint,
 )
 from control_plane_kit_core.runtime_effects import RuntimeEffectContractError
-from control_plane_kit_operations.records import ActivityEventRecord
+from control_plane_kit_operations.records import (
+    ActivityEventRecord,
+    OperationsRecordError,
+)
 
 from tests.effect_attempt_intent_fixture import (
     ClassAccessHostileBytes,
@@ -38,6 +41,7 @@ from tests.effect_attempt_intent_fixture import (
     _encode_runtime_effect_intent,
     _load_optional,
     class_access_hostile_copy,
+    deep_coordinate_intent_candidates,
     forge_exact,
     product_material,
     subclass_copy,
@@ -224,6 +228,8 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("len"),
     architecture_testing.ResolvedCallTarget("len"),
     architecture_testing.ResolvedCallTarget("rfc8785.dumps"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("type"),
@@ -535,6 +541,58 @@ class EffectAttemptIntentContractTests(
         self.assert_intent_error(lambda: _decode_runtime_effect_intent(document))
         self.assertEqual(ClassAccessHostileBytes.dispatches, [])
 
+        self.assertEqual(
+            _decode_runtime_effect_intent(_encode_runtime_effect_intent(lawful)),
+            lawful,
+        )
+        self.assertEqual(self.record(intent=lawful).intent, lawful)
+
+        module = __import__(INTENT_MODULE, fromlist=("__file__",))
+        original_projection = module.runtime_effect_request_for_intent
+        for label, candidate, coordinate_dispatches in (
+            deep_coordinate_intent_candidates(lawful)
+        ):
+            for boundary, construct in (
+                (
+                    "encode",
+                    lambda candidate=candidate: _encode_runtime_effect_intent(
+                        candidate
+                    ),
+                ),
+                (
+                    "record",
+                    lambda candidate=candidate: EffectAttemptIntentRecord(
+                        identity,
+                        event,
+                        candidate,
+                    ),
+                ),
+            ):
+                with self.subTest(candidate=label, boundary=boundary):
+                    coordinate_dispatches.clear()
+                    projections: list[str] = []
+
+                    def forbidden_projection(*_args, **_kwargs):
+                        projections.append("projection")
+                        raise AssertionError("public request projection dispatched")
+
+                    captured = None
+                    module.runtime_effect_request_for_intent = forbidden_projection
+                    try:
+                        try:
+                            construct()
+                        except BaseException as error:
+                            captured = error
+                    finally:
+                        module.runtime_effect_request_for_intent = original_projection
+                    self.assertEqual(coordinate_dispatches, [])
+                    self.assertEqual(projections, [])
+                    self.assertIs(type(captured), OperationsRecordError)
+                    self.assertEqual(str(captured), INTENT_ERROR)
+                    self.assertIsNone(captured.__cause__)
+                    self.assertIsNone(captured.__context__)
+                    self.assertNotIn(label, f"{captured!s} {captured!r}")
+
     def test_record_rejects_every_identity_source_event_and_phase_cross_join(self) -> None:
         self.require_intent_language()
         intent = self.intent()
@@ -713,7 +771,7 @@ class EffectAttemptIntentContractTests(
                 "control_plane_kit_operations.records",
             },
         )
-        self.assertEqual(row["optional_external_dependencies"], [])
+        self.assertEqual(row["optional_external_dependencies"], ["rfc8785"])
         self.assertIn("tests/test_effect_attempt_intent_contract.py", row["protecting_tests"])
 
     def test_module_has_closed_import_and_lexical_call_surface(self) -> None:

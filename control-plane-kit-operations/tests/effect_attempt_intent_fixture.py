@@ -135,6 +135,108 @@ def class_access_hostile_copy(value, dispatches: list[str]):
     return hostile
 
 
+def deep_coordinate_intent_candidates(intent: RuntimeEffectIntent):
+    def hostile_wrapper(value, label: str, dispatches: list[str]):
+        value_type = type(value)
+
+        class HostileValue(value_type):
+            def __getattribute__(self, name):
+                if name in {"__class__", "value"}:
+                    dispatches.append(f"{label}:{name}")
+                    raise AssertionError("hostile coordinate access dispatched")
+                return super().__getattribute__(name)
+
+            def __eq__(self, _other):
+                dispatches.append(f"{label}:eq")
+                raise AssertionError("hostile coordinate equality dispatched")
+
+            def __hash__(self):
+                dispatches.append(f"{label}:hash")
+                raise AssertionError("hostile coordinate hash dispatched")
+
+        hostile = object.__new__(HostileValue)
+        for item in fields(value):
+            object.__setattr__(hostile, item.name, getattr(value, item.name))
+        return hostile
+
+    def hostile_text(value: str, label: str, dispatches: list[str]):
+        class HostileText(str):
+            def __getattribute__(self, name):
+                if name == "__class__":
+                    dispatches.append(f"{label}:class")
+                    raise AssertionError("hostile coordinate class dispatched")
+                return super().__getattribute__(name)
+
+            def __eq__(self, _other):
+                dispatches.append(f"{label}:eq")
+                raise AssertionError("hostile coordinate equality dispatched")
+
+            def __hash__(self):
+                dispatches.append(f"{label}:hash")
+                raise AssertionError("hostile coordinate hash dispatched")
+
+            def strip(self, *_args, **_kwargs):
+                dispatches.append(f"{label}:strip")
+                raise AssertionError("hostile coordinate strip dispatched")
+
+            def encode(self, *_args, **_kwargs):
+                dispatches.append(f"{label}:encode")
+                raise AssertionError("hostile coordinate encode dispatched")
+
+        return HostileText(value)
+
+    def candidate(*, run_id, activity_id):
+        source = forge_exact(
+            RuntimeEffectIntentSource,
+            workspace_id=intent.source.workspace_id,
+            request_id=intent.source.request_id,
+            run_id=run_id,
+            plan_id=intent.source.plan_id,
+            base_graph_id=intent.source.base_graph_id,
+            desired_graph_id=intent.source.desired_graph_id,
+        )
+        return forge_exact(
+            RuntimeEffectIntent,
+            kind=intent.kind,
+            runtime_kind=intent.runtime_kind,
+            source=source,
+            activity_id=activity_id,
+            operation=intent.operation,
+            authority_ref=intent.authority_ref,
+            authority_deliveries=intent.authority_deliveries,
+            products=intent.products,
+        )
+
+    values = []
+    for label in (
+        "run-wrapper-canary",
+        "run-value-canary",
+        "activity-wrapper-canary",
+        "activity-value-canary",
+    ):
+        dispatches: list[str] = []
+        run_id = intent.source.run_id
+        activity_id = intent.activity_id
+        if label == "run-wrapper-canary":
+            run_id = hostile_wrapper(RunId(label), label, dispatches)
+        elif label == "run-value-canary":
+            run_id = forge_exact(
+                RunId,
+                value=hostile_text(label, label, dispatches),
+            )
+        elif label == "activity-wrapper-canary":
+            activity_id = hostile_wrapper(ActivityId(label), label, dispatches)
+        else:
+            activity_id = forge_exact(
+                ActivityId,
+                value=hostile_text(label, label, dispatches),
+            )
+        values.append(
+            (label, candidate(run_id=run_id, activity_id=activity_id), dispatches)
+        )
+    return tuple(values)
+
+
 class ClassAccessHostileBytes(bytes):
     dispatches: list[str] = []
 
@@ -414,6 +516,7 @@ __all__ = [
     "_load_optional",
     "authority_delivery",
     "class_access_hostile_copy",
+    "deep_coordinate_intent_candidates",
     "forge_exact",
     "intent_module",
     "product_material",

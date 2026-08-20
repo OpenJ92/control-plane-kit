@@ -37,6 +37,7 @@ from tests.effect_attempt_start_fixture import (
 )
 from tests.effect_attempt_intent_fixture import (
     class_access_hostile_copy,
+    deep_coordinate_intent_candidates,
     forge_exact,
 )
 
@@ -278,6 +279,54 @@ class EffectAttemptStartLanguageTests(
         )
         self.assert_safe_error(caught.exception)
         self.assertEqual(dispatches, [])
+
+        lawful = self.command()
+        self.assertEqual(
+            StartEffectAttempt(
+                lawful.request_id,
+                lawful.transition,
+                lawful.intent,
+                lawful.authority,
+                lawful.fence,
+            ),
+            lawful,
+        )
+        module = __import__(START_MODULE, fromlist=("__file__",))
+        original_projection = module.runtime_effect_request_for_intent
+        for label, candidate, coordinate_dispatches in (
+            deep_coordinate_intent_candidates(lawful.intent)
+        ):
+            with self.subTest(candidate=label):
+                coordinate_dispatches.clear()
+                projections: list[str] = []
+
+                def forbidden_projection(*_args, **_kwargs):
+                    projections.append("projection")
+                    raise AssertionError("public request projection dispatched")
+
+                captured = None
+                module.runtime_effect_request_for_intent = forbidden_projection
+                try:
+                    try:
+                        StartEffectAttempt(
+                            lawful.request_id,
+                            lawful.transition,
+                            candidate,
+                            lawful.authority,
+                            lawful.fence,
+                        )
+                    except BaseException as error:
+                        captured = error
+                finally:
+                    module.runtime_effect_request_for_intent = original_projection
+                self.assertEqual(coordinate_dispatches, [])
+                self.assertEqual(projections, [])
+                self.assertIs(type(captured), InvalidOperationCommand)
+                self.assertEqual(
+                    str(captured),
+                    "effect attempt start command is invalid",
+                )
+                self.assert_safe_error(captured, label)
 
     def test_result_sum_is_exact_frozen_and_root_identical(self) -> None:
         self.require_language()
