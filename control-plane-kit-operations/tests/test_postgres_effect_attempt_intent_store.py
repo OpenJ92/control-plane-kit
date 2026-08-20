@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import unittest
 from unittest import mock
@@ -109,7 +110,17 @@ class PostgresEffectAttemptIntentStoreTests(
         self.require_intent_store()
         self.require_intent_schema()
         attempt, record = self.intent_attempt()
-        self.persist_evidence_chain(attempt, record)
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            self.assertEqual(
+                stores.execution.add_event(attempt.original_start_event),
+                attempt.original_start_event,
+            )
+            self.assertEqual(
+                stores.effect_attempt_intents.insert(record),
+                record,
+            )
+            unit_of_work.commit()
         valid = self.connection.execute(
             f"SELECT preimage FROM {RELATION}"
         ).fetchone()[0]
@@ -136,6 +147,82 @@ class PostgresEffectAttemptIntentStoreTests(
                 self.connection.execute(
                     f"UPDATE {RELATION} SET preimage=%s",
                     (valid,),
+                )
+
+        alternate_intents = (
+            (
+                "workspace",
+                replace(
+                    record.intent,
+                    source=replace(
+                        record.intent.source,
+                        workspace_id="workspace-foreign",
+                    ),
+                ),
+                "workspace_id",
+            ),
+            (
+                "request",
+                replace(
+                    record.intent,
+                    source=replace(
+                        record.intent.source,
+                        request_id="request-foreign",
+                    ),
+                ),
+                "request_id",
+            ),
+            ("content", self.intent(products=()), "request_fingerprint"),
+        )
+        for label, candidate, drifted_coordinate in alternate_intents:
+            with self.subTest(copied_column_drift=label):
+                alternate = EffectAttemptIntentRecord(
+                    record.identity,
+                    record.original_start_event,
+                    candidate,
+                )
+                self.assertEqual(self.public_round_trip(candidate), candidate)
+                self.assertEqual(alternate.intent, candidate)
+                copied_fingerprint = (
+                    record.request_fingerprint
+                    if label == "content"
+                    else alternate.request_fingerprint
+                )
+                self.connection.execute(
+                    f"UPDATE {RELATION} SET preimage=%s, request_fingerprint=%s",
+                    (self.canonical_bytes(candidate), copied_fingerprint),
+                )
+                copied_coordinates = self.connection.execute(
+                    f"SELECT workspace_id, request_id, request_fingerprint "
+                    f"FROM {RELATION}"
+                ).fetchone()
+                candidate_coordinates = (
+                    alternate.workspace_id,
+                    alternate.request_id,
+                    alternate.request_fingerprint,
+                )
+                self.assertEqual(
+                    tuple(
+                        name
+                        for name, copied, decoded in zip(
+                            ("workspace_id", "request_id", "request_fingerprint"),
+                            copied_coordinates,
+                            candidate_coordinates,
+                            strict=True,
+                        )
+                        if copied != decoded
+                    ),
+                    (drifted_coordinate,),
+                )
+                self.assert_row_error(
+                    lambda: EffectAttemptIntentStore(self.connection).get(
+                        record.identity
+                    ),
+                    label,
+                )
+                self.connection.execute(
+                    f"UPDATE {RELATION} SET preimage=%s, request_fingerprint=%s",
+                    (valid, record.request_fingerprint),
                 )
 
     def test_transport_bounds_gate_before_python_decode_on_get_and_current(self) -> None:
@@ -199,8 +286,9 @@ class PostgresEffectAttemptIntentStoreTests(
         self.assertEqual(len(page_queries), 3)
         for query in page_queries:
             self.assertIn("LIMIT %s", query)
-            self.assertIn("(run_id, activity_id, attempt) > (%s, %s, %s)", query)
             self.assertNotIn("OFFSET", query.upper())
+        for query in page_queries[1:]:
+            self.assertIn("(run_id, activity_id, attempt) > (%s, %s, %s)", query)
 
         middle_preimage = self.connection.execute(
             f"SELECT preimage FROM {RELATION} "
@@ -237,7 +325,6 @@ class PostgresEffectAttemptIntentStoreTests(
         self.require_intent_store()
         self.require_intent_schema()
         attempt, record = self.intent_attempt()
-        store = EffectAttemptIntentStore(self.connection)
         with self.unit_of_work() as unit_of_work:
             self.assertEqual(
                 unit_of_work.stores.execution.add_event(
@@ -245,18 +332,12 @@ class PostgresEffectAttemptIntentStoreTests(
                 ),
                 attempt.original_start_event,
             )
-            unit_of_work.commit()
-        self.connection.execute("SAVEPOINT intent_ack")
-        inserted = store.insert(record)
-        self.assertIs(type(inserted), EffectAttemptIntentRecord)
-        self.assertEqual(inserted, record)
-        self.connection.execute("ROLLBACK TO SAVEPOINT intent_ack")
-        self.connection.execute(
-            "DELETE FROM cpk_activity_events WHERE event_id=%s",
-            (attempt.original_start_event.event_id,),
-        )
+            inserted = unit_of_work.stores.effect_attempt_intents.insert(record)
+            self.assertIs(type(inserted), EffectAttemptIntentRecord)
+            self.assertEqual(inserted, record)
 
         self.persist_evidence_chain(attempt, record)
+        store = EffectAttemptIntentStore(self.connection)
         for error in (
             TypeError("intent-codec-type-canary"),
             RuntimeError("intent-codec-runtime-canary"),

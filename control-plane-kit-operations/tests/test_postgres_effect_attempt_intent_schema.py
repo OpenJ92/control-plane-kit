@@ -5,6 +5,7 @@ from pathlib import Path
 import tomllib
 import unittest
 
+import psycopg
 from psycopg.errors import CheckViolation, ForeignKeyViolation, UniqueViolation
 
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
@@ -286,32 +287,68 @@ class PostgresEffectAttemptIntentSchemaTests(
         self.require_intent_schema()
         attempt, evidence = self.intent_attempt()
         self.persist_evidence_chain(attempt, evidence)
+
+        distinct_event = replace(
+            attempt.original_start_event,
+            event_id="intent-distinct-event",
+            ordinal=attempt.original_start_event.ordinal + 1,
+        )
+        with self.unit_of_work() as unit_of_work:
+            self.assertEqual(
+                unit_of_work.stores.execution.add_event(distinct_event),
+                distinct_event,
+            )
+            unit_of_work.commit()
         with self.assertRaises(UniqueViolation) as caught:
             self.connection.execute(
-                f"INSERT INTO {RELATION} SELECT * FROM {RELATION}"
+                f"INSERT INTO {RELATION} "
+                "SELECT run_id, activity_id, attempt, workspace_id, request_id, "
+                "request_fingerprint, %s, original_event_run_id, %s, preimage "
+                f"FROM {RELATION}",
+                (distinct_event.event_id, distinct_event.ordinal),
             )
         self.assertEqual(
             caught.exception.diag.constraint_name,
             "cpk_effect_attempt_intents_pkey",
         )
 
+        with self.assertRaises(UniqueViolation) as caught:
+            self.connection.execute(
+                f"INSERT INTO {RELATION} "
+                "SELECT run_id, activity_id, attempt + 1, workspace_id, request_id, "
+                "request_fingerprint, original_event_id, original_event_run_id, "
+                f"original_event_ordinal, preimage FROM {RELATION}"
+            )
+        self.assertEqual(
+            caught.exception.diag.constraint_name,
+            "cpk_effect_attempt_intents_original_event_key",
+        )
+
     def test_schema_is_fresh_exact_and_reset_required_for_drift(self) -> None:
         self.require_intent_schema()
-        install_schema(self.connection)
-        before = self.connection.execute(
-            f"SELECT count(*) FROM {RELATION}"
-        ).fetchone()
-        self.connection.execute(
-            f"ALTER TABLE {RELATION} DROP CONSTRAINT "
-            "cpk_effect_attempt_intents_ownership_check"
-        )
-        with self.assertRaises(SchemaInstallationError) as caught:
-            install_schema(self.connection)
-        self.assertEqual(str(caught.exception), "operations schema reset is required")
-        self.assertEqual(
-            self.connection.execute(f"SELECT count(*) FROM {RELATION}").fetchone(),
-            before,
-        )
+        connection = psycopg.connect(self.database_url)
+        try:
+            install_schema(connection)
+            before = connection.execute(
+                f"SELECT count(*) FROM {RELATION}"
+            ).fetchone()
+            connection.execute(
+                f"ALTER TABLE {RELATION} DROP CONSTRAINT "
+                "cpk_effect_attempt_intents_ownership_check"
+            )
+            with self.assertRaises(SchemaInstallationError) as caught:
+                install_schema(connection)
+            self.assertEqual(
+                str(caught.exception),
+                "operations schema reset is required",
+            )
+            self.assertEqual(
+                connection.execute(f"SELECT count(*) FROM {RELATION}").fetchone(),
+                before,
+            )
+        finally:
+            connection.rollback()
+            connection.close()
 
     def test_atlas_restore_order_current_validation_and_read_accounting_are_exact(self) -> None:
         package_root = Path(__file__).resolve().parents[1]

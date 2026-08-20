@@ -130,6 +130,10 @@ class PostgresEffectAttemptStartIntentTests(
             "add_event",
             side_effect=AssertionError("exact replay wrote an event"),
         ), mock.patch.object(
+            EffectAttemptIntentStore,
+            "insert",
+            side_effect=AssertionError("exact replay wrote intent evidence"),
+        ), mock.patch.object(
             EffectAttemptStore,
             "insert_absent",
             side_effect=AssertionError("exact replay wrote an attempt"),
@@ -144,45 +148,57 @@ class PostgresEffectAttemptStartIntentTests(
         self.require_intent_store()
         self.require_intent_schema()
         current = self.persisted_started(event_id="invalid-intent-start")
-        cases = ("missing", "corrupt", "foreign")
-        for case in cases:
+        incongruent = EffectAttemptIntentRecord(
+            current.state.identity,
+            current.original_start_event,
+            self.intent(products=()),
+        )
+        cases = (
+            ("missing", KeyError("missing-intent-canary"), None),
+            (
+                "corrupt",
+                OperationsRecordError("effect attempt intent row is invalid"),
+                None,
+            ),
+            ("foreign", None, incongruent),
+        )
+        before = self.attempt_snapshot()
+        for case, error, candidate in cases:
             with self.subTest(case=case):
-                connection = self.connection
-                connection.execute("SAVEPOINT intent_replay_case")
-                try:
-                    connection.execute(
-                        "ALTER TABLE cpk_effect_attempts DROP CONSTRAINT "
-                        "cpk_effect_attempts_intent_evidence_fk"
+                get_patch = (
+                    mock.patch.object(EffectAttemptIntentStore, "get", side_effect=error)
+                    if error is not None
+                    else mock.patch.object(
+                        EffectAttemptIntentStore,
+                        "get",
+                        return_value=candidate,
                     )
-                    if case == "missing":
-                        connection.execute(f"DELETE FROM {RELATION}")
-                    elif case == "corrupt":
-                        connection.execute(
-                            f"ALTER TABLE {RELATION} DROP CONSTRAINT "
-                            "cpk_effect_attempt_intents_preimage_check"
+                )
+                ids = Sequence(f"{case}-must-not-allocate")
+                with get_patch, self.reject_database_observation(
+                    f"{case} replay sampled database time"
+                ), mock.patch.object(
+                    PostgresExecutionStore,
+                    "add_event",
+                    side_effect=AssertionError(f"{case} replay wrote an event"),
+                ), mock.patch.object(
+                    EffectAttemptIntentStore,
+                    "insert",
+                    side_effect=AssertionError(
+                        f"{case} replay wrote intent evidence"
+                    ),
+                ), mock.patch.object(
+                    EffectAttemptStore,
+                    "insert_absent",
+                    side_effect=AssertionError(f"{case} replay wrote an attempt"),
+                ):
+                    with self.assertRaises(EffectAttemptStartConflict) as caught:
+                        self.start_service_with_id_factory(ids).execute(
+                            self.start_command()
                         )
-                        connection.execute(f"UPDATE {RELATION} SET preimage='{{}}'::bytea")
-                    else:
-                        connection.execute(
-                            f"UPDATE {RELATION} SET request_fingerprint=%s",
-                            ("f" * 64,),
-                        )
-                    ids = Sequence(f"{case}-must-not-allocate")
-                    with self.reject_database_observation(
-                        f"{case} replay sampled database time"
-                    ), mock.patch.object(
-                        PostgresExecutionStore,
-                        "add_event",
-                        side_effect=AssertionError(f"{case} replay wrote"),
-                    ):
-                        with self.assertRaises(EffectAttemptStartConflict) as caught:
-                            self.start_service_with_id_factory(ids).execute(
-                                self.start_command()
-                            )
-                    self.assertEqual(str(caught.exception), REPLAY_ERROR)
-                    self.assertEqual(ids.calls, [])
-                finally:
-                    connection.execute("ROLLBACK TO SAVEPOINT intent_replay_case")
+                self.assertEqual(str(caught.exception), REPLAY_ERROR)
+                self.assertEqual(ids.calls, [])
+                self.assertEqual(self.attempt_snapshot(), before)
         self.assertEqual(current.state.identity, self.start_command().transition.identity)
 
     def test_changed_acknowledgements_and_failures_roll_back_the_complete_chain(self) -> None:
