@@ -107,7 +107,7 @@ EXACT_LANGUAGE_CALLS = (
     architecture_testing.ResolvedCallTarget("ord"),
     *(
         architecture_testing.ResolvedCallTarget("type")
-        for _ in range(13)
+        for _ in range(14)
     ),
     architecture_testing.ResolvedCallTarget("value.encode"),
 )
@@ -217,6 +217,12 @@ class EffectAttemptReconciliationInterpreterContractTests(
 
         class HostileText(str):
             dispatches: list[str] = []
+
+            def __getattribute__(self, name):
+                if name == "__class__":
+                    type(self).dispatches.append("__class__")
+                    raise AssertionError("hostile class access dispatched")
+                return str.__getattribute__(self, name)
 
             def __len__(self):
                 self.dispatches.append("len")

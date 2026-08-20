@@ -140,6 +140,12 @@ class EffectAttemptReconciliationContractTests(
         class HostileText(str):
             dispatches: list[str] = []
 
+            def __getattribute__(self, name):
+                if name == "__class__":
+                    type(self).dispatches.append("__class__")
+                    raise AssertionError("hostile class access dispatched")
+                return str.__getattribute__(self, name)
+
             def __len__(self):
                 self.dispatches.append("len")
                 raise AssertionError("hostile text length dispatched")
@@ -541,6 +547,36 @@ class EffectAttemptReconciliationContractTests(
         for error in errors:
             self.assertIsNone(error.__cause__)
             self.assertIsNone(error.__context__)
+
+        class HostileKind:
+            dispatches: list[str] = []
+
+            def __init__(self, claims_equality: bool) -> None:
+                self.claims_equality = claims_equality
+
+            def __eq__(self, _other):
+                type(self).dispatches.append("eq")
+                if self.claims_equality:
+                    return True
+                raise AssertionError("hostile event-kind equality dispatched")
+
+        for label, kind in (
+            ("raises", HostileKind(False)),
+            ("claims", HostileKind(True)),
+        ):
+            with self.subTest(hostile_kind=label):
+                HostileKind.dispatches.clear()
+                event = self._event_with_kind(base.intent_event, kind)
+                with self.assertRaises(InvalidOperationCommand) as caught:
+                    dataclasses.replace(base, intent_event=event)
+                self.assertEqual(
+                    str(caught.exception),
+                    "realization intent must be step_started or "
+                    "step_compensation_started",
+                )
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assertEqual(HostileKind.dispatches, [])
 
     @staticmethod
     def _event_with_kind(
