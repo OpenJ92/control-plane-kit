@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import unittest
 
-from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
+from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, RequirementSocket
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -507,6 +507,36 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 product=_product(identity),
             )
 
+    def test_product_material_socket_permutations_are_equal_exact_inverses(self) -> None:
+        canonical = _product_material(
+            sockets=_runtime_product_sockets(
+                reverse_requirements=False,
+                reverse_providers=False,
+            )
+        )
+        cases = (
+            ("requirements", True, False),
+            ("providers", False, True),
+            ("both", True, True),
+        )
+
+        for name, reverse_requirements, reverse_providers in cases:
+            with self.subTest(name=name):
+                material = _product_material(
+                    sockets=_runtime_product_sockets(
+                        reverse_requirements=reverse_requirements,
+                        reverse_providers=reverse_providers,
+                    )
+                )
+                descriptor = material.descriptor()
+
+                self.assertEqual(descriptor, canonical.descriptor())
+                self.assertEqual(material, canonical)
+                self.assertEqual(
+                    RuntimeProductMaterial.from_descriptor(descriptor),
+                    material,
+                )
+
     def test_product_material_rejects_wrong_or_duplicate_environment_material(self) -> None:
         identity = ProductIdentity("openj92", "hello-server", 1)
         with self.assertRaises(RuntimeEffectContractError):
@@ -853,13 +883,32 @@ def _source() -> RuntimeEffectSource:
     )
 
 
-def _product_material() -> RuntimeProductMaterial:
+def _runtime_product_sockets(
+    *,
+    reverse_requirements: bool,
+    reverse_providers: bool,
+) -> BlockSockets:
+    requirements = (
+        RequirementSocket("alpha-input", Protocol.HTTP, ("ALPHA_URL",)),
+        RequirementSocket("zeta-input", Protocol.HTTP, ("ZETA_URL",)),
+    )
+    providers = (
+        ProviderSocket("alpha-output", Protocol.HTTP),
+        ProviderSocket("zeta-output", Protocol.HTTP),
+    )
+    return BlockSockets(
+        requirements=tuple(reversed(requirements)) if reverse_requirements else requirements,
+        providers=tuple(reversed(providers)) if reverse_providers else providers,
+    )
+
+
+def _product_material(*, sockets: BlockSockets | None = None) -> RuntimeProductMaterial:
     identity = ProductIdentity("openj92", "hello-server", 1)
     return RuntimeProductMaterial(
         node_id="api",
         runtime_id="docker",
         reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
-        product=_product(identity),
+        product=_product(identity, sockets=sockets),
         public_environment=(
             PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello from graph"),
         ),
@@ -873,7 +922,11 @@ def _product_material() -> RuntimeProductMaterial:
     )
 
 
-def _product(identity: ProductIdentity) -> ContainerServerProduct:
+def _product(
+    identity: ProductIdentity,
+    *,
+    sockets: BlockSockets | None = None,
+) -> ContainerServerProduct:
     return ContainerServerProduct(
         identity=identity,
         image=OciImageReference(
@@ -882,8 +935,12 @@ def _product(identity: ProductIdentity) -> ContainerServerProduct:
             digest="sha256:" + "a" * 64,
         ),
         runtime_contract=ProductRuntimeContract(
-            sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
-            provider_ports=(ProviderRuntimePort("http", 8000),),
+            sockets=sockets
+            if sockets is not None
+            else BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+            provider_ports=()
+            if sockets is not None
+            else (ProviderRuntimePort("http", 8000),),
         ),
     )
 

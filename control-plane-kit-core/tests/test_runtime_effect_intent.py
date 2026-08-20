@@ -7,7 +7,7 @@ import unittest
 
 import rfc8785
 
-from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
+from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, RequirementSocket
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -54,6 +54,7 @@ from control_plane_kit_core.verification import (
 
 MODULE = "control_plane_kit_core.runtime_effect_observation"
 INTENT_DOMAIN = b"control-plane-kit.runtime-effect-intent.v1\x00"
+PRODUCT_MATERIAL_CANONICAL = b'{"node_id":"api","product":{"description":null,"display_name":null,"identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"},"image":{"digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","platforms":[{"architecture":"amd64","os":"linux","variant":null}],"provenance":{"build":"build-a"},"registry":"ghcr.io","repository":"openj92/control-plane-kit-servers/hello-server","tag":"stable"},"kind":"container-server","product_family":"server","runtime_contract":{"capabilities":[],"configuration_artifacts":[],"lifecycle":{"compute":"ephemeral","data":[],"ownership":"owned"},"provider_ports":[{"container_port":5432,"provider_socket":"database"},{"container_port":5433,"provider_socket":"database-alt"},{"container_port":8000,"provider_socket":"http"}],"public_environment":[],"retained_data_mounts":[],"secret_deliveries":[{"environment_name":"APP_CONTROL_TOKEN","intent":"application.control-token","kind":"environment","reference_id":"secret://local/workspace-a/app/token"}],"sockets":{"providers":{"database":{"protocol":{"application":"postgres","transport":"tcp"}},"database-alt":{"protocol":{"application":"postgres","transport":"tcp"}},"http":{"protocol":{"application":"http","transport":"tcp"}}},"requirements":{}},"verification":{"checks":[{"authentication":{"database":"app","kind":"password","password_reference_id":"secret://local/workspace-a/postgres/password","username":"app"},"check_id":"database-ready","kind":"postgres-query","operation":"select-one","policy":{"interval_seconds":1,"maximum_attempts":1,"maximum_evidence_bytes":16384,"timeout_seconds":5},"provider_socket":"database"}]}}},"public_environment":[{"kind":"public-static","name":"HELLO_MESSAGE","value":"Hello from graph"}],"pull_authority":{"credential_reference":"secret://local/workspace-a/oci/pull","registry":"ghcr.io","repository":"openj92"},"reference":{"descriptor_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","identity":{"contract_revision":1,"name":"hello-server","namespace":"openj92"}},"runtime_id":"docker","socket_environment":[{"edge_id":"upstream.internal->api.upstream","kind":"socket-derived","name":"UPSTREAM_URL","value":"http://upstream:8080"}]}'
 
 
 def _language():
@@ -128,6 +129,7 @@ def _product_material(
     pull_registry: str = "ghcr.io",
     pull_repository: str | None = "openj92",
     pull_reference: str = "secret://local/workspace-a/oci/pull",
+    runtime_sockets: BlockSockets | None = None,
 ) -> RuntimeProductMaterial:
     identity = ProductIdentity(product_namespace, product_name, contract_revision)
     product = ContainerServerProduct(
@@ -141,14 +143,18 @@ def _product_material(
             provenance={"build": image_provenance},
         ),
         runtime_contract=ProductRuntimeContract(
-            sockets=BlockSockets(
+            sockets=runtime_sockets
+            if runtime_sockets is not None
+            else BlockSockets(
                 providers=(
                     ProviderSocket(provider_socket_name, provider_socket_protocol),
                     ProviderSocket("database", Protocol.POSTGRES),
                     ProviderSocket("database-alt", Protocol.POSTGRES),
                 )
             ),
-            provider_ports=(
+            provider_ports=()
+            if runtime_sockets is not None
+            else (
                 ProviderRuntimePort(provider_socket_name, provider_port),
                 ProviderRuntimePort("database", 5432),
                 ProviderRuntimePort("database-alt", 5433),
@@ -160,7 +166,9 @@ def _product_material(
                     secret_use_intent,
                 ),
             ),
-            verification=VerificationContract(
+            verification=VerificationContract()
+            if runtime_sockets is not None
+            else VerificationContract(
                 (
                     PostgresQueryCheck(
                         check_id=verification_check_id,
@@ -204,6 +212,25 @@ def _subclass_copy(value):
         if item.init
     }
     return hostile_type(**arguments)
+
+
+def _intent_product_sockets(
+    *,
+    reverse_requirements: bool,
+    reverse_providers: bool,
+) -> BlockSockets:
+    requirements = (
+        RequirementSocket("alpha-input", Protocol.HTTP, ("ALPHA_URL",)),
+        RequirementSocket("zeta-input", Protocol.HTTP, ("ZETA_URL",)),
+    )
+    providers = (
+        ProviderSocket("alpha-output", Protocol.HTTP),
+        ProviderSocket("zeta-output", Protocol.HTTP),
+    )
+    return BlockSockets(
+        requirements=tuple(reversed(requirements)) if reverse_requirements else requirements,
+        providers=tuple(reversed(providers)) if reverse_providers else providers,
+    )
 
 
 def _request(
@@ -300,6 +327,121 @@ class RuntimeEffectIntentTests(unittest.TestCase):
         self.assertEqual(
             language.runtime_effect_intent_fingerprint(first_intent),
             language.runtime_effect_intent_fingerprint(second_intent),
+        )
+
+    def test_product_socket_permutations_preserve_intent_and_request_inverses(
+        self,
+    ) -> None:
+        language = _language()
+        base_request = _request(complete=False)
+        canonical = language.runtime_effect_intent_for_request(
+            replace(
+                base_request,
+                products=(
+                    _product_material(
+                        runtime_sockets=_intent_product_sockets(
+                            reverse_requirements=False,
+                            reverse_providers=False,
+                        )
+                    ),
+                ),
+            )
+        )
+        canonical_bytes = rfc8785.dumps(canonical.descriptor())
+        cases = (
+            ("requirements", True, False),
+            ("providers", False, True),
+            ("both", True, True),
+        )
+
+        for name, reverse_requirements, reverse_providers in cases:
+            with self.subTest(name=name):
+                intent = language.runtime_effect_intent_for_request(
+                    replace(
+                        base_request,
+                        products=(
+                            _product_material(
+                                runtime_sockets=_intent_product_sockets(
+                                    reverse_requirements=reverse_requirements,
+                                    reverse_providers=reverse_providers,
+                                )
+                            ),
+                        ),
+                    )
+                )
+
+                self.assertEqual(intent.descriptor(), canonical.descriptor())
+                self.assertEqual(rfc8785.dumps(intent.descriptor()), canonical_bytes)
+                self.assertEqual(
+                    language.runtime_effect_intent_fingerprint(intent),
+                    language.runtime_effect_intent_fingerprint(canonical),
+                )
+                self.assertEqual(intent, canonical)
+                reconstructed = language.runtime_effect_request_for_intent(
+                    intent,
+                    effect_id="event-started-permutation",
+                )
+                self.assertEqual(
+                    language.runtime_effect_intent_for_request(reconstructed),
+                    intent,
+                )
+
+    def test_noncanonical_product_fixture_retains_accepted_literal_golden(self) -> None:
+        language = _language()
+        intent = language.runtime_effect_intent_for_request(_request())
+        descriptor = intent.descriptor()
+        product_descriptor = descriptor["products"][0]
+        canonical = rfc8785.dumps(descriptor)
+        product_canonical = rfc8785.dumps(product_descriptor)
+
+        self.assertEqual(
+            product_descriptor["product"]["runtime_contract"]["sockets"],
+            {
+                "requirements": {},
+                "providers": {
+                    "database": {
+                        "protocol": {
+                            "transport": "tcp",
+                            "application": "postgres",
+                        }
+                    },
+                    "database-alt": {
+                        "protocol": {
+                            "transport": "tcp",
+                            "application": "postgres",
+                        }
+                    },
+                    "http": {
+                        "protocol": {
+                            "transport": "tcp",
+                            "application": "http",
+                        }
+                    },
+                },
+            },
+        )
+        self.assertEqual(product_canonical, PRODUCT_MATERIAL_CANONICAL)
+        self.assertEqual(len(product_canonical), 2_226)
+        self.assertEqual(
+            hashlib.sha256(product_canonical).hexdigest(),
+            "f7da31e6a9d0b4cd5838570253b5d691f1fd1965cc4e26aecf98fea5cd80db81",
+        )
+        self.assertEqual(len(canonical), 3_005)
+        self.assertEqual(
+            hashlib.sha256(canonical).hexdigest(),
+            "f06647243f28bbe5e0200f9a85c27630fabbf2e42669f85e47cdb4390d3cd48d",
+        )
+        self.assertEqual(
+            language.runtime_effect_intent_fingerprint(intent),
+            "fa6e2d2c44210d027421b9f25f5cf0481a8345d9727fd5f0b27fd90aaa9ccda0",
+        )
+        self.assertEqual(
+            hashlib.sha256(INTENT_DOMAIN + canonical).hexdigest(),
+            "fa6e2d2c44210d027421b9f25f5cf0481a8345d9727fd5f0b27fd90aaa9ccda0",
+        )
+        self.assertEqual(
+            intent.products[0].product.runtime_contract.sockets.provider_names(),
+            ("database", "database-alt", "http"),
         )
 
     def test_intent_fingerprint_has_exact_rfc8785_golden_and_domain(self) -> None:
