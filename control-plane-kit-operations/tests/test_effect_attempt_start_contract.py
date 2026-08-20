@@ -35,7 +35,10 @@ from tests.effect_attempt_start_fixture import (
     StartEffectAttempt,
     _load_optional,
 )
-from tests.effect_attempt_intent_fixture import forge_exact
+from tests.effect_attempt_intent_fixture import (
+    class_access_hostile_copy,
+    forge_exact,
+)
 
 
 class EffectAttemptStartLanguageTests(
@@ -241,6 +244,40 @@ class EffectAttemptStartLanguageTests(
             command.transition.request_fingerprint,
             runtime_effect_intent_fingerprint(intent),
         )
+
+    def test_command_rejects_lawful_intent_with_foreign_transition_fingerprint(
+        self,
+    ) -> None:
+        intent = self.intent()
+        transition = EffectAttemptTransition(
+            self.transition().kind,
+            self.transition().identity,
+            request_fingerprint="f" * 64,
+        )
+        self.assertNotEqual(
+            transition.request_fingerprint,
+            runtime_effect_intent_fingerprint(intent),
+        )
+        with self.assertRaises(InvalidOperationCommand) as caught:
+            self.command(intent=intent, transition=transition)
+        self.assertEqual(
+            str(caught.exception),
+            "effect attempt start command is invalid",
+        )
+        self.assert_safe_error(caught.exception, "f" * 64)
+
+    def test_command_rejects_hostile_intent_before_class_access(self) -> None:
+        intent = self.intent()
+        dispatches: list[str] = []
+        hostile = class_access_hostile_copy(intent, dispatches)
+        with self.assertRaises(InvalidOperationCommand) as caught:
+            self.command(intent=hostile)
+        self.assertEqual(
+            str(caught.exception),
+            "effect attempt start command is invalid",
+        )
+        self.assert_safe_error(caught.exception)
+        self.assertEqual(dispatches, [])
 
     def test_result_sum_is_exact_frozen_and_root_identical(self) -> None:
         self.require_language()
