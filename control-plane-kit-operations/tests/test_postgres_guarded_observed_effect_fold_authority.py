@@ -394,6 +394,41 @@ class PostgresGuardedObservedEffectFoldAuthorityTests(
                     intent.authority_ref,
                 )
 
+        for label, rows in (
+            ("missing-field", (row[:-1],)),
+            ("extra-field", ((*row, "foreign-extra-field"),)),
+        ):
+            with self.subTest(selector=label):
+                connection = _RowsConnection(rows)
+                observed_error = None
+                try:
+                    selector(
+                        RuntimeAuthorityStore(connection),
+                        intent.source.workspace_id,
+                        intent.authority_ref,
+                    )
+                except Exception as error:
+                    observed_error = error
+                if observed_error is None:
+                    self.fail("malformed selector row was accepted")
+                self.assertIs(
+                    type(observed_error),
+                    RuntimeAuthorityRegistrationError,
+                    "malformed selector row escaped the fixed category",
+                )
+                self.assertTrue(
+                    str(observed_error) == _ROW_ERROR,
+                    "malformed selector row escaped the fixed message",
+                )
+                self.assertIsNone(observed_error.__cause__)
+                self.assertIsNone(observed_error.__context__)
+                _assert_selector_ledger(
+                    self,
+                    connection,
+                    intent.source.workspace_id,
+                    intent.authority_ref,
+                )
+
         for error_type in (TypeError, RuntimeError):
             with self.subTest(selector_raw=error_type.__name__):
                 error = error_type("raw-active-selector-canary")

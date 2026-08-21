@@ -24,6 +24,7 @@ from tests.postgres_effect_attempt_fold_fixture import (
     REPLAY_ERROR,
 )
 from tests.postgres_guarded_observed_effect_fold_fixture import (
+    PostgresExecutionStore,
     PostgresGuardedObservedEffectFoldFixture,
     Sequence,
 )
@@ -69,16 +70,29 @@ class PostgresGuardedObservedEffectFoldFirstReplayTests(
         )
 
     def test_control_ordinary_execution_and_recovery_remain_total(self) -> None:
+        original = PostgresExecutionStore.observe_request_lease_for_update
+
+        def expired(store, request_id):
+            return replace(original(store, request_id), expired=True)
+
         for story in ("succeeded", "recovered-succeeded"):
             with self.subTest(story=story):
                 self.seed_fold_source(story)
-                result = self.fold_service(f"ordinary-{story}").execute(
-                    self.fold_command(story)
-                )
+                with mock.patch.object(
+                    PostgresExecutionStore,
+                    "observe_request_lease_for_update",
+                    expired,
+                ):
+                    result = self.fold_service(f"ordinary-{story}").execute(
+                        self.fold_command(story)
+                    )
                 self.assertIsInstance(result, NewlyFolded)
-                replay = self.fold_service("must-not-allocate").execute(
-                    self.fold_command(story)
-                )
+                with self.reject_fold_database_observation(
+                    "ordinary replay sampled lease time"
+                ):
+                    replay = self.fold_service("must-not-allocate").execute(
+                        self.fold_command(story)
+                    )
                 self.assertIsInstance(replay, ExistingFold)
 
     def test_terminal_profile_replays_are_exact_for_same_and_newer_claims(self) -> None:
@@ -164,6 +178,47 @@ class PostgresGuardedObservedEffectFoldFirstReplayTests(
                 self.assertEqual(self.complete_snapshot(), before)
 
         self._assert_stale_claim_confidentiality_matrix()
+        self._assert_observed_outcome_requires_guarded_entrypoint()
+
+    def _assert_observed_outcome_requires_guarded_entrypoint(self) -> None:
+        story = self.observed_story()
+        for world in ("fresh", "terminal"):
+            with self.subTest(ordinary_observed=world):
+                if world == "fresh":
+                    current, _intent, _record = self.seed_guarded_source(story)
+                    command = self.guarded_observed_command(
+                        story,
+                        current=current,
+                    ).fold
+                else:
+                    _current, _outcome = self.persist_terminal(story)
+                    command = self.fold_command(story)
+                requests = []
+                original = PostgresExecutionStore.get_request_for_update
+
+                def request(store, request_id):
+                    value = original(store, request_id)
+                    requests.append(value)
+                    return value
+
+                ids = Sequence("ordinary-observed-must-not-allocate")
+                with ExitStack() as stack:
+                    stack.enter_context(
+                        mock.patch.object(
+                            PostgresExecutionStore,
+                            "get_request_for_update",
+                            request,
+                        )
+                    )
+                    for patcher in self.forbidden_lower_interactions(
+                        "ordinary observed outcome crossed the guarded boundary"
+                    ):
+                        stack.enter_context(patcher)
+                    with self.assertRaises(EffectAttemptFoldConflict) as caught:
+                        self.fold_service_with_id_factory(ids).execute(command)
+                self.assertEqual(str(caught.exception), REPLAY_ERROR)
+                self.assertEqual(len(requests), 1)
+                self.assertEqual(ids.calls, [])
 
     def _assert_stale_claim_confidentiality_matrix(self) -> None:
         worlds = ("recovery", "terminal-matching", "terminal-cross", "fresh")
