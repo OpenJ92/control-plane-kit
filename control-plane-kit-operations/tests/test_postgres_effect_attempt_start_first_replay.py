@@ -30,8 +30,13 @@ class PostgresEffectAttemptStartFirstReplayTests(
                 service, sequence = self.start_service_with_sequence(
                     f"effect-{int(compensation)}-start"
                 )
+                intent = self.intent(compensation=compensation)
+                command = self.start_command(
+                    intent=intent,
+                    transition=self.transition(intent=intent),
+                )
 
-                result = service.execute(self.start_command())
+                result = service.execute(command)
 
                 self.assertIsInstance(result, NewlyStarted)
                 self.assertEqual(sequence.calls, [f"effect-{int(compensation)}-start"])
@@ -41,7 +46,7 @@ class PostgresEffectAttemptStartFirstReplayTests(
                 self.assertEqual(attempt.state.identity.attempt, 1)
                 self.assertEqual(
                     attempt.state.request_fingerprint,
-                    self.start_command().transition.request_fingerprint,
+                    command.transition.request_fingerprint,
                 )
                 self.assertEqual(attempt.state.fence.worker_id, "worker-a")
                 self.assertEqual(attempt.state.fence.generation, 7)

@@ -261,10 +261,15 @@ class PostgresEffectAttemptStartIntentTests(
             with self.subTest(boundary=boundary):
                 self.reset_start_truth()
                 before = self.attempt_snapshot()
+                canary = (
+                    "changed-attempt-acknowledgement-canary"
+                    if boundary == "attempt"
+                    else boundary
+                )
 
                 def changed(store, value, *, boundary=boundary):
                     original[boundary](store, value)
-                    return object()
+                    return canary if boundary == "attempt" else object()
 
                 owner, name = owners[boundary]
                 with mock.patch.object(owner, name, changed):
@@ -273,7 +278,7 @@ class PostgresEffectAttemptStartIntentTests(
                             self.start_command()
                         )
                 self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
-                self.assert_safe_error(caught.exception, boundary)
+                self.assert_safe_error(caught.exception, canary)
                 self.assertEqual(self.attempt_snapshot(), before)
 
     def test_identical_race_has_one_evidence_row_and_incompatible_replay_conflicts(self) -> None:
@@ -294,9 +299,13 @@ class PostgresEffectAttemptStartIntentTests(
             self.start_command().intent,
             products=(),
         )
+        foreign_transition = self.transition(intent=foreign)
         with self.assertRaises(EffectAttemptStartConflict) as caught:
             self.start_service("incompatible-must-not-allocate").execute(
-                self.start_command(intent=foreign)
+                self.start_command(
+                    intent=foreign,
+                    transition=foreign_transition,
+                )
             )
         self.assertEqual(str(caught.exception), REPLAY_ERROR)
 

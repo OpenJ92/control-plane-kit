@@ -39,7 +39,7 @@ _CATEGORY_COUNTS = {
     "fixed-cardinality": 1,
     "closed-finite": 2,
     "internal-complete": 22,
-    "exact-verifier": 11,
+    "exact-verifier": 12,
 }
 _GENERIC_CONSUMERS = frozenset({"internal", "module", "test", "tests"})
 _MODULE = re.compile(r"^control_plane_kit_operations\.postgres(?:\.[a-z][a-z0-9_]*)+$")

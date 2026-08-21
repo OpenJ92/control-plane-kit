@@ -11,6 +11,7 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import (
     EffectAttemptIntentRecord,
 )
 from control_plane_kit_operations.records import OperationsRecordError
+from tests.effect_attempt_intent_fixture import EffectAttemptIntentFixture
 from tests.postgres_effect_attempt_intent_store_fixture import (
     EffectAttemptIntentStore,
     PostgresEffectAttemptIntentStoreFixture,
@@ -181,7 +182,10 @@ class PostgresEffectAttemptIntentStoreTests(
                     record.original_start_event,
                     candidate,
                 )
-                self.assertEqual(self.public_round_trip(candidate), candidate)
+                self.assertEqual(
+                    EffectAttemptIntentFixture.public_round_trip(self, candidate),
+                    candidate,
+                )
                 self.assertEqual(alternate.intent, candidate)
                 copied_fingerprint = (
                     record.request_fingerprint
@@ -190,7 +194,10 @@ class PostgresEffectAttemptIntentStoreTests(
                 )
                 self.connection.execute(
                     f"UPDATE {RELATION} SET preimage=%s, request_fingerprint=%s",
-                    (self.canonical_bytes(candidate), copied_fingerprint),
+                    (
+                        EffectAttemptIntentFixture.canonical_bytes(self, candidate),
+                        copied_fingerprint,
+                    ),
                 )
                 copied_coordinates = self.connection.execute(
                     f"SELECT workspace_id, request_id, request_fingerprint "
@@ -288,7 +295,11 @@ class PostgresEffectAttemptIntentStoreTests(
             self.assertIn("LIMIT %s", query)
             self.assertNotIn("OFFSET", query.upper())
         for query in page_queries[1:]:
-            self.assertIn("(run_id, activity_id, attempt) > (%s, %s, %s)", query)
+            self.assertIn(
+                "(intent.run_id, intent.activity_id, intent.attempt) "
+                "> (%s, %s, %s)",
+                query,
+            )
 
         middle_preimage = self.connection.execute(
             f"SELECT preimage FROM {RELATION} "

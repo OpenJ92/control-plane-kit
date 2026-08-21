@@ -184,7 +184,17 @@ class PostgresEffectAttemptIntentSchemaTests(
         self.require_intent_store()
         self.require_intent_schema()
         attempt, evidence = self.intent_attempt()
-        self.persist_evidence_chain(attempt, evidence)
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            self.assertEqual(
+                stores.execution.add_event(attempt.original_start_event),
+                attempt.original_start_event,
+            )
+            self.assertEqual(
+                stores.effect_attempt_intents.insert(evidence),
+                evidence,
+            )
+            unit_of_work.commit()
         self.assertEqual(len(self.intent_snapshot()), 1)
 
         mutations = (
@@ -217,6 +227,20 @@ class PostgresEffectAttemptIntentSchemaTests(
         run_id = "r" * 200
         activity_id = "a" * 200
         event_id = "\U0010ffff" * 512
+        plan_id = "intent-max-plan"
+        self.connection.execute(
+            """
+            INSERT INTO cpk_activity_plans
+              (plan_id, session_id, base_graph_id, desired_graph_id,
+               base_realized_projection_id, desired_realized_projection_id,
+               desired_graph_revision, status, created_at, payload)
+            SELECT %s, session_id, base_graph_id, desired_graph_id,
+                   base_realized_projection_id, desired_realized_projection_id,
+                   desired_graph_revision, status, created_at, payload
+            FROM cpk_activity_plans WHERE plan_id='plan-a'
+            """,
+            (plan_id,),
+        )
         self.connection.execute(
             """
             INSERT INTO cpk_execution_requests
@@ -224,24 +248,24 @@ class PostgresEffectAttemptIntentSchemaTests(
                requested_by, requested_at, approval_request_id,
                approval_decision_id, idempotency_key, intent_fingerprint,
                claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            SELECT %s, workspace_id, session_id, plan_id, status,
+            SELECT %s, workspace_id, session_id, %s, status,
                    requested_by, requested_at, approval_request_id,
                    approval_decision_id, %s, intent_fingerprint,
                    claim_worker_id, claim_generation, claimed_at, lease_expires_at
             FROM cpk_execution_requests WHERE request_id='request-a'
             """,
-            (request_id, "intent-max-idempotency"),
+            (request_id, plan_id, "intent-max-idempotency"),
         )
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, prior_run_id, status,
                created_at, started_at, settled_at, metadata)
-            SELECT %s, plan_id, %s, 1, NULL, status,
+            SELECT %s, %s, %s, 1, NULL, status,
                    created_at, started_at, settled_at, metadata
             FROM cpk_activity_runs WHERE run_id='run-a'
             """,
-            (run_id, request_id),
+            (run_id, plan_id, request_id),
         )
         attempt, evidence = self.intent_attempt(
             request_id=request_id,

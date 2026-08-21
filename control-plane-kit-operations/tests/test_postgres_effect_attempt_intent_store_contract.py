@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import fields
 import inspect
 import os
 from pathlib import Path
@@ -53,6 +54,14 @@ class _FailingConnection:
 
     def execute(self, *_arguments):
         raise self.error
+
+
+def _subclass_copy_without_constructor(value):
+    hostile_type = type(f"Hostile{type(value).__name__}", (type(value),), {})
+    hostile = object.__new__(hostile_type)
+    for item in fields(value):
+        object.__setattr__(hostile, item.name, getattr(value, item.name))
+    return hostile
 
 
 class PostgresEffectAttemptIntentStoreContractTests(
@@ -111,7 +120,11 @@ class PostgresEffectAttemptIntentStoreContractTests(
         identity = attempt.state.identity
         candidates = (
             ("insert-object", "insert", object()),
-            ("insert-subclass", "insert", subclass_copy(record)),
+            (
+                "insert-subclass",
+                "insert",
+                _subclass_copy_without_constructor(record),
+            ),
             (
                 "insert-forged-identity",
                 "insert",
@@ -164,9 +177,13 @@ class PostgresEffectAttemptIntentStoreContractTests(
         with self.assertRaises(KeyError):
             store.get(record.identity)
         get_query = " ".join(str(connection.calls[1][0]).split())
-        self.assertIn("octet_length(preimage)", get_query)
+        self.assertIn("octet_length(intent.preimage)", get_query)
         self.assertIn("<= 1048576", get_query)
-        self.assertIn("WHERE run_id = %s", get_query)
+        self.assertIn(
+            "WHERE intent.run_id = %s AND intent.activity_id = %s "
+            "AND intent.attempt = %s",
+            get_query,
+        )
         self.assertNotIn("FOR UPDATE", get_query)
         self.assertNotIn("OFFSET", get_query.upper())
 
