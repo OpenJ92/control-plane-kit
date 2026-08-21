@@ -19,6 +19,7 @@ from control_plane_kit_core import (
     RuntimeEffectObservedSucceeded,
     RuntimeEffectObserverUnsupported,
     RuntimeEffectResult,
+    runtime_effect_intent_fingerprint,
     runtime_effect_observation_fingerprint,
     runtime_effect_result_fingerprint,
 )
@@ -59,7 +60,6 @@ from effect_attempt_record_fixture import (
     EffectAttemptRecordFixture,
     REQUEST_FINGERPRINT,
 )
-from effect_attempt_intent_fixture import EffectAttemptIntentFixture
 
 
 MODULE_NAME = "control_plane_kit_operations.effect_outcome_evidence"
@@ -502,14 +502,22 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
         stories: list[OutcomeStory] = []
         for compensation in (False, True):
             for name, profile, value, status, transition, failure_row in self.raw_rows():
+                identity = self.identity()
+                request_fingerprint = self.request_fingerprint_for_attempt(
+                    compensation=compensation,
+                    run_id=identity.run_id.value,
+                    activity_id=identity.activity_id,
+                )
+                if profile == "provider-observation":
+                    value = replace(value, request_fingerprint=request_fingerprint)
                 fingerprint = (
                     runtime_effect_result_fingerprint(value)
                     if profile == "execution-result"
                     else runtime_effect_observation_fingerprint(value)
                 )
                 state = EffectAttemptState(
-                    identity=self.identity(),
-                    request_fingerprint=REQUEST_FINGERPRINT,
+                    identity=identity,
+                    request_fingerprint=request_fingerprint,
                     fence=EffectAttemptFence("worker-a", 7),
                     status=status,
                     outcome_fingerprint=fingerprint,
@@ -564,12 +572,10 @@ class EffectOutcomeEvidenceFixture(EffectAttemptRecordFixture):
     ) -> EffectAttemptRecord:
         identity = story.attempt.state.identity if identity is None else identity
         request_fingerprint = (
-            runtime_effect_intent_fingerprint(
-                EffectAttemptIntentFixture().intent(
-                    compensation=story.compensation,
-                    run_id=identity.run_id.value,
-                    activity_id=identity.activity_id,
-                )
+            self.request_fingerprint_for_attempt(
+                compensation=story.compensation,
+                run_id=identity.run_id.value,
+                activity_id=identity.activity_id,
             )
             if request_fingerprint is None
             else request_fingerprint

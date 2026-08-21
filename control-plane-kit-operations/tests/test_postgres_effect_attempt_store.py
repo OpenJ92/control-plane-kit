@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import dataclasses
 import threading
 import unittest
 
@@ -70,6 +71,7 @@ class PostgresEffectAttemptStoreTests(
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             self.add_record_events(stores, record)
+            self.add_record_intent(stores, record)
             self.assertEqual(stores.effect_attempts.insert_absent(record), record)
 
         with self.unit_of_work() as unit_of_work:
@@ -94,6 +96,7 @@ class PostgresEffectAttemptStoreTests(
             with self.unit_of_work() as unit_of_work:
                 stores = unit_of_work.stores
                 self.add_record_events(stores, retry)
+                self.add_record_intent(stores, retry)
                 stores.effect_attempts.insert_absent(retry)
                 unit_of_work.commit()
 
@@ -232,10 +235,10 @@ class PostgresEffectAttemptStoreTests(
     def test_complete_persisted_prior_drift_misses_and_preserves_row(self) -> None:
         self.require_store()
         for drift in (
-            "request",
+            "prior-request",
             "fence",
             "state",
-            "original-event",
+            "prior-original-event",
             "latest-event",
         ):
             with self.subTest(drift=drift):
@@ -262,11 +265,28 @@ class PostgresEffectAttemptStoreTests(
                     )
                     unit_of_work.commit()
 
-                if drift == "request":
-                    self.connection.execute(
-                        "UPDATE cpk_effect_attempts SET request_fingerprint=%s "
-                        "WHERE run_id='run-a' AND activity_id='activity-a' AND attempt=1",
-                        ("d" * 64,),
+                prior = current
+                if drift == "prior-request":
+                    prior_state = dataclasses.replace(
+                        current.state,
+                        request_fingerprint=self.request_fingerprint_for_attempt(
+                            compensation=True,
+                            run_id=current.state.identity.run_id.value,
+                            activity_id=current.state.identity.activity_id,
+                        ),
+                    )
+                    prior = EffectAttemptRecord(
+                        prior_state,
+                        dataclasses.replace(
+                            current.original_start_event,
+                            evidence=self.evidence_for(
+                                self.started_state(prior_state)
+                            ),
+                        ),
+                        dataclasses.replace(
+                            current.latest_transition_event,
+                            evidence=self.evidence_for(prior_state),
+                        ),
                     )
                 elif drift == "fence":
                     self.connection.execute(
@@ -310,7 +330,7 @@ class PostgresEffectAttemptStoreTests(
                             drifted.latest_transition_event.ordinal,
                         ),
                     )
-                elif drift == "original-event":
+                elif drift == "prior-original-event":
                     original_state = self.started_state(current.state)
                     alternate = self.event(
                         original_state,
@@ -319,17 +339,10 @@ class PostgresEffectAttemptStoreTests(
                         ordinal=11,
                         occurred_at="2030-01-01T00:00:01Z",
                     )
-                    with self.unit_of_work() as unit_of_work:
-                        unit_of_work.stores.execution.add_event(alternate)
-                        unit_of_work.commit()
-                    self.connection.execute(
-                        """
-                        UPDATE cpk_effect_attempts
-                        SET original_event_id=%s, original_event_run_id=%s,
-                            original_event_ordinal=%s
-                        WHERE run_id='run-a' AND activity_id='activity-a' AND attempt=1
-                        """,
-                        (alternate.event_id, alternate.run_id, alternate.ordinal),
+                    prior = EffectAttemptRecord(
+                        current.state,
+                        alternate,
+                        current.latest_transition_event,
                     )
                 else:
                     alternate = self.event(
@@ -359,7 +372,7 @@ class PostgresEffectAttemptStoreTests(
                 with self.unit_of_work() as unit_of_work:
                     self.assertIsNone(
                         unit_of_work.stores.effect_attempts.compare_and_set(
-                            current,
+                            prior,
                             replacement,
                         )
                     )

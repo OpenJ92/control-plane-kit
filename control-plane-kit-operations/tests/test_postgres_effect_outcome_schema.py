@@ -404,6 +404,7 @@ class PostgresEffectOutcomeSchemaTests(
             for record in records:
                 stores.execution.add_event(record.attempt.original_start_event)
                 stores.execution.add_event(record.attempt.latest_transition_event)
+                self.add_record_intent(stores, record.attempt)
                 self.assertEqual(
                     stores.effect_attempts.insert_absent(record.attempt),
                     record.attempt,

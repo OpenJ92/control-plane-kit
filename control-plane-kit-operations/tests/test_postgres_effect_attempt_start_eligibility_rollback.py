@@ -7,7 +7,6 @@ from unittest import mock
 
 import psycopg
 
-from control_plane_kit_core.operations import EffectAttemptTransition
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -400,12 +399,10 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 current = self.persisted_started()
                 command = self.start_command()
                 if target == "fingerprint":
+                    foreign_intent = replace(command.intent, products=())
                     command = self.start_command(
-                        transition=EffectAttemptTransition(
-                            command.transition.kind,
-                            command.transition.identity,
-                            request_fingerprint="c" * 64,
-                        )
+                        intent=foreign_intent,
+                        transition=self.transition(intent=foreign_intent),
                     )
                 else:
                     self.connection.execute(

@@ -13,9 +13,6 @@ from control_plane_kit_core.operations import (
     RecoveryDecisionKind,
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
-from control_plane_kit_operations.effect_attempt_intent_evidence import (
-    EffectAttemptIntentRecord,
-)
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
     ExecutionEffectOutcome,
@@ -23,12 +20,13 @@ from control_plane_kit_operations.effect_outcome_evidence import (
 )
 from tests.effect_outcome_evidence_fixture import (
     EffectOutcomeEvidenceFixture,
-    REQUEST_FINGERPRINT,
     WORKSPACE_ID,
 )
-from tests.effect_attempt_intent_fixture import EffectAttemptIntentFixture
 from tests.execution_lease_recovery_fixture import (
     PostgresExecutionLeaseRecoveryFixture,
+)
+from tests.postgres_effect_attempt_store_fixture import (
+    PostgresEffectAttemptStoreFixture,
 )
 
 
@@ -66,6 +64,14 @@ class PostgresEffectOutcomeStoreFixture(
         self.assertIsNotNone(
             EffectAttemptOutcomeStore,
             "effect-attempt outcome store is missing",
+        )
+
+    def add_record_intent(self, stores, record: EffectAttemptRecord, *, intent=None):
+        return PostgresEffectAttemptStoreFixture.add_record_intent(
+            self,
+            stores,
+            record,
+            intent=intent,
         )
 
     def story_named(self, name: str, *, compensation: bool = False):
@@ -145,10 +151,14 @@ class PostgresEffectOutcomeStoreFixture(
         identity = self.identity(attempt=2)
         prior_identity = self.identity(attempt=1)
         value = replace(story.value, effect_id="retry-direct-start")
-        outcome = ExecutionEffectOutcome(identity, REQUEST_FINGERPRINT, value)
+        request_fingerprint = self.request_fingerprint_for_attempt(
+            run_id=identity.run_id.value,
+            activity_id=identity.activity_id,
+        )
+        outcome = ExecutionEffectOutcome(identity, request_fingerprint, value)
         state = EffectAttemptState(
             identity=identity,
-            request_fingerprint=REQUEST_FINGERPRINT,
+            request_fingerprint=request_fingerprint,
             fence=story.attempt.state.fence,
             status=EffectAttemptStatus.SUCCEEDED,
             outcome_fingerprint=outcome.outcome_fingerprint,
@@ -205,27 +215,7 @@ class PostgresEffectOutcomeStoreFixture(
             stores.execution.add_event(record.attempt.original_start_event)
             stores.execution.add_event(record.attempt.latest_transition_event)
             if hasattr(stores, "effect_attempt_intents"):
-                compensation = record.attempt.original_start_event.kind.value.startswith(
-                    "step_compensation"
-                )
-                intent = EffectAttemptIntentFixture().intent(
-                    compensation=compensation,
-                    run_id=record.attempt.state.identity.run_id.value,
-                    activity_id=record.attempt.state.identity.activity_id,
-                )
-                evidence = EffectAttemptIntentRecord(
-                    record.attempt.state.identity,
-                    record.attempt.original_start_event,
-                    intent,
-                )
-                self.assertEqual(
-                    evidence.request_fingerprint,
-                    record.attempt.state.request_fingerprint,
-                )
-                self.assertEqual(
-                    stores.effect_attempt_intents.insert(evidence),
-                    evidence,
-                )
+                self.add_record_intent(stores, record.attempt)
             self.assertEqual(
                 stores.effect_attempts.insert_absent(record.attempt),
                 record.attempt,

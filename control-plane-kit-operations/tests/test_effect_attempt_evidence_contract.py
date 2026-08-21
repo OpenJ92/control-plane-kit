@@ -72,7 +72,7 @@ class EffectAttemptEvidenceContractTests(
         self.assertNotEqual(actual[2], actual[6])
         self.assertEqual(
             actual[0],
-            "36b2e0735976aab98be59df725ded5332e5709dbb7f60c7244f5a8a3c1f86416",
+            "6aa8cca9f9e9766ac724d12fdd40174b5e577f59690477d3aad8e07d34bd8989",
         )
 
     def test_event_evidence_is_exact_bounded_and_descriptor_stable(self) -> None:

@@ -58,6 +58,7 @@ class PostgresEffectAttemptStartFixture(
         PostgresEffectAttemptStoreFixture.tearDown(self)
 
     def reset_start_truth(self, *, compensation: bool = False) -> None:
+        self._start_compensation = compensation
         history = "compensation-requested" if compensation else "active-empty"
         self.reset_truth(
             RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
@@ -92,6 +93,7 @@ class PostgresEffectAttemptStartFixture(
         compensation: bool = False,
         request_id: str = "request-a",
         run_id: str = "run-a",
+        plan_id: str = "plan-a",
         activity_id: str = "start-runtime",
         products=None,
     ):
@@ -109,7 +111,7 @@ class PostgresEffectAttemptStartFixture(
                 value.source,
                 workspace_id="workspace-a",
                 request_id=request_id,
-                plan_id="plan-a",
+                plan_id=plan_id,
                 base_graph_id="graph-current",
                 desired_graph_id="graph-desired",
             ),
@@ -121,15 +123,47 @@ class PostgresEffectAttemptStartFixture(
         )
 
     def start_command(self, **changes):
-        intent = changes.pop("intent", self.intent())
-        transition = changes.pop(
-            "transition",
-            self.transition(
-                identity=self.identity(activity_id="start-runtime"),
-                intent=intent,
-            ),
+        compensation = changes.pop(
+            "compensation",
+            getattr(self, "_start_compensation", False),
         )
+        transition = changes.pop("transition", None)
+        intent = changes.pop("intent", None)
+        request_id = changes.get("request_id", "request-a")
+        identity = (
+            transition.identity
+            if transition is not None
+            else self.identity(activity_id="start-runtime")
+        )
+        if intent is None:
+            intent = self.intent(
+                compensation=compensation,
+                request_id=request_id,
+                run_id=identity.run_id.value,
+                activity_id=identity.activity_id,
+            )
+        if transition is None:
+            transition = self.transition(identity=identity, intent=intent)
         return self.command(intent=intent, transition=transition, **changes)
+
+    def intent_for_attempt(
+        self,
+        *,
+        compensation: bool = False,
+        run_id: str = "run-a",
+        activity_id: str = "start-runtime",
+    ):
+        request_id, plan_id = self.connection.execute(
+            "SELECT request_id, plan_id FROM cpk_activity_runs WHERE run_id=%s",
+            (run_id,),
+        ).fetchone()
+        return self.intent(
+            compensation=compensation,
+            request_id=request_id,
+            run_id=run_id,
+            plan_id=plan_id,
+            activity_id=activity_id,
+        )
 
     def start_service_with_sequence(self, *ids: str):
         sequence = Sequence(*ids)

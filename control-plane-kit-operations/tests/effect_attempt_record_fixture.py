@@ -145,10 +145,39 @@ class EffectAttemptRecordFixture:
     ) -> EffectAttemptIdentity:
         return EffectAttemptIdentity(RunId(run_id), activity_id, attempt)
 
+    def intent_for_attempt(
+        self,
+        *,
+        compensation: bool = False,
+        run_id: str = "run-a",
+        activity_id: str = "activity-a",
+    ):
+        return EffectAttemptIntentFixture().intent(
+            compensation=compensation,
+            run_id=run_id,
+            activity_id=activity_id,
+        )
+
+    def request_fingerprint_for_attempt(
+        self,
+        *,
+        compensation: bool = False,
+        run_id: str = "run-a",
+        activity_id: str = "activity-a",
+    ) -> str:
+        return runtime_effect_intent_fingerprint(
+            self.intent_for_attempt(
+                compensation=compensation,
+                run_id=run_id,
+                activity_id=activity_id,
+            )
+        )
+
     def state(
         self,
         story: str = "started",
         *,
+        compensation: bool = False,
         attempt: int = 1,
         run_id: str = "run-a",
         activity_id: str = "activity-a",
@@ -196,7 +225,11 @@ class EffectAttemptRecordFixture:
             outcome = UNCERTAIN_FINGERPRINT
         return EffectAttemptState(
             identity=identity,
-            request_fingerprint=REQUEST_FINGERPRINT,
+            request_fingerprint=self.request_fingerprint_for_attempt(
+                compensation=compensation,
+                run_id=run_id,
+                activity_id=activity_id,
+            ),
             fence=EffectAttemptFence("worker-a", 7),
             status=status,
             outcome_fingerprint=outcome,
@@ -300,6 +333,7 @@ class EffectAttemptRecordFixture:
         self.require_language()
         state = self.state(
             story,
+            compensation=compensation,
             attempt=attempt,
             run_id=run_id,
             activity_id=activity_id,

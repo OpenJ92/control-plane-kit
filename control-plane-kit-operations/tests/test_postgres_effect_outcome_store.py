@@ -172,9 +172,11 @@ class PostgresEffectOutcomeStoreTests(
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             stores.execution.add_event(prior.original_start_event)
+            self.add_record_intent(stores, prior)
             self.assertEqual(stores.effect_attempts.insert_absent(prior), prior)
             stores.execution.add_event(record.attempt.original_start_event)
             stores.execution.add_event(record.attempt.latest_transition_event)
+            self.add_record_intent(stores, record.attempt)
             self.assertEqual(
                 stores.effect_attempts.insert_absent(record.attempt),
                 record.attempt,
@@ -566,6 +568,7 @@ class PostgresEffectOutcomeStoreTests(
             stores = unit_of_work.stores
             stores.execution.add_event(second.attempt.original_start_event)
             stores.execution.add_event(second.attempt.latest_transition_event)
+            self.add_record_intent(stores, second.attempt)
             stores.effect_attempts.insert_absent(second.attempt)
             with self.assertRaises(UniqueViolation) as caught:
                 stores.effect_outcomes.insert(second)
@@ -614,6 +617,7 @@ class PostgresEffectOutcomeStoreTests(
             stores = unit_of_work.stores
             stores.execution.add_event(foreign.attempt.original_start_event)
             stores.execution.add_event(foreign.attempt.latest_transition_event)
+            self.add_record_intent(stores, foreign.attempt)
             stores.effect_attempts.insert_absent(foreign.attempt)
             unit_of_work.commit()
         with self.unit_of_work() as unit_of_work:

@@ -127,6 +127,7 @@ class PostgresEffectAttemptSchemaTests(
                     original_ordinal=100 + index,
                 )
                 self.add_record_events(stores, record)
+                self.add_record_intent(stores, record)
                 self.assertEqual(stores.effect_attempts.insert_absent(record), record)
             unit_of_work.commit()
 
@@ -397,6 +398,24 @@ class PostgresEffectAttemptSchemaTests(
                 ("run_id",),
                 "cpk_activity_runs",
                 ("run_id",),
+            ),
+            "cpk_effect_attempts_intent_evidence_fk": (
+                "f",
+                (
+                    "run_id",
+                    "activity_id",
+                    "attempt",
+                    "request_fingerprint",
+                    "original_event_id",
+                ),
+                "cpk_effect_attempt_intents",
+                (
+                    "run_id",
+                    "activity_id",
+                    "attempt",
+                    "request_fingerprint",
+                    "original_event_id",
+                ),
             ),
             "cpk_effect_attempts_prior_fkey": (
                 "f",

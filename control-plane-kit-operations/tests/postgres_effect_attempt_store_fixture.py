@@ -12,7 +12,6 @@ from tests.execution_lease_recovery_fixture import (
     PostgresExecutionLeaseRecoveryFixture,
 )
 from tests.effect_attempt_intent_fixture import (
-    EffectAttemptIntentFixture,
     EffectAttemptIntentRecord,
 )
 
@@ -55,33 +54,31 @@ class PostgresEffectAttemptStoreFixture(
         if record.latest_transition_event != record.original_start_event:
             stores.execution.add_event(record.latest_transition_event)
 
+    def add_record_intent(self, stores, record: EffectAttemptRecord, *, intent=None):
+        if intent is None:
+            compensation = record.original_start_event.kind.value.startswith(
+                "step_compensation"
+            )
+            intent = self.intent_for_attempt(
+                compensation=compensation,
+                run_id=record.state.identity.run_id.value,
+                activity_id=record.state.identity.activity_id,
+            )
+        evidence = EffectAttemptIntentRecord(
+            record.state.identity,
+            record.original_start_event,
+            intent,
+        )
+        self.assertEqual(evidence.request_fingerprint, record.state.request_fingerprint)
+        self.assertEqual(stores.effect_attempt_intents.insert(evidence), evidence)
+        return evidence
+
     def persist(self, record: EffectAttemptRecord, *, intent=None):
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             self.add_record_events(stores, record)
             if hasattr(stores, "effect_attempt_intents"):
-                if intent is None:
-                    compensation = record.original_start_event.kind.value.startswith(
-                        "step_compensation"
-                    )
-                    intent = EffectAttemptIntentFixture().intent(
-                        compensation=compensation,
-                        run_id=record.state.identity.run_id.value,
-                        activity_id=record.state.identity.activity_id,
-                    )
-                evidence = EffectAttemptIntentRecord(
-                    record.state.identity,
-                    record.original_start_event,
-                    intent,
-                )
-                self.assertEqual(
-                    evidence.request_fingerprint,
-                    record.state.request_fingerprint,
-                )
-                self.assertEqual(
-                    stores.effect_attempt_intents.insert(evidence),
-                    evidence,
-                )
+                self.add_record_intent(stores, record, intent=intent)
             inserted = stores.effect_attempts.insert_absent(record)
             unit_of_work.commit()
         return inserted
