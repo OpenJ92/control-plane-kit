@@ -55,19 +55,20 @@ class PostgresEffectAttemptStoreFixture(
         if record.latest_transition_event != record.original_start_event:
             stores.execution.add_event(record.latest_transition_event)
 
-    def persist(self, record: EffectAttemptRecord):
+    def persist(self, record: EffectAttemptRecord, *, intent=None):
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             self.add_record_events(stores, record)
             if hasattr(stores, "effect_attempt_intents"):
-                compensation = record.original_start_event.kind.value.startswith(
-                    "step_compensation"
-                )
-                intent = EffectAttemptIntentFixture().intent(
-                    compensation=compensation,
-                    run_id=record.state.identity.run_id.value,
-                    activity_id=record.state.identity.activity_id,
-                )
+                if intent is None:
+                    compensation = record.original_start_event.kind.value.startswith(
+                        "step_compensation"
+                    )
+                    intent = EffectAttemptIntentFixture().intent(
+                        compensation=compensation,
+                        run_id=record.state.identity.run_id.value,
+                        activity_id=record.state.identity.activity_id,
+                    )
                 evidence = EffectAttemptIntentRecord(
                     record.state.identity,
                     record.original_start_event,

@@ -17,6 +17,7 @@ from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
     RunId,
 )
+from control_plane_kit_core.planning import StartNode, StopNode
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectIntent,
     RuntimeEffectIntentSource,
@@ -593,7 +594,7 @@ class EffectAttemptIntentContractTests(
                     self.assertIsNone(captured.__context__)
                     self.assertNotIn(label, f"{captured!s} {captured!r}")
 
-    def test_record_rejects_every_identity_source_event_and_phase_cross_join(self) -> None:
+    def test_record_rejects_every_identity_source_and_event_cross_join(self) -> None:
         self.require_intent_language()
         intent = self.intent()
         event = self.original_event(intent)
@@ -605,11 +606,6 @@ class EffectAttemptIntentContractTests(
             {"original_start_event": replace(event, run_id="run-b")},
             {"original_start_event": replace(event, activity_id="activity-b")},
             {"original_start_event": replace(event, kind=ActivityEventKind.STEP_SUCCEEDED)},
-            {
-                "original_start_event": replace(
-                    event, kind=ActivityEventKind.STEP_COMPENSATION_STARTED
-                )
-            },
         )
         for changes in cases:
             with self.subTest(changes=tuple(changes)):
@@ -619,6 +615,35 @@ class EffectAttemptIntentContractTests(
                     "run-b",
                     "activity-b",
                 )
+
+    def test_operation_polarity_is_independent_of_original_event_phase(self) -> None:
+        self.require_intent_language()
+        cases = (
+            (
+                self.intent(compensation=True),
+                False,
+                StopNode,
+                ActivityEventKind.STEP_STARTED,
+            ),
+            (
+                self.intent(compensation=False),
+                True,
+                StartNode,
+                ActivityEventKind.STEP_COMPENSATION_STARTED,
+            ),
+        )
+        for intent, compensation, operation_type, event_kind in cases:
+            with self.subTest(operation_type=operation_type, event_kind=event_kind):
+                record = self.record(
+                    intent=intent,
+                    original_start_event=self.original_event(
+                        intent,
+                        compensation=compensation,
+                    ),
+                )
+                self.assertIs(type(record.intent.operation), operation_type)
+                self.assertIs(record.original_start_event.kind, event_kind)
+                self.assertEqual(self.public_round_trip(record.intent), record.intent)
 
     def test_original_event_identity_is_generated_coordinate_not_intent_identity(self) -> None:
         self.require_intent_language()

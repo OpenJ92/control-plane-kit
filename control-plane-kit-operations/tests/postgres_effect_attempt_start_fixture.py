@@ -211,7 +211,7 @@ class PostgresEffectAttemptStartFixture(
         )
         record = EffectAttemptRecord(state, event, event)
         self.assertEqual(record.original_start_event.event_id, event_id)
-        self.assertEqual(self.persist(record), record)
+        self.assertEqual(self.persist(record, intent=intent), record)
         return record
 
     def fold_persisted_attempt(
