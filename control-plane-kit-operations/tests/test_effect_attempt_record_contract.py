@@ -43,7 +43,10 @@ class EffectAttemptRecordContractTests(
             for story in STORIES:
                 with self.subTest(compensation=compensation, story=story):
                     record = self.record(story, compensation=compensation)
-                    self.assertEqual(record.state, self.state(story))
+                    self.assertEqual(
+                        record.state,
+                        self.state(story, compensation=compensation),
+                    )
                     self.assertEqual(
                         record.original_start_event.kind,
                         self.event_kind("started", compensation=compensation),

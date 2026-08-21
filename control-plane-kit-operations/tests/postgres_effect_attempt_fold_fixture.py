@@ -38,7 +38,6 @@ from control_plane_kit_operations.records import (
 from tests.effect_attempt_fold_fixture import FAILURE_STORIES
 from tests.effect_outcome_evidence_fixture import (
     EffectOutcomeEvidenceFixture,
-    REQUEST_FINGERPRINT,
     WORKSPACE_ID,
 )
 from tests.execution_lease_recovery_fixture import Sequence
@@ -121,7 +120,11 @@ class PostgresEffectAttemptFoldFixture(
         if selected.profile == "execution-result":
             return ExecutionEffectOutcome(
                 identity,
-                REQUEST_FINGERPRINT,
+                self.request_fingerprint_for_attempt(
+                    compensation=selected.compensation,
+                    run_id=identity.run_id.value,
+                    activity_id=identity.activity_id,
+                ),
                 value,
             )
         return ObservedEffectOutcome(identity, value)

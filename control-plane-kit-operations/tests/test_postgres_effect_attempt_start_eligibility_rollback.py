@@ -7,7 +7,6 @@ from unittest import mock
 
 import psycopg
 
-from control_plane_kit_core.operations import EffectAttemptTransition
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -124,13 +123,21 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 self.reset_start_truth(compensation=compensation)
                 before = self.attempt_snapshot()
                 ids = Sequence("foreign-activity-must-not-allocate")
+                foreign_identity = self.identity(
+                    run_id="run-a",
+                    activity_id="foreign-activity-canary",
+                )
+                foreign_intent = self.intent(
+                    compensation=compensation,
+                    run_id=foreign_identity.run_id.value,
+                    activity_id=foreign_identity.activity_id,
+                )
                 command = self.start_command(
+                    intent=foreign_intent,
                     transition=self.transition(
-                        identity=self.identity(
-                            run_id="run-a",
-                            activity_id="foreign-activity-canary",
-                        )
-                    )
+                        identity=foreign_identity,
+                        intent=foreign_intent,
+                    ),
                 )
                 with self.reject_database_observation(
                     "foreign activity sampled database time"
@@ -283,13 +290,20 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                         request_id="missing-request-canary"
                     )
                 else:
+                    foreign_identity = self.identity(
+                        run_id="missing-run-canary",
+                        activity_id="start-runtime",
+                    )
+                    foreign_intent = self.intent(
+                        run_id=foreign_identity.run_id.value,
+                        activity_id=foreign_identity.activity_id,
+                    )
                     command = self.start_command(
+                        intent=foreign_intent,
                         transition=self.transition(
-                            identity=self.identity(
-                                run_id="missing-run-canary",
-                                activity_id="start-runtime",
-                            )
-                        )
+                            identity=foreign_identity,
+                            intent=foreign_intent,
+                        ),
                     )
                 ids = Sequence("missing-target-must-not-allocate")
                 with self.reject_database_observation(
@@ -400,12 +414,10 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 current = self.persisted_started()
                 command = self.start_command()
                 if target == "fingerprint":
+                    foreign_intent = replace(command.intent, products=())
                     command = self.start_command(
-                        transition=EffectAttemptTransition(
-                            command.transition.kind,
-                            command.transition.identity,
-                            request_fingerprint="c" * 64,
-                        )
+                        intent=foreign_intent,
+                        transition=self.transition(intent=foreign_intent),
                     )
                 else:
                     self.connection.execute(

@@ -9338,6 +9338,41 @@
     },
     {
       "canonical_public_exports": [
+        "EffectAttemptIntentRecord"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_intent_evidence",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_intent_evidence",
+      "motivation": "Owns the exact protected pre-start runtime-effect intent bound to one original effect-attempt start event.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_intent_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_intent_evidence.py"
+    },
+    {
+      "canonical_public_exports": [
         "EffectAttemptStartConflict",
         "EffectAttemptStartDenied",
         "EffectAttemptStartError",
@@ -9350,7 +9385,9 @@
       "destination": "control_plane_kit_operations.effect_attempt_start",
       "internal_dependencies": [
         "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
         "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_operations.effect_attempts",
         "control_plane_kit_operations.execution_leases",
         "control_plane_kit_operations.lifecycle",
@@ -9388,6 +9425,7 @@
         "control_plane_kit_core.policies",
         "control_plane_kit_core.planning",
         "control_plane_kit_operations.activity_journal",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
         "control_plane_kit_operations.effect_attempt_start",
         "control_plane_kit_operations.effect_attempts",
         "control_plane_kit_operations.records",
@@ -9403,7 +9441,8 @@
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
-        "tests/test_effect_attempt_start_interpreter_contract.py"
+        "tests/test_effect_attempt_start_interpreter_contract.py",
+        "tests/test_postgres_effect_attempt_start_intent.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -9521,6 +9560,39 @@
         "transformations"
       ],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_store.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptIntentStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+      "motivation": "Owns exact immutable PostgreSQL persistence and bounded restart reconstruction for protected effect-attempt start intent evidence.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_effect_attempt_intent_store_contract.py",
+        "tests/test_postgres_effect_attempt_intent_store.py",
+        "tests/test_postgres_effect_attempt_intent_schema.py",
+        "tests/test_postgres_effect_attempt_start_intent.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_intent_store.py"
     },
     {
       "canonical_public_exports": [

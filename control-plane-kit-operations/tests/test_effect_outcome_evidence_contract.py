@@ -343,7 +343,11 @@ class EffectOutcomeEvidencePredecessorTest(
                 )
                 self.assertEqual(
                     story.attempt.state.request_fingerprint,
-                    REQUEST_FINGERPRINT,
+                    self.request_fingerprint_for_attempt(
+                        compensation=story.compensation,
+                        run_id=story.attempt.state.identity.run_id.value,
+                        activity_id=story.attempt.state.identity.activity_id,
+                    ),
                 )
                 self.assertIsNone(story.attempt.state.recovery_decision)
                 self.assertEqual(
@@ -518,7 +522,9 @@ class EffectOutcomeEvidenceContractTest(
                         "profile": story.profile,
                         "identity": story.attempt.state.identity.descriptor(),
                         "effect_id": story.value.effect_id,
-                        "request_fingerprint": REQUEST_FINGERPRINT,
+                        "request_fingerprint": (
+                            story.attempt.state.request_fingerprint
+                        ),
                         "outcome_fingerprint": story.fingerprint,
                         "transition_kind": story.transition.value,
                         "observation_count": len(story.endpoint_observations),

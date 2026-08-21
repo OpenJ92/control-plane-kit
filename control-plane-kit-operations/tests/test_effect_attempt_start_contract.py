@@ -8,6 +8,11 @@ from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
     EffectAttemptTransition,
 )
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectIntent,
+    RuntimeEffectIntentSource,
+    runtime_effect_intent_fingerprint,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import OperationsRecordError
@@ -29,6 +34,11 @@ from tests.effect_attempt_start_fixture import (
     START_MODULE,
     StartEffectAttempt,
     _load_optional,
+)
+from tests.effect_attempt_intent_fixture import (
+    class_access_hostile_copy,
+    deep_coordinate_intent_candidates,
+    forge_exact,
 )
 
 
@@ -65,13 +75,14 @@ class EffectAttemptStartLanguageTests(
         self.assertTrue(StartEffectAttempt.__dataclass_params__.frozen)
         self.assertEqual(
             tuple(field.name for field in dataclasses.fields(StartEffectAttempt)),
-            ("request_id", "transition", "authority", "fence"),
+            ("request_id", "transition", "intent", "authority", "fence"),
         )
         self.assertEqual(
             command,
             StartEffectAttempt(
                 "request-a",
                 self.transition(),
+                self.intent(),
                 self.authority(),
                 self.fence(),
             ),
@@ -84,6 +95,7 @@ class EffectAttemptStartLanguageTests(
             HostileCommand(
                 command.request_id,
                 command.transition,
+                command.intent,
                 command.authority,
                 command.fence,
             )
@@ -111,6 +123,9 @@ class EffectAttemptStartLanguageTests(
         class HostileText(str):
             pass
 
+        class HostileIntent(type(self.intent())):
+            pass
+
         transition = self.transition()
         hostile_transition = HostileTransition(**transition.__dict__)
         hostile_identity = HostileIdentity(**transition.identity.__dict__)
@@ -125,6 +140,26 @@ class EffectAttemptStartLanguageTests(
             request_fingerprint=HostileText(transition.request_fingerprint),
         )
         hostile_worker = HostileText("hostile-worker-canary")
+        intent = self.intent()
+        forged_intent = forge_exact(
+            RuntimeEffectIntent,
+            kind=intent.kind,
+            runtime_kind=intent.runtime_kind,
+            source=forge_exact(
+                RuntimeEffectIntentSource,
+                workspace_id=intent.source.workspace_id,
+                request_id="request-forged-canary",
+                run_id=intent.source.run_id,
+                plan_id=intent.source.plan_id,
+                base_graph_id=intent.source.base_graph_id,
+                desired_graph_id=intent.source.desired_graph_id,
+            ),
+            activity_id=intent.activity_id,
+            operation=intent.operation,
+            authority_ref=intent.authority_ref,
+            authority_deliveries=intent.authority_deliveries,
+            products=intent.products,
+        )
         cases = (
             ({"request_id": ""}, ""),
             ({"request_id": None}, ""),
@@ -135,6 +170,26 @@ class EffectAttemptStartLanguageTests(
             ({"transition": hostile_transition}, ""),
             ({"transition": nested_hostile}, ""),
             ({"transition": hostile_fingerprint}, transition.request_fingerprint),
+            ({"intent": HostileIntent(**self.intent().__dict__)}, ""),
+            ({"intent": forged_intent}, "request-forged-canary"),
+            (
+                {
+                    "intent": self.intent(request_id="request-b"),
+                },
+                "request-b",
+            ),
+            (
+                {
+                    "intent": self.intent(run_id="run-b"),
+                },
+                "run-b",
+            ),
+            (
+                {
+                    "intent": self.intent(activity_id="activity-b"),
+                },
+                "activity-b",
+            ),
             ({"authority": HostileAuthority("worker-a", ())}, ""),
             ({"fence": HostileFence("worker-a", 7)}, ""),
             ({"authority": self.authority("worker-b")}, "worker-b"),
@@ -175,6 +230,103 @@ class EffectAttemptStartLanguageTests(
                     "effect attempt start command is invalid",
                 )
                 self.assert_safe_error(caught.exception)
+
+    def test_command_binds_exact_intent_request_run_activity_and_fingerprint(self) -> None:
+        intent = self.intent()
+        command = self.command(intent=intent)
+        self.assertIs(command.intent, intent)
+        self.assertEqual(command.request_id, intent.source.request_id)
+        self.assertEqual(command.transition.identity.run_id, intent.source.run_id)
+        self.assertEqual(
+            command.transition.identity.activity_id,
+            intent.activity_id.value,
+        )
+        self.assertEqual(
+            command.transition.request_fingerprint,
+            runtime_effect_intent_fingerprint(intent),
+        )
+
+    def test_command_rejects_lawful_intent_with_foreign_transition_fingerprint(
+        self,
+    ) -> None:
+        intent = self.intent()
+        transition = EffectAttemptTransition(
+            self.transition().kind,
+            self.transition().identity,
+            request_fingerprint="f" * 64,
+        )
+        self.assertNotEqual(
+            transition.request_fingerprint,
+            runtime_effect_intent_fingerprint(intent),
+        )
+        with self.assertRaises(InvalidOperationCommand) as caught:
+            self.command(intent=intent, transition=transition)
+        self.assertEqual(
+            str(caught.exception),
+            "effect attempt start command is invalid",
+        )
+        self.assert_safe_error(caught.exception, "f" * 64)
+
+    def test_command_rejects_hostile_intent_before_class_access(self) -> None:
+        intent = self.intent()
+        dispatches: list[str] = []
+        hostile = class_access_hostile_copy(intent, dispatches)
+        with self.assertRaises(InvalidOperationCommand) as caught:
+            self.command(intent=hostile)
+        self.assertEqual(
+            str(caught.exception),
+            "effect attempt start command is invalid",
+        )
+        self.assert_safe_error(caught.exception)
+        self.assertEqual(dispatches, [])
+
+        lawful = self.command()
+        self.assertEqual(
+            StartEffectAttempt(
+                lawful.request_id,
+                lawful.transition,
+                lawful.intent,
+                lawful.authority,
+                lawful.fence,
+            ),
+            lawful,
+        )
+        module = __import__(START_MODULE, fromlist=("__file__",))
+        original_projection = module.runtime_effect_request_for_intent
+        for label, candidate, coordinate_dispatches in (
+            deep_coordinate_intent_candidates(lawful.intent)
+        ):
+            with self.subTest(candidate=label):
+                coordinate_dispatches.clear()
+                projections: list[str] = []
+
+                def forbidden_projection(*_args, **_kwargs):
+                    projections.append("projection")
+                    raise AssertionError("public request projection dispatched")
+
+                captured = None
+                module.runtime_effect_request_for_intent = forbidden_projection
+                try:
+                    try:
+                        StartEffectAttempt(
+                            lawful.request_id,
+                            lawful.transition,
+                            candidate,
+                            lawful.authority,
+                            lawful.fence,
+                        )
+                    except BaseException as error:
+                        captured = error
+                finally:
+                    module.runtime_effect_request_for_intent = original_projection
+                self.assertEqual(coordinate_dispatches, [])
+                self.assertEqual(projections, [])
+                self.assertIs(type(captured), InvalidOperationCommand)
+                self.assertEqual(
+                    str(captured),
+                    "effect attempt start command is invalid",
+                )
+                self.assert_safe_error(captured, label)
 
     def test_result_sum_is_exact_frozen_and_root_identical(self) -> None:
         self.require_language()

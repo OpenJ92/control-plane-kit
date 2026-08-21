@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=8cf5dd1390fcbc87fe30b3469b70bbae1516c5c81afb9c86ad58c156b628bf97 relations=32 columns=431 constraints=314 indexes=106 foreign-keys=65 -->
+<!-- current-schema-contract: sha256=4723b9ad8de12dbe175fc260a781a67fab453e5642b34c9cacecbfba54c3cb64 relations=33 columns=441 constraints=325 indexes=109 foreign-keys=69 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -83,8 +83,9 @@ foreign key and the accepted lineage cycle:
    transitions and revocations; and approval requests.
 6. Restore approval decisions, then execution requests.
 7. Restore root activity runs before retry descendants, then restore activity
-   events in run/ordinal order and effect attempts in attempt order after all
-   of their original/latest event coordinates exist. Restore direct effect
+   events in run/ordinal order, immutable start-intent evidence after its
+   original event, and effect attempts in attempt order after all of their
+   intent/original/latest commitments exist. Restore direct effect
    outcomes after their attempts and both referenced event coordinates, then
    restore ordered outcome membership after its observation rows.
 8. Restore secret-use authorizations, rotation deployments,
@@ -269,6 +270,9 @@ cpk_approval_requests -->|cpk_approval_requests_rotation_fk| cpk_gateway_key_rot
 cpk_approval_requests -->|cpk_approval_requests_session_id_fkey| cpk_operation_sessions
 cpk_cloudflare_ingress_resources -->|cpk_cloudflare_ingress_resources_workspace_id_fkey| cpk_workspaces
 cpk_delegation_signing_keys -->|cpk_delegation_signing_keys_workspace_id_fkey| cpk_workspaces
+cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_original_event_fk| cpk_activity_events
+cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_request_workspace_fk| cpk_execution_requests
+cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_run_request_fk| cpk_activity_runs
 cpk_effect_attempt_outcome_observations -->|cpk_effect_attempt_outcome_observations_observation_fk| cpk_observations
 cpk_effect_attempt_outcome_observations -->|cpk_effect_attempt_outcome_observations_outcome_fk| cpk_effect_attempt_outcomes
 cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_attempt_fk| cpk_effect_attempts
@@ -276,6 +280,7 @@ cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_direct_event_fk| cpk
 cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_original_event_fk| cpk_activity_events
 cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_request_workspace_fk| cpk_execution_requests
 cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_run_request_fk| cpk_activity_runs
+cpk_effect_attempts -->|cpk_effect_attempts_intent_evidence_fk| cpk_effect_attempt_intents
 cpk_effect_attempts -->|cpk_effect_attempts_latest_event_fk| cpk_activity_events
 cpk_effect_attempts -->|cpk_effect_attempts_original_event_fk| cpk_activity_events
 cpk_effect_attempts -->|cpk_effect_attempts_prior_fkey| cpk_effect_attempts
@@ -345,6 +350,9 @@ order is semantically significant for every composite identity.
 | `cpk_approval_requests_session_id_fkey` | `cpk_approval_requests` | `session_id` | `cpk_operation_sessions` | `session_id` | Every approval request belongs to an operation session. |
 | `cpk_cloudflare_ingress_resources_workspace_id_fkey` | `cpk_cloudflare_ingress_resources` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Observed ingress resources are owned by a workspace. |
 | `cpk_delegation_signing_keys_workspace_id_fkey` | `cpk_delegation_signing_keys` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Delegation signing-key registrations are workspace scoped. |
+| `cpk_effect_attempt_intents_original_event_fk` | `cpk_effect_attempt_intents` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Start intent evidence names the exact immutable event that begins the attempt. |
+| `cpk_effect_attempt_intents_request_workspace_fk` | `cpk_effect_attempt_intents` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Intent evidence derives workspace ownership from its execution request. |
+| `cpk_effect_attempt_intents_run_request_fk` | `cpk_effect_attempt_intents` | `run_id, request_id` | `cpk_activity_runs` | `run_id, request_id` | Intent evidence and activity run name the same execution request. |
 | `cpk_effect_attempt_outcome_observations_observation_fk` | `cpk_effect_attempt_outcome_observations` | `observation_id, workspace_id` | `cpk_observations` | `observation_id, workspace_id` | Every ordered member names an immutable observation in the same workspace. |
 | `cpk_effect_attempt_outcome_observations_outcome_fk` | `cpk_effect_attempt_outcome_observations` | `run_id, activity_id, attempt, workspace_id, observation_count` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt, workspace_id, observation_count` | Membership belongs to one exact outcome and copies its bounded expected count. |
 | `cpk_effect_attempt_outcomes_attempt_fk` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | Every historical direct outcome belongs to an existing effect attempt. |
@@ -352,6 +360,7 @@ order is semantically significant for every composite identity.
 | `cpk_effect_attempt_outcomes_original_event_fk` | `cpk_effect_attempt_outcomes` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | The historical snapshot retains its exact immutable start event. |
 | `cpk_effect_attempt_outcomes_request_workspace_fk` | `cpk_effect_attempt_outcomes` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Outcome workspace ownership is derived from the run's execution request. |
 | `cpk_effect_attempt_outcomes_run_request_fk` | `cpk_effect_attempt_outcomes` | `run_id, request_id` | `cpk_activity_runs` | `run_id, request_id` | Outcome run and request coordinates must name the same durable run. |
+| `cpk_effect_attempts_intent_evidence_fk` | `cpk_effect_attempts` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | Every attempt requires matching immutable start-intent evidence. |
 | `cpk_effect_attempts_latest_event_fk` | `cpk_effect_attempts` | `latest_event_id, latest_event_run_id, latest_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | The retained state is committed by one exact latest activity event. |
 | `cpk_effect_attempts_original_event_fk` | `cpk_effect_attempts` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Every attempt retains its exact immutable start event. |
 | `cpk_effect_attempts_prior_fkey` | `cpk_effect_attempts` | `prior_run_id, prior_activity_id, prior_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | A retry names the immediately preceding attempt for the same run and activity. |
@@ -493,6 +502,19 @@ order is semantically significant for every composite identity.
 - **Sensitive material:** `public_key_pem` and its fingerprint are public material; `private_key_reference` is a sensitive locator, never a private key or signing result.
 - **Future impact:** #1553 and #1554 add transit authority language but must preserve exact purpose separation and defer private-key resolution to immediate I/O.
 
+### `cpk_effect_attempt_intents`
+- **Durable meaning and owner:** `EffectAttemptIntentStore` owns one immutable protected runtime-effect intent for the exact original start event of an effect attempt.
+- **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary through `cpk_effect_attempt_intents_pkey`; `cpk_effect_attempt_intents_original_event_key` makes the original event triple independently unique, and `cpk_effect_attempt_intents_commitment_key` commits attempt identity, request fingerprint, and original event identity.
+- **Outgoing foreign keys:** Composite run/request and request/workspace references derive ownership, while the original event triple names the immutable start event.
+- **Inbound dependents:** Every `cpk_effect_attempts` row must cite matching intent evidence through the reduced commitment key, making a started attempt without evidence unrepresentable.
+- **Writers and transactions:** `EffectAttemptIntentStore.insert` appends on the caller connection after the event and before the attempt; it never commits, rolls back, locks, updates, deletes, or upserts.
+- **Readers and projections:** Exact identity lookup reconstructs the full public intent record; current verification scans primary-key pages of at most eight rows and rejects orphan evidence.
+- **Mutation, locks, retries, and idempotency:** Rows are immutable; primary/event uniqueness exposes races, while exact start replay reads and compares the protected evidence without rewriting it.
+- **Lifecycle, retention, deletion, and restore:** Restore runs and requests, then the exact relation sequence `cpk_activity_events,cpk_effect_attempt_intents,cpk_effect_attempts`. Logical and fixture teardown reverses that sequence as `cpk_effect_attempts,cpk_effect_attempt_intents,cpk_activity_events`; this ordering grants no runtime delete, drop, migration, or repair authority. Restrictive references retain the complete chain.
+- **JSON boundary:** `preimage` contains exact canonical Core intent descriptor bytes, bounded to 1..1048576 octets and decoded, re-encoded, fingerprinted, and reconstructed through public values.
+- **Sensitive material:** The protected descriptor may contain lawful opaque secret references and endpoint topology but excludes grants, resolved secrets, request envelopes, and effect/event identifiers; errors and reprs do not disclose it.
+- **Future impact:** #1708 and #1694 may consume the verified intent during runtime authority and observation, but cannot rewrite it or move recovery authority from #1107.
+
 ### `cpk_effect_attempt_outcome_observations`
 - **Durable meaning and owner:** `EffectAttemptOutcomeStore` owns ordered membership between one direct outcome and its exact immutable endpoint observations.
 - **Identity and cardinality:** `(run_id, activity_id, attempt, position)` is primary; `observation_id` is relation-wide unique, and every row copies the aggregate's bounded observation count.
@@ -522,12 +544,12 @@ order is semantically significant for every composite identity.
 ### `cpk_effect_attempts`
 - **Durable meaning and owner:** `EffectAttemptStore` owns the exact retained Operations representation of one Core effect-attempt state and the activity events that commit its beginning and latest transition.
 - **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary. Original and latest event triples are independently unique, so one event cannot silently commit two attempt roles.
-- **Outgoing foreign keys:** `run_id` names the activity run; an optional predecessor triple names the immediately prior same-run/activity attempt; original and latest event triples name exact activity events.
-- **Inbound dependents:** Retry descendants may cite a row through the self-reference. No other current relation consumes effect-attempt identity.
+- **Outgoing foreign keys:** `run_id` names the activity run; the reduced intent-evidence commitment requires exact immutable start evidence; an optional predecessor triple names the immediately prior same-run/activity attempt; original and latest event triples name exact activity events.
+- **Inbound dependents:** Retry descendants may cite a row through the self-reference, and direct outcome evidence may cite its exact attempt identity.
 - **Writers and transactions:** `insert_absent` and complete-prior `compare_and_set` execute within the caller's transaction after the caller has appended the referenced event; the store never commits or appends events itself.
 - **Readers and projections:** Exact reads and row-locking reads reconstruct typed Core state plus authoritative event records. Current-schema verification scans every row in bounded deterministic primary-key pages.
 - **Mutation, locks, retries, and idempotency:** Identity-targeted insert is first-write-wins. Compare-and-set matches the complete physical prior row with null-safe equality; retry appends a new attempt linked to its immediate predecessor.
-- **Lifecycle, retention, deletion, and restore:** Restore runs and events first, then attempts in ascending attempt order. Restrictive event, run, and predecessor references retain the evidence chain.
+- **Lifecycle, retention, deletion, and restore:** Restore runs, original events, and immutable intent evidence first, then attempts in ascending attempt order. Restrictive intent, event, run, and predecessor references retain the evidence chain.
 - **JSON boundary:** None; state, fence, recovery, predecessor, and event coordinates are represented as bounded typed columns and reconstructed through the existing record algebra.
 - **Sensitive material:** Only fingerprints, bounded worker/decision identifiers, and event coordinates are retained. Provider payloads, exception text, credentials, addresses, and secret values are excluded.
 - **Future impact:** #1684 and #1685 may read and mutate this representation through explicit transaction programs; they must preserve store-owned exact decoding, complete-prior CAS, and caller-owned effect authority.

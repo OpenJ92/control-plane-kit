@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from unittest import mock
 
 from control_plane_kit_core.operations import RecoveryDecisionKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
+)
+from control_plane_kit_core.planning import (
+    RuntimeTarget,
+    StartRuntime,
+    StopRuntime,
+)
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint,
 )
 from control_plane_kit_operations.activity_run_retry_interpreter import (
     ActivityRunRetryCommandService,
@@ -49,6 +58,7 @@ class PostgresEffectAttemptStartFixture(
         PostgresEffectAttemptStoreFixture.tearDown(self)
 
     def reset_start_truth(self, *, compensation: bool = False) -> None:
+        self._start_compensation = compensation
         history = "compensation-requested" if compensation else "active-empty"
         self.reset_truth(
             RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
@@ -77,14 +87,83 @@ class PostgresEffectAttemptStartFixture(
                 )
                 unit_of_work.commit()
 
-    def start_command(self, **changes):
-        transition = changes.pop(
-            "transition",
-            self.transition(
-                identity=self.identity(activity_id="start-runtime"),
+    def intent(
+        self,
+        *,
+        compensation: bool = False,
+        request_id: str = "request-a",
+        run_id: str = "run-a",
+        plan_id: str = "plan-a",
+        activity_id: str = "start-runtime",
+        products=None,
+    ):
+        value = EffectAttemptStartFixture.intent(
+            self,
+            compensation=compensation,
+            request_id=request_id,
+            run_id=run_id,
+            activity_id=activity_id,
+            products=products,
+        )
+        return replace(
+            value,
+            source=replace(
+                value.source,
+                workspace_id="workspace-a",
+                request_id=request_id,
+                plan_id=plan_id,
+                base_graph_id="graph-current",
+                desired_graph_id="graph-desired",
+            ),
+            operation=(
+                StopRuntime(RuntimeTarget("runtime-a"))
+                if compensation
+                else StartRuntime(RuntimeTarget("runtime-a"))
             ),
         )
-        return self.command(transition=transition, **changes)
+
+    def start_command(self, **changes):
+        compensation = changes.pop(
+            "compensation",
+            getattr(self, "_start_compensation", False),
+        )
+        transition = changes.pop("transition", None)
+        intent = changes.pop("intent", None)
+        request_id = changes.get("request_id", "request-a")
+        identity = (
+            transition.identity
+            if transition is not None
+            else self.identity(activity_id="start-runtime")
+        )
+        if intent is None:
+            intent = self.intent(
+                compensation=compensation,
+                request_id=request_id,
+                run_id=identity.run_id.value,
+                activity_id=identity.activity_id,
+            )
+        if transition is None:
+            transition = self.transition(identity=identity, intent=intent)
+        return self.command(intent=intent, transition=transition, **changes)
+
+    def intent_for_attempt(
+        self,
+        *,
+        compensation: bool = False,
+        run_id: str = "run-a",
+        activity_id: str = "start-runtime",
+    ):
+        request_id, plan_id = self.connection.execute(
+            "SELECT request_id, plan_id FROM cpk_activity_runs WHERE run_id=%s",
+            (run_id,),
+        ).fetchone()
+        return self.intent(
+            compensation=compensation,
+            request_id=request_id,
+            run_id=run_id,
+            plan_id=plan_id,
+            activity_id=activity_id,
+        )
 
     def start_service_with_sequence(self, *ids: str):
         sequence = Sequence(*ids)
@@ -106,6 +185,22 @@ class PostgresEffectAttemptStartFixture(
         )
 
     def attempt_snapshot(self) -> tuple[object, ...]:
+        relation = self.connection.execute(
+            "SELECT to_regclass('cpk_effect_attempt_intents')"
+        ).fetchone()[0]
+        intents = (
+            ()
+            if relation is None
+            else tuple(
+                self.connection.execute(
+                    "SELECT run_id, activity_id, attempt, workspace_id, request_id, "
+                    "request_fingerprint, original_event_id, original_event_run_id, "
+                    "original_event_ordinal, preimage "
+                    "FROM cpk_effect_attempt_intents "
+                    "ORDER BY run_id, activity_id, attempt"
+                ).fetchall()
+            )
+        )
         return (
             self.snapshot(),
             tuple(
@@ -121,6 +216,7 @@ class PostgresEffectAttemptStartFixture(
                     "FROM cpk_effect_attempts ORDER BY run_id, activity_id, attempt"
                 ).fetchall()
             ),
+            intents,
         )
 
     def persisted_started(
@@ -138,8 +234,18 @@ class PostgresEffectAttemptStartFixture(
             original_ordinal=7 if compensation else 3,
             original_time="2030-01-01T00:00:00Z",
         )
+        intent = self.intent(compensation=compensation)
+        state = replace(
+            record.state,
+            request_fingerprint=runtime_effect_intent_fingerprint(intent),
+        )
+        event = replace(
+            record.original_start_event,
+            evidence=self.evidence_for(state),
+        )
+        record = EffectAttemptRecord(state, event, event)
         self.assertEqual(record.original_start_event.event_id, event_id)
-        self.assertEqual(self.persist(record), record)
+        self.assertEqual(self.persist(record, intent=intent), record)
         return record
 
     def fold_persisted_attempt(

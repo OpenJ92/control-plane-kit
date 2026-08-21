@@ -505,6 +505,7 @@ from .effect_outcome_evidence import (
     effect_outcome_observation_records,
     effect_outcome_transition,
 )
+from .effect_attempt_intent_evidence import EffectAttemptIntentRecord
 from .effect_attempt_start import (
     EffectAttemptStartConflict,
     EffectAttemptStartDenied,
@@ -706,6 +707,7 @@ __all__ = [
     "EffectAttemptFoldError",
     "EffectAttemptFoldNotFound",
     "EffectAttemptFoldResult",
+    "EffectAttemptIntentRecord",
     "EffectAttemptFoldService",
     "EffectAttemptRecord",
     "EffectAttemptOutcome",
