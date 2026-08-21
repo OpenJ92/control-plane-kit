@@ -178,7 +178,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
             store.get(record.identity)
         get_query = " ".join(str(connection.calls[1][0]).split())
         self.assertIn("octet_length(intent.preimage)", get_query)
-        self.assertIn("<= 1048576", get_query)
+        self.assertIn("BETWEEN 1 AND 1048576", get_query)
         self.assertIn(
             "WHERE intent.run_id = %s AND intent.activity_id = %s "
             "AND intent.attempt = %s",
