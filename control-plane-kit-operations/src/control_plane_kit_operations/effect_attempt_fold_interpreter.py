@@ -29,6 +29,9 @@ from control_plane_kit_operations.effect_attempt_fold import (
     _valid_fold_command,
     _valid_guarded_observed_fold,
 )
+from control_plane_kit_operations.effect_attempt_intent_evidence import (
+    EffectAttemptIntentRecord,
+)
 from control_plane_kit_operations.effect_attempts import (
     EffectAttemptEventEvidence,
     EffectAttemptRecord,
@@ -36,6 +39,7 @@ from control_plane_kit_operations.effect_attempts import (
 )
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
+    ObservedEffectOutcome,
     effect_outcome_observation_records,
 )
 from control_plane_kit_operations.records import (
@@ -43,6 +47,11 @@ from control_plane_kit_operations.records import (
     BoundedEvidence,
     ObservationRecord,
     OperationsRecordError,
+)
+from control_plane_kit_operations.runtime_authorities import (
+    RegisteredRuntimeAuthority,
+    RuntimeAuthorityNotFound,
+    RuntimeAuthorityRegistrationError,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
@@ -69,100 +78,7 @@ class EffectAttemptFoldService:
     def execute(self, command: FoldEffectAttempt) -> EffectAttemptFoldResult:
         if not _valid_fold_command(command):
             raise InvalidOperationCommand("effect attempt fold command is invalid")
-        if PolicyScope.EXECUTION_OPERATE not in command.authority.scopes:
-            raise EffectAttemptFoldDenied("scope execution:operate is missing")
-        fence = _translate_fence(command)
-
-        with self._unit_of_work_factory() as unit_of_work:
-            stores = unit_of_work.stores
-            request = _request_for_update(stores, command.request_id)
-            run = _run_for_request_for_update(
-                stores,
-                command.request_id,
-                command.transition.identity.run_id.value,
-            )
-            attempt = _attempt_for_update(stores, command.transition.identity)
-            _require_request_run(command, request, run, attempt)
-            _require_current_authority(command, request)
-            _require_transition_authority(command, fence, attempt)
-            next_state = _fold(command, attempt)
-            if next_state == attempt.state:
-                replay_error = None
-                if not _require_exact_replay(command, attempt):
-                    replay_error = _REPLAY_ERROR
-                outcome_record = None
-                if replay_error is None and command.outcome is not None:
-                    try:
-                        outcome_record = stores.effect_outcomes.get(
-                            attempt.state.identity,
-                            attempt.latest_transition_event.event_id,
-                        )
-                    except (KeyError, OperationsRecordError):
-                        replay_error = _INVALID_TRUTH_ERROR
-                    else:
-                        if (
-                            type(outcome_record) is not EffectAttemptOutcomeRecord
-                            or outcome_record.workspace_id
-                            != request.identity.workspace_id
-                            or outcome_record.outcome != command.outcome
-                            or outcome_record.attempt != attempt
-                        ):
-                            replay_error = _INVALID_TRUTH_ERROR
-                if replay_error is not None:
-                    raise EffectAttemptFoldConflict(replay_error)
-                result = ExistingFold(attempt, outcome_record)
-            else:
-                observation = _observation(stores, command.request_id)
-                if observation.request != request:
-                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
-                event_ordinal = stores.execution.next_event_ordinal(run.run_id)
-                result = self._plan_result(
-                    command,
-                    attempt,
-                    next_state,
-                    observed_at=observation.observed_at,
-                    event_ordinal=event_ordinal,
-                    workspace_id=request.identity.workspace_id,
-                )
-                event = result.attempt.latest_transition_event
-                event_acknowledgement = stores.execution.add_event(event)
-                changed = (
-                    type(event_acknowledgement) is not ActivityEventRecord
-                    or event_acknowledgement != event
-                )
-                if not changed and result.outcome_record is not None:
-                    for endpoint_observation in result.outcome_record.endpoint_observations:
-                        observation_acknowledgement = stores.observed_state.put(
-                            endpoint_observation
-                        )
-                        if (
-                            type(observation_acknowledgement) is not ObservationRecord
-                            or observation_acknowledgement != endpoint_observation
-                        ):
-                            changed = True
-                            break
-                    if not changed:
-                        outcome_acknowledgement = stores.effect_outcomes.insert(
-                            result.outcome_record
-                        )
-                        changed = (
-                            type(outcome_acknowledgement)
-                            is not EffectAttemptOutcomeRecord
-                            or outcome_acknowledgement != result.outcome_record
-                        )
-                if not changed:
-                    attempt_acknowledgement = stores.effect_attempts.compare_and_set(
-                        attempt,
-                        result.attempt,
-                    )
-                    changed = (
-                        type(attempt_acknowledgement) is not EffectAttemptRecord
-                        or attempt_acknowledgement != result.attempt
-                    )
-                if changed:
-                    raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
-            unit_of_work.commit()
-            return result
+        return _execute_fold(self, command, None)
 
     def execute_observed(
         self,
@@ -172,9 +88,7 @@ class EffectAttemptFoldService:
             raise InvalidOperationCommand(
                 "guarded observed effect fold command is invalid"
             )
-        if PolicyScope.EXECUTION_OPERATE not in command.fold.authority.scopes:
-            raise EffectAttemptFoldDenied("scope execution:operate is missing")
-        self._unit_of_work_factory()
+        return _execute_fold(self, command.fold, command)
 
     def _plan_result(
         self,
@@ -245,6 +159,166 @@ class EffectAttemptFoldService:
                 pass
         if result is None:
             raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+        return result
+
+
+def _execute_fold(
+    self: EffectAttemptFoldService,
+    command: FoldEffectAttempt,
+    guarded: GuardedObservedEffectFold | None,
+) -> EffectAttemptFoldResult:
+    if PolicyScope.EXECUTION_OPERATE not in command.authority.scopes:
+        raise EffectAttemptFoldDenied("scope execution:operate is missing")
+    fence = _translate_fence(command)
+
+    with self._unit_of_work_factory() as unit_of_work:
+        stores = unit_of_work.stores
+        request = _request_for_update(stores, command.request_id)
+        run = _run_for_request_for_update(
+            stores,
+            command.request_id,
+            command.transition.identity.run_id.value,
+        )
+        attempt = _attempt_for_update(stores, command.transition.identity)
+        _require_request_run(command, request, run, attempt)
+        _require_current_authority(command, request)
+        if guarded is None and type(command.outcome) is ObservedEffectOutcome:
+            raise EffectAttemptFoldConflict(_REPLAY_ERROR)
+        _require_transition_authority(command, fence, attempt, guarded is not None)
+        next_state = _fold(command, attempt)
+        if next_state == attempt.state:
+            replay_error = None
+            if not _require_exact_replay(command, attempt):
+                replay_error = _REPLAY_ERROR
+            outcome_record = None
+            if replay_error is None and command.outcome is not None:
+                try:
+                    outcome_record = stores.effect_outcomes.get(
+                        attempt.state.identity,
+                        attempt.latest_transition_event.event_id,
+                    )
+                except (KeyError, OperationsRecordError):
+                    replay_error = _INVALID_TRUTH_ERROR
+                else:
+                    if (
+                        type(outcome_record) is not EffectAttemptOutcomeRecord
+                        or outcome_record.workspace_id
+                        != request.identity.workspace_id
+                        or outcome_record.attempt != attempt
+                    ):
+                        replay_error = _INVALID_TRUTH_ERROR
+                    elif outcome_record.outcome != command.outcome:
+                        replay_error = _REPLAY_ERROR
+            result = None
+            if replay_error is None:
+                try:
+                    result = ExistingFold(attempt, outcome_record)
+                except OperationsRecordError:
+                    replay_error = _INVALID_TRUTH_ERROR
+            if replay_error is not None:
+                raise EffectAttemptFoldConflict(replay_error)
+        else:
+            invalid_truth = False
+            denied = False
+            intent_record = None
+            if guarded is not None:
+                try:
+                    intent_record = stores.effect_attempt_intents.get(
+                        attempt.state.identity
+                    )
+                except (KeyError, OperationsRecordError):
+                    invalid_truth = True
+                else:
+                    invalid_truth = (
+                        type(intent_record) is not EffectAttemptIntentRecord
+                        or intent_record != guarded.intent_record
+                        or intent_record.original_start_event
+                        != attempt.original_start_event
+                    )
+            observation = None
+            if not invalid_truth:
+                observation = _observation(stores, command.request_id)
+                invalid_truth = observation.request != request
+                denied = guarded is not None and observation.expired
+            if (
+                not invalid_truth
+                and not denied
+                and guarded is not None
+                and guarded.runtime_authority is not None
+            ):
+                try:
+                    active_authority = (
+                        stores.runtime_authorities.get_active_for_update(
+                            request.identity.workspace_id,
+                            intent_record.intent.authority_ref,
+                        )
+                    )
+                except RuntimeAuthorityNotFound:
+                    denied = True
+                except RuntimeAuthorityRegistrationError:
+                    invalid_truth = True
+                else:
+                    if (
+                        type(active_authority) is not RegisteredRuntimeAuthority
+                        or active_authority.runtime_kind
+                        is not guarded.runtime_authority.runtime_kind
+                        or active_authority.status
+                        is not guarded.runtime_authority.status
+                    ):
+                        invalid_truth = True
+                    elif active_authority != guarded.runtime_authority:
+                        denied = True
+            if invalid_truth:
+                raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+            if denied:
+                raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+            event_ordinal = stores.execution.next_event_ordinal(run.run_id)
+            result = self._plan_result(
+                command,
+                attempt,
+                next_state,
+                observed_at=observation.observed_at,
+                event_ordinal=event_ordinal,
+                workspace_id=request.identity.workspace_id,
+            )
+            event = result.attempt.latest_transition_event
+            event_acknowledgement = stores.execution.add_event(event)
+            changed = (
+                type(event_acknowledgement) is not ActivityEventRecord
+                or event_acknowledgement != event
+            )
+            if not changed and result.outcome_record is not None:
+                for endpoint_observation in result.outcome_record.endpoint_observations:
+                    observation_acknowledgement = stores.observed_state.put(
+                        endpoint_observation
+                    )
+                    if (
+                        type(observation_acknowledgement) is not ObservationRecord
+                        or observation_acknowledgement != endpoint_observation
+                    ):
+                        changed = True
+                        break
+                if not changed:
+                    outcome_acknowledgement = stores.effect_outcomes.insert(
+                        result.outcome_record
+                    )
+                    changed = (
+                        type(outcome_acknowledgement)
+                        is not EffectAttemptOutcomeRecord
+                        or outcome_acknowledgement != result.outcome_record
+                    )
+            if not changed:
+                attempt_acknowledgement = stores.effect_attempts.compare_and_set(
+                    attempt,
+                    result.attempt,
+                )
+                changed = (
+                    type(attempt_acknowledgement) is not EffectAttemptRecord
+                    or attempt_acknowledgement != result.attempt
+                )
+            if changed:
+                raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+        unit_of_work.commit()
         return result
 
 
@@ -358,6 +432,7 @@ def _require_transition_authority(
     command: FoldEffectAttempt,
     fence: EffectAttemptFence,
     attempt: EffectAttemptRecord,
+    observed: bool,
 ) -> None:
     historical = attempt.state.fence
     if command.transition.kind in {
@@ -370,7 +445,18 @@ def _require_transition_authority(
         ):
             raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
         return
-    if fence != historical:
+    direct_invalid = attempt.state.recovery_decision is not None
+    if (
+        not direct_invalid
+        and (attempt.state.status is not EffectAttemptStatus.STARTED or observed)
+    ):
+        direct_invalid = fence.generation < historical.generation or (
+            fence.generation == historical.generation
+            and fence.worker_id != historical.worker_id
+        )
+    elif not direct_invalid:
+        direct_invalid = fence != historical
+    if direct_invalid:
         raise EffectAttemptFoldConflict(_REPLAY_ERROR)
 
 

@@ -9510,9 +9510,11 @@
         "control_plane_kit_core.operations",
         "control_plane_kit_core.policies",
         "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
         "control_plane_kit_operations.effect_attempts",
         "control_plane_kit_operations.effect_outcome_evidence",
         "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
         "control_plane_kit_operations.workflows"
       ],
       "known_package_consumers": [
@@ -9527,7 +9529,11 @@
       "protecting_tests": [
         "tests/test_atomic_effect_attempt_fold_contract.py",
         "tests/test_effect_attempt_fold_interpreter_contract.py",
-        "tests/test_guarded_observed_effect_fold_contract.py"
+        "tests/test_guarded_observed_effect_fold_contract.py",
+        "tests/test_postgres_guarded_observed_effect_fold_authority.py",
+        "tests/test_postgres_guarded_observed_effect_fold_concurrency.py",
+        "tests/test_postgres_guarded_observed_effect_fold_first_replay.py",
+        "tests/test_postgres_guarded_observed_effect_fold_rollback.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
