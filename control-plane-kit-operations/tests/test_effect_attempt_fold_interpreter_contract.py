@@ -390,6 +390,7 @@ class EffectAttemptFoldInterpreterContractTests(
                 "EffectAttemptFoldResult",
                 "ExistingFold",
                 "FoldEffectAttempt",
+                "GuardedObservedEffectFold",
                 "NewlyFolded",
             },
         )
@@ -403,9 +404,11 @@ class EffectAttemptFoldInterpreterContractTests(
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.policies",
                 "control_plane_kit_operations.effect_attempt_fold",
+                "control_plane_kit_operations.effect_attempt_intent_evidence",
                 "control_plane_kit_operations.effect_attempts",
                 "control_plane_kit_operations.effect_outcome_evidence",
                 "control_plane_kit_operations.records",
+                "control_plane_kit_operations.runtime_authorities",
                 "control_plane_kit_operations.workflows",
             },
         )
