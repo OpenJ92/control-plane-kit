@@ -157,6 +157,58 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             intent,
         )
 
+        dispatch: list[tuple[str, str]] = []
+
+        class HostileCoordinatorContext(_CoordinatorContext):
+            def __getattribute__(self, name):
+                dispatch.append(("coordinator", name))
+                raise AssertionError("hostile coordinator context dispatched")
+
+        class HostileRealizationContext(ActivityRealizationContext):
+            def __getattribute__(self, name):
+                dispatch.append(("realization", name))
+                raise AssertionError("hostile realization context dispatched")
+
+        for label, candidate, operation in (
+            (
+                "private-coordinator-subclass",
+                object.__new__(HostileCoordinatorContext),
+                lambda value: projection(value, activity),
+            ),
+            (
+                "private-realization-subclass",
+                object.__new__(HostileRealizationContext),
+                lambda value: projection(value, activity),
+            ),
+            (
+                "public-coordinator-context",
+                context,
+                runtime_effect_request_for_context,
+            ),
+            (
+                "public-realization-subclass",
+                object.__new__(HostileRealizationContext),
+                runtime_effect_request_for_context,
+            ),
+        ):
+            with self.subTest(candidate=label):
+                caught = None
+                try:
+                    operation(candidate)
+                except BaseException as error:
+                    caught = error
+                self.assertIs(type(caught), InvalidOperationCommand)
+                self.assertEqual(
+                    caught.args,
+                    (
+                        "runtime effect translation requires "
+                        "ActivityRealizationContext",
+                    ),
+                )
+                self.assertIsNone(caught.__cause__)
+                self.assertIsNone(caught.__context__)
+                self.assertEqual(dispatch, [])
+
     def test_post_start_request_binds_only_exact_original_event_identity(self) -> None:
         projection = getattr(
             runtime_effects_module,

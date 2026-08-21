@@ -37,14 +37,23 @@ from control_plane_kit_operations.coordinator import (
     _CoordinatorContext,
 )
 from control_plane_kit_operations.effect_attempt_fold import (
+    EffectAttemptFoldConflict,
+    EffectAttemptFoldDenied,
+    EffectAttemptFoldNotFound,
     ExistingFold,
     FoldEffectAttempt,
     NewlyFolded,
 )
 from control_plane_kit_operations.effect_attempt_reconciliation import (
+    EffectAttemptReconciliationConflict,
+    EffectAttemptReconciliationDenied,
+    EffectAttemptReconciliationNotFound,
     ReconcileEffectAttempt,
 )
 from control_plane_kit_operations.effect_attempt_start import (
+    EffectAttemptStartConflict,
+    EffectAttemptStartDenied,
+    EffectAttemptStartNotFound,
     ExistingAttempt,
     NewlyStarted,
     StartEffectAttempt,
@@ -87,7 +96,12 @@ class RecordingStartService:
     def execute(self, command: StartEffectAttempt):
         self.commands.append(command)
         result = self.results.pop(0)
-        if isinstance(result, BaseException):
+        if type(result) in (
+            EffectAttemptStartNotFound,
+            EffectAttemptStartConflict,
+            EffectAttemptStartDenied,
+            RuntimeError,
+        ):
             raise result
         return result
 
@@ -100,7 +114,12 @@ class RecordingFoldService:
     def execute(self, command: FoldEffectAttempt):
         self.commands.append(command)
         result = self.results.pop(0)
-        if isinstance(result, BaseException):
+        if type(result) in (
+            EffectAttemptFoldNotFound,
+            EffectAttemptFoldConflict,
+            EffectAttemptFoldDenied,
+            RuntimeError,
+        ):
             raise result
         if callable(result):
             return result(command)
@@ -115,7 +134,12 @@ class RecordingReconciliationService:
     def execute(self, command: ReconcileEffectAttempt):
         self.commands.append(command)
         result = self.results.pop(0)
-        if isinstance(result, BaseException):
+        if type(result) in (
+            EffectAttemptReconciliationNotFound,
+            EffectAttemptReconciliationConflict,
+            EffectAttemptReconciliationDenied,
+            RuntimeError,
+        ):
             raise result
         return result
 
@@ -269,6 +293,49 @@ class EffectAttemptCoordinatorFixture(EffectOutcomeEvidenceFixture):
         )
         return self.fold_result_for(
             self.fold_command_for(result),
+            started,
+            existing=existing,
+        )
+
+    def lawful_foreign_fold_result(
+        self,
+        *,
+        drift: str,
+        existing: bool = False,
+    ):
+        if drift == "identity":
+            identity = self.identity(run_id="run-b")
+            request_fingerprint = None
+        elif drift == "fingerprint":
+            identity = self.identity(activity_id="activity-a")
+            request_fingerprint = "b" * 64
+        else:
+            raise AssertionError("unknown lawful foreign fold drift")
+        started = NewlyStarted(
+            self.started_attempt(
+                identity=identity,
+                request_fingerprint=request_fingerprint,
+                original_event_id=f"foreign-effect-start-event-{drift}",
+            )
+        )
+        result = RuntimeEffectResult.succeeded(
+            started.attempt.original_start_event.event_id
+        )
+        outcome = ExecutionEffectOutcome(
+            started.attempt.state.identity,
+            started.attempt.state.request_fingerprint,
+            result,
+        )
+        command = FoldEffectAttempt(
+            request_id="request-a",
+            transition=effect_outcome_transition(outcome),
+            authority=self.pinned_runtime_context().authority,
+            fence=self.pinned_runtime_context().fence,
+            failure=effect_outcome_failure(outcome),
+            outcome=outcome,
+        )
+        return self.fold_result_for(
+            command,
             started,
             existing=existing,
         )

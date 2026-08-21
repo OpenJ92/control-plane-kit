@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 import inspect
 import json
 import os
@@ -12,8 +12,13 @@ import control_plane_kit_architecture_testing as architecture_testing
 import control_plane_kit_operations as operations_root
 from control_plane_kit_core.operations import EffectAttemptFence
 from control_plane_kit_core.operations.execution import EffectResultKind
+from control_plane_kit_core.operations.lifecycle import (
+    ActivityEventKind,
+    ActivityRunStatus,
+)
 from control_plane_kit_core.planning import (
     AllocatePublicIngress,
+    ActivityId,
     PublicIngressActivityTarget,
     SocketConnectionTarget,
     SwitchSocketConnection,
@@ -28,6 +33,7 @@ from control_plane_kit_operations.coordinator import (
     ActivityExecutionDispatcher,
     ActivityExecutionOutcome,
     ActivityRealizationContext,
+    CoordinatorStatus,
     ExecutionCoordinator,
     ExecutionCoordinatorConflict,
     ExecutionCoordinatorDenied,
@@ -56,10 +62,13 @@ from control_plane_kit_operations.effect_attempt_start import (
     NewlyStarted,
     StartEffectAttempt,
 )
+from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.effect_outcome_evidence import (
     effect_outcome_failure,
     effect_outcome_transition,
 )
+from control_plane_kit_operations.records import ActivityEventRecord
+from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.effect_attempt_coordinator_fixture import (
     EffectAttemptCoordinatorFixture,
     RecordingCoordinatorAdapter,
@@ -124,6 +133,7 @@ COORDINATOR_DEPENDENCIES = {
     "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
     "control_plane_kit_operations.effect_attempt_start",
     "control_plane_kit_operations.effect_attempt_start_interpreter",
+    "control_plane_kit_operations.effect_attempts",
     "control_plane_kit_operations.effect_outcome_evidence",
     "control_plane_kit_operations.execution_leases",
     "control_plane_kit_operations.ingress_authorities",
@@ -245,6 +255,7 @@ EXACT_COORDINATOR_IMPORTS = _exact_imports(
     ("control_plane_kit_operations.effect_attempt_start", "NewlyStarted", None),
     ("control_plane_kit_operations.effect_attempt_start", "StartEffectAttempt", None),
     ("control_plane_kit_operations.effect_attempt_start_interpreter", "EffectAttemptStartService", None),
+    ("control_plane_kit_operations.effect_attempts", "EffectAttemptRecord", None),
     ("control_plane_kit_operations.effect_outcome_evidence", "ExecutionEffectOutcome", None),
     ("control_plane_kit_operations.effect_outcome_evidence", "effect_outcome_failure", None),
     ("control_plane_kit_operations.effect_outcome_evidence", "effect_outcome_transition", None),
@@ -345,6 +356,7 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
     ("control_plane_kit_core.types", "RuntimeKind", None),
     ("control_plane_kit_core.verification", "PostgresQueryCheck", None),
     ("control_plane_kit_operations.coordinator", "ActivityRealizationContext", None),
+    ("control_plane_kit_operations.coordinator", "_CoordinatorContext", None),
     ("control_plane_kit_operations.ingress_authorities", "CloudflareOwnedIngressResource", None),
     ("control_plane_kit_operations.ingress_authorities", "GeneratedIngressSecretReference", None),
     ("control_plane_kit_operations.ingress_authorities", "GeneratedSecretPurpose", None),
@@ -434,9 +446,12 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
     ("control_plane_kit_core.runtime_effects.RuntimeEffectResult.uncertain", 1),
     ("control_plane_kit_core.runtime_effects.RuntimeEffectResult.unsupported", 1),
     ("control_plane_kit_operations.activity_journal.activity_journal_events", 1),
+    ("control_plane_kit_operations.effect_attempt_fold.ExistingFold", 2),
     ("control_plane_kit_operations.effect_attempt_fold.FoldEffectAttempt", 1),
+    ("control_plane_kit_operations.effect_attempt_fold.NewlyFolded", 2),
     ("control_plane_kit_operations.effect_attempt_reconciliation.ReconcileEffectAttempt", 1),
     ("control_plane_kit_operations.effect_attempt_start.StartEffectAttempt", 1),
+    ("control_plane_kit_operations.effect_attempts.EffectAttemptRecord", 1),
     (
         "control_plane_kit_operations.effect_outcome_evidence."
         "ExecutionEffectOutcome",
@@ -471,7 +486,7 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
     ("control_plane_kit_operations.secret_providers.AuthorizeSecretUse", 1),
     ("control_plane_kit_operations.secret_providers.secret_use_correlation_for", 1),
     ("control_plane_kit_operations.workflows.IdempotencyKey", 2),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 61),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 62),
     ("dataclasses.dataclass", 7),
     ("dataclasses.field", 1),
     ("dataclasses.replace", 1),
@@ -526,9 +541,8 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
     ("stores.registered_products.list_active", 1),
     ("stores.runtime_authorities.list_active", 1),
     ("stores.runtime_authority_deliveries.list_active", 1),
-    ("str", 1),
     ("tuple", 9),
-    ("type", 12),
+    ("type", 13),
     ("unit_of_work.commit", 2),
     ("value.strip", 1),
 )
@@ -593,7 +607,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
         "cloudflare_tunnel_token_delivery_plan",
         1,
     ),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 29),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 30),
     ("dataclasses.replace", 2),
     ("gateway_node.provider_socket", 1),
     ("gateway_target_map_for_node", 1),
@@ -602,7 +616,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("graph_id.strip", 2),
     ("hasattr", 2),
     ("int", 1),
-    ("isinstance", 15),
+    ("isinstance", 14),
     ("json.dumps", 1),
     ("len", 7),
     ("metadata.get", 2),
@@ -612,6 +626,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("source_edges.setdefault", 1),
     ("targets.values", 1),
     ("tuple", 17),
+    ("type", 2),
     ("uses.add", 3),
     ("uses.update", 1),
     ("value.split", 1),
@@ -768,6 +783,57 @@ class EffectAttemptCoordinatorContractTests(
         self.assertIs(coordinator._fold_service, fold)
         self.assertIs(coordinator._reconciliation_service, reconciliation)
 
+    def test_forward_coordinator_blocks_compensation_before_any_effect_authority(
+        self,
+    ) -> None:
+        context = self.pinned_runtime_context()
+        activity = context.plan.activity(ActivityId("activity-a"))
+        compensation_event = ActivityEventRecord(
+            "compensation-start-event-a",
+            context.run.run_id,
+            1,
+            ActivityEventKind.STEP_COMPENSATION_STARTED,
+            "2030-01-01T00:00:01Z",
+            activity_id=activity.activity_id.value,
+        )
+        shared_realization = context.realization_context(
+            activity,
+            compensation_event,
+        )
+        self.assertEqual(shared_realization.intent_event, compensation_event)
+
+        start = RecordingStartService()
+        fold = RecordingFoldService()
+        reconciliation = RecordingReconciliationService()
+        adapter = RecordingCoordinatorAdapter()
+        coordinator = self.db_free_coordinator(
+            start_service=start,
+            fold_service=fold,
+            reconciliation_service=reconciliation,
+            adapter=adapter,
+        )
+        coordinator.pinned_context = replace(
+            context,
+            run=replace(context.run, status=ActivityRunStatus.COMPENSATING),
+            events=(compensation_event,),
+        )
+
+        result = coordinator.execute(self.coordinator_command())
+
+        self.assertIs(result.status, CoordinatorStatus.BLOCKED)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(start.commands, [])
+        self.assertEqual(reconciliation.commands, [])
+        self.assertEqual(fold.commands, [])
+        self.assertEqual(adapter.runtime_calls, [])
+        self.assertEqual(adapter.legacy_contexts, [])
+        self.assertEqual(coordinator.legacy_writes, [])
+        self.assertEqual(coordinator.effect_ledger, [])
+        forward_source = inspect.getsource(ExecutionCoordinator.execute)
+        self.assertNotIn("STEP_COMPENSATION_STARTED", forward_source)
+        self.assertNotIn("FailedRunCompensation", forward_source)
+        self.assertNotIn("failed_run_compensation", forward_source)
+
     def test_adapter_protocol_and_dispatchers_expose_exact_operation_indexed_arms(
         self,
     ) -> None:
@@ -821,6 +887,31 @@ class EffectAttemptCoordinatorContractTests(
             get_type_hints(adapter_execute_runtime)["return"],
             RuntimeEffectResult,
         )
+
+        runtime_context = context_for(self.runtime_intent().operation)
+        activity_error = None
+        try:
+            ActivityExecutionDispatcher(
+                runtime=RecordingCoordinatorAdapter()
+            ).execute(runtime_context)
+        except BaseException as error:
+            activity_error = error
+        interpreter_error = None
+        try:
+            RuntimeInterpreterDispatcher({}).execute(runtime_context)
+        except BaseException as error:
+            interpreter_error = error
+
+        self.assertIs(type(activity_error), InvalidOperationCommand)
+        self.assertIs(type(interpreter_error), InvalidOperationCommand)
+        self.assertIsNot(activity_error, interpreter_error)
+        for error in (activity_error, interpreter_error):
+            self.assertEqual(
+                error.args,
+                ("runtime activities require the runtime dispatch arm",),
+            )
+            self.assertIsNone(error.__cause__)
+            self.assertIsNone(error.__context__)
 
     def test_live_start_binds_exact_event_request_and_folds_once(self) -> None:
         started = self.newly_started()
@@ -948,7 +1039,11 @@ class EffectAttemptCoordinatorContractTests(
 
                     self.assertEqual(
                         str(caught.exception),
-                        "effect attempt start result is invalid",
+                        (
+                            "effect attempt service result is invalid"
+                            if drift == "original-event"
+                            else "effect attempt start result is invalid"
+                        ),
                     )
                     self.assert_safe_error(caught.exception)
                     self.assertEqual(len(start.commands), 1)
@@ -1211,20 +1306,14 @@ class EffectAttemptCoordinatorContractTests(
     ) -> None:
         dispatches: list[str] = []
 
-        def hostile_copy(value):
+        def hostile_copy(value, label: str):
             class HostileResult(type(value)):
                 def __getattribute__(self, name):
-                    if name in {
-                        "attempt",
-                        "outcome_record",
-                        "__class__",
-                    }:
-                        dispatches.append(name)
-                        raise AssertionError("hostile result dispatched")
-                    return super().__getattribute__(name)
+                    dispatches.append(f"{label}.{name}")
+                    raise AssertionError("hostile result dispatched")
 
                 def __eq__(self, _other):
-                    dispatches.append("eq")
+                    dispatches.append(f"{label}.eq")
                     raise AssertionError("hostile result equality dispatched")
 
             hostile = object.__new__(HostileResult)
@@ -1232,80 +1321,308 @@ class EffectAttemptCoordinatorContractTests(
                 object.__setattr__(hostile, item.name, getattr(value, item.name))
             return hostile
 
+        def forged_attempt(
+            lawful: EffectAttemptRecord,
+            *,
+            field_name: str,
+            label: str,
+        ) -> EffectAttemptRecord:
+            candidate = object.__new__(EffectAttemptRecord)
+            for item in fields(EffectAttemptRecord):
+                value = getattr(lawful, item.name)
+                if item.name == field_name:
+                    value = hostile_copy(value, label)
+                object.__setattr__(candidate, item.name, value)
+            return candidate
+
+        def exact_start_result(result_type, attempt):
+            candidate = object.__new__(result_type)
+            object.__setattr__(candidate, "attempt", attempt)
+            return candidate
+
+        def exact_fold_result(result_type, lawful, attempt):
+            candidate = object.__new__(result_type)
+            object.__setattr__(candidate, "attempt", attempt)
+            object.__setattr__(
+                candidate,
+                "outcome_record",
+                lawful.outcome_record,
+            )
+            return candidate
+
+        def capture(coordinator):
+            escaped = None
+            try:
+                coordinator.execute(self.coordinator_command())
+            except BaseException as error:
+                escaped = error
+            return escaped
+
+        class UnrelatedAttempt:
+            def __getattribute__(self, name):
+                dispatches.append(f"unrelated.{name}")
+                raise AssertionError("unrelated attempt dispatched")
+
+            def __eq__(self, _other):
+                dispatches.append("unrelated.eq")
+                raise AssertionError("unrelated attempt equality dispatched")
+
         started = self.newly_started()
         runtime_result = RuntimeEffectResult.succeeded(
             started.attempt.original_start_event.event_id
         )
-        lawful_fold = self.fold_result_for(
+        lawful_new_fold = self.fold_result_for(
             self.fold_command_for(runtime_result),
             started,
         )
         existing = ExistingAttempt(self.direct_attempt())
-        deep_new = object.__new__(NewlyStarted)
-        object.__setattr__(deep_new, "attempt", hostile_copy(started.attempt))
-        deep_existing = object.__new__(ExistingAttempt)
-        object.__setattr__(
-            deep_existing,
-            "attempt",
-            hostile_copy(existing.attempt),
-        )
-        cases = (
+        lawful_existing_fold = self.exact_fold_result(existing=True)
+
+        start_cases = [
             (
-                "start",
-                RecordingStartService(hostile_copy(started)),
-                RecordingFoldService(),
-                RecordingReconciliationService(),
-                RecordingCoordinatorAdapter(),
+                "outer",
+                hostile_copy(started, "start.outer"),
             ),
-            (
-                "start-deep",
-                RecordingStartService(deep_new),
-                RecordingFoldService(),
-                RecordingReconciliationService(),
-                RecordingCoordinatorAdapter(),
-            ),
-            (
-                "fold",
-                RecordingStartService(started),
-                RecordingFoldService(hostile_copy(lawful_fold)),
-                RecordingReconciliationService(),
-                RecordingCoordinatorAdapter(runtime_result),
-            ),
-            (
-                "reconciliation",
-                RecordingStartService(existing),
-                RecordingFoldService(),
-                RecordingReconciliationService(
-                    hostile_copy(self.exact_fold_result(existing=True))
-                ),
-                RecordingCoordinatorAdapter(),
-            ),
-            (
-                "reconciliation-deep",
-                RecordingStartService(deep_existing),
-                RecordingFoldService(),
-                RecordingReconciliationService(),
-                RecordingCoordinatorAdapter(),
-            ),
-        )
-        for label, start, fold, reconciliation, adapter in cases:
-            with self.subTest(boundary=label):
+        ]
+        for result_type, lawful_attempt in (
+            (NewlyStarted, started.attempt),
+            (ExistingAttempt, existing.attempt),
+        ):
+            start_cases.extend(
+                (
+                    (
+                        f"{result_type.__name__}-unrelated",
+                        exact_start_result(result_type, UnrelatedAttempt()),
+                    ),
+                    (
+                        f"{result_type.__name__}-deep-state",
+                        exact_start_result(
+                            result_type,
+                            forged_attempt(
+                                lawful_attempt,
+                                field_name="state",
+                                label=f"{result_type.__name__}.state",
+                            ),
+                        ),
+                    ),
+                    (
+                        f"{result_type.__name__}-deep-event",
+                        exact_start_result(
+                            result_type,
+                            forged_attempt(
+                                lawful_attempt,
+                                field_name="original_start_event",
+                                label=f"{result_type.__name__}.event",
+                            ),
+                        ),
+                    ),
+                )
+            )
+
+        for label, start_result in start_cases:
+            with self.subTest(boundary="start", candidate=label):
                 dispatches.clear()
+                start = RecordingStartService(start_result)
+                fold = RecordingFoldService()
+                reconciliation = RecordingReconciliationService()
+                adapter = RecordingCoordinatorAdapter()
                 coordinator = self.db_free_coordinator(
                     start_service=start,
                     fold_service=fold,
                     reconciliation_service=reconciliation,
                     adapter=adapter,
                 )
-                with self.assertRaises(ExecutionCoordinatorConflict) as caught:
-                    coordinator.execute(self.coordinator_command())
+                escaped = capture(coordinator)
+                self.assertEqual(dispatches, [])
+                self.assertIs(type(escaped), ExecutionCoordinatorConflict)
                 self.assertEqual(
-                    str(caught.exception),
+                    str(escaped),
                     "effect attempt service result is invalid",
                 )
-                self.assert_safe_error(caught.exception)
-                self.assertEqual(dispatches, [])
+                self.assert_safe_error(escaped)
+                self.assertEqual(adapter.runtime_calls, [])
+                self.assertEqual(fold.commands, [])
+                self.assertEqual(reconciliation.commands, [])
                 self.assertEqual(coordinator.legacy_writes, [])
+
+        fold_cases = [
+            ("outer", hostile_copy(lawful_new_fold, "fold.outer")),
+        ]
+        reconciliation_cases = [
+            (
+                "outer",
+                hostile_copy(lawful_existing_fold, "reconciliation.outer"),
+            ),
+        ]
+        for result_type, lawful in (
+            (NewlyFolded, lawful_new_fold),
+            (ExistingFold, lawful_existing_fold),
+        ):
+            fold_cases.append(
+                (
+                    f"{result_type.__name__}-deep",
+                    exact_fold_result(
+                        result_type,
+                        lawful,
+                        forged_attempt(
+                            lawful.attempt,
+                            field_name="state",
+                            label=f"fold.{result_type.__name__}.state",
+                        ),
+                    ),
+                )
+            )
+            reconciliation_cases.append(
+                (
+                    f"{result_type.__name__}-deep",
+                    exact_fold_result(
+                        result_type,
+                        lawful,
+                        forged_attempt(
+                            lawful.attempt,
+                            field_name="state",
+                            label=(
+                                f"reconciliation.{result_type.__name__}.state"
+                            ),
+                        ),
+                    ),
+                )
+            )
+
+        for label, fold_result in fold_cases:
+            with self.subTest(boundary="fold", candidate=label):
+                dispatches.clear()
+                fold = RecordingFoldService(fold_result)
+                reconciliation = RecordingReconciliationService()
+                adapter = RecordingCoordinatorAdapter(runtime_result)
+                coordinator = self.db_free_coordinator(
+                    start_service=RecordingStartService(started),
+                    fold_service=fold,
+                    reconciliation_service=reconciliation,
+                    adapter=adapter,
+                )
+                escaped = capture(coordinator)
+                self.assertEqual(dispatches, [])
+                self.assertIs(type(escaped), ExecutionCoordinatorConflict)
+                self.assertEqual(
+                    str(escaped),
+                    "effect attempt service result is invalid",
+                )
+                self.assert_safe_error(escaped)
+                self.assertEqual(len(adapter.runtime_calls), 1)
+                self.assertEqual(len(fold.commands), 1)
+                self.assertEqual(reconciliation.commands, [])
+                self.assertEqual(coordinator.legacy_writes, [])
+
+        for label, reconciliation_result in reconciliation_cases:
+            with self.subTest(boundary="reconciliation", candidate=label):
+                dispatches.clear()
+                fold = RecordingFoldService()
+                reconciliation = RecordingReconciliationService(
+                    reconciliation_result
+                )
+                adapter = RecordingCoordinatorAdapter()
+                coordinator = self.db_free_coordinator(
+                    start_service=RecordingStartService(existing),
+                    fold_service=fold,
+                    reconciliation_service=reconciliation,
+                    adapter=adapter,
+                )
+                escaped = capture(coordinator)
+                self.assertEqual(dispatches, [])
+                self.assertIs(type(escaped), ExecutionCoordinatorConflict)
+                self.assertEqual(
+                    str(escaped),
+                    "effect attempt service result is invalid",
+                )
+                self.assert_safe_error(escaped)
+                self.assertEqual(adapter.runtime_calls, [])
+                self.assertEqual(fold.commands, [])
+                self.assertEqual(len(reconciliation.commands), 1)
+                self.assertEqual(coordinator.legacy_writes, [])
+
+    def test_fold_and_reconciliation_results_match_the_issued_attempt(
+        self,
+    ) -> None:
+        started = self.newly_started()
+        existing = ExistingAttempt(self.direct_attempt())
+        runtime_result = RuntimeEffectResult.succeeded(
+            started.attempt.original_start_event.event_id
+        )
+
+        for drift in ("identity", "fingerprint"):
+            for result_type in (NewlyFolded, ExistingFold):
+                foreign = self.lawful_foreign_fold_result(
+                    drift=drift,
+                    existing=result_type is ExistingFold,
+                )
+                with self.subTest(
+                    boundary="fold",
+                    drift=drift,
+                    result=result_type.__name__,
+                ):
+                    fold = RecordingFoldService(foreign)
+                    reconciliation = RecordingReconciliationService()
+                    adapter = RecordingCoordinatorAdapter(runtime_result)
+                    coordinator = self.db_free_coordinator(
+                        start_service=RecordingStartService(started),
+                        fold_service=fold,
+                        reconciliation_service=reconciliation,
+                        adapter=adapter,
+                    )
+
+                    with self.assertRaises(ExecutionCoordinatorConflict) as caught:
+                        coordinator.execute(self.coordinator_command())
+
+                    self.assertEqual(
+                        str(caught.exception),
+                        "effect attempt service result is invalid",
+                    )
+                    self.assert_safe_error(caught.exception)
+                    self.assertEqual(len(adapter.runtime_calls), 1)
+                    self.assertEqual(len(fold.commands), 1)
+                    issued = fold.commands[0]
+                    self.assertTrue(
+                        foreign.attempt.state.identity != issued.transition.identity
+                        or foreign.attempt.state.request_fingerprint
+                        != issued.outcome.request_fingerprint
+                    )
+                    self.assertEqual(reconciliation.commands, [])
+                    self.assertEqual(coordinator.legacy_writes, [])
+
+                with self.subTest(
+                    boundary="reconciliation",
+                    drift=drift,
+                    result=result_type.__name__,
+                ):
+                    fold = RecordingFoldService()
+                    reconciliation = RecordingReconciliationService(foreign)
+                    adapter = RecordingCoordinatorAdapter()
+                    coordinator = self.db_free_coordinator(
+                        start_service=RecordingStartService(existing),
+                        fold_service=fold,
+                        reconciliation_service=reconciliation,
+                        adapter=adapter,
+                    )
+
+                    with self.assertRaises(ExecutionCoordinatorConflict) as caught:
+                        coordinator.execute(self.coordinator_command())
+
+                    self.assertEqual(
+                        str(caught.exception),
+                        "effect attempt service result is invalid",
+                    )
+                    self.assert_safe_error(caught.exception)
+                    self.assertEqual(adapter.runtime_calls, [])
+                    self.assertEqual(fold.commands, [])
+                    self.assertEqual(len(reconciliation.commands), 1)
+                    issued = reconciliation.commands[0]
+                    self.assertTrue(
+                        foreign.attempt.state.identity != issued.identity
+                        or foreign.attempt.state.request_fingerprint
+                        != existing.attempt.state.request_fingerprint
+                    )
+                    self.assertEqual(coordinator.legacy_writes, [])
 
     def test_root_inventory_and_private_projection_ownership_are_exact(self) -> None:
         self.assertEqual(
