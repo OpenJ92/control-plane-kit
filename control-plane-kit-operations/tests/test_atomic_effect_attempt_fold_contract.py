@@ -217,7 +217,6 @@ EXACT_INTERPRETER_CALLS = (
             "stores.observed_state.put",
             *("type",) * 8,
             "unit_of_work.commit",
-            "unit_of_work.commit",
             "worker_id.encode",
             "worker_id.strip",
         )

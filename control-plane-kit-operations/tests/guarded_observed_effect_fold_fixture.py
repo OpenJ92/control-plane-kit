@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import fields, replace
 
+from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.effect_attempt_intent_evidence import (
     EffectAttemptIntentRecord,
@@ -10,6 +11,7 @@ from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority,
     RegisteredRuntimeAuthority,
     RegisteredRuntimeAuthorityStatus,
+    RemoteDockerTlsAuthority,
 )
 from tests.atomic_effect_attempt_fold_fixture import (
     AtomicEffectAttemptFoldFixture,
@@ -85,19 +87,36 @@ class GuardedObservedEffectFoldFixture(AtomicEffectAttemptFoldFixture):
             value,
         )
 
-    def runtime_authority_for_intent(self, intent):
+    def runtime_authority_for_intent(
+        self,
+        intent,
+        *,
+        authority=None,
+        status=RegisteredRuntimeAuthorityStatus.ACTIVE,
+        workspace_id=None,
+        authority_ref=None,
+    ):
         if intent.authority_ref is None:
             return None
         return RegisteredRuntimeAuthority(
             registration_id="runtime-authority-a",
-            workspace_id=intent.source.workspace_id,
-            authority_ref=intent.authority_ref,
+            workspace_id=workspace_id or intent.source.workspace_id,
+            authority_ref=authority_ref or intent.authority_ref,
             runtime_kind=RuntimeKind.DOCKER,
-            authority=LocalDockerSocketAuthority(),
+            authority=authority or LocalDockerSocketAuthority(),
             admitted_by="operator-a",
             admitted_at="2030-01-01T00:00:00Z",
-            status=RegisteredRuntimeAuthorityStatus.ACTIVE,
+            status=status,
             metadata={},
+        )
+
+    @staticmethod
+    def remote_docker_authority():
+        return RemoteDockerTlsAuthority(
+            endpoint="tcp://mac-mini.local:2376",
+            ca_certificate=SecretReference("secret://local/docker/ca"),
+            client_certificate=SecretReference("secret://local/docker/cert"),
+            client_key=SecretReference("secret://local/docker/key"),
         )
 
     def fold_for_story(self, story, *, intent=None, outcome=None, **changes):

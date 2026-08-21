@@ -19,7 +19,10 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     effect_outcome_transition,
 )
 from control_plane_kit_operations.runtime_authorities import (
+    LocalDockerSocketAuthority,
     RegisteredRuntimeAuthority,
+    RegisteredRuntimeAuthorityStatus,
+    RemoteDockerTlsAuthority,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.atomic_effect_attempt_fold_fixture import ExistingFold, NewlyFolded
@@ -237,6 +240,31 @@ class GuardedObservedEffectFoldContractTests(
         story = self.observed_stories()[0]
         with_ref = self.guarded_command(story)
         self.assertIs(type(with_ref.runtime_authority), RegisteredRuntimeAuthority)
+        self.assertIs(
+            type(with_ref.runtime_authority.authority),
+            LocalDockerSocketAuthority,
+        )
+
+        remote_authority = self.runtime_authority_for_intent(
+            with_ref.intent_record.intent,
+            authority=self.remote_docker_authority(),
+        )
+        remote = self.guarded_command(
+            story,
+            runtime_authority=remote_authority,
+        )
+        self.assertIs(
+            type(remote.runtime_authority.authority),
+            RemoteDockerTlsAuthority,
+        )
+        rendered = f"{with_ref!s} {with_ref!r} {remote!s} {remote!r}"
+        for canary in (
+            "mac-mini.local",
+            "secret://local/docker/ca",
+            "secret://local/docker/cert",
+            "secret://local/docker/key",
+        ):
+            self.assertNotIn(canary, rendered)
 
         no_ref_intent = self.intent_for_story(story, authority_ref=False)
         no_ref = self.guarded_command(
@@ -257,6 +285,29 @@ class GuardedObservedEffectFoldContractTests(
                 runtime_authority=with_ref.runtime_authority,
             )
         )
+        for invalid_authority in (
+            self.runtime_authority_for_intent(
+                with_ref.intent_record.intent,
+                status=RegisteredRuntimeAuthorityStatus.REVOKED,
+            ),
+            self.runtime_authority_for_intent(
+                with_ref.intent_record.intent,
+                workspace_id="workspace-b",
+            ),
+            self.runtime_authority_for_intent(
+                with_ref.intent_record.intent,
+                authority_ref=dataclasses.replace(
+                    with_ref.intent_record.intent.authority_ref,
+                    reference_id="foreign-runtime",
+                ),
+            ),
+        ):
+            self.assert_invalid_guard(
+                lambda authority=invalid_authority: self.guarded_command(
+                    story,
+                    runtime_authority=authority,
+                )
+            )
         non_docker = self.intent_for_story(
             story,
             runtime_kind=RuntimeKind.EXTERNAL,
@@ -265,7 +316,7 @@ class GuardedObservedEffectFoldContractTests(
             lambda: self.guarded_command(
                 story,
                 intent=non_docker,
-                runtime_authority=None,
+                runtime_authority=with_ref.runtime_authority,
             )
         )
 
@@ -283,6 +334,18 @@ class GuardedObservedEffectFoldContractTests(
             for value in self.observed_stories()
             if value.compensation is not observed_story.compensation
         )
+        distinct_event_record = EffectAttemptIntentRecord(
+            valid.intent_record.identity,
+            dataclasses.replace(
+                valid.intent_record.original_start_event,
+                event_id="event-start-distinct",
+            ),
+            valid.intent_record.intent,
+        )
+        self.assertEqual(
+            distinct_event_record.request_fingerprint,
+            valid.intent_record.request_fingerprint,
+        )
         cases = (
             lambda: self.guarded_command(
                 observed_story,
@@ -295,6 +358,10 @@ class GuardedObservedEffectFoldContractTests(
             lambda: self.guarded_command(
                 observed_story,
                 intent_record=self.intent_record_for_story(other),
+            ),
+            lambda: self.guarded_command(
+                observed_story,
+                intent_record=distinct_event_record,
             ),
             lambda: self.guarded_command(
                 observed_story,
