@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import fields, replace
 import unittest
 from unittest import mock
 
@@ -40,6 +40,30 @@ from tests.postgres_effect_attempt_start_fixture import (
     REPLAY_ERROR,
     SERIALIZATION_ERROR,
 )
+
+
+def _hostile_intent_record(value, dispatches):
+    class HostileIntentRecord(EffectAttemptIntentRecord):
+        def __getattribute__(self, name):
+            dispatches.append(f"attribute:{name}")
+            return super().__getattribute__(name)
+
+        def __eq__(self, other):
+            dispatches.append("equality")
+            return False
+
+        def __ne__(self, other):
+            dispatches.append("inequality")
+            return True
+
+    hostile = object.__new__(HostileIntentRecord)
+    for field in fields(value):
+        object.__setattr__(
+            hostile,
+            field.name,
+            object.__getattribute__(value, field.name),
+        )
+    return hostile
 
 
 class PostgresEffectAttemptStartIntentTests(
@@ -262,6 +286,87 @@ class PostgresEffectAttemptStartIntentTests(
         self.assertEqual(ids.calls, [])
         self.assertEqual(self.attempt_snapshot(), before)
 
+    def test_replay_intent_record_is_exact_before_virtual_access(self) -> None:
+        self.require_intent_store()
+        self.require_intent_schema()
+        current = self.persisted_started(event_id="hostile-replay-intent-start")
+        expected = EffectAttemptIntentRecord(
+            current.state.identity,
+            current.original_start_event,
+            self.start_command().intent,
+        )
+        dispatches = []
+        hostile = _hostile_intent_record(expected, dispatches)
+        ids = Sequence("hostile-replay-must-not-allocate")
+        before = self.attempt_snapshot()
+        forbidden = AssertionError("hostile replay intent reached mutation")
+        with mock.patch.object(
+            EffectAttemptIntentStore,
+            "get",
+            return_value=hostile,
+        ), self.reject_database_observation(
+            "hostile replay intent sampled database time"
+        ), mock.patch.object(
+            PostgresExecutionStore,
+            "add_event",
+            side_effect=forbidden,
+        ), mock.patch.object(
+            EffectAttemptIntentStore,
+            "insert",
+            side_effect=forbidden,
+        ), mock.patch.object(
+            EffectAttemptStore,
+            "insert_absent",
+            side_effect=forbidden,
+        ):
+            with self.assertRaises(EffectAttemptStartConflict) as caught:
+                self.start_service_with_id_factory(ids).execute(
+                    self.start_command()
+                )
+        self.assertEqual(str(caught.exception), REPLAY_ERROR)
+        self.assert_safe_error(caught.exception)
+        self.assertEqual(dispatches, [])
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.attempt_snapshot(), before)
+
+    def test_replay_intent_get_unexpected_value_error_remains_raw(self) -> None:
+        self.require_intent_store()
+        self.require_intent_schema()
+        self.persisted_started(event_id="raw-replay-intent-start")
+        sentinel = ValueError("intent-get-raw-canary")
+        ids = Sequence("raw-replay-must-not-allocate")
+        before = self.attempt_snapshot()
+        forbidden = AssertionError("raw replay intent fault reached mutation")
+        captured = None
+        with mock.patch.object(
+            EffectAttemptIntentStore,
+            "get",
+            side_effect=sentinel,
+        ), self.reject_database_observation(
+            "raw replay intent fault sampled database time"
+        ), mock.patch.object(
+            PostgresExecutionStore,
+            "add_event",
+            side_effect=forbidden,
+        ), mock.patch.object(
+            EffectAttemptIntentStore,
+            "insert",
+            side_effect=forbidden,
+        ), mock.patch.object(
+            EffectAttemptStore,
+            "insert_absent",
+            side_effect=forbidden,
+        ):
+            try:
+                self.start_service_with_id_factory(ids).execute(
+                    self.start_command()
+                )
+            except BaseException as error:
+                captured = error
+        self.assertIs(captured, sentinel)
+        self.assertEqual(ids.calls, [])
+        self.assertEqual(self.attempt_snapshot(), before)
+
     def test_missing_or_corrupt_evidence_conflicts_before_clock_ids_or_writes(self) -> None:
         self.require_intent_store()
         self.require_intent_schema()
@@ -398,6 +503,31 @@ class PostgresEffectAttemptStartIntentTests(
                 self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
                 self.assert_safe_error(caught.exception, canary)
                 self.assertEqual(self.attempt_snapshot(), before)
+
+    def test_intent_insert_acknowledgement_is_exact_before_virtual_access(
+        self,
+    ) -> None:
+        self.require_intent_store()
+        self.require_intent_schema()
+        before = self.attempt_snapshot()
+        dispatches = []
+        ids = Sequence("hostile-intent-ack-event")
+        original_insert = EffectAttemptIntentStore.insert
+
+        def insert(store, record):
+            admitted = original_insert(store, record)
+            return _hostile_intent_record(admitted, dispatches)
+
+        with mock.patch.object(EffectAttemptIntentStore, "insert", insert):
+            with self.assertRaises(EffectAttemptStartConflict) as caught:
+                self.start_service_with_id_factory(ids).execute(
+                    self.start_command()
+                )
+        self.assertEqual(str(caught.exception), SERIALIZATION_ERROR)
+        self.assert_safe_error(caught.exception)
+        self.assertEqual(dispatches, [])
+        self.assertEqual(ids.calls, ["hostile-intent-ack-event"])
+        self.assertEqual(self.attempt_snapshot(), before)
 
     def test_identical_race_has_one_evidence_row_and_incompatible_replay_conflicts(self) -> None:
         self.require_intent_store()

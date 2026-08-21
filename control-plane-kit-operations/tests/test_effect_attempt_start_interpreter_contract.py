@@ -188,6 +188,8 @@ EXACT_START_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("value.encode"),
 )
 
