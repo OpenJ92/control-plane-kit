@@ -35,7 +35,12 @@ from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityKind,
     RuntimeAuthorityNotFound,
     RuntimeAuthorityRegistrationConflict,
+    RuntimeAuthorityRegistrationError,
 )
+
+
+_LOOKUP_ERROR = "runtime authority lookup is invalid"
+_ROW_ERROR = "registered runtime authority row is invalid"
 
 
 class RuntimeAuthorityStore:
@@ -137,6 +142,67 @@ class RuntimeAuthorityStore:
         if row is None:
             raise RuntimeAuthorityNotFound("registered runtime authority was not found")
         return _row_to_authority(row)
+
+    def get_active_for_update(
+        self,
+        workspace_id: str,
+        authority_ref: RuntimeAuthorityReference,
+    ) -> RegisteredRuntimeAuthority:
+        invalid = (
+            type(workspace_id) is not str
+            or not workspace_id
+            or len(workspace_id) > 512
+            or any(ord(character) < 32 for character in workspace_id)
+            or type(authority_ref) is not RuntimeAuthorityReference
+        )
+        admitted_reference = None
+        if not invalid:
+            reference_id = authority_ref.reference_id
+            invalid = type(reference_id) is not str
+        if not invalid:
+            try:
+                admitted_reference = RuntimeAuthorityReference(reference_id)
+            except ValueError:
+                invalid = True
+        if invalid:
+            raise RuntimeAuthorityRegistrationError(_LOOKUP_ERROR) from None
+        rows = self._connection.execute(
+            """
+            SELECT
+              registration_id,
+              workspace_id,
+              authority_ref,
+              runtime_kind,
+              authority,
+              admitted_by,
+              admitted_at,
+              status,
+              metadata
+            FROM cpk_runtime_authorities
+            WHERE workspace_id = %s
+              AND authority_ref = %s
+              AND status = 'active'
+            FOR UPDATE
+            """,
+            (workspace_id, admitted_reference.reference_id),
+        ).fetchall()
+        if not rows:
+            raise RuntimeAuthorityNotFound(
+                "registered runtime authority was not found"
+            ) from None
+        if len(rows) != 1:
+            raise RuntimeAuthorityRegistrationError(_ROW_ERROR) from None
+        row = rows[0]
+        if type(row) is not tuple or len(row) != 9:
+            raise RuntimeAuthorityRegistrationError(_ROW_ERROR) from None
+        invalid = False
+        try:
+            candidate = _row_to_authority(row)
+        except ValueError:
+            invalid = True
+        if invalid:
+            raise RuntimeAuthorityRegistrationError(_ROW_ERROR) from None
+        return candidate
 
     def list_active(self, workspace_id: str) -> tuple[RegisteredRuntimeAuthority, ...]:
         rows = self._connection.execute(

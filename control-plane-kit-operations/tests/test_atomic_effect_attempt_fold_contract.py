@@ -100,12 +100,27 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         ),
         (
             "control_plane_kit_operations.effect_attempt_fold",
+            "GuardedObservedEffectFold",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
             "NewlyFolded",
             None,
         ),
         (
             "control_plane_kit_operations.effect_attempt_fold",
             "_valid_fold_command",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "_valid_guarded_observed_fold",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_intent_evidence",
+            "EffectAttemptIntentRecord",
             None,
         ),
         (
@@ -130,6 +145,11 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         ),
         (
             "control_plane_kit_operations.effect_outcome_evidence",
+            "ObservedEffectOutcome",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_outcome_evidence",
             "effect_outcome_observation_records",
             None,
         ),
@@ -143,6 +163,21 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         (
             "control_plane_kit_operations.records",
             "OperationsRecordError",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
+            "RegisteredRuntimeAuthority",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
+            "RuntimeAuthorityNotFound",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
+            "RuntimeAuthorityRegistrationError",
             None,
         ),
         (
@@ -163,6 +198,8 @@ EXACT_INTERPRETER_CALLS = (
             "_EVENT_KIND_BY_STATE.get",
             "_attempt_for_update",
             "_event_kind",
+            "_execute_fold",
+            "_execute_fold",
             "_fold",
             "_observation",
             "_representable_effect_fence",
@@ -175,12 +212,13 @@ EXACT_INTERPRETER_CALLS = (
             "_translate_fence",
             "control_plane_kit_core.operations.EffectAttemptFence",
             "control_plane_kit_core.operations.fold_effect_attempt",
-            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldConflict",) * 13,
-            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldDenied",) * 2,
+            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldConflict",) * 14,
+            *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldDenied",) * 3,
             *("control_plane_kit_operations.effect_attempt_fold.EffectAttemptFoldNotFound",) * 3,
             "control_plane_kit_operations.effect_attempt_fold.ExistingFold",
             "control_plane_kit_operations.effect_attempt_fold.NewlyFolded",
             "control_plane_kit_operations.effect_attempt_fold._valid_fold_command",
+            "control_plane_kit_operations.effect_attempt_fold._valid_guarded_observed_fold",
             "control_plane_kit_operations.effect_attempts.EffectAttemptEventEvidence",
             "control_plane_kit_operations.effect_attempts.EffectAttemptRecord",
             "control_plane_kit_operations.effect_attempts.effect_attempt_state_fingerprint",
@@ -188,11 +226,12 @@ EXACT_INTERPRETER_CALLS = (
             "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_observation_records",
             "control_plane_kit_operations.records.ActivityEventRecord",
             "control_plane_kit_operations.records.BoundedEvidence.from_mapping",
-            *("control_plane_kit_operations.workflows.InvalidOperationCommand",) * 2,
+            *("control_plane_kit_operations.workflows.InvalidOperationCommand",) * 3,
             "len",
             "self._id_factory",
             "self._plan_result",
             "self._unit_of_work_factory",
+            "stores.effect_attempt_intents.get",
             "stores.effect_attempts.compare_and_set",
             "stores.effect_attempts.get_for_update",
             "stores.effect_outcomes.get",
@@ -203,8 +242,8 @@ EXACT_INTERPRETER_CALLS = (
             "stores.execution.next_event_ordinal",
             "stores.execution.observe_request_lease_for_update",
             "stores.observed_state.put",
-            *("type",) * 8,
-            "unit_of_work.commit",
+            "stores.runtime_authorities.get_active_for_update",
+            *("type",) * 11,
             "unit_of_work.commit",
             "worker_id.encode",
             "worker_id.strip",
@@ -582,7 +621,7 @@ class AtomicEffectAttemptFoldContractTests(
             self.service(fail).execute(denied)
         self.assertEqual(fail.calls, 0)
 
-    def test_interpreter_shared_import_and_call_policy_is_predecessor_green(self) -> None:
+    def test_interpreter_shared_import_and_call_policy_is_exact(self) -> None:
         module = __import__(INTERPRETER_MODULE, fromlist=("__file__",))
         source_path = Path(inspect.getsourcefile(module))
         facts = architecture_testing.analyze_source(
@@ -616,11 +655,17 @@ class AtomicEffectAttemptFoldContractTests(
     def test_root_and_inventory_publish_the_atomic_dependent_sum(self) -> None:
         expected_exports = {
             "FoldEffectAttempt",
+            "GuardedObservedEffectFold",
             "NewlyFolded",
             "ExistingFold",
             "EffectAttemptFoldResult",
         }
-        self.assertTrue(expected_exports.issubset(operations_root.__all__))
+        with self.subTest(surface="root"):
+            self.assertTrue(expected_exports.issubset(operations_root.__all__))
+            self.assertNotIn("_valid_guarded_observed_fold", operations_root.__all__)
+            self.assertFalse(
+                hasattr(operations_root, "_valid_guarded_observed_fold")
+            )
 
         inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
         entries = {
@@ -628,40 +673,91 @@ class AtomicEffectAttemptFoldContractTests(
             for row in inventory["modules"]
             if row["module"] in {FOLD_MODULE, INTERPRETER_MODULE}
         }
-        self.assertEqual(set(entries), {FOLD_MODULE, INTERPRETER_MODULE})
-        self.assertEqual(
-            set(entries[FOLD_MODULE]["internal_dependencies"]),
-            {
-                "control_plane_kit_core.operations",
-                "control_plane_kit_core.policies",
-                "control_plane_kit_operations.effect_attempts",
-                "control_plane_kit_operations.effect_outcome_evidence",
-                "control_plane_kit_operations.execution_leases",
-                "control_plane_kit_operations.lifecycle",
-                "control_plane_kit_operations.records",
-                "control_plane_kit_operations.workflows",
-            },
-        )
-        self.assertIn(
-            "tests/test_atomic_effect_attempt_fold_contract.py",
-            entries[FOLD_MODULE]["protecting_tests"],
-        )
-        self.assertEqual(
-            set(entries[INTERPRETER_MODULE]["internal_dependencies"]),
-            {
-                "control_plane_kit_core.operations",
-                "control_plane_kit_core.policies",
-                "control_plane_kit_operations.effect_attempt_fold",
-                "control_plane_kit_operations.effect_attempts",
-                "control_plane_kit_operations.effect_outcome_evidence",
-                "control_plane_kit_operations.records",
-                "control_plane_kit_operations.workflows",
-            },
-        )
-        self.assertIn(
-            "tests/test_atomic_effect_attempt_fold_contract.py",
-            entries[INTERPRETER_MODULE]["protecting_tests"],
-        )
+        with self.subTest(surface="inventory-modules"):
+            self.assertEqual(set(entries), {FOLD_MODULE, INTERPRETER_MODULE})
+        with self.subTest(surface="fold-dependencies"):
+            self.assertEqual(
+                set(entries[FOLD_MODULE]["internal_dependencies"]),
+                {
+                    "control_plane_kit_core.operations",
+                    "control_plane_kit_core.policies",
+                    "control_plane_kit_core.runtime_authority",
+                    "control_plane_kit_core.secrets",
+                    "control_plane_kit_core.types",
+                    "control_plane_kit_operations.effect_attempt_intent_evidence",
+                    "control_plane_kit_operations.effect_attempts",
+                    "control_plane_kit_operations.effect_outcome_evidence",
+                    "control_plane_kit_operations.execution_leases",
+                    "control_plane_kit_operations.lifecycle",
+                    "control_plane_kit_operations.records",
+                    "control_plane_kit_operations.runtime_authorities",
+                    "control_plane_kit_operations.workflows",
+                },
+            )
+        with self.subTest(surface="fold-exports"):
+            self.assertEqual(
+                set(entries[FOLD_MODULE]["canonical_public_exports"]),
+                {
+                    "EffectAttemptFoldConflict",
+                    "EffectAttemptFoldDenied",
+                    "EffectAttemptFoldError",
+                    "EffectAttemptFoldNotFound",
+                    "EffectAttemptFoldResult",
+                    "ExistingFold",
+                    "FoldEffectAttempt",
+                    "GuardedObservedEffectFold",
+                    "NewlyFolded",
+                },
+            )
+        with self.subTest(surface="fold-existing-protection"):
+            self.assertIn(
+                "tests/test_atomic_effect_attempt_fold_contract.py",
+                entries[FOLD_MODULE]["protecting_tests"],
+            )
+        with self.subTest(surface="fold-guarded-protection"):
+            self.assertIn(
+                "tests/test_guarded_observed_effect_fold_contract.py",
+                entries[FOLD_MODULE]["protecting_tests"],
+            )
+        with self.subTest(surface="interpreter-dependencies"):
+            self.assertEqual(
+                set(entries[INTERPRETER_MODULE]["internal_dependencies"]),
+                {
+                    "control_plane_kit_core.operations",
+                    "control_plane_kit_core.policies",
+                    "control_plane_kit_operations.effect_attempt_fold",
+                    "control_plane_kit_operations.effect_attempt_intent_evidence",
+                    "control_plane_kit_operations.effect_attempts",
+                    "control_plane_kit_operations.effect_outcome_evidence",
+                    "control_plane_kit_operations.records",
+                    "control_plane_kit_operations.runtime_authorities",
+                    "control_plane_kit_operations.workflows",
+                },
+            )
+        with self.subTest(surface="interpreter-exports"):
+            self.assertEqual(
+                entries[INTERPRETER_MODULE]["canonical_public_exports"],
+                ["EffectAttemptFoldService"],
+            )
+        with self.subTest(surface="interpreter-existing-protection"):
+            self.assertIn(
+                "tests/test_atomic_effect_attempt_fold_contract.py",
+                entries[INTERPRETER_MODULE]["protecting_tests"],
+            )
+        with self.subTest(surface="interpreter-guarded-protection"):
+            self.assertIn(
+                "tests/test_guarded_observed_effect_fold_contract.py",
+                entries[INTERPRETER_MODULE]["protecting_tests"],
+            )
+        with self.subTest(surface="interpreter-transaction-protection"):
+            self.assertTrue(
+                {
+                    "tests/test_postgres_guarded_observed_effect_fold_first_replay.py",
+                    "tests/test_postgres_guarded_observed_effect_fold_authority.py",
+                    "tests/test_postgres_guarded_observed_effect_fold_rollback.py",
+                    "tests/test_postgres_guarded_observed_effect_fold_concurrency.py",
+                }.issubset(entries[INTERPRETER_MODULE]["protecting_tests"])
+            )
 
 
 if __name__ == "__main__":

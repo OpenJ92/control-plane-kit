@@ -308,6 +308,14 @@ consumer = "GraphAuthoringService ExecutionCoordinator and GatewayProbeCommandSe
 
 [[read]]
 module = "control_plane_kit_operations.postgres.runtime_authority_store"
+selector = "RuntimeAuthorityStore.get_active_for_update"
+category = "fixed-cardinality"
+sql = "workspace/reference active filter; FOR UPDATE; exact one-row cardinality"
+consumer_kind = "production"
+consumer = "EffectAttemptFoldService locks the exact active observed-effect runtime authority"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_authority_store"
 selector = "RuntimeAuthorityStore.list_active"
 category = "internal-complete"
 sql = "workspace active filter; authority identity ascending; intentionally complete"

@@ -30,13 +30,15 @@ from control_plane_kit_operations.postgres.observed_state import (
 from tests.execution_lease_recovery_fixture import Sequence
 from tests.postgres_effect_attempt_fold_fixture import (
     FOLD_STORIES,
-    PostgresEffectAttemptFoldFixture,
     REPLAY_ERROR,
+)
+from tests.postgres_guarded_observed_effect_fold_fixture import (
+    PostgresGuardedObservedEffectFoldFixture,
 )
 
 
 class PostgresEffectAttemptFoldFirstReplayTests(
-    PostgresEffectAttemptFoldFixture,
+    PostgresGuardedObservedEffectFoldFixture,
     unittest.TestCase,
 ):
     def test_every_direct_and_recovery_fold_commits_exact_truth(self) -> None:
@@ -148,9 +150,10 @@ class PostgresEffectAttemptFoldFirstReplayTests(
                 self.seed_fold_source(story, compensation=compensation)
                 before = self.non_advancement_snapshot()
 
-                result = self.fold_service(
+                service = self.fold_service(
                     f"non-advancing-{int(compensation)}-{label}"
-                ).execute(self.fold_command(story))
+                )
+                result = self.execute_fold(service, story)
 
                 self.assertIsInstance(result, NewlyFolded)
                 self.assertEqual(self.non_advancement_snapshot(), before)

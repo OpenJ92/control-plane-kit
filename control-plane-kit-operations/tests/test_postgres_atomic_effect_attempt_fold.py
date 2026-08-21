@@ -35,9 +35,11 @@ from control_plane_kit_operations.records import (
 from tests.execution_lease_recovery_fixture import Sequence
 from tests.postgres_effect_attempt_fold_fixture import (
     INVALID_TRUTH_ERROR,
-    PostgresEffectAttemptFoldFixture,
     REPLAY_ERROR,
     SERIALIZATION_ERROR,
+)
+from tests.postgres_guarded_observed_effect_fold_fixture import (
+    PostgresGuardedObservedEffectFoldFixture,
 )
 
 
@@ -66,7 +68,7 @@ def _hostile_acknowledgement(value, dispatches):
 
 
 class PostgresAtomicEffectAttemptFoldTests(
-    PostgresEffectAttemptFoldFixture,
+    PostgresGuardedObservedEffectFoldFixture,
     unittest.TestCase,
 ):
     def test_all_twenty_direct_rows_commit_and_restart_replay_exact_evidence(
@@ -76,12 +78,31 @@ class PostgresAtomicEffectAttemptFoldTests(
         self.assertEqual(len(stories), 20)
         for story in stories:
             with self.subTest(story=story.name, compensation=story.compensation):
-                current = self.seed_fold_source(story)
+                guarded = None
+                if story.profile == "provider-observation":
+                    current, intent, intent_record = self.seed_guarded_source(story)
+                else:
+                    current = self.seed_fold_source(story)
                 command = self.fold_command(story)
+                if story.profile == "provider-observation":
+                    runtime_authority = self.register_runtime_authority(intent)
+                    guarded = self.guarded_observed_command(
+                        story,
+                        current=current,
+                        intent=intent,
+                        intent_record=intent_record,
+                        runtime_authority=runtime_authority,
+                        fold=command,
+                        register=False,
+                    )
                 event_id = f"atomic-{int(story.compensation)}-{story.name}"
                 service, ids = self.fold_service_with_sequence(event_id)
 
-                result = service.execute(command)
+                result = (
+                    service.execute(command)
+                    if guarded is None
+                    else service.execute_observed(guarded)
+                )
 
                 self.assertIsInstance(result, NewlyFolded)
                 expected = self.expected_outcome_record(
@@ -139,8 +160,11 @@ class PostgresAtomicEffectAttemptFoldTests(
                     "compare_and_set",
                     side_effect=forbidden,
                 ):
-                    replay = self.fold_service_with_id_factory(replay_ids).execute(
-                        command
+                    replay_service = self.fold_service_with_id_factory(replay_ids)
+                    replay = (
+                        replay_service.execute(command)
+                        if guarded is None
+                        else replay_service.execute_observed(guarded)
                     )
                 self.assertEqual(
                     replay,
