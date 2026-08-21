@@ -31,6 +31,9 @@ from control_plane_kit_operations.effect_attempt_start import (
     StartEffectAttempt,
     _valid_start_command,
 )
+from control_plane_kit_operations.effect_attempt_intent_evidence import (
+    EffectAttemptIntentRecord,
+)
 from control_plane_kit_operations.effect_attempts import (
     EffectAttemptEventEvidence,
     EffectAttemptRecord,
@@ -91,6 +94,7 @@ class EffectAttemptStartService:
             _require_current_authority(command, request)
             if attempt is not None:
                 _require_replay(command, fence, request, run, attempt)
+                _require_intent_replay(stores, command, attempt)
                 result = ExistingAttempt(attempt)
                 unit_of_work.commit()
                 return result
@@ -106,6 +110,22 @@ class EffectAttemptStartService:
                 plan,
                 events,
             )
+            activity = plan.plan.activity(command.intent.activity_id)
+            expected_operation = (
+                activity.operation
+                if event_kind is ActivityEventKind.STEP_STARTED
+                else activity.compensation.operation
+            )
+            source = command.intent.source
+            if (
+                source.workspace_id != request.identity.workspace_id
+                or source.plan_id != plan.plan_id
+                or source.base_graph_id != plan.base_graph_id
+                or source.desired_graph_id != plan.desired_graph_id
+                or command.intent.activity_id != activity.activity_id
+                or command.intent.operation != expected_operation
+            ):
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
@@ -120,7 +140,14 @@ class EffectAttemptStartService:
                 event_ordinal=event_ordinal,
             )
             event = result.attempt.original_start_event
+            intent_record = EffectAttemptIntentRecord(
+                result.attempt.state.identity,
+                event,
+                command.intent,
+            )
             if stores.execution.add_event(event) != event:
+                raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+            if stores.effect_attempt_intents.insert(intent_record) != intent_record:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             if stores.effect_attempts.insert_absent(result.attempt) != result.attempt:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
@@ -316,6 +343,26 @@ def _require_replay(
         or state.prior_attempt != transition.prior_attempt
         or state.fence != fence
     ):
+        raise EffectAttemptStartConflict(_REPLAY_ERROR)
+
+
+def _require_intent_replay(
+    stores: Any,
+    command: StartEffectAttempt,
+    attempt: EffectAttemptRecord,
+) -> None:
+    try:
+        expected = EffectAttemptIntentRecord(
+            attempt.state.identity,
+            attempt.original_start_event,
+            command.intent,
+        )
+        observed = stores.effect_attempt_intents.get(attempt.state.identity)
+    except (KeyError, OperationsRecordError, ValueError):
+        failed = True
+    else:
+        failed = observed != expected
+    if failed:
         raise EffectAttemptStartConflict(_REPLAY_ERROR)
 
 

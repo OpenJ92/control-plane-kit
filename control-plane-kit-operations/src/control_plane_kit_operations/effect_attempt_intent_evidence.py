@@ -64,17 +64,10 @@ def _canonical_runtime_effect_intent(
     event_kind: ActivityEventKind | None = None,
 ) -> bytes:
     descriptor = RuntimeEffectIntent.descriptor(intent)
-    if event_kind is ActivityEventKind.STEP_STARTED:
-        expected_operation_kind = "start-node"
-    elif event_kind is ActivityEventKind.STEP_COMPENSATION_STARTED:
-        expected_operation_kind = "stop-node"
-    elif event_kind is None:
-        expected_operation_kind = None
-    else:
-        return b""
     if (
-        expected_operation_kind is not None
-        and descriptor["operation"]["kind"] != expected_operation_kind
+        event_kind is not None
+        and event_kind is not ActivityEventKind.STEP_STARTED
+        and event_kind is not ActivityEventKind.STEP_COMPENSATION_STARTED
     ):
         return b""
     return rfc8785.dumps(descriptor)
