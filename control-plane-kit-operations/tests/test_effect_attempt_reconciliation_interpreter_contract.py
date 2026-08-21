@@ -111,59 +111,224 @@ EXACT_LANGUAGE_CALLS = (
     ),
     architecture_testing.ResolvedCallTarget("value.encode"),
 )
-EXACT_INTERPRETER_IMPORTS = (
-    architecture_testing.ImportSurfaceEntry("__future__", "annotations", None),
-    architecture_testing.ImportSurfaceEntry(
-        "control_plane_kit_core.policies",
-        "PolicyScope",
-        None,
-    ),
-    architecture_testing.ImportSurfaceEntry(
-        "control_plane_kit_operations.effect_attempt_fold",
-        "EffectAttemptFoldResult",
-        None,
-    ),
-    architecture_testing.ImportSurfaceEntry(
-        LANGUAGE_MODULE,
-        "EffectAttemptReconciliationDenied",
-        None,
-    ),
-    architecture_testing.ImportSurfaceEntry(
-        LANGUAGE_MODULE,
-        "ReconcileEffectAttempt",
-        None,
-    ),
-    architecture_testing.ImportSurfaceEntry(
-        LANGUAGE_MODULE,
-        "RuntimeEffectObserver",
-        None,
-    ),
-    architecture_testing.ImportSurfaceEntry(
-        LANGUAGE_MODULE,
-        "_valid_reconcile_command",
-        None,
-    ),
-    architecture_testing.ImportSurfaceEntry(
-        "control_plane_kit_operations.workflows",
-        "InvalidOperationCommand",
-        None,
-    ),
-    architecture_testing.ImportSurfaceEntry("typing", "Any", None),
-    architecture_testing.ImportSurfaceEntry("typing", "Callable", None),
+EXACT_INTERPRETER_IMPORTS = tuple(
+    architecture_testing.ImportSurfaceEntry(*value)
+    for value in (
+        ("__future__", "annotations", None),
+        ("control_plane_kit_core.operations", "EffectAttemptStatus", None),
+        ("control_plane_kit_core.operations.lifecycle", "ExecutionRequestStatus", None),
+        ("control_plane_kit_core.policies", "PolicyScope", None),
+        (
+            "control_plane_kit_core.runtime_effect_observation",
+            "RuntimeEffectObservationRequest",
+            None,
+        ),
+        (
+            "control_plane_kit_core.runtime_effect_observation",
+            "runtime_effect_request_for_intent",
+            None,
+        ),
+        ("control_plane_kit_core.secrets", "SecretResolutionGrant", None),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "EffectAttemptFoldConflict",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "EffectAttemptFoldDenied",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "EffectAttemptFoldNotFound",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "EffectAttemptFoldResult",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "ExistingFold",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "FoldEffectAttempt",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "GuardedObservedEffectFold",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_fold",
+            "NewlyFolded",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_attempt_intent_evidence",
+            "EffectAttemptIntentRecord",
+            None,
+        ),
+        (LANGUAGE_MODULE, "EffectAttemptReconciliationConflict", None),
+        (LANGUAGE_MODULE, "EffectAttemptReconciliationDenied", None),
+        (LANGUAGE_MODULE, "EffectAttemptReconciliationNotFound", None),
+        (LANGUAGE_MODULE, "ReconcileEffectAttempt", None),
+        (LANGUAGE_MODULE, "RuntimeEffectObserver", None),
+        (LANGUAGE_MODULE, "_valid_reconcile_command", None),
+        (
+            "control_plane_kit_operations.effect_attempts",
+            "EffectAttemptRecord",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_outcome_evidence",
+            "EffectAttemptOutcomeRecord",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_outcome_evidence",
+            "ObservedEffectOutcome",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_outcome_evidence",
+            "effect_outcome_failure",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_outcome_evidence",
+            "effect_outcome_transition",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.records",
+            "ActivityRunRecord",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.records",
+            "ExecutionRequestRecord",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.records",
+            "OperationsRecordError",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
+            "RegisteredRuntimeAuthority",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
+            "RuntimeAuthorityNotFound",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
+            "RuntimeAuthorityRegistrationError",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_effects",
+            "required_secret_uses_for_runtime_effect",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.secret_providers",
+            "AuthorizeSecretUse",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.secret_providers",
+            "SecretProviderAuthorizationDenied",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.secret_providers",
+            "SecretProviderRegistrationError",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.secret_providers",
+            "SecretUseAuthorizationConflict",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.secret_providers",
+            "SecretUseAuthorizationService",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.secret_providers",
+            "secret_use_correlation_for",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.workflows",
+            "InvalidOperationCommand",
+            None,
+        ),
+        ("typing", "Any", None),
+        ("typing", "Callable", None),
+    )
 )
-EXACT_INTERPRETER_CALLS = (
-    architecture_testing.ResolvedCallTarget(
-        "control_plane_kit_operations.effect_attempt_reconciliation."
-        "EffectAttemptReconciliationDenied"
-    ),
-    architecture_testing.ResolvedCallTarget(
-        "control_plane_kit_operations.effect_attempt_reconciliation."
-        "_valid_reconcile_command"
-    ),
-    architecture_testing.ResolvedCallTarget(
-        "control_plane_kit_operations.workflows.InvalidOperationCommand"
-    ),
-    architecture_testing.ResolvedCallTarget("self._unit_of_work_factory"),
+EXACT_INTERPRETER_CALLS = tuple(
+    architecture_testing.ResolvedCallTarget(value)
+    for value in (
+        "_attempt_for_update",
+        "_authorize_required_secrets",
+        "_existing_fold",
+        "_fresh_observed_fold",
+        "_request_for_update",
+        "_require_current_claim",
+        "_require_historical_lineage",
+        "_run_for_request_for_update",
+        "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservationRequest",
+        "control_plane_kit_core.runtime_effect_observation.runtime_effect_request_for_intent",
+        "control_plane_kit_operations.effect_attempt_fold.ExistingFold",
+        "control_plane_kit_operations.effect_attempt_fold.FoldEffectAttempt",
+        "control_plane_kit_operations.effect_attempt_fold.GuardedObservedEffectFold",
+        *((
+            "control_plane_kit_operations.effect_attempt_reconciliation."
+            "EffectAttemptReconciliationConflict",
+        ) * 8),
+        *((
+            "control_plane_kit_operations.effect_attempt_reconciliation."
+            "EffectAttemptReconciliationDenied",
+        ) * 6),
+        *((
+            "control_plane_kit_operations.effect_attempt_reconciliation."
+            "EffectAttemptReconciliationNotFound",
+        ) * 3),
+        "control_plane_kit_operations.effect_attempt_reconciliation._valid_reconcile_command",
+        "control_plane_kit_operations.effect_outcome_evidence.ObservedEffectOutcome",
+        "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_failure",
+        "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_transition",
+        "control_plane_kit_operations.runtime_effects.required_secret_uses_for_runtime_effect",
+        "control_plane_kit_operations.secret_providers.AuthorizeSecretUse",
+        "control_plane_kit_operations.secret_providers.SecretUseAuthorizationService",
+        "control_plane_kit_operations.secret_providers.secret_use_correlation_for",
+        "control_plane_kit_operations.workflows.InvalidOperationCommand",
+        "self._fold_service.execute_observed",
+        "self._observer.observe",
+        "self._secret_use_authorizer.authorize_resolution",
+        "self._unit_of_work_factory",
+        "stores.effect_attempt_intents.get",
+        "stores.effect_attempts.get_for_update",
+        "stores.effect_outcomes.get",
+        "stores.execution.get_request_for_update",
+        "stores.execution.get_run_for_request_for_update",
+        "stores.execution.observe_request_lease_for_update",
+        "stores.runtime_authorities.get_active_for_update",
+        *("type",) * 14,
+    )
 )
 
 
@@ -183,7 +348,7 @@ class FailIfObserver:
 
     def observe(self, _request, _authority):
         self.calls += 1
-        raise AssertionError("Stage 1 invoked observer IO")
+        raise AssertionError("reconciliation contract invoked observer IO")
 
 
 class FailIfFold:
@@ -192,7 +357,7 @@ class FailIfFold:
 
     def execute(self, _command):
         self.calls += 1
-        raise AssertionError("Stage 1 invoked atomic fold")
+        raise AssertionError("reconciliation contract invoked atomic fold")
 
 
 class EffectAttemptReconciliationInterpreterContractTests(
@@ -321,7 +486,7 @@ class EffectAttemptReconciliationInterpreterContractTests(
         self.assertEqual(observer.calls, 0)
         self.assertEqual(fold.calls, 0)
 
-    def test_shared_policy_values_accept_the_exact_stage_one_surfaces(self) -> None:
+    def test_shared_policy_values_accept_the_exact_reconciliation_surfaces(self) -> None:
         policies = self._architecture_policies()
         self.assertEqual(len(policies), 4)
         self.assertEqual(
@@ -340,7 +505,10 @@ class EffectAttemptReconciliationInterpreterContractTests(
             (INTERPRETER_MODULE, INTERPRETER_SOURCE_PATH),
         ):
             path = PACKAGE_ROOT / "src" / source_path
-            self.assertTrue(path.is_file(), f"missing Stage 1 module: {module_name}")
+            self.assertTrue(
+                path.is_file(),
+                f"missing reconciliation module: {module_name}",
+            )
             facts.append(
                 architecture_testing.analyze_source(
                     path.read_text(encoding="utf-8"),

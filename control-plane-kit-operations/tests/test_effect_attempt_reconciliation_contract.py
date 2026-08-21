@@ -592,7 +592,7 @@ class EffectAttemptReconciliationContractTests(
             )
         return candidate
 
-    def test_root_and_inventory_publish_only_the_stage_one_surface(self) -> None:
+    def test_root_and_inventory_publish_only_the_reconciliation_surface(self) -> None:
         missing = sorted(ROOT_EXPORTS.difference(operations_root.__all__))
         self.assertEqual(missing, [], "reconciliation root exports are missing")
 
@@ -630,9 +630,20 @@ class EffectAttemptReconciliationContractTests(
         self.assertEqual(
             set(interpreter["internal_dependencies"]),
             {
+                "control_plane_kit_core.operations",
+                "control_plane_kit_core.operations.lifecycle",
                 "control_plane_kit_core.policies",
+                "control_plane_kit_core.runtime_effect_observation",
+                "control_plane_kit_core.secrets",
                 "control_plane_kit_operations.effect_attempt_fold",
+                "control_plane_kit_operations.effect_attempt_intent_evidence",
                 LANGUAGE_MODULE,
+                "control_plane_kit_operations.effect_attempts",
+                "control_plane_kit_operations.effect_outcome_evidence",
+                "control_plane_kit_operations.records",
+                "control_plane_kit_operations.runtime_authorities",
+                "control_plane_kit_operations.runtime_effects",
+                "control_plane_kit_operations.secret_providers",
                 "control_plane_kit_operations.workflows",
             },
         )
@@ -642,17 +653,21 @@ class EffectAttemptReconciliationContractTests(
         )
         self.assertEqual(
             set(interpreter["protecting_tests"]),
-            {"tests/test_effect_attempt_reconciliation_interpreter_contract.py"},
+            {
+                "tests/test_effect_attempt_reconciliation_interpreter_contract.py",
+                "tests/test_postgres_effect_attempt_reconciliation_authority_grants.py",
+                "tests/test_postgres_effect_attempt_reconciliation_concurrency.py",
+                "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
+                "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
+                "tests/test_postgres_effect_attempt_reconciliation_rollback.py",
+            },
         )
-        self.assertIn("DB-free", interpreter["motivation"])
-        for held in (
-            "PostgreSQL",
-            "expiry",
-            "grant",
-            "race",
-            "replay",
-        ):
-            self.assertNotIn(held, interpreter["motivation"])
+        self.assertEqual(
+            interpreter["motivation"],
+            "Owns preflight, durable replay, secret-use authorization, observer "
+            "orchestration, and guarded outcome folding for runtime-effect "
+            "reconciliation.",
+        )
 
 
 if __name__ == "__main__":
