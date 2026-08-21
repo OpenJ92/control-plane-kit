@@ -259,11 +259,12 @@ class PostgresEffectAttemptStoreTests(
                     ordinal=40,
                 )
                 self.persist(current)
-                with self.unit_of_work() as unit_of_work:
-                    unit_of_work.stores.execution.add_event(
-                        replacement.latest_transition_event
-                    )
-                    unit_of_work.commit()
+                if drift not in ("prior-request", "prior-original-event"):
+                    with self.unit_of_work() as unit_of_work:
+                        unit_of_work.stores.execution.add_event(
+                            replacement.latest_transition_event
+                        )
+                        unit_of_work.commit()
 
                 prior = current
                 if drift == "prior-request":
@@ -287,6 +288,12 @@ class PostgresEffectAttemptStoreTests(
                             current.latest_transition_event,
                             evidence=self.evidence_for(prior_state),
                         ),
+                    )
+                    replacement = self.transition(
+                        prior,
+                        "recovered-succeeded",
+                        event_id=f"drift-{drift}-replacement",
+                        ordinal=40,
                     )
                 elif drift == "fence":
                     self.connection.execute(
@@ -344,6 +351,12 @@ class PostgresEffectAttemptStoreTests(
                         alternate,
                         current.latest_transition_event,
                     )
+                    replacement = self.transition(
+                        prior,
+                        "recovered-succeeded",
+                        event_id=f"drift-{drift}-replacement",
+                        ordinal=40,
+                    )
                 else:
                     alternate = self.event(
                         current.state,
@@ -364,6 +377,13 @@ class PostgresEffectAttemptStoreTests(
                         """,
                         (alternate.event_id, alternate.run_id, alternate.ordinal),
                     )
+
+                if drift in ("prior-request", "prior-original-event"):
+                    with self.unit_of_work() as unit_of_work:
+                        unit_of_work.stores.execution.add_event(
+                            replacement.latest_transition_event
+                        )
+                        unit_of_work.commit()
 
                 before = self.connection.execute(
                     "SELECT * FROM cpk_effect_attempts "

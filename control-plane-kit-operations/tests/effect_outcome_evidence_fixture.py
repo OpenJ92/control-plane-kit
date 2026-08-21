@@ -56,7 +56,7 @@ from control_plane_kit_operations.records import (
     OperationsRecordError,
 )
 
-from effect_attempt_record_fixture import (
+from tests.effect_attempt_record_fixture import (
     EffectAttemptRecordFixture,
     REQUEST_FINGERPRINT,
 )

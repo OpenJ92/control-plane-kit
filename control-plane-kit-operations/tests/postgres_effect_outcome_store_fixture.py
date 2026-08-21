@@ -106,13 +106,21 @@ class PostgresEffectOutcomeStoreFixture(
         story = self.story_named(story_name)
         start_event_id = f"page-{index:03d}-start"
         direct_event_id = f"page-{index:03d}-direct"
+        identity = self.identity(activity_id=f"activity-{index:03d}")
+        request_fingerprint = self.request_fingerprint_for_attempt(
+            run_id=identity.run_id.value,
+            activity_id=identity.activity_id,
+        )
         value = replace(story.value, effect_id=start_event_id)
+        if story.profile == "provider-observation":
+            value = replace(value, request_fingerprint=request_fingerprint)
         indexed = replace(story, value=value)
         indexed = replace(
             indexed,
             attempt=self.direct_attempt_for(
                 indexed,
-                identity=self.identity(activity_id=f"activity-{index:03d}"),
+                identity=identity,
+                request_fingerprint=request_fingerprint,
                 original_event_id=start_event_id,
                 latest_event_id=direct_event_id,
                 original_ordinal=10 + index * 2,
