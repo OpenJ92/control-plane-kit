@@ -9587,9 +9587,20 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.secrets",
         "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
         "control_plane_kit_operations.effect_attempt_reconciliation",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_effects",
+        "control_plane_kit_operations.secret_providers",
         "control_plane_kit_operations.workflows"
       ],
       "known_package_consumers": [
@@ -9597,12 +9608,17 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
-      "motivation": "Owns DB-free command and scope preflight through the injected unit-of-work boundary for runtime-effect reconciliation.",
+      "motivation": "Owns preflight, durable replay, secret-use authorization, observer orchestration, and guarded outcome folding for runtime-effect reconciliation.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
-        "tests/test_effect_attempt_reconciliation_interpreter_contract.py"
+        "tests/test_effect_attempt_reconciliation_interpreter_contract.py",
+        "tests/test_postgres_effect_attempt_reconciliation_authority_grants.py",
+        "tests/test_postgres_effect_attempt_reconciliation_concurrency.py",
+        "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
+        "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
+        "tests/test_postgres_effect_attempt_reconciliation_rollback.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
