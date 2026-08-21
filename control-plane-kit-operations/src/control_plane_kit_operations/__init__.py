@@ -525,6 +525,7 @@ from .effect_attempt_fold import (
     EffectAttemptFoldResult,
     ExistingFold,
     FoldEffectAttempt,
+    GuardedObservedEffectFold,
     NewlyFolded,
 )
 from .effect_attempt_fold_interpreter import EffectAttemptFoldService
@@ -1065,6 +1066,7 @@ __all__ = [
     "StartActivityRun",
     "StartEffectAttempt",
     "FoldEffectAttempt",
+    "GuardedObservedEffectFold",
     "TakeOverExpiredExecutionClaim",
     "StaleDesiredGraph",
     "WorkspaceRecord",

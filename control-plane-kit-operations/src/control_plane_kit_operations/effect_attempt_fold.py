@@ -14,6 +14,15 @@ from control_plane_kit_core.operations import (
     RunId,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityReference,
+    RuntimeEffectContractError,
+)
+from control_plane_kit_core.secrets import SecretReference, SecretResolutionError
+from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_operations.effect_attempt_intent_evidence import (
+    EffectAttemptIntentRecord,
+)
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcome,
@@ -30,6 +39,13 @@ from control_plane_kit_operations.records import (
     FailureCategory,
     FailureEvidence,
     OperationsRecordError,
+)
+from control_plane_kit_operations.runtime_authorities import (
+    LocalDockerSocketAuthority,
+    RegisteredRuntimeAuthority,
+    RegisteredRuntimeAuthorityStatus,
+    RemoteDockerTlsAuthority,
+    RuntimeAuthorityRegistrationError,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
@@ -67,6 +83,21 @@ class FoldEffectAttempt:
 
 
 @dataclass(frozen=True)
+class GuardedObservedEffectFold:
+    """One exact observed fold paired with its locked durable guard values."""
+
+    fold: FoldEffectAttempt
+    intent_record: EffectAttemptIntentRecord = field(repr=False)
+    runtime_authority: RegisteredRuntimeAuthority | None = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not _valid_guarded_observed_fold(self):
+            raise InvalidOperationCommand(
+                "guarded observed effect fold command is invalid"
+            )
+
+
+@dataclass(frozen=True)
 class NewlyFolded:
     """One effect attempt newly folded by this invocation."""
 
@@ -97,6 +128,124 @@ class ExistingFold:
 
 
 EffectAttemptFoldResult = NewlyFolded | ExistingFold
+
+
+def _valid_guarded_observed_fold(command: object) -> bool:
+    if type(command) is not GuardedObservedEffectFold:
+        return False
+    fold = command.fold
+    if (
+        type(fold) is not FoldEffectAttempt
+        or not _valid_fold_command(fold)
+        or type(fold.outcome) is not ObservedEffectOutcome
+    ):
+        return False
+    intent_record = _validated_intent_record(command.intent_record)
+    if intent_record is None:
+        return False
+    runtime_authority = _validated_runtime_authority(command.runtime_authority)
+    authority_ref = intent_record.intent.authority_ref
+    if authority_ref is None:
+        if command.runtime_authority is not None:
+            return False
+    elif (
+        runtime_authority is None
+        or intent_record.intent.runtime_kind is not RuntimeKind.DOCKER
+        or runtime_authority.workspace_id != intent_record.workspace_id
+        or runtime_authority.authority_ref != authority_ref
+        or runtime_authority.runtime_kind is not intent_record.intent.runtime_kind
+    ):
+        return False
+    outcome = fold.outcome
+    return (
+        intent_record.identity == fold.transition.identity
+        and intent_record.identity == outcome.identity
+        and intent_record.request_id == fold.request_id
+        and intent_record.request_fingerprint == outcome.request_fingerprint
+        and intent_record.original_start_event.event_id
+        == outcome.observation.effect_id
+    )
+
+
+def _validated_intent_record(value: object) -> EffectAttemptIntentRecord | None:
+    if type(value) is not EffectAttemptIntentRecord:
+        return None
+    try:
+        return EffectAttemptIntentRecord(
+            value.identity,
+            value.original_start_event,
+            value.intent,
+        )
+    except (AttributeError, OperationsRecordError):
+        return None
+
+
+def _validated_runtime_authority(
+    value: object,
+) -> RegisteredRuntimeAuthority | None:
+    if value is None:
+        return None
+    if (
+        type(value) is not RegisteredRuntimeAuthority
+        or type(value.registration_id) is not str
+        or type(value.workspace_id) is not str
+        or type(value.authority_ref) is not RuntimeAuthorityReference
+        or type(value.authority_ref.reference_id) is not str
+        or type(value.runtime_kind) is not RuntimeKind
+        or value.runtime_kind is not RuntimeKind.DOCKER
+        or type(value.admitted_by) is not str
+        or type(value.admitted_at) is not str
+        or type(value.status) is not RegisteredRuntimeAuthorityStatus
+        or value.status is not RegisteredRuntimeAuthorityStatus.ACTIVE
+        or type(value.metadata) is not dict
+    ):
+        return None
+    authority = _validated_docker_authority(value.authority)
+    if authority is None:
+        return None
+    try:
+        return RegisteredRuntimeAuthority(
+            registration_id=value.registration_id,
+            workspace_id=value.workspace_id,
+            authority_ref=RuntimeAuthorityReference(
+                value.authority_ref.reference_id
+            ),
+            runtime_kind=value.runtime_kind,
+            authority=authority,
+            admitted_by=value.admitted_by,
+            admitted_at=value.admitted_at,
+            status=value.status,
+            metadata=dict(value.metadata),
+        )
+    except (RuntimeAuthorityRegistrationError, RuntimeEffectContractError):
+        return None
+
+
+def _validated_docker_authority(value: object):
+    if type(value) is LocalDockerSocketAuthority:
+        return LocalDockerSocketAuthority()
+    if (
+        type(value) is not RemoteDockerTlsAuthority
+        or type(value.endpoint) is not str
+        or type(value.ca_certificate) is not SecretReference
+        or type(value.ca_certificate.reference_id) is not str
+        or type(value.client_certificate) is not SecretReference
+        or type(value.client_certificate.reference_id) is not str
+        or type(value.client_key) is not SecretReference
+        or type(value.client_key.reference_id) is not str
+    ):
+        return None
+    try:
+        return RemoteDockerTlsAuthority(
+            endpoint=value.endpoint,
+            ca_certificate=SecretReference(value.ca_certificate.reference_id),
+            client_certificate=SecretReference(
+                value.client_certificate.reference_id
+            ),
+            client_key=SecretReference(value.client_key.reference_id),
+        )
+    except (RuntimeAuthorityRegistrationError, SecretResolutionError):
+        return None
 
 
 def _valid_fold_command(command: object) -> bool:
@@ -364,5 +513,6 @@ __all__ = [
     "EffectAttemptFoldResult",
     "ExistingFold",
     "FoldEffectAttempt",
+    "GuardedObservedEffectFold",
     "NewlyFolded",
 ]
