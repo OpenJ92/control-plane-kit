@@ -9,6 +9,11 @@ from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
 )
+from control_plane_kit_core.planning import (
+    RuntimeTarget,
+    StartRuntime,
+    StopRuntime,
+)
 from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_fingerprint,
 )
@@ -81,14 +86,50 @@ class PostgresEffectAttemptStartFixture(
                 )
                 unit_of_work.commit()
 
+    def intent(
+        self,
+        *,
+        compensation: bool = False,
+        request_id: str = "request-a",
+        run_id: str = "run-a",
+        activity_id: str = "start-runtime",
+        products=None,
+    ):
+        value = EffectAttemptStartFixture.intent(
+            self,
+            compensation=compensation,
+            request_id=request_id,
+            run_id=run_id,
+            activity_id=activity_id,
+            products=products,
+        )
+        return replace(
+            value,
+            source=replace(
+                value.source,
+                workspace_id="workspace-a",
+                request_id=request_id,
+                plan_id="plan-a",
+                base_graph_id="graph-current",
+                desired_graph_id="graph-desired",
+            ),
+            operation=(
+                StopRuntime(RuntimeTarget("runtime-a"))
+                if compensation
+                else StartRuntime(RuntimeTarget("runtime-a"))
+            ),
+        )
+
     def start_command(self, **changes):
+        intent = changes.pop("intent", self.intent())
         transition = changes.pop(
             "transition",
             self.transition(
                 identity=self.identity(activity_id="start-runtime"),
+                intent=intent,
             ),
         )
-        return self.command(transition=transition, **changes)
+        return self.command(intent=intent, transition=transition, **changes)
 
     def start_service_with_sequence(self, *ids: str):
         sequence = Sequence(*ids)

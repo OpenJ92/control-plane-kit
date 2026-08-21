@@ -8,7 +8,6 @@ from unittest import mock
 from control_plane_kit_core.planning import (
     RuntimeTarget,
     StartRuntime,
-    StopRuntime,
 )
 from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_fingerprint,
@@ -125,24 +124,9 @@ class PostgresEffectAttemptStartIntentTests(
     def test_fresh_intent_must_match_locked_request_plan_and_scheduled_operation(
         self,
     ) -> None:
-        base = self.intent()
-        source = replace(
-            base.source,
-            workspace_id="workspace-a",
-            request_id="request-a",
-            plan_id="plan-a",
-            base_graph_id="graph-current",
-            desired_graph_id="graph-desired",
-        )
-        forward = replace(
-            base,
-            source=source,
-            operation=StartRuntime(RuntimeTarget("runtime-a")),
-        )
-        compensation = replace(
-            forward,
-            operation=StopRuntime(RuntimeTarget("runtime-a")),
-        )
+        forward = self.intent()
+        compensation = self.intent(compensation=True)
+        source = forward.source
 
         with self.unit_of_work() as unit_of_work:
             request = unit_of_work.stores.execution.get_request_for_update("request-a")
