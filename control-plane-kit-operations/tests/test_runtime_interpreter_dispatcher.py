@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import unittest
+from dataclasses import fields, replace
 
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec, ProviderSocket
+from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -64,7 +66,10 @@ from control_plane_kit_operations.coordinator import (
     RuntimeInterpreterDispatcher,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
-from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
+from control_plane_kit_operations.products import (
+    InlineDescriptorSource,
+    RegisteredProduct,
+)
 from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority,
     RegisteredRuntimeAuthority,
@@ -72,6 +77,10 @@ from control_plane_kit_operations.runtime_authorities import (
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
     SecretProviderAuthorizationDenied,
+    secret_use_correlation_for,
+)
+from control_plane_kit_operations.runtime_effects import (
+    runtime_effect_request_for_context,
 )
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
@@ -90,6 +99,7 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
     RetryIdentity,
 )
+from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
 ENDPOINT_TEXT_MAX = 512
@@ -148,9 +158,15 @@ class RecordingInterpreter:
 
 
 class RecordingActivityAdapter:
-    def __init__(self, outcome: ActivityExecutionOutcome) -> None:
+    def __init__(
+        self,
+        outcome: ActivityExecutionOutcome,
+        runtime_result: RuntimeEffectResult | None = None,
+    ) -> None:
         self.outcome = outcome
+        self.runtime_result = runtime_result
         self.contexts: list[ActivityRealizationContext] = []
+        self.runtime_requests: list[RuntimeEffectRequest] = []
 
     def execute(
         self,
@@ -158,6 +174,18 @@ class RecordingActivityAdapter:
     ) -> ActivityExecutionOutcome:
         self.contexts.append(context)
         return self.outcome
+
+    def execute_runtime(
+        self,
+        context: ActivityRealizationContext,
+        request: RuntimeEffectRequest,
+    ) -> RuntimeEffectResult:
+        self.contexts.append(context)
+        self.runtime_requests.append(request)
+        return self.runtime_result or RuntimeEffectResult.succeeded(
+            request.effect_id,
+            evidence={"adapter": "runtime"},
+        )
 
 
 class AuthorityAwareRecordingInterpreter(RecordingInterpreter):
@@ -214,6 +242,294 @@ class RecordingSecretUseAuthorizer:
 
 
 class RuntimeInterpreterDispatcherTests(unittest.TestCase):
+    def execute_runtime(
+        self,
+        dispatcher,
+        context: ActivityRealizationContext,
+        request: RuntimeEffectRequest | None = None,
+    ) -> RuntimeEffectResult:
+        operation = getattr(dispatcher, "execute_runtime", None)
+        self.assertIsNotNone(operation, "runtime adapter arm is missing")
+        exact_request = request or runtime_effect_request_for_context(context)
+        return operation(context, exact_request)
+
+    def test_runtime_arm_forwards_the_exact_post_start_request(self) -> None:
+        expected = RuntimeEffectResult.succeeded(
+            "event-intent",
+            evidence={"provider": "docker"},
+        )
+        interpreter = RecordingInterpreter("docker", expected)
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+        context = context_for(StartNode(NodeTarget("api")))
+        request = runtime_effect_request_for_context(context)
+        execute_runtime = getattr(dispatcher, "execute_runtime", None)
+        self.assertIsNotNone(execute_runtime, "runtime adapter arm is missing")
+
+        result = execute_runtime(context, request)
+        with self.assertRaises(InvalidOperationCommand):
+            dispatcher.execute(context)
+
+        self.assertIs(result, expected)
+        self.assertEqual(interpreter.requests, [request])
+        self.assertIs(interpreter.requests[0], request)
+
+    def test_activity_dispatcher_keeps_legacy_and_runtime_arms_disjoint(self) -> None:
+        ingress_outcome = ActivityExecutionOutcome.succeeded()
+        ingress = RecordingActivityAdapter(ingress_outcome)
+        runtime = RecordingActivityAdapter(ActivityExecutionOutcome.succeeded())
+        dispatcher = ActivityExecutionDispatcher(runtime=runtime, ingress=ingress)
+        ingress_context = context_for(
+            AllocatePublicIngress(PublicIngressActivityTarget("gateway-public"))
+        )
+        runtime_context = context_for(StartNode(NodeTarget("api")))
+        request = runtime_effect_request_for_context(runtime_context)
+        execute_runtime = getattr(dispatcher, "execute_runtime", None)
+        self.assertIsNotNone(execute_runtime, "runtime adapter arm is missing")
+
+        legacy = dispatcher.execute(ingress_context)
+        runtime_result = execute_runtime(runtime_context, request)
+        with self.assertRaises(InvalidOperationCommand):
+            dispatcher.execute(runtime_context)
+
+        self.assertIs(legacy, ingress_outcome)
+        self.assertIs(type(runtime_result), RuntimeEffectResult)
+        self.assertEqual(runtime_result.effect_id, request.effect_id)
+        self.assertEqual(ingress.contexts, [ingress_context])
+        self.assertEqual(runtime.contexts, [runtime_context])
+
+    def test_runtime_wrong_arm_hostile_result_and_provider_fault_are_uncertain(
+        self,
+    ) -> None:
+        context = context_for(StartNode(NodeTarget("api")))
+        request = runtime_effect_request_for_context(context)
+        dispatches: list[str] = []
+
+        class HostileResult(RuntimeEffectResult):
+            def __getattribute__(self, name):
+                if name in {"effect_id", "kind", "failure", "__class__"}:
+                    dispatches.append(name)
+                    raise AssertionError("hostile runtime result dispatched")
+                return super().__getattribute__(name)
+
+            def __eq__(self, _other):
+                dispatches.append("eq")
+                raise AssertionError("hostile runtime result equality dispatched")
+
+        lawful = RuntimeEffectResult.succeeded(request.effect_id)
+        hostile = object.__new__(HostileResult)
+        for item in fields(RuntimeEffectResult):
+            object.__setattr__(hostile, item.name, getattr(lawful, item.name))
+
+        class RaisingInterpreter:
+            def execute(self, _request):
+                raise RuntimeError("provider-secret-canary")
+
+        cases = (
+            (
+                "wrong-arm",
+                RecordingInterpreter("docker", ActivityExecutionOutcome.succeeded()),
+            ),
+            ("hostile-subclass", RecordingInterpreter("docker", hostile)),
+            ("provider-fault", RaisingInterpreter()),
+        )
+        for label, interpreter in cases:
+            with self.subTest(case=label):
+                dispatches.clear()
+                dispatcher = RuntimeInterpreterDispatcher(
+                    {RuntimeKind.DOCKER: interpreter}
+                )
+                execute_runtime = getattr(dispatcher, "execute_runtime", None)
+                self.assertIsNotNone(
+                    execute_runtime,
+                    "runtime adapter arm is missing",
+                )
+                result = execute_runtime(context, request)
+                self.assertIs(type(result), RuntimeEffectResult)
+                self.assertIs(result.kind, EffectResultKind.UNCERTAIN)
+                self.assertEqual(result.effect_id, request.effect_id)
+                self.assertIsNotNone(result.failure)
+                assert result.failure is not None
+                self.assertEqual(result.failure.code, "runtime.provider-result-unknown")
+                rendered = f"{result!r} {result.failure!r}"
+                self.assertNotIn("provider-secret-canary", rendered)
+                self.assertEqual(dispatches, [])
+
+    def test_runtime_nominal_admission_precedes_virtual_access_and_provider_io(
+        self,
+    ) -> None:
+        dispatches: list[str] = []
+        interpreter = RecordingInterpreter("docker")
+        dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+        context = context_for(StartNode(NodeTarget("api")))
+        request = runtime_effect_request_for_context(context)
+
+        class HostileRequest(RuntimeEffectRequest):
+            def __getattribute__(self, name):
+                if name in {"runtime_kind", "effect_id", "__class__"}:
+                    dispatches.append(name)
+                    raise AssertionError("hostile request dispatched")
+                return super().__getattribute__(name)
+
+        hostile = object.__new__(HostileRequest)
+        for item in fields(RuntimeEffectRequest):
+            object.__setattr__(hostile, item.name, getattr(request, item.name))
+
+        class HostileContext(ActivityRealizationContext):
+            def __getattribute__(self, name):
+                if name in {"activity", "intent_event", "__class__"}:
+                    dispatches.append(name)
+                    raise AssertionError("hostile context dispatched")
+                return super().__getattribute__(name)
+
+        hostile_context = object.__new__(HostileContext)
+        for item in fields(ActivityRealizationContext):
+            object.__setattr__(
+                hostile_context,
+                item.name,
+                getattr(context, item.name),
+            )
+
+        for label, candidate_context, candidate_request in (
+            ("request", context, hostile),
+            ("context", hostile_context, request),
+        ):
+            with self.subTest(candidate=label):
+                execute_runtime = getattr(dispatcher, "execute_runtime", None)
+                self.assertIsNotNone(
+                    execute_runtime,
+                    "runtime adapter arm is missing",
+                )
+                dispatches.clear()
+                with self.assertRaises(InvalidOperationCommand) as caught:
+                    execute_runtime(candidate_context, candidate_request)
+                self.assertEqual(
+                    str(caught.exception),
+                    "runtime dispatch requires exact context and request",
+                )
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assertEqual(dispatches, [])
+                self.assertEqual(interpreter.requests, [])
+
+    def test_runtime_context_and_request_must_be_exactly_congruent_before_io(
+        self,
+    ) -> None:
+        context_a = context_for(StartNode(NodeTarget("api")), run_id="run-a")
+        context_b = context_for(StartNode(NodeTarget("api")), run_id="run-b")
+        request_a = runtime_effect_request_for_context(context_a)
+        request_b = runtime_effect_request_for_context(context_b)
+
+        for label, context, request in (
+            ("foreign-request", context_a, request_b),
+            ("foreign-context", context_b, request_a),
+        ):
+            with self.subTest(case=label):
+                interpreter = RecordingInterpreter("docker")
+                authorizer = RecordingSecretUseAuthorizer()
+                dispatcher = RuntimeInterpreterDispatcher(
+                    {RuntimeKind.DOCKER: interpreter},
+                    secret_use_authorizer=authorizer,
+                )
+                execute_runtime = getattr(dispatcher, "execute_runtime", None)
+                self.assertIsNotNone(
+                    execute_runtime,
+                    "runtime adapter arm is missing",
+                )
+
+                with self.assertRaises(InvalidOperationCommand) as caught:
+                    execute_runtime(context, request)
+
+                self.assertEqual(
+                    str(caught.exception),
+                    "runtime dispatch context and request are incongruent",
+                )
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assertEqual(authorizer.commands, [])
+                self.assertEqual(interpreter.requests, [])
+
+    def test_live_grant_correlation_matches_reconciliation_without_session(
+        self,
+    ) -> None:
+        interpreter = RecordingInterpreter("docker")
+        authorizer = RecordingSecretUseAuthorizer()
+        dispatcher = RuntimeInterpreterDispatcher(
+            {RuntimeKind.DOCKER: interpreter},
+            secret_use_authorizer=authorizer,
+        )
+        execute_runtime = getattr(dispatcher, "execute_runtime", None)
+        self.assertIsNotNone(execute_runtime, "runtime adapter arm is missing")
+        first = context_for(
+            StartNode(NodeTarget("api")),
+            secret_delivery=True,
+            worker_scopes=(
+                PolicyScope.EXECUTION_OPERATE,
+                PolicyScope.SECRET_PROVIDER_USE,
+            ),
+        )
+        later_event = replace(first.intent_event, occurred_at="2026-07-22T10:03:00Z")
+        later = replace(first, intent_event=later_event)
+        worker_b_authority = ExecutionWorkerAuthority(
+            "worker-b",
+            first.authority.scopes,
+        )
+        worker_b_fence = ExecutionLeaseFence("worker-b", 2)
+        worker_b_request = replace(
+            first.request,
+            claim=ClaimIdentity(
+                "worker-b",
+                2,
+                "2026-07-22T10:02:00Z",
+                "2026-07-22T10:30:00Z",
+            ),
+        )
+        worker_b = replace(
+            first,
+            request=worker_b_request,
+            authority=worker_b_authority,
+            fence=worker_b_fence,
+            intent_event=replace(
+                first.intent_event,
+                occurred_at="2026-07-22T10:04:00Z",
+            ),
+        )
+
+        for context in (first, later, worker_b):
+            request = runtime_effect_request_for_context(context)
+            execute_runtime(context, request)
+
+        self.assertEqual(len(authorizer.commands), 3)
+        first_command, later_command, worker_b_command = authorizer.commands
+        self.assertEqual(first_command.correlation_id, later_command.correlation_id)
+        self.assertNotEqual(
+            first_command.requested_at,
+            later_command.requested_at,
+        )
+        self.assertNotEqual(
+            first_command.correlation_id,
+            worker_b_command.correlation_id,
+        )
+        for command in authorizer.commands:
+            self.assertEqual(command.workspace_id, "workspace-a")
+            self.assertEqual(command.operation_id, "request-a")
+            self.assertEqual(command.run_id, "run-a")
+            self.assertEqual(command.activity_id, "activity-a")
+            self.assertEqual(command.effect_id, "event-intent")
+            self.assertIsNone(command.session_id)
+            self.assertEqual(
+                command.correlation_id,
+                secret_use_correlation_for(
+                    workspace_id=command.workspace_id,
+                    reference=command.reference,
+                    intent=command.intent,
+                    actor_subject=command.actor_subject,
+                    operation_id=command.operation_id,
+                    run_id=command.run_id,
+                    activity_id=command.activity_id,
+                    effect_id=command.effect_id,
+                ),
+            )
+
     def test_activity_dispatcher_preserves_handled_ingress_failure(self) -> None:
         ingress_failure = ActivityExecutionOutcome.unsupported(
             FailureEvidence(
@@ -238,17 +554,26 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
 
     def test_activity_dispatcher_routes_runtime_operation_only_to_runtime(self) -> None:
         ingress = RecordingActivityAdapter(ActivityExecutionOutcome.succeeded())
-        runtime_outcome = ActivityExecutionOutcome.succeeded(
-            BoundedEvidence.from_mapping({"adapter": "runtime"})
+        runtime_result = RuntimeEffectResult.succeeded(
+            "event-intent",
+            evidence={"adapter": "runtime"},
         )
-        runtime = RecordingActivityAdapter(runtime_outcome)
+        runtime = RecordingActivityAdapter(
+            ActivityExecutionOutcome.succeeded(),
+            runtime_result,
+        )
         dispatcher = ActivityExecutionDispatcher(runtime=runtime, ingress=ingress)
         context = context_for(StartRuntime(RuntimeTarget("runtime-a")))
+        request = runtime_effect_request_for_context(context)
+        execute_runtime = getattr(dispatcher, "execute_runtime", None)
+        self.assertIsNotNone(execute_runtime, "runtime adapter arm is missing")
 
-        outcome = dispatcher.execute(context)
+        result = execute_runtime(context, request)
 
-        self.assertIs(outcome, runtime_outcome)
+        self.assertIs(result, runtime_result)
         self.assertEqual(runtime.contexts, [context])
+        self.assertEqual(runtime.runtime_requests, [request])
+        self.assertIs(runtime.runtime_requests[0], request)
         self.assertEqual(ingress.contexts, [])
 
     def test_activity_dispatcher_reports_missing_ingress_without_runtime_call(
@@ -290,10 +615,11 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             desired_kind=RuntimeKind.DOCKER,
         )
 
-        outcome = dispatcher.execute(context)
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "SUCCEEDED")
-        self.assertEqual(outcome.evidence.descriptor(), {"interpreter": "docker"})
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.SUCCEEDED)
+        self.assertEqual(result.evidence, {"interpreter": "docker"})
         self.assertEqual(len(docker.requests), 1)
         self.assertEqual(docker.requests[0].runtime_kind, RuntimeKind.DOCKER)
         self.assertEqual(docker.requests[0].activity_id, ActivityId("activity-a"))
@@ -314,10 +640,11 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             desired_kind=RuntimeKind.DRY_RUN,
         )
 
-        outcome = dispatcher.execute(context)
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "SUCCEEDED")
-        self.assertEqual(outcome.evidence.descriptor(), {"interpreter": "docker"})
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.SUCCEEDED)
+        self.assertEqual(result.evidence, {"interpreter": "docker"})
         self.assertEqual(len(docker.requests), 1)
         self.assertEqual(docker.requests[0].runtime_kind, RuntimeKind.DOCKER)
         self.assertEqual(dry_run.requests, [])
@@ -331,9 +658,10 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             desired_kind=RuntimeKind.DRY_RUN,
         )
 
-        outcome = dispatcher.execute(context)
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.evidence.descriptor(), {"interpreter": "dry-run"})
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertEqual(result.evidence, {"interpreter": "dry-run"})
         self.assertEqual(len(dry_run.requests), 1)
         self.assertEqual(dry_run.requests[0].runtime_kind, RuntimeKind.DRY_RUN)
 
@@ -345,14 +673,15 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             desired_kind=RuntimeKind.AWS,
         )
 
-        outcome = dispatcher.execute(context)
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-        self.assertIsNotNone(outcome.failure)
-        assert outcome.failure is not None
-        self.assertEqual(outcome.failure.code, "runtime.interpreter-missing")
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.UNSUPPORTED)
+        self.assertIsNotNone(result.failure)
+        assert result.failure is not None
+        self.assertEqual(result.failure.code, "runtime.interpreter-missing")
         self.assertEqual(
-            outcome.failure.details.descriptor(),
+            result.failure.details,
             {
                 "activity_id": "activity-a",
                 "operation": "StartRuntime",
@@ -371,11 +700,12 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             runtime_authorities=(authority,),
         )
 
-        outcome = dispatcher.execute(context)
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.SUCCEEDED)
         self.assertEqual(
-            outcome.evidence.descriptor(),
+            result.evidence,
             {"authority_ref": "local-docker"},
         )
         self.assertEqual(len(docker.requests), 1)
@@ -391,12 +721,13 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             runtime_authorities=(),
         )
 
-        outcome = dispatcher.execute(context)
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-        self.assertIsNotNone(outcome.failure)
-        assert outcome.failure is not None
-        self.assertEqual(outcome.failure.code, "runtime.authority-missing")
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.UNSUPPORTED)
+        self.assertIsNotNone(result.failure)
+        assert result.failure is not None
+        self.assertEqual(result.failure.code, "runtime.authority-missing")
         self.assertEqual(docker.requests, [])
         self.assertEqual(docker.authorities, [])
 
@@ -410,13 +741,14 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             runtime_authorities=(authority,),
         )
 
-        outcome = dispatcher.execute(context)
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-        self.assertIsNotNone(outcome.failure)
-        assert outcome.failure is not None
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.UNSUPPORTED)
+        self.assertIsNotNone(result.failure)
+        assert result.failure is not None
         self.assertEqual(
-            outcome.failure.code,
+            result.failure.code,
             "runtime.authority-interpreter-unsupported",
         )
         self.assertEqual(docker.requests, [])
@@ -451,16 +783,18 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             desired_kind=RuntimeKind.DOCKER,
         )
 
-        outcome = dispatcher.execute(context)
+        with self.assertRaises(InvalidOperationCommand) as caught:
+            runtime_effect_request_for_context(context)
 
-        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-        self.assertIsNotNone(outcome.failure)
-        assert outcome.failure is not None
-        self.assertEqual(outcome.failure.code, "runtime.dispatch-target-unsupported")
-        self.assertEqual(outcome.failure.message, "runtime effect node target is missing")
+        self.assertEqual(
+            str(caught.exception),
+            "runtime effect node target is missing",
+        )
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
         self.assertEqual(docker.requests, [])
 
-    def test_runtime_result_failure_is_converted_to_activity_outcome(self) -> None:
+    def test_runtime_result_failure_is_preserved_as_exact_runtime_result(self) -> None:
         interpreter = RecordingInterpreter(
             "docker",
             RuntimeEffectResult.failed(
@@ -473,14 +807,16 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             ),
         )
         dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+        context = context_for(StartNode(NodeTarget("api")))
 
-        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("api"))))
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "FAILED")
-        self.assertIsNotNone(outcome.failure)
-        assert outcome.failure is not None
-        self.assertEqual(outcome.failure.code, "docker.container-failed")
-        self.assertEqual(outcome.failure.details.descriptor(), {"container": "api"})
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.FAILED)
+        self.assertIsNotNone(result.failure)
+        assert result.failure is not None
+        self.assertEqual(result.failure.code, "docker.container-failed")
+        self.assertEqual(result.failure.details, {"container": "api"})
 
     def test_runtime_result_effect_id_mismatch_becomes_uncertain(self) -> None:
         interpreter = RecordingInterpreter(
@@ -488,15 +824,19 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             RuntimeEffectResult.succeeded("different-effect"),
         )
         dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+        context = context_for(StartNode(NodeTarget("api")))
+        request = runtime_effect_request_for_context(context)
 
-        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("api"))))
+        result = self.execute_runtime(dispatcher, context, request)
 
-        self.assertEqual(outcome.kind.name, "UNCERTAIN")
-        self.assertIsNotNone(outcome.failure)
-        assert outcome.failure is not None
-        self.assertEqual(outcome.failure.code, "runtime.effect-id-mismatch")
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.UNCERTAIN)
+        self.assertEqual(result.effect_id, request.effect_id)
+        self.assertIsNotNone(result.failure)
+        assert result.failure is not None
+        self.assertEqual(result.failure.code, "runtime.provider-result-unknown")
 
-    def test_runtime_endpoint_observations_become_operations_observations(self) -> None:
+    def test_runtime_endpoint_observations_remain_exact_raw_result_values(self) -> None:
         interpreter = RecordingInterpreter(
             "docker",
             RuntimeEffectResult.succeeded(
@@ -514,20 +854,20 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             ),
         )
         dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+        context = context_for(StartNode(NodeTarget("api")))
 
-        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("api"))))
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "SUCCEEDED")
-        self.assertEqual(len(outcome.observations), 1)
-        observation = outcome.observations[0]
-        self.assertEqual(observation.observation_id, "event-intent:runtime-endpoint:1")
-        self.assertEqual(observation.workspace_id, "workspace-a")
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.SUCCEEDED)
+        self.assertEqual(len(result.observations), 1)
+        observation = result.observations[0]
+        self.assertIs(type(observation), RuntimeEndpointObservation)
         self.assertEqual(observation.subject_id, "api")
         self.assertEqual(observation.graph_id, "graph-desired")
-        self.assertEqual(observation.endpoint_context, EndpointContext.RUNTIME_PRIVATE)
-        self.assertEqual(observation.evidence.descriptor()["runtime_endpoint"]["subject_id"], "api")
+        self.assertIs(observation.context, EndpointContext.RUNTIME_PRIVATE)
 
-    def test_maximum_runtime_endpoint_shape_becomes_operations_observation(self) -> None:
+    def test_maximum_runtime_endpoint_shape_remains_exact_raw_result_value(self) -> None:
         subject_id = _subject_for_bridge_evidence_size(BRIDGE_EVIDENCE_MAX_BYTES)
         endpoint = RuntimeEndpointObservation(
             subject_id,
@@ -550,21 +890,14 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             ),
         )
         dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
+        context = context_for(StartNode(NodeTarget("api")))
 
-        outcome = dispatcher.execute(context_for(StartNode(NodeTarget("api"))))
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "SUCCEEDED")
-        self.assertEqual(len(outcome.observations), 1)
-        translated = outcome.observations[0]
-        self.assertEqual(translated.subject_id, subject_id)
-        self.assertEqual(
-            translated.evidence.descriptor(),
-            {"runtime_endpoint": endpoint.descriptor()},
-        )
-        self.assertEqual(
-            len(translated.evidence.canonical_json.encode("utf-8")),
-            BRIDGE_EVIDENCE_MAX_BYTES,
-        )
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.SUCCEEDED)
+        self.assertEqual(result.observations, (endpoint,))
+        self.assertIs(result.observations[0], endpoint)
 
     def test_secret_use_is_authorized_before_runtime_interpreter_io(self) -> None:
         interpreter = RecordingInterpreter("docker")
@@ -574,18 +907,18 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             secret_use_authorizer=authorizer,
         )
 
-        outcome = dispatcher.execute(
-            context_for(
-                StartNode(NodeTarget("api")),
-                secret_delivery=True,
-                worker_scopes=(
-                    PolicyScope.EXECUTION_OPERATE,
-                    PolicyScope.SECRET_PROVIDER_USE,
-                ),
-            )
+        context = context_for(
+            StartNode(NodeTarget("api")),
+            secret_delivery=True,
+            worker_scopes=(
+                PolicyScope.EXECUTION_OPERATE,
+                PolicyScope.SECRET_PROVIDER_USE,
+            ),
         )
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "SUCCEEDED")
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.SUCCEEDED)
         self.assertEqual(len(authorizer.commands), 1)
         command = authorizer.commands[0]
         self.assertEqual(
@@ -616,7 +949,7 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                     correlation_id=command.correlation_id,
                     intent_fingerprint="d" * 64,
                     operation_id="request-a",
-                    session_id="session-a",
+                    session_id=None,
                     run_id="run-a",
                     activity_id="activity-a",
                     effect_id="event-intent",
@@ -660,14 +993,17 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
         interpreter = RecordingInterpreter("docker")
         dispatcher = RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: interpreter})
 
-        outcome = dispatcher.execute(
-            context_for(StartNode(NodeTarget("api")), secret_delivery=True)
+        context = context_for(
+            StartNode(NodeTarget("api")),
+            secret_delivery=True,
         )
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-        assert outcome.failure is not None
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.UNSUPPORTED)
+        assert result.failure is not None
         self.assertEqual(
-            outcome.failure.code,
+            result.failure.code,
             "secret.resolution-authorizer-invalid",
         )
         self.assertEqual(interpreter.requests, [])
@@ -680,13 +1016,16 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             secret_use_authorizer=authorizer,
         )
 
-        outcome = dispatcher.execute(
-            context_for(StartNode(NodeTarget("api")), secret_delivery=True)
+        context = context_for(
+            StartNode(NodeTarget("api")),
+            secret_delivery=True,
         )
+        result = self.execute_runtime(dispatcher, context)
 
-        self.assertEqual(outcome.kind.name, "UNSUPPORTED")
-        assert outcome.failure is not None
-        self.assertEqual(outcome.failure.code, "secret.use-not-authorized")
+        self.assertIs(type(result), RuntimeEffectResult)
+        self.assertIs(result.kind, EffectResultKind.UNSUPPORTED)
+        assert result.failure is not None
+        self.assertEqual(result.failure.code, "secret.use-not-authorized")
         self.assertEqual(interpreter.requests, [])
 
     def test_secret_use_retry_correlation_is_deterministic(self) -> None:
@@ -705,14 +1044,16 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             ),
         )
 
-        dispatcher.execute(context)
-        dispatcher.execute(context)
+        self.execute_runtime(dispatcher, context)
+        self.execute_runtime(dispatcher, context)
 
         self.assertEqual(len(authorizer.commands), 2)
         self.assertEqual(
             authorizer.commands[0].correlation_id,
             authorizer.commands[1].correlation_id,
         )
+        self.assertIsNone(authorizer.commands[0].session_id)
+        self.assertIsNone(authorizer.commands[1].session_id)
 
 
 def context_for(

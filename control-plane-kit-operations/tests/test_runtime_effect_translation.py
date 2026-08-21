@@ -28,6 +28,10 @@ from control_plane_kit_core.planning import (
     StopRuntime,
     RuntimeTarget,
 )
+from control_plane_kit_core.planning.saga import (
+    derive_schedule,
+    project_activity_journal,
+)
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.public_ingress import (
@@ -49,6 +53,12 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDeliveryKind,
     RuntimeAuthorityReference,
 )
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectIntent,
+    runtime_effect_intent_fingerprint,
+    runtime_effect_intent_for_request,
+    runtime_effect_request_for_intent,
+)
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.secrets import (
     SecretEnvironmentDelivery,
@@ -56,9 +66,18 @@ from control_plane_kit_core.secrets import (
     SecretUseIntent,
 )
 from control_plane_kit_core.topology import DeploymentGraph, Edge, Node, RuntimeRecord
-from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind, SocketBinding
+from control_plane_kit_core.types import (
+    BlockFamily,
+    Protocol,
+    RuntimeKind,
+    SocketBinding,
+)
 from control_plane_kit_core.verification import HttpCheck, VerificationContract
-from control_plane_kit_operations.coordinator import ActivityRealizationContext
+from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.coordinator import (
+    ActivityRealizationContext,
+    _CoordinatorContext,
+)
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     CloudflareZoneIngressAuthority,
@@ -89,7 +108,10 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
     RetryIdentity,
 )
-from control_plane_kit_operations.runtime_effects import runtime_effect_request_for_context
+import control_plane_kit_operations.runtime_effects as runtime_effects_module
+from control_plane_kit_operations.runtime_effects import (
+    runtime_effect_request_for_context,
+)
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthorityDelivery,
 )
@@ -97,6 +119,80 @@ from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
 class RuntimeEffectTranslationTests(unittest.TestCase):
+    def test_event_free_intent_projection_is_exact_and_uses_no_event_coordinate(
+        self,
+    ) -> None:
+        projection = getattr(
+            runtime_effects_module,
+            "_runtime_effect_intent_for_context",
+            None,
+        )
+        self.assertIsNotNone(
+            projection,
+            "event-free runtime effect intent projection is missing",
+        )
+        context = _pinned_context()
+        activity = context.plan.activity(ActivityId("activity-a"))
+
+        intent = projection(context, activity)
+
+        self.assertIs(type(intent), RuntimeEffectIntent)
+        self.assertEqual(intent.source.workspace_id, "workspace-a")
+        self.assertEqual(intent.source.request_id, "request-a")
+        self.assertEqual(intent.source.run_id.value, "run-a")
+        self.assertEqual(intent.activity_id, ActivityId("activity-a"))
+        descriptor = intent.descriptor()
+        rendered = json.dumps(descriptor, sort_keys=True)
+        self.assertNotIn("effect_id", descriptor)
+        self.assertNotIn("intent_event_id", rendered)
+        self.assertNotIn("event-started", rendered)
+
+        realization = context.realization_context(
+            activity,
+            _context(activity=activity).intent_event,
+        )
+        predecessor_request = runtime_effect_request_for_context(realization)
+        self.assertEqual(
+            runtime_effect_intent_for_request(predecessor_request),
+            intent,
+        )
+
+    def test_post_start_request_binds_only_exact_original_event_identity(self) -> None:
+        projection = getattr(
+            runtime_effects_module,
+            "_runtime_effect_intent_for_context",
+            None,
+        )
+        self.assertIsNotNone(
+            projection,
+            "event-free runtime effect intent projection is missing",
+        )
+        context = _pinned_context()
+        activity = context.plan.activity(ActivityId("activity-a"))
+        intent = projection(context, activity)
+        fingerprint = runtime_effect_intent_fingerprint(intent)
+
+        first = runtime_effect_request_for_intent(
+            intent,
+            effect_id="effect-start-event-a",
+            secret_resolution_grants=(),
+        )
+        second = runtime_effect_request_for_intent(
+            intent,
+            effect_id="effect-start-event-b",
+            secret_resolution_grants=(),
+        )
+
+        self.assertEqual(first.effect_id, "effect-start-event-a")
+        self.assertEqual(first.source.intent_event_id, "effect-start-event-a")
+        self.assertEqual(second.effect_id, "effect-start-event-b")
+        self.assertEqual(second.source.intent_event_id, "effect-start-event-b")
+        self.assertEqual(runtime_effect_intent_for_request(first), intent)
+        self.assertEqual(runtime_effect_intent_for_request(second), intent)
+        self.assertEqual(runtime_effect_intent_fingerprint(intent), fingerprint)
+        self.assertEqual(first.secret_resolution_grants, ())
+        self.assertEqual(second.secret_resolution_grants, ())
+
     def test_context_translates_to_core_runtime_effect_request(self) -> None:
         context = _context()
 
@@ -680,6 +776,35 @@ def _context(
             occurred_at="2026-07-22T10:02:00Z",
             ordinal=3,
         ),
+    )
+
+
+def _pinned_context() -> _CoordinatorContext:
+    activity = PlannedActivity(
+        ActivityId("activity-a"),
+        StartNode(NodeTarget("api")),
+    )
+    realization = _context(activity=activity)
+    journal = activity_journal_events(())
+    projection = project_activity_journal(realization.plan, journal)
+    return _CoordinatorContext(
+        request=realization.request,
+        run=realization.run,
+        plan_record=realization.plan_record,
+        base_graph=realization.base_graph,
+        desired_graph=realization.desired_graph,
+        registered_products=realization.registered_products,
+        image_pull_authorities=realization.image_pull_authorities,
+        runtime_authorities=realization.runtime_authorities,
+        runtime_authority_deliveries=realization.runtime_authority_deliveries,
+        ingress_authorities=realization.ingress_authorities,
+        ingress_resources=realization.ingress_resources,
+        generated_ingress_secrets=realization.generated_ingress_secrets,
+        events=(),
+        projection=projection,
+        schedule=derive_schedule(realization.plan, projection.state),
+        authority=realization.authority,
+        fence=realization.fence,
     )
 
 
