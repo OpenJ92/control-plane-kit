@@ -197,54 +197,72 @@ class PostgresGuardedObservedEffectFoldFirstReplayTests(
     def _assert_observed_outcome_requires_guarded_entrypoint(self) -> None:
         story = self.observed_story()
         for world in ("fresh", "terminal"):
-            with self.subTest(ordinary_observed=world):
-                if world == "fresh":
-                    current, _intent, _record = self.seed_guarded_source(story)
-                    command = self.guarded_observed_command(
+            for stale in (False, True):
+                with self.subTest(ordinary_observed=world, stale=stale):
+                    if world == "fresh":
+                        current, _intent, _record = self.seed_guarded_source(story)
+                    else:
+                        _current, _outcome = self.persist_terminal(story)
+                    command = self.fold_command(
                         story,
-                        current=current,
-                    ).fold
-                else:
-                    _current, _outcome = self.persist_terminal(story)
-                    command = self.fold_command(story)
-                requests = []
-                original = PostgresExecutionStore.get_request_for_update
-
-                def request(store, request_id):
-                    value = original(store, request_id)
-                    requests.append(value)
-                    return value
-
-                ids = Sequence("ordinary-observed-must-not-allocate")
-                observed_error = None
-                try:
-                    with ExitStack() as stack:
-                        stack.enter_context(
-                            mock.patch.object(
-                                PostgresExecutionStore,
-                                "get_request_for_update",
-                                request,
-                            )
+                        authority=self.authority("worker-a"),
+                        fence=self.fence("worker-a", 7),
+                    )
+                    if world == "fresh":
+                        command = self.guarded_observed_command(
+                            story,
+                            current=current,
+                            fold=command,
+                        ).fold
+                    if stale:
+                        self.replace_current_claim(
+                            worker_id="worker-b",
+                            generation=8,
                         )
-                        for patcher in self.forbidden_lower_interactions(
-                            "ordinary observed outcome crossed the guarded boundary"
-                        ):
-                            stack.enter_context(patcher)
-                        self.fold_service_with_id_factory(ids).execute(command)
-                except Exception as error:
-                    observed_error = error
-                if observed_error is None:
-                    self.fail("ordinary observed outcome bypass was accepted")
-                self.assertIs(
-                    type(observed_error),
-                    EffectAttemptFoldConflict,
-                    "ordinary observed outcome escaped the fixed category",
-                )
-                self.assertEqual(str(observed_error), REPLAY_ERROR)
-                self.assertIsNone(observed_error.__cause__)
-                self.assertIsNone(observed_error.__context__)
-                self.assertEqual(len(requests), 1)
-                self.assertEqual(ids.calls, [])
+                    requests = []
+                    original = PostgresExecutionStore.get_request_for_update
+
+                    def request(store, request_id):
+                        value = original(store, request_id)
+                        requests.append(value)
+                        return value
+
+                    ids = Sequence("ordinary-observed-must-not-allocate")
+                    observed_error = None
+                    try:
+                        with ExitStack() as stack:
+                            stack.enter_context(
+                                mock.patch.object(
+                                    PostgresExecutionStore,
+                                    "get_request_for_update",
+                                    request,
+                                )
+                            )
+                            for patcher in self.forbidden_lower_interactions(
+                                "ordinary observed outcome crossed the guarded boundary"
+                            ):
+                                stack.enter_context(patcher)
+                            self.fold_service_with_id_factory(ids).execute(command)
+                    except Exception as error:
+                        observed_error = error
+                    if observed_error is None:
+                        self.fail("ordinary observed outcome bypass was accepted")
+                    expected_type = (
+                        EffectAttemptFoldDenied
+                        if stale
+                        else EffectAttemptFoldConflict
+                    )
+                    expected_message = AUTHORITY_ERROR if stale else REPLAY_ERROR
+                    self.assertIs(
+                        type(observed_error),
+                        expected_type,
+                        "ordinary observed outcome escaped the fixed category",
+                    )
+                    self.assertEqual(str(observed_error), expected_message)
+                    self.assertIsNone(observed_error.__cause__)
+                    self.assertIsNone(observed_error.__context__)
+                    self.assertEqual(len(requests), 1)
+                    self.assertEqual(ids.calls, [])
 
     def _assert_stale_claim_confidentiality_matrix(self) -> None:
         worlds = ("recovery", "terminal-matching", "terminal-cross", "fresh")
