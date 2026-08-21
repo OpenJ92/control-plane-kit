@@ -7,7 +7,6 @@ from control_plane_kit_core.operations import ActivityEventKind
 from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_fingerprint,
 )
-from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.effect_attempt_fold import (
     GuardedObservedEffectFold,
@@ -100,12 +99,17 @@ class PostgresGuardedObservedEffectFoldFixture(
     def register_runtime_authority(self, intent, *, remote=False):
         if intent.authority_ref is None:
             return None
+        references = {
+            reference.label: reference.reference
+            for delivery in intent.authority_deliveries
+            for reference in delivery.secret_references
+        }
         authority = (
             RemoteDockerTlsAuthority(
                 endpoint="tcp://mac-mini.local:2376",
-                ca_certificate=SecretReference("secret://local/docker/ca"),
-                client_certificate=SecretReference("secret://local/docker/cert"),
-                client_key=SecretReference("secret://local/docker/key"),
+                ca_certificate=references["ca-cert"],
+                client_certificate=references["client-cert"],
+                client_key=references["client-key"],
             )
             if remote
             else LocalDockerSocketAuthority()

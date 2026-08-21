@@ -9544,6 +9544,91 @@
     },
     {
       "canonical_public_exports": [
+        "EffectAttemptReconciliationConflict",
+        "EffectAttemptReconciliationDenied",
+        "EffectAttemptReconciliationError",
+        "EffectAttemptReconciliationNotFound",
+        "ReconcileEffectAttempt",
+        "RuntimeEffectObserver"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_reconciliation",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_reconciliation",
+      "motivation": "Owns the exact command, fixed errors, and observer protocol for runtime-effect reconciliation without interpreting durable mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_reconciliation_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_reconciliation.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptReconciliationService"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempt_reconciliation",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_effects",
+        "control_plane_kit_operations.secret_providers",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
+      "motivation": "Owns preflight, durable replay, secret-use authorization, observer orchestration, and guarded outcome folding for runtime-effect reconciliation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_reconciliation_interpreter_contract.py",
+        "tests/test_postgres_effect_attempt_reconciliation_authority_grants.py",
+        "tests/test_postgres_effect_attempt_reconciliation_concurrency.py",
+        "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
+        "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
+        "tests/test_postgres_effect_attempt_reconciliation_rollback.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_reconciliation_interpreter.py"
+    },
+    {
+      "canonical_public_exports": [
         "EffectAttemptStore"
       ],
       "destination": "control_plane_kit_operations.postgres.effect_attempt_store",
