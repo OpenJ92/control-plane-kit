@@ -78,21 +78,35 @@ class PostgresGuardedObservedEffectFoldFirstReplayTests(
         for story in ("succeeded", "recovered-succeeded"):
             with self.subTest(story=story):
                 self.seed_fold_source(story)
-                with mock.patch.object(
-                    PostgresExecutionStore,
-                    "observe_request_lease_for_update",
-                    expired,
-                ):
-                    result = self.fold_service(f"ordinary-{story}").execute(
-                        self.fold_command(story)
-                    )
+                result = None
+                observed_error = None
+                try:
+                    with mock.patch.object(
+                        PostgresExecutionStore,
+                        "observe_request_lease_for_update",
+                        expired,
+                    ):
+                        result = self.fold_service(f"ordinary-{story}").execute(
+                            self.fold_command(story)
+                        )
+                except Exception as error:
+                    observed_error = error
+                if observed_error is not None:
+                    self.fail("ordinary fresh fold escaped the accepted result")
                 self.assertIsInstance(result, NewlyFolded)
-                with self.reject_fold_database_observation(
-                    "ordinary replay sampled lease time"
-                ):
-                    replay = self.fold_service("must-not-allocate").execute(
-                        self.fold_command(story)
-                    )
+                replay = None
+                observed_error = None
+                try:
+                    with self.reject_fold_database_observation(
+                        "ordinary replay sampled lease time"
+                    ):
+                        replay = self.fold_service("must-not-allocate").execute(
+                            self.fold_command(story)
+                        )
+                except Exception as error:
+                    observed_error = error
+                if observed_error is not None:
+                    self.fail("ordinary replay escaped the accepted result")
                 self.assertIsInstance(replay, ExistingFold)
 
     def test_terminal_profile_replays_are_exact_for_same_and_newer_claims(self) -> None:
@@ -202,21 +216,33 @@ class PostgresGuardedObservedEffectFoldFirstReplayTests(
                     return value
 
                 ids = Sequence("ordinary-observed-must-not-allocate")
-                with ExitStack() as stack:
-                    stack.enter_context(
-                        mock.patch.object(
-                            PostgresExecutionStore,
-                            "get_request_for_update",
-                            request,
+                observed_error = None
+                try:
+                    with ExitStack() as stack:
+                        stack.enter_context(
+                            mock.patch.object(
+                                PostgresExecutionStore,
+                                "get_request_for_update",
+                                request,
+                            )
                         )
-                    )
-                    for patcher in self.forbidden_lower_interactions(
-                        "ordinary observed outcome crossed the guarded boundary"
-                    ):
-                        stack.enter_context(patcher)
-                    with self.assertRaises(EffectAttemptFoldConflict) as caught:
+                        for patcher in self.forbidden_lower_interactions(
+                            "ordinary observed outcome crossed the guarded boundary"
+                        ):
+                            stack.enter_context(patcher)
                         self.fold_service_with_id_factory(ids).execute(command)
-                self.assertEqual(str(caught.exception), REPLAY_ERROR)
+                except Exception as error:
+                    observed_error = error
+                if observed_error is None:
+                    self.fail("ordinary observed outcome bypass was accepted")
+                self.assertIs(
+                    type(observed_error),
+                    EffectAttemptFoldConflict,
+                    "ordinary observed outcome escaped the fixed category",
+                )
+                self.assertEqual(str(observed_error), REPLAY_ERROR)
+                self.assertIsNone(observed_error.__cause__)
+                self.assertIsNone(observed_error.__context__)
                 self.assertEqual(len(requests), 1)
                 self.assertEqual(ids.calls, [])
 
