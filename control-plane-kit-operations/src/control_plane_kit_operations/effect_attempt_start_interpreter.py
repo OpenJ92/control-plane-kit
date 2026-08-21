@@ -147,7 +147,13 @@ class EffectAttemptStartService:
             )
             if stores.execution.add_event(event) != event:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
-            if stores.effect_attempt_intents.insert(intent_record) != intent_record:
+            intent_acknowledgement = stores.effect_attempt_intents.insert(
+                intent_record
+            )
+            if (
+                type(intent_acknowledgement) is not EffectAttemptIntentRecord
+                or intent_acknowledgement != intent_record
+            ):
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             if stores.effect_attempts.insert_absent(result.attempt) != result.attempt:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
@@ -358,10 +364,13 @@ def _require_intent_replay(
             command.intent,
         )
         observed = stores.effect_attempt_intents.get(attempt.state.identity)
-    except (KeyError, OperationsRecordError, ValueError):
+    except (KeyError, OperationsRecordError):
         failed = True
     else:
-        failed = observed != expected
+        failed = (
+            type(observed) is not EffectAttemptIntentRecord
+            or observed != expected
+        )
     if failed:
         raise EffectAttemptStartConflict(_REPLAY_ERROR)
 
