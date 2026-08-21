@@ -9,6 +9,9 @@ import psycopg
 from psycopg.errors import CheckViolation, ForeignKeyViolation, UniqueViolation
 
 from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint,
+)
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.postgres import SchemaInstallationError, install_schema
 from control_plane_kit_operations.postgres.current_data_validation import (
@@ -241,6 +244,30 @@ class PostgresEffectAttemptIntentSchemaTests(
             """,
             (plan_id,),
         )
+        workspace_id, base_graph_id, desired_graph_id = self.connection.execute(
+            "SELECT request.workspace_id, plan.base_graph_id, plan.desired_graph_id "
+            "FROM cpk_execution_requests AS request "
+            "JOIN cpk_activity_plans AS plan ON plan.plan_id=%s "
+            "WHERE request.request_id='request-a'",
+            (plan_id,),
+        ).fetchone()
+        intent = self.intent(
+            request_id=request_id,
+            run_id=run_id,
+            activity_id=activity_id,
+        )
+        intent = replace(
+            intent,
+            source=replace(
+                intent.source,
+                workspace_id=workspace_id,
+                request_id=request_id,
+                run_id=RunId(run_id),
+                plan_id=plan_id,
+                base_graph_id=base_graph_id,
+                desired_graph_id=desired_graph_id,
+            ),
+        )
         self.connection.execute(
             """
             INSERT INTO cpk_execution_requests
@@ -250,11 +277,16 @@ class PostgresEffectAttemptIntentSchemaTests(
                claim_worker_id, claim_generation, claimed_at, lease_expires_at)
             SELECT %s, workspace_id, session_id, %s, status,
                    requested_by, requested_at, approval_request_id,
-                   approval_decision_id, %s, intent_fingerprint,
+                   approval_decision_id, %s, %s,
                    claim_worker_id, claim_generation, claimed_at, lease_expires_at
             FROM cpk_execution_requests WHERE request_id='request-a'
             """,
-            (request_id, plan_id, "intent-max-idempotency"),
+            (
+                request_id,
+                plan_id,
+                "intent-max-idempotency",
+                runtime_effect_intent_fingerprint(intent),
+            ),
         )
         self.connection.execute(
             """
@@ -272,6 +304,7 @@ class PostgresEffectAttemptIntentSchemaTests(
             run_id=run_id,
             activity_id=activity_id,
             event_id=event_id,
+            intent=intent,
         )
         self.persist_evidence_chain(attempt, evidence)
         self.assertEqual(

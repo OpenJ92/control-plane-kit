@@ -5,6 +5,14 @@ from dataclasses import replace
 import unittest
 from unittest import mock
 
+from control_plane_kit_core.planning import (
+    RuntimeTarget,
+    StartRuntime,
+    StopRuntime,
+)
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint,
+)
 from control_plane_kit_operations.effect_attempt_intent_evidence import (
     EffectAttemptIntentRecord,
 )
@@ -28,7 +36,11 @@ from tests.postgres_effect_attempt_intent_store_fixture import (
     RELATION,
     store_module,
 )
-from tests.postgres_effect_attempt_start_fixture import REPLAY_ERROR, SERIALIZATION_ERROR
+from tests.postgres_effect_attempt_start_fixture import (
+    INVALID_TRUTH_ERROR,
+    REPLAY_ERROR,
+    SERIALIZATION_ERROR,
+)
 
 
 class PostgresEffectAttemptStartIntentTests(
@@ -109,6 +121,128 @@ class PostgresEffectAttemptStartIntentTests(
             )
         self.assertEqual(evidence.intent, self.start_command().intent)
         self.assertEqual(evidence.original_start_event, result.attempt.original_start_event)
+
+    def test_fresh_intent_must_match_locked_request_plan_and_scheduled_operation(
+        self,
+    ) -> None:
+        base = self.intent()
+        source = replace(
+            base.source,
+            workspace_id="workspace-a",
+            request_id="request-a",
+            plan_id="plan-a",
+            base_graph_id="graph-current",
+            desired_graph_id="graph-desired",
+        )
+        forward = replace(
+            base,
+            source=source,
+            operation=StartRuntime(RuntimeTarget("runtime-a")),
+        )
+        compensation = replace(
+            forward,
+            operation=StopRuntime(RuntimeTarget("runtime-a")),
+        )
+
+        with self.unit_of_work() as unit_of_work:
+            request = unit_of_work.stores.execution.get_request_for_update("request-a")
+            plan = unit_of_work.stores.activity_history.get_plan("plan-a")
+        self.assertEqual(request.identity.workspace_id, forward.source.workspace_id)
+        self.assertEqual(request.identity.plan_id, forward.source.plan_id)
+        self.assertEqual(plan.base_graph_id, forward.source.base_graph_id)
+        self.assertEqual(plan.desired_graph_id, forward.source.desired_graph_id)
+        scheduled = plan.plan.activity(forward.activity_id)
+        self.assertEqual(scheduled.operation, forward.operation)
+        self.assertEqual(scheduled.compensation.operation, compensation.operation)
+        for intent in (forward, compensation):
+            command = self.start_command(
+                intent=intent,
+                transition=self.transition(intent=intent),
+            )
+            self.assertEqual(command.intent, intent)
+            self.assertEqual(
+                command.transition.request_fingerprint,
+                runtime_effect_intent_fingerprint(intent),
+            )
+
+        cases = (
+            (
+                "workspace",
+                False,
+                replace(
+                    forward,
+                    source=replace(source, workspace_id="workspace-foreign"),
+                ),
+            ),
+            (
+                "plan",
+                False,
+                replace(
+                    forward,
+                    source=replace(source, plan_id="plan-foreign"),
+                ),
+            ),
+            (
+                "base-graph",
+                False,
+                replace(
+                    forward,
+                    source=replace(source, base_graph_id="graph-foreign"),
+                ),
+            ),
+            (
+                "desired-graph",
+                False,
+                replace(
+                    forward,
+                    source=replace(source, desired_graph_id="graph-foreign"),
+                ),
+            ),
+            (
+                "operation-target",
+                False,
+                replace(
+                    forward,
+                    operation=StartRuntime(RuntimeTarget("runtime-foreign")),
+                ),
+            ),
+            ("phase-operation", True, forward),
+        )
+        for label, compensation_phase, intent in cases:
+            with self.subTest(drift=label):
+                self.reset_start_truth(compensation=compensation_phase)
+                transition = self.transition(intent=intent)
+                command = self.start_command(
+                    intent=intent,
+                    transition=transition,
+                )
+                self.assertEqual(
+                    command.transition.request_fingerprint,
+                    runtime_effect_intent_fingerprint(intent),
+                )
+                before = self.attempt_snapshot()
+                ids = Sequence(f"{label}-must-not-allocate")
+                with self.reject_database_observation(
+                    f"{label} sampled database time"
+                ), mock.patch.object(
+                    PostgresExecutionStore,
+                    "add_event",
+                    side_effect=AssertionError(f"{label} wrote an event"),
+                ), mock.patch.object(
+                    EffectAttemptIntentStore,
+                    "insert",
+                    side_effect=AssertionError(f"{label} wrote intent evidence"),
+                ), mock.patch.object(
+                    EffectAttemptStore,
+                    "insert_absent",
+                    side_effect=AssertionError(f"{label} wrote an attempt"),
+                ):
+                    with self.assertRaises(EffectAttemptStartConflict) as caught:
+                        self.start_service_with_id_factory(ids).execute(command)
+                self.assertEqual(str(caught.exception), INVALID_TRUTH_ERROR)
+                self.assert_safe_error(caught.exception, label)
+                self.assertEqual(ids.calls, [])
+                self.assertEqual(self.attempt_snapshot(), before)
 
     def test_exact_restart_replay_loads_full_evidence_before_clock_or_writes(self) -> None:
         self.require_intent_store()
