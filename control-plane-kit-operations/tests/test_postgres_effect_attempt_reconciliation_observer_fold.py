@@ -33,8 +33,17 @@ from tests.postgres_effect_attempt_reconciliation_fixture import (
 from tests.execution_lease_recovery_fixture import Sequence
 
 
+_NO_RESULT_OVERRIDE = object()
+
+
 class _RecordingFold:
-    def __init__(self, service, *, error=None, result=None) -> None:
+    def __init__(
+        self,
+        service,
+        *,
+        error=None,
+        result=_NO_RESULT_OVERRIDE,
+    ) -> None:
         self._service = service
         self._error = error
         self._result = result
@@ -44,7 +53,7 @@ class _RecordingFold:
         self.calls.append(command)
         if self._error is not None:
             raise self._error
-        if self._result is not None:
+        if self._result is not _NO_RESULT_OVERRIDE:
             return self._result
         return self._service.execute_observed(command)
 

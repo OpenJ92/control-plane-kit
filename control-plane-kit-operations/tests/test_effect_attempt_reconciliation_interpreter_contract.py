@@ -298,7 +298,7 @@ EXACT_INTERPRETER_CALLS = tuple(
         *((
             "control_plane_kit_operations.effect_attempt_reconciliation."
             "EffectAttemptReconciliationConflict",
-        ) * 8),
+        ) * 9),
         *((
             "control_plane_kit_operations.effect_attempt_reconciliation."
             "EffectAttemptReconciliationDenied",

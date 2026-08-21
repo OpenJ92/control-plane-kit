@@ -179,7 +179,10 @@ class PostgresEffectAttemptReconciliationAuthorityGrantTests(
             self.assertEqual(len(observer.calls), 1)
             self.assertIsNone(observer.calls[0][1])
             self.assertEqual(self.authorization_rows(), ())
-            self.assertEqual(lock_order, ["request", "run", "attempt"])
+            self.assertEqual(
+                lock_order,
+                ["request", "run", "attempt", "request"],
+            )
 
         with self.subTest(secret_bearing_scope="execution-operate-only"):
             current, intent, _record, authority = self.seed_reconciliation_source(story)

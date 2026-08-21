@@ -142,7 +142,12 @@ class PostgresEffectAttemptReconciliationFirstReplayTests(
                         self.seed_reconciliation_source()
                     )
                 elif world == "recovery":
-                    current = self.seed_fold_source("recovered-succeeded")
+                    self.seed_fold_source("recovered-succeeded")
+                    current = self.fold_service(
+                        "recovery-classification-event"
+                    ).execute(
+                        self.fold_command("recovered-succeeded")
+                    ).attempt
                 else:
                     current, _outcome = self.persist_terminal(
                         self.outcome_story(f"{world}-succeeded")
@@ -200,7 +205,10 @@ class PostgresEffectAttemptReconciliationFirstReplayTests(
                         )
                 self.assertEqual(str(caught.exception), REPLAY_ERROR)
 
-        recovered = self.seed_fold_source("recovered-succeeded")
+        self.seed_fold_source("recovered-succeeded")
+        recovered = self.fold_service("recovery-barrier-event").execute(
+            self.fold_command("recovered-succeeded")
+        ).attempt
         with mock.patch.object(
             EffectAttemptOutcomeStore,
             "get",
