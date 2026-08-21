@@ -36,7 +36,7 @@ _CATEGORIES = frozenset(
 _CONSUMER_KINDS = frozenset({"production", "test-only"})
 _CATEGORY_COUNTS = {
     "public-paged": 14,
-    "fixed-cardinality": 1,
+    "fixed-cardinality": 2,
     "closed-finite": 2,
     "internal-complete": 22,
     "exact-verifier": 12,
@@ -201,11 +201,11 @@ consumer = "{consumer}"
 
 
 class PostgresReadCardinalityPolicyTests(unittest.TestCase):
-    def test_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
+    def _assert_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
         identities = _discover()
 
-        self.assertEqual(len(identities), 51)
-        self.assertEqual(len(set(identities)), 51)
+        self.assertEqual(len(identities), 52)
+        self.assertEqual(len(set(identities)), 52)
         grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")
@@ -235,6 +235,21 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
                     "control_plane_kit_operations.postgres.effect_outcome_store",
                     "_validate_current_rows",
                     2,
+                ),
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                identity
+                for identity in identities
+                if identity.module
+                == "control_plane_kit_operations.postgres.runtime_authority_store"
+                and identity.selector == "RuntimeAuthorityStore.get_active_for_update"
+            ),
+            (
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.runtime_authority_store",
+                    "RuntimeAuthorityStore.get_active_for_update",
                 ),
             ),
         )
@@ -417,6 +432,7 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
         self.assertEqual(deployment_primary.local_columns, ("rotation_id", "phase"))
 
     def test_canonical_inventory_exactly_classifies_every_discovered_read(self) -> None:
+        self._assert_ast_discovery_has_stable_named_occurrence_identities()
         if not INVENTORY_PATH.is_file():
             self.fail("POSTGRES_READ_CARDINALITY.toml is missing")
         rows = _parse_inventory(INVENTORY_PATH.read_text(encoding="utf-8"))

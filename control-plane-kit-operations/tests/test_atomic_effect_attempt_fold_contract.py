@@ -119,6 +119,11 @@ EXACT_INTERPRETER_IMPORTS = tuple(
             None,
         ),
         (
+            "control_plane_kit_operations.effect_attempt_intent_evidence",
+            "EffectAttemptIntentRecord",
+            None,
+        ),
+        (
             "control_plane_kit_operations.effect_attempts",
             "EffectAttemptEventEvidence",
             None,
@@ -156,6 +161,21 @@ EXACT_INTERPRETER_IMPORTS = tuple(
             None,
         ),
         (
+            "control_plane_kit_operations.runtime_authorities",
+            "RegisteredRuntimeAuthority",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
+            "RuntimeAuthorityNotFound",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
+            "RuntimeAuthorityRegistrationError",
+            None,
+        ),
+        (
             "control_plane_kit_operations.workflows",
             "InvalidOperationCommand",
             None,
@@ -173,6 +193,8 @@ EXACT_INTERPRETER_CALLS = (
             "_EVENT_KIND_BY_STATE.get",
             "_attempt_for_update",
             "_event_kind",
+            "_execute_fold",
+            "_execute_fold",
             "_fold",
             "_observation",
             "_representable_effect_fence",
@@ -204,7 +226,7 @@ EXACT_INTERPRETER_CALLS = (
             "self._id_factory",
             "self._plan_result",
             "self._unit_of_work_factory",
-            "self._unit_of_work_factory",
+            "stores.effect_attempt_intents.get",
             "stores.effect_attempts.compare_and_set",
             "stores.effect_attempts.get_for_update",
             "stores.effect_outcomes.get",
@@ -215,7 +237,8 @@ EXACT_INTERPRETER_CALLS = (
             "stores.execution.next_event_ordinal",
             "stores.execution.observe_request_lease_for_update",
             "stores.observed_state.put",
-            *("type",) * 8,
+            "stores.runtime_authorities.get_active_for_update",
+            *("type",) * 10,
             "unit_of_work.commit",
             "worker_id.encode",
             "worker_id.strip",
@@ -698,9 +721,11 @@ class AtomicEffectAttemptFoldContractTests(
                     "control_plane_kit_core.operations",
                     "control_plane_kit_core.policies",
                     "control_plane_kit_operations.effect_attempt_fold",
+                    "control_plane_kit_operations.effect_attempt_intent_evidence",
                     "control_plane_kit_operations.effect_attempts",
                     "control_plane_kit_operations.effect_outcome_evidence",
                     "control_plane_kit_operations.records",
+                    "control_plane_kit_operations.runtime_authorities",
                     "control_plane_kit_operations.workflows",
                 },
             )
@@ -718,6 +743,15 @@ class AtomicEffectAttemptFoldContractTests(
             self.assertIn(
                 "tests/test_guarded_observed_effect_fold_contract.py",
                 entries[INTERPRETER_MODULE]["protecting_tests"],
+            )
+        with self.subTest(surface="interpreter-transaction-protection"):
+            self.assertTrue(
+                {
+                    "tests/test_postgres_guarded_observed_effect_fold_first_replay.py",
+                    "tests/test_postgres_guarded_observed_effect_fold_authority.py",
+                    "tests/test_postgres_guarded_observed_effect_fold_rollback.py",
+                    "tests/test_postgres_guarded_observed_effect_fold_concurrency.py",
+                }.issubset(entries[INTERPRETER_MODULE]["protecting_tests"])
             )
 
 

@@ -82,6 +82,12 @@ class _CheckedFoldService:
                 )
             raise
 
+    def execute_observed(self, command):
+        try:
+            return self._service.execute_observed(command)
+        except NotImplementedError:
+            self._fixture.fail("guarded observed fold transaction is missing")
+
 
 class PostgresEffectAttemptFoldFixture(
     EffectOutcomeEvidenceFixture,
@@ -210,6 +216,14 @@ class PostgresEffectAttemptFoldFixture(
 
     def checked_fold_service(self, service: EffectAttemptFoldService):
         return _CheckedFoldService(self, service)
+
+    def execute_fold(self, service, story, command=None):
+        command = self.fold_command(story) if command is None else command
+        if type(story) is not str and story.profile == "provider-observation":
+            return service.execute_observed(
+                self.guarded_observed_command(story, fold=command)
+            )
+        return service.execute(command)
 
     def seed_fold_source(
         self,
