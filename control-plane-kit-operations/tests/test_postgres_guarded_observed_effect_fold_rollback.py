@@ -75,7 +75,7 @@ class PostgresGuardedObservedEffectFoldRollbackTests(
                 def observe(store, request_id):
                     value = original(store, request_id)
                     observations.append(value)
-                    return replace(value, observed_at=observed_at)
+                    return replace(value, observed_at=observed_at, expired=denied)
 
                 def active(store, workspace_id, authority_ref):
                     authority_calls.append((workspace_id, authority_ref))
