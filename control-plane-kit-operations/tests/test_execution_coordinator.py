@@ -991,7 +991,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
         self.assertEqual(
             events[-1].failure.code,
-            "runtime.provider-result-unknown",
+            "runtime.effect-uncertain",
         )
 
     def test_started_event_without_durable_attempt_never_blindly_restarts(self) -> None:

@@ -88,7 +88,9 @@ class PostgresEffectAttemptCoordinatorFirstReplayTests(
         )
 
     def test_running_recovery_bearing_attempt_conflicts_before_reconciliation(self) -> None:
-        current = self.persisted_started()
+        current, _intent, _record, _authority, _observer = (
+            self.seed_running_reconciliation()
+        )
         recovered = self.transition_record(
             current,
             "recovered-succeeded",
