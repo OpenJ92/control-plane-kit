@@ -812,8 +812,11 @@ class ExecutionCoordinator:
         current: ExecutionCoordinatorResult | None = None
         for _ in range(command.max_effects):
             context = self._load_context(command)
-            current = self._classify_current(context)
-            if current.status is not CoordinatorStatus.PROGRESSED:
+            current = self._classify_current(context, attempted)
+            if current.status not in (
+                CoordinatorStatus.PROGRESSED,
+                CoordinatorStatus.IN_FLIGHT,
+            ):
                 return current
             activity = current.activity_id
             if activity is None:
@@ -831,6 +834,8 @@ class ExecutionCoordinator:
                     legacy = True
                 case _:
                     pass
+            if current.status is CoordinatorStatus.IN_FLIGHT and legacy:
+                return current
             if legacy:
                 selected_event = self._record_step_event(
                     command,
@@ -1039,7 +1044,10 @@ class ExecutionCoordinator:
                     )
                 except Exception:  # noqa: BLE001 - provider faults become uncertainty.
                     pass
-                if type(runtime_result) is not RuntimeEffectResult:
+                if (
+                    type(runtime_result) is not RuntimeEffectResult
+                    or runtime_result.effect_id != request.effect_id
+                ):
                     runtime_result = _uncertain_runtime_result(request)
                 outcome = ExecutionEffectOutcome(
                     attempt.state.identity,
@@ -1104,7 +1112,7 @@ class ExecutionCoordinator:
             if selected_conflict is not None:
                 raise ExecutionCoordinatorConflict(selected_conflict)
         context = self._load_context(command)
-        current = self._classify_current(context)
+        current = self._classify_current(context, attempted)
         return ExecutionCoordinatorResult(
             current.run,
             CoordinatorStatus.PROGRESSED
@@ -1117,39 +1125,63 @@ class ExecutionCoordinator:
     def _classify_current(
         self,
         context: "_CoordinatorContext",
+        effects_attempted: int = 0,
     ) -> ExecutionCoordinatorResult:
         run = context.run
         if run.status is ActivityRunStatus.CLAIMED:
             raise ExecutionCoordinatorConflict("activity run must be started")
         if run.status is ActivityRunStatus.PAUSED:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.BLOCKED,
+                effects_attempted,
+            )
         if run.status is ActivityRunStatus.SUCCEEDED:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.COMPLETED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.COMPLETED,
+                effects_attempted,
+            )
         if run.status is ActivityRunStatus.FAILED:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.FAILED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.FAILED,
+                effects_attempted,
+            )
         if run.status in {ActivityRunStatus.CANCELLED, ActivityRunStatus.COMPENSATING}:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.BLOCKED,
+                effects_attempted,
+            )
         if run.status is not ActivityRunStatus.RUNNING:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.BLOCKED,
+                effects_attempted,
+            )
 
         if context.projection.uncertain:
             return ExecutionCoordinatorResult(
                 run,
                 CoordinatorStatus.UNCERTAIN,
+                effects_attempted,
                 activity_id=context.projection.uncertain[0].activity_id,
             )
         if context.schedule.failed:
+            failed_activity_ids = [
+                value.activity_id.value for value in context.schedule.failed
+            ]
+            failure_details = (
+                {"activity_id": failed_activity_ids[0]}
+                if failed_activity_ids[1:] == []
+                else {}
+            )
             failure = FailureEvidence(
                 FailureCategory.TERMINAL,
                 "activity-step-failed",
                 "one or more planned activities failed",
-                BoundedEvidence.from_mapping(
-                    {
-                        "activity_ids": [
-                            value.activity_id.value for value in context.schedule.failed
-                        ]
-                    }
-                ),
+                BoundedEvidence.from_mapping(failure_details),
             )
             try:
                 result = self._lifecycle.execute(
@@ -1164,11 +1196,16 @@ class ExecutionCoordinator:
                 run = result.run
             except RunLifecycleConflict:
                 run = self._fresh_run(run.run_id)
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.FAILED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.FAILED,
+                effects_attempted,
+            )
         if context.schedule.running:
             return ExecutionCoordinatorResult(
                 run,
                 CoordinatorStatus.IN_FLIGHT,
+                effects_attempted,
                 activity_id=context.schedule.running[0].activity_id.value,
             )
         if context.schedule.successful:
@@ -1181,16 +1218,29 @@ class ExecutionCoordinator:
                     BoundedEvidence.from_mapping({"result": "all-activities-succeeded"}),
                 )
             )
-            return ExecutionCoordinatorResult(result.run, CoordinatorStatus.COMPLETED)
+            return ExecutionCoordinatorResult(
+                result.run,
+                CoordinatorStatus.COMPLETED,
+                effects_attempted,
+            )
         if context.schedule.ready:
             return ExecutionCoordinatorResult(
                 run,
                 CoordinatorStatus.PROGRESSED,
+                effects_attempted,
                 activity_id=context.schedule.ready[0].activity_id.value,
             )
         if context.schedule.blocked or context.schedule.waiting:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
-        return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.BLOCKED,
+                effects_attempted,
+            )
+        return ExecutionCoordinatorResult(
+            run,
+            CoordinatorStatus.BLOCKED,
+            effects_attempted,
+        )
 
     def _record_step_event(
         self,
