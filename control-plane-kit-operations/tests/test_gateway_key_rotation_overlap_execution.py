@@ -11,6 +11,8 @@ from gateway_rotation_overlap_fixture import (
     CrashControl,
     GatewayRotationOverlapFixture,
     SimulatedProcessLoss,
+    effect_attempt_execution_coordinator,
+    runtime_result_for_outcome,
 )
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -22,7 +24,6 @@ from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
-    ExecutionCoordinator,
 )
 from control_plane_kit_operations.gateway_key_rotation_overlap_execution import (
     GatewayKeyRotationOverlapExecutionAuthorizationDenied,
@@ -49,7 +50,6 @@ from control_plane_kit_operations.gateway_key_rotations import (
 from control_plane_kit_operations.lifecycle import (
     ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
-    RunLifecycleCommandService,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import BoundedEvidence, FailureEvidence
@@ -65,6 +65,14 @@ class CountingIds:
         return f"{self.prefix}-{self.count}"
 
 
+POST_EFFECT_CRASH_BOUNDARIES = (
+    ("effect-fold", 4),
+    ("run-complete", 5),
+    ("current-graph-advance", 6),
+    ("rotation-fold", 7),
+)
+
+
 class RecordingAdapter:
     def __init__(
         self,
@@ -74,6 +82,18 @@ class RecordingAdapter:
         self.calls: list[str] = []
 
     def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        return self._next(context)
+
+    def execute_runtime(self, context, request):
+        return runtime_result_for_outcome(
+            self._next(context),
+            request.effect_id,
+        )
+
+    def _next(
         self,
         context: ActivityRealizationContext,
     ) -> ActivityExecutionOutcome:
@@ -184,17 +204,11 @@ class GatewayKeyRotationOverlapExecutionTests(
         factory = unit_of_work_factory or self.unit_of_work
         ids = CountingIds(prefix)
         clock = lambda: "2026-08-02T03:00:00Z"
-        lifecycle = RunLifecycleCommandService(
+        coordinator = effect_attempt_execution_coordinator(
             factory,
+            adapter,
             clock=clock,
-            id_factory=ids,
-        )
-        coordinator = ExecutionCoordinator(
-            factory,
-            lifecycle=lifecycle,
-            adapter=adapter,
-            clock=clock,
-            id_factory=ids,
+            prefix=prefix,
         )
         return GatewayKeyRotationOverlapExecutionProgram(
             factory,
@@ -324,6 +338,7 @@ class GatewayKeyRotationOverlapExecutionTests(
                 )
 
     def test_process_loss_after_intent_blocks_without_redispatch(self) -> None:
+        # Provider entry occurs only after the named effect-start commit.
         crashing = RecordingAdapter(SimulatedProcessLoss("lost during effect"))
 
         with self.assertRaises(SimulatedProcessLoss):
@@ -339,7 +354,11 @@ class GatewayKeyRotationOverlapExecutionTests(
         )
         self.assertEqual(recovered.failure_code, "overlap-effect-uncertain")
         self.assertEqual(recovered_adapter.calls, [])
-        self.assertEqual(self._event_kinds().count(ActivityEventKind.STEP_STARTED), 1)
+        self.assertEqual(
+            self._attempt_event_kinds().count(ActivityEventKind.STEP_STARTED),
+            1,
+        )
+        self.assertEqual(self._current_advancement_count(), 0)
         self.assertEqual(
             self._workspace().current_realized_projection_id,
             "projection-a",
@@ -365,10 +384,8 @@ class GatewayKeyRotationOverlapExecutionTests(
         self.assertEqual(stale_adapter.calls, [])
 
     def test_restarts_after_each_post_effect_commit_without_duplicate_effect(self) -> None:
-        # get rotation, snapshot, step intent, step result, run complete,
-        # current projection advance, rotation fold.
-        for crash_after_commit in range(4, 8):
-            with self.subTest(crash_after_commit=crash_after_commit):
+        for boundary, crash_after_commit in POST_EFFECT_CRASH_BOUNDARIES:
+            with self.subTest(boundary=boundary):
                 self.reset_truth()
                 activity_count = self._plan_activity_count()
                 prior_adapter = RecordingAdapter(
@@ -399,17 +416,16 @@ class GatewayKeyRotationOverlapExecutionTests(
                         prefix=f"crash-{crash_after_commit}",
                     ).progress(self.command())
 
-                durable_kinds = self._event_kinds()
+                durable_kinds = self._attempt_event_kinds()
                 self.assertEqual(
                     durable_kinds.count(ActivityEventKind.STEP_STARTED),
                     activity_count,
                 )
-                if crash_after_commit >= 4:
-                    self.assertEqual(
-                        durable_kinds.count(ActivityEventKind.STEP_SUCCEEDED),
-                        activity_count,
-                    )
-                if crash_after_commit == 6:
+                self.assertEqual(
+                    durable_kinds.count(ActivityEventKind.STEP_SUCCEEDED),
+                    activity_count,
+                )
+                if boundary == "current-graph-advance":
                     rotations = GatewayKeyRotationService(
                         self.unit_of_work,
                         clock=lambda: 3_000,
@@ -516,7 +532,7 @@ class GatewayKeyRotationOverlapExecutionTests(
                         prefix=f"recover-{crash_after_commit}",
                     ).progress(self.command())
 
-                if crash_after_commit != 6:
+                if boundary != "current-graph-advance":
                     self.assertIn(
                         recovered.outcome,
                         {
@@ -704,6 +720,17 @@ class GatewayKeyRotationOverlapExecutionTests(
             )
         return [event.kind for event in events]
 
+    def _attempt_event_kinds(self) -> list[ActivityEventKind]:
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run(
+                self.checkpoint.run_id
+            )
+        return [
+            event.kind
+            for event in events
+            if set(event.evidence.descriptor()) == {"effect_attempt"}
+        ]
+
     def _advance_graph_without_rotation_fold(self):
         activity_count = self._plan_activity_count()
         prior_adapter = RecordingAdapter(
@@ -712,7 +739,10 @@ class GatewayKeyRotationOverlapExecutionTests(
         prior_program = self.program(prior_adapter, prefix="evidence-prior")
         for _ in range(activity_count - 1):
             prior_program.progress(self.command())
-        control = CrashControl(6)
+        graph_advance_commit = dict(POST_EFFECT_CRASH_BOUNDARIES)[
+            "current-graph-advance"
+        ]
+        control = CrashControl(graph_advance_commit)
         with self.assertRaises(SimulatedProcessLoss):
             self.program(
                 RecordingAdapter(ActivityExecutionOutcome.succeeded()),

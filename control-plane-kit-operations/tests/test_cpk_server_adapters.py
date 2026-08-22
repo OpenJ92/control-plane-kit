@@ -29,7 +29,10 @@ from control_plane_kit_core.algebra import (
     DockerRuntime,
     ProviderSocket,
 )
-from control_plane_kit_core.runtime_effects import ImagePullAuthority
+from control_plane_kit_core.runtime_effects import (
+    ImagePullAuthority,
+    RuntimeEffectResult,
+)
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
@@ -60,6 +63,15 @@ from control_plane_kit_operations.approvals import ApprovalCommandService, Reque
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ExecutionCoordinator,
+)
+from control_plane_kit_operations.effect_attempt_fold_interpreter import (
+    EffectAttemptFoldService,
+)
+from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import (
+    EffectAttemptReconciliationService,
+)
+from control_plane_kit_operations.effect_attempt_start_interpreter import (
+    EffectAttemptStartService,
 )
 from control_plane_kit_operations.lifecycle import RunLifecycleCommandService
 from control_plane_kit_operations.delegation_signing_keys import (
@@ -179,6 +191,19 @@ class SucceedingActivityAdapter:
         return ActivityExecutionOutcome.succeeded(
             BoundedEvidence.from_mapping({"activity_id": activity_id})
         )
+
+    def execute_runtime(self, context, request) -> RuntimeEffectResult:
+        activity_id = context.activity.activity_id.value
+        self.activities.append(activity_id)
+        return RuntimeEffectResult.succeeded(
+            request.effect_id,
+            evidence={"activity_id": activity_id},
+        )
+
+
+class _ForbiddenObserver:
+    def observe(self, _request, _authority):
+        raise AssertionError("server predecessor unexpectedly reconciled an effect")
 
 
 class _UnreadableArguments(dict):
@@ -1782,6 +1807,10 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             clock=lambda: "2026-07-22T10:10:00Z",
             id_factory=GeneratedIds("lifecycle"),
         )
+        fold = EffectAttemptFoldService(
+            self.unit_of_work,
+            id_factory=GeneratedIds("effect-fold"),
+        )
         application = CpkServerOperationsApplication(
             cpk_server_services(
                 unit_of_work_factory=self.unit_of_work,
@@ -1821,6 +1850,16 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     self.unit_of_work,
                     lifecycle=lifecycle,
                     adapter=adapter,
+                    start_service=EffectAttemptStartService(
+                        self.unit_of_work,
+                        id_factory=GeneratedIds("effect-start"),
+                    ),
+                    fold_service=fold,
+                    reconciliation_service=EffectAttemptReconciliationService(
+                        self.unit_of_work,
+                        _ForbiddenObserver(),
+                        fold,
+                    ),
                     clock=lambda: "2026-07-22T10:11:00Z",
                     id_factory=GeneratedIds("execution"),
                 ),
