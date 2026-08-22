@@ -1658,6 +1658,10 @@ class EffectAttemptCoordinatorContractTests(
             {
                 "tests/test_effect_attempt_coordinator_contract.py",
                 "tests/test_execution_coordinator.py",
+                "tests/test_postgres_effect_attempt_coordinator_budget_lifecycle.py",
+                "tests/test_postgres_effect_attempt_coordinator_concurrency.py",
+                "tests/test_postgres_effect_attempt_coordinator_crash_rollback.py",
+                "tests/test_postgres_effect_attempt_coordinator_first_replay.py",
             },
         )
         self.assertEqual(
