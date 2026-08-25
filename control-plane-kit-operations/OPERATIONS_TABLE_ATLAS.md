@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=4723b9ad8de12dbe175fc260a781a67fab453e5642b34c9cacecbfba54c3cb64 relations=33 columns=441 constraints=325 indexes=109 foreign-keys=69 -->
+<!-- current-schema-contract: sha256=d13ca171165cbb11185e84647e71fee34c1e5d29fc4935bdc962ee150f6f9f85 relations=35 columns=469 constraints=349 indexes=116 foreign-keys=78 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -87,7 +87,9 @@ foreign key and the accepted lineage cycle:
    original event, and effect attempts in attempt order after all of their
    intent/original/latest commitments exist. Restore direct effect
    outcomes after their attempts and both referenced event coordinates, then
-   restore ordered outcome membership after its observation rows.
+   restore ordered outcome membership after its observation rows. Restore
+   compensation action/event rows before compensation programs, then restore
+   their reverse-ordered steps after the referenced successful outcomes.
 8. Restore secret-use authorizations, rotation deployments,
    `cpk_cloudflare_ingress_resources`, and
    `cpk_generated_ingress_secret_references` after any optional
@@ -290,6 +292,15 @@ cpk_execution_requests -->|cpk_execution_requests_approval_request_id_fkey| cpk_
 cpk_execution_requests -->|cpk_execution_requests_plan_session_fk| cpk_activity_plans
 cpk_execution_requests -->|cpk_execution_requests_workspace_id_fkey| cpk_workspaces
 cpk_execution_requests -->|cpk_execution_requests_workspace_session_fk| cpk_operation_sessions
+cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_completion_event_fk| cpk_activity_events
+cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_program_fk| cpk_failed_run_compensations
+cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_source_outcome_fk| cpk_effect_attempt_outcomes
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_action_fk| cpk_operation_actions
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_event_fk| cpk_activity_events
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_plan_session_fk| cpk_activity_plans
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_request_workspace_fk| cpk_execution_requests
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_run_request_fk| cpk_activity_runs
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_workspace_fk| cpk_workspaces
 cpk_gateway_key_rotation_deployments -->|cpk_gateway_key_rotation_deployments_rotation_id_fkey| cpk_gateway_key_rotations
 cpk_gateway_key_rotation_revocations -->|cpk_gateway_key_rotation_revocations_rotation_id_fkey| cpk_gateway_key_rotations
 cpk_gateway_key_rotation_transitions -->|cpk_gateway_key_rotation_transitions_rotation_id_fkey| cpk_gateway_key_rotations
@@ -370,6 +381,15 @@ order is semantically significant for every composite identity.
 | `cpk_execution_requests_plan_session_fk` | `cpk_execution_requests` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The execution request and plan share one session. |
 | `cpk_execution_requests_workspace_id_fkey` | `cpk_execution_requests` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every execution request is workspace scoped. |
 | `cpk_execution_requests_workspace_session_fk` | `cpk_execution_requests` | `session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | The request workspace must match its session workspace. |
+| `cpk_failed_run_compensation_steps_completion_event_fk` | `cpk_failed_run_compensation_steps` | `source_completion_event_id, source_run_id, source_completion_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Every compensation step cites the exact direct success event that admitted its inverse. |
+| `cpk_failed_run_compensation_steps_program_fk` | `cpk_failed_run_compensation_steps` | `program_id` | `cpk_failed_run_compensations` | `program_id` | Every ordered inverse belongs to one immutable compensation program. |
+| `cpk_failed_run_compensation_steps_source_outcome_fk` | `cpk_failed_run_compensation_steps` | `source_run_id, source_activity_id, source_attempt` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt` | A compensation step is admitted only from one durable direct effect outcome. |
+| `cpk_failed_run_compensations_action_fk` | `cpk_failed_run_compensations` | `action_id` | `cpk_operation_actions` | `action_id` | The program is authorized by one exact durable operator action. |
+| `cpk_failed_run_compensations_event_fk` | `cpk_failed_run_compensations` | `event_id` | `cpk_activity_events` | `event_id` | The program names the event that starts the compensating run fold. |
+| `cpk_failed_run_compensations_plan_session_fk` | `cpk_failed_run_compensations` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The compensation program preserves the exact admitted plan and session. |
+| `cpk_failed_run_compensations_request_workspace_fk` | `cpk_failed_run_compensations` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Recovery request ownership remains bound to the original workspace. |
+| `cpk_failed_run_compensations_run_request_fk` | `cpk_failed_run_compensations` | `run_id, request_id` | `cpk_activity_runs` | `run_id, request_id` | The compensated failed run belongs to the exact original execution request. |
+| `cpk_failed_run_compensations_workspace_fk` | `cpk_failed_run_compensations` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every compensation program is scoped to one durable workspace. |
 | `cpk_gateway_key_rotation_deployments_rotation_id_fkey` | `cpk_gateway_key_rotation_deployments` | `rotation_id` | `cpk_gateway_key_rotations` | `rotation_id` | Deployment-phase evidence belongs to one key rotation. |
 | `cpk_gateway_key_rotation_revocations_rotation_id_fkey` | `cpk_gateway_key_rotation_revocations` | `rotation_id` | `cpk_gateway_key_rotations` | `rotation_id` | Old-secret revocation evidence belongs to one key rotation. |
 | `cpk_gateway_key_rotation_transitions_rotation_id_fkey` | `cpk_gateway_key_rotation_transitions` | `rotation_id` | `cpk_gateway_key_rotations` | `rotation_id` | Every lifecycle transition belongs to one key rotation. |
@@ -566,6 +586,32 @@ order is semantically significant for every composite identity.
 - **JSON boundary:** None; intent identity is a digest and all relationships are relational.
 - **Sensitive material:** Worker and actor identifiers are bounded operational metadata; no effect payload, credential, or secret value is stored.
 - **Future impact:** #1555 must decide whether node-control attempts reuse this approved-plan queue or own a distinct intent table without weakening approval identity.
+
+### `cpk_failed_run_compensation_steps`
+- **Durable meaning and owner:** `FailedRunCompensationStore` owns the exact reverse-ordered inverse operations admitted from proven successful effects.
+- **Identity and cardinality:** `(program_id, position)` is primary; one source effect identity may occur only once in a program.
+- **Outgoing foreign keys:** Each step binds its program, immutable direct effect outcome, and exact direct success event coordinate.
+- **Inbound dependents:** No current relation references a step; later execution must consume this exact program rather than synthesize new inverses.
+- **Writers and transactions:** The failed-run compensation command appends every step in the same caller-owned transaction as its program, action, start event, and run fold.
+- **Readers and projections:** Restart reconstruction reads positions in ascending order and verifies the closed Core program fingerprint.
+- **Mutation, locks, retries, and idempotency:** Steps are immutable; replay reads the existing program without allocating identifiers or rewriting rows.
+- **Lifecycle, retention, deletion, and restore:** Restore successful outcomes and events, then the program, then its steps; restrictive references preserve source evidence.
+- **JSON boundary:** `operation` is one closed Core activity-operation descriptor; source identities, fingerprints, and material source remain relational.
+- **Sensitive material:** Steps contain topology operation identifiers and fingerprints only; provider diagnostics, credentials, addresses, and secret values are forbidden.
+- **Future impact:** #1726 may interpret these values, but cannot reorder, broaden, or infer additional provider actions.
+
+### `cpk_failed_run_compensations`
+- **Durable meaning and owner:** `FailedRunCompensationStore` owns one authorized immutable compensation decision and complete exact program preimage for a failed run.
+- **Identity and cardinality:** `program_id` is primary; run, action, and start event are each unique so one failed run admits at most one program.
+- **Outgoing foreign keys:** Workspace, request, run, plan/session, operator action, and compensation-start event must all exist and agree with the original durable lineage.
+- **Inbound dependents:** Ordered compensation steps cite the program; no provider or public-interface table derives authority from it.
+- **Writers and transactions:** `FailedRunCompensationCommandService` appends the program with its action/event and atomically folds FAILED to COMPENSATING in one unit of work.
+- **Readers and projections:** Exact idempotent replay reconstructs the stored Core program and compares command, evidence, authority-reference, and program fingerprints.
+- **Mutation, locks, retries, and idempotency:** Rows are immutable and one run is unique; action idempotency serializes first admission and exact replay is write-free.
+- **Lifecycle, retention, deletion, and restore:** Restore original plan/request/run/effects, then action and start event, then program and steps; the original outcomes remain unchanged.
+- **JSON boundary:** `source_failure` is a closed bounded Operations failure and `program_preimage` is canonical closed Core descriptor bytes bounded to one MiB.
+- **Sensitive material:** Only the authority-reference SHA-256 is stored; raw authority material, provider messages, logs, commands, paths, addresses, and secret values are excluded.
+- **Future impact:** #1726 owns interpretation and completion; #1107 retains uncertainty resolution and must not mutate this admission preimage.
 
 ### `cpk_gateway_key_rotation_deployments`
 - **Durable meaning and owner:** `GatewayKeyRotationStore` owns prepared and accepted graph-deployment evidence for each rotation phase.

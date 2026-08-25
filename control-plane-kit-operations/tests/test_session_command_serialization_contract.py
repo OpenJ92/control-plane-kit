@@ -31,6 +31,7 @@ EXPECTED_COMMANDS = {
     "transition-run",
     "record-recovery-decision",
     "retry-failed-activity-run",
+    "begin-compensation",
     "advance-current-graph",
 }
 

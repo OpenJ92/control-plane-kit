@@ -43,6 +43,49 @@ CREATE TABLE cpk_activity_runs (
     CONSTRAINT cpk_activity_runs_status_check CHECK ((status = ANY (ARRAY['claimed'::text, 'running'::text, 'paused'::text, 'succeeded'::text, 'failed'::text, 'compensating'::text, 'compensated'::text, 'partially_failed'::text, 'uncompensated_failure'::text, 'cancelled'::text])))
 );
 
+CREATE TABLE cpk_failed_run_compensations (
+    program_id text NOT NULL,
+    workspace_id text NOT NULL,
+    request_id text NOT NULL,
+    run_id text NOT NULL,
+    plan_id text NOT NULL,
+    session_id text NOT NULL,
+    action_id text NOT NULL,
+    event_id text NOT NULL,
+    actor_id text NOT NULL,
+    reason text NOT NULL,
+    source_failure jsonb NOT NULL,
+    authority_reference_fingerprint text NOT NULL,
+    command_fingerprint text NOT NULL,
+    evidence_fingerprint text NOT NULL,
+    program_fingerprint text NOT NULL,
+    program_preimage bytea NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    CONSTRAINT cpk_failed_run_compensations_identity_check CHECK (((program_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
+    CONSTRAINT cpk_failed_run_compensations_reason_check CHECK ((reason = 'post-effect-failure'::text)),
+    CONSTRAINT cpk_failed_run_compensations_fingerprint_check CHECK (((authority_reference_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (command_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (evidence_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (program_fingerprint ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT cpk_failed_run_compensations_preimage_check CHECK (((octet_length(program_preimage) >= 1) AND (octet_length(program_preimage) <= 1048576)))
+);
+
+CREATE TABLE cpk_failed_run_compensation_steps (
+    program_id text NOT NULL,
+    position integer NOT NULL,
+    source_run_id text NOT NULL,
+    source_activity_id text NOT NULL,
+    source_attempt integer NOT NULL,
+    source_request_fingerprint text NOT NULL,
+    source_outcome_fingerprint text NOT NULL,
+    source_completion_event_id text NOT NULL,
+    source_completion_ordinal integer NOT NULL,
+    operation jsonb NOT NULL,
+    material_source text NOT NULL,
+    CONSTRAINT cpk_failed_run_compensation_steps_position_check CHECK ((position > 0)),
+    CONSTRAINT cpk_failed_run_compensation_steps_identity_check CHECK (((source_attempt > 0) AND ((source_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((source_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_failed_run_compensation_steps_fingerprint_check CHECK (((source_request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (source_outcome_fingerprint ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT cpk_failed_run_compensation_steps_completion_check CHECK ((source_completion_ordinal > 0)),
+    CONSTRAINT cpk_failed_run_compensation_steps_material_source_check CHECK ((material_source = ANY (ARRAY['base-graph'::text, 'desired-graph'::text])))
+);
+
 CREATE TABLE cpk_effect_attempt_intents (
     run_id text NOT NULL,
     activity_id text NOT NULL,
@@ -487,7 +530,7 @@ CREATE TABLE cpk_operation_actions (
     idempotency_key text,
     intent_fingerprint text,
     CONSTRAINT cpk_operation_actions_ordinal_check CHECK ((ordinal > 0)),
-    CONSTRAINT cpk_operation_actions_type_check CHECK ((action_type = ANY (ARRAY['create-workspace'::text, 'import-product-descriptor'::text, 'register-image-pull-authority'::text, 'register-runtime-authority'::text, 'revoke-runtime-authority'::text, 'register-runtime-authority-delivery'::text, 'revoke-runtime-authority-delivery'::text, 'register-ingress-authority'::text, 'revoke-ingress-authority'::text, 'register-secret-provider'::text, 'revoke-secret-provider'::text, 'register-secret-reference'::text, 'revoke-secret-reference'::text, 'register-delegation-key'::text, 'activate-delegation-key'::text, 'retire-delegation-key'::text, 'revoke-delegation-key'::text, 'start-operation-session'::text, 'close-operation-session'::text, 'cancel-operation-session'::text, 'record-operation-action'::text, 'set-desired-graph'::text, 'publish-desired-realized-projection'::text, 'request-activity-plan'::text, 'request-approval'::text, 'decide-approval'::text, 'request-gateway-probe'::text, 'admit-execution'::text, 'claim-run'::text, 'start-run'::text, 'pause-run'::text, 'resume-run'::text, 'complete-run'::text, 'fail-run'::text, 'complete-compensation'::text, 'fail-compensation'::text, 'cancel-run'::text, 'record-recovery-decision'::text, 'advance-current-graph'::text])))
+    CONSTRAINT cpk_operation_actions_type_check CHECK ((action_type = ANY (ARRAY['create-workspace'::text, 'import-product-descriptor'::text, 'register-image-pull-authority'::text, 'register-runtime-authority'::text, 'revoke-runtime-authority'::text, 'register-runtime-authority-delivery'::text, 'revoke-runtime-authority-delivery'::text, 'register-ingress-authority'::text, 'revoke-ingress-authority'::text, 'register-secret-provider'::text, 'revoke-secret-provider'::text, 'register-secret-reference'::text, 'revoke-secret-reference'::text, 'register-delegation-key'::text, 'activate-delegation-key'::text, 'retire-delegation-key'::text, 'revoke-delegation-key'::text, 'start-operation-session'::text, 'close-operation-session'::text, 'cancel-operation-session'::text, 'record-operation-action'::text, 'set-desired-graph'::text, 'publish-desired-realized-projection'::text, 'request-activity-plan'::text, 'request-approval'::text, 'decide-approval'::text, 'request-gateway-probe'::text, 'admit-execution'::text, 'claim-run'::text, 'start-run'::text, 'pause-run'::text, 'resume-run'::text, 'complete-run'::text, 'fail-run'::text, 'begin-compensation'::text, 'complete-compensation'::text, 'fail-compensation'::text, 'cancel-run'::text, 'record-recovery-decision'::text, 'advance-current-graph'::text])))
 );
 
 CREATE TABLE cpk_operation_sessions (
@@ -777,6 +820,24 @@ ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
 ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
     ADD CONSTRAINT cpk_effect_attempt_outcome_observations_observation_key UNIQUE (observation_id) DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_pkey PRIMARY KEY (program_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_run_key UNIQUE (run_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_action_key UNIQUE (action_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_event_key UNIQUE (event_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_pkey PRIMARY KEY (program_id, position);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_source_key UNIQUE (program_id, source_run_id, source_activity_id, source_attempt);
+
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_pkey PRIMARY KEY (decision_id);
 
@@ -968,6 +1029,8 @@ CREATE INDEX cpk_delegation_signing_keys_verifier_set ON cpk_delegation_signing_
 
 CREATE UNIQUE INDEX cpk_execution_requests_active_plan ON cpk_execution_requests USING btree (plan_id) WHERE (status = ANY (ARRAY['queued'::text, 'claimed'::text]));
 
+CREATE INDEX cpk_failed_run_compensation_steps_source ON cpk_failed_run_compensation_steps USING btree (source_run_id, source_completion_ordinal DESC, source_activity_id);
+
 CREATE UNIQUE INDEX cpk_gateway_key_rotations_nonterminal_binding ON cpk_gateway_key_rotations USING btree (workspace_id, gateway_node_id, purpose, issuer) WHERE (status <> ALL (ARRAY['completed'::text, 'blocked'::text, 'rejected'::text]));
 
 CREATE INDEX cpk_gateway_probe_workspace_timeline ON cpk_gateway_probe_attempts USING btree (workspace_id, issued_at DESC, probe_id DESC);
@@ -1066,6 +1129,33 @@ ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
 
 ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
     ADD CONSTRAINT cpk_effect_attempt_outcome_observations_observation_fk FOREIGN KEY (observation_id, workspace_id) REFERENCES cpk_observations(observation_id, workspace_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_request_workspace_fk FOREIGN KEY (request_id, workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_run_request_fk FOREIGN KEY (run_id, request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_plan_session_fk FOREIGN KEY (plan_id, session_id) REFERENCES cpk_activity_plans(plan_id, session_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_action_fk FOREIGN KEY (action_id) REFERENCES cpk_operation_actions(action_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_event_fk FOREIGN KEY (event_id) REFERENCES cpk_activity_events(event_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_program_fk FOREIGN KEY (program_id) REFERENCES cpk_failed_run_compensations(program_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_source_outcome_fk FOREIGN KEY (source_run_id, source_activity_id, source_attempt) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_completion_event_fk FOREIGN KEY (source_completion_event_id, source_run_id, source_completion_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
 
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_request_id_fkey FOREIGN KEY (request_id) REFERENCES cpk_approval_requests(request_id);

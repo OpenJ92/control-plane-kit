@@ -139,6 +139,7 @@ class LifecycleOperationKind(StrEnum):
     RESUME_RUN = "resume-run"
     COMPLETE_RUN = "complete-run"
     FAIL_RUN = "fail-run"
+    BEGIN_COMPENSATION = "begin-compensation"
     COMPLETE_COMPENSATION = "complete-compensation"
     FAIL_COMPENSATION = "fail-compensation"
     CANCEL_RUN = "cancel-run"
@@ -1126,6 +1127,21 @@ def _canonical_operations() -> tuple[LifecycleOperationContract, ...]:
         requires_current_approval=True,
         requires_worker_scope=True,
         requires_current_graph_match=False,
+        writes_current_graph=False,
+    ),
+    LifecycleOperationContract(
+        "compensation.begin",
+        LifecycleOperationKind.BEGIN_COMPENSATION,
+        DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.RECOVERY,
+        "BeginFailedRunCompensation",
+        "FailedRunCompensationResult",
+        (ActivityRunStatus.FAILED,),
+        ActivityRunStatus.COMPENSATING,
+        (ActivityEventKind.RUN_COMPENSATION_STARTED,),
+        requires_current_approval=True,
+        requires_worker_scope=False,
+        requires_current_graph_match=True,
         writes_current_graph=False,
     ),
     LifecycleOperationContract(
