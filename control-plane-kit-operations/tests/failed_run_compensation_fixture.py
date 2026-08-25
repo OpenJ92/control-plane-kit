@@ -33,12 +33,22 @@ from control_plane_kit_core.planning import (
     StartRuntime,
     WaitForHealthy,
 )
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectIntent,
+    RuntimeEffectIntentSource,
+    runtime_effect_intent_fingerprint,
+)
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_operations.effect_attempts import (
     EffectAttemptEventEvidence,
     EffectAttemptRecord,
     effect_attempt_state_fingerprint,
+)
+from control_plane_kit_operations.effect_attempt_intent_evidence import (
+    EffectAttemptIntentRecord,
 )
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
@@ -272,8 +282,8 @@ class FailedRunCompensationFixture:
             )
             for event in events:
                 stores.execution.add_event(event)
-            self._add_success(stores, "start-runtime", 3, 4, "b" * 64)
-            self._add_success(stores, "start-node", 5, 6, "c" * 64)
+            self._add_success(stores, "start-runtime", 3, 4)
+            self._add_success(stores, "start-node", 5, 6)
             stores.execution.add_event(
                 self.event(
                     "wait-node-started",
@@ -338,8 +348,30 @@ class FailedRunCompensationFixture:
         activity_id: str,
         start_ordinal: int,
         success_ordinal: int,
-        request_fingerprint: str,
     ) -> None:
+        operation = (
+            StartRuntime(RuntimeTarget("runtime-a"))
+            if activity_id == "start-runtime"
+            else StartNode(NodeTarget("node-a"))
+        )
+        intent = RuntimeEffectIntent(
+            RuntimeEffectKind.REALIZE_ACTIVITY,
+            RuntimeKind.DOCKER,
+            RuntimeEffectIntentSource(
+                "workspace-a",
+                "request-a",
+                RunId("run-a"),
+                "plan-a",
+                "graph-current",
+                "graph-desired",
+            ),
+            ActivityId(activity_id),
+            operation,
+            None,
+            (),
+            (),
+        )
+        request_fingerprint = runtime_effect_intent_fingerprint(intent)
         identity = EffectAttemptIdentity(RunId("run-a"), activity_id, 1)
         fence = EffectAttemptFence("worker-a", 1)
         started = EffectAttemptState(
@@ -391,20 +423,8 @@ class FailedRunCompensationFixture:
         )
         stores.execution.add_event(start_event)
         stores.execution.add_event(success_event)
-        stores.connection.execute(
-            "INSERT INTO cpk_effect_attempt_intents "
-            "(run_id, activity_id, attempt, workspace_id, request_id, "
-            "request_fingerprint, original_event_id, original_event_run_id, "
-            "original_event_ordinal, preimage) VALUES (%s, %s, 1, "
-            "'workspace-a', 'request-a', %s, %s, 'run-a', %s, %s)",
-            (
-                "run-a",
-                activity_id,
-                request_fingerprint,
-                start_event.event_id,
-                start_event.ordinal,
-                b"{}",
-            ),
+        stores.effect_attempt_intents.insert(
+            EffectAttemptIntentRecord(identity, start_event, intent)
         )
         attempt = EffectAttemptRecord(succeeded, start_event, success_event)
         stores.effect_attempts.insert_absent(attempt)
