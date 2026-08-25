@@ -154,7 +154,7 @@ class FailedRunCompensationContractTests(unittest.TestCase):
                         },
                         "operation": {
                             "kind": "stop-node",
-                            "target": {"node_id": "node-a"},
+                            "target": {"kind": "node", "node_id": "node-a"},
                         },
                         "material_source": "desired-graph",
                     },
@@ -173,7 +173,10 @@ class FailedRunCompensationContractTests(unittest.TestCase):
                         },
                         "operation": {
                             "kind": "stop-runtime",
-                            "target": {"runtime_id": "runtime-a"},
+                            "target": {
+                                "kind": "runtime",
+                                "runtime_id": "runtime-a",
+                            },
                         },
                         "material_source": "desired-graph",
                     },

@@ -30,6 +30,7 @@ EXPECTED_MODULES = {
     "node_control_transit",
     "operations.__init__",
     "operations.commands",
+    "operations.compensation",
     "operations.execution",
     "operations.handoff",
     "operations.http",

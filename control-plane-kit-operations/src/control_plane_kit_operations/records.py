@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
@@ -435,6 +436,55 @@ class OperationActionRecord:
         _validate_text(self.created_at, "created_at")
         _validate_optional_text(self.idempotency_key, "idempotency_key")
         _validate_optional_text(self.intent_fingerprint, "intent_fingerprint")
+
+
+@dataclass(frozen=True)
+class FailedRunCompensationRecord:
+    """Durable admission coordinates for one exact compensation program."""
+
+    program_id: str
+    workspace_id: str
+    request_id: str
+    run_id: str
+    plan_id: str
+    session_id: str
+    action_id: str
+    event_id: str
+    actor_id: str
+    reason: str
+    source_failure: FailureEvidence
+    authority_reference_fingerprint: str
+    command_fingerprint: str
+    evidence_fingerprint: str
+    program_fingerprint: str
+    created_at: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "program_id",
+            "workspace_id",
+            "request_id",
+            "run_id",
+            "plan_id",
+            "session_id",
+            "action_id",
+            "event_id",
+            "actor_id",
+            "reason",
+            "created_at",
+        ):
+            _validate_text(getattr(self, name), name)
+        if type(self.source_failure) is not FailureEvidence:
+            raise OperationsRecordError("source_failure must be FailureEvidence")
+        for name in (
+            "authority_reference_fingerprint",
+            "command_fingerprint",
+            "evidence_fingerprint",
+            "program_fingerprint",
+        ):
+            value = getattr(self, name)
+            if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+                raise OperationsRecordError(f"{name} must be a lowercase SHA-256")
 
 
 @dataclass(frozen=True)

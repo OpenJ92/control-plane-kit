@@ -127,6 +127,16 @@ from .execution_leases import (
     ExecutionLeaseFence,
     InvalidExecutionLeaseFence,
 )
+from .failed_run_compensation import (
+    BeginFailedRunCompensation,
+    FailedRunCompensationCommandService,
+    FailedRunCompensationConflict,
+    FailedRunCompensationDenied,
+    FailedRunCompensationIdempotencyConflict,
+    FailedRunCompensationNotFound,
+    FailedRunCompensationRecord,
+    FailedRunCompensationResult,
+)
 from .delegation_key_generation import (
     AdmitGeneratedDelegationSigningKey,
     AdmittedGeneratedDelegationSigningKey,
@@ -616,6 +626,14 @@ from .workspaces import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "BeginFailedRunCompensation",
+    "FailedRunCompensationCommandService",
+    "FailedRunCompensationConflict",
+    "FailedRunCompensationDenied",
+    "FailedRunCompensationIdempotencyConflict",
+    "FailedRunCompensationNotFound",
+    "FailedRunCompensationRecord",
+    "FailedRunCompensationResult",
     "AbandonExpiredExecutionClaim",
     "READ_COLLECTION_SPECS",
     "DelegationKeyReadCursor",

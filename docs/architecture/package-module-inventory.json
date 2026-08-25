@@ -9266,6 +9266,114 @@
     },
     {
       "canonical_public_exports": [
+        "FailedRunCompensationEvidence",
+        "FailedRunCompensationLineage",
+        "FailedRunCompensationProgram",
+        "FailedRunCompensationReason",
+        "FailedRunCompensationStep",
+        "InvalidFailedRunCompensationContract",
+        "SuccessfulEffectEvidence"
+      ],
+      "destination": "control_plane_kit_core.operations.compensation",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations.recovery",
+        "control_plane_kit_core.operations.run_identity",
+        "control_plane_kit_core.planning"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_core",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.failed_run_compensation"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.operations.compensation",
+      "motivation": "Owns the closed provider-free evidence and reverse-ordered program algebra for one admitted failed-run compensation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_failed_run_compensation_contract.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py"
+    },
+    {
+      "canonical_public_exports": [
+        "BeginFailedRunCompensation",
+        "FailedRunCompensationCommandService",
+        "FailedRunCompensationConflict",
+        "FailedRunCompensationDenied",
+        "FailedRunCompensationIdempotencyConflict",
+        "FailedRunCompensationNotFound",
+        "FailedRunCompensationRecord",
+        "FailedRunCompensationResult"
+      ],
+      "destination": "control_plane_kit_operations.failed_run_compensation",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.execution_lease_recovery",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.postgres",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.failed_run_compensation",
+      "motivation": "Owns explicit compensation authority, exact durable admission, atomic lifecycle folding, and write-free replay without provider execution.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_failed_run_compensation_command_contract.py",
+        "tests/test_postgres_failed_run_compensation.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/failed_run_compensation.py"
+    },
+    {
+      "canonical_public_exports": [
+        "FailedRunCompensationStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.failed_run_compensation_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.failed_run_compensation_store",
+      "motivation": "Owns exact PostgreSQL persistence and restart reconstruction for failed-run compensation programs and source effect witnesses.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_failed_run_compensation.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_store.py"
+    },
+    {
+      "canonical_public_exports": [
         "EffectAttemptEventEvidence",
         "EffectAttemptRecord",
         "effect_attempt_state_fingerprint"
