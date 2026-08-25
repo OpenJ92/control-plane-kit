@@ -162,15 +162,30 @@ class FailedRunCompensationStore:
         self,
         program_id: str,
     ) -> tuple[FailedRunCompensationRecord, FailedRunCompensationProgram]:
+        return self._get(program_id, lock=False)
+
+    def get_for_update(
+        self,
+        program_id: str,
+    ) -> tuple[FailedRunCompensationRecord, FailedRunCompensationProgram]:
+        return self._get(program_id, lock=True)
+
+    def _get(
+        self,
+        program_id: str,
+        *,
+        lock: bool,
+    ) -> tuple[FailedRunCompensationRecord, FailedRunCompensationProgram]:
+        suffix = " FOR UPDATE" if lock else ""
         row = self._connection.execute(
-            """
+            f"""
             SELECT program_id, workspace_id, request_id, run_id, plan_id,
                    session_id, action_id, event_id, actor_id, reason,
                    source_failure, authority_reference_fingerprint,
                    command_fingerprint, evidence_fingerprint,
                    program_fingerprint, program_preimage, created_at
             FROM cpk_failed_run_compensations
-            WHERE program_id = %s
+            WHERE program_id = %s{suffix}
             """,
             (program_id,),
         ).fetchone()

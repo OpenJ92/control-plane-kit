@@ -38,7 +38,7 @@ _CATEGORY_COUNTS = {
     "public-paged": 14,
     "fixed-cardinality": 2,
     "closed-finite": 2,
-    "internal-complete": 23,
+    "internal-complete": 24,
     "exact-verifier": 13,
 }
 _GENERIC_CONSUMERS = frozenset({"internal", "module", "test", "tests"})

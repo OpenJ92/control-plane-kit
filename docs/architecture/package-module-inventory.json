@@ -9345,6 +9345,49 @@
     },
     {
       "canonical_public_exports": [
+        "ExistingCompensationAttemptBinding",
+        "FailedRunCompensationAttemptBinding",
+        "FailedRunCompensationAttemptConflict",
+        "FailedRunCompensationAttemptDenied",
+        "FailedRunCompensationAttemptError",
+        "FailedRunCompensationAttemptNotFound",
+        "FailedRunCompensationAttemptStartResult",
+        "FailedRunCompensationAttemptStartService",
+        "NewlyBoundCompensationAttempt",
+        "StartFailedRunCompensationAttempt"
+      ],
+      "destination": "control_plane_kit_operations.failed_run_compensation_attempt",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.postgres",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.failed_run_compensation_attempt",
+      "motivation": "Owns atomic admission of the first incomplete compensation step as one fresh inverse effect attempt without provider execution or settlement.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_failed_run_compensation_attempt.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/failed_run_compensation_attempt.py"
+    },
+    {
+      "canonical_public_exports": [
         "FailedRunCompensationStore"
       ],
       "destination": "control_plane_kit_operations.postgres.failed_run_compensation_store",
@@ -9371,6 +9414,35 @@
         "transformations"
       ],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_store.py"
+    },
+    {
+      "canonical_public_exports": [
+        "FailedRunCompensationAttemptStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store",
+      "motivation": "Owns immutable bidirectionally unique PostgreSQL bindings between admitted compensation steps and fresh inverse effect attempts.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_failed_run_compensation_attempt.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_attempt_store.py"
     },
     {
       "canonical_public_exports": [

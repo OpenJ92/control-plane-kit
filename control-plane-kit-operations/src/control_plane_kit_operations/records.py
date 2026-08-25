@@ -27,7 +27,7 @@ from control_plane_kit_core.operations.lifecycle import (
     activity_event_scope,
     canonical_execution_lifecycle_contract_set,
 )
-from control_plane_kit_core.operations import RunId
+from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.probe_intents import (
@@ -485,6 +485,33 @@ class FailedRunCompensationRecord:
             value = getattr(self, name)
             if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
                 raise OperationsRecordError(f"{name} must be a lowercase SHA-256")
+
+
+@dataclass(frozen=True, slots=True)
+class FailedRunCompensationAttemptBinding:
+    """Immutable relation from one compensation step to its inverse attempt."""
+
+    program_id: str
+    position: int
+    source_attempt: EffectAttemptIdentity
+    inverse_attempt: EffectAttemptIdentity
+
+    def __post_init__(self) -> None:
+        _validate_text(self.program_id, "program_id")
+        if type(self.position) is not int or self.position < 1:
+            raise OperationsRecordError("position must be positive")
+        if (
+            type(self.source_attempt) is not EffectAttemptIdentity
+            or type(self.inverse_attempt) is not EffectAttemptIdentity
+            or self.inverse_attempt.run_id != self.source_attempt.run_id
+            or self.inverse_attempt.activity_id
+            != self.source_attempt.activity_id
+            or self.source_attempt.attempt == 2_147_483_647
+            or self.inverse_attempt.attempt != self.source_attempt.attempt + 1
+        ):
+            raise OperationsRecordError(
+                "compensation attempt binding identity is invalid"
+            )
 
 
 @dataclass(frozen=True)
