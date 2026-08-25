@@ -70,6 +70,14 @@ class FailedRunCompensationCommandContractTests(unittest.TestCase):
     def test_command_is_closed_authorized_and_fingerprinted(self) -> None:
         module = self.require_contract()
         command = self.command(module)
+        changed_authority = self.command(
+            module,
+            authority=RecoveryAuthority(
+                "operator-a",
+                "authority-reference-reissued",
+                (RecoveryScope.COMPENSATE,),
+            ),
+        )
 
         self.assertEqual(
             command.descriptor(),
@@ -95,11 +103,20 @@ class FailedRunCompensationCommandContractTests(unittest.TestCase):
             },
         )
         self.assertRegex(command.intent_fingerprint(), r"^[0-9a-f]{64}$")
+        self.assertEqual(changed_authority.descriptor(), command.descriptor())
+        self.assertNotEqual(
+            changed_authority.intent_fingerprint(),
+            command.intent_fingerprint(),
+        )
         self.assertNotIn("authority-reference-canary", str(command))
         self.assertNotIn("authority-reference-canary", repr(command))
         self.assertNotIn(
             "authority-reference-canary",
             str(command.descriptor()),
+        )
+        self.assertNotIn(
+            "authority-reference-reissued",
+            str(changed_authority.descriptor()),
         )
 
         with self.assertRaises(InvalidOperationCommand):
