@@ -176,6 +176,18 @@ class FailedRunCompensationStore:
         ).fetchone()
         if row is None:
             raise KeyError("failed-run compensation program was not found")
+        step_rows = self._connection.execute(
+            """
+            SELECT position, source_run_id, source_activity_id, source_attempt,
+                   source_request_fingerprint, source_outcome_fingerprint,
+                   source_completion_event_id, source_completion_ordinal,
+                   operation, material_source
+            FROM cpk_failed_run_compensation_steps
+            WHERE program_id = %s
+            ORDER BY position ASC
+            """,
+            (program_id,),
+        ).fetchall()
         try:
             program = FailedRunCompensationProgram.from_descriptor(
                 json.loads(bytes(row[15]).decode("ascii"))
@@ -204,8 +216,17 @@ class FailedRunCompensationStore:
             ) from error
         if (
             record.program_id != program.program_id
+            or record.workspace_id != program.evidence.lineage.workspace_id
+            or record.request_id != program.evidence.lineage.request_id
+            or record.run_id != program.evidence.lineage.run_id.value
+            or record.plan_id != program.evidence.lineage.plan_id
+            or record.reason != program.evidence.reason.value
+            or _fingerprint(_failure_descriptor(record.source_failure))
+            != program.evidence.source_failure_fingerprint
             or record.evidence_fingerprint != _fingerprint(program.evidence.descriptor())
             or record.program_fingerprint != program.fingerprint()
+            or tuple(_step_descriptor(step) for step in step_rows)
+            != tuple(step.descriptor() for step in program.steps)
         ):
             raise OperationsRecordError(
                 "failed-run compensation row is incongruent"
@@ -251,6 +272,25 @@ def _failure(value: object) -> FailureEvidence:
         value["message"],
         BoundedEvidence.from_mapping(value["details"]),
     )
+
+
+def _step_descriptor(row: object) -> dict[str, object]:
+    return {
+        "position": row[0],
+        "source_effect": {
+            "attempt_identity": {
+                "run_id": row[1],
+                "activity_id": row[2],
+                "attempt": row[3],
+            },
+            "request_fingerprint": row[4],
+            "outcome_fingerprint": row[5],
+            "completion_event_id": row[6],
+            "completion_ordinal": row[7],
+        },
+        "operation": row[8],
+        "material_source": row[9],
+    }
 
 
 def _fingerprint(value: object) -> str:

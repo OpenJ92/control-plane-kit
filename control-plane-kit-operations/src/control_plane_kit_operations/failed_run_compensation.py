@@ -41,6 +41,7 @@ from control_plane_kit_operations.records import (
     FailureEvidence,
     OperationActionRecord,
     OperationSessionStatus,
+    OperationsRecordError,
 )
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
@@ -136,7 +137,19 @@ class BeginFailedRunCompensation:
         }
 
     def intent_fingerprint(self) -> str:
-        return _fingerprint(self.descriptor())
+        return _fingerprint(
+            {
+                "public_command": self.descriptor(),
+                "authority_reference_fingerprint": (
+                    self.authority_reference_fingerprint()
+                ),
+            }
+        )
+
+    def authority_reference_fingerprint(self) -> str:
+        return hashlib.sha256(
+            self.authority.authority_reference.encode("utf-8")
+        ).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,9 +372,9 @@ class FailedRunCompensationCommandService:
             actor_id=command.authority.actor_id,
             reason=command.reason.value,
             source_failure=command.source_failure,
-            authority_reference_fingerprint=hashlib.sha256(
-                command.authority.authority_reference.encode("utf-8")
-            ).hexdigest(),
+            authority_reference_fingerprint=(
+                command.authority_reference_fingerprint()
+            ),
             command_fingerprint=command.intent_fingerprint(),
             evidence_fingerprint=_fingerprint(evidence.descriptor()),
             program_fingerprint=program.fingerprint(),
@@ -412,15 +425,43 @@ def _replay(stores, command, action) -> FailedRunCompensationResult:
         )
         event = stores.execution.get_event(record.event_id)
         run = stores.execution.get_run(record.run_id)
-    except KeyError as error:
+    except (KeyError, OperationsRecordError) as error:
         raise FailedRunCompensationConflict(
             "compensation replay truth is incomplete"
         ) from error
     if (
         record.command_fingerprint != command.intent_fingerprint()
+        or record.authority_reference_fingerprint
+        != command.authority_reference_fingerprint()
+        or record.workspace_id != command.workspace_id
+        or record.request_id != command.request_id
+        or record.run_id != command.run_id.value
+        or record.plan_id != command.plan_id
+        or record.actor_id != command.authority.actor_id
+        or record.reason != command.reason.value
+        or record.source_failure != command.source_failure
         or record.program_fingerprint != action.payload["program_fingerprint"]
+        or action.action_id != record.action_id
+        or action.session_id != record.session_id
+        or action.actor_id != record.actor_id
+        or action.idempotency_key != command.idempotency_key.value
+        or action.created_at != record.created_at
         or record.event_id != action.payload["event_id"]
+        or event.event_id != record.event_id
+        or event.run_id != record.run_id
         or event.kind is not ActivityEventKind.RUN_COMPENSATION_STARTED
+        or event.occurred_at != record.created_at
+        or event.activity_id is not None
+        or event.failure is not None
+        or event.recovery is not None
+        or event.evidence.descriptor()
+        != {
+            "program_id": program.program_id,
+            "program_fingerprint": program.fingerprint(),
+        }
+        or run.run_id != record.run_id
+        or run.plan_id != record.plan_id
+        or run.admission.request_id != record.request_id
         or run.status is not ActivityRunStatus.COMPENSATING
     ):
         raise FailedRunCompensationConflict(
