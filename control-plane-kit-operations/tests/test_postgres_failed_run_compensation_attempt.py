@@ -209,7 +209,117 @@ class PostgresFailedRunCompensationAttemptTests(
         self.assertEqual(sum(not result.replayed for result in results), 1)
         self.assertEqual(sum(result.replayed for result in results), 1)
         snapshot = self.binding_snapshot()
-        self.assertEqual(tuple(len(section) for section in snapshot), (1, 1, 1, 1))
+        self.assertEqual(
+            tuple(len(section) for section in snapshot),
+            (1, 1, 1, 1, 0),
+        )
+
+    def test_next_step_requires_every_prior_binding_succeeded_with_outcome(
+        self,
+    ) -> None:
+        module = self.require_attempt_contract()
+        blocking = (
+            EffectAttemptStatus.STARTED,
+            EffectAttemptStatus.FAILED,
+            EffectAttemptStatus.UNSUPPORTED,
+            EffectAttemptStatus.UNCERTAIN,
+            EffectAttemptStatus.ABANDONED,
+        )
+        for status in blocking:
+            with self.subTest(prior_status=status.value):
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                self.seed_admitted_program()
+                self.attempt_service("inverse-start-a").execute(
+                    self.start_command(position=1)
+                )
+                if status is not EffectAttemptStatus.STARTED:
+                    self.fold_bound_attempt(status)
+                before = self.binding_snapshot()
+                with self.assertRaises(
+                    module.FailedRunCompensationAttemptConflict
+                ):
+                    self.attempt_service("must-not-allocate").execute(
+                        self.start_command(position=2)
+                    )
+                self.assertEqual(self.binding_snapshot(), before)
+
+        hostile_prior_truth = (
+            (
+                "missing-outcome",
+                "DELETE FROM cpk_effect_attempt_outcomes WHERE attempt=2",
+            ),
+            (
+                "incongruent-intent",
+                "UPDATE cpk_effect_attempt_intents SET preimage='{}'::bytea "
+                "WHERE attempt=2",
+            ),
+        )
+        for label, mutation in hostile_prior_truth:
+            with self.subTest(prior_truth=label):
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                self.seed_admitted_program()
+                self.attempt_service("inverse-start-a").execute(
+                    self.start_command(position=1)
+                )
+                self.fold_bound_attempt(EffectAttemptStatus.SUCCEEDED)
+                self.connection.execute(mutation)
+                before = self.binding_snapshot()
+                with self.assertRaises(
+                    module.FailedRunCompensationAttemptConflict
+                ):
+                    self.attempt_service("must-not-allocate").execute(
+                        self.start_command(position=2)
+                    )
+                self.assertEqual(self.binding_snapshot(), before)
+
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.seed_admitted_program()
+        self.attempt_service("inverse-start-a").execute(
+            self.start_command(position=1)
+        )
+        self.fold_bound_attempt(EffectAttemptStatus.SUCCEEDED)
+        admitted = self.attempt_service("inverse-start-b").execute(
+            self.start_command(position=2)
+        )
+        self.assertIsInstance(admitted, module.NewlyBoundCompensationAttempt)
+        self.assertEqual(admitted.binding.position, 2)
+
+    def test_exact_replay_accepts_every_terminal_bound_attempt_write_free(
+        self,
+    ) -> None:
+        module = self.require_attempt_contract()
+        terminal = (
+            EffectAttemptStatus.SUCCEEDED,
+            EffectAttemptStatus.FAILED,
+            EffectAttemptStatus.UNSUPPORTED,
+            EffectAttemptStatus.UNCERTAIN,
+            EffectAttemptStatus.ABANDONED,
+        )
+        for status in terminal:
+            with self.subTest(status=status.value):
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                self.seed_admitted_program()
+                first = self.attempt_service("inverse-start-a").execute(
+                    self.start_command(position=1)
+                )
+                self.fold_bound_attempt(status)
+                before = self.binding_snapshot()
+                try:
+                    replay = self.attempt_service("must-not-allocate").execute(
+                        self.start_command(position=1)
+                    )
+                except module.FailedRunCompensationAttemptError as error:
+                    self.fail(
+                        f"exact {status.value} replay was rejected: {error}"
+                    )
+                self.assertIsInstance(
+                    replay,
+                    module.ExistingCompensationAttemptBinding,
+                )
+                self.assertTrue(replay.replayed)
+                self.assertEqual(replay.binding, first.binding)
+                self.assertEqual(replay.attempt.state.status, status)
+                self.assertEqual(self.binding_snapshot(), before)
 
     def test_changed_program_source_graph_approval_authority_and_fence_fail_closed(
         self,

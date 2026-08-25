@@ -3,13 +3,33 @@ from __future__ import annotations
 import importlib
 import os
 
-from control_plane_kit_core.operations import RunId
+from control_plane_kit_core.operations import (
+    EffectAttemptStatus,
+    EffectAttemptTransition,
+    EffectAttemptTransitionKind,
+    EffectRecoveryDecision,
+    EffectRecoveryResolution,
+    RunId,
+)
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectIntent,
     RuntimeEffectIntentSource,
 )
-from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectFailure,
+    RuntimeEffectKind,
+    RuntimeEffectResult,
+)
 from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
+from control_plane_kit_operations.effect_attempt_fold_interpreter import (
+    EffectAttemptFoldService,
+)
+from control_plane_kit_operations.effect_outcome_evidence import (
+    ExecutionEffectOutcome,
+    effect_outcome_failure,
+    effect_outcome_transition,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from tests.failed_run_compensation_fixture import (
@@ -102,6 +122,102 @@ class FailedRunCompensationAttemptFixture(FailedRunCompensationFixture):
             id_factory=Sequence(*ids),
         )
 
+    def fold_bound_attempt(self, status: EffectAttemptStatus) -> None:
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            binding = stores.failed_run_compensation_attempts.get("program-a", 1)
+            intent = stores.effect_attempt_intents.get(binding.inverse_attempt)
+
+        result = {
+            EffectAttemptStatus.SUCCEEDED: RuntimeEffectResult.succeeded(
+                "inverse-start-a",
+                evidence={"resource_fingerprint": "inverse-a"},
+            ),
+            EffectAttemptStatus.FAILED: RuntimeEffectResult.failed(
+                "inverse-start-a",
+                RuntimeEffectFailure(
+                    "runtime.effect-failed",
+                    "runtime effect reported failure",
+                ),
+            ),
+            EffectAttemptStatus.UNSUPPORTED: RuntimeEffectResult.unsupported(
+                "inverse-start-a",
+                RuntimeEffectFailure(
+                    "runtime.effect-unsupported",
+                    "runtime effect is unsupported",
+                ),
+            ),
+            EffectAttemptStatus.UNCERTAIN: RuntimeEffectResult.uncertain(
+                "inverse-start-a",
+                RuntimeEffectFailure(
+                    "runtime.effect-uncertain",
+                    "runtime effect outcome is uncertain",
+                ),
+            ),
+            EffectAttemptStatus.ABANDONED: RuntimeEffectResult.uncertain(
+                "inverse-start-a",
+                RuntimeEffectFailure(
+                    "runtime.effect-uncertain",
+                    "runtime effect outcome is uncertain",
+                ),
+            ),
+        }[status]
+        outcome = ExecutionEffectOutcome(
+            binding.inverse_attempt,
+            intent.request_fingerprint,
+            result,
+        )
+        EffectAttemptFoldService(
+            self.unit_of_work,
+            id_factory=Sequence("inverse-fold-a"),
+        ).execute(
+            FoldEffectAttempt(
+                "request-a",
+                effect_outcome_transition(outcome),
+                ExecutionWorkerAuthority(
+                    "worker-a",
+                    (__import__(
+                        "control_plane_kit_core.policies",
+                        fromlist=("PolicyScope",),
+                    ).PolicyScope.EXECUTION_OPERATE,),
+                ),
+                ExecutionLeaseFence("worker-a", 1),
+                effect_outcome_failure(outcome),
+                outcome,
+            )
+        )
+        if status is EffectAttemptStatus.ABANDONED:
+            decision = EffectRecoveryDecision(
+                "inverse-recovery-a",
+                binding.inverse_attempt,
+                EffectRecoveryResolution.ABANDONED,
+                outcome.outcome_fingerprint,
+                "d" * 64,
+            )
+            EffectAttemptFoldService(
+                self.unit_of_work,
+                id_factory=Sequence("inverse-abandoned-a"),
+            ).execute(
+                FoldEffectAttempt(
+                    "request-a",
+                    EffectAttemptTransition(
+                        EffectAttemptTransitionKind.ABANDONED,
+                        binding.inverse_attempt,
+                        recovery_decision=decision,
+                    ),
+                    ExecutionWorkerAuthority(
+                        "worker-a",
+                        (__import__(
+                            "control_plane_kit_core.policies",
+                            fromlist=("PolicyScope",),
+                        ).PolicyScope.EXECUTION_OPERATE,),
+                    ),
+                    ExecutionLeaseFence("worker-a", 1),
+                    None,
+                    None,
+                )
+            )
+
     def binding_snapshot(self):
         return (
             tuple(
@@ -131,6 +247,14 @@ class FailedRunCompensationAttemptFixture(FailedRunCompensationFixture):
                     "SELECT run_id, activity_id, attempt, request_fingerprint, "
                     "original_event_id, preimage "
                     "FROM cpk_effect_attempt_intents WHERE attempt > 1 "
+                    "ORDER BY run_id, activity_id, attempt"
+                ).fetchall()
+            ),
+            tuple(
+                self.connection.execute(
+                    "SELECT run_id, activity_id, attempt, status, "
+                    "outcome_fingerprint, direct_event_id, direct_event_ordinal, "
+                    "preimage FROM cpk_effect_attempt_outcomes WHERE attempt > 1 "
                     "ORDER BY run_id, activity_id, attempt"
                 ).fetchall()
             ),
