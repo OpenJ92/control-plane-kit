@@ -161,6 +161,8 @@ class FailedRunCompensationAttemptStartService:
             raise FailedRunCompensationAttemptConflict(
                 "compensation program has no incomplete step"
             )
+        for binding in bindings:
+            _require_succeeded_prior_binding(stores, program, binding)
         step = program.steps[command.position - 1]
         source, expected_intent = _source_truth(stores, program, step)
         if command.intent != expected_intent:
@@ -357,28 +359,14 @@ def _source_truth(stores, program, step):
 
 
 def _replay(stores, program, command, binding):
-    step = program.steps[command.position - 1]
-    source, expected_intent = _source_truth(stores, program, step)
-    try:
-        attempt = stores.effect_attempts.get(binding.inverse_attempt)
-        intent = stores.effect_attempt_intents.get(binding.inverse_attempt)
-        reverse = stores.failed_run_compensation_attempts.get_for_attempt(
-            binding.inverse_attempt
-        )
-    except (KeyError, OperationsRecordError) as error:
-        raise FailedRunCompensationAttemptConflict(
-            "inverse attempt truth is incomplete"
-        ) from error
+    attempt, intent, expected_intent = _inverse_truth(
+        stores,
+        program,
+        binding,
+    )
     invalid = (
-        reverse != binding
-        or binding.source_attempt != source.state.identity
-        or attempt.state.identity != binding.inverse_attempt
-        or attempt.state.prior_attempt != binding.source_attempt
-        or attempt.state.status is not EffectAttemptStatus.STARTED
-        or attempt.state.fence.worker_id != command.fence.worker_id
+        attempt.state.fence.worker_id != command.fence.worker_id
         or attempt.state.fence.generation != command.fence.generation
-        or intent.identity != binding.inverse_attempt
-        or intent.intent != expected_intent
         or intent.intent != command.intent
         or intent.request_fingerprint
         != runtime_effect_intent_fingerprint(command.intent)
@@ -393,6 +381,84 @@ def _replay(stores, program, command, binding):
         intent,
         True,
     )
+
+
+def _require_succeeded_prior_binding(stores, program, binding) -> None:
+    attempt, _, _ = _inverse_truth(stores, program, binding)
+    if (
+        attempt.state.status is not EffectAttemptStatus.SUCCEEDED
+        or attempt.latest_transition_event.kind
+        is not ActivityEventKind.STEP_COMPENSATION_SUCCEEDED
+    ):
+        raise FailedRunCompensationAttemptConflict(
+            "prior compensation attempt is incomplete"
+        )
+    try:
+        outcome = stores.effect_outcomes.get(
+            binding.inverse_attempt,
+            attempt.latest_transition_event.event_id,
+        )
+    except (KeyError, OperationsRecordError) as error:
+        raise FailedRunCompensationAttemptConflict(
+            "prior compensation outcome is incomplete"
+        ) from error
+    invalid = (
+        outcome.attempt != attempt
+        or outcome.outcome.identity != binding.inverse_attempt
+        or outcome.outcome.request_fingerprint
+        != attempt.state.request_fingerprint
+        or outcome.outcome.outcome_fingerprint
+        != attempt.state.outcome_fingerprint
+    )
+    if invalid:
+        raise FailedRunCompensationAttemptConflict(
+            "prior compensation outcome is incongruent"
+        )
+
+
+def _inverse_truth(stores, program, binding):
+    if not 1 <= binding.position <= len(program.steps):
+        raise FailedRunCompensationAttemptConflict(
+            "inverse attempt binding position is incongruent"
+        )
+    step = program.steps[binding.position - 1]
+    source, expected_intent = _source_truth(stores, program, step)
+    source_identity = source.state.identity
+    expected_inverse = EffectAttemptIdentity(
+        source_identity.run_id,
+        source_identity.activity_id,
+        source_identity.attempt + 1,
+    )
+    try:
+        attempt = stores.effect_attempts.get_for_update(
+            binding.inverse_attempt
+        )
+        intent = stores.effect_attempt_intents.get(binding.inverse_attempt)
+        reverse = stores.failed_run_compensation_attempts.get_for_attempt(
+            binding.inverse_attempt
+        )
+    except (KeyError, OperationsRecordError) as error:
+        raise FailedRunCompensationAttemptConflict(
+            "inverse attempt truth is incomplete"
+        ) from error
+    invalid = (
+        reverse != binding
+        or binding.source_attempt != source_identity
+        or binding.inverse_attempt != expected_inverse
+        or attempt.state.identity != expected_inverse
+        or attempt.state.prior_attempt != source_identity
+        or attempt.original_start_event.kind
+        is not ActivityEventKind.STEP_COMPENSATION_STARTED
+        or intent.identity != expected_inverse
+        or intent.original_start_event != attempt.original_start_event
+        or intent.intent != expected_intent
+        or intent.request_fingerprint != attempt.state.request_fingerprint
+    )
+    if invalid:
+        raise FailedRunCompensationAttemptConflict(
+            "inverse attempt truth is incongruent"
+        )
+    return attempt, intent, expected_intent
 
 
 def _observed_at(stores) -> str:
