@@ -403,6 +403,14 @@ consumer_kind = "production"
 consumer = "FailedRunCompensationCommandService admits one exact reverse-ordered compensation program"
 
 [[read]]
+module = "control_plane_kit_operations.postgres.failed_run_compensation_store"
+selector = "FailedRunCompensationStore.get"
+category = "exact-verifier"
+sql = "exact program identity; complete ordered relational steps; canonical preimage congruence"
+consumer_kind = "production"
+consumer = "FailedRunCompensationCommandService verifies exact restart replay truth"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.effect_outcome_store"
 selector = "EffectAttemptOutcomeStore.get"
 category = "exact-verifier"
