@@ -20,6 +20,9 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import (
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.postgres.current_schema_contract import (
+    CURRENT_POSTGRES_SCHEMA_CONTRACT,
+)
 from control_plane_kit_operations.records import OperationsRecordError
 from tests.failed_run_compensation_attempt_fixture import (
     FailedRunCompensationAttemptFixture,
@@ -70,6 +73,39 @@ class PostgresFailedRunCompensationAttemptTests(
         self.assertIn(
             "CREATE TABLE cpk_failed_run_compensation_attempt_bindings",
             source,
+        )
+        relation = "cpk_failed_run_compensation_attempt_bindings"
+        self.assertEqual(
+            tuple(
+                column.name
+                for column in CURRENT_POSTGRES_SCHEMA_CONTRACT.columns
+                if column.relation == relation
+            ),
+            (
+                "program_id",
+                "position",
+                "source_run_id",
+                "source_activity_id",
+                "source_attempt",
+                "inverse_run_id",
+                "inverse_activity_id",
+                "inverse_attempt",
+            ),
+        )
+        constraint_names = {
+            constraint.name
+            for constraint in CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints
+            if constraint.relation == relation
+        }
+        self.assertEqual(
+            constraint_names,
+            {
+                "cpk_failed_run_compensation_attempt_bindings_identity_check",
+                "cpk_failed_run_compensation_attempt_bindings_inverse_attempt_fk",
+                "cpk_failed_run_compensation_attempt_bindings_inverse_key",
+                "cpk_failed_run_compensation_attempt_bindings_pkey",
+                "cpk_failed_run_compensation_attempt_bindings_source_step_fk",
+            },
         )
 
     def test_first_incomplete_step_starts_one_exact_linked_inverse_atomically(self) -> None:
@@ -282,21 +318,21 @@ class PostgresFailedRunCompensationAttemptTests(
                 result.binding,
             )
         before = self.binding_snapshot()
-        drift_rows = (
-            (
+        with self.assertRaises(psycopg.IntegrityError):
+            self.connection.execute(
                 "UPDATE cpk_failed_run_compensation_attempt_bindings "
-                "SET inverse_attempt=3 WHERE program_id='program-a' AND position=1",
-                "inverse",
-            ),
-            (
-                "UPDATE cpk_failed_run_compensation_steps SET "
-                "source_outcome_fingerprint=%s WHERE program_id='program-a' AND position=1",
-                "source",
-            ),
+                "SET inverse_attempt=3 WHERE program_id='program-a' AND position=1"
+            )
+        self.assertEqual(self.binding_snapshot(), before)
+        drift_rows = (
+            "UPDATE cpk_failed_run_compensation_steps SET "
+            "source_outcome_fingerprint=%s WHERE program_id='program-a' AND position=1",
+            "UPDATE cpk_effect_attempt_intents SET preimage=%s "
+            "WHERE run_id='run-a' AND activity_id='start-node' AND attempt=2",
         )
-        for query, label in drift_rows:
-            with self.subTest(drift=label):
-                params = ("f" * 64,) if "%s" in query else ()
+        for position, query in enumerate(drift_rows, start=1):
+            with self.subTest(drift=position):
+                params = (("f" * 64) if position == 1 else b"{}",)
                 self.connection.execute(query, params)
                 with self.assertRaises((OperationsRecordError, module.FailedRunCompensationAttemptConflict)):
                     self.attempt_service("must-not-allocate").execute(
