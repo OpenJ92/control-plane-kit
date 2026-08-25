@@ -404,11 +404,19 @@ consumer = "FailedRunCompensationCommandService admits one exact reverse-ordered
 
 [[read]]
 module = "control_plane_kit_operations.postgres.failed_run_compensation_store"
-selector = "FailedRunCompensationStore.get"
+selector = "FailedRunCompensationStore._get"
 category = "exact-verifier"
 sql = "exact program identity; complete ordered relational steps; canonical preimage congruence"
 consumer_kind = "production"
 consumer = "FailedRunCompensationCommandService verifies exact restart replay truth"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store"
+selector = "FailedRunCompensationAttemptStore.for_program"
+category = "internal-complete"
+sql = "exact program identity; complete position-ordered immutable compensation-attempt bindings"
+consumer_kind = "production"
+consumer = "FailedRunCompensationAttemptStartService selects only the first incomplete compensation step"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.effect_outcome_store"

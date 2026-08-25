@@ -12,6 +12,9 @@ from control_plane_kit_operations.postgres.execution import PostgresExecutionSto
 from control_plane_kit_operations.postgres.failed_run_compensation_store import (
     FailedRunCompensationStore,
 )
+from control_plane_kit_operations.postgres.failed_run_compensation_attempt_store import (
+    FailedRunCompensationAttemptStore,
+)
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
 )
@@ -61,6 +64,7 @@ __all__ = [
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
     "FailedRunCompensationStore",
+    "FailedRunCompensationAttemptStore",
     "DelegationSigningKeyStore",
     "PostgresGraphTopologyStore",
     "PostgresRealizedGraphProjectionStore",

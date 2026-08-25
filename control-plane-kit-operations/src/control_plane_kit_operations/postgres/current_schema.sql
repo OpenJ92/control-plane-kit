@@ -86,6 +86,18 @@ CREATE TABLE cpk_failed_run_compensation_steps (
     CONSTRAINT cpk_failed_run_compensation_steps_material_source_check CHECK ((material_source = ANY (ARRAY['base-graph'::text, 'desired-graph'::text])))
 );
 
+CREATE TABLE cpk_failed_run_compensation_attempt_bindings (
+    program_id text NOT NULL,
+    position integer NOT NULL,
+    source_run_id text NOT NULL,
+    source_activity_id text NOT NULL,
+    source_attempt integer NOT NULL,
+    inverse_run_id text NOT NULL,
+    inverse_activity_id text NOT NULL,
+    inverse_attempt integer NOT NULL,
+    CONSTRAINT cpk_failed_run_compensation_attempt_bindings_identity_check CHECK (((position > 0) AND (source_attempt > 0) AND (source_attempt < 2147483647) AND (inverse_attempt = (source_attempt + 1)) AND (inverse_run_id = source_run_id) AND (inverse_activity_id = source_activity_id)))
+);
+
 CREATE TABLE cpk_effect_attempt_intents (
     run_id text NOT NULL,
     activity_id text NOT NULL,
@@ -838,6 +850,15 @@ ALTER TABLE ONLY cpk_failed_run_compensation_steps
 ALTER TABLE ONLY cpk_failed_run_compensation_steps
     ADD CONSTRAINT cpk_failed_run_compensation_steps_source_key UNIQUE (program_id, source_run_id, source_activity_id, source_attempt);
 
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_binding_key UNIQUE (program_id, position, source_run_id, source_activity_id, source_attempt);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_attempt_bindings
+    ADD CONSTRAINT cpk_failed_run_compensation_attempt_bindings_pkey PRIMARY KEY (program_id, position);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_attempt_bindings
+    ADD CONSTRAINT cpk_failed_run_compensation_attempt_bindings_inverse_key UNIQUE (inverse_run_id, inverse_activity_id, inverse_attempt);
+
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_pkey PRIMARY KEY (decision_id);
 
@@ -1156,6 +1177,12 @@ ALTER TABLE ONLY cpk_failed_run_compensation_steps
 
 ALTER TABLE ONLY cpk_failed_run_compensation_steps
     ADD CONSTRAINT cpk_failed_run_compensation_steps_completion_event_fk FOREIGN KEY (source_completion_event_id, source_run_id, source_completion_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_attempt_bindings
+    ADD CONSTRAINT cpk_failed_run_compensation_attempt_bindings_source_step_fk FOREIGN KEY (program_id, position, source_run_id, source_activity_id, source_attempt) REFERENCES cpk_failed_run_compensation_steps(program_id, position, source_run_id, source_activity_id, source_attempt);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_attempt_bindings
+    ADD CONSTRAINT cpk_failed_run_compensation_attempt_bindings_inverse_attempt_fk FOREIGN KEY (inverse_run_id, inverse_activity_id, inverse_attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt);
 
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_request_id_fkey FOREIGN KEY (request_id) REFERENCES cpk_approval_requests(request_id);

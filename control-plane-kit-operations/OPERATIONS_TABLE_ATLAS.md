@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=d13ca171165cbb11185e84647e71fee34c1e5d29fc4935bdc962ee150f6f9f85 relations=35 columns=469 constraints=349 indexes=116 foreign-keys=78 -->
+<!-- current-schema-contract: sha256=b4e6dbec5d5c7947509ee359e7d16d976582b8081030ab26ea77a0b627f132bd relations=36 columns=477 constraints=355 indexes=119 foreign-keys=80 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -292,6 +292,8 @@ cpk_execution_requests -->|cpk_execution_requests_approval_request_id_fkey| cpk_
 cpk_execution_requests -->|cpk_execution_requests_plan_session_fk| cpk_activity_plans
 cpk_execution_requests -->|cpk_execution_requests_workspace_id_fkey| cpk_workspaces
 cpk_execution_requests -->|cpk_execution_requests_workspace_session_fk| cpk_operation_sessions
+cpk_failed_run_compensation_attempt_bindings -->|cpk_failed_run_compensation_attempt_bindings_inverse_attempt_fk| cpk_effect_attempts
+cpk_failed_run_compensation_attempt_bindings -->|cpk_failed_run_compensation_attempt_bindings_source_step_fk| cpk_failed_run_compensation_steps
 cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_completion_event_fk| cpk_activity_events
 cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_program_fk| cpk_failed_run_compensations
 cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_source_outcome_fk| cpk_effect_attempt_outcomes
@@ -381,6 +383,8 @@ order is semantically significant for every composite identity.
 | `cpk_execution_requests_plan_session_fk` | `cpk_execution_requests` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The execution request and plan share one session. |
 | `cpk_execution_requests_workspace_id_fkey` | `cpk_execution_requests` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every execution request is workspace scoped. |
 | `cpk_execution_requests_workspace_session_fk` | `cpk_execution_requests` | `session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | The request workspace must match its session workspace. |
+| `cpk_failed_run_compensation_attempt_bindings_inverse_attempt_fk` | `cpk_failed_run_compensation_attempt_bindings` | `inverse_run_id, inverse_activity_id, inverse_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | Every compensation step binds one fresh inverse effect attempt. |
+| `cpk_failed_run_compensation_attempt_bindings_source_step_fk` | `cpk_failed_run_compensation_attempt_bindings` | `program_id, position, source_run_id, source_activity_id, source_attempt` | `cpk_failed_run_compensation_steps` | `program_id, position, source_run_id, source_activity_id, source_attempt` | A binding must retain the exact admitted program step and successful source identity. |
 | `cpk_failed_run_compensation_steps_completion_event_fk` | `cpk_failed_run_compensation_steps` | `source_completion_event_id, source_run_id, source_completion_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Every compensation step cites the exact direct success event that admitted its inverse. |
 | `cpk_failed_run_compensation_steps_program_fk` | `cpk_failed_run_compensation_steps` | `program_id` | `cpk_failed_run_compensations` | `program_id` | Every ordered inverse belongs to one immutable compensation program. |
 | `cpk_failed_run_compensation_steps_source_outcome_fk` | `cpk_failed_run_compensation_steps` | `source_run_id, source_activity_id, source_attempt` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt` | A compensation step is admitted only from one durable direct effect outcome. |
@@ -587,18 +591,31 @@ order is semantically significant for every composite identity.
 - **Sensitive material:** Worker and actor identifiers are bounded operational metadata; no effect payload, credential, or secret value is stored.
 - **Future impact:** #1555 must decide whether node-control attempts reuse this approved-plan queue or own a distinct intent table without weakening approval identity.
 
+### `cpk_failed_run_compensation_attempt_bindings`
+- **Durable meaning and owner:** `FailedRunCompensationAttemptStore` owns the immutable relation between one admitted compensation step and its fresh inverse attempt.
+- **Identity and cardinality:** `(program_id, position)` is primary and the inverse attempt identity is independently unique, making the relation bidirectional and one-to-one.
+- **Outgoing foreign keys:** The row names the exact ordered source step and the exact newly started inverse effect attempt.
+- **Inbound dependents:** No current relation depends on a binding; later execution reads it as durable admission truth.
+- **Writers and transactions:** `FailedRunCompensationAttemptStartService` appends the start event, protected intent, attempt, and binding in one caller-owned transaction.
+- **Readers and projections:** Exact replay reads by program position or reverse attempt identity and reconstructs the same typed binding.
+- **Mutation, locks, retries, and idempotency:** Rows are immutable; the program row serializes first-incomplete-step selection, and exact replay performs no writes.
+- **Lifecycle, retention, deletion, and restore:** Restore programs and steps, source outcomes, start events, protected intents, and attempts before restoring bindings.
+- **JSON boundary:** None; both identities and the ordered program coordinate are bounded relational columns.
+- **Sensitive material:** The relation contains only durable topology identities; no protected intent payload, authority material, diagnostics, address, or secret value is copied into it.
+- **Future impact:** #1729 may dispatch only the exact bound attempt and must not infer a different inverse or synthesize a replacement binding.
+
 ### `cpk_failed_run_compensation_steps`
 - **Durable meaning and owner:** `FailedRunCompensationStore` owns the exact reverse-ordered inverse operations admitted from proven successful effects.
 - **Identity and cardinality:** `(program_id, position)` is primary; one source effect identity may occur only once in a program.
 - **Outgoing foreign keys:** Each step binds its program, immutable direct effect outcome, and exact direct success event coordinate.
-- **Inbound dependents:** No current relation references a step; later execution must consume this exact program rather than synthesize new inverses.
+- **Inbound dependents:** Compensation-attempt bindings cite the exact ordered step and successful source identity.
 - **Writers and transactions:** The failed-run compensation command appends every step in the same caller-owned transaction as its program, action, start event, and run fold.
 - **Readers and projections:** Restart reconstruction reads positions in ascending order and verifies the closed Core program fingerprint.
 - **Mutation, locks, retries, and idempotency:** Steps are immutable; replay reads the existing program without allocating identifiers or rewriting rows.
 - **Lifecycle, retention, deletion, and restore:** Restore successful outcomes and events, then the program, then its steps; restrictive references preserve source evidence.
 - **JSON boundary:** `operation` is one closed Core activity-operation descriptor; source identities, fingerprints, and material source remain relational.
 - **Sensitive material:** Steps contain topology operation identifiers and fingerprints only; provider diagnostics, credentials, addresses, and secret values are forbidden.
-- **Future impact:** #1726 may interpret these values, but cannot reorder, broaden, or infer additional provider actions.
+- **Future impact:** #1729 may interpret these values only through their exact binding; it cannot reorder, broaden, or infer additional external actions.
 
 ### `cpk_failed_run_compensations`
 - **Durable meaning and owner:** `FailedRunCompensationStore` owns one authorized immutable compensation decision and complete exact program preimage for a failed run.
