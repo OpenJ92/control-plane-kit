@@ -112,8 +112,8 @@ class FailedRunCompensationAttemptFixture(FailedRunCompensationFixture):
             ),
             tuple(
                 self.connection.execute(
-                    "SELECT event_id, run_id, ordinal, event_type, activity_id, "
-                    "evidence FROM cpk_activity_events "
+                    "SELECT event_id, run_id, ordinal, event_type, payload "
+                    "FROM cpk_activity_events "
                     "WHERE event_type='step_compensation_started' "
                     "ORDER BY run_id, ordinal"
                 ).fetchall()
