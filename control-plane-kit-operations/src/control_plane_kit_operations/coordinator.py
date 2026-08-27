@@ -6,7 +6,12 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any, Callable, Mapping, Protocol
 
-from control_plane_kit_core.operations import RunId
+from control_plane_kit_core.operations import (
+    EffectAttemptIdentity,
+    EffectAttemptTransition,
+    EffectAttemptTransitionKind,
+    RunId,
+)
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -31,23 +36,56 @@ from control_plane_kit_core.planning.saga import (
     project_activity_journal,
 )
 from control_plane_kit_core.policies import PolicyScope
-from control_plane_kit_core.probe_intents import (
-    ProbeKind,
-    ProbeOutcome,
-    RuntimeEndpointObservation,
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint,
+    runtime_effect_request_for_intent,
 )
 from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectFailure,
     RuntimeEffectRequest,
     RuntimeEffectResult,
 )
 from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
 )
-from control_plane_kit_core.topology import (
-    GraphDescriptorError,
-)
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.effect_attempt_fold import (
+    EffectAttemptFoldConflict,
+    EffectAttemptFoldDenied,
+    EffectAttemptFoldNotFound,
+    EffectAttemptFoldResult,
+    ExistingFold,
+    FoldEffectAttempt,
+    NewlyFolded,
+)
+from control_plane_kit_operations.effect_attempt_fold_interpreter import (
+    EffectAttemptFoldService,
+)
+from control_plane_kit_operations.effect_attempt_reconciliation import (
+    EffectAttemptReconciliationConflict,
+    EffectAttemptReconciliationDenied,
+    EffectAttemptReconciliationNotFound,
+    ReconcileEffectAttempt,
+)
+from control_plane_kit_operations.effect_attempt_start import (
+    EffectAttemptStartConflict,
+    EffectAttemptStartDenied,
+    EffectAttemptStartNotFound,
+    EffectAttemptStartResult,
+    ExistingAttempt,
+    NewlyStarted,
+    StartEffectAttempt,
+)
+from control_plane_kit_operations.effect_attempt_start_interpreter import (
+    EffectAttemptStartService,
+)
+from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
+from control_plane_kit_operations.effect_outcome_evidence import (
+    ExecutionEffectOutcome,
+    effect_outcome_failure,
+    effect_outcome_transition,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
     CompleteActivityRun,
@@ -83,7 +121,6 @@ from control_plane_kit_operations.records import (
     ExecutionRequestRecord,
     FailureEvidence,
     ObservationRecord,
-    ObservationStatus,
     OperationsRecordError,
     RealizedGraphProjectionRecord,
 )
@@ -408,6 +445,12 @@ class ActivityExecutionAdapter(Protocol):
         context: ActivityRealizationContext,
     ) -> ActivityExecutionOutcome: ...
 
+    def execute_runtime(
+        self,
+        context: ActivityRealizationContext,
+        request: RuntimeEffectRequest,
+    ) -> RuntimeEffectResult: ...
+
 
 @dataclass(frozen=True)
 class ActivityExecutionDispatcher:
@@ -426,32 +469,47 @@ class ActivityExecutionDispatcher:
         self,
         context: ActivityRealizationContext,
     ) -> ActivityExecutionOutcome:
-        if not isinstance(context, ActivityRealizationContext):
-            raise InvalidOperationCommand(
-                "activity dispatch requires ActivityRealizationContext"
-            )
-        if isinstance(
-            context.activity.operation,
-            (AllocatePublicIngress, RemovePublicIngress),
-        ):
-            if self.ingress is None:
-                return ActivityExecutionOutcome.unsupported(
-                    FailureEvidence(
-                        FailureCategory.OPERATOR_REVIEW,
-                        "ingress.interpreter-missing",
-                        "no ingress activity adapter is configured",
-                        BoundedEvidence.from_mapping(
-                            {
-                                "activity_id": context.activity.activity_id.value,
-                                "operation": type(
-                                    context.activity.operation
-                                ).__name__,
-                            }
-                        ),
+        if isinstance(context, ActivityRealizationContext):
+            if isinstance(
+                context.activity.operation,
+                (AllocatePublicIngress, RemovePublicIngress),
+            ):
+                if self.ingress is None:
+                    return ActivityExecutionOutcome.unsupported(
+                        FailureEvidence(
+                            FailureCategory.OPERATOR_REVIEW,
+                            "ingress.interpreter-missing",
+                            "no ingress activity adapter is configured",
+                            BoundedEvidence.from_mapping(
+                                {
+                                    "activity_id": context.activity.activity_id.value,
+                                    "operation": type(
+                                        context.activity.operation
+                                    ).__name__,
+                                }
+                            ),
+                        )
                     )
-                )
-            return self.ingress.execute(context)
-        return self.runtime.execute(context)
+                return self.ingress.execute(context)
+            match context.activity.operation:
+                case (
+                    AddSocketConnection()
+                    | SwitchSocketConnection()
+                    | RemoveSocketConnection()
+                ):
+                    return self.runtime.execute(context)
+                case _:
+                    pass
+        raise InvalidOperationCommand(
+            "runtime activities require the runtime dispatch arm"
+        )
+
+    def execute_runtime(
+        self,
+        context: ActivityRealizationContext,
+        request: RuntimeEffectRequest,
+    ) -> RuntimeEffectResult:
+        return self.runtime.execute_runtime(context, request)
 
 
 class RuntimeEffectInterpreter(Protocol):
@@ -503,37 +561,58 @@ class RuntimeInterpreterDispatcher:
         self,
         context: ActivityRealizationContext,
     ) -> ActivityExecutionOutcome:
-        if not isinstance(context, ActivityRealizationContext):
-            raise InvalidOperationCommand(
-                "runtime dispatch requires ActivityRealizationContext"
-            )
-        if _is_socket_connection_operation(context.activity):
+        if (
+            isinstance(context, ActivityRealizationContext)
+            and _is_socket_connection_operation(context.activity)
+        ):
             return _socket_connection_outcome(context)
-        try:
-            from control_plane_kit_operations.runtime_effects import (
-                runtime_effect_request_for_context,
-            )
+        raise InvalidOperationCommand(
+            "runtime activities require the runtime dispatch arm"
+        )
 
-            request = runtime_effect_request_for_context(context)
-        except (GraphDescriptorError, InvalidOperationCommand, KeyError, ValueError) as error:
-            return _unsupported_dispatch(
-                context,
-                "runtime.dispatch-target-unsupported",
-                str(error),
-            )
+    def execute_runtime(
+        self,
+        context: ActivityRealizationContext,
+        request: RuntimeEffectRequest,
+    ) -> RuntimeEffectResult:
+        invalid_message = None
+        if (
+            type(context) is not ActivityRealizationContext
+            or type(request) is not RuntimeEffectRequest
+        ):
+            invalid_message = "runtime dispatch requires exact context and request"
+        else:
+            source = request.source
+            if (
+                request.effect_id != context.intent_event.event_id
+                or source.workspace_id != context.request.identity.workspace_id
+                or source.request_id != context.request.identity.request_id
+                or source.run_id.value != context.run.run_id
+                or source.plan_id != context.plan_record.plan_id
+                or source.base_graph_id != context.plan_record.base_graph_id
+                or source.desired_graph_id != context.plan_record.desired_graph_id
+                or source.intent_event_id != context.intent_event.event_id
+                or request.activity_id != context.activity.activity_id
+                or request.operation != context.activity.operation
+            ):
+                invalid_message = (
+                    "runtime dispatch context and request are incongruent"
+                )
+        if invalid_message is not None:
+            raise InvalidOperationCommand(invalid_message)
         runtime_kind = request.runtime_kind
         interpreter = self.interpreters.get(runtime_kind)
         if interpreter is None:
-            return _unsupported_dispatch(
-                context,
+            return _unsupported_runtime_result(
+                request,
                 "runtime.interpreter-missing",
                 f"no runtime interpreter is configured for {runtime_kind.value!r}",
                 runtime_kind=runtime_kind,
             )
         authority = _runtime_authority_for_request(context, request)
         if authority is _MISSING_RUNTIME_AUTHORITY:
-            return _unsupported_dispatch(
-                context,
+            return _unsupported_runtime_result(
+                request,
                 "runtime.authority-missing",
                 "runtime authority reference has no active registration",
                 runtime_kind=runtime_kind,
@@ -545,32 +624,45 @@ class RuntimeInterpreterDispatcher:
                 authority=authority,
             )
         except SecretProviderRegistrationError:
-            return _unsupported_dispatch(
-                context,
+            return _unsupported_runtime_result(
+                request,
                 "secret.use-not-authorized",
                 "runtime secret use was not authorized",
                 runtime_kind=runtime_kind,
             )
         except InvalidOperationCommand:
-            return _unsupported_dispatch(
-                context,
+            return _unsupported_runtime_result(
+                request,
                 "secret.resolution-authorizer-invalid",
                 "runtime secret authorization could not be established",
                 runtime_kind=runtime_kind,
             )
-        if authority is None:
-            result = interpreter.execute(request)
-        else:
-            execute_with_authority = getattr(interpreter, "execute_with_authority", None)
-            if execute_with_authority is None:
-                return _unsupported_dispatch(
-                    context,
-                    "runtime.authority-interpreter-unsupported",
-                    "runtime interpreter cannot consume registered runtime authority",
-                    runtime_kind=runtime_kind,
+        result = None
+        try:
+            if authority is None:
+                result = interpreter.execute(request)
+            else:
+                execute_with_authority = getattr(
+                    interpreter,
+                    "execute_with_authority",
+                    None,
                 )
-            result = execute_with_authority(request, authority)
-        return _outcome_from_runtime_result(context, result)
+                if execute_with_authority is None:
+                    return _unsupported_runtime_result(
+                        request,
+                        "runtime.authority-interpreter-unsupported",
+                        "runtime interpreter cannot consume registered runtime authority",
+                        runtime_kind=runtime_kind,
+                    )
+                result = execute_with_authority(request, authority)
+        except Exception:  # noqa: BLE001 - provider faults become direct uncertainty.
+            pass
+        if (
+            type(result) is not RuntimeEffectResult
+            or result.effect_id != request.effect_id
+        ):
+            return _uncertain_runtime_result(request)
+        return result
 
     def _authorize_secret_resolutions(
         self,
@@ -579,10 +671,6 @@ class RuntimeInterpreterDispatcher:
         *,
         authority: RegisteredRuntimeAuthority | None,
     ) -> RuntimeEffectRequest:
-        from control_plane_kit_operations.runtime_effects import (
-            required_secret_uses_for_runtime_effect,
-        )
-
         required_uses = required_secret_uses_for_runtime_effect(request, authority)
         if not required_uses:
             return request
@@ -604,7 +692,6 @@ class RuntimeInterpreterDispatcher:
                         intent=intent,
                         actor_subject=context.authority.worker_id,
                         operation_id=request.source.request_id,
-                        session_id=context.plan_record.session_id,
                         run_id=request.source.run_id.value,
                         activity_id=request.activity_id.value,
                         effect_id=request.effect_id,
@@ -612,7 +699,6 @@ class RuntimeInterpreterDispatcher:
                     requested_at=context.intent_event.occurred_at,
                     actor_scopes=context.authority.scopes,
                     operation_id=request.source.request_id,
-                    session_id=context.plan_record.session_id,
                     run_id=request.source.run_id.value,
                     activity_id=request.activity_id.value,
                     effect_id=request.effect_id,
@@ -705,12 +791,18 @@ class ExecutionCoordinator:
         *,
         lifecycle: RunLifecycleCommandService,
         adapter: ActivityExecutionAdapter,
+        start_service: EffectAttemptStartService,
+        fold_service: EffectAttemptFoldService,
+        reconciliation_service: EffectAttemptReconciliationService,
         clock: Callable[[], str],
         id_factory: Callable[[], str],
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._lifecycle = lifecycle
         self._adapter = adapter
+        self._start_service = start_service
+        self._fold_service = fold_service
+        self._reconciliation_service = reconciliation_service
         self._clock = clock
         self._id_factory = id_factory
 
@@ -720,53 +812,307 @@ class ExecutionCoordinator:
         current: ExecutionCoordinatorResult | None = None
         for _ in range(command.max_effects):
             context = self._load_context(command)
-            current = self._classify_current(context)
-            if current.status is not CoordinatorStatus.PROGRESSED:
+            current = self._classify_current(context, attempted)
+            if current.status not in (
+                CoordinatorStatus.PROGRESSED,
+                CoordinatorStatus.IN_FLIGHT,
+            ):
                 return current
             activity = current.activity_id
             if activity is None:
                 raise ExecutionCoordinatorConflict("ready activity identity is missing")
             planned = context.plan.activity(ActivityId(activity))
-            intent_event = self._record_step_event(
-                command,
-                planned,
-                ActivityEventKind.STEP_STARTED,
-                BoundedEvidence.from_mapping({"phase": "intent"}),
-            )
-            realization = context.realization_context(planned, intent_event)
-            attempted += 1
-            try:
-                outcome = self._adapter.execute(realization)
-            except Exception as error:  # noqa: BLE001 - adapter errors become uncertainty evidence.
-                outcome = ActivityExecutionOutcome.uncertain(
-                    FailureEvidence(
-                        FailureCategory.UNCERTAIN,
-                        "adapter-result-unknown",
-                        "adapter raised before a durable result was recorded",
-                        BoundedEvidence.from_mapping(
-                            {"exception_type": type(error).__name__}
-                        ),
-                    )
+            legacy = False
+            match planned.operation:
+                case (
+                    AllocatePublicIngress()
+                    | RemovePublicIngress()
+                    | AddSocketConnection()
+                    | SwitchSocketConnection()
+                    | RemoveSocketConnection()
+                ):
+                    legacy = True
+                case _:
+                    pass
+            if current.status is CoordinatorStatus.IN_FLIGHT and legacy:
+                return current
+            if legacy:
+                selected_event = self._record_step_event(
+                    command,
+                    planned,
+                    ActivityEventKind.STEP_STARTED,
+                    BoundedEvidence.from_mapping({"phase": "intent"}),
                 )
-            outcome = self._record_outcome(command, planned, outcome)
-            if outcome.kind is EffectResultKind.SUCCEEDED:
-                continue
-            classified = self._classify_current(self._load_context(command))
-            run = classified.run
-            if outcome.kind is EffectResultKind.UNSUPPORTED:
-                status = CoordinatorStatus.UNSUPPORTED
-            elif outcome.kind is EffectResultKind.UNCERTAIN:
-                status = CoordinatorStatus.UNCERTAIN
+                attempted += 1
             else:
-                status = CoordinatorStatus.FAILED
-            return ExecutionCoordinatorResult(
-                run,
-                status,
-                attempted,
-                planned.activity_id.value,
-            )
+                selected_event = None
+            service_failure = None
+            service_message = None
+            started: EffectAttemptStartResult | None = None
+            intent = None
+            transition = None
+            if not legacy:
+                intent = _runtime_effect_intent_for_context(context, planned)
+                transition = EffectAttemptTransition(
+                    EffectAttemptTransitionKind.STARTED,
+                    EffectAttemptIdentity(
+                        intent.source.run_id,
+                        planned.activity_id.value,
+                        1,
+                    ),
+                    request_fingerprint=runtime_effect_intent_fingerprint(intent),
+                )
+                start_command = StartEffectAttempt(
+                    request_id=context.request.identity.request_id,
+                    transition=transition,
+                    intent=intent,
+                    authority=command.authority,
+                    fence=command.fence,
+                )
+                try:
+                    started = self._start_service.execute(start_command)
+                except EffectAttemptStartNotFound:
+                    service_failure = "not-found"
+                    service_message = "effect attempt start truth was not found"
+                except EffectAttemptStartConflict:
+                    service_failure = "conflict"
+                    service_message = "effect attempt start truth is invalid"
+                except EffectAttemptStartDenied:
+                    service_failure = "denied"
+                    service_message = "effect attempt start authority is invalid"
+                attempted += 1
+            selected_conflict = None
+            attempt = None
+            existing = False
+            if not legacy and service_failure is None:
+                assert transition is not None
+                if type(started) not in (NewlyStarted, ExistingAttempt):
+                    selected_conflict = "effect attempt service result is invalid"
+                else:
+                    attempt = started.attempt
+                    invalid_attempt = type(attempt) is not EffectAttemptRecord
+                    if not invalid_attempt:
+                        try:
+                            attempt = EffectAttemptRecord(
+                                attempt.state,
+                                attempt.original_start_event,
+                                attempt.latest_transition_event,
+                            )
+                        except OperationsRecordError:
+                            invalid_attempt = True
+                    if invalid_attempt:
+                        selected_conflict = "effect attempt service result is invalid"
+                    elif (
+                        attempt.state.identity != transition.identity
+                        or attempt.state.request_fingerprint
+                        != transition.request_fingerprint
+                        or attempt.state.fence.worker_id != command.fence.worker_id
+                        or attempt.state.fence.generation != command.fence.generation
+                        or attempt.original_start_event.run_id != command.run_id
+                        or attempt.original_start_event.activity_id
+                        != planned.activity_id.value
+                        or attempt.original_start_event.kind
+                        is not ActivityEventKind.STEP_STARTED
+                    ):
+                        selected_conflict = "effect attempt start result is invalid"
+                    else:
+                        existing = started.__class__ is ExistingAttempt
+
+            realization = None
+            if legacy or (
+                service_failure is None
+                and selected_conflict is None
+                and not existing
+            ):
+                if selected_event is None:
+                    assert attempt is not None
+                    selected_event = attempt.original_start_event
+                realization = context.realization_context(planned, selected_event)
+
+            if legacy:
+                assert realization is not None
+                try:
+                    legacy_outcome = self._adapter.execute(realization)
+                except Exception as error:  # noqa: BLE001 - adapter uncertainty.
+                    legacy_outcome = ActivityExecutionOutcome.uncertain(
+                        FailureEvidence(
+                            FailureCategory.UNCERTAIN,
+                            "adapter-result-unknown",
+                            "adapter raised before a durable result was recorded",
+                            BoundedEvidence.from_mapping(
+                                {"exception_type": type(error).__name__}
+                            ),
+                        )
+                    )
+                legacy_outcome = self._record_outcome(
+                    command,
+                    planned,
+                    legacy_outcome,
+                )
+                if legacy_outcome.kind is not EffectResultKind.SUCCEEDED:
+                    classified = self._classify_current(
+                        self._load_context(command)
+                    )
+                    if legacy_outcome.kind is EffectResultKind.UNSUPPORTED:
+                        status = CoordinatorStatus.UNSUPPORTED
+                    elif legacy_outcome.kind is EffectResultKind.UNCERTAIN:
+                        status = CoordinatorStatus.UNCERTAIN
+                    else:
+                        status = CoordinatorStatus.FAILED
+                    return ExecutionCoordinatorResult(
+                        classified.run,
+                        status,
+                        attempted,
+                        planned.activity_id.value,
+                    )
+            elif service_failure is None and selected_conflict is None and existing:
+                assert attempt is not None
+                if attempt.state.recovery_decision is not None:
+                    selected_conflict = (
+                        "effect attempt recovery requires explicit recovery authority"
+                    )
+                else:
+                    reconciled: EffectAttemptFoldResult | None = None
+                    try:
+                        reconciled = self._reconciliation_service.execute(
+                            ReconcileEffectAttempt(
+                                context.request.identity.request_id,
+                                attempt.state.identity,
+                                command.authority,
+                                command.fence,
+                            )
+                        )
+                    except EffectAttemptReconciliationNotFound:
+                        service_failure = "not-found"
+                        service_message = (
+                            "effect attempt reconciliation truth was not found"
+                        )
+                    except EffectAttemptReconciliationConflict:
+                        service_failure = "conflict"
+                        service_message = (
+                            "effect attempt reconciliation truth is invalid"
+                        )
+                    except EffectAttemptReconciliationDenied:
+                        service_failure = "denied"
+                        service_message = (
+                            "effect attempt reconciliation authority is invalid"
+                        )
+                    if service_failure is None:
+                        invalid_result = False
+                        result_type = type(reconciled)
+                        if result_type is NewlyFolded:
+                            try:
+                                reconciled = NewlyFolded(
+                                    reconciled.attempt,
+                                    reconciled.outcome_record,
+                                )
+                            except OperationsRecordError:
+                                invalid_result = True
+                        elif result_type is ExistingFold:
+                            try:
+                                reconciled = ExistingFold(
+                                    reconciled.attempt,
+                                    reconciled.outcome_record,
+                                )
+                            except OperationsRecordError:
+                                invalid_result = True
+                        else:
+                            invalid_result = True
+                        if invalid_result or (
+                            reconciled.attempt.state.identity
+                            != attempt.state.identity
+                            or reconciled.attempt.state.request_fingerprint
+                            != attempt.state.request_fingerprint
+                        ):
+                            selected_conflict = (
+                                "effect attempt service result is invalid"
+                            )
+            elif service_failure is None and selected_conflict is None:
+                assert attempt is not None
+                assert intent is not None
+                assert realization is not None
+                request = runtime_effect_request_for_intent(
+                    intent,
+                    effect_id=attempt.original_start_event.event_id,
+                    secret_resolution_grants=(),
+                )
+                runtime_result = None
+                try:
+                    runtime_result = self._adapter.execute_runtime(
+                        realization,
+                        request,
+                    )
+                except Exception:  # noqa: BLE001 - provider faults become uncertainty.
+                    pass
+                if (
+                    type(runtime_result) is not RuntimeEffectResult
+                    or runtime_result.effect_id != request.effect_id
+                ):
+                    runtime_result = _uncertain_runtime_result(request)
+                outcome = ExecutionEffectOutcome(
+                    attempt.state.identity,
+                    attempt.state.request_fingerprint,
+                    runtime_result,
+                )
+                fold_command = FoldEffectAttempt(
+                    request_id=context.request.identity.request_id,
+                    transition=effect_outcome_transition(outcome),
+                    authority=command.authority,
+                    fence=command.fence,
+                    failure=effect_outcome_failure(outcome),
+                    outcome=outcome,
+                )
+                folded: EffectAttemptFoldResult | None = None
+                try:
+                    folded = self._fold_service.execute(fold_command)
+                except EffectAttemptFoldNotFound:
+                    service_failure = "not-found"
+                    service_message = "effect attempt fold truth was not found"
+                except EffectAttemptFoldConflict:
+                    service_failure = "conflict"
+                    service_message = "effect attempt fold truth is invalid"
+                except EffectAttemptFoldDenied:
+                    service_failure = "denied"
+                    service_message = "effect attempt fold authority is invalid"
+                if service_failure is None:
+                    invalid_result = False
+                    result_type = type(folded)
+                    if result_type is NewlyFolded:
+                        try:
+                            folded = NewlyFolded(
+                                folded.attempt,
+                                folded.outcome_record,
+                            )
+                        except OperationsRecordError:
+                            invalid_result = True
+                    elif result_type is ExistingFold:
+                        try:
+                            folded = ExistingFold(
+                                folded.attempt,
+                                folded.outcome_record,
+                            )
+                        except OperationsRecordError:
+                            invalid_result = True
+                    else:
+                        invalid_result = True
+                    if invalid_result or (
+                        folded.attempt.state.identity
+                        != attempt.state.identity
+                        or folded.attempt.state.request_fingerprint
+                        != attempt.state.request_fingerprint
+                    ):
+                        selected_conflict = "effect attempt service result is invalid"
+
+            if service_failure == "not-found":
+                raise ExecutionCoordinatorNotFound(service_message) from None
+            if service_failure == "denied":
+                raise ExecutionCoordinatorDenied(service_message) from None
+            if service_failure == "conflict":
+                selected_conflict = service_message
+            if selected_conflict is not None:
+                raise ExecutionCoordinatorConflict(selected_conflict)
         context = self._load_context(command)
-        current = self._classify_current(context)
+        current = self._classify_current(context, attempted)
         return ExecutionCoordinatorResult(
             current.run,
             CoordinatorStatus.PROGRESSED
@@ -779,39 +1125,63 @@ class ExecutionCoordinator:
     def _classify_current(
         self,
         context: "_CoordinatorContext",
+        effects_attempted: int = 0,
     ) -> ExecutionCoordinatorResult:
         run = context.run
         if run.status is ActivityRunStatus.CLAIMED:
             raise ExecutionCoordinatorConflict("activity run must be started")
         if run.status is ActivityRunStatus.PAUSED:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.BLOCKED,
+                effects_attempted,
+            )
         if run.status is ActivityRunStatus.SUCCEEDED:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.COMPLETED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.COMPLETED,
+                effects_attempted,
+            )
         if run.status is ActivityRunStatus.FAILED:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.FAILED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.FAILED,
+                effects_attempted,
+            )
         if run.status in {ActivityRunStatus.CANCELLED, ActivityRunStatus.COMPENSATING}:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.BLOCKED,
+                effects_attempted,
+            )
         if run.status is not ActivityRunStatus.RUNNING:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.BLOCKED,
+                effects_attempted,
+            )
 
         if context.projection.uncertain:
             return ExecutionCoordinatorResult(
                 run,
                 CoordinatorStatus.UNCERTAIN,
+                effects_attempted,
                 activity_id=context.projection.uncertain[0].activity_id,
             )
         if context.schedule.failed:
+            failed_activity_ids = [
+                value.activity_id.value for value in context.schedule.failed
+            ]
+            failure_details = (
+                {"activity_id": failed_activity_ids[0]}
+                if failed_activity_ids[1:] == []
+                else {}
+            )
             failure = FailureEvidence(
                 FailureCategory.TERMINAL,
                 "activity-step-failed",
                 "one or more planned activities failed",
-                BoundedEvidence.from_mapping(
-                    {
-                        "activity_ids": [
-                            value.activity_id.value for value in context.schedule.failed
-                        ]
-                    }
-                ),
+                BoundedEvidence.from_mapping(failure_details),
             )
             try:
                 result = self._lifecycle.execute(
@@ -826,11 +1196,16 @@ class ExecutionCoordinator:
                 run = result.run
             except RunLifecycleConflict:
                 run = self._fresh_run(run.run_id)
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.FAILED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.FAILED,
+                effects_attempted,
+            )
         if context.schedule.running:
             return ExecutionCoordinatorResult(
                 run,
                 CoordinatorStatus.IN_FLIGHT,
+                effects_attempted,
                 activity_id=context.schedule.running[0].activity_id.value,
             )
         if context.schedule.successful:
@@ -843,16 +1218,29 @@ class ExecutionCoordinator:
                     BoundedEvidence.from_mapping({"result": "all-activities-succeeded"}),
                 )
             )
-            return ExecutionCoordinatorResult(result.run, CoordinatorStatus.COMPLETED)
+            return ExecutionCoordinatorResult(
+                result.run,
+                CoordinatorStatus.COMPLETED,
+                effects_attempted,
+            )
         if context.schedule.ready:
             return ExecutionCoordinatorResult(
                 run,
                 CoordinatorStatus.PROGRESSED,
+                effects_attempted,
                 activity_id=context.schedule.ready[0].activity_id.value,
             )
         if context.schedule.blocked or context.schedule.waiting:
-            return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
-        return ExecutionCoordinatorResult(run, CoordinatorStatus.BLOCKED)
+            return ExecutionCoordinatorResult(
+                run,
+                CoordinatorStatus.BLOCKED,
+                effects_attempted,
+            )
+        return ExecutionCoordinatorResult(
+            run,
+            CoordinatorStatus.BLOCKED,
+            effects_attempted,
+        )
 
     def _record_step_event(
         self,
@@ -1192,6 +1580,15 @@ class _CoordinatorContext:
         )
 
 
+from control_plane_kit_operations.runtime_effects import (
+    _runtime_effect_intent_for_context,
+    required_secret_uses_for_runtime_effect,
+)
+from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import (
+    EffectAttemptReconciliationService,
+)
+
+
 def _get_run(stores: Any, run_id: str) -> ActivityRunRecord:
     missing_run = False
     try:
@@ -1306,113 +1703,37 @@ def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
         raise ExecutionCoordinatorDenied("scope execution:operate is missing")
 
 
-def _outcome_from_runtime_result(
-    context: ActivityRealizationContext,
-    result: RuntimeEffectResult,
-) -> ActivityExecutionOutcome:
-    if not isinstance(result, RuntimeEffectResult):
-        return ActivityExecutionOutcome.uncertain(
-            FailureEvidence(
-                FailureCategory.UNCERTAIN,
-                "runtime.result-malformed",
-                "runtime interpreter returned a non-runtime effect result",
-            )
-        )
-    if result.effect_id != context.intent_event.event_id:
-        return ActivityExecutionOutcome.uncertain(
-            FailureEvidence(
-                FailureCategory.UNCERTAIN,
-                "runtime.effect-id-mismatch",
-                "runtime interpreter returned a result for a different effect",
-                BoundedEvidence.from_mapping(
-                    {
-                        "expected_effect_id": context.intent_event.event_id,
-                        "actual_effect_id": result.effect_id,
-                    }
-                ),
-            )
-        )
-    observations = tuple(
-        _observation_from_runtime_endpoint(context, index, observation)
-        for index, observation in enumerate(result.observations, start=1)
-    )
-    if result.kind is EffectResultKind.SUCCEEDED:
-        return ActivityExecutionOutcome.succeeded(
-            BoundedEvidence.from_mapping(result.evidence),
-            observations=observations,
-        )
-    assert result.failure is not None
-    failure = FailureEvidence(
-        _failure_category_for_runtime_result(result),
-        result.failure.code,
-        result.failure.message,
-        BoundedEvidence.from_mapping(result.failure.details),
-    )
-    if result.kind is EffectResultKind.FAILED:
-        return ActivityExecutionOutcome.failed(failure)
-    if result.kind is EffectResultKind.UNSUPPORTED:
-        return ActivityExecutionOutcome.unsupported(failure)
-    if result.kind is EffectResultKind.UNCERTAIN:
-        return ActivityExecutionOutcome.uncertain(failure)
-    return ActivityExecutionOutcome.uncertain(
-        FailureEvidence(
-            FailureCategory.UNCERTAIN,
-            "runtime.result-kind-unsupported",
-            "runtime interpreter returned an unsupported result kind",
-        )
-    )
-
-
-def _failure_category_for_runtime_result(
-    result: RuntimeEffectResult,
-) -> FailureCategory:
-    if result.kind is EffectResultKind.UNSUPPORTED:
-        return FailureCategory.OPERATOR_REVIEW
-    if result.kind is EffectResultKind.UNCERTAIN:
-        return FailureCategory.UNCERTAIN
-    return FailureCategory.TERMINAL
-
-
-def _observation_from_runtime_endpoint(
-    context: ActivityRealizationContext,
-    index: int,
-    observation: RuntimeEndpointObservation,
-) -> ObservationRecord:
-    return ObservationRecord(
-        observation_id=f"{context.intent_event.event_id}:runtime-endpoint:{index}",
-        workspace_id=context.request.identity.workspace_id,
-        subject_id=observation.subject_id,
-        status=ObservationStatus.UNKNOWN,
-        observed_at=context.intent_event.occurred_at,
-        evidence=BoundedEvidence.from_mapping(
-            {"runtime_endpoint": observation.descriptor()}
+def _uncertain_runtime_result(
+    request: RuntimeEffectRequest,
+) -> RuntimeEffectResult:
+    return RuntimeEffectResult.uncertain(
+        request.effect_id,
+        RuntimeEffectFailure(
+            "runtime.provider-result-unknown",
+            "runtime provider result could not be admitted",
         ),
-        graph_id=observation.graph_id,
-        probe_kind=ProbeKind.TRANSPORT,
-        probe_outcome=ProbeOutcome.UNKNOWN,
-        endpoint_context=observation.context,
     )
 
 
-def _unsupported_dispatch(
-    context: ActivityRealizationContext,
+def _unsupported_runtime_result(
+    request: RuntimeEffectRequest,
     code: str,
     message: str,
     *,
     runtime_kind: RuntimeKind | None = None,
-) -> ActivityExecutionOutcome:
+) -> RuntimeEffectResult:
     details: dict[str, object] = {
-        "activity_id": context.activity.activity_id.value,
-        "operation": type(context.activity.operation).__name__,
+        "activity_id": request.activity_id.value,
+        "operation": type(request.operation).__name__,
     }
     if runtime_kind is not None:
         details["runtime_kind"] = runtime_kind.value
-    return ActivityExecutionOutcome.unsupported(
-        FailureEvidence(
-            FailureCategory.OPERATOR_REVIEW,
+    return RuntimeEffectResult.unsupported(
+        request.effect_id,
+        RuntimeEffectFailure(
             code,
             message,
-            BoundedEvidence.from_mapping(details),
+            details,
         )
     )
 

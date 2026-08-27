@@ -139,6 +139,7 @@ class GatewayKeyRotationRetirementExecutionTests(
                     )
                 ),
                 "retirement-effect-failed",
+                ActivityEventKind.STEP_FAILED,
             ),
             (
                 ActivityExecutionOutcome.unsupported(
@@ -148,7 +149,8 @@ class GatewayKeyRotationRetirementExecutionTests(
                         "test effect is unsupported",
                     )
                 ),
-                "retirement-effect-unsupported",
+                "retirement-effect-failed",
+                ActivityEventKind.STEP_UNSUPPORTED,
             ),
             (
                 ActivityExecutionOutcome.uncertain(
@@ -159,10 +161,14 @@ class GatewayKeyRotationRetirementExecutionTests(
                     )
                 ),
                 "retirement-effect-uncertain",
+                ActivityEventKind.STEP_UNCERTAIN,
             ),
         )
-        for outcome, expected_code in cases:
-            with self.subTest(expected_code=expected_code):
+        for outcome, expected_code, expected_event_kind in cases:
+            with self.subTest(
+                expected_code=expected_code,
+                expected_event_kind=expected_event_kind,
+            ):
                 self.reset_truth()
                 self.prepare_retirement_execution()
                 adapter = RecordingAdapter(outcome)
@@ -177,6 +183,19 @@ class GatewayKeyRotationRetirementExecutionTests(
                 )
                 self.assertEqual(result.failure_code, expected_code)
                 self.assertEqual(len(adapter.calls), 1)
+                self.assertEqual(
+                    [
+                        kind
+                        for kind in self.retirement_event_kinds()
+                        if kind
+                        in (
+                            ActivityEventKind.STEP_FAILED,
+                            ActivityEventKind.STEP_UNSUPPORTED,
+                            ActivityEventKind.STEP_UNCERTAIN,
+                        )
+                    ],
+                    [expected_event_kind],
+                )
                 self.assertEqual(
                     self.workspace().current_realized_projection_id,
                     self.overlap_projection_id,

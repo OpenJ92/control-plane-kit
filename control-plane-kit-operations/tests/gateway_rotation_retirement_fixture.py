@@ -4,14 +4,17 @@ import os
 
 import psycopg
 
-from gateway_rotation_overlap_fixture import GatewayRotationOverlapFixture
+from gateway_rotation_overlap_fixture import (
+    GatewayRotationOverlapFixture,
+    effect_attempt_execution_coordinator,
+    runtime_result_for_outcome,
+)
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
-    ExecutionCoordinator,
 )
 from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     GatewayKeyRotationOverlapPreparationProgram,
@@ -33,7 +36,6 @@ from control_plane_kit_operations.gateway_key_rotations import (
 from control_plane_kit_operations.lifecycle import (
     ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
-    RunLifecycleCommandService,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 
@@ -57,6 +59,18 @@ class RecordingAdapter:
         self.calls: list[str] = []
 
     def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        return self._next(context)
+
+    def execute_runtime(self, context, request):
+        return runtime_result_for_outcome(
+            self._next(context),
+            request.effect_id,
+        )
+
+    def _next(
         self,
         context: ActivityRealizationContext,
     ) -> ActivityExecutionOutcome:
@@ -235,13 +249,11 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
         factory = unit_of_work_factory or self.unit_of_work
         ids = CountingIds(prefix)
         clock = lambda: "2026-08-02T05:00:00Z"
-        lifecycle = RunLifecycleCommandService(factory, clock=clock, id_factory=ids)
-        coordinator = ExecutionCoordinator(
+        coordinator = effect_attempt_execution_coordinator(
             factory,
-            lifecycle=lifecycle,
-            adapter=adapter,
+            adapter,
             clock=clock,
-            id_factory=ids,
+            prefix=prefix,
         )
         return GatewayKeyRotationRetirementExecutionProgram(
             factory,

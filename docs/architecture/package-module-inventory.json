@@ -9446,6 +9446,128 @@
     },
     {
       "canonical_public_exports": [
+        "ActivityExecutionAdapter",
+        "ActivityExecutionDispatcher",
+        "ActivityExecutionOutcome",
+        "ActivityRealizationContext",
+        "CoordinatorStatus",
+        "ExecuteActivityRun",
+        "ExecutionCoordinator",
+        "ExecutionCoordinatorConflict",
+        "ExecutionCoordinatorDenied",
+        "ExecutionCoordinatorError",
+        "ExecutionCoordinatorNotFound",
+        "ExecutionCoordinatorResult",
+        "RuntimeEffectInterpreter",
+        "RuntimeInterpreterDispatcher"
+      ],
+      "destination": "control_plane_kit_operations.coordinator",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.execution",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.planning.saga",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.activity_journal",
+        "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_fold_interpreter",
+        "control_plane_kit_operations.effect_attempt_reconciliation",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
+        "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.ingress_authorities",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.products",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_effects",
+        "control_plane_kit_operations.secret_providers",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.runtime_effects"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.coordinator",
+      "motivation": "Composes durable activity scheduling with exact effect-attempt start, direct fold, and reconciliation services without owning provider or recovery truth.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_coordinator_contract.py",
+        "tests/test_execution_coordinator.py",
+        "tests/test_postgres_effect_attempt_coordinator_budget_lifecycle.py",
+        "tests/test_postgres_effect_attempt_coordinator_concurrency.py",
+        "tests/test_postgres_effect_attempt_coordinator_crash_rollback.py",
+        "tests/test_postgres_effect_attempt_coordinator_compensation_isolation.py",
+        "tests/test_postgres_effect_attempt_coordinator_first_replay.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py"
+    },
+    {
+      "canonical_public_exports": [
+        "runtime_effect_request_for_context"
+      ],
+      "destination": "control_plane_kit_operations.runtime_effects",
+      "internal_dependencies": [
+        "control_plane_kit_core.environment",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning.activity_plan",
+        "control_plane_kit_core.products",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.public_ingress",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_core.types",
+        "control_plane_kit_core.verification",
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.ingress_authorities",
+        "control_plane_kit_operations.products",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.runtime_effects",
+      "motivation": "Projects pinned Operations realization truth into private event-free Core intent and exact post-start runtime requests.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_runtime_effect_translation.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py"
+    },
+    {
+      "canonical_public_exports": [
         "EffectAttemptEventEvidence",
         "EffectAttemptRecord",
         "effect_attempt_state_fingerprint"

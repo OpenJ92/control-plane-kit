@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import os
 import queue
 import time
@@ -8,11 +9,16 @@ import unittest
 
 import psycopg
 
+from control_plane_kit_core.operations import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
     ExecutionRequestStatus,
     FailureCategory,
+)
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectFailure,
+    RuntimeEffectResult,
 )
 from control_plane_kit_core.probe_intents import ProbeKind, ProbeOutcome
 from control_plane_kit_core.products import (
@@ -20,6 +26,7 @@ from control_plane_kit_core.products import (
     OciImageReference,
     ProductDescriptorCodec,
     ProductIdentity,
+    ProductReference,
     ProductRuntimeContract,
 )
 from control_plane_kit_core.planning import (
@@ -36,7 +43,13 @@ from control_plane_kit_core.public_ingress import (
     PublicIngressLifecycle,
 )
 from control_plane_kit_core.secrets import SecretReference
-from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_core.algebra import BlockSockets, BlockSpec
+from control_plane_kit_core.topology import (
+    DeploymentGraph,
+    Node,
+    RuntimeRecord,
+)
+from control_plane_kit_core.types import BlockFamily, RuntimeKind
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
@@ -48,6 +61,15 @@ from control_plane_kit_operations.coordinator import (
     ExecutionCoordinatorNotFound,
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.effect_attempt_fold_interpreter import (
+    EffectAttemptFoldService,
+)
+from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import (
+    EffectAttemptReconciliationService,
+)
+from control_plane_kit_operations.effect_attempt_start_interpreter import (
+    EffectAttemptStartService,
+)
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     GeneratedIngressSecretReference,
@@ -192,6 +214,31 @@ class TrackingUnitOfWork:
             self._factory.active -= 1
 
 
+class _ForbiddenObserver:
+    def observe(self, _request, _authority):
+        raise AssertionError("predecessor coordinator unexpectedly observed runtime")
+
+
+def _runtime_result_for_outcome(
+    outcome: ActivityExecutionOutcome,
+    effect_id: str,
+) -> RuntimeEffectResult:
+    evidence = outcome.evidence.descriptor()
+    if outcome.kind is EffectResultKind.SUCCEEDED:
+        return RuntimeEffectResult.succeeded(effect_id, evidence=evidence)
+    assert outcome.failure is not None
+    failure = RuntimeEffectFailure(
+        outcome.failure.code,
+        outcome.failure.message,
+        outcome.failure.details.descriptor(),
+    )
+    if outcome.kind is EffectResultKind.FAILED:
+        return RuntimeEffectResult.failed(effect_id, failure)
+    if outcome.kind is EffectResultKind.UNSUPPORTED:
+        return RuntimeEffectResult.unsupported(effect_id, failure)
+    return RuntimeEffectResult.uncertain(effect_id, failure)
+
+
 class RecordingAdapter:
     def __init__(self, tracker: TrackingUnitOfWorkFactory, *outcomes: object) -> None:
         self.tracker = tracker
@@ -200,19 +247,33 @@ class RecordingAdapter:
         self.contexts: list[ActivityRealizationContext] = []
         self.active_during_calls: list[int] = []
 
-    def execute(
-        self,
-        context: ActivityRealizationContext,
-    ) -> ActivityExecutionOutcome:
+    def _next(self, context: ActivityRealizationContext):
         self.contexts.append(context)
         self.calls.append(context.activity.activity_id.value)
         self.active_during_calls.append(self.tracker.active)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, BaseException):
             raise outcome
+        return outcome
+
+    def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        outcome = self._next(context)
         if not isinstance(outcome, ActivityExecutionOutcome):
             raise AssertionError("test adapter outcome must be ActivityExecutionOutcome")
         return outcome
+
+    def execute_runtime(self, context, request):
+        outcome = self._next(context)
+        if callable(outcome):
+            return outcome(context, request)
+        if type(outcome) is RuntimeEffectResult:
+            return outcome
+        if not isinstance(outcome, ActivityExecutionOutcome):
+            raise AssertionError("test adapter outcome must be a runtime result")
+        return _runtime_result_for_outcome(outcome, request.effect_id)
 
 
 class GenerationReplacingAdapter:
@@ -247,6 +308,9 @@ class GenerationReplacingAdapter:
             )
         )
 
+    def execute_runtime(self, context, request):
+        return _runtime_result_for_outcome(self.execute(context), request.effect_id)
+
 
 class RecordingLifecycle:
     def __init__(self, inner: RunLifecycleCommandService) -> None:
@@ -275,6 +339,9 @@ class SideEvidenceWritingAdapter:
         if context.activity.activity_id == ActivityId("start-api"):
             self._record_side_evidence(context)
         return ActivityExecutionOutcome.succeeded()
+
+    def execute_runtime(self, context, request):
+        return _runtime_result_for_outcome(self.execute(context), request.effect_id)
 
     def _record_side_evidence(self, context: ActivityRealizationContext) -> None:
         with self.tracker() as unit_of_work:
@@ -343,11 +410,32 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             id_factory=Sequence(*ids),
         )
 
-    def coordinator(self, adapter: RecordingAdapter) -> ExecutionCoordinator:
+    def coordinator(
+        self,
+        adapter,
+        *,
+        lifecycle=None,
+        unit_of_work_factory=None,
+    ) -> ExecutionCoordinator:
+        unit_of_work_factory = unit_of_work_factory or self.unit_of_work
+        fold_service = EffectAttemptFoldService(
+            unit_of_work_factory,
+            id_factory=self.ids,
+        )
         return ExecutionCoordinator(
-            self.unit_of_work,
-            lifecycle=self.lifecycle(),
+            unit_of_work_factory,
+            lifecycle=lifecycle or self.lifecycle(),
             adapter=adapter,
+            start_service=EffectAttemptStartService(
+                unit_of_work_factory,
+                id_factory=self.ids,
+            ),
+            fold_service=fold_service,
+            reconciliation_service=EffectAttemptReconciliationService(
+                unit_of_work_factory,
+                _ForbiddenObserver(),
+                fold_service,
+            ),
             clock=lambda: "2026-07-22T13:01:00Z",
             id_factory=self.ids,
         )
@@ -404,23 +492,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.claim_and_start()
         adapter = RecordingAdapter(
             self.tracker,
-            ActivityExecutionOutcome.succeeded(
-                BoundedEvidence.from_mapping(
-                    {"adapter": "fake", "claim_generation": 999}
-                ),
-                observations=(
-                    ObservationRecord(
-                        "observation-start-api",
-                        "workspace-a",
-                        "api",
-                        ObservationStatus.PROCESS_STARTED,
-                        "2026-07-22T13:01:05Z",
-                        BoundedEvidence.from_mapping({"container": "api"}),
-                        graph_id="graph-desired",
-                        probe_kind=ProbeKind.PROCESS,
-                        probe_outcome=ProbeOutcome.PROCESS_RUNNING,
-                    ),
-                ),
+            lambda _context, request: RuntimeEffectResult.succeeded(
+                request.effect_id,
+                evidence={"adapter": "fake", "claim_generation": 999},
             ),
         )
 
@@ -466,14 +540,13 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         with self.unit_of_work() as unit_of_work:
             run = unit_of_work.stores.execution.get_run("run-a")
             events = unit_of_work.stores.execution.events_for_run("run-a")
-            observation = unit_of_work.stores.observed_state.latest("workspace-a", "api")
         self.assertIs(run.status, ActivityRunStatus.SUCCEEDED)
-        self.assertIsNotNone(observation)
-        assert observation is not None
-        self.assertEqual(observation.observation_id, "observation-start-api")
-        self.assertIs(observation.status, ObservationStatus.PROCESS_STARTED)
-        self.assertEqual(observation.graph_id, "graph-desired")
-        self.assertEqual(observation.evidence.descriptor(), {"container": "api"})
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT COUNT(*) FROM cpk_effect_attempt_outcomes"
+            ).fetchone()[0],
+            1,
+        )
         self.assertEqual(
             [event.kind for event in events],
             [
@@ -489,15 +562,11 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ["start-api", "start-api"],
         )
         step_events = tuple(event for event in events if event.activity_id is not None)
-        self.assertEqual(
-            tuple(event.evidence.descriptor() for event in step_events),
-            (
-                {"claim_generation": 1, "details": {"phase": "intent"}},
-                {
-                    "claim_generation": 1,
-                    "details": {"adapter": "fake", "claim_generation": 999},
-                },
-            ),
+        self.assertTrue(
+            all(
+                set(event.evidence.descriptor()) == {"effect_attempt"}
+                for event in step_events
+            )
         )
 
     def test_stale_generation_before_dispatch_calls_no_adapter(self) -> None:
@@ -565,12 +634,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             self.tracker,
             ActivityExecutionOutcome.succeeded(),
         )
-        coordinator = ExecutionCoordinator(
-            lambda: PostgresUnitOfWork(connection_factory),
-            lifecycle=self.lifecycle(),
-            adapter=adapter,
-            clock=lambda: "2026-07-22T13:01:00Z",
-            id_factory=self.ids,
+        coordinator = self.coordinator(
+            adapter,
+            unit_of_work_factory=lambda: PostgresUnitOfWork(connection_factory),
         )
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             try:
@@ -623,8 +689,8 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            events[-1].evidence.descriptor(),
-            {"claim_generation": 1, "details": {"phase": "intent"}},
+            set(events[-1].evidence.descriptor()),
+            {"effect_attempt"},
         )
 
     def test_provider_exception_after_replacement_cannot_record_uncertainty(self) -> None:
@@ -640,16 +706,22 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(events[-1].kind, ActivityEventKind.STEP_STARTED)
         self.assertNotIn("provider-canary", repr(events[-1]))
 
-    def test_valid_but_unenvelopable_adapter_evidence_becomes_uncertain(self) -> None:
+    def test_exact_result_evidence_persists_without_adapter_observations(self) -> None:
         candidates = (
-            BoundedEvidence.from_mapping(
-                {"a": {"b": {"c": {"d": "maximum-depth"}}}}
+            (
+                BoundedEvidence.from_mapping(
+                    {"a": {"b": {"c": {"d": "maximum-depth"}}}}
+                ),
+                "maximum-depth",
             ),
-            BoundedEvidence.from_mapping(
-                {f"k{index}": "x" * 500 for index in range(8)}
+            (
+                BoundedEvidence.from_mapping(
+                    {f"k{index}": "x" * 500 for index in range(8)}
+                ),
+                "x" * 500,
             ),
         )
-        for index, evidence in enumerate(candidates):
+        for index, (evidence, evidence_canary) in enumerate(candidates):
             if index:
                 self.reset_execution_request(plan=single_activity_plan())
             self.claim_and_start()
@@ -669,9 +741,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 ),
             )
 
-            result = self.coordinator(adapter).execute(self.command(max_effects=2))
+            result = self.coordinator(adapter).execute(self.command(max_effects=1))
 
-            self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+            self.assertIs(result.status, CoordinatorStatus.COMPLETED)
             self.assertEqual(result.effects_attempted, 1)
             with self.unit_of_work() as unit_of_work:
                 events = unit_of_work.stores.execution.events_for_run("run-a")
@@ -679,16 +751,66 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     "workspace-a", "overflow-subject-canary"
                 )
             self.assertIsNone(observation)
-            self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
+            self.assertEqual(events[-2].kind, ActivityEventKind.STEP_SUCCEEDED)
             self.assertEqual(
-                events[-1].failure.code,
-                "adapter-evidence-envelope-invalid",
+                set(events[-2].evidence.descriptor()),
+                {"effect_attempt"},
+            )
+            event_payloads = tuple(
+                self.connection.execute(
+                    "SELECT payload::text FROM cpk_activity_events "
+                    "ORDER BY run_id, ordinal"
+                ).fetchall()
+            )
+            outcome_preimages = tuple(
+                self.connection.execute(
+                    "SELECT preimage FROM cpk_effect_attempt_outcomes "
+                    "ORDER BY run_id, activity_id, attempt"
+                ).fetchall()
             )
             self.assertEqual(
-                events[-1].evidence.descriptor(),
-                {"claim_generation": 1, "details": {}},
+                self.connection.execute(
+                    "SELECT COUNT(*) FROM cpk_observations "
+                    "WHERE observation_id = %s OR subject_id = %s",
+                    (
+                        "overflow-observation-canary",
+                        "overflow-subject-canary",
+                    ),
+                ).fetchone()[0],
+                0,
             )
-            self.assertNotIn("overflow", repr(events[-1]))
+            self.assertEqual(
+                self.connection.execute(
+                    "SELECT COUNT(*) "
+                    "FROM cpk_effect_attempt_outcome_observations "
+                    "WHERE observation_id = %s",
+                    ("overflow-observation-canary",),
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(len(outcome_preimages), 1)
+            direct_outcome_descriptor = json.loads(
+                bytes(outcome_preimages[0][0]).decode("utf-8")
+            )
+            start_event = next(
+                event
+                for event in events
+                if event.kind is ActivityEventKind.STEP_STARTED
+            )
+            self.assertEqual(
+                direct_outcome_descriptor,
+                RuntimeEffectResult.succeeded(
+                    start_event.event_id,
+                    evidence=evidence.descriptor(),
+                ).descriptor(),
+            )
+            self.assertEqual(
+                direct_outcome_descriptor["evidence"],
+                evidence.descriptor(),
+            )
+            self.assertIn(evidence_canary, repr(direct_outcome_descriptor))
+            self.assertNotIn("overflow-", repr(event_payloads))
+            self.assertNotIn("overflow-", repr(direct_outcome_descriptor))
 
     def test_completed_replay_does_not_repeat_effect(self) -> None:
         with self.unit_of_work() as unit_of_work:
@@ -835,24 +957,29 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
         self.assertEqual(events[-1].failure.category, FailureCategory.UNCERTAIN)
 
-    def test_foreign_workspace_observation_becomes_uncertainty_without_persisting_row(self) -> None:
+    def test_foreign_runtime_result_becomes_uncertainty_without_persisting_row(self) -> None:
         self.claim_and_start()
         adapter = RecordingAdapter(
             self.tracker,
-            ActivityExecutionOutcome.succeeded(
-                observations=(
-                    ObservationRecord(
-                        "foreign-observation",
-                        "workspace-b",
-                        "api",
-                        ObservationStatus.PROCESS_STARTED,
-                        "2026-07-22T13:01:05Z",
-                    ),
-                )
-            ),
+            RuntimeEffectResult.succeeded("foreign-effect-canary"),
         )
 
-        result = self.coordinator(adapter).execute(self.command())
+        result = None
+        escaped = None
+        try:
+            result = self.coordinator(adapter).execute(self.command())
+        except ExecutionCoordinatorConflict as error:
+            escaped = error
+
+        if escaped is not None:
+            self.assertEqual(str(escaped), "effect attempt fold truth is invalid")
+            self.assertIsNone(escaped.__cause__)
+            self.assertIsNone(escaped.__context__)
+        self.assertIsNone(
+            escaped,
+            "foreign runtime result must fold one direct uncertain outcome",
+        )
+        assert result is not None
 
         self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
         with self.unit_of_work() as unit_of_work:
@@ -864,10 +991,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(events[-1].kind, ActivityEventKind.STEP_UNCERTAIN)
         self.assertEqual(
             events[-1].failure.code,
-            "adapter-observation-workspace-mismatch",
+            "runtime.effect-uncertain",
         )
 
-    def test_started_intent_without_result_is_in_flight_and_not_replayed(self) -> None:
+    def test_started_event_without_durable_attempt_never_blindly_restarts(self) -> None:
         self.claim_and_start()
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
@@ -887,9 +1014,15 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ActivityExecutionOutcome.succeeded(),
         )
 
-        result = self.coordinator(adapter).execute(self.command())
+        with self.assertRaises(ExecutionCoordinatorConflict) as caught:
+            self.coordinator(adapter).execute(self.command())
 
-        self.assertIs(result.status, CoordinatorStatus.IN_FLIGHT)
+        self.assertEqual(
+            str(caught.exception),
+            "effect attempt start truth is invalid",
+        )
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
         self.assertEqual(adapter.calls, [])
 
     def test_failed_and_unsupported_outcomes_fail_run_but_remain_distinct(self) -> None:
@@ -925,15 +1058,15 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             )
         ).execute(self.command())
 
-        self.assertIs(unsupported.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(unsupported.status, CoordinatorStatus.FAILED)
         self.assertIs(unsupported.run.status, ActivityRunStatus.FAILED)
         with self.unit_of_work() as unit_of_work:
             events = unit_of_work.stores.execution.events_for_run("run-a")
         self.assertEqual(events[-2].kind, ActivityEventKind.STEP_UNSUPPORTED)
-        self.assertEqual(events[-2].failure.code, "unsupported-capability")
+        self.assertEqual(events[-2].failure.code, "runtime.effect-unsupported")
         self.assertEqual(
-            events[-2].evidence.descriptor(),
-            {"claim_generation": 1, "details": {}},
+            set(events[-2].evidence.descriptor()),
+            {"effect_attempt"},
         )
 
     def test_nested_completion_receives_the_identical_fence_object(self) -> None:
@@ -944,12 +1077,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ActivityExecutionOutcome.succeeded(),
         )
         command = self.command()
-        coordinator = ExecutionCoordinator(
-            self.unit_of_work,
+        coordinator = self.coordinator(
+            adapter,
             lifecycle=lifecycle,
-            adapter=adapter,
-            clock=lambda: "2026-07-22T13:01:00Z",
-            id_factory=self.ids,
         )
 
         result = coordinator.execute(command)
@@ -975,12 +1105,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ),
         )
         command = self.command()
-        coordinator = ExecutionCoordinator(
-            self.unit_of_work,
+        coordinator = self.coordinator(
+            adapter,
             lifecycle=lifecycle,
-            adapter=adapter,
-            clock=lambda: "2026-07-22T13:01:00Z",
-            id_factory=self.ids,
         )
 
         result = coordinator.execute(command)
@@ -1091,12 +1218,27 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
         )
         with self.unit_of_work() as unit_of_work:
+            product_document = ProductDescriptorCodec().encode_document(
+                ContainerServerProduct(
+                    identity=ProductIdentity("control-plane-kit", "hello-server", 1),
+                    image=OciImageReference(
+                        "ghcr.io",
+                        "openj92/control-plane-kit-servers/hello-server",
+                        "sha256:" + "a" * 64,
+                        tag="v1",
+                    ),
+                    runtime_contract=ProductRuntimeContract(),
+                    display_name="hello-server",
+                    description="test product descriptor",
+                )
+            )
+            product_reference = ProductReference.from_document(product_document)
             unit_of_work.stores.graphs.save(
                 GraphVersionRecord.from_graph(
                     graph_id="graph-current",
                     workspace_id="workspace-a",
                     version=1,
-                    graph=DeploymentGraph("current"),
+                    graph=_realized_graph("current", plan, product_reference),
                     created_by="operator-a",
                     created_at="2026-07-22T12:00:00Z",
                 )
@@ -1106,7 +1248,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     graph_id="graph-desired",
                     workspace_id="workspace-a",
                     version=2,
-                    graph=DeploymentGraph("desired"),
+                    graph=_realized_graph("desired", plan, product_reference),
                     created_by="operator-a",
                     created_at="2026-07-22T12:00:30Z",
                 )
@@ -1125,20 +1267,6 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             )
             unit_of_work.stores.realized_graphs.save(base_projection)
             unit_of_work.stores.realized_graphs.save(desired_projection)
-            product_document = ProductDescriptorCodec().encode_document(
-                ContainerServerProduct(
-                    identity=ProductIdentity("control-plane-kit", "hello-server", 1),
-                    image=OciImageReference(
-                        "ghcr.io",
-                        "openj92/control-plane-kit-servers/hello-server",
-                        "sha256:" + "a" * 64,
-                        tag="v1",
-                    ),
-                    runtime_contract=ProductRuntimeContract(),
-                    display_name="hello-server",
-                    description="test product descriptor",
-                )
-            )
             unit_of_work.stores.registered_products.register(
                 workspace_id="workspace-a",
                 descriptor_document=product_document,
@@ -1209,6 +1337,44 @@ def two_step_plan() -> ActivityPlan:
                 (ActivityDependency(ActivityId("start-api")),),
             ),
         )
+    )
+
+
+def _realized_graph(
+    name: str,
+    plan: ActivityPlan,
+    product_reference: ProductReference,
+) -> DeploymentGraph:
+    node_ids = tuple(
+        activity.operation.target.node_id for activity in plan.activities
+    )
+    nodes = {
+        node_id: Node(
+            node_id,
+            BlockFamily.APPLICATION,
+            BlockSpec(node_id),
+            "container-server",
+            "docker",
+            BlockSockets(),
+            metadata={
+                "product_identity": product_reference.identity.key,
+                "product_descriptor_digest": (
+                    product_reference.descriptor_sha256.value
+                ),
+            },
+        )
+        for node_id in node_ids
+    }
+    return DeploymentGraph(
+        name,
+        nodes=nodes,
+        runtimes={
+            "docker": RuntimeRecord(
+                "docker",
+                RuntimeKind.DOCKER,
+                children=node_ids,
+            )
+        },
     )
 
 
