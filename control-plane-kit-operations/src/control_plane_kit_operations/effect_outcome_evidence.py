@@ -178,6 +178,27 @@ def _validated_attempt(
     return validated
 
 
+def _legacy_effect_outcome_failure(
+    outcome: EffectAttemptOutcome,
+) -> FailureEvidence | None:
+    row = outcome.failure_row
+    if row is None:
+        return None
+    return FailureEvidence(
+        category=row[0],
+        code=row[1],
+        message=row[2],
+        details=BoundedEvidence.from_mapping(
+            {
+                "effect_outcome": {
+                    "profile": outcome.profile.value,
+                    "outcome_fingerprint": outcome.outcome_fingerprint,
+                }
+            }
+        ),
+    )
+
+
 class _EffectOutcomeValue:
     @property
     def profile(self) -> EffectOutcomeProfile:
@@ -247,12 +268,42 @@ class _EffectOutcomeValue:
 
     @property
     def _bounded_evidence(self) -> list[BoundedEvidence]:
+        effect_outcome = {
+            "profile": self.profile.value,
+            "outcome_fingerprint": self.outcome_fingerprint,
+        }
+        if (
+            self.__class__ is ExecutionEffectOutcome
+            and self.result.kind is EffectResultKind.FAILED
+        ):
+            category = self.result.failure.code
+            category_admitted = (
+                category.__class__ is str and category != "" and not category[128:]
+            )
+            namespace_seen = False
+            segment_start = True
+            previous_hyphen = False
+            for character in category if category_admitted else ():
+                if "a" <= character <= "z":
+                    segment_start = False
+                    previous_hyphen = False
+                elif "0" <= character <= "9" and not segment_start:
+                    previous_hyphen = False
+                elif character == "-" and not segment_start and not previous_hyphen:
+                    previous_hyphen = True
+                elif character == "." and not segment_start and not previous_hyphen:
+                    namespace_seen = True
+                    segment_start = True
+                else:
+                    category_admitted = False
+            if segment_start or previous_hyphen or not namespace_seen:
+                category_admitted = False
+            if category_admitted:
+                effect_outcome["runtime_failure_code"] = category
+
         mappings = [
             {
-                "effect_outcome": {
-                    "profile": self.profile.value,
-                    "outcome_fingerprint": self.outcome_fingerprint,
-                }
+                "effect_outcome": effect_outcome,
             }
         ]
         for endpoint in self.endpoint_observations:
@@ -538,21 +589,13 @@ class EffectAttemptOutcomeRecord:
             if row is None:
                 valid = failure is None
             else:
-                details_json = (
-                    '{"effect_outcome":{"outcome_fingerprint":"'
-                    + self.outcome.outcome_fingerprint
-                    + '","profile":"'
-                    + self.outcome.profile.value
-                    + '"}}'
-                )
+                current_failure = effect_outcome_failure(self.outcome)
+                legacy_failure = _legacy_effect_outcome_failure(self.outcome)
                 valid = (
                     failure.__class__ is FailureEvidence
-                    and failure.category is row[0]
-                    and failure.code == row[1]
-                    and failure.message == row[2]
                     and failure.details.__class__ is BoundedEvidence
                     and failure.details.canonical_json.__class__ is str
-                    and failure.details.canonical_json == details_json
+                    and failure in (current_failure, legacy_failure)
                 )
 
         if valid:

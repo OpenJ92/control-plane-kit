@@ -5,6 +5,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+import re
 import unittest
 
 import rfc8785
@@ -13,6 +14,8 @@ import control_plane_kit_architecture_testing as architecture_testing
 import control_plane_kit_operations as operations_root
 from control_plane_kit_core import (
     EffectResultKind,
+    FailureCategory,
+    RuntimeEffectFailure,
     RuntimeEffectObservedSucceeded,
     RuntimeEffectResult,
     runtime_effect_observation_fingerprint,
@@ -27,10 +30,15 @@ from control_plane_kit_core.operations import (
     EffectAttemptTransition,
     RunId,
 )
-from control_plane_kit_operations.records import FailureEvidence, OperationsRecordError
+from control_plane_kit_operations.records import (
+    BoundedEvidence,
+    FailureEvidence,
+    OperationsRecordError,
+)
 
 from effect_outcome_evidence_fixture import (
     EffectOutcomeEvidenceFixture,
+    EffectAttemptOutcomeRecord,
     EffectOutcomeProfile,
     ExecutionEffectOutcome,
     MODULE_NAME,
@@ -55,6 +63,12 @@ ROOT_EXPORTS = {
 }
 
 OUTCOME_SOURCE_PATH = "control_plane_kit_operations/effect_outcome_evidence.py"
+RUNTIME_FAILURE_CATEGORY_MAX = 128
+RUNTIME_FAILURE_CATEGORY = re.compile(
+    r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
+    r"(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+",
+    re.ASCII,
+)
 EXACT_IMPORT_SURFACE = (
     architecture_testing.ImportSurfaceEntry("__future__", "annotations", None),
     architecture_testing.ImportSurfaceEntry(
@@ -232,6 +246,7 @@ EXACT_IMPORT_SURFACE = (
     architecture_testing.ImportSurfaceEntry("enum", "StrEnum", None),
 )
 EXACT_CALL_SURFACE = (
+    architecture_testing.ResolvedCallTarget("_legacy_effect_outcome_failure"),
     architecture_testing.ResolvedCallTarget("_validated_attempt"),
     architecture_testing.ResolvedCallTarget("_validated_attempt"),
     architecture_testing.ResolvedCallTarget("any"),
@@ -262,6 +277,12 @@ EXACT_CALL_SURFACE = (
         "control_plane_kit_operations.records.BoundedEvidence.from_mapping"
     ),
     architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.BoundedEvidence.from_mapping"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.FailureEvidence"
+    ),
+    architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.records.FailureEvidence"
     ),
     architecture_testing.ResolvedCallTarget(
@@ -278,6 +299,7 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("dataclasses.field"),
     architecture_testing.ResolvedCallTarget("dataclasses.field"),
     architecture_testing.ResolvedCallTarget("dataclasses.field"),
+    architecture_testing.ResolvedCallTarget("effect_outcome_failure"),
     architecture_testing.ResolvedCallTarget("endpoint.descriptor"),
     architecture_testing.ResolvedCallTarget("enumerate"),
     architecture_testing.ResolvedCallTarget("len"),
@@ -508,6 +530,370 @@ class EffectOutcomeEvidenceContractTest(
                         "bounded-evidence-canary",
                     ):
                         self.assertNotIn(canary, rendered)
+
+    def test_execution_failure_projection_retains_only_closed_runtime_code(
+        self,
+    ) -> None:
+        self.require_outcome_language()
+        story = next(
+            story
+            for story in self.stories()
+            if story.name == "execution-failed" and not story.compensation
+        )
+        runtime_code = "docker.secret-resolution-reference-not-found"
+        raw_canaries = (
+            "runtime-message-sentinel",
+            "provider-payload-sentinel",
+            "exception-text-sentinel",
+            "credential-sentinel",
+            "authorization-header-sentinel",
+            "https://provider.invalid/private",
+            "response-body-sentinel",
+            "provider-address-sentinel",
+        )
+        result = RuntimeEffectResult.failed(
+            story.value.effect_id,
+            RuntimeEffectFailure(
+                runtime_code,
+                raw_canaries[0],
+                {
+                    "provider_payload": raw_canaries[1],
+                    "exception_text": raw_canaries[2],
+                    "credential": raw_canaries[3],
+                    "authorization_header": raw_canaries[4],
+                    "provider_url": raw_canaries[5],
+                    "response_body": raw_canaries[6],
+                    "provider_address": raw_canaries[7],
+                },
+            ),
+        )
+        outcome = ExecutionEffectOutcome(
+            story.attempt.state.identity,
+            story.attempt.state.request_fingerprint,
+            result,
+        )
+        failure = effect_outcome_failure(outcome)
+
+        self.assertIs(type(failure), FailureEvidence)
+        rendered = f"{failure!s} {failure!r} {failure.details.canonical_json}"
+        for canary in raw_canaries:
+            with self.subTest(canary=canary):
+                self.assertNotIn(canary, rendered)
+        self.assertEqual(
+            json.loads(failure.details.canonical_json),
+            {
+                "effect_outcome": {
+                    "profile": "execution-result",
+                    "outcome_fingerprint": runtime_effect_result_fingerprint(result),
+                    "runtime_failure_code": runtime_code,
+                }
+            },
+        )
+
+    def test_runtime_failure_category_grammar_falls_back_without_raw_data(
+        self,
+    ) -> None:
+        self.require_outcome_language()
+        story = next(
+            story
+            for story in self.stories()
+            if story.name == "execution-failed" and not story.compensation
+        )
+        valid_category = "docker.secret-resolution-reference-not-found"
+        self.assertLessEqual(len(valid_category), RUNTIME_FAILURE_CATEGORY_MAX)
+        self.assertIsNotNone(RUNTIME_FAILURE_CATEGORY.fullmatch(valid_category))
+        hostile_categories = (
+            ("no-namespace", "provider-canary"),
+            ("whitespace", "docker.secret failure"),
+            ("slash", "docker/secret-failure"),
+            ("colon", "docker:secret-failure"),
+            ("equals", "docker.category=failure"),
+            ("url", "https://provider.invalid/failure"),
+            ("uppercase", "Docker.secret-failure"),
+            ("unicode", "docker.secr\N{LATIN SMALL LETTER E WITH ACUTE}t-failure"),
+            ("control", "docker.secret\nfailure"),
+            ("overlength", "docker." + "a" * RUNTIME_FAILURE_CATEGORY_MAX),
+        )
+        baseline = {
+            "effect_outcome": {
+                "profile": "execution-result",
+                "outcome_fingerprint": None,
+            }
+        }
+        for label, category in hostile_categories:
+            with self.subTest(label=label):
+                self.assertTrue(
+                    len(category) > RUNTIME_FAILURE_CATEGORY_MAX
+                    or RUNTIME_FAILURE_CATEGORY.fullmatch(category) is None
+                )
+                result = RuntimeEffectResult.failed(
+                    story.value.effect_id,
+                    RuntimeEffectFailure(
+                        category,
+                        "raw-runtime-message-sentinel",
+                        {"provider_payload": "raw-provider-payload-sentinel"},
+                    ),
+                )
+                outcome = ExecutionEffectOutcome(
+                    story.attempt.state.identity,
+                    story.attempt.state.request_fingerprint,
+                    result,
+                )
+                failure = effect_outcome_failure(outcome)
+                self.assertIs(type(failure), FailureEvidence)
+                expected = json.loads(json.dumps(baseline))
+                expected["effect_outcome"]["outcome_fingerprint"] = (
+                    runtime_effect_result_fingerprint(result)
+                )
+                self.assertEqual(
+                    json.loads(failure.details.canonical_json),
+                    expected,
+                )
+                rendered = f"{failure!s} {failure!r} {failure.details.canonical_json}"
+                self.assertNotIn(category, rendered)
+                self.assertNotIn("raw-runtime-message-sentinel", rendered)
+                self.assertNotIn("raw-provider-payload-sentinel", rendered)
+
+        code_shaped_payload = RuntimeEffectResult.failed(
+            story.value.effect_id,
+            RuntimeEffectFailure(
+                "provider-canary",
+                valid_category,
+                {"provider_payload": valid_category},
+            ),
+        )
+        payload_outcome = ExecutionEffectOutcome(
+            story.attempt.state.identity,
+            story.attempt.state.request_fingerprint,
+            code_shaped_payload,
+        )
+        payload_failure = effect_outcome_failure(payload_outcome)
+        self.assertIs(type(payload_failure), FailureEvidence)
+        self.assertNotIn(
+            valid_category,
+            f"{payload_failure!s} {payload_failure!r} "
+            f"{payload_failure.details.canonical_json}",
+        )
+
+    def test_failed_execution_record_admits_current_and_exact_legacy_evidence(
+        self,
+    ) -> None:
+        self.require_outcome_language()
+        story = next(
+            story
+            for story in self.stories()
+            if story.name == "execution-failed" and not story.compensation
+        )
+        runtime_code = "docker.secret-resolution-reference-not-found"
+        result = RuntimeEffectResult.failed(
+            story.value.effect_id,
+            RuntimeEffectFailure(
+                runtime_code,
+                "raw-runtime-message-sentinel",
+                {"provider_payload": "raw-provider-payload-sentinel"},
+            ),
+        )
+        outcome = ExecutionEffectOutcome(
+            story.attempt.state.identity,
+            story.attempt.state.request_fingerprint,
+            result,
+        )
+        current = effect_outcome_failure(outcome)
+        self.assertIs(type(current), FailureEvidence)
+        legacy = FailureEvidence(
+            current.category,
+            current.code,
+            current.message,
+            BoundedEvidence.from_mapping(
+                {
+                    "effect_outcome": {
+                        "profile": "execution-result",
+                        "outcome_fingerprint": outcome.outcome_fingerprint,
+                    }
+                }
+            ),
+        )
+
+        def record_for(failure: FailureEvidence) -> EffectAttemptOutcomeRecord:
+            attempt = self.direct_attempt_for(
+                story,
+                request_fingerprint=outcome.request_fingerprint,
+                outcome_fingerprint=outcome.outcome_fingerprint,
+                failure=failure,
+            )
+            return EffectAttemptOutcomeRecord(
+                "workspace-a",
+                outcome,
+                attempt,
+                (),
+            )
+
+        legacy_record = record_for(legacy)
+        self.assertEqual(
+            legacy_record.attempt.latest_transition_event.failure,
+            legacy,
+        )
+
+        current_descriptor = json.loads(current.details.canonical_json)
+        effect_outcome = current_descriptor["effect_outcome"]
+        hostile_details = (
+            (
+                "extra-key",
+                {**effect_outcome, "extra": "bounded-canary"},
+            ),
+            (
+                "missing-profile",
+                {
+                    key: value
+                    for key, value in effect_outcome.items()
+                    if key != "profile"
+                },
+            ),
+            (
+                "missing-fingerprint",
+                {
+                    key: value
+                    for key, value in effect_outcome.items()
+                    if key != "outcome_fingerprint"
+                },
+            ),
+            (
+                "wrong-profile",
+                {**effect_outcome, "profile": "provider-observation"},
+            ),
+            (
+                "wrong-fingerprint",
+                {**effect_outcome, "outcome_fingerprint": "f" * 64},
+            ),
+            (
+                "wrong-runtime-code",
+                {**effect_outcome, "runtime_failure_code": "docker.other-failure"},
+            ),
+        )
+        hostile_failures = tuple(
+            (
+                label,
+                FailureEvidence(
+                    current.category,
+                    current.code,
+                    current.message,
+                    BoundedEvidence.from_mapping({"effect_outcome": details}),
+                ),
+            )
+            for label, details in hostile_details
+        ) + (
+            (
+                "outer-category",
+                FailureEvidence(
+                    FailureCategory.OPERATOR_REVIEW,
+                    current.code,
+                    current.message,
+                    current.details,
+                ),
+            ),
+            (
+                "outer-code",
+                FailureEvidence(
+                    current.category,
+                    "runtime.effect-uncertain",
+                    current.message,
+                    current.details,
+                ),
+            ),
+            (
+                "outer-message",
+                FailureEvidence(
+                    current.category,
+                    current.code,
+                    "bounded changed message",
+                    current.details,
+                ),
+            ),
+            (
+                "outer-details",
+                FailureEvidence(
+                    current.category,
+                    current.code,
+                    current.message,
+                    BoundedEvidence.from_mapping(
+                        {"unexpected": {"category": "bounded-canary"}}
+                    ),
+                ),
+            ),
+        )
+        for label, hostile in hostile_failures:
+            with self.subTest(hostile=label):
+                self.assert_fixed_error(
+                    lambda hostile=hostile: record_for(hostile),
+                    "effect outcome record is invalid",
+                    "bounded-canary",
+                    "docker.other-failure",
+                )
+
+        current_record = record_for(current)
+        self.assertIsNotNone(current_record)
+        self.assertEqual(
+            current_record.attempt.latest_transition_event.failure,
+            current,
+        )
+
+    def test_nonfailed_and_observer_failure_rows_remain_byte_exact(self) -> None:
+        self.require_outcome_language()
+        stories = tuple(story for story in self.stories() if not story.compensation)
+        success = next(story for story in stories if story.name == "execution-succeeded")
+        self.assertIsNone(effect_outcome_failure(self.outcome_for(success)))
+
+        valid_category = "docker.secret-resolution-reference-not-found"
+        for name, constructor, expected_code in (
+            (
+                "unsupported",
+                RuntimeEffectResult.unsupported,
+                "runtime.effect-unsupported",
+            ),
+            (
+                "uncertain",
+                RuntimeEffectResult.uncertain,
+                "runtime.effect-uncertain",
+            ),
+        ):
+            with self.subTest(row=name):
+                result = constructor(
+                    "event-start",
+                    RuntimeEffectFailure(
+                        valid_category,
+                        "raw-runtime-message-sentinel",
+                        {"provider_payload": "raw-provider-payload-sentinel"},
+                    ),
+                )
+                outcome = ExecutionEffectOutcome(
+                    success.attempt.state.identity,
+                    success.attempt.state.request_fingerprint,
+                    result,
+                )
+                failure = effect_outcome_failure(outcome)
+                self.assertIs(type(failure), FailureEvidence)
+                self.assertEqual(failure.code, expected_code)
+                self.assertEqual(
+                    json.loads(failure.details.canonical_json),
+                    {
+                        "effect_outcome": {
+                            "profile": "execution-result",
+                            "outcome_fingerprint": (
+                                runtime_effect_result_fingerprint(result)
+                            ),
+                        }
+                    },
+                )
+
+        for story in stories:
+            if story.profile != "provider-observation" or story.failure_row is None:
+                continue
+            with self.subTest(row=story.name):
+                failure = effect_outcome_failure(self.outcome_for(story))
+                self.assertEqual(
+                    failure,
+                    story.attempt.latest_transition_event.failure,
+                )
 
     def test_outcome_descriptors_commit_only_to_bounded_coordinates(self) -> None:
         self.require_outcome_language()
