@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import StrEnum
 import os
 import unittest
 
@@ -137,6 +138,70 @@ class FakeIngressAllocation:
     endpoint_url: str = "https://cpk-gateway-001.openj92.dev"
 
 
+class StructuralProviderFailureStage(StrEnum):
+    DNS_PRE_OBSERVATION = "dns-pre-observation"
+    TUNNEL_ALLOCATION = "tunnel-allocation"
+    TUNNEL_CONFIGURATION = "tunnel-configuration"
+    DNS_PRE_MUTATION_OBSERVATION = "dns-pre-mutation-observation"
+    DNS_CREATE = "dns-create"
+    DNS_RECONCILIATION = "dns-reconciliation"
+    TUNNEL_TOKEN = "tunnel-token"
+    SECRET_CUSTODY = "secret-custody"
+    CLEANUP = "cleanup"
+
+
+class StructuralProviderFailureCategory(StrEnum):
+    HOSTNAME_OCCUPIED = "hostname-occupied"
+    DNS_CONFLICT = "dns-conflict"
+    MALFORMED_RESPONSE = "malformed-response"
+    PROVIDER_STATUS = "provider-status"
+    TRANSPORT = "transport"
+    SECRET_CUSTODY = "secret-custody"
+    CLEANUP = "cleanup"
+
+
+class StructuralProviderMutationCertainty(StrEnum):
+    NONE = "none"
+    TUNNEL_CREATED = "tunnel-created"
+    DNS_AND_TUNNEL_CREATED = "dns-and-tunnel-created"
+    UNCERTAIN = "uncertain"
+
+
+class StructuralProviderCleanupResult(StrEnum):
+    NOT_REQUIRED = "not-required"
+    COMPLETE = "complete"
+    WITHHELD = "withheld"
+    UNCERTAIN = "uncertain"
+
+
+class StructuralUnknownProviderFailureValue(StrEnum):
+    UNKNOWN = "unknown-provider-value"
+
+
+@dataclass(frozen=True)
+class StructuralProviderFailure:
+    stage: object
+    category: object
+    mutation_certainty: object
+    tunnel_id: object
+    dns_record_id: object
+    cleanup_result: object
+
+
+@dataclass(frozen=True)
+class HostileProviderFailure(StructuralProviderFailure):
+    api_token: str
+    provider_body: str
+
+
+class StructuralProviderError(RuntimeError):
+    def __init__(self, provider_failure: object) -> None:
+        super().__init__(
+            "provider failed with api_token=secret-token and raw-body-private"
+        )
+        self.provider_failure = provider_failure
+
+
 class RecordingIngressInterpreter:
     def __init__(self, tracker: TrackingUnitOfWorkFactory) -> None:
         self.tracker = tracker
@@ -153,6 +218,7 @@ class RecordingIngressInterpreter:
         self.fail_teardown = False
         self.return_mismatched_custody_receipt = False
         self.return_invalid_coordinates = False
+        self.create_error: Exception | None = None
         self.on_create: Callable[[], None] | None = None
 
     def create(
@@ -173,6 +239,8 @@ class RecordingIngressInterpreter:
         self.create_custody_grants.append(secret_custody_grant)
         if self.on_create is not None:
             self.on_create()
+        if self.create_error is not None:
+            raise self.create_error
         receipt_reference = secret_custody_grant.reference
         if self.return_mismatched_custody_receipt:
             receipt_reference = SecretReference(
@@ -398,6 +466,188 @@ class IngressRealizationAdapterTests(unittest.TestCase):
         self.assertEqual(generated.provider_registration_id, "sprov-generated-ingress")
         self.assertEqual(generated.provider_version_id, "version-tunnel-token")
         self.assertEqual(generated.provider_version_number, 1)
+
+    def test_allocate_public_ingress_projects_bounded_structural_provider_failure(
+        self,
+    ) -> None:
+        valid = StructuralProviderFailure(
+            stage=StructuralProviderFailureStage.DNS_CREATE,
+            category=StructuralProviderFailureCategory.TRANSPORT,
+            mutation_certainty=StructuralProviderMutationCertainty.UNCERTAIN,
+            tunnel_id="tunnel-001",
+            dns_record_id="dns-001",
+            cleanup_result=StructuralProviderCleanupResult.WITHHELD,
+        )
+        positive_values = {
+            "stage": tuple(StructuralProviderFailureStage),
+            "category": tuple(StructuralProviderFailureCategory),
+            "mutation_certainty": tuple(StructuralProviderMutationCertainty),
+            "cleanup_result": tuple(StructuralProviderCleanupResult),
+        }
+        positive_cases = [
+            *(
+                (
+                    f"{field_name}-{value.value}",
+                    replace(valid, **{field_name: value}),
+                )
+                for field_name, values in positive_values.items()
+                for value in values
+            ),
+            (
+                "resource-shape-none",
+                replace(valid, tunnel_id=None, dns_record_id=None),
+            ),
+            ("resource-shape-tunnel", replace(valid, dns_record_id=None)),
+            ("resource-shape-dns", replace(valid, tunnel_id=None)),
+            ("resource-shape-both", valid),
+        ]
+
+        for label, provider_failure in positive_cases:
+            with self.subTest(label=label):
+                interpreter = RecordingIngressInterpreter(self.tracker)
+                interpreter.create_error = StructuralProviderError(provider_failure)
+                adapter = IngressRealizationAdapter(
+                    self.unit_of_work,
+                    interpreters={
+                        IngressAuthorityProviderKind.CLOUDFLARE: interpreter
+                    },
+                    clock=lambda: "2026-07-28T08:01:00Z",
+                    secret_use_authorizer=self.authorizer,
+                )
+
+                outcome = adapter.execute(self.context())
+
+                resources = []
+                if provider_failure.tunnel_id is not None:
+                    resources.append(
+                        {"id": provider_failure.tunnel_id, "kind": "tunnel"}
+                    )
+                if provider_failure.dns_record_id is not None:
+                    resources.append(
+                        {"id": provider_failure.dns_record_id, "kind": "dns-record"}
+                    )
+                self.assertEqual(outcome.kind.name, "UNCERTAIN")
+                self.assertEqual(outcome.failure.code, "ingress.allocate-uncertain")
+                self.assertEqual(interpreter.create_active_counts, [0])
+                self.assertEqual(interpreter.teardown_resources, [])
+                self.assertEqual(
+                    outcome.failure.details.descriptor(),
+                    {
+                        "exception_type": "StructuralProviderError",
+                        "provider_cleanup_result": provider_failure.cleanup_result.value,
+                        "provider_failure_category": provider_failure.category.value,
+                        "provider_failure_stage": provider_failure.stage.value,
+                        "provider_kind": "cloudflare",
+                        "provider_mutation_certainty": (
+                            provider_failure.mutation_certainty.value
+                        ),
+                        "provider_resources": resources,
+                    },
+                )
+                rendered = repr(outcome.failure)
+                self.assertNotIn("secret-token", rendered)
+                self.assertNotIn("raw-body-private", rendered)
+
+    def test_allocate_public_ingress_rejects_hostile_provider_failure_evidence(
+        self,
+    ) -> None:
+        valid = StructuralProviderFailure(
+            stage=StructuralProviderFailureStage.DNS_CREATE,
+            category=StructuralProviderFailureCategory.TRANSPORT,
+            mutation_certainty=StructuralProviderMutationCertainty.UNCERTAIN,
+            tunnel_id="tunnel-001",
+            dns_record_id="dns-001",
+            cleanup_result=StructuralProviderCleanupResult.WITHHELD,
+        )
+        hostile_values = [
+            (
+                "mapping",
+                {
+                    "stage": "dns-create",
+                    "api_token": "secret-token",
+                },
+            ),
+            (
+                "raw-strings",
+                StructuralProviderFailure(
+                    stage="dns-create",
+                    category="transport",
+                    mutation_certainty="uncertain",
+                    tunnel_id="tunnel-001",
+                    dns_record_id="dns-001",
+                    cleanup_result="withheld",
+                ),
+            ),
+            *(
+                (
+                    f"unknown-{field_name}",
+                    replace(
+                        valid,
+                        **{
+                            field_name: StructuralUnknownProviderFailureValue.UNKNOWN
+                        },
+                    ),
+                )
+                for field_name in (
+                    "stage",
+                    "category",
+                    "mutation_certainty",
+                    "cleanup_result",
+                )
+            ),
+            (
+                "secret-shaped-id",
+                replace(valid, tunnel_id="secret://cloudflare/token"),
+            ),
+            ("malformed-id", replace(valid, dns_record_id="dns\n001")),
+            *(
+                (
+                    f"{field_name}-{label}",
+                    replace(valid, **{field_name: value}),
+                )
+                for field_name in ("tunnel_id", "dns_record_id")
+                for label, value in (
+                    ("empty", ""),
+                    ("non-string", 7),
+                    ("oversized", "d" * 129),
+                )
+            ),
+            (
+                "extra-provider-data",
+                HostileProviderFailure(
+                    **valid.__dict__,
+                    api_token="secret-token",
+                    provider_body="raw-body-private",
+                ),
+            ),
+        ]
+
+        for label, provider_failure in hostile_values:
+            with self.subTest(label=label):
+                interpreter = RecordingIngressInterpreter(self.tracker)
+                interpreter.create_error = StructuralProviderError(provider_failure)
+                adapter = IngressRealizationAdapter(
+                    self.unit_of_work,
+                    interpreters={
+                        IngressAuthorityProviderKind.CLOUDFLARE: interpreter
+                    },
+                    clock=lambda: "2026-07-28T08:01:00Z",
+                    secret_use_authorizer=self.authorizer,
+                )
+
+                outcome = adapter.execute(self.context())
+
+                self.assertEqual(outcome.kind.name, "UNCERTAIN")
+                self.assertEqual(
+                    outcome.failure.details.descriptor(),
+                    {"exception_type": "StructuralProviderError"},
+                )
+                self.assertEqual(interpreter.create_active_counts, [0])
+                self.assertEqual(interpreter.teardown_resources, [])
+                rendered = repr(outcome.failure)
+                self.assertNotIn("secret-token", rendered)
+                self.assertNotIn("raw-body-private", rendered)
+                self.assertNotIn("secret://cloudflare/token", rendered)
 
     def test_mismatched_custody_receipt_compensates_without_admission(self) -> None:
         interpreter = RecordingIngressInterpreter(self.tracker)
