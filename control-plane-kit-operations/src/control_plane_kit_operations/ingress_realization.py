@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
+from enum import Enum
 import hashlib
+import re
 from typing import Any, Mapping, Protocol
 
 from control_plane_kit_core.operations.execution import EffectResultKind
@@ -225,7 +227,14 @@ class IngressRealizationAdapter:
                 secret_custody_grant=custody_grant,
             )
         except Exception as error:  # noqa: BLE001 - provider failures are bounded.
-            return _uncertain("ingress.allocate-uncertain", type(error).__name__)
+            return _uncertain(
+                "ingress.allocate-uncertain",
+                type(error).__name__,
+                provider_failure=_provider_failure_projection(
+                    error,
+                    authority.provider_kind,
+                ),
+            )
 
         try:
             resource = CloudflareOwnedIngressResource(
@@ -621,13 +630,144 @@ def _unsupported(
     )
 
 
-def _uncertain(code: str, exception_type: str) -> ActivityExecutionOutcome:
+_PROVIDER_FAILURE_FIELDS = (
+    "stage",
+    "category",
+    "mutation_certainty",
+    "tunnel_id",
+    "dns_record_id",
+    "cleanup_result",
+)
+_PROVIDER_FAILURE_STAGES = frozenset(
+    {
+        "dns-pre-observation",
+        "tunnel-allocation",
+        "tunnel-configuration",
+        "dns-pre-mutation-observation",
+        "dns-create",
+        "dns-reconciliation",
+        "tunnel-token",
+        "secret-custody",
+        "cleanup",
+    }
+)
+_PROVIDER_FAILURE_CATEGORIES = frozenset(
+    {
+        "hostname-occupied",
+        "dns-conflict",
+        "malformed-response",
+        "provider-status",
+        "transport",
+        "secret-custody",
+        "cleanup",
+    }
+)
+_PROVIDER_MUTATION_CERTAINTIES = frozenset(
+    {
+        "none",
+        "tunnel-created",
+        "dns-and-tunnel-created",
+        "uncertain",
+    }
+)
+_PROVIDER_CLEANUP_RESULTS = frozenset(
+    {
+        "not-required",
+        "complete",
+        "withheld",
+        "uncertain",
+    }
+)
+_PROVIDER_IDENTIFIER = re.compile(r"^[a-zA-Z0-9._:-]{1,128}$")
+_PROVIDER_SECRET_MARKERS = ("token", "secret", "password", "key")
+
+
+def _provider_failure_projection(
+    error: Exception,
+    provider_kind: IngressAuthorityProviderKind,
+) -> dict[str, object] | None:
+    try:
+        evidence = error.provider_failure  # type: ignore[attr-defined]
+        parameters = getattr(type(evidence), "__dataclass_params__", None)
+        if (
+            isinstance(evidence, type)
+            or not is_dataclass(evidence)
+            or parameters is None
+            or not parameters.frozen
+            or tuple(field.name for field in fields(evidence))
+            != _PROVIDER_FAILURE_FIELDS
+        ):
+            return None
+        stage = _closed_provider_value(
+            evidence.stage,
+            _PROVIDER_FAILURE_STAGES,
+        )
+        category = _closed_provider_value(
+            evidence.category,
+            _PROVIDER_FAILURE_CATEGORIES,
+        )
+        mutation_certainty = _closed_provider_value(
+            evidence.mutation_certainty,
+            _PROVIDER_MUTATION_CERTAINTIES,
+        )
+        cleanup_result = _closed_provider_value(
+            evidence.cleanup_result,
+            _PROVIDER_CLEANUP_RESULTS,
+        )
+        tunnel_id = _provider_identifier(evidence.tunnel_id)
+        dns_record_id = _provider_identifier(evidence.dns_record_id)
+    except Exception:  # noqa: BLE001 - malformed provider evidence is untrusted.
+        return None
+
+    resources: list[dict[str, str]] = []
+    if tunnel_id is not None:
+        resources.append({"id": tunnel_id, "kind": "tunnel"})
+    if dns_record_id is not None:
+        resources.append({"id": dns_record_id, "kind": "dns-record"})
+    return {
+        "provider_cleanup_result": cleanup_result,
+        "provider_failure_category": category,
+        "provider_failure_stage": stage,
+        "provider_kind": provider_kind.value,
+        "provider_mutation_certainty": mutation_certainty,
+        "provider_resources": resources,
+    }
+
+
+def _closed_provider_value(value: object, allowed: frozenset[str]) -> str:
+    if not isinstance(value, Enum) or not isinstance(value.value, str):
+        raise ValueError("provider failure value must be a closed enum")
+    if value.value not in allowed:
+        raise ValueError("provider failure value is unsupported")
+    return value.value
+
+
+def _provider_identifier(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _PROVIDER_IDENTIFIER.fullmatch(value):
+        raise ValueError("provider resource identifier is invalid")
+    lowered = value.lower()
+    if any(marker in lowered for marker in _PROVIDER_SECRET_MARKERS):
+        raise ValueError("provider resource identifier is secret-shaped")
+    return value
+
+
+def _uncertain(
+    code: str,
+    exception_type: str,
+    *,
+    provider_failure: Mapping[str, object] | None = None,
+) -> ActivityExecutionOutcome:
+    details: dict[str, object] = {"exception_type": exception_type}
+    if provider_failure is not None:
+        details.update(provider_failure)
     return ActivityExecutionOutcome.uncertain(
         FailureEvidence(
             FailureCategory.UNCERTAIN,
             code,
             "ingress provider result is uncertain",
-            BoundedEvidence.from_mapping({"exception_type": exception_type}),
+            BoundedEvidence.from_mapping(details),
         )
     )
 
