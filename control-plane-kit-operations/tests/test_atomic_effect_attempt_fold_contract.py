@@ -150,6 +150,16 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         ),
         (
             "control_plane_kit_operations.effect_outcome_evidence",
+            "_legacy_effect_outcome_failure",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_outcome_evidence",
+            "effect_outcome_failure",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.effect_outcome_evidence",
             "effect_outcome_observation_records",
             None,
         ),
@@ -223,6 +233,8 @@ EXACT_INTERPRETER_CALLS = (
             "control_plane_kit_operations.effect_attempts.EffectAttemptRecord",
             "control_plane_kit_operations.effect_attempts.effect_attempt_state_fingerprint",
             "control_plane_kit_operations.effect_outcome_evidence.EffectAttemptOutcomeRecord",
+            "control_plane_kit_operations.effect_outcome_evidence._legacy_effect_outcome_failure",
+            "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_failure",
             "control_plane_kit_operations.effect_outcome_evidence.effect_outcome_observation_records",
             "control_plane_kit_operations.records.ActivityEventRecord",
             "control_plane_kit_operations.records.BoundedEvidence.from_mapping",

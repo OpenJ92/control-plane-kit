@@ -40,6 +40,8 @@ from control_plane_kit_operations.effect_attempts import (
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
     ObservedEffectOutcome,
+    _legacy_effect_outcome_failure,
+    effect_outcome_failure,
     effect_outcome_observation_records,
 )
 from control_plane_kit_operations.records import (
@@ -482,7 +484,18 @@ def _require_exact_replay(
     command: FoldEffectAttempt,
     attempt: EffectAttemptRecord,
 ) -> bool:
-    return attempt.latest_transition_event.failure == command.failure
+    recorded_failure = attempt.latest_transition_event.failure
+    if recorded_failure == command.failure:
+        return True
+    if command.outcome is None or command.failure is None:
+        return False
+    legacy_failure = _legacy_effect_outcome_failure(command.outcome)
+    return (
+        command.failure == effect_outcome_failure(command.outcome)
+        and legacy_failure is not None
+        and legacy_failure != command.failure
+        and recorded_failure == legacy_failure
+    )
 
 
 def _event_kind(
