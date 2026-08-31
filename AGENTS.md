@@ -7,6 +7,59 @@ or product repository.
 Read `docs/OPERATING_MODEL.md` for the compressed working loop. Use the longer
 roadmap, ADR, and design documents as references for the current vertical.
 
+## Product Boundary
+
+`control-plane-kit` is an AI-assisted infrastructure control plane. It lets a
+user define server topologies, deploy and edit them across multiple runtimes,
+inspect their health, remove resources, and receive bounded reports derived
+from the providers that own the external runtime truth.
+
+The governing interaction is:
+
+```text
+define topology
+  -> inspect current providers
+  -> produce and explain an explicit plan
+  -> request permission for consequential actions
+  -> execute through provider interpreters
+  -> inspect the result
+  -> report what happened and what remains uncertain
+```
+
+The AI may read structured provider observations, explain drift or failure, and
+recommend recovery, cleanup, replacement, or failover. It must not silently
+turn those recommendations into authority. The user owns permission decisions;
+CPK owns translation, validation, execution of approved plans, durable history,
+and truthful reporting.
+
+Use these conservative defaults:
+
+- provider reads, health inspection, and report generation may be automatic;
+- mutations require an explicit inspectable plan and appropriate authorization;
+- destructive cleanup, public exposure, increased cost or capacity, credential
+  changes, cross-provider movement, adoption, and ambiguous retries require
+  explicit user approval;
+- an interrupted or ambiguous external mutation must never be blindly
+  redispatched;
+- provider state is authoritative for external resources, while CPK records its
+  own intent, attempts, ownership, observations, and approved actions;
+- uncertain outcomes remain uncertain until authoritative evidence resolves
+  them; never fabricate success, graph advancement, cleanup, or ownership;
+- reports summarize provider evidence in bounded, redacted form and retain
+  enough durable correlation to explain what was requested, attempted, changed,
+  failed, and recommended next.
+
+Do not assume that autonomous compensation, failover, adoption, or generalized
+recovery is a product requirement. Add such behavior only when a concrete user
+workflow and an explicitly approved roadmap issue require it. The default
+recovery shape is to observe, explain, propose an exact action, request
+permission, execute if approved, and report the result.
+
+Tests must stay at their ownership boundary. Core and Operations tests own CPK
+algebra and durable semantics. Server, interpreter, and live tests prove only
+their composition and externally observable behavior; they must not recreate
+CPK's state machines or become a parallel implementation.
+
 ## Branch Flow
 
 Use this flow for normal feature work:
