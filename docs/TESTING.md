@@ -1,176 +1,157 @@
 # Test Evidence And Acceptance
 
 Status: Current
-Last updated: 2026-08-03
 
-Control Plane Kit has several kinds of test evidence. They answer different
-questions and must not be presented as interchangeable.
+Canonical contract: `cpk-agent-contract/v1`
 
-## Evidence Taxonomy
+Executable validation is Docker-only and owned by the package or repository
+whose behavior changed. Evidence types answer different questions and must not
+be presented as interchangeable.
 
-### Package Gate
+## Host Boundary
 
-Each live distribution owns its current source and `unittest` suite:
+Host work is limited to editing source, Git/GitHub coordination, and invoking
+repository commands. Do not inspect or rely on host Python packages, host
+PostgreSQL, virtual environments, host `pip` installs, bundled runtimes,
+alternate databases, or local service state as an execution path.
 
-```text
-control-plane-kit-core         ./test.sh
-control-plane-kit-operations   ./test.sh
-control-plane-kit-interpreters ./test.sh
-control-plane-kit-secrets      ./test.sh
-control-plane-kit-servers      ./test.sh
-```
+Do not create a custom container wrapper, dependency shim, alternate database,
+or per-test environment when the owning suite exists. The ordinary suite is the
+first and default executable gate.
 
-A package gate proves the laws owned by that distribution. It does not prove
-that independently versioned repositories compose at specific commits.
+## Owning Package Suites
 
-### Architecture Testing Dependency
-
-`control-plane-kit-architecture-testing` is test-only architecture tooling and
-is not a runtime dependency of either current Control Plane Kit distribution.
-Its own package gate is the authority that the tooling works. Control Plane Kit
-consumes the accepted tooling source at exact commit
-`7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef` only in Operations behavior tests.
-
-For local development, keep an exact clean sibling checkout. An editable install
-may be used for direct tooling work:
+From the repository root, use:
 
 ```bash
-git -C ../control-plane-kit-architecture-testing checkout 7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef
-python -m pip install -e ../control-plane-kit-architecture-testing
+./control-plane-kit-core/test.sh
+./control-plane-kit-operations/test.sh
 ```
 
-The Operations gate validates that sibling coordinate, mounts the exact clean
-checkout read-only into the behavior-test container, and exposes that checkout's
-`src` directory through `PYTHONPATH`. CI performs a second checkout at the same
-exact commit and supplies that checkout to the gate. It does not acquire the
-package from PyPI or run an in-container VCS or package installation. Integrity,
-PostgreSQL, compile, and clean-import phases do not receive the tooling checkout.
+Other CPK-family repositories run their own established `./test.sh`.
 
-### Current Backend Gate
+`control-plane-kit-operations/test.sh` requires the exact clean sibling
+`control-plane-kit-architecture-testing` checkout declared by the harness and
+used by CI. Establish that checkout before invoking the suite. The suite mounts
+it read-only into the test container; do not install it into host Python or
+substitute another coordinate.
 
-Run:
+For the repository-owned composed backend gate, use its documented command:
 
 ```bash
 ./current-backend-test.sh --report /tmp/current-backend-report.json
 ```
 
-This gate resolves exact source coordinates from the server-products coordinate
-manifest, validates dependency and protocol boundaries, runs all five package
-gates, runs the named authenticated cpk-server HTTP/MCP source-live scenario,
-and audits Docker residue. It is the current multi-repository backend gate.
+Run broader or external suites only when the governing issue or PR explicitly
+owns that evidence.
 
-It is source-built and non-provider-mutating. It is not published-image or
-Cloudflare acceptance.
+## Apparatus Stop Rule
 
-### Source-Live Acceptance
+Before invoking a suite, verify only its documented source/image/checkout
+prerequisites. If the suite is missing, cannot start, lacks a required checkout
+or image, or fails before behavioral collection because of apparatus:
 
-Source-live acceptance executes real current processes and containers built from
-source. An authoritative scenario begins at cpk-server's authenticated public
-HTTP or MCP boundary and traverses operations plus real interpreters. Host curl,
-Docker inspection, direct interpreter calls, and controller-side network repair
-are diagnostics; they cannot determine release success.
+1. stop immediately;
+2. preserve the terminal output and repository association;
+3. report the exact prerequisite or apparatus failure to the coordinator/user;
+4. do not retry, repair, install a fallback, or create a replacement harness
+   unless explicitly released.
 
-The current backend gate owns one named source-live scenario. Issue #1207 owns
-future consolidation of reusable source-live runners, polling, fixtures,
-cleanup, and residue mechanics. Issue #1133 owns the final audit separating
-authoritative scenarios from diagnostics.
+An apparatus failure is no-credit evidence. A later authorized rerun uses the
+same ordinary suite after the prerequisite is corrected.
 
-### Published-Digest Acceptance
+## Proportional Evidence
 
-Published-digest acceptance pulls immutable OCI digests with local rebuild
-disabled. It proves publication coordinates and packaged behavior, not merely
-source behavior. Product publication and provider-mutating tracks own these
-gates; they remain separate from `current-backend-test.sh`.
+Use the smallest evidence that proves the issue-owned boundary:
 
-### Provider-Mutating Acceptance
+- documentation-only changes: `git diff --check` unless an executable example
+  changed;
+- package behavior: the owning Docker package suite;
+- cross-package composition: the named repository composition gate;
+- published artifact behavior: an explicitly owned immutable-digest gate;
+- external provider mutation: an explicitly authorized provider-live gate.
 
-Provider-mutating acceptance changes external resources such as Cloudflare
-tunnels or DNS records. It requires unique owned identities, durable ownership
-evidence, exact cleanup, and a residue audit. It is run only by the issue that
-explicitly owns the external mutation. Passing source-live tests never implies
-that provider-mutating acceptance passed.
+Focused target-red evidence is useful when it proves a real missing behavior,
+especially for migration/parity work. It is not required when current source is
+already green or when the issue is purely mechanical. Do not predict assertion
+counts before tests exist or turn wrapper bookkeeping into application laws.
+
+Normal package suites are repeatable. One-shot execution, exclusive leases,
+sealed wrappers, hash ledgers, and exhaustive inventory evidence apply only
+when a shared/provider/destructive gate explicitly requires them.
+
+## Evidence Classes
+
+### Package
+
+Proves the current laws owned by one package. It does not prove independently
+versioned repositories compose or that an external provider changed correctly.
+
+### Composition
+
+Proves named repositories and package coordinates compose through their public
+boundaries. Direct private calls may diagnose a failure but cannot replace the
+authoritative scenario.
+
+### Source-Live
+
+Runs real current processes from source. After bootstrap, topology-producing
+acceptance actions must enter through authenticated cpk-server HTTP or MCP.
+Direct Docker, database, provider, interpreter, or source-live controller
+mutation cannot determine application success.
+
+### Published-Digest
+
+Uses an immutable published OCI digest with local rebuild disabled. It proves
+publication and packaged behavior, not merely source behavior.
+
+### Provider-Mutating
+
+Changes external provider resources. It requires explicit authority, unique
+owned identities, durable ownership evidence, exact bounded cleanup, preserved
+foreign truth, and a terminal residue audit. It is never implied by a package
+or source-live gate.
 
 ### Diagnostic
 
-A diagnostic may inspect Docker, issue direct probes, trace shell execution, or
-corroborate provider state. Diagnostics help explain failure. They do not create
-application truth, repair a scenario, bypass cpk-server, or count as release
-acceptance by themselves.
+Inspects or probes supporting state to classify failure. Diagnostics cannot
+create application truth, repair a scenario, bypass cpk-server, or earn release
+acceptance alone.
 
 ### Immutable Reference
 
-Run only when historical reproducibility is required:
+Reproduces explicitly requested historical evidence. It is not a current
+package or backend gate and is not run as routine feature validation.
 
-```bash
-./reference-test.sh
-```
+## Test Ownership
 
-This archives `pre-server-product-extraction-2026-07-20` at
-`20129959d3b0f8e8bd5dbdafdf51c0a5d592a9ec` and executes that archived source in
-a temporary directory. It proves the frozen migration input remains
-reproducible. It is not a current backend gate.
+- Core tests own pure deployment algebra, graph validation/diff, planning, and
+  public values.
+- Operations tests own durable records, transactions, policies, execution,
+  replay/idempotency, history, and projections.
+- Interpreter tests own provider translation and external-effect boundaries.
+- Server tests own HTTP/MCP mapping, authentication, packaging, and composition.
+- Live tests own only externally observable composition and explicitly named
+  provider behavior.
 
-## Current Closeout Evidence
+Do not duplicate another owner's state machine, validate source layout through
+AST/helper-name rules, or promote fixture exemplars into runtime invariants.
+Tests must not weaken assertions, hide collection, add unjustified skips, or
+normalize uncertainty into success.
 
-The HARDEN.TESTS.PARITY closeout recorded these passing package counts:
+## Security And Cleanup
 
-| Distribution | Tests |
-| --- | ---: |
-| control-plane-kit-core | 484 |
-| control-plane-kit-operations | 378 |
-| control-plane-kit-interpreters | 147 |
-| control-plane-kit-secrets | 51 |
-| control-plane-kit-servers | 166 |
-| current-backend validator | 34 |
+- Never place raw secrets in test output, reports, errors, descriptors, graph
+  truth, observations, or evidence artifacts.
+- Treat private Docker networking as isolation, not authentication.
+- Cleanup removes only exact issue-owned resources and preserves foreign state.
+- Unknown or incomplete ownership stops cleanup rather than broadening selection.
+- No test may make application success depend on host-side repair or a private
+  call that bypasses the public boundary.
 
-Counts make collection drift visible; they do not prove semantic parity. The
-semantic ledger is the parity authority:
+## Reporting Results
 
-```text
-1,107 frozen laws
-  739 current or reviewed-superseded
-  368 owned by detailed open issues
-    0 unowned
-    0 stale successors
-1,336 exact current test identities
-```
-
-Exact reviewed dispositions live in:
-
-- `artifacts/extraction/semantic-test-reconciliation.json`: every immutable law,
-  including 39 reviewed supersessions, plus 66 reviewed archived mutable-only
-  tests and their archive evidence;
-- `artifacts/extraction/semantic-migration-closeout.json`: all demo reviews and
-  the exact law set and content digest assigned to each of ten future issues;
-- `artifacts/extraction/semantic-migration-completion-report.json`: fail-closed
-  zero-unowned and zero-stale-successor proof;
-- `artifacts/extraction/harden-tests-parity-1318-retirement-manifest.json`: exact
-  850-file retirement disposition.
-
-The ten current future owners are #670, #671, #672, #941, #1070, #1092, #1096,
-#1146, #1153, and #1342. A future owner means the law remains desired and
-specified; it does not mean the behavior is implemented.
-
-## Retired Surfaces
-
-The mutable root `control_plane_kit` package, root `tests`, root `test.sh`, root
-package metadata, root examples, and legacy live shell scripts are retired.
-They must not return as compatibility wrappers or release gates. Historical
-source remains recoverable through the immutable tag; current work belongs in
-the live distributions and current acceptance matrix.
-
-## Integrity Laws
-
-- Use Docker-first `unittest`; do not use pytest.
-- Do not weaken assertions, hide collection, or add unjustified skips.
-- Optional modes may not change what a named proof means.
-- Application success must not depend on a host-side repair or direct private
-  call that bypasses cpk-server.
-- Source-live, published-digest, provider-mutating, diagnostic, and immutable
-  reference evidence must remain explicitly named.
-- Raw secrets must not enter test reports, logs, errors, artifacts, graph truth,
-  observations, or public responses.
-- One operator command remains one explicit Postgres transaction; no test may
-  normalize a transaction or external-effect boundary violation into success.
-- Cleanup may remove only exact owned resources and must preserve Pottery
-  Factory and unrelated Docker or Cloudflare resources.
+Record the owning command, terminal status, meaningful failure identities,
+apparatus classification, cleanup result when relevant, and Git association in
+the governing issue or PR. Full logs and hashes may remain supporting artifacts;
+the durable GitHub comment records what the evidence means.

@@ -1,209 +1,149 @@
 # Control Plane Kit Operating Model
 
-Status: Draft
-Last updated: 2026-07-14
+Status: Current
 
-This is the short operating model for `control-plane-kit`.
+Canonical contract: `cpk-agent-contract/v1`
 
-The longer ADRs, roadmap docs, and design docs explain why. This file explains
-how to work.
+This is the normal issue-to-merge loop for Control Plane Kit. `AGENTS.md` owns
+the shared product, authority, memory, and validation laws.
 
-## Core Loop
+## Normal Loop
 
 ```text
-roadmap node
-  -> roadmap parent issue
-    -> ordered child issues
-      -> roadmap integration branch
-        -> per-child test context
-          -> test-conditioned dry run
-            -> child PRs
-              -> decision logs
-              -> review
-              -> handoff
-    -> roadmap PR
-      -> closeout
-      -> develop
+current issue contract
+  -> feature branch from the accepted base
+    -> inspect current public contract, source, and owning tests
+      -> choose the smallest ownership-local proof
+        -> implement the bounded change
+          -> owning Docker package suite
+            -> PR decision log
+              -> independent findings-first review
+                -> merge and durable handoff
 ```
 
-Roadmap documents are the outer topology. Child issues are the inner topology.
+The issue controls scope. A source dry run should establish what already exists,
+the exact missing behavior, the owner, the source ceiling, and the validation
+boundary before implementation grows.
+
+Use focused target-red evidence when the issue requires migration/parity proof
+or when it is necessary to distinguish genuinely missing behavior from broken
+collection or apparatus. It is not mandatory ceremony for every change.
+
+## Issue Contract
+
+Before implementation, the governing issue should make these facts discoverable:
+
+- user-visible goal and acceptance;
+- owner and source/test ceiling;
+- dependency topology, accepted base, branch destination, and downstream handoff;
+- authority class, including whether Docker, shared services, providers,
+  credentials, or destructive actions are permitted;
+- owning Docker suite and exact prerequisites;
+- exclusions and stop conditions.
+
+If one of these affects correctness and is missing, stop and ask on the issue.
+Do not reconstruct hidden decisions from chat or local artifacts.
 
 ## Branch Shape
 
-```text
-main
-  develop
-    roadmap/<roadmap-id>-<slug>
-      codex/<issue-id>-<slug>
-      codex/<issue-id>-<slug>
-      codex/<issue-id>-<slug>
-```
-
-Child PRs target the roadmap branch. The roadmap branch targets `develop`.
-
-## Before Implementing A Child Issue
+Default:
 
 ```text
-governing frozen/new laws
-  -> behavioral law cards
-    -> source dry run with those laws in view
-      -> target public-interface design
-        -> focused target tests
-          -> focused target-red evidence
-            -> implementation
-              -> target green
+develop
+  -> codex/<issue-id>-<slug>
+    -> PR into develop
 ```
 
-Classify tests as `isomorphic`, `strengthened`, `new-law`, or
-`non-executable-scaffold`. Preserve semantic assertions rather than obsolete
-file layout. Do not use skips, `xfail`, weakened assertions, or imports of the
-frozen implementation to manufacture a passing migration.
+Use a roadmap integration branch only when a parent issue explicitly establishes
+an ordered multi-PR vertical. In that case, child PRs target the named roadmap
+branch and the roadmap PR targets `develop`. Do not infer this topology from a
+roadmap label or create a draft roadmap PR automatically.
 
-Before the dry run, inspect the governing frozen tests and extract compact law
-cards: test identity, observable law, negative cases, old structural
-assumptions to discard, and future owner. Do not copy their imports, fixtures,
-constructors, or file layout into the target package yet.
+## Proportional Tests And Review
 
-The dry run uses those laws as context and records the affected boundaries,
-risks, target public interface, and any child-child decomposition before target
-tests or application code are written. After that design exists, write the
-focused target tests and prove that they fail because behavior is missing, not
-because collection, imports, fixtures, or Docker setup are broken.
+Start with existing ownership-local behavioral tests. Add the smallest test
+that would catch the concrete regression or expose the missing public behavior.
+Tests should not duplicate Core/Operations semantics in servers or live
+harnesses, treat fixture IDs as runtime constants, or enforce helper names and
+source layout.
 
-The frozen parity foundation supplies the reference-green baseline. The mutable
-frozen package and root gate have been retired. Do not run
-`./reference-test.sh` before every issue dry run unless that baseline is
-missing, stale, or disputed. Run broader target package, current-backend,
-parity, and issue-owned live suites after implementation and at PR or milestone
-gates.
+Review is findings-first:
 
-## Before Starting A Roadmap Node
+1. list concrete blockers in severity order;
+2. state the smallest correction;
+3. record residual risks;
+4. conclude `PASS` or `HOLD` and name the next permitted boundary.
 
-Read:
+Do not create a separate hardening PR unless review identifies a coherent risk
+surface that is independently useful and reviewable.
 
-1. `AGENTS.md`
-2. the selected roadmap document
-3. the architecture design doc
-4. relevant ADRs only
-5. relevant source
+## Assigned-Role Protocol
 
-Then create or update:
+When multiple agents are assigned:
 
-- a roadmap parent issue,
-- ordered child issues,
-- a draft roadmap PR,
-- and the roadmap integration branch.
+```text
+North      coordinates topology, releases, live/shared authority, and merge
+Vale       implements within the released source/test boundary
+Meridian   reviews independently and remains read-only unless reassigned
+```
 
-## Every Non-Trivial PR Includes
+Assignments link the governing GitHub artifact and state scope, coordinate,
+suite, prerequisites, authority, stop conditions, return artifact, and reviewer.
+Implementers send a short stage and durable artifact link when work is ready.
+The coordinator acknowledges receipt and actively waits or polls; silence is
+never treated as approval or completion.
+
+## Crash-Safe Checkpoints
+
+Before a long Docker suite or other interruption-prone gate:
+
+1. commit and push substantial reviewed work;
+2. record the checkpoint on the issue or PR;
+3. label it candidly as unvalidated;
+4. preserve the ordinary suite command and prerequisites;
+5. after the gate, record the terminal result and classification.
+
+A commit hash or local log identifies evidence but does not replace its GitHub
+decision record. Apparatus failure earns no behavioral credit and triggers the
+stop rule in `docs/TESTING.md`.
+
+## PR Decision Log
+
+Every non-trivial PR gives the user a compact account:
 
 ```text
 Decision log
 
 - Chosen shape:
-- Important snippets:
 - Why:
-- Alternatives considered:
-- Tests:
-- Security:
-- Risks:
+- Alternatives rejected:
+- Ownership:
+- Important snippets:
+- Docker validation:
+- Risks and residuals:
 - Handoff:
 ```
 
-Include additional sections when relevant:
+Add security, data-safety, mathematical-design, or operational-history sections
+only when those surfaces are material. Include no-security-change explicitly
+when appropriate.
 
-```text
-Data safety
-Mathematical design note
-Operational history
-Operational reliability
-```
+## Durable Handoff
 
-## Mathematical Frame
+On merge, record:
 
-For structural work, explain:
+- merged PR and develop coordinate;
+- capability now available;
+- owning validation and result;
+- security/data/history consequences;
+- remaining risk or deferred work;
+- exact dependent issue and next public coordinates it may rely on.
 
-```text
-Objects
-Transformations
-Laws/invariants
-Valid compositions
-Interpreter boundary
-```
+Update or explicitly supersede stale issue text before dependent work begins.
 
-This is how the user reasons about the package.
+## Stop And Split
 
-## Safety Frame
-
-For data-affecting work, explain:
-
-```text
-durable state
-transaction boundary
-idempotency
-retry behavior
-verification
-rollback or compensation
-redaction
-```
-
-For security-affecting work, explain:
-
-```text
-new surfaces
-auth/authz
-secrets/redaction
-network exposure
-mutation/destructive behavior
-tests
-residual risk
-```
-
-## Operational Frame
-
-For runtime/control-plane work, explain:
-
-```text
-session/action records
-plans or graph snapshots
-events emitted
-query surfaces
-partial failure story
-retry/resume story
-retention/cleanup
-```
-
-At the end of every roadmap node, check:
-
-```text
-health/status
-logs/events
-failure modes
-cleanup
-retry/resume
-examples added or updated
-examples still missing
-```
-
-## Example Rule
-
-Every durable abstraction should have a teaching example.
-
-Prefer an example ladder:
-
-```text
-tiny example
-composition example
-runtime smoke example
-roadmap capstone example
-```
-
-## Stop And Split When
-
-- a PR needs more than one independent decision log,
-- a concept rename mixes with behavior,
-- a change touches multiple public concepts,
-- tests fall into unrelated groups,
-- security/data/operational questions are unclear,
-- or review requires holding too much state in memory.
-
-Prefer smaller topology over heroic PRs.
+Stop or split when the change crosses unrelated owners, introduces a new public
+concept, requires a separate authority/security/data decision, or cannot be
+explained in one concise PR decision log. Prefer one coherent implementation
+over a large test harness that attempts to prove several packages at once.
