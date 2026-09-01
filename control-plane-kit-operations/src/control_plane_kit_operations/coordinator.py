@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from enum import StrEnum
 from typing import Any, Callable, Mapping, Protocol
 
 from control_plane_kit_core.operations import (
@@ -118,11 +117,16 @@ from control_plane_kit_operations.records import (
     ActivityPlanRecord,
     ActivityRunRecord,
     BoundedEvidence,
+    CoordinatorStatus,
+    ExecutionCommandReceiptRecord,
+    ExecutionCommandReceiptStatus,
+    ExecutionCommandResultRecord,
     ExecutionRequestRecord,
     FailureEvidence,
     ObservationRecord,
     OperationsRecordError,
     RealizedGraphProjectionRecord,
+    execution_command_intent_fingerprint,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
 
@@ -141,18 +145,6 @@ class ExecutionCoordinatorConflict(ExecutionCoordinatorError):
 
 class ExecutionCoordinatorDenied(ExecutionCoordinatorError):
     """Raised when worker authority is insufficient."""
-
-
-class CoordinatorStatus(StrEnum):
-    """Closed coordinator result statuses for the operations service boundary."""
-
-    COMPLETED = "completed"
-    FAILED = "failed"
-    PROGRESSED = "progressed"
-    IN_FLIGHT = "in-flight"
-    UNCERTAIN = "uncertain"
-    UNSUPPORTED = "unsupported"
-    BLOCKED = "blocked"
 
 
 @dataclass(frozen=True)
@@ -782,6 +774,38 @@ class ExecutionCoordinatorResult:
         }
 
 
+def _execution_command_fingerprint(command: ExecuteActivityRun) -> str:
+    return execution_command_intent_fingerprint(
+        run_id=command.run_id,
+        worker_id=command.authority.worker_id,
+        authority_scopes=command.authority.scopes,
+        claim_generation=command.fence.generation,
+        max_effects=command.max_effects,
+    )
+
+
+def _command_result_record(
+    result: ExecutionCoordinatorResult,
+) -> ExecutionCommandResultRecord:
+    return ExecutionCommandResultRecord(
+        run=result.run,
+        status=result.status,
+        effects_attempted=result.effects_attempted,
+        activity_id=result.activity_id,
+    )
+
+
+def _coordinator_result(
+    result: ExecutionCommandResultRecord,
+) -> ExecutionCoordinatorResult:
+    return ExecutionCoordinatorResult(
+        run=result.run,
+        status=result.status,
+        effects_attempted=result.effects_attempted,
+        activity_id=result.activity_id,
+    )
+
+
 class ExecutionCoordinator:
     """Operations-owned durable coordinator over core plan and saga languages."""
 
@@ -808,6 +832,87 @@ class ExecutionCoordinator:
 
     def execute(self, command: ExecuteActivityRun) -> ExecutionCoordinatorResult:
         _require_operate_scope(command.authority)
+        replay = self._admit_command(command)
+        if replay is not None:
+            return replay
+        result = self._execute_admitted(command)
+        self._complete_command(command, result)
+        return result
+
+    def _admit_command(
+        self,
+        command: ExecuteActivityRun,
+    ) -> ExecutionCoordinatorResult | None:
+        fingerprint = _execution_command_fingerprint(command)
+        with self._unit_of_work_factory() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution.lock_command_idempotency(
+                command.run_id,
+                command.idempotency_key.value,
+            )
+            _, run = _locked_request_and_run(stores, command)
+            receipt = stores.execution.command_receipt_for_idempotency(
+                command.run_id,
+                command.idempotency_key.value,
+                for_update=True,
+            )
+            if receipt is not None:
+                if receipt.intent_fingerprint != fingerprint:
+                    raise ExecutionCoordinatorConflict(
+                        "execution command idempotency key conflicts with prior intent"
+                    )
+                if receipt.status is ExecutionCommandReceiptStatus.COMPLETED:
+                    assert receipt.result is not None
+                    return _coordinator_result(receipt.result)
+                return ExecutionCoordinatorResult(
+                    run,
+                    CoordinatorStatus.UNCERTAIN,
+                )
+            stores.execution.add_command_receipt(
+                ExecutionCommandReceiptRecord(
+                    run_id=command.run_id,
+                    idempotency_key=command.idempotency_key.value,
+                    intent_fingerprint=fingerprint,
+                    worker_id=command.authority.worker_id,
+                    authority_scopes=command.authority.scopes,
+                    claim_generation=command.fence.generation,
+                    max_effects=command.max_effects,
+                    admitted_at=self._clock(),
+                    initial_run=run,
+                )
+            )
+            unit_of_work.commit()
+        return None
+
+    def _complete_command(
+        self,
+        command: ExecuteActivityRun,
+        result: ExecutionCoordinatorResult,
+    ) -> None:
+        fingerprint = _execution_command_fingerprint(command)
+        with self._unit_of_work_factory() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution.lock_command_idempotency(
+                command.run_id,
+                command.idempotency_key.value,
+            )
+            completed = stores.execution.complete_command_receipt(
+                command.run_id,
+                command.idempotency_key.value,
+                intent_fingerprint=fingerprint,
+                completed_at=self._clock(),
+                result=_command_result_record(result),
+            )
+            if completed is None:
+                raise ExecutionCoordinatorConflict(
+                    "execution command completion receipt is invalid"
+                )
+            unit_of_work.commit()
+
+    def _execute_admitted(
+        self,
+        command: ExecuteActivityRun,
+    ) -> ExecutionCoordinatorResult:
         attempted = 0
         current: ExecutionCoordinatorResult | None = None
         for _ in range(command.max_effects):

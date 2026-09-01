@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import concurrent.futures
+from dataclasses import replace
 import json
 import os
 import queue
 import time
 import unittest
+from unittest import mock
 
 import psycopg
 
@@ -87,15 +89,18 @@ from control_plane_kit_operations.lifecycle import (
     StartActivityRun,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
 from control_plane_kit_operations.records import (
     ActivityEventRecord,
     ActivityPlanRecord,
     ActivityPlanStatus,
     BoundedEvidence,
+    ExecutionCommandReceiptRecord,
     FailureEvidence,
     GraphVersionRecord,
     ObservationRecord,
     ObservationStatus,
+    OperationsRecordError,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
 
@@ -454,12 +459,13 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         scopes: tuple[PolicyScope, ...] = (PolicyScope.EXECUTION_OPERATE,),
         max_effects: int = 1,
         generation: int = 1,
+        idempotency_key: str = "execute-a",
     ) -> ExecuteActivityRun:
         return ExecuteActivityRun(
             "run-a",
             self.authority(worker_id, scopes),
             ExecutionLeaseFence(worker_id, generation),
-            IdempotencyKey("execute-a"),
+            IdempotencyKey(idempotency_key),
             max_effects=max_effects,
         )
 
@@ -864,6 +870,208 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             ],
         )
 
+    def test_completed_progress_replays_exact_result_without_advancing(self) -> None:
+        self.reset_execution_request(plan=two_step_plan())
+        self.claim_and_start()
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+            ActivityExecutionOutcome.succeeded(),
+        )
+        coordinator = self.coordinator(adapter)
+        command = self.command(max_effects=1)
+
+        progressed = coordinator.execute(command)
+        replay = coordinator.execute(command)
+
+        self.assertEqual(replay, progressed)
+        self.assertIs(replay.status, CoordinatorStatus.PROGRESSED)
+        self.assertEqual(replay.activity_id, "wait-api")
+        self.assertEqual(adapter.calls, ["start-api"])
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(
+            [event.kind for event in events],
+            [
+                ActivityEventKind.RUN_OPENED,
+                ActivityEventKind.RUN_STARTED,
+                ActivityEventKind.STEP_STARTED,
+                ActivityEventKind.STEP_SUCCEEDED,
+            ],
+        )
+
+        completed = coordinator.execute(
+            self.command(max_effects=1, idempotency_key="execute-b")
+        )
+        self.assertIs(completed.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(adapter.calls, ["start-api", "wait-api"])
+
+    def test_completed_replay_preserves_complete_scopes_and_large_effect_bound(
+        self,
+    ) -> None:
+        self.claim_and_start()
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        coordinator = self.coordinator(adapter)
+        scopes = tuple(PolicyScope)
+        self.assertGreater(len(scopes), 16)
+        command = self.command(scopes=scopes, max_effects=2**31)
+
+        completed = coordinator.execute(command)
+        replay = coordinator.execute(command)
+
+        self.assertEqual(replay, completed)
+        self.assertEqual(adapter.calls, ["start-api"])
+        with self.unit_of_work() as unit_of_work:
+            receipt = unit_of_work.stores.execution.command_receipt_for_idempotency(
+                "run-a",
+                "execute-a",
+            )
+        self.assertIsInstance(receipt, ExecutionCommandReceiptRecord)
+        assert receipt is not None
+        self.assertEqual(
+            receipt.authority_scopes,
+            tuple(sorted(scopes, key=lambda scope: scope.value)),
+        )
+        self.assertEqual(receipt.max_effects, 2**31)
+        stored_bound = self.connection.execute(
+            "SELECT max_effects FROM cpk_execution_command_receipts "
+            "WHERE run_id = 'run-a' AND idempotency_key = 'execute-a'"
+        ).fetchone()
+        self.assertEqual(stored_bound, (str(2**31),))
+
+    def test_reused_command_key_rejects_changed_intent_before_progress(self) -> None:
+        self.reset_execution_request(plan=two_step_plan())
+        self.claim_and_start()
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+            ActivityExecutionOutcome.succeeded(),
+        )
+        coordinator = self.coordinator(adapter)
+        coordinator.execute(self.command(max_effects=1))
+
+        with self.assertRaisesRegex(
+            ExecutionCoordinatorConflict,
+            "idempotency key conflicts",
+        ):
+            coordinator.execute(self.command(max_effects=2))
+
+        self.assertEqual(adapter.calls, ["start-api"])
+        with self.unit_of_work() as unit_of_work:
+            events = unit_of_work.stores.execution.events_for_run("run-a")
+        self.assertEqual(len(events), 4)
+
+    def test_incomplete_command_replay_reads_current_run_without_progress(self) -> None:
+        self.claim_and_start()
+        interruption = KeyboardInterrupt()
+        adapter = RecordingAdapter(self.tracker, interruption)
+        coordinator = self.coordinator(adapter)
+
+        with self.assertRaises(KeyboardInterrupt) as captured:
+            coordinator.execute(self.command())
+        self.assertIs(captured.exception, interruption)
+        self.connection.execute(
+            "UPDATE cpk_activity_runs SET status = 'paused' WHERE run_id = 'run-a'"
+        )
+
+        replay = coordinator.execute(self.command())
+
+        self.assertIs(replay.status, CoordinatorStatus.UNCERTAIN)
+        self.assertIs(replay.run.status, ActivityRunStatus.PAUSED)
+        self.assertEqual(replay.effects_attempted, 0)
+        self.assertIsNone(replay.activity_id)
+        self.assertEqual(adapter.calls, ["start-api"])
+
+    def test_completion_persistence_fault_leaves_attention_receipt(self) -> None:
+        self.claim_and_start()
+        adapter = RecordingAdapter(
+            self.tracker,
+            ActivityExecutionOutcome.succeeded(),
+        )
+        coordinator = self.coordinator(adapter)
+        persistence_error = RuntimeError("receipt-persistence-canary")
+
+        with mock.patch.object(
+            PostgresExecutionStore,
+            "complete_command_receipt",
+            side_effect=persistence_error,
+        ):
+            with self.assertRaises(RuntimeError) as captured:
+                coordinator.execute(self.command())
+
+        self.assertIs(captured.exception, persistence_error)
+        replay = coordinator.execute(self.command())
+        self.assertIs(replay.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(replay.effects_attempted, 0)
+        self.assertEqual(adapter.calls, ["start-api"])
+
+    def test_command_receipt_rejects_malformed_completion_and_store_truth(self) -> None:
+        self.claim_and_start()
+        coordinator = self.coordinator(
+            RecordingAdapter(
+                self.tracker,
+                ActivityExecutionOutcome.succeeded(),
+            )
+        )
+        coordinator.execute(self.command())
+        with self.unit_of_work() as unit_of_work:
+            receipt = unit_of_work.stores.execution.command_receipt_for_idempotency(
+                "run-a",
+                "execute-a",
+            )
+        assert receipt is not None
+        assert receipt.result is not None
+
+        malformed = (
+            (
+                "fingerprint",
+                lambda: replace(receipt, intent_fingerprint="0" * 64),
+            ),
+            (
+                "effect-bound",
+                lambda: replace(
+                    receipt,
+                    result=replace(receipt.result, effects_attempted=2),
+                ),
+            ),
+            (
+                "run-lineage",
+                lambda: replace(
+                    receipt,
+                    result=replace(
+                        receipt.result,
+                        run=replace(receipt.result.run, plan_id="plan-other"),
+                    ),
+                ),
+            ),
+            (
+                "completion-time",
+                lambda: replace(
+                    receipt,
+                    completed_at="2026-07-22T00:00:00Z",
+                ),
+            ),
+        )
+        for boundary, mutation in malformed:
+            with self.subTest(boundary=boundary):
+                with self.assertRaises(OperationsRecordError):
+                    mutation()
+
+        self.connection.execute(
+            "UPDATE cpk_execution_command_receipts "
+            "SET initial_run = jsonb_set(initial_run, '{plan_id}', '\"plan-other\"') "
+            "WHERE run_id = 'run-a' AND idempotency_key = 'execute-a'"
+        )
+        with self.unit_of_work() as unit_of_work:
+            with self.assertRaises(OperationsRecordError):
+                unit_of_work.stores.execution.command_receipt_for_idempotency(
+                    "run-a",
+                    "execute-a",
+                )
+
     def test_incoherent_pinned_graph_material_fails_before_step_intent(self) -> None:
         self.connection.execute(
             """
@@ -1154,7 +1362,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         )
 
         progressed = self.coordinator(adapter).execute(self.command(max_effects=1))
-        completed = self.coordinator(adapter).execute(self.command(max_effects=2))
+        completed = self.coordinator(adapter).execute(
+            self.command(max_effects=2, idempotency_key="execute-b")
+        )
 
         self.assertIs(progressed.status, CoordinatorStatus.PROGRESSED)
         self.assertEqual(progressed.effects_attempted, 1)

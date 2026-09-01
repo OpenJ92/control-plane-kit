@@ -27,6 +27,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationDeploymentStatus,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.workflows import IdempotencyKey
 
 
 class GatewayKeyRotationRetirementExecutionError(ValueError):
@@ -62,6 +63,7 @@ class ProgressGatewayKeyRotationRetirement:
     actor_scopes: tuple[PolicyScope, ...]
     worker_authority: ExecutionWorkerAuthority
     fence: ExecutionLeaseFence
+    idempotency_key: IdempotencyKey
 
     def __post_init__(self) -> None:
         normalized = self.deployment_command()
@@ -78,6 +80,7 @@ class ProgressGatewayKeyRotationRetirement:
             actor_scopes=self.actor_scopes,
             worker_authority=self.worker_authority,
             fence=self.fence,
+            idempotency_key=self.idempotency_key,
         )
 
 

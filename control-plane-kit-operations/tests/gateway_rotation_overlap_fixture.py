@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec
 from control_plane_kit_core.delegation_authority import (
     DelegationAuthorityBinding,
@@ -516,14 +518,20 @@ class GatewayRotationOverlapFixture:
                 (PolicyScope.EXECUTION_OPERATE,),
             ),
             fence=prepared.handoff.fence,
+            idempotency_key=IdempotencyKey(f"{prefix}:1"),
         )
         with self.unit_of_work() as unit_of_work:
             plan = unit_of_work.stores.activity_history.get_plan(
                 prepared.checkpoint.plan_id
             )
         result = None
-        for _ in plan.plan.activities:
-            result = program.progress(command)
+        for position, _ in enumerate(plan.plan.activities, start=1):
+            result = program.progress(
+                replace(
+                    command,
+                    idempotency_key=IdempotencyKey(f"{prefix}:{position}"),
+                )
+            )
         if result is None:
             raise AssertionError("overlap deployment plan must contain activities")
         return result

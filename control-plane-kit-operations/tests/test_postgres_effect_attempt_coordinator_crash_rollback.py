@@ -34,7 +34,7 @@ class PostgresEffectAttemptCoordinatorCrashRollbackTests(
     PostgresEffectAttemptCoordinatorFixture,
     unittest.TestCase,
 ):
-    def test_committed_start_then_crash_has_zero_provider_and_restart_reconciles(self) -> None:
+    def test_committed_start_then_crash_replay_requires_attention_without_progress(self) -> None:
         error = RuntimeError("post-start-crash-canary")
         adapter = RecordingRuntimeAdapter(
             AssertionError("crashed start reached provider")
@@ -55,21 +55,16 @@ class PostgresEffectAttemptCoordinatorCrashRollbackTests(
         started = self.current_attempt()
         self.assertIs(started.state.status, EffectAttemptStatus.STARTED)
 
-        with self.unit_of_work() as unit_of_work:
-            intent = unit_of_work.stores.effect_attempt_intents.get(
-                started.state.identity
-            ).intent
-        observer = self.observer_for(self.observed_story(), started, intent)
         restart = self.coordinator_harness(
             adapter=RecordingRuntimeAdapter(
                 AssertionError("restart redispatched provider")
             ),
-            observer=observer,
         )
         result = restart.coordinator.execute(self.coordinator_command())
-        self.assertEqual(result.effects_attempted, 1)
+        self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(result.effects_attempted, 0)
         self.assertEqual(restart.adapter.runtime_calls, [])
-        self.assertEqual(len(restart.reconciliation.commands), 1)
+        self.assertEqual(restart.reconciliation.commands, [])
 
     def test_provider_fault_becomes_one_direct_uncertain_fold(self) -> None:
         error = RuntimeError("provider-fault-canary")

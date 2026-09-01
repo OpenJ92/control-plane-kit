@@ -178,6 +178,11 @@ class RecordingLifecycle:
 
 
 class DBFreeExecutionCoordinator(ExecutionCoordinator):
+    def execute(self, command: ExecuteActivityRun):
+        """Exercise effect logic without claiming durable command-replay coverage."""
+
+        return self._execute_admitted(command)
+
     def _load_context(self, command: ExecuteActivityRun) -> _CoordinatorContext:
         self.load_commands.append(command)
         return self.pinned_context

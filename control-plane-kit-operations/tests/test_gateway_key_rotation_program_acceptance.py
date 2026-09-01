@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 import unittest
 
@@ -88,6 +88,7 @@ from control_plane_kit_operations.lifecycle import (
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import ApprovalDecisionKind
+from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
@@ -323,6 +324,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
             worker_authority=self._worker(),
             fence=ExecutionLeaseFence("worker-a", 1),
+            idempotency_key=IdempotencyKey("program-overlap"),
         )
         overlap_ready = self._execute_overlap(overlap_execution_command, runtime)
         overlap_effect_count = len(runtime.calls)
@@ -386,6 +388,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
             worker_authority=self._worker(),
             fence=ExecutionLeaseFence("worker-a", 1),
+            idempotency_key=IdempotencyKey("program-retirement"),
         )
         retirement_ready = self._execute_retirement(
             retirement_execution_command,
@@ -441,8 +444,15 @@ class GatewayKeyRotationProgramAcceptanceTests(
 
     def _execute_overlap(self, command, adapter):
         program = self._overlap_execution_program(adapter)
-        for _ in range(32):
-            result = program.progress(command)
+        for position in range(1, 33):
+            result = program.progress(
+                replace(
+                    command,
+                    idempotency_key=IdempotencyKey(
+                        f"{command.idempotency_key.value}:{position}"
+                    ),
+                )
+            )
             if result.rotation.status is GatewayKeyRotationStatus.OVERLAP_READY:
                 return result
         self.fail(
@@ -452,8 +462,15 @@ class GatewayKeyRotationProgramAcceptanceTests(
 
     def _execute_retirement(self, command, adapter):
         program = self._retirement_execution_program(adapter)
-        for _ in range(32):
-            result = program.progress(command)
+        for position in range(1, 33):
+            result = program.progress(
+                replace(
+                    command,
+                    idempotency_key=IdempotencyKey(
+                        f"{command.idempotency_key.value}:{position}"
+                    ),
+                )
+            )
             if result.rotation.status is GatewayKeyRotationStatus.RETIREMENT_READY:
                 return result
         self.fail(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import concurrent.futures
 from dataclasses import replace
+import threading
 import unittest
 
 from control_plane_kit_core.operations import EffectRecoveryResolution
@@ -18,7 +19,6 @@ from control_plane_kit_operations.coordinator import (
 from tests.postgres_effect_attempt_coordinator_fixture import (
     PostgresEffectAttemptCoordinatorFixture,
     RecordingRuntimeAdapter,
-    TimeoutRendezvous,
 )
 
 
@@ -56,9 +56,14 @@ class PostgresEffectAttemptCoordinatorConcurrencyTests(
 
     def test_concurrent_fresh_selection_has_one_global_provider_winner(self) -> None:
         provider_calls: list[str] = []
+        admitted = threading.Event()
+        release = threading.Event()
 
         def provider(_context, request):
             provider_calls.append(request.effect_id)
+            admitted.set()
+            if not release.wait(timeout=5):
+                raise AssertionError("admitted command was not released")
             return RuntimeEffectResult.succeeded(request.effect_id)
 
         observer = _RequestDerivedObserver(self.observed_story().value)
@@ -70,37 +75,38 @@ class PostgresEffectAttemptCoordinatorConcurrencyTests(
             adapter=RecordingRuntimeAdapter(provider),
             observer=observer,
         )
-        rendezvous = TimeoutRendezvous(2)
-        first.start.before_execute = rendezvous
-        second.start.before_execute = rendezvous
         before = self.graph_request_snapshot()
 
-        results = self.concurrent_results(
-            lambda: first.coordinator.execute(self.coordinator_command()),
-            lambda: second.coordinator.execute(self.coordinator_command()),
-        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            first_result = pool.submit(
+                first.coordinator.execute,
+                self.coordinator_command(),
+            )
+            try:
+                self.assertTrue(admitted.wait(timeout=5))
+                second_result = pool.submit(
+                    second.coordinator.execute,
+                    self.coordinator_command(),
+                ).result(timeout=5)
+                self.assertFalse(first_result.done())
+            finally:
+                release.set()
+            completed = first_result.result(timeout=5)
+        replay = second.coordinator.execute(self.coordinator_command())
 
-        self.assertEqual(rendezvous.calls, 2)
         self.assertEqual(len(provider_calls), 1)
         self.assertEqual(len(set(provider_calls)), 1)
-        self.assertTrue(
-            all(
-                getattr(value, "status", None) is CoordinatorStatus.COMPLETED
-                for value in results
-            )
-        )
-        self.assertEqual(
-            sum(getattr(value, "effects_attempted", 0) == 1 for value in results),
-            2,
-        )
-        self.assertEqual(
-            len(first.start.commands) + len(second.start.commands),
-            2,
-        )
+        self.assertIs(second_result.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(second_result.effects_attempted, 0)
+        self.assertIsNone(second_result.activity_id)
+        self.assertIs(completed.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(replay, completed)
+        self.assertEqual(completed.effects_attempted, 1)
+        self.assertEqual(len(first.start.commands) + len(second.start.commands), 1)
         self.assertEqual(
             len(first.reconciliation.commands)
             + len(second.reconciliation.commands),
-            1,
+            0,
         )
         self.assertEqual(self.graph_request_snapshot(), before)
 
@@ -151,27 +157,40 @@ class PostgresEffectAttemptCoordinatorConcurrencyTests(
         unrelated = self.seed_foreign_attempt()
         first = self.coordinator_harness()
         second = self.coordinator_harness()
-        rendezvous = TimeoutRendezvous(2)
-        first.lifecycle.before_execute = rendezvous
-        second.lifecycle.before_execute = rendezvous
+        admitted = threading.Event()
+        release = threading.Event()
 
-        results = self.concurrent_results(
-            lambda: first.coordinator.execute(self.coordinator_command()),
-            lambda: second.coordinator.execute(self.coordinator_command()),
-        )
+        def pause_after_admission() -> None:
+            admitted.set()
+            if not release.wait(timeout=5):
+                raise AssertionError("admitted terminal settlement was not released")
 
-        self.assertEqual(rendezvous.calls, 2)
+        first.lifecycle.before_execute = pause_after_admission
+        command = self.coordinator_command()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            first_result = pool.submit(first.coordinator.execute, command)
+            try:
+                self.assertTrue(admitted.wait(timeout=5))
+                incomplete = pool.submit(
+                    second.coordinator.execute,
+                    command,
+                ).result(timeout=5)
+                self.assertFalse(first_result.done())
+            finally:
+                release.set()
+            completed = first_result.result(timeout=5)
+        replay = second.coordinator.execute(command)
+
         self.assertEqual(
             len(first.lifecycle.commands) + len(second.lifecycle.commands),
-            2,
+            1,
         )
-        self.assertTrue(
-            all(
-                getattr(value, "status", None) is CoordinatorStatus.COMPLETED
-                for value in results
-            )
-        )
-        self.assertTrue(all(value.effects_attempted == 0 for value in results))
+        self.assertIs(incomplete.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(incomplete.effects_attempted, 0)
+        self.assertIsNone(incomplete.activity_id)
+        self.assertIs(completed.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(replay, completed)
+        self.assertEqual(completed.effects_attempted, 0)
         self.assertEqual(first.adapter.runtime_calls, [])
         self.assertEqual(second.adapter.runtime_calls, [])
         self.assertEqual(first.start.commands, [])
