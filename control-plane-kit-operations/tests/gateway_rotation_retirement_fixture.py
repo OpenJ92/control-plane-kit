@@ -38,6 +38,7 @@ from control_plane_kit_operations.lifecycle import (
     ExecutionWorkerAuthority,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.workflows import IdempotencyKey
 
 
 class CountingIds:
@@ -225,6 +226,7 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
         worker_scopes: tuple[PolicyScope, ...] = (
             PolicyScope.EXECUTION_OPERATE,
         ),
+        idempotency_key: str = "retirement-execute-a",
     ) -> ProgressGatewayKeyRotationRetirement:
         return ProgressGatewayKeyRotationRetirement(
             rotation_id=self.rotation_id,
@@ -237,6 +239,7 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
             actor_scopes=actor_scopes,
             worker_authority=ExecutionWorkerAuthority("worker-a", worker_scopes),
             fence=ExecutionLeaseFence("worker-a", 1),
+            idempotency_key=IdempotencyKey(idempotency_key),
         )
 
     def execution_program(

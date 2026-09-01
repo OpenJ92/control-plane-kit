@@ -89,7 +89,10 @@ class PostgresEffectAttemptCoordinatorCompensationIsolationTests(
         blocked = self.coordinator_harness()
 
         result = blocked.coordinator.execute(
-            self.coordinator_command(generation=1)
+            self.coordinator_command(
+                generation=1,
+                idempotency_key="coordinator-after-compensation",
+            )
         )
 
         self.assertIs(result.status, CoordinatorStatus.BLOCKED)

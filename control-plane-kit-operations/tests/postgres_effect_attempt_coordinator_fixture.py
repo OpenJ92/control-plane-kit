@@ -170,12 +170,13 @@ class PostgresEffectAttemptCoordinatorFixture(
             PolicyScope.EXECUTION_OPERATE,
             PolicyScope.SECRET_PROVIDER_USE,
         ),
+        idempotency_key: str = "coordinator-a",
     ) -> ExecuteActivityRun:
         return ExecuteActivityRun(
             "run-a",
             self.authority(worker_id, scopes),
             self.fence(worker_id, generation),
-            IdempotencyKey("coordinator-a"),
+            IdempotencyKey(idempotency_key),
             max_effects,
         )
 

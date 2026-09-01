@@ -53,6 +53,7 @@ from control_plane_kit_operations.lifecycle import (
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import BoundedEvidence, FailureEvidence
+from control_plane_kit_operations.workflows import IdempotencyKey
 
 
 class CountingIds:
@@ -177,6 +178,7 @@ class GatewayKeyRotationOverlapExecutionTests(
         worker_scopes: tuple[PolicyScope, ...] = (
             PolicyScope.EXECUTION_OPERATE,
         ),
+        idempotency_key: str = "overlap-execute-a",
     ) -> ProgressGatewayKeyRotationOverlap:
         return ProgressGatewayKeyRotationOverlap(
             rotation_id=self.rotation_id,
@@ -192,6 +194,7 @@ class GatewayKeyRotationOverlapExecutionTests(
                 worker_scopes,
             ),
             fence=ExecutionLeaseFence("worker-a", 1),
+            idempotency_key=IdempotencyKey(idempotency_key),
         )
 
     def program(
@@ -225,12 +228,13 @@ class GatewayKeyRotationOverlapExecutionTests(
         )
         adapter = RecordingAdapter(*(accepted_outcome,) * activity_count)
         program = self.program(adapter)
-        command = self.command()
-
         intermediate = [
-            program.progress(command)
-            for _ in range(activity_count - 1)
+            program.progress(
+                self.command(idempotency_key=f"overlap-step-{position}")
+            )
+            for position in range(1, activity_count)
         ]
+        command = self.command(idempotency_key=f"overlap-step-{activity_count}")
         result = program.progress(command)
 
         self.assertTrue(intermediate)
@@ -396,8 +400,12 @@ class GatewayKeyRotationOverlapExecutionTests(
                     prior_adapter,
                     prefix=f"prior-{crash_after_commit}",
                 )
-                for _ in range(activity_count - 1):
-                    prior = prior_program.progress(self.command())
+                for position in range(1, activity_count):
+                    prior = prior_program.progress(
+                        self.command(
+                            idempotency_key=f"{boundary}-prior-{position}"
+                        )
+                    )
                     self.assertIs(
                         prior.outcome,
                         GatewayKeyRotationOverlapExecutionOutcome.DISPATCHED,
@@ -408,13 +416,16 @@ class GatewayKeyRotationOverlapExecutionTests(
                     control,
                 )
                 adapter = RecordingAdapter(ActivityExecutionOutcome.succeeded())
+                crash_command = self.command(
+                    idempotency_key=f"{boundary}-terminal"
+                )
 
                 with self.assertRaises(SimulatedProcessLoss):
                     self.program(
                         adapter,
                         unit_of_work_factory=crashing_factory,
                         prefix=f"crash-{crash_after_commit}",
-                    ).progress(self.command())
+                    ).progress(crash_command)
 
                 durable_kinds = self._attempt_event_kinds()
                 self.assertEqual(
@@ -460,7 +471,7 @@ class GatewayKeyRotationOverlapExecutionTests(
                         self.program(
                             stale_adapter,
                             prefix="stale-after-graph-advance",
-                        ).progress(self.command())
+                        ).progress(crash_command)
                     self.assertEqual(
                         str(captured.exception),
                         "overlap checkpoint does not match durable child truth",
@@ -530,7 +541,7 @@ class GatewayKeyRotationOverlapExecutionTests(
                     recovered = self.program(
                         recovered_adapter,
                         prefix=f"recover-{crash_after_commit}",
-                    ).progress(self.command())
+                    ).progress(crash_command)
 
                 if boundary != "current-graph-advance":
                     self.assertIn(
@@ -737,8 +748,10 @@ class GatewayKeyRotationOverlapExecutionTests(
             *(ActivityExecutionOutcome.succeeded(),) * (activity_count - 1)
         )
         prior_program = self.program(prior_adapter, prefix="evidence-prior")
-        for _ in range(activity_count - 1):
-            prior_program.progress(self.command())
+        for position in range(1, activity_count):
+            prior_program.progress(
+                self.command(idempotency_key=f"evidence-prior-{position}")
+            )
         graph_advance_commit = dict(POST_EFFECT_CRASH_BOUNDARIES)[
             "current-graph-advance"
         ]
@@ -751,7 +764,7 @@ class GatewayKeyRotationOverlapExecutionTests(
                     control,
                 ),
                 prefix="evidence-crash",
-            ).progress(self.command())
+            ).progress(self.command(idempotency_key="evidence-terminal"))
         rotations = GatewayKeyRotationService(
             self.unit_of_work,
             clock=lambda: 3_000,

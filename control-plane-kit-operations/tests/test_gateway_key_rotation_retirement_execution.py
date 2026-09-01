@@ -79,10 +79,18 @@ class GatewayKeyRotationRetirementExecutionTests(
         program = self.execution_program(adapter)
 
         intermediate = [
-            program.progress(self.execution_command())
-            for _ in range(activity_count - 1)
+            program.progress(
+                self.execution_command(
+                    idempotency_key=f"retirement-step-{position}"
+                )
+            )
+            for position in range(1, activity_count)
         ]
-        result = program.progress(self.execution_command())
+        result = program.progress(
+            self.execution_command(
+                idempotency_key=f"retirement-step-{activity_count}"
+            )
+        )
 
         self.assertGreater(activity_count, 1)
         self.assertTrue(
@@ -262,14 +270,23 @@ class GatewayKeyRotationRetirementExecutionTests(
                     prior_adapter,
                     prefix=f"prior-{crash_after_commit}",
                 )
-                for _ in range(activity_count - 1):
-                    prior = prior_program.progress(self.execution_command())
+                for position in range(1, activity_count):
+                    prior = prior_program.progress(
+                        self.execution_command(
+                            idempotency_key=(
+                                f"retirement-{crash_after_commit}-prior-{position}"
+                            )
+                        )
+                    )
                     self.assertIs(
                         prior.outcome,
                         GatewayKeyRotationRetirementExecutionOutcome.DISPATCHED,
                     )
                 control = CrashControl(crash_after_commit)
                 adapter = RecordingAdapter(ActivityExecutionOutcome.succeeded())
+                crash_command = self.execution_command(
+                    idempotency_key=f"retirement-{crash_after_commit}-terminal"
+                )
 
                 with self.assertRaises(SimulatedProcessLoss):
                     self.execution_program(
@@ -279,7 +296,7 @@ class GatewayKeyRotationRetirementExecutionTests(
                             control,
                         ),
                         prefix=f"crash-{crash_after_commit}",
-                    ).progress(self.execution_command())
+                    ).progress(crash_command)
 
                 if crash_after_commit == 6:
                     rotations = GatewayKeyRotationService(
@@ -316,7 +333,7 @@ class GatewayKeyRotationRetirementExecutionTests(
                         self.execution_program(
                             stale_adapter,
                             prefix="stale-after-graph-advance",
-                        ).progress(self.execution_command())
+                        ).progress(crash_command)
                     self.assertEqual(
                         str(captured.exception),
                         "retirement checkpoint does not match durable child truth",
@@ -391,7 +408,7 @@ class GatewayKeyRotationRetirementExecutionTests(
                     recovered = self.execution_program(
                         recovered_adapter,
                         prefix=f"recover-{crash_after_commit}",
-                    ).progress(self.execution_command())
+                    ).progress(crash_command)
 
                 if crash_after_commit != 6:
                     self.assertIn(
