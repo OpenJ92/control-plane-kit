@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=b4e6dbec5d5c7947509ee359e7d16d976582b8081030ab26ea77a0b627f132bd relations=36 columns=477 constraints=355 indexes=119 foreign-keys=80 -->
+<!-- current-schema-contract: sha256=4a06ccf8c2b8f0358cd8737edb9d84a0ca73e4be3fb19bc41be26eb221e2b7c3 relations=37 columns=489 constraints=367 indexes=120 foreign-keys=81 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -82,8 +82,8 @@ foreign key and the accepted lineage cycle:
 5. Restore session actions and plans; gateway probe attempts; rotation
    transitions and revocations; and approval requests.
 6. Restore approval decisions, then execution requests.
-7. Restore root activity runs before retry descendants, then restore activity
-   events in run/ordinal order, immutable start-intent evidence after its
+7. Restore root activity runs before retry descendants, then execution-command
+   receipts and activity events in run/ordinal order, immutable start-intent evidence after its
    original event, and effect attempts in attempt order after all of their
    intent/original/latest commitments exist. Restore direct effect
    outcomes after their attempts and both referenced event coordinates, then
@@ -287,6 +287,7 @@ cpk_effect_attempts -->|cpk_effect_attempts_latest_event_fk| cpk_activity_events
 cpk_effect_attempts -->|cpk_effect_attempts_original_event_fk| cpk_activity_events
 cpk_effect_attempts -->|cpk_effect_attempts_prior_fkey| cpk_effect_attempts
 cpk_effect_attempts -->|cpk_effect_attempts_run_id_fkey| cpk_activity_runs
+cpk_execution_command_receipts -->|cpk_execution_command_receipts_run_id_fkey| cpk_activity_runs
 cpk_execution_requests -->|cpk_execution_requests_approval_identity_fk| cpk_approval_decisions
 cpk_execution_requests -->|cpk_execution_requests_approval_request_id_fkey| cpk_approval_requests
 cpk_execution_requests -->|cpk_execution_requests_plan_session_fk| cpk_activity_plans
@@ -378,6 +379,7 @@ order is semantically significant for every composite identity.
 | `cpk_effect_attempts_original_event_fk` | `cpk_effect_attempts` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Every attempt retains its exact immutable start event. |
 | `cpk_effect_attempts_prior_fkey` | `cpk_effect_attempts` | `prior_run_id, prior_activity_id, prior_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | A retry names the immediately preceding attempt for the same run and activity. |
 | `cpk_effect_attempts_run_id_fkey` | `cpk_effect_attempts` | `run_id` | `cpk_activity_runs` | `run_id` | Every effect attempt belongs to one durable activity run. |
+| `cpk_execution_command_receipts_run_id_fkey` | `cpk_execution_command_receipts` | `run_id` | `cpk_activity_runs` | `run_id` | Every admitted command receipt belongs to the exact run it may advance. |
 | `cpk_execution_requests_approval_identity_fk` | `cpk_execution_requests` | `approval_decision_id, approval_request_id` | `cpk_approval_decisions` | `decision_id, request_id` | The selected decision must resolve the selected request. |
 | `cpk_execution_requests_approval_request_id_fkey` | `cpk_execution_requests` | `approval_request_id` | `cpk_approval_requests` | `request_id` | An approved execution names an existing request. |
 | `cpk_execution_requests_plan_session_fk` | `cpk_execution_requests` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The execution request and plan share one session. |
@@ -473,6 +475,19 @@ order is semantically significant for every composite identity.
 - **JSON boundary:** `metadata` carries bounded run context and is not the source of request, plan, or approval identity.
 - **Sensitive material:** Metadata and failure summaries must omit credentials, private material, raw provider responses, and unbounded logs.
 - **Future impact:** #1556 may execute committed node-control attempts and attach bounded run evidence while retaining the same retry model.
+
+### `cpk_execution_command_receipts`
+- **Durable meaning and owner:** `PostgresExecutionStore` owns admission and exact completed replay truth for one `ExecutionCoordinator` command.
+- **Identity and cardinality:** `(run_id, idempotency_key)` is primary. The canonical intent fingerprint binds worker, the complete normalized `PolicyScope` set, claim generation, and the positive decimal effect bound without retaining the key inside the fingerprint.
+- **Outgoing foreign keys:** `run_id` must name the activity run the command was admitted to advance.
+- **Inbound dependents:** No table depends on a receipt; public command replay reads it through the coordinator.
+- **Writers and transactions:** Admission locks the command key, validates request/run authority in the established request-before-run order, and inserts `incomplete` before progress. Completion compare-and-sets that row to `completed` in a later transaction after execution returns normally.
+- **Readers and projections:** A completed replay returns the exact stored bounded result. An incomplete replay uses a fresh locked current-run read and returns uncertainty without progress or effect dispatch; the initial run snapshot is correlation evidence only.
+- **Mutation, locks, retries, and idempotency:** State is one-way `incomplete` to `completed`; changed intent conflicts, and neither escaped execution nor completion-persistence failure authorizes redispatch.
+- **Lifecycle, retention, deletion, and restore:** Restore runs before receipts. Restrictive run ownership retains receipts with their operational history; there is no public reset or delete path.
+- **JSON boundary:** Normalized scopes, initial run correlation, and the exact completed result are closed typed documents validated at the store boundary. Reconstruction recomputes the intent fingerprint and rejects effect-count, run-lineage, or completion-time drift. Join and command identity remain relational.
+- **Sensitive material:** Receipts contain bounded operational coordinates only, never provider payloads, exception text, credentials, tokens, or secret values.
+- **Future impact:** A future command family needs a distinct domain-separated fingerprint and explicit result codec rather than widening this receipt implicitly.
 
 ### `cpk_approval_decisions`
 - **Durable meaning and owner:** `PostgresActivityHistoryStore` owns the single actor decision that resolves an approval request.

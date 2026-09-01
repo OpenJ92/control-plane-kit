@@ -43,6 +43,31 @@ CREATE TABLE cpk_activity_runs (
     CONSTRAINT cpk_activity_runs_status_check CHECK ((status = ANY (ARRAY['claimed'::text, 'running'::text, 'paused'::text, 'succeeded'::text, 'failed'::text, 'compensating'::text, 'compensated'::text, 'partially_failed'::text, 'uncompensated_failure'::text, 'cancelled'::text])))
 );
 
+CREATE TABLE cpk_execution_command_receipts (
+    run_id text NOT NULL,
+    idempotency_key text NOT NULL,
+    intent_fingerprint text NOT NULL,
+    worker_id text NOT NULL,
+    authority_scopes jsonb NOT NULL,
+    claim_generation bigint NOT NULL,
+    max_effects text NOT NULL,
+    admitted_at timestamp with time zone NOT NULL,
+    initial_run jsonb NOT NULL,
+    receipt_status text NOT NULL,
+    completed_at timestamp with time zone,
+    result jsonb,
+    CONSTRAINT cpk_execution_command_receipts_idempotency_key_check CHECK (((char_length(idempotency_key) >= 1) AND (char_length(idempotency_key) <= 200))),
+    CONSTRAINT cpk_execution_command_receipts_intent_fingerprint_check CHECK (((intent_fingerprint COLLATE "C") ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_execution_command_receipts_worker_id_check CHECK (((char_length(worker_id) >= 1) AND (char_length(worker_id) <= 512))),
+    CONSTRAINT cpk_execution_command_receipts_authority_scopes_check CHECK (((jsonb_typeof(authority_scopes) = 'array'::text) AND (jsonb_array_length(authority_scopes) >= 1) AND (jsonb_array_length(authority_scopes) <= 37) AND (octet_length((authority_scopes)::text) <= 2048))),
+    CONSTRAINT cpk_execution_command_receipts_claim_generation_check CHECK (((claim_generation >= 1) AND (claim_generation <= 9223372036854775807))),
+    CONSTRAINT cpk_execution_command_receipts_max_effects_check CHECK (((max_effects COLLATE "C") ~ '^[1-9][0-9]*$'::text)),
+    CONSTRAINT cpk_execution_command_receipts_initial_run_check CHECK (((jsonb_typeof(initial_run) = 'object'::text) AND (octet_length((initial_run)::text) <= 16384))),
+    CONSTRAINT cpk_execution_command_receipts_status_check CHECK ((receipt_status = ANY (ARRAY['incomplete'::text, 'completed'::text]))),
+    CONSTRAINT cpk_execution_command_receipts_result_check CHECK (((result IS NULL) OR ((jsonb_typeof(result) = 'object'::text) AND (octet_length((result)::text) <= 16384)))),
+    CONSTRAINT cpk_execution_command_receipts_shape_check CHECK ((((receipt_status = 'incomplete'::text) AND (completed_at IS NULL) AND (result IS NULL)) OR ((receipt_status = 'completed'::text) AND (completed_at IS NOT NULL) AND (result IS NOT NULL))))
+);
+
 CREATE TABLE cpk_failed_run_compensations (
     program_id text NOT NULL,
     workspace_id text NOT NULL,
@@ -799,6 +824,9 @@ ALTER TABLE ONLY cpk_activity_runs
 ALTER TABLE ONLY cpk_activity_runs
     ADD CONSTRAINT cpk_activity_runs_run_id_request_id_key UNIQUE (run_id, request_id);
 
+ALTER TABLE ONLY cpk_execution_command_receipts
+    ADD CONSTRAINT cpk_execution_command_receipts_pkey PRIMARY KEY (run_id, idempotency_key);
+
 ALTER TABLE ONLY cpk_effect_attempt_intents
     ADD CONSTRAINT cpk_effect_attempt_intents_pkey PRIMARY KEY (run_id, activity_id, attempt);
 
@@ -1105,6 +1133,9 @@ ALTER TABLE ONLY cpk_activity_runs
 
 ALTER TABLE ONLY cpk_activity_runs
     ADD CONSTRAINT cpk_activity_runs_request_plan_fk FOREIGN KEY (request_id, plan_id) REFERENCES cpk_execution_requests(request_id, plan_id);
+
+ALTER TABLE ONLY cpk_execution_command_receipts
+    ADD CONSTRAINT cpk_execution_command_receipts_run_id_fkey FOREIGN KEY (run_id) REFERENCES cpk_activity_runs(run_id);
 
 ALTER TABLE ONLY cpk_effect_attempts
     ADD CONSTRAINT cpk_effect_attempts_run_id_fkey FOREIGN KEY (run_id) REFERENCES cpk_activity_runs(run_id);

@@ -6,6 +6,7 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from hashlib import sha256
 from typing import Mapping
@@ -38,6 +39,7 @@ from control_plane_kit_core.probe_intents import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
+from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 
 
@@ -90,6 +92,25 @@ class ObservationStatus(StrEnum):
     REJECTED = "rejected"
     MALFORMED = "malformed"
     UNKNOWN = "unknown"
+
+
+class CoordinatorStatus(StrEnum):
+    """Closed coordinator result statuses at the durable command boundary."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PROGRESSED = "progressed"
+    IN_FLIGHT = "in-flight"
+    UNCERTAIN = "uncertain"
+    UNSUPPORTED = "unsupported"
+    BLOCKED = "blocked"
+
+
+class ExecutionCommandReceiptStatus(StrEnum):
+    """One-way durable state for an admitted execution command."""
+
+    INCOMPLETE = "incomplete"
+    COMPLETED = "completed"
 
 
 class ObservationFreshness(StrEnum):
@@ -941,6 +962,201 @@ class ActivityRunRecord:
         if not isinstance(self.metadata, BoundedEvidence):
             raise OperationsRecordError("activity run metadata must be BoundedEvidence")
         _validate_run_timing(self)
+
+
+@dataclass(frozen=True)
+class ExecutionCommandResultRecord:
+    """Exact bounded result retained for command replay."""
+
+    run: ActivityRunRecord
+    status: CoordinatorStatus
+    effects_attempted: int
+    activity_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.run, ActivityRunRecord):
+            raise OperationsRecordError("execution command result run must be typed")
+        if not isinstance(self.status, CoordinatorStatus):
+            raise OperationsRecordError("execution command result status must be typed")
+        if (
+            type(self.effects_attempted) is not int
+            or self.effects_attempted < 0
+        ):
+            raise OperationsRecordError(
+                "execution command result effect count is invalid"
+            )
+        _validate_optional_activity_id(self.activity_id)
+
+
+def execution_command_intent_fingerprint(
+    *,
+    run_id: str,
+    worker_id: str,
+    authority_scopes: tuple[PolicyScope, ...],
+    claim_generation: int,
+    max_effects: int,
+) -> str:
+    """Fingerprint the complete canonical intent retained by a command receipt."""
+
+    _validate_run_id(run_id, "run_id")
+    _validate_text(worker_id, "worker_id")
+    scopes = tuple(authority_scopes)
+    if (
+        not scopes
+        or not all(isinstance(scope, PolicyScope) for scope in scopes)
+        or scopes != tuple(sorted(set(scopes), key=lambda scope: scope.value))
+    ):
+        raise OperationsRecordError("execution command scopes are not canonical")
+    if (
+        type(claim_generation) is not int
+        or not 1 <= claim_generation <= 2**63 - 1
+    ):
+        raise OperationsRecordError("execution command generation is invalid")
+    max_effects_text = canonical_positive_decimal(max_effects)
+    descriptor = {
+        "domain": "control-plane-kit.operations.execution-command.v1",
+        "command": "deployment.execute",
+        "run_id": run_id,
+        "worker_id": worker_id,
+        "authority_scopes": [scope.value for scope in scopes],
+        "claim_generation": claim_generation,
+        "max_effects": max_effects_text,
+    }
+    payload = json.dumps(
+        descriptor,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return sha256(payload).hexdigest()
+
+
+def canonical_positive_decimal(value: int) -> str:
+    """Render any positive Python integer without narrowing its public domain."""
+
+    if type(value) is not int or value < 1:
+        raise OperationsRecordError("execution command effect bound is invalid")
+    return str(value)
+
+
+def positive_int_from_canonical_decimal(value: object) -> int:
+    """Parse the exact positive decimal representation owned by the store."""
+
+    if type(value) is not str or re.fullmatch(r"[1-9][0-9]*", value) is None:
+        raise OperationsRecordError("execution command effect bound is malformed")
+    parsed = int(value)
+    if canonical_positive_decimal(parsed) != value:
+        raise OperationsRecordError("execution command effect bound is malformed")
+    return parsed
+
+
+def _execution_run_lineage(record: ActivityRunRecord) -> tuple[object, ...]:
+    return (
+        record.run_id,
+        record.plan_id,
+        record.admission.request_id,
+        record.retry.attempt,
+        record.retry.prior_run_id,
+        record.created_at,
+    )
+
+
+def _canonical_timestamp_instant(value: object, field_name: str) -> datetime:
+    try:
+        canonical = validate_canonical_utc_timestamp(value)
+        return datetime.fromisoformat(canonical[:-1] + "+00:00")
+    except (TypeError, ValueError, OverflowError):
+        raise OperationsRecordError(
+            f"execution command {field_name} is invalid"
+        ) from None
+
+
+@dataclass(frozen=True)
+class ExecutionCommandReceiptRecord:
+    """Durable admission and optional completion of one coordinator command."""
+
+    run_id: str
+    idempotency_key: str
+    intent_fingerprint: str
+    worker_id: str
+    authority_scopes: tuple[PolicyScope, ...]
+    claim_generation: int
+    max_effects: int
+    admitted_at: str
+    initial_run: ActivityRunRecord
+    status: ExecutionCommandReceiptStatus = ExecutionCommandReceiptStatus.INCOMPLETE
+    completed_at: str | None = None
+    result: ExecutionCommandResultRecord | None = None
+
+    def __post_init__(self) -> None:
+        _validate_run_id(self.run_id, "run_id")
+        _validate_text(self.idempotency_key, "idempotency_key")
+        if len(self.idempotency_key) > 200:
+            raise OperationsRecordError("execution command key is too long")
+        _validate_text(self.worker_id, "worker_id")
+        scopes = tuple(self.authority_scopes)
+        if (
+            not scopes
+            or not all(isinstance(scope, PolicyScope) for scope in scopes)
+            or scopes != tuple(sorted(set(scopes), key=lambda scope: scope.value))
+        ):
+            raise OperationsRecordError("execution command scopes are not canonical")
+        object.__setattr__(self, "authority_scopes", scopes)
+        if (
+            type(self.claim_generation) is not int
+            or not 1 <= self.claim_generation <= 2**63 - 1
+        ):
+            raise OperationsRecordError("execution command generation is invalid")
+        canonical_positive_decimal(self.max_effects)
+        expected_fingerprint = execution_command_intent_fingerprint(
+            run_id=self.run_id,
+            worker_id=self.worker_id,
+            authority_scopes=scopes,
+            claim_generation=self.claim_generation,
+            max_effects=self.max_effects,
+        )
+        if self.intent_fingerprint != expected_fingerprint:
+            raise OperationsRecordError("execution command fingerprint is invalid")
+        admitted_at = _canonical_timestamp_instant(self.admitted_at, "admitted_at")
+        if (
+            not isinstance(self.initial_run, ActivityRunRecord)
+            or self.initial_run.run_id != self.run_id
+        ):
+            raise OperationsRecordError("execution command initial run is incongruent")
+        if not isinstance(self.status, ExecutionCommandReceiptStatus):
+            raise OperationsRecordError("execution command receipt status is invalid")
+        if self.status is ExecutionCommandReceiptStatus.INCOMPLETE:
+            if self.completed_at is not None or self.result is not None:
+                raise OperationsRecordError(
+                    "incomplete execution command cannot carry a result"
+                )
+        elif (
+            self.completed_at is None
+            or not isinstance(self.result, ExecutionCommandResultRecord)
+            or self.result.run.run_id != self.run_id
+        ):
+            raise OperationsRecordError(
+                "completed execution command requires a congruent result"
+            )
+        else:
+            completed_at = _canonical_timestamp_instant(
+                self.completed_at,
+                "completed_at",
+            )
+            if completed_at < admitted_at:
+                raise OperationsRecordError(
+                    "execution command completion precedes admission"
+                )
+            if self.result.effects_attempted > self.max_effects:
+                raise OperationsRecordError(
+                    "execution command result exceeds its effect bound"
+                )
+            if _execution_run_lineage(self.result.run) != _execution_run_lineage(
+                self.initial_run
+            ):
+                raise OperationsRecordError(
+                    "execution command result run lineage is incongruent"
+                )
 
 
 @dataclass(frozen=True)

@@ -14,6 +14,7 @@ from control_plane_kit_core.operations.lifecycle import (
     RecoveryDecisionKind,
 )
 from control_plane_kit_core.operations import RunId
+from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
@@ -38,12 +39,18 @@ from control_plane_kit_operations.records import (
     BoundedEvidence,
     ClaimIdentity,
     ExecutionIdempotency,
+    CoordinatorStatus,
+    ExecutionCommandReceiptRecord,
+    ExecutionCommandReceiptStatus,
+    ExecutionCommandResultRecord,
     ExecutionLeaseRecoveryEvidence,
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     FailureEvidence,
     OperationsRecordError,
     RetryIdentity,
+    canonical_positive_decimal,
+    positive_int_from_canonical_decimal,
 )
 
 
@@ -106,6 +113,113 @@ class PostgresExecutionStore:
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"execution-admission:{workspace_id}:{idempotency_key}",),
         )
+
+    def lock_command_idempotency(
+        self,
+        run_id: str,
+        idempotency_key: str,
+    ) -> None:
+        """Serialize one run-scoped coordinator command before receipt lookup."""
+
+        _require_run_id(run_id)
+        _require_command_key(idempotency_key)
+        self._connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"execution-command:{run_id}:{idempotency_key}",),
+        )
+
+    def add_command_receipt(
+        self,
+        record: ExecutionCommandReceiptRecord,
+    ) -> ExecutionCommandReceiptRecord:
+        if type(record) is not ExecutionCommandReceiptRecord:
+            raise OperationsRecordError("execution command receipt must be typed")
+        self._connection.execute(
+            """
+            INSERT INTO cpk_execution_command_receipts
+              (run_id, idempotency_key, intent_fingerprint, worker_id,
+               authority_scopes, claim_generation, max_effects, admitted_at,
+               initial_run, receipt_status, completed_at, result)
+            VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s::jsonb,
+                    %s, %s, %s::jsonb)
+            """,
+            (
+                record.run_id,
+                record.idempotency_key,
+                record.intent_fingerprint,
+                record.worker_id,
+                _json([scope.value for scope in record.authority_scopes]),
+                record.claim_generation,
+                canonical_positive_decimal(record.max_effects),
+                encode_postgres_timestamp(record.admitted_at),
+                _json(_run_descriptor(record.initial_run)),
+                record.status.value,
+                _encode_optional_timestamp(record.completed_at),
+                None if record.result is None else _json(_result_descriptor(record.result)),
+            ),
+        )
+        return record
+
+    def command_receipt_for_idempotency(
+        self,
+        run_id: str,
+        idempotency_key: str,
+        *,
+        for_update: bool = False,
+    ) -> ExecutionCommandReceiptRecord | None:
+        _require_run_id(run_id)
+        _require_command_key(idempotency_key)
+        lock = "FOR UPDATE" if for_update else ""
+        row = self._connection.execute(
+            f"""
+            SELECT run_id, idempotency_key, intent_fingerprint, worker_id,
+                   authority_scopes, claim_generation, max_effects, admitted_at,
+                   initial_run, receipt_status, completed_at, result
+            FROM cpk_execution_command_receipts
+            WHERE run_id = %s AND idempotency_key = %s
+            {lock}
+            """,
+            (run_id, idempotency_key),
+        ).fetchone()
+        return None if row is None else _command_receipt(row)
+
+    def complete_command_receipt(
+        self,
+        run_id: str,
+        idempotency_key: str,
+        *,
+        intent_fingerprint: str,
+        completed_at: str,
+        result: ExecutionCommandResultRecord,
+    ) -> ExecutionCommandReceiptRecord | None:
+        _require_run_id(run_id)
+        _require_command_key(idempotency_key)
+        if type(result) is not ExecutionCommandResultRecord:
+            raise OperationsRecordError("execution command result must be typed")
+        row = self._connection.execute(
+            """
+            UPDATE cpk_execution_command_receipts
+            SET receipt_status = 'completed', completed_at = %s,
+                result = %s::jsonb
+            WHERE run_id = %s
+              AND idempotency_key = %s
+              AND intent_fingerprint = %s
+              AND receipt_status = 'incomplete'
+              AND completed_at IS NULL
+              AND result IS NULL
+            RETURNING run_id, idempotency_key, intent_fingerprint, worker_id,
+                      authority_scopes, claim_generation, max_effects, admitted_at,
+                      initial_run, receipt_status, completed_at, result
+            """,
+            (
+                encode_postgres_timestamp(completed_at),
+                _json(_result_descriptor(result)),
+                run_id,
+                idempotency_key,
+                intent_fingerprint,
+            ),
+        ).fetchone()
+        return None if row is None else _command_receipt(row)
 
     def get_request(self, request_id: str) -> ExecutionRequestRecord:
         row = self._connection.execute(
@@ -716,6 +830,114 @@ def _activity_run(row: tuple[Any, ...]) -> ActivityRunRecord:
     )
 
 
+_RUN_DESCRIPTOR_KEYS = frozenset(
+    {
+        "run_id",
+        "plan_id",
+        "request_id",
+        "attempt",
+        "prior_run_id",
+        "status",
+        "created_at",
+        "started_at",
+        "settled_at",
+        "metadata",
+    }
+)
+_RESULT_DESCRIPTOR_KEYS = frozenset(
+    {"run", "status", "effects_attempted", "activity_id"}
+)
+
+
+def _run_descriptor(record: ActivityRunRecord) -> dict[str, object]:
+    return {
+        "run_id": record.run_id,
+        "plan_id": record.plan_id,
+        "request_id": record.admission.request_id,
+        "attempt": record.retry.attempt,
+        "prior_run_id": record.retry.prior_run_id,
+        "status": record.status.value,
+        "created_at": record.created_at,
+        "started_at": record.started_at,
+        "settled_at": record.settled_at,
+        "metadata": record.metadata.descriptor(),
+    }
+
+
+def _run_from_descriptor(value: object) -> ActivityRunRecord:
+    if type(value) is not dict or frozenset(value) != _RUN_DESCRIPTOR_KEYS:
+        raise OperationsRecordError("persisted execution command run is malformed")
+    metadata = value["metadata"]
+    if type(metadata) is not dict:
+        raise OperationsRecordError("persisted execution command metadata is malformed")
+    try:
+        return ActivityRunRecord(
+            run_id=value["run_id"],
+            plan_id=value["plan_id"],
+            admission=AdmittedRun(value["request_id"]),
+            retry=RetryIdentity(value["attempt"], value["prior_run_id"]),
+            status=ActivityRunStatus(value["status"]),
+            created_at=value["created_at"],
+            started_at=value["started_at"],
+            settled_at=value["settled_at"],
+            metadata=BoundedEvidence.from_mapping(metadata),
+        )
+    except (TypeError, ValueError):
+        raise OperationsRecordError(
+            "persisted execution command run is malformed"
+        ) from None
+
+
+def _result_descriptor(record: ExecutionCommandResultRecord) -> dict[str, object]:
+    return {
+        "run": _run_descriptor(record.run),
+        "status": record.status.value,
+        "effects_attempted": record.effects_attempted,
+        "activity_id": record.activity_id,
+    }
+
+
+def _result_from_descriptor(value: object) -> ExecutionCommandResultRecord:
+    if type(value) is not dict or frozenset(value) != _RESULT_DESCRIPTOR_KEYS:
+        raise OperationsRecordError("persisted execution command result is malformed")
+    try:
+        return ExecutionCommandResultRecord(
+            run=_run_from_descriptor(value["run"]),
+            status=CoordinatorStatus(value["status"]),
+            effects_attempted=value["effects_attempted"],
+            activity_id=value["activity_id"],
+        )
+    except (TypeError, ValueError):
+        raise OperationsRecordError(
+            "persisted execution command result is malformed"
+        ) from None
+
+
+def _command_receipt(row: tuple[Any, ...]) -> ExecutionCommandReceiptRecord:
+    scopes = row[4]
+    if type(scopes) is not list:
+        raise OperationsRecordError("persisted execution command scopes are malformed")
+    try:
+        return ExecutionCommandReceiptRecord(
+            run_id=row[0],
+            idempotency_key=row[1],
+            intent_fingerprint=row[2],
+            worker_id=row[3],
+            authority_scopes=tuple(PolicyScope(value) for value in scopes),
+            claim_generation=row[5],
+            max_effects=positive_int_from_canonical_decimal(row[6]),
+            admitted_at=decode_postgres_timestamp(row[7]),
+            initial_run=_run_from_descriptor(row[8]),
+            status=ExecutionCommandReceiptStatus(row[9]),
+            completed_at=_decode_optional_timestamp(row[10]),
+            result=None if row[11] is None else _result_from_descriptor(row[11]),
+        )
+    except (TypeError, ValueError):
+        raise OperationsRecordError(
+            "persisted execution command receipt is malformed"
+        ) from None
+
+
 def _activity_event(row: tuple[Any, ...]) -> ActivityEventRecord:
     payload = row[5]
     if not isinstance(payload, dict):
@@ -857,6 +1079,16 @@ def _require_run_id(value: object) -> None:
     else:
         return
     raise OperationsRecordError("run_id is malformed")
+
+
+def _require_command_key(value: object) -> None:
+    if (
+        type(value) is not str
+        or not value
+        or len(value) > 200
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise OperationsRecordError("execution command key is malformed")
 
 
 def _require_page_run_id(value: object) -> None:
