@@ -417,7 +417,7 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
     ("_get_run", 2),
     ("_get_run_for_update", 1),
     ("_is_socket_connection_operation", 1),
-    ("_locked_request_and_run", 3),
+    ("_locked_request_and_run", 4),
     ("_outcome_event_kind", 1),
     ("_require_operate_scope", 1),
     ("_require_run_id", 1),
