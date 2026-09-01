@@ -67,10 +67,11 @@ class CountingIds:
 
 
 POST_EFFECT_CRASH_BOUNDARIES = (
-    ("effect-fold", 4),
-    ("run-complete", 5),
-    ("current-graph-advance", 6),
-    ("rotation-fold", 7),
+    ("effect-fold", 5),
+    ("run-complete", 6),
+    ("receipt-complete", 7),
+    ("current-graph-advance", 8),
+    ("rotation-fold", 9),
 )
 
 

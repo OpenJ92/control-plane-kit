@@ -257,7 +257,7 @@ class GatewayKeyRotationRetirementExecutionTests(
         self.assertEqual(stale_adapter.calls, [])
 
     def test_restarts_after_post_effect_commits_without_redispatch(self) -> None:
-        for crash_after_commit in range(4, 8):
+        for crash_after_commit in range(5, 10):
             with self.subTest(crash_after_commit=crash_after_commit):
                 self.reset_truth()
                 self.prepare_retirement_execution()
@@ -298,7 +298,7 @@ class GatewayKeyRotationRetirementExecutionTests(
                         prefix=f"crash-{crash_after_commit}",
                     ).progress(crash_command)
 
-                if crash_after_commit == 6:
+                if crash_after_commit == 8:
                     rotations = GatewayKeyRotationService(
                         self.unit_of_work,
                         clock=lambda: 5_000,
@@ -410,7 +410,7 @@ class GatewayKeyRotationRetirementExecutionTests(
                         prefix=f"recover-{crash_after_commit}",
                     ).progress(crash_command)
 
-                if crash_after_commit != 6:
+                if crash_after_commit != 8:
                     self.assertIn(
                         recovered.outcome,
                         {

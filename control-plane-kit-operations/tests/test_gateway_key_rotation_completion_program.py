@@ -94,8 +94,12 @@ class GatewayKeyRotationCompletionFixture(GatewayRotationRetirementFixture):
             *(ActivityExecutionOutcome.succeeded(),) * activity_count
         )
         program = self.execution_program(adapter, prefix="accept-retirement")
-        for _ in range(activity_count):
-            result = program.progress(self.execution_command())
+        for position in range(1, activity_count + 1):
+            result = program.progress(
+                self.execution_command(
+                    idempotency_key=f"accept-retirement-{position}"
+                )
+            )
         self.assertEqual(
             self.retirement_event_kinds().count(
                 ActivityEventKind.CURRENT_GRAPH_ADVANCED
