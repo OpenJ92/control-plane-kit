@@ -1224,6 +1224,15 @@ _OPERATOR_COMMANDS = (
         ApprovalPolicy.SUBMITS_FOR_APPROVAL,
     ),
     (
+        "deployment.prepare",
+        "command.deployment.prepare",
+        "prepare_deployment",
+        ControlPlaneServiceRole.PLANNING,
+        "PrepareDeploymentProgramRequest",
+        "DeploymentPreparationResponse",
+        ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+    ),
+    (
         "approval.decide",
         "command.approval.decide",
         "decide_approval",
