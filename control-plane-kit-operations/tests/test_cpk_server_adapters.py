@@ -77,6 +77,18 @@ from control_plane_kit_operations.lifecycle import RunLifecycleCommandService
 from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyRegistrationService,
 )
+from control_plane_kit_operations.deployment_program import (
+    DeploymentProgramReference,
+    PrepareDeploymentProgram,
+)
+from control_plane_kit_operations.deployment_program_interpreter import (
+    DeploymentProgram,
+)
+from control_plane_kit_operations.deployment_program_projections import (
+    DeploymentApprovalRequired,
+    DeploymentNoChanges,
+    DeploymentReviewBlocked,
+)
 from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityRegistrationService,
 )
@@ -95,6 +107,7 @@ from control_plane_kit_operations.records import (
     ActivityPlanStatus,
     BoundedEvidence,
     GraphVersionRecord,
+    GraphProjectionLineage,
     OperationActionRecord,
     OperationSessionRecord,
     OperationSessionStatus,
@@ -107,6 +120,7 @@ from control_plane_kit_operations.secret_providers import (
     SecretProviderRegistrationService,
 )
 from control_plane_kit_operations.workflows import (
+    IdempotencyKey,
     InvalidOperationCommand,
     OperationCommandService,
 )
@@ -161,6 +175,16 @@ class RecordingService:
     def execute(self, command: object):
         self.commands.append(command)
         return DescriptorResult({"command_type": type(command).__name__})
+
+
+class RecordingDeploymentProgram:
+    def __init__(self, result: object) -> None:
+        self.result = result
+        self.commands: list[PrepareDeploymentProgram] = []
+
+    def prepare(self, command: PrepareDeploymentProgram) -> object:
+        self.commands.append(command)
+        return self.result
 
 
 class DescriptorResult:
@@ -1634,6 +1658,222 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             )
         )
         self.assertEqual(revoked["status"], "revoked")
+
+    def test_deployment_prepare_maps_http_and_mcp_to_closed_redacted_results(self) -> None:
+        reference = DeploymentProgramReference("workspace-a", "plan-a")
+        cases = (
+            (
+                DeploymentNoChanges(reference),
+                {
+                    "status": "no-changes",
+                    "workspace_id": "workspace-a",
+                    "plan_id": "plan-a",
+                },
+            ),
+            (
+                DeploymentReviewBlocked(reference),
+                {
+                    "status": "review-blocked",
+                    "workspace_id": "workspace-a",
+                    "plan_id": "plan-a",
+                },
+            ),
+            (
+                DeploymentApprovalRequired(reference, "approval-a"),
+                {
+                    "status": "approval-required",
+                    "workspace_id": "workspace-a",
+                    "plan_id": "plan-a",
+                    "approval_request_id": "approval-a",
+                },
+            ),
+        )
+        payload = {
+            "desired_graph": DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("desired")),
+            "expected_current": {
+                "authored_graph_id": "graph-current",
+                "realized_projection_id": "projection-current",
+            },
+            "expected_desired": {
+                "authored_graph_id": "graph-prior-desired",
+                "realized_projection_id": "projection-prior-desired",
+            },
+            "expected_desired_graph_revision": 7,
+            "title": "do-not-disclose title",
+            "idempotency_key": "prepare-a",
+            "approval_comment": "do-not-disclose comment",
+        }
+
+        for projection, expected in cases:
+            with self.subTest(status=expected["status"]):
+                program = RecordingDeploymentProgram(projection)
+                service = CpkServerPlanningService(
+                    RecordingService(),
+                    deployment_program=program,
+                )
+                http = service.handle(
+                    RouteRequest(
+                        surface="http",
+                        route_id="command.deployment.prepare",
+                        service_role=ControlPlaneServiceRole.PLANNING,
+                        path_parameters={"workspace_id": "workspace-a"},
+                        payload=payload,
+                    )
+                )
+                mcp = service.handle(
+                    RouteRequest(
+                        surface="mcp",
+                        route_id="command.deployment.prepare",
+                        service_role=ControlPlaneServiceRole.PLANNING,
+                        path_parameters={},
+                        payload={"workspace_id": "workspace-a", **payload},
+                    )
+                )
+
+                self.assertEqual(http, expected)
+                self.assertEqual(mcp, expected)
+                self.assertEqual(program.commands[0], program.commands[1])
+                command = program.commands[0]
+                self.assertEqual(command.context.actor_id, "operator-a")
+                self.assertEqual(command.desired, DeploymentGraph("desired"))
+                self.assertEqual(
+                    command.expected_current,
+                    GraphProjectionLineage("graph-current", "projection-current"),
+                )
+                self.assertEqual(command.expected_desired_graph_revision, 7)
+                self.assertEqual(command.idempotency_key, IdempotencyKey("prepare-a"))
+                rendered = repr(http)
+                self.assertNotIn("do-not-disclose", rendered)
+                self.assertNotIn("desired_graph", rendered)
+
+    def test_deployment_prepare_authorizes_before_program_access(self) -> None:
+        program = RecordingDeploymentProgram(
+            DeploymentNoChanges(
+                DeploymentProgramReference("workspace-a", "plan-a")
+            )
+        )
+        service = CpkServerPlanningService(
+            RecordingService(),
+            deployment_program=program,
+        )
+        payload = {
+            "desired_graph": DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("desired")),
+            "expected_current": {
+                "authored_graph_id": "graph-current",
+                "realized_projection_id": "projection-current",
+            },
+            "expected_desired": None,
+            "expected_desired_graph_revision": 0,
+            "title": "Prepare deployment",
+            "idempotency_key": "prepare-a",
+        }
+        principals = (
+            operator_principal(workspace_ids=("workspace-b",)),
+            operator_principal(scopes=(PolicyScope.PLAN_REQUEST,)),
+        )
+
+        for principal in principals:
+            with self.subTest(principal=principal.identity.subject_id):
+                with self.assertRaises(CpkServerApplicationError) as raised:
+                    service.handle(
+                        RouteRequest(
+                            surface="http",
+                            route_id="command.deployment.prepare",
+                            service_role=ControlPlaneServiceRole.PLANNING,
+                            path_parameters={"workspace_id": "workspace-a"},
+                            payload=payload,
+                            principal=principal,
+                        )
+                    )
+                self.assertEqual(raised.exception.status, 403)
+        self.assertEqual(program.commands, [])
+
+    def test_deployment_prepare_replays_durable_no_change_without_effects(self) -> None:
+        self.seed_workspace()
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+        program = DeploymentProgram(
+            OperationCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-08-31T12:00:00Z",
+                id_factory=GeneratedIds("prepare-session"),
+            ),
+            DesiredGraphCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-08-31T12:01:00Z",
+                id_factory=GeneratedIds("prepare-desired"),
+            ),
+            ActivityPlanningCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-08-31T12:02:00Z",
+                id_factory=GeneratedIds("prepare-plan"),
+            ),
+            ApprovalCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-08-31T12:03:00Z",
+                id_factory=GeneratedIds("prepare-approval"),
+            ),
+        )
+        service = CpkServerPlanningService(
+            RecordingService(),
+            deployment_program=program,
+        )
+        payload = {
+            "desired_graph": DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("current")),
+            "expected_current": {
+                "authored_graph_id": "graph-current",
+                "realized_projection_id": workspace.current_realized_projection_id,
+            },
+            "expected_desired": None,
+            "expected_desired_graph_revision": 0,
+            "title": "No-change deployment",
+            "idempotency_key": "prepare-replay-a",
+        }
+
+        http = service.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.deployment.prepare",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload=payload,
+            )
+        )
+        mcp = service.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.deployment.prepare",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={},
+                payload={"workspace_id": "workspace-a", **payload},
+            )
+        )
+
+        self.assertEqual(http, mcp)
+        self.assertEqual(http["status"], "no-changes")
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_operation_sessions"
+            ).fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_activity_plans"
+            ).fetchone()[0],
+            1,
+        )
+        for relation in (
+            "cpk_approval_requests",
+            "cpk_execution_requests",
+            "cpk_activity_runs",
+            "cpk_effect_attempts",
+        ):
+            with self.subTest(relation=relation):
+                count = self.connection.execute(
+                    f"SELECT count(*) FROM {relation}"
+                ).fetchone()[0]
+                self.assertEqual(count, 0)
 
     def test_command_route_translates_payload_to_existing_planning_command(self) -> None:
         recording = RecordingService()

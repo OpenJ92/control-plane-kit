@@ -155,6 +155,14 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.SUBMITS_FOR_APPROVAL,
                 ),
                 (
+                    "deployment.prepare",
+                    "command.deployment.prepare",
+                    "prepare_deployment",
+                    ControlPlaneServiceRole.PLANNING,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.SUBMITS_FOR_APPROVAL,
+                ),
+                (
                     "desired-graph.set",
                     "command.desired-graph.set",
                     "set_desired_graph",
