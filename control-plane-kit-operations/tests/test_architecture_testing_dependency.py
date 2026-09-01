@@ -87,7 +87,7 @@ class ArchitectureTestingDependencyTests(unittest.TestCase):
         self.assertNotIn(source, repr(findings))
 
     def test_testing_document_names_exact_local_and_ci_acquisition(self) -> None:
-        document = _testing_document_path().read_text(encoding="utf-8")
+        document = " ".join(_testing_document_path().read_text(encoding="utf-8").split())
         required_markers = (
             "control-plane-kit-architecture-testing",
             "exact clean sibling",
