@@ -90,10 +90,13 @@ class ArchitectureTestingDependencyTests(unittest.TestCase):
         document = _testing_document_path().read_text(encoding="utf-8")
         required_markers = (
             "control-plane-kit-architecture-testing",
-            "7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef",
-            "pip install -e",
-            "test-only",
-            "not a runtime dependency",
+            "exact clean sibling",
+            "declared by the harness",
+            "used by CI",
+            "Establish that checkout before invoking the suite",
+            "mounts it read-only into the test container",
+            "do not install it into host Python",
+            "substitute another coordinate",
         )
         self.assertEqual(
             tuple(marker for marker in required_markers if marker not in document),
