@@ -410,7 +410,17 @@ class GatewayKeyRotationRetirementExecutionTests(
                         prefix=f"recover-{crash_after_commit}",
                     ).progress(crash_command)
 
-                if crash_after_commit != 8:
+                if crash_after_commit in {5, 6}:
+                    self.assertIs(
+                        recovered.outcome,
+                        GatewayKeyRotationRetirementExecutionOutcome.BLOCKED,
+                    )
+                    self.assertEqual(
+                        recovered.failure_code,
+                        "retirement-effect-uncertain",
+                    )
+                    self.assertEqual(recovered.effects_attempted, 0)
+                elif crash_after_commit != 8:
                     self.assertIn(
                         recovered.outcome,
                         {
@@ -422,10 +432,18 @@ class GatewayKeyRotationRetirementExecutionTests(
                 self.assertEqual(len(prior_adapter.calls), activity_count - 1)
                 self.assertEqual(len(adapter.calls), 1)
                 self.assertEqual(recovered_adapter.calls, [])
-                self.assertEqual(self.retirement_advancement_count(), 1)
+                expected_advancements = 0 if crash_after_commit in {5, 6} else 1
+                self.assertEqual(
+                    self.retirement_advancement_count(),
+                    expected_advancements,
+                )
                 self.assertEqual(
                     self.workspace().current_realized_projection_id,
-                    self.retirement_checkpoint.desired_realized_projection_id,
+                    (
+                        self.overlap_projection_id
+                        if crash_after_commit in {5, 6}
+                        else self.retirement_checkpoint.desired_realized_projection_id
+                    ),
                 )
 
     def test_stale_checkpoint_and_missing_scopes_fail_before_io(self) -> None:

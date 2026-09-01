@@ -544,7 +544,17 @@ class GatewayKeyRotationOverlapExecutionTests(
                         prefix=f"recover-{crash_after_commit}",
                     ).progress(crash_command)
 
-                if boundary != "current-graph-advance":
+                if boundary in {"effect-fold", "run-complete"}:
+                    self.assertIs(
+                        recovered.outcome,
+                        GatewayKeyRotationOverlapExecutionOutcome.BLOCKED,
+                    )
+                    self.assertEqual(
+                        recovered.failure_code,
+                        "overlap-effect-uncertain",
+                    )
+                    self.assertEqual(recovered.effects_attempted, 0)
+                elif boundary != "current-graph-advance":
                     self.assertIn(
                         recovered.outcome,
                         {
@@ -556,10 +566,20 @@ class GatewayKeyRotationOverlapExecutionTests(
                 self.assertEqual(len(prior_adapter.calls), activity_count - 1)
                 self.assertEqual(len(adapter.calls), 1)
                 self.assertEqual(recovered_adapter.calls, [])
-                self.assertEqual(self._current_advancement_count(), 1)
+                expected_advancements = (
+                    0 if boundary in {"effect-fold", "run-complete"} else 1
+                )
+                self.assertEqual(
+                    self._current_advancement_count(),
+                    expected_advancements,
+                )
                 self.assertEqual(
                     self._workspace().current_realized_projection_id,
-                    self.checkpoint.desired_realized_projection_id,
+                    (
+                        "projection-a"
+                        if boundary in {"effect-fold", "run-complete"}
+                        else self.checkpoint.desired_realized_projection_id
+                    ),
                 )
 
     def test_accepted_fold_requires_exact_advancement_action_and_event(

@@ -301,7 +301,6 @@ EXACT_COORDINATOR_IMPORTS = _exact_imports(
     ("dataclasses", "dataclass", None),
     ("dataclasses", "field", None),
     ("dataclasses", "replace", None),
-    ("enum", "StrEnum", None),
     ("typing", "Any", None),
     ("typing", "Callable", None),
     ("typing", "Mapping", None),
@@ -406,8 +405,6 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
     ("ActivityExecutionOutcome.uncertain", 3),
     ("ActivityExecutionOutcome.unsupported", 1),
     ("ActivityRealizationContext", 1),
-    ("ExecutionCommandReceiptRecord", 1),
-    ("ExecutionCommandResultRecord", 1),
     ("ExecutionCoordinatorConflict", 27),
     ("ExecutionCoordinatorDenied", 6),
     ("ExecutionCoordinatorNotFound", 8),
@@ -482,7 +479,14 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
     ("control_plane_kit_operations.records.ActivityEventRecord", 2),
     ("control_plane_kit_operations.records.BoundedEvidence", 5),
     ("control_plane_kit_operations.records.BoundedEvidence.from_mapping", 7),
+    ("control_plane_kit_operations.records.ExecutionCommandReceiptRecord", 1),
+    ("control_plane_kit_operations.records.ExecutionCommandResultRecord", 1),
     ("control_plane_kit_operations.records.FailureEvidence", 5),
+    (
+        "control_plane_kit_operations.records."
+        "execution_command_intent_fingerprint",
+        1,
+    ),
     (
         "control_plane_kit_operations.runtime_effects."
         "_runtime_effect_intent_for_context",
