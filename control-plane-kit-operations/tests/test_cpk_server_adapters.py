@@ -21,6 +21,11 @@ from control_plane_kit_core.identity import (
     WorkspaceGrant,
 )
 from control_plane_kit_core.planning import ActivityPlan
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
+)
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.algebra import (
@@ -111,6 +116,9 @@ from control_plane_kit_operations.records import (
     OperationActionRecord,
     OperationSessionRecord,
     OperationSessionStatus,
+    ObservationFreshness,
+    ObservationRecord,
+    ObservationStatus,
     WorkspaceRecord,
 )
 from control_plane_kit_operations.runtime_authorities import (
@@ -659,6 +667,93 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 "graph-current",
             )
             unit_of_work.commit()
+
+    def test_http_and_mcp_retain_two_verification_checks_for_one_node(self) -> None:
+        self.seed_workspace()
+        digest = "d" * 64
+        subjects = (
+            "verification:" + "a" * 64,
+            "verification:" + "b" * 64,
+        )
+        checks = (
+            (subjects[0], "liveness", "/health/live", None, None),
+            (subjects[1], "root-response", "/", digest, True),
+        )
+        with self.unit_of_work() as unit_of_work:
+            for index, (subject, check_id, path, expected, matched) in enumerate(
+                checks,
+                start=1,
+            ):
+                unit_of_work.stores.observed_state.put(
+                    ObservationRecord(
+                        observation_id=f"verification-observation-{index}",
+                        workspace_id="workspace-a",
+                        subject_id=subject,
+                        status=ObservationStatus.VERIFIED,
+                        observed_at="2026-07-22T13:00:00Z",
+                        evidence=BoundedEvidence.from_mapping(
+                            {
+                                "http_verification": {
+                                    "run_id": "run-a",
+                                    "activity_id": "verify-router",
+                                    "attempt": 1,
+                                    "effect_id": "effect-router",
+                                    "node_id": "router",
+                                    "check_id": check_id,
+                                    "provider_socket": "public",
+                                    "path": path,
+                                    "http_status": 200,
+                                    "response_bytes": 21,
+                                    "expected_body_sha256": expected,
+                                    "body_sha256_matches": matched,
+                                }
+                            }
+                        ),
+                        freshness=ObservationFreshness.FRESH,
+                        graph_id="graph-current",
+                        probe_kind=ProbeKind.APPLICATION_HEALTH,
+                        probe_outcome=ProbeOutcome.HEALTHY,
+                        endpoint_context=EndpointContext.RUNTIME_PRIVATE,
+                    )
+                )
+            unit_of_work.commit()
+
+        service = CpkServerReadService(
+            self.unit_of_work,
+            clock=lambda: datetime(2026, 7, 22, 13, 1, tzinfo=timezone.utc),
+        )
+
+        def request(surface: str) -> RouteRequest:
+            return RouteRequest(
+                surface=surface,
+                route_id="read.observed-state",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters=(
+                    {"workspace_id": "workspace-a"} if surface == "http" else {}
+                ),
+                payload=(
+                    {"limit": 100}
+                    if surface == "http"
+                    else {"workspace_id": "workspace-a", "limit": 100}
+                ),
+            )
+
+        http = service.handle(request("http"))
+        mcp = service.handle(request("mcp"))
+
+        self.assertEqual(http, mcp)
+        self.assertEqual(http["next_cursor"], None)
+        self.assertEqual(
+            tuple(item["subject_id"] for item in http["items"]),
+            subjects,
+        )
+        self.assertEqual(
+            tuple(
+                item["payload"]["http_verification"]["check_id"]
+                for item in http["items"]
+            ),
+            ("liveness", "root-response"),
+        )
 
     def seed_session_action(self) -> None:
         self.seed_workspace()

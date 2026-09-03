@@ -197,6 +197,36 @@ EXACT_IMPORT_SURFACE = (
         None,
     ),
     architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.verification",
+        "HttpCheck",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.verification",
+        "HttpVerificationEvidence",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.verification",
+        "VerificationCapability",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.verification",
+        "VerificationCompleted",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_core.verification",
+        "VerificationOutcome",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "EffectAttemptIntentRecord",
+        None,
+    ),
+    architecture_testing.ImportSurfaceEntry(
         "control_plane_kit_operations.effect_attempts",
         "EffectAttemptRecord",
         None,
@@ -244,12 +274,27 @@ EXACT_IMPORT_SURFACE = (
     architecture_testing.ImportSurfaceEntry("dataclasses", "dataclass", None),
     architecture_testing.ImportSurfaceEntry("dataclasses", "field", None),
     architecture_testing.ImportSurfaceEntry("enum", "StrEnum", None),
+    architecture_testing.ImportSurfaceEntry("hashlib", None, None),
+    architecture_testing.ImportSurfaceEntry("rfc8785", None, None),
 )
 EXACT_CALL_SURFACE = (
+    architecture_testing.UnresolvedCallTarget(),
+    architecture_testing.UnresolvedCallTarget(),
+    architecture_testing.ResolvedCallTarget("_HTTP_VERIFICATION_ROWS.get"),
+    architecture_testing.ResolvedCallTarget("_authoritative_http_check"),
+    architecture_testing.ResolvedCallTarget("_http_verification_category"),
+    architecture_testing.ResolvedCallTarget("_http_verification_category"),
+    architecture_testing.ResolvedCallTarget("_http_verification_record"),
     architecture_testing.ResolvedCallTarget("_legacy_effect_outcome_failure"),
     architecture_testing.ResolvedCallTarget("_validated_attempt"),
     architecture_testing.ResolvedCallTarget("_validated_attempt"),
+    architecture_testing.ResolvedCallTarget("_verification_record_matches"),
+    architecture_testing.ResolvedCallTarget("_verification_subject"),
+    architecture_testing.ResolvedCallTarget("_verification_subject"),
+    architecture_testing.ResolvedCallTarget("admitted.add"),
+    architecture_testing.ResolvedCallTarget("all"),
     architecture_testing.ResolvedCallTarget("any"),
+    architecture_testing.ResolvedCallTarget("bool"),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_core.operations.EffectAttemptTransition"
     ),
@@ -280,10 +325,16 @@ EXACT_CALL_SURFACE = (
         "control_plane_kit_operations.records.BoundedEvidence.from_mapping"
     ),
     architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.BoundedEvidence.from_mapping"
+    ),
+    architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.records.FailureEvidence"
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.records.FailureEvidence"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.records.ObservationRecord"
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.records.ObservationRecord"
@@ -300,12 +351,44 @@ EXACT_CALL_SURFACE = (
     architecture_testing.ResolvedCallTarget("dataclasses.field"),
     architecture_testing.ResolvedCallTarget("dataclasses.field"),
     architecture_testing.ResolvedCallTarget("effect_outcome_failure"),
-    architecture_testing.ResolvedCallTarget("endpoint.descriptor"),
     architecture_testing.ResolvedCallTarget("enumerate"),
+    architecture_testing.ResolvedCallTarget("hashlib.sha256"),
     architecture_testing.ResolvedCallTarget("len"),
+    architecture_testing.ResolvedCallTarget("len"),
+    architecture_testing.ResolvedCallTarget("len"),
+    architecture_testing.ResolvedCallTarget("len"),
+    architecture_testing.ResolvedCallTarget("mappings.append"),
+    architecture_testing.ResolvedCallTarget("mappings.append"),
+    architecture_testing.ResolvedCallTarget("observation.descriptor"),
+    architecture_testing.ResolvedCallTarget("observation.descriptor"),
     architecture_testing.ResolvedCallTarget("ord"),
+    architecture_testing.ResolvedCallTarget("payload.get"),
+    architecture_testing.ResolvedCallTarget("payload.update"),
+    architecture_testing.ResolvedCallTarget("record.evidence.descriptor"),
+    architecture_testing.ResolvedCallTarget("records.append"),
+    architecture_testing.ResolvedCallTarget("rfc8785.dumps"),
+    architecture_testing.ResolvedCallTarget("set"),
+    architecture_testing.ResolvedCallTarget("set"),
     architecture_testing.ResolvedCallTarget("set"),
     architecture_testing.ResolvedCallTarget("tuple"),
+    architecture_testing.ResolvedCallTarget("tuple"),
+    architecture_testing.ResolvedCallTarget("tuple"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
+    architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("type"),
     architecture_testing.ResolvedCallTarget("value.encode"),
     architecture_testing.ResolvedCallTarget("zip"),

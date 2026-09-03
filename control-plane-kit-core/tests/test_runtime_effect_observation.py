@@ -49,6 +49,7 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.verification import (
+    HttpCheck,
     PostgresPasswordAuthentication,
     PostgresQueryCheck,
     VerificationContract,
@@ -289,6 +290,61 @@ def _observations() -> tuple[RuntimeEndpointObservation, ...]:
 
 
 class RuntimeEffectObservationRequestTests(unittest.TestCase):
+    def test_expected_http_body_digest_participates_in_effect_intent_identity(
+        self,
+    ) -> None:
+        self.assertIn(
+            "expected_body_sha256",
+            HttpCheck.__dataclass_fields__,
+            "HTTP verification is missing expected-body intent",
+        )
+        language = _language()
+
+        def material(digest: str) -> RuntimeProductMaterial:
+            value = _grant_product()
+            contract = VerificationContract(
+                (
+                    HttpCheck(
+                        check_id="root-response",
+                        provider_socket="http",
+                        path="/",
+                        expected_body_sha256=digest,
+                    ),
+                )
+            )
+            return replace(
+                value,
+                product=replace(
+                    value.product,
+                    runtime_contract=replace(
+                        value.product.runtime_contract,
+                        sockets=replace(
+                            value.product.runtime_contract.sockets,
+                            providers=(
+                                *value.product.runtime_contract.sockets.providers,
+                                ProviderSocket("http", Protocol.HTTP),
+                            ),
+                        ),
+                        provider_ports=(
+                            *value.product.runtime_contract.provider_ports,
+                            ProviderRuntimePort("http", 8000),
+                        ),
+                        verification=contract,
+                    ),
+                ),
+            )
+
+        first = language.RuntimeEffectObservationRequest(
+            _request(products=(material("a" * 64),))
+        )
+        second = language.RuntimeEffectObservationRequest(
+            _request(products=(material("b" * 64),))
+        )
+
+        self.assertNotEqual(first.intent, second.intent)
+        self.assertNotEqual(first.request_fingerprint, second.request_fingerprint)
+        self.assertNotEqual(first.descriptor(), second.descriptor())
+
     def test_two_fresh_complete_tls_grant_sets_preserve_public_intent(self) -> None:
         language = _language()
         first_grants = _grant_set("a")

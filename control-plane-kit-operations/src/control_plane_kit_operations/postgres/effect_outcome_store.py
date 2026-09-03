@@ -36,17 +36,33 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectResult,
 )
 from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.verification import (
+    HttpVerificationEvidence,
+    RedisVerificationEvidence,
+    VerificationCapability,
+    VerificationCompleted,
+    VerificationIdentity,
+    VerificationOutcome,
+)
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.effect_outcome_evidence import (
+    EffectAttemptOutcome,
     EffectAttemptOutcomeRecord,
     EffectOutcomeProfile,
     ExecutionEffectOutcome,
     ObservedEffectOutcome,
+    effect_outcome_observation_records,
+)
+from control_plane_kit_operations.postgres.effect_attempt_intent_store import (
+    EffectAttemptIntentStore,
 )
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
 from control_plane_kit_operations.postgres.observed_state import _observation_record
 from control_plane_kit_operations.postgres.schema import PostgresConnection
-from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.records import (
+    ObservationRecord,
+    OperationsRecordError,
+)
 
 
 _COLUMN_NAMES = (
@@ -145,6 +161,15 @@ class EffectAttemptOutcomeStore:
                 "effect attempt outcome store input is invalid"
             ) from None
         request_id = ownership[0]
+        _require_verification_membership(
+            self._connection,
+            outcome=admitted.outcome,
+            attempt=admitted.attempt,
+            observations=admitted.endpoint_observations,
+            workspace_id=admitted.workspace_id,
+            request_id=request_id,
+            error_message="effect attempt outcome store input is invalid",
+        )
         self._connection.execute(
             f"""
             INSERT INTO cpk_effect_attempt_outcomes ({_COLUMNS})
@@ -380,7 +405,56 @@ def _reconstruct_row(
         else ObservedEffectOutcome(identity, value)
     )
     observations = _membership_records(row, memberships)
+    _require_verification_membership(
+        connection,
+        outcome=outcome,
+        attempt=attempt,
+        observations=observations,
+        workspace_id=row[3],
+        request_id=row[4],
+        error_message="effect attempt outcome row is invalid",
+    )
     return EffectAttemptOutcomeRecord(row[3], outcome, attempt, observations)
+
+
+def _require_verification_membership(
+    connection: PostgresConnection,
+    *,
+    outcome: EffectAttemptOutcome,
+    attempt: EffectAttemptRecord,
+    observations: tuple[ObservationRecord, ...],
+    workspace_id: object,
+    request_id: object,
+    error_message: str,
+) -> None:
+    if not any(
+        type(item) is VerificationCompleted
+        for item in outcome.endpoint_observations
+    ):
+        return
+    valid = False
+    try:
+        intent_record = EffectAttemptIntentStore(connection).get(
+            attempt.state.identity
+        )
+        expected = effect_outcome_observation_records(
+            outcome,
+            attempt,
+            workspace_id=workspace_id,
+            observation_ids=tuple(
+                item.observation_id for item in observations
+            ),
+            intent_record=intent_record,
+        )
+        valid = (
+            intent_record.workspace_id == workspace_id
+            and intent_record.request_id == request_id
+            and expected == observations
+        )
+    except (KeyError, RuntimeEffectContractError, OperationsRecordError, ValueError):
+        pass
+    if not valid:
+        raise OperationsRecordError(error_message) from None
 
 
 def _observation_count(row: object) -> int:
@@ -456,7 +530,7 @@ def _runtime_result(value: object) -> RuntimeEffectResult:
         {"effect_id", "kind", "evidence", "failure", "observations"},
     )
     evidence = _exact_mapping(row["evidence"], set(row["evidence"]))
-    observations = _endpoints(row["observations"])
+    observations = _result_observations(row["observations"])
     failure = None if row["failure"] is None else _runtime_failure(row["failure"])
     return RuntimeEffectResult(
         row["effect_id"],
@@ -527,6 +601,71 @@ def _endpoints(value: object) -> tuple[RuntimeEndpointObservation, ...]:
     if type(value) is not list:
         raise ValueError("runtime endpoints are invalid")
     return tuple(_endpoint(item) for item in value)
+
+
+def _result_observations(
+    value: object,
+) -> tuple[RuntimeEndpointObservation | VerificationCompleted, ...]:
+    if type(value) is not list:
+        raise ValueError("runtime observations are invalid")
+    result = []
+    for item in value:
+        if type(item) is dict and item.get("type") == "verification-completed":
+            result.append(_verification_completed(item))
+        else:
+            result.append(_endpoint(item))
+    return tuple(result)
+
+
+def _verification_completed(value: object) -> VerificationCompleted:
+    row = _exact_mapping(
+        value,
+        {"type", "identity", "capability", "outcome", "attempts", "evidence"},
+    )
+    if row["type"] != "verification-completed":
+        raise ValueError("runtime verification completion is invalid")
+    identity = _exact_mapping(
+        row["identity"],
+        {"node_id", "graph_id", "check_id"},
+    )
+    evidence = _verification_evidence(row["evidence"])
+    return VerificationCompleted(
+        VerificationIdentity(
+            identity["node_id"],
+            identity["graph_id"],
+            identity["check_id"],
+        ),
+        VerificationCapability(row["capability"]),
+        VerificationOutcome(row["outcome"]),
+        row["attempts"],
+        evidence,
+    )
+
+
+def _verification_evidence(value: object) -> object:
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise ValueError("runtime verification evidence is invalid")
+    kind = value.get("kind")
+    if kind == "http":
+        legacy = {"kind", "status_code", "response_bytes"}
+        keys = set(value)
+        if keys == legacy:
+            return HttpVerificationEvidence(
+                value["status_code"],
+                value["response_bytes"],
+            )
+        if keys == legacy | {"expected_body_sha256", "body_sha256_matches"}:
+            return HttpVerificationEvidence(
+                value["status_code"],
+                value["response_bytes"],
+                expected_body_sha256=value["expected_body_sha256"],
+                body_sha256_matches=value["body_sha256_matches"],
+            )
+    elif kind == "redis" and set(value) == {"kind", "response_bytes"}:
+        return RedisVerificationEvidence(value["response_bytes"])
+    raise ValueError("runtime verification evidence is invalid")
 
 
 def _endpoint(value: object) -> RuntimeEndpointObservation:

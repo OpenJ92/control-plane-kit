@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import fields, replace
+import hashlib
 import inspect
 import unittest
+
+import rfc8785
 
 from control_plane_kit_core.operations import (
     ActivityEventKind,
@@ -10,12 +13,29 @@ from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
     EffectAttemptState,
     EffectAttemptStatus,
+    EffectResultKind,
     RunId,
 )
 from control_plane_kit_core.probe_intents import (
     EndpointContext,
     ProbeKind,
     ProbeOutcome,
+)
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint,
+)
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectFailure,
+    RuntimeEffectResult,
+)
+from control_plane_kit_core.verification import (
+    HttpCheck,
+    HttpVerificationEvidence,
+    VerificationCapability,
+    VerificationCompleted,
+    VerificationContract,
+    VerificationIdentity,
+    VerificationOutcome,
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.records import (
@@ -44,6 +64,10 @@ from effect_outcome_evidence_fixture import (
     WORKSPACE_ID,
     effect_outcome_observation_records,
     forge_exact,
+)
+from effect_attempt_intent_fixture import (
+    EffectAttemptIntentFixture,
+    product_material,
 )
 
 
@@ -148,6 +172,267 @@ class EffectOutcomeRecordContractTest(
             attempt=story.attempt,
             endpoint_observations=observations,
         )
+
+    def http_verification_case(
+        self,
+        verification_outcome: VerificationOutcome,
+        *,
+        expected_body_sha256: str | None = "d" * 64,
+        status_code: int = 200,
+        include_evidence: bool | None = None,
+        body_sha256_matches: bool | None = None,
+    ):
+        self.assertIn(
+            "expected_body_sha256",
+            HttpCheck.__dataclass_fields__,
+            "HTTP verification is missing expected-body intent",
+        )
+        material = product_material()
+        contract = VerificationContract(
+            (
+                HttpCheck(
+                    check_id="root-response",
+                    provider_socket="http",
+                    path="/",
+                    expected_body_sha256=expected_body_sha256,
+                ),
+            )
+        )
+        material = replace(
+            material,
+            product=replace(
+                material.product,
+                runtime_contract=replace(
+                    material.product.runtime_contract,
+                    verification=contract,
+                ),
+            ),
+        )
+        intent_fixture = EffectAttemptIntentFixture()
+        intent_fixture.assertEqual = self.assertEqual
+        intent = intent_fixture.intent(
+            activity_id="activity-a",
+            products=(material,),
+        )
+        if include_evidence is None:
+            include_evidence = verification_outcome is not VerificationOutcome.MALFORMED
+        if body_sha256_matches is None and expected_body_sha256 is not None:
+            body_sha256_matches = verification_outcome is VerificationOutcome.PASSED
+        evidence = None
+        if include_evidence:
+            evidence = HttpVerificationEvidence(
+                status_code,
+                21,
+                expected_body_sha256=expected_body_sha256,
+                body_sha256_matches=body_sha256_matches,
+            )
+        completion = VerificationCompleted(
+            VerificationIdentity("api", "graph-desired", "root-response"),
+            VerificationCapability.HTTP,
+            verification_outcome,
+            1,
+            evidence,
+        )
+        if verification_outcome is VerificationOutcome.PASSED:
+            result = RuntimeEffectResult.succeeded(
+                "event-start",
+                observations=(completion,),
+            )
+            story_name = "execution-succeeded"
+        else:
+            result = RuntimeEffectResult(
+                "event-start",
+                EffectResultKind.FAILED,
+                {},
+                RuntimeEffectFailure(
+                    "runtime.verification-failed",
+                    "runtime verification failed",
+                    {"private": "provider-body-canary"},
+                ),
+                (completion,),
+            )
+            story_name = "execution-failed"
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == story_name and not item.compensation
+        )
+        story = replace(story, value=result)
+        attempt = self.direct_attempt_for(
+            story,
+            request_fingerprint=runtime_effect_intent_fingerprint(intent),
+        )
+        story = replace(story, attempt=attempt)
+        intent_record = intent_fixture.record(
+            identity=attempt.state.identity,
+            original_start_event=attempt.original_start_event,
+            intent=intent,
+        )
+        outcome = self.outcome_for(story)
+        records = effect_outcome_observation_records(
+            outcome,
+            attempt,
+            workspace_id=WORKSPACE_ID,
+            observation_ids=("observation-root-response",),
+            intent_record=intent_record,
+        )
+        return records, intent_record, outcome, attempt
+
+    def test_http_verification_projects_only_authoritative_intent_coordinates(
+        self,
+    ) -> None:
+        records, _, _, _ = self.http_verification_case(VerificationOutcome.PASSED)
+        subject_document = {
+            "check_id": "root-response",
+            "node_id": "api",
+            "schema": "cpk.verification-subject.v1",
+        }
+        expected_subject = "verification:" + hashlib.sha256(
+            rfc8785.dumps(subject_document)
+        ).hexdigest()
+
+        self.assertEqual(
+            records,
+            (
+                ObservationRecord(
+                    observation_id="observation-root-response",
+                    workspace_id=WORKSPACE_ID,
+                    subject_id=expected_subject,
+                    status=ObservationStatus.VERIFIED,
+                    observed_at="2030-01-01T00:00:02Z",
+                    evidence=BoundedEvidence.from_mapping(
+                        {
+                            "http_verification": {
+                                "run_id": "run-a",
+                                "activity_id": "activity-a",
+                                "attempt": 1,
+                                "effect_id": "event-start",
+                                "node_id": "api",
+                                "check_id": "root-response",
+                                "provider_socket": "http",
+                                "path": "/",
+                                "http_status": 200,
+                                "response_bytes": 21,
+                                "expected_body_sha256": "d" * 64,
+                                "body_sha256_matches": True,
+                            }
+                        }
+                    ),
+                    freshness=ObservationFreshness.FRESH,
+                    graph_id="graph-desired",
+                    probe_kind=ProbeKind.APPLICATION_HEALTH,
+                    probe_outcome=ProbeOutcome.HEALTHY,
+                    endpoint_context=EndpointContext.RUNTIME_PRIVATE,
+                ),
+            ),
+        )
+
+    def test_http_verification_failure_projection_is_closed_and_redacted(self) -> None:
+        expectations = (
+            (
+                VerificationOutcome.FAILED,
+                ObservationStatus.VERIFICATION_FAILED,
+                ProbeOutcome.UNHEALTHY,
+                "body-mismatch",
+                False,
+            ),
+            (
+                VerificationOutcome.MALFORMED,
+                ObservationStatus.MALFORMED,
+                ProbeOutcome.MALFORMED,
+                "response-oversized",
+                None,
+            ),
+        )
+        for outcome, status, probe_outcome, category, matched in expectations:
+            with self.subTest(outcome=outcome.value):
+                records, _, _, _ = self.http_verification_case(outcome)
+                record = records[0]
+                payload = record.evidence.descriptor()["http_verification"]
+
+                self.assertEqual(record.status, status)
+                self.assertEqual(record.probe_outcome, probe_outcome)
+                self.assertEqual(payload["stage"], "http-verification")
+                self.assertEqual(payload["category"], category)
+                self.assertEqual(payload["body_sha256_matches"], matched)
+                self.assertEqual(set(payload), {
+                    "run_id",
+                    "activity_id",
+                    "attempt",
+                    "effect_id",
+                    "node_id",
+                    "check_id",
+                    "provider_socket",
+                    "path",
+                    "http_status",
+                    "response_bytes",
+                    "expected_body_sha256",
+                    "body_sha256_matches",
+                    "stage",
+                    "category",
+                })
+                rendered = repr(record.evidence.descriptor())
+                self.assertNotIn("provider-body-canary", rendered)
+                self.assertNotIn("observed_body", rendered)
+                self.assertNotIn("observed_body_sha256", rendered)
+
+    def test_http_verification_failed_category_requires_authoritative_evidence(
+        self,
+    ) -> None:
+        status_records, _, _, _ = self.http_verification_case(
+            VerificationOutcome.FAILED,
+            expected_body_sha256=None,
+            status_code=503,
+        )
+        unavailable_records, _, _, _ = self.http_verification_case(
+            VerificationOutcome.FAILED,
+            include_evidence=False,
+        )
+
+        self.assertEqual(
+            status_records[0].evidence.descriptor()["http_verification"]["category"],
+            "status-mismatch",
+        )
+        self.assertEqual(
+            unavailable_records[0]
+            .evidence.descriptor()["http_verification"]["category"],
+            "transport-unavailable",
+        )
+        with self.assertRaisesRegex(
+            OperationsRecordError,
+            "effect outcome observation projection is invalid",
+        ):
+            self.http_verification_case(
+                VerificationOutcome.FAILED,
+                body_sha256_matches=True,
+            )
+
+    def test_http_verification_projection_rejects_missing_authoritative_check(self) -> None:
+        _, intent_record, outcome, attempt = self.http_verification_case(
+            VerificationOutcome.PASSED
+        )
+        completion = replace(
+            outcome.result.observations[0],
+            identity=VerificationIdentity("api", "graph-desired", "foreign-check"),
+        )
+        replaced_result = replace(outcome.result, observations=(completion,))
+        replaced_outcome = ExecutionEffectOutcome(
+            outcome.identity,
+            outcome.request_fingerprint,
+            replaced_result,
+        )
+
+        with self.assertRaisesRegex(
+            OperationsRecordError,
+            "effect outcome observation projection is invalid",
+        ):
+            effect_outcome_observation_records(
+                replaced_outcome,
+                attempt,
+                workspace_id=WORKSPACE_ID,
+                observation_ids=("observation-foreign-check",),
+                intent_record=intent_record,
+            )
 
     def test_record_shape_and_all_twenty_phase_outcomes_are_closed(self) -> None:
         self.require_outcome_language()
