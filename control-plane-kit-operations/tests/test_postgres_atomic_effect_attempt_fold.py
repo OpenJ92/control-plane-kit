@@ -21,6 +21,9 @@ from control_plane_kit_operations.postgres import (
 from control_plane_kit_operations.postgres.effect_attempt_store import (
     EffectAttemptStore,
 )
+from control_plane_kit_operations.postgres.effect_attempt_intent_store import (
+    EffectAttemptIntentStore,
+)
 from control_plane_kit_operations.postgres.effect_outcome_store import (
     EffectAttemptOutcomeStore,
 )
@@ -33,6 +36,10 @@ from control_plane_kit_operations.records import (
     OperationsRecordError,
 )
 from tests.execution_lease_recovery_fixture import Sequence
+from tests.effect_attempt_intent_fixture import (
+    EffectAttemptIntentFixture,
+    product_material,
+)
 from tests.postgres_effect_attempt_fold_fixture import (
     INVALID_TRUTH_ERROR,
     REPLAY_ERROR,
@@ -71,6 +78,69 @@ class PostgresAtomicEffectAttemptFoldTests(
     PostgresGuardedObservedEffectFoldFixture,
     unittest.TestCase,
 ):
+    def test_direct_fold_reads_the_exact_durable_effect_intent(self) -> None:
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == "execution-succeeded" and not item.compensation
+        )
+        current = self.seed_fold_source(story)
+        command = self.fold_command(story)
+        original_get = EffectAttemptIntentStore.get
+        lookups = []
+
+        def get(store, identity):
+            lookups.append(identity)
+            return original_get(store, identity)
+
+        with mock.patch.object(EffectAttemptIntentStore, "get", get):
+            result = self.fold_service("direct-intent-read").execute(command)
+
+        self.assertIsInstance(result, NewlyFolded)
+        self.assertEqual(lookups, [current.state.identity])
+
+    def test_direct_fold_rejects_intent_drift_before_observation_persistence(
+        self,
+    ) -> None:
+        story = next(
+            item
+            for item in self.stories()
+            if item.name == "execution-succeeded" and not item.compensation
+        )
+        current = self.seed_fold_source(story)
+        command = self.fold_command(story)
+        intent_fixture = EffectAttemptIntentFixture()
+        intent_fixture.assertEqual = self.assertEqual
+        drifted_intent = intent_fixture.intent(
+            activity_id=current.state.identity.activity_id,
+            products=(product_material(public_value="drifted-intent"),),
+        )
+        drifted_record = intent_fixture.record(
+            identity=current.state.identity,
+            original_start_event=current.original_start_event,
+            intent=drifted_intent,
+        )
+        writes = []
+        original_put = PostgresObservedStateStore.put
+
+        def put(store, observation):
+            writes.append(observation)
+            return original_put(store, observation)
+
+        with mock.patch.object(
+            EffectAttemptIntentStore,
+            "get",
+            return_value=drifted_record,
+        ) as get, mock.patch.object(PostgresObservedStateStore, "put", put):
+            with self.assertRaisesRegex(
+                EffectAttemptFoldConflict,
+                "effect attempt fold truth is invalid",
+            ):
+                self.fold_service("intent-drift-must-not-fold").execute(command)
+
+        get.assert_called_once_with(current.state.identity)
+        self.assertEqual(writes, [])
+
     def test_all_twenty_direct_rows_commit_and_restart_replay_exact_evidence(
         self,
     ) -> None:

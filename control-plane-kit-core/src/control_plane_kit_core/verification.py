@@ -186,6 +186,7 @@ class HttpCheck:
     path: str
     expected_statuses: tuple[int, ...] = (200,)
     policy: VerificationPolicy = field(default_factory=VerificationPolicy)
+    expected_body_sha256: str | None = None
 
     def __post_init__(self) -> None:
         _validate_identity(self.check_id, "check")
@@ -202,13 +203,20 @@ class HttpCheck:
             self, "expected_statuses", tuple(sorted(set(self.expected_statuses)))
         )
         _validate_policy(self.policy)
+        _validate_optional_sha256(
+            self.expected_body_sha256,
+            "HTTP expected body SHA-256",
+        )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             **_base_descriptor("http", self),
             "path": self.path,
             "expected_statuses": list(self.expected_statuses),
         }
+        if self.expected_body_sha256 is not None:
+            descriptor["expected_body_sha256"] = self.expected_body_sha256
+        return descriptor
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -464,18 +472,41 @@ class VerificationIdentity:
 class HttpVerificationEvidence:
     status_code: int
     response_bytes: int
+    expected_body_sha256: str | None = None
+    body_sha256_matches: bool | None = None
 
     def __post_init__(self) -> None:
         if type(self.status_code) is not int or not 100 <= self.status_code <= 599:
             raise VerificationContractError("HTTP verification status is invalid")
         _validate_evidence_size(self.response_bytes)
+        _validate_optional_sha256(
+            self.expected_body_sha256,
+            "HTTP expected body SHA-256",
+        )
+        if (self.expected_body_sha256 is None) != (
+            self.body_sha256_matches is None
+        ) or (
+            self.body_sha256_matches is not None
+            and type(self.body_sha256_matches) is not bool
+        ):
+            raise VerificationContractError(
+                "HTTP verification digest evidence is invalid"
+            )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "kind": "http",
             "status_code": self.status_code,
             "response_bytes": self.response_bytes,
         }
+        if self.expected_body_sha256 is not None:
+            descriptor.update(
+                {
+                    "expected_body_sha256": self.expected_body_sha256,
+                    "body_sha256_matches": self.body_sha256_matches,
+                }
+            )
+        return descriptor
 
 
 @dataclass(frozen=True)
@@ -559,11 +590,22 @@ def verification_check_from_descriptor(value: object) -> VerificationCheck:
     try:
         match kind:
             case "http":
-                _require_keys(
-                    descriptor,
-                    {"kind", "check_id", "provider_socket", "policy", "path", "expected_statuses"},
-                    "HTTP verification check",
-                )
+                legacy_keys = {
+                    "kind",
+                    "check_id",
+                    "provider_socket",
+                    "policy",
+                    "path",
+                    "expected_statuses",
+                }
+                keys = set(descriptor)
+                if keys not in (
+                    legacy_keys,
+                    legacy_keys | {"expected_body_sha256"},
+                ):
+                    raise VerificationContractError(
+                        "HTTP verification check descriptor has unknown or missing fields"
+                    )
                 statuses = descriptor["expected_statuses"]
                 if not isinstance(statuses, list):
                     raise VerificationContractError("HTTP expected statuses must be a list")
@@ -571,6 +613,11 @@ def verification_check_from_descriptor(value: object) -> VerificationCheck:
                     **common,
                     path=_text(descriptor, "path"),
                     expected_statuses=tuple(_integer_value(item) for item in statuses),
+                    expected_body_sha256=(
+                        None
+                        if "expected_body_sha256" not in descriptor
+                        else _text(descriptor, "expected_body_sha256")
+                    ),
                 )
             case "dns-resolve":
                 _require_keys(descriptor, {"kind", "check_id", "provider_socket", "policy", "query_name", "record_type"}, "DNS verification check")
@@ -675,6 +722,14 @@ def _validate_evidence_size(value: int) -> None:
         raise VerificationContractError(
             "verification evidence size must be between 0 and 65536 bytes"
         )
+
+
+def _validate_optional_sha256(value: str | None, name: str) -> None:
+    if value is not None and (
+        type(value) is not str
+        or fullmatch(r"[0-9a-f]{64}", value) is None
+    ):
+        raise VerificationContractError(f"{name} is invalid")
 
 
 def _validate_http_path(value: str) -> None:

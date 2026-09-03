@@ -55,6 +55,7 @@ from control_plane_kit_core.topology import (
     validate_graph,
 )
 from control_plane_kit_core.types import Protocol, RuntimeKind, SocketBinding
+from control_plane_kit_core.verification import HttpCheck, VerificationContract
 
 from tests.test_kernel_pipeline import (
     PureImplementation,
@@ -327,6 +328,43 @@ class ActivityPlanCompilerTests(unittest.TestCase):
             {dependency.predecessor for dependency in healthy.dependencies},
         )
 
+    def test_http_expected_body_change_reconciles_before_health_verification(
+        self,
+    ) -> None:
+        self.assertIn(
+            "expected_body_sha256",
+            HttpCheck.__dataclass_fields__,
+            "HTTP verification is missing expected-body intent",
+        )
+        current = validate_graph(service_graph("provider-a", "a" * 64))
+        desired = validate_graph(service_graph("provider-a", "b" * 64))
+
+        graph_diff = diff_graphs(current, desired)
+        plan = compile_activity_plan(graph_diff)
+
+        self.assertEqual(
+            tuple(change.subject.field for change in graph_diff.changes),
+            (StructuralField.BLOCK_SPECIFICATION,),
+        )
+        reconcile = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, ReconcileNode)
+            and activity.operation.target.node_id == "consumer"
+        )
+        healthy = next(
+            activity
+            for activity in plan.activities
+            if isinstance(activity.operation, WaitForHealthy)
+            and activity.operation.target.node_id == "consumer"
+        )
+        self.assertIn(
+            reconcile.activity_id,
+            {dependency.predecessor for dependency in healthy.dependencies},
+        )
+        check = desired.graph.node("consumer").block_spec.verification.checks[0]
+        self.assertEqual(check.expected_body_sha256, "b" * 64)
+
     def test_runtime_move_orders_start_reconcile_and_stop(self) -> None:
         before = RuntimeRecord("old", RuntimeKind.DOCKER)
         after = RuntimeRecord("new", RuntimeKind.DOCKER)
@@ -426,17 +464,48 @@ def runtime_control_graph(target: str) -> DeploymentGraph:
     )
 
 
-def service_graph(provider_id: str) -> DeploymentGraph:
+def service_graph(
+    provider_id: str,
+    expected_body_sha256: str | None = None,
+) -> DeploymentGraph:
     provider = ApplicationBlock(
         BlockSpec(provider_id),
         PureImplementation("provider", {"internal": f"http://{provider_id}"}),
         BlockSockets(providers=(ProviderSocket("internal", Protocol.HTTP),)),
     )
     consumer = ApplicationBlock(
-        BlockSpec("consumer"),
-        PureImplementation("consumer", {}),
+        BlockSpec(
+            "consumer",
+            verification=(
+                VerificationContract()
+                if expected_body_sha256 is None
+                else VerificationContract(
+                    (
+                        HttpCheck(
+                            check_id="root-response",
+                            provider_socket="http",
+                            path="/",
+                            expected_body_sha256=expected_body_sha256,
+                        ),
+                    )
+                )
+            ),
+        ),
+        PureImplementation(
+            "consumer",
+            (
+                {}
+                if expected_body_sha256 is None
+                else {"http": "http://consumer"}
+            ),
+        ),
         BlockSockets(
-            requirements=(RequirementSocket("upstream", Protocol.HTTP, ("UPSTREAM_URL",)),)
+            requirements=(RequirementSocket("upstream", Protocol.HTTP, ("UPSTREAM_URL",)),),
+            providers=(
+                ()
+                if expected_body_sha256 is None
+                else (ProviderSocket("http", Protocol.HTTP),)
+            ),
         ),
     )
     return compile_topology(

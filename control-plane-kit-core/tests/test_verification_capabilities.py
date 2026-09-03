@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 import unittest
 
 from control_plane_kit_core.algebra import (
@@ -38,6 +38,13 @@ from control_plane_kit_core.capabilities import (
 from control_plane_kit_core.control_routes import ControlRouteSetName
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
 from control_plane_kit_core.secrets import SecretReference
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_result_fingerprint,
+)
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectContractError,
+    RuntimeEffectResult,
+)
 from control_plane_kit_core.topology import Endpoint, GraphDescriptorCodec, compile_topology
 from control_plane_kit_core.topology.graph import LiteralAddress
 from control_plane_kit_core.types import Protocol
@@ -197,6 +204,59 @@ class VerificationContractTests(unittest.TestCase):
         self.assertEqual(restored.descriptor(), descriptor)
         self.assertEqual(restored.checks[0].expected_statuses, (200, 204))
 
+    def test_http_expected_body_digest_is_closed_and_legacy_compatible(self) -> None:
+        self.assertIn(
+            "expected_body_sha256",
+            {item.name for item in fields(HttpCheck)},
+            "HTTP verification is missing expected-body intent",
+        )
+        digest = "a" * 64
+        extended = HttpCheck(
+            check_id="hello-response",
+            provider_socket="public",
+            path="/",
+            expected_body_sha256=digest,
+        )
+
+        self.assertEqual(
+            extended.descriptor(),
+            {
+                "kind": "http",
+                "check_id": "hello-response",
+                "provider_socket": "public",
+                "policy": VerificationPolicy().descriptor(),
+                "path": "/",
+                "expected_statuses": [200],
+                "expected_body_sha256": digest,
+            },
+        )
+        self.assertEqual(
+            verification_check_from_descriptor(extended.descriptor()),
+            extended,
+        )
+
+        legacy = HttpCheck(
+            check_id="legacy-status",
+            provider_socket="public",
+            path="/health/live",
+        )
+        self.assertNotIn("expected_body_sha256", legacy.descriptor())
+        self.assertEqual(
+            verification_check_from_descriptor(legacy.descriptor()),
+            legacy,
+        )
+
+        for invalid in ("", "A" * 64, "g" * 64, "a" * 63, "a" * 65, False):
+            with self.subTest(invalid=invalid), self.assertRaises(
+                VerificationContractError
+            ):
+                HttpCheck(
+                    check_id="hello-response",
+                    provider_socket="public",
+                    path="/",
+                    expected_body_sha256=invalid,  # type: ignore[arg-type]
+                )
+
     def test_each_check_variant_has_an_explicit_protocol_set(self) -> None:
         checks = complete_contract().checks
 
@@ -281,6 +341,97 @@ class VerificationContractTests(unittest.TestCase):
             )
         with self.assertRaises(TypeError):
             VerificationUnsupported(identity, "http")  # type: ignore[arg-type]
+
+    def test_http_digest_completion_is_bounded_and_never_retains_response_bytes(
+        self,
+    ) -> None:
+        self.assertEqual(
+            {"expected_body_sha256", "body_sha256_matches"}
+            - {item.name for item in fields(HttpVerificationEvidence)},
+            set(),
+            "HTTP verification completion is missing digest-match evidence",
+        )
+        digest = "b" * 64
+        matched = HttpVerificationEvidence(
+            200,
+            21,
+            expected_body_sha256=digest,
+            body_sha256_matches=True,
+        )
+        mismatched = HttpVerificationEvidence(
+            200,
+            21,
+            expected_body_sha256=digest,
+            body_sha256_matches=False,
+        )
+
+        self.assertEqual(
+            matched.descriptor(),
+            {
+                "kind": "http",
+                "status_code": 200,
+                "response_bytes": 21,
+                "expected_body_sha256": digest,
+                "body_sha256_matches": True,
+            },
+        )
+        self.assertFalse(mismatched.body_sha256_matches)
+        for evidence in (matched, mismatched):
+            rendered = repr(evidence.descriptor())
+            self.assertNotIn("Hello through public ingress", rendered)
+            self.assertNotIn("observed_body", rendered)
+            self.assertNotIn("observed_body_sha256", rendered)
+
+        completion = VerificationCompleted(
+            VerificationIdentity("router", "graph-desired", "root-response"),
+            VerificationCapability.HTTP,
+            VerificationOutcome.PASSED,
+            1,
+            matched,
+        )
+        result = RuntimeEffectResult.succeeded(
+            "effect-router-verify",
+            observations=(completion,),
+        )
+        self.assertEqual(result.observations, (completion,))
+        self.assertEqual(
+            runtime_effect_result_fingerprint(result),
+            runtime_effect_result_fingerprint(result),
+        )
+        with self.assertRaises(RuntimeEffectContractError):
+            RuntimeEffectResult.succeeded(
+                "effect-router-verify",
+                observations=(completion.descriptor(),),  # type: ignore[arg-type]
+            )
+        failed_completion = replace(
+            completion,
+            outcome=VerificationOutcome.FAILED,
+            evidence=mismatched,
+        )
+        with self.assertRaisesRegex(
+            RuntimeEffectContractError,
+            "successful runtime effect cannot carry failed verification",
+        ):
+            RuntimeEffectResult.succeeded(
+                "effect-router-verify",
+                observations=(failed_completion,),
+            )
+        object.__setattr__(result, "observations", (failed_completion,))
+        with self.assertRaisesRegex(
+            RuntimeEffectContractError,
+            "successful runtime effect cannot carry failed verification",
+        ):
+            runtime_effect_result_fingerprint(result)
+
+        for values in (
+            {"expected_body_sha256": None, "body_sha256_matches": True},
+            {"expected_body_sha256": digest, "body_sha256_matches": None},
+            {"expected_body_sha256": digest, "body_sha256_matches": 1},
+        ):
+            with self.subTest(values=values), self.assertRaises(
+                VerificationContractError
+            ):
+                HttpVerificationEvidence(200, 21, **values)
 
     def test_block_contract_survives_the_authoritative_graph_codec(self) -> None:
         contract = VerificationContract(

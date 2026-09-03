@@ -49,6 +49,10 @@ from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
 )
 from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.verification import (
+    VerificationCompleted,
+    VerificationOutcome,
+)
 
 
 _MAX_TEXT = 512
@@ -633,7 +637,9 @@ class RuntimeEffectResult:
     kind: EffectResultKind
     evidence: Mapping[str, object] = field(default_factory=dict)
     failure: RuntimeEffectFailure | None = None
-    observations: tuple[RuntimeEndpointObservation, ...] = ()
+    observations: tuple[
+        RuntimeEndpointObservation | VerificationCompleted, ...
+    ] = ()
 
     @classmethod
     def succeeded(
@@ -641,7 +647,9 @@ class RuntimeEffectResult:
         effect_id: str,
         *,
         evidence: Mapping[str, object] | None = None,
-        observations: tuple[RuntimeEndpointObservation, ...] = (),
+        observations: tuple[
+            RuntimeEndpointObservation | VerificationCompleted, ...
+        ] = (),
     ) -> "RuntimeEffectResult":
         return cls(
             effect_id,
@@ -655,24 +663,51 @@ class RuntimeEffectResult:
         cls,
         effect_id: str,
         failure: RuntimeEffectFailure,
+        *,
+        observations: tuple[
+            RuntimeEndpointObservation | VerificationCompleted, ...
+        ] = (),
     ) -> "RuntimeEffectResult":
-        return cls(effect_id, EffectResultKind.FAILED, failure=failure)
+        return cls(
+            effect_id,
+            EffectResultKind.FAILED,
+            failure=failure,
+            observations=observations,
+        )
 
     @classmethod
     def unsupported(
         cls,
         effect_id: str,
         failure: RuntimeEffectFailure,
+        *,
+        observations: tuple[
+            RuntimeEndpointObservation | VerificationCompleted, ...
+        ] = (),
     ) -> "RuntimeEffectResult":
-        return cls(effect_id, EffectResultKind.UNSUPPORTED, failure=failure)
+        return cls(
+            effect_id,
+            EffectResultKind.UNSUPPORTED,
+            failure=failure,
+            observations=observations,
+        )
 
     @classmethod
     def uncertain(
         cls,
         effect_id: str,
         failure: RuntimeEffectFailure,
+        *,
+        observations: tuple[
+            RuntimeEndpointObservation | VerificationCompleted, ...
+        ] = (),
     ) -> "RuntimeEffectResult":
-        return cls(effect_id, EffectResultKind.UNCERTAIN, failure=failure)
+        return cls(
+            effect_id,
+            EffectResultKind.UNCERTAIN,
+            failure=failure,
+            observations=observations,
+        )
 
     def __post_init__(self) -> None:
         _required_text(self.effect_id, "effect_id")
@@ -690,10 +725,19 @@ class RuntimeEffectResult:
         if self.failure is not None and not isinstance(self.failure, RuntimeEffectFailure):
             raise RuntimeEffectContractError("runtime effect failure is malformed")
         if type(self.observations) is not tuple or not all(
-            type(value) is RuntimeEndpointObservation for value in self.observations
+            type(value) in (RuntimeEndpointObservation, VerificationCompleted)
+            for value in self.observations
         ):
             raise RuntimeEffectContractError(
                 "runtime effect observations must be RuntimeEndpointObservation"
+            )
+        if self.kind is EffectResultKind.SUCCEEDED and any(
+            type(value) is VerificationCompleted
+            and value.outcome is not VerificationOutcome.PASSED
+            for value in self.observations
+        ):
+            raise RuntimeEffectContractError(
+                "successful runtime effect cannot carry failed verification"
             )
         if self.kind is EffectResultKind.SUCCEEDED and self.failure is not None:
             raise RuntimeEffectContractError("successful runtime effect cannot fail")

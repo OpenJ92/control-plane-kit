@@ -9,14 +9,30 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 
 from control_plane_kit_core import RuntimeEffectResult
 from control_plane_kit_core.operations import RecoveryDecisionKind
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_fingerprint,
+)
+from control_plane_kit_core.verification import (
+    HttpCheck,
+    HttpVerificationEvidence,
+    VerificationCapability,
+    VerificationCompleted,
+    VerificationContract,
+    VerificationIdentity,
+    VerificationOutcome,
+)
 from control_plane_kit_operations.postgres import (
     SchemaInstallationError,
     install_schema,
 )
-from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.records import BoundedEvidence, OperationsRecordError
 from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
     effect_outcome_observation_records,
+)
+from tests.effect_attempt_intent_fixture import (
+    EffectAttemptIntentFixture,
+    product_material,
 )
 from tests.postgres_effect_outcome_store_fixture import (
     PostgresEffectOutcomeStoreFixture,
@@ -90,6 +106,139 @@ class PostgresEffectOutcomeStoreTests(
     PostgresEffectOutcomeStoreFixture,
     unittest.TestCase,
 ):
+    def test_http_verification_completion_roundtrips_in_the_existing_schema(
+        self,
+    ) -> None:
+        self.assertIn(
+            "expected_body_sha256",
+            HttpCheck.__dataclass_fields__,
+            "HTTP verification is missing expected-body intent",
+        )
+        digest = "d" * 64
+        material = product_material()
+        material = replace(
+            material,
+            product=replace(
+                material.product,
+                runtime_contract=replace(
+                    material.product.runtime_contract,
+                    verification=VerificationContract(
+                        (
+                            HttpCheck(
+                                check_id="root-response",
+                                provider_socket="http",
+                                path="/",
+                                expected_body_sha256=digest,
+                            ),
+                        )
+                    ),
+                ),
+            ),
+        )
+        intent_fixture = EffectAttemptIntentFixture()
+        intent_fixture.assertEqual = self.assertEqual
+        intent = intent_fixture.intent(
+            activity_id="activity-a",
+            products=(material,),
+        )
+        completion = VerificationCompleted(
+            VerificationIdentity("api", "graph-desired", "root-response"),
+            VerificationCapability.HTTP,
+            VerificationOutcome.PASSED,
+            1,
+            HttpVerificationEvidence(
+                200,
+                21,
+                expected_body_sha256=digest,
+                body_sha256_matches=True,
+            ),
+        )
+        result = RuntimeEffectResult.succeeded(
+            "event-start",
+            observations=(completion,),
+        )
+        story = replace(self.story_named("execution-succeeded"), value=result)
+        attempt = self.direct_attempt_for(
+            story,
+            request_fingerprint=runtime_effect_intent_fingerprint(intent),
+        )
+        story = replace(story, attempt=attempt)
+        intent_record = intent_fixture.record(
+            identity=attempt.state.identity,
+            original_start_event=attempt.original_start_event,
+            intent=intent,
+        )
+        outcome = self.outcome_for(story)
+        observations = effect_outcome_observation_records(
+            outcome,
+            attempt,
+            workspace_id="workspace-a",
+            observation_ids=("verification-observation",),
+            intent_record=intent_record,
+        )
+        record = EffectAttemptOutcomeRecord(
+            "workspace-a",
+            outcome,
+            attempt,
+            observations,
+        )
+
+        false_payload = observations[0].evidence.descriptor()
+        false_payload["http_verification"]["path"] = "/safe-but-foreign"
+        false_observation = replace(
+            observations[0],
+            evidence=BoundedEvidence.from_mapping(false_payload),
+        )
+        false_record = replace(
+            record,
+            endpoint_observations=(false_observation,),
+        )
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution.add_event(attempt.original_start_event)
+            stores.execution.add_event(attempt.latest_transition_event)
+            stores.effect_attempt_intents.insert(intent_record)
+            stores.effect_attempts.insert_absent(attempt)
+            stores.observed_state.put(false_observation)
+            with self.assertRaisesRegex(
+                OperationsRecordError,
+                "effect attempt outcome store input is invalid",
+            ):
+                stores.effect_outcomes.insert(false_record)
+            self.assertEqual(
+                self.connection.execute(
+                    "SELECT count(*) FROM cpk_effect_attempt_outcomes"
+                ).fetchone(),
+                (0,),
+            )
+            self.assertEqual(
+                self.connection.execute(
+                    "SELECT count(*) "
+                    "FROM cpk_effect_attempt_outcome_observations"
+                ).fetchone(),
+                (0,),
+            )
+
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.execution.add_event(attempt.original_start_event)
+            stores.execution.add_event(attempt.latest_transition_event)
+            stores.effect_attempt_intents.insert(intent_record)
+            stores.effect_attempts.insert_absent(attempt)
+            for observation in observations:
+                stores.observed_state.put(observation)
+            stores.effect_outcomes.insert(record)
+            unit_of_work.commit()
+
+        with self.unit_of_work() as fresh:
+            loaded = fresh.stores.effect_outcomes.get(
+                attempt.state.identity,
+                attempt.latest_transition_event.event_id,
+            )
+
+        self.assertEqual(loaded, record)
+        self.assertLessEqual(len(self.preimage_for(record)), 8_192)
+
     def test_predecessor_seed_and_attempt_prerequisites_are_lawful(self) -> None:
         self.assertEqual(
             self.connection.execute(

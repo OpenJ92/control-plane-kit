@@ -101,6 +101,7 @@ class EffectAttemptFoldService:
         observed_at: str,
         event_ordinal: int,
         workspace_id: str,
+        intent_record: EffectAttemptIntentRecord,
     ) -> NewlyFolded:
         identity = next_state.identity
         identifiers = ()
@@ -149,6 +150,7 @@ class EffectAttemptFoldService:
                         attempt,
                         workspace_id=workspace_id,
                         observation_ids=identifiers[1:],
+                        intent_record=intent_record,
                     )
                     outcome_record = EffectAttemptOutcomeRecord(
                         workspace_id,
@@ -223,20 +225,26 @@ def _execute_fold(
             invalid_truth = False
             denied = False
             intent_record = None
-            if guarded is not None:
-                try:
-                    intent_record = stores.effect_attempt_intents.get(
-                        attempt.state.identity
+            try:
+                intent_record = stores.effect_attempt_intents.get(
+                    attempt.state.identity
+                )
+            except (KeyError, OperationsRecordError):
+                invalid_truth = True
+            else:
+                invalid_truth = (
+                    type(intent_record) is not EffectAttemptIntentRecord
+                    or intent_record.identity != attempt.state.identity
+                    or intent_record.original_start_event
+                    != attempt.original_start_event
+                    or intent_record.request_id != command.request_id
+                    or intent_record.request_fingerprint
+                    != attempt.state.request_fingerprint
+                    or (
+                        guarded is not None
+                        and intent_record != guarded.intent_record
                     )
-                except (KeyError, OperationsRecordError):
-                    invalid_truth = True
-                else:
-                    invalid_truth = (
-                        type(intent_record) is not EffectAttemptIntentRecord
-                        or intent_record != guarded.intent_record
-                        or intent_record.original_start_event
-                        != attempt.original_start_event
-                    )
+                )
             observation = None
             if not invalid_truth:
                 observation = _observation(stores, command.request_id)
@@ -282,6 +290,7 @@ def _execute_fold(
                 observed_at=observation.observed_at,
                 event_ordinal=event_ordinal,
                 workspace_id=request.identity.workspace_id,
+                intent_record=intent_record,
             )
             event = result.attempt.latest_transition_event
             event_acknowledgement = stores.execution.add_event(event)

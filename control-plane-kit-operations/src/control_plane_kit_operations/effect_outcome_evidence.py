@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+import hashlib
+
+import rfc8785
 
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
@@ -38,7 +41,17 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeEffectResult,
 )
 from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.verification import (
+    HttpCheck,
+    HttpVerificationEvidence,
+    VerificationCapability,
+    VerificationCompleted,
+    VerificationOutcome,
+)
 
+from control_plane_kit_operations.effect_attempt_intent_evidence import (
+    EffectAttemptIntentRecord,
+)
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.records import (
     BoundedEvidence,
@@ -155,6 +168,35 @@ _OBSERVATION_ROWS = {
             "runtime observer does not support this effect",
         ),
     ),
+}
+
+_HTTP_VERIFICATION_ROWS = {
+    VerificationOutcome.PASSED: (
+        ObservationStatus.VERIFIED,
+        ProbeOutcome.HEALTHY,
+    ),
+    VerificationOutcome.FAILED: (
+        ObservationStatus.VERIFICATION_FAILED,
+        ProbeOutcome.UNHEALTHY,
+    ),
+    VerificationOutcome.TIMED_OUT: (
+        ObservationStatus.TIMED_OUT,
+        ProbeOutcome.TIMED_OUT,
+    ),
+    VerificationOutcome.MALFORMED: (
+        ObservationStatus.MALFORMED,
+        ProbeOutcome.MALFORMED,
+    ),
+    VerificationOutcome.REJECTED: (
+        ObservationStatus.REJECTED,
+        ProbeOutcome.UNKNOWN,
+    ),
+}
+
+_FIXED_HTTP_VERIFICATION_CATEGORIES = {
+    VerificationOutcome.TIMED_OUT: "policy-exhausted",
+    VerificationOutcome.MALFORMED: "response-oversized",
+    VerificationOutcome.REJECTED: "response-rejected",
 }
 
 
@@ -306,8 +348,13 @@ class _EffectOutcomeValue:
                 "effect_outcome": effect_outcome,
             }
         ]
-        for endpoint in self.endpoint_observations:
-            mappings += [{"runtime_endpoint": endpoint.descriptor()}]
+        for observation in self.endpoint_observations:
+            if type(observation) is RuntimeEndpointObservation:
+                mappings.append({"runtime_endpoint": observation.descriptor()})
+            else:
+                mappings.append(
+                    {"verification_completion": observation.descriptor()}
+                )
         return [BoundedEvidence.from_mapping(value) for value in mappings]
 
     @property
@@ -375,31 +422,33 @@ class _EffectOutcomeValue:
             ) and self.endpoint_observations:
                 return False
 
-        for endpoint in self.endpoint_observations:
-            if (
-                endpoint.__class__ is not RuntimeEndpointObservation
-                or endpoint.protocol.__class__ is not Protocol
-                or endpoint.context.__class__ is not EndpointContext
-            ):
+        for observation in self.endpoint_observations:
+            if type(observation) is RuntimeEndpointObservation:
+                if (
+                    observation.protocol.__class__ is not Protocol
+                    or observation.context.__class__ is not EndpointContext
+                ):
+                    return False
+                address_class = observation.address.__class__
+                if address_class not in (
+                    LiteralEndpointMaterial,
+                    SecretEndpointMaterial,
+                ):
+                    return False
+                texts += [
+                    (observation.subject_id, 512, "text"),
+                    (observation.socket_name, 512, "text"),
+                    (observation.graph_id, 512, "text"),
+                    (
+                        observation.address.value
+                        if address_class is LiteralEndpointMaterial
+                        else observation.address.reference_id,
+                        512,
+                        "text",
+                    ),
+                ]
+            elif type(observation) is not VerificationCompleted:
                 return False
-            address_class = endpoint.address.__class__
-            if address_class not in (
-                LiteralEndpointMaterial,
-                SecretEndpointMaterial,
-            ):
-                return False
-            texts += [
-                (endpoint.subject_id, 512, "text"),
-                (endpoint.socket_name, 512, "text"),
-                (endpoint.graph_id, 512, "text"),
-                (
-                    endpoint.address.value
-                    if address_class is LiteralEndpointMaterial
-                    else endpoint.address.reference_id,
-                    512,
-                    "text",
-                ),
-            ]
 
         for value, maximum, grammar in texts:
             if (
@@ -437,6 +486,8 @@ class _EffectOutcomeValue:
                         return False
 
         for endpoint in self.endpoint_observations:
+            if type(endpoint) is VerificationCompleted:
+                continue
             admitted = True
             try:
                 material = endpoint.address
@@ -613,7 +664,7 @@ class EffectAttemptOutcomeRecord:
             index = 0
             seen_ids: dict[str, None] = {}
             for record in self.endpoint_observations:
-                endpoint = endpoints[index]
+                observation = endpoints[index]
                 valid = (
                     record.__class__ is ObservationRecord
                     and record.observation_id.__class__ is str
@@ -623,20 +674,31 @@ class EffectAttemptOutcomeRecord:
                     and record.workspace_id.__class__ is str
                     and record.workspace_id == self.workspace_id
                     and record.subject_id.__class__ is str
-                    and record.subject_id == endpoint.subject_id
-                    and record.status is ObservationStatus.UNKNOWN
                     and record.observed_at.__class__ is str
                     and record.observed_at == latest.occurred_at
                     and record.evidence.__class__ is BoundedEvidence
                     and record.evidence.canonical_json.__class__ is str
-                    and record.evidence == evidence[index + 1]
                     and record.freshness is ObservationFreshness.FRESH
                     and record.graph_id.__class__ is str
-                    and record.graph_id == endpoint.graph_id
-                    and record.probe_kind is ProbeKind.TRANSPORT
-                    and record.probe_outcome is ProbeOutcome.UNKNOWN
-                    and record.endpoint_context is endpoint.context
                 )
+                if valid and type(observation) is RuntimeEndpointObservation:
+                    valid = (
+                        record.subject_id == observation.subject_id
+                        and record.status is ObservationStatus.UNKNOWN
+                        and record.evidence == evidence[index + 1]
+                        and record.graph_id == observation.graph_id
+                        and record.probe_kind is ProbeKind.TRANSPORT
+                        and record.probe_outcome is ProbeOutcome.UNKNOWN
+                        and record.endpoint_context is observation.context
+                    )
+                elif valid and type(observation) is VerificationCompleted:
+                    valid = _verification_record_matches(
+                        record,
+                        observation,
+                        self.outcome,
+                    )
+                else:
+                    valid = False
                 if not valid:
                     break
                 for value in (
@@ -714,6 +776,7 @@ def effect_outcome_observation_records(
     *,
     workspace_id: str,
     observation_ids: tuple[str, ...],
+    intent_record: EffectAttemptIntentRecord | None = None,
 ) -> tuple[ObservationRecord, ...]:
     valid = (
         outcome.__class__ in (ExecutionEffectOutcome, ObservedEffectOutcome)
@@ -765,25 +828,276 @@ def effect_outcome_observation_records(
     if not valid:
         _OutcomeError.OBSERVATION.raised
 
-    evidence = outcome._bounded_evidence
     occurred_at = validated_attempt.latest_transition_event.occurred_at
-    return tuple(
-        ObservationRecord(
-            observation_id=observation_id,
-            workspace_id=workspace_id,
-            subject_id=endpoint.subject_id,
-            status=ObservationStatus.UNKNOWN,
-            observed_at=occurred_at,
-            evidence=evidence[index + 1],
-            freshness=ObservationFreshness.FRESH,
-            graph_id=endpoint.graph_id,
-            probe_kind=ProbeKind.TRANSPORT,
-            probe_outcome=ProbeOutcome.UNKNOWN,
-            endpoint_context=endpoint.context,
+    records = []
+    for index, (observation_id, observation) in enumerate(
+        zip(observation_ids, outcome.endpoint_observations, strict=True)
+    ):
+        if type(observation) is RuntimeEndpointObservation:
+            record = ObservationRecord(
+                observation_id=observation_id,
+                workspace_id=workspace_id,
+                subject_id=observation.subject_id,
+                status=ObservationStatus.UNKNOWN,
+                observed_at=occurred_at,
+                evidence=outcome._bounded_evidence[index + 1],
+                freshness=ObservationFreshness.FRESH,
+                graph_id=observation.graph_id,
+                probe_kind=ProbeKind.TRANSPORT,
+                probe_outcome=ProbeOutcome.UNKNOWN,
+                endpoint_context=observation.context,
+            )
+        elif type(observation) is VerificationCompleted:
+            check = _authoritative_http_check(
+                intent_record,
+                validated_attempt,
+                outcome,
+                observation,
+            )
+            record = _http_verification_record(
+                observation_id,
+                workspace_id,
+                occurred_at,
+                outcome,
+                observation,
+                check,
+            )
+        else:
+            _OutcomeError.OBSERVATION.raised
+        records.append(record)
+    return tuple(records)
+
+
+def _authoritative_http_check(
+    intent_record: EffectAttemptIntentRecord | None,
+    attempt: EffectAttemptRecord,
+    outcome: EffectAttemptOutcome,
+    completion: VerificationCompleted,
+) -> HttpCheck:
+    valid = (
+        type(intent_record) is EffectAttemptIntentRecord
+        and intent_record.identity == attempt.state.identity
+        and intent_record.original_start_event == attempt.original_start_event
+        and intent_record.request_fingerprint == outcome.request_fingerprint
+        and intent_record.intent.source.desired_graph_id
+        == completion.identity.graph_id
+        and completion.capability is VerificationCapability.HTTP
+    )
+    materials = (
+        tuple(
+            material
+            for material in intent_record.intent.products
+            if material.node_id == completion.identity.node_id
         )
-        for index, (observation_id, endpoint) in enumerate(
-            zip(observation_ids, outcome.endpoint_observations, strict=True)
+        if valid
+        else ()
+    )
+    valid = valid and len(materials) == 1
+    checks = (
+        tuple(
+            check
+            for check in materials[0].product.runtime_contract.verification.checks
+            if check.check_id == completion.identity.check_id
         )
+        if valid
+        else ()
+    )
+    valid = valid and len(checks) == 1 and type(checks[0]) is HttpCheck
+    if not valid:
+        _OutcomeError.OBSERVATION.raised
+    check = checks[0]
+    evidence = completion.evidence
+    if evidence is not None and type(evidence) is not HttpVerificationEvidence:
+        _OutcomeError.OBSERVATION.raised
+    if evidence is not None and (
+        evidence.expected_body_sha256 != check.expected_body_sha256
+        or (
+            check.expected_body_sha256 is None
+            and evidence.body_sha256_matches is not None
+        )
+    ):
+        _OutcomeError.OBSERVATION.raised
+    if completion.outcome is VerificationOutcome.PASSED and (
+        evidence is None
+        or evidence.status_code not in check.expected_statuses
+        or (
+            check.expected_body_sha256 is not None
+            and evidence.body_sha256_matches is not True
+        )
+    ):
+        _OutcomeError.OBSERVATION.raised
+    _http_verification_category(completion, check)
+    return check
+
+
+def _http_verification_record(
+    observation_id: str,
+    workspace_id: str,
+    occurred_at: str,
+    outcome: EffectAttemptOutcome,
+    completion: VerificationCompleted,
+    check: HttpCheck,
+) -> ObservationRecord:
+    evidence = completion.evidence
+    row = _HTTP_VERIFICATION_ROWS[completion.outcome]
+    category = _http_verification_category(completion, check)
+    payload = {
+        "run_id": outcome.identity.run_id.value,
+        "activity_id": outcome.identity.activity_id,
+        "attempt": outcome.identity.attempt,
+        "effect_id": outcome.effect_id,
+        "node_id": completion.identity.node_id,
+        "check_id": completion.identity.check_id,
+        "provider_socket": check.provider_socket,
+        "path": check.path,
+        "http_status": None if evidence is None else evidence.status_code,
+        "response_bytes": None if evidence is None else evidence.response_bytes,
+        "expected_body_sha256": check.expected_body_sha256,
+        "body_sha256_matches": (
+            None if evidence is None else evidence.body_sha256_matches
+        ),
+    }
+    if category is not None:
+        payload.update({"stage": "http-verification", "category": category})
+    return ObservationRecord(
+        observation_id=observation_id,
+        workspace_id=workspace_id,
+        subject_id=_verification_subject(completion),
+        status=row[0],
+        observed_at=occurred_at,
+        evidence=BoundedEvidence.from_mapping({"http_verification": payload}),
+        freshness=ObservationFreshness.FRESH,
+        graph_id=completion.identity.graph_id,
+        probe_kind=ProbeKind.APPLICATION_HEALTH,
+        probe_outcome=row[1],
+        endpoint_context=EndpointContext.RUNTIME_PRIVATE,
+    )
+
+
+def _http_verification_category(
+    completion: VerificationCompleted,
+    check: HttpCheck,
+) -> str | None:
+    if completion.outcome is VerificationOutcome.PASSED:
+        return None
+    if completion.outcome is not VerificationOutcome.FAILED:
+        return _FIXED_HTTP_VERIFICATION_CATEGORIES[completion.outcome]
+    evidence = completion.evidence
+    if evidence is None:
+        return "transport-unavailable"
+    if evidence.status_code not in check.expected_statuses:
+        return "status-mismatch"
+    if (
+        check.expected_body_sha256 is not None
+        and evidence.expected_body_sha256 == check.expected_body_sha256
+        and evidence.body_sha256_matches is False
+    ):
+        return "body-mismatch"
+    _OutcomeError.OBSERVATION.raised
+
+
+def _verification_subject(completion: VerificationCompleted) -> str:
+    document = {
+        "check_id": completion.identity.check_id,
+        "node_id": completion.identity.node_id,
+        "schema": "cpk.verification-subject.v1",
+    }
+    return "verification:" + hashlib.sha256(rfc8785.dumps(document)).hexdigest()
+
+
+def _verification_record_matches(
+    record: ObservationRecord,
+    completion: VerificationCompleted,
+    outcome: EffectAttemptOutcome,
+) -> bool:
+    row = _HTTP_VERIFICATION_ROWS.get(completion.outcome)
+    if row is None or completion.capability is not VerificationCapability.HTTP:
+        return False
+    payloads = record.evidence.descriptor()
+    if set(payloads) != {"http_verification"}:
+        return False
+    payload = payloads["http_verification"]
+    category = None
+    if completion.outcome is VerificationOutcome.FAILED:
+        if completion.evidence is None:
+            category = "transport-unavailable"
+        else:
+            admitted = {"status-mismatch"}
+            if (
+                completion.evidence.expected_body_sha256 is not None
+                and completion.evidence.body_sha256_matches is False
+            ):
+                admitted.add("body-mismatch")
+            candidate = payload.get("category") if type(payload) is dict else None
+            if candidate in admitted:
+                category = candidate
+    elif completion.outcome is not VerificationOutcome.PASSED:
+        category = _FIXED_HTTP_VERIFICATION_CATEGORIES[completion.outcome]
+    keys = {
+        "run_id",
+        "activity_id",
+        "attempt",
+        "effect_id",
+        "node_id",
+        "check_id",
+        "provider_socket",
+        "path",
+        "http_status",
+        "response_bytes",
+        "expected_body_sha256",
+        "body_sha256_matches",
+    }
+    if category is not None:
+        keys |= {"stage", "category"}
+    evidence = completion.evidence
+    return (
+        type(payload) is dict
+        and set(payload) == keys
+        and payload["run_id"] == outcome.identity.run_id.value
+        and payload["activity_id"] == outcome.identity.activity_id
+        and payload["attempt"] == outcome.identity.attempt
+        and payload["effect_id"] == outcome.effect_id
+        and payload["node_id"] == completion.identity.node_id
+        and payload["check_id"] == completion.identity.check_id
+        and type(payload["provider_socket"]) is str
+        and bool(payload["provider_socket"])
+        and type(payload["path"]) is str
+        and payload["path"].startswith("/")
+        and payload["http_status"]
+        == (None if evidence is None else evidence.status_code)
+        and payload["response_bytes"]
+        == (None if evidence is None else evidence.response_bytes)
+        and (
+            (
+                evidence is not None
+                and payload["expected_body_sha256"]
+                == evidence.expected_body_sha256
+            )
+            or (
+                evidence is None
+                and (
+                    payload["expected_body_sha256"] is None
+                    or (
+                        type(payload["expected_body_sha256"]) is str
+                        and len(payload["expected_body_sha256"]) == 64
+                        and all(
+                            character in "0123456789abcdef"
+                            for character in payload["expected_body_sha256"]
+                        )
+                    )
+                )
+            )
+        )
+        and payload["body_sha256_matches"]
+        == (None if evidence is None else evidence.body_sha256_matches)
+        and (category is None or payload["stage"] == "http-verification")
+        and (category is None or payload["category"] == category)
+        and record.subject_id == _verification_subject(completion)
+        and record.status is row[0]
+        and record.graph_id == completion.identity.graph_id
+        and record.probe_kind is ProbeKind.APPLICATION_HEALTH
+        and record.probe_outcome is row[1]
+        and record.endpoint_context is EndpointContext.RUNTIME_PRIVATE
     )
 
 

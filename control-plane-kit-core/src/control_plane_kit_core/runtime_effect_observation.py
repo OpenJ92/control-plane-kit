@@ -31,6 +31,10 @@ from control_plane_kit_core.runtime_effects import (
     activity_operation_descriptor,
 )
 from control_plane_kit_core.secrets import SecretResolutionGrant, SecretUseIntent
+from control_plane_kit_core.verification import (
+    VerificationCompleted,
+    VerificationOutcome,
+)
 
 
 _INTENT_DOMAIN = b"control-plane-kit.runtime-effect-intent.v1\x00"
@@ -673,9 +677,18 @@ def _validate_live_result(result: RuntimeEffectResult) -> None:
             "non-success runtime effect result requires failure"
         )
     if type(result.observations) is not tuple or not all(
-        type(item) is RuntimeEndpointObservation for item in result.observations
+        type(item) in (RuntimeEndpointObservation, VerificationCompleted)
+        for item in result.observations
     ):
         raise RuntimeEffectContractError("runtime effect result observations are malformed")
+    if result.kind is EffectResultKind.SUCCEEDED and any(
+        type(item) is VerificationCompleted
+        and item.outcome is not VerificationOutcome.PASSED
+        for item in result.observations
+    ):
+        raise RuntimeEffectContractError(
+            "successful runtime effect cannot carry failed verification"
+        )
 
 
 def _validate_live_json(value: object) -> None:
