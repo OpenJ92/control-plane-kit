@@ -8,6 +8,8 @@ SRC_ROOT = PACKAGE_ROOT / "src" / "control_plane_kit_core"
 
 EXPECTED_MODULES = {
     "__init__",
+    "_activity_identity",
+    "_run_identity",
     "_node_control_public_wire",
     "algebra",
     "approval_subjects",
@@ -28,6 +30,7 @@ EXPECTED_MODULES = {
     "node_control_transit",
     "operations.__init__",
     "operations.commands",
+    "operations.compensation",
     "operations.execution",
     "operations.handoff",
     "operations.http",
@@ -38,6 +41,7 @@ EXPECTED_MODULES = {
     "operations.process",
     "operations.projections",
     "operations.recovery",
+    "operations.run_identity",
     "operations.services",
     "operations.transactions",
     "planning.__init__",
@@ -52,6 +56,7 @@ EXPECTED_MODULES = {
     "products",
     "public_ingress",
     "runtime_authority",
+    "runtime_effect_observation",
     "runtime_effects",
     "secrets",
     "topology.__init__",

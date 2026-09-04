@@ -7,8 +7,15 @@ from enum import StrEnum
 import re
 from typing import Mapping
 
+from control_plane_kit_core._activity_identity import (
+    _is_canonical_activity_identity,
+)
+from control_plane_kit_core.operations.run_identity import RunId
+
 
 _MAX_PUBLIC_TEXT_LENGTH = 256
+_MAX_EFFECT_ATTEMPT = 2_147_483_647
+_MAX_EFFECT_FENCE_GENERATION = 9_223_372_036_854_775_807
 
 
 class InvalidEffectRecoveryContract(ValueError):
@@ -50,18 +57,24 @@ class EffectRecoveryResolution(StrEnum):
 class EffectAttemptIdentity:
     """Stable identity for one activity's external-effect attempt."""
 
-    run_id: str
+    run_id: RunId
     activity_id: str
     attempt: int
 
     def __post_init__(self) -> None:
-        _bounded_text(self.run_id, "run_id")
-        _bounded_text(self.activity_id, "activity_id")
-        _positive_int(self.attempt, "attempt")
+        if type(self.run_id) is not RunId:
+            raise InvalidEffectRecoveryContract("run_id must be RunId")
+        if not _is_canonical_activity_identity(self.activity_id):
+            raise InvalidEffectRecoveryContract("activity_id is malformed")
+        _bounded_positive_int(
+            self.attempt,
+            "attempt",
+            _MAX_EFFECT_ATTEMPT,
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
-            "run_id": self.run_id,
+            "run_id": self.run_id.value,
             "activity_id": self.activity_id,
             "attempt": self.attempt,
         }
@@ -72,10 +85,21 @@ class EffectAttemptIdentity:
         value: Mapping[str, object],
     ) -> "EffectAttemptIdentity":
         _strict_keys(value, {"run_id", "activity_id", "attempt"}, "identity")
+        run_id_text = _text(value["run_id"], "run_id")
+        try:
+            run_id = RunId(run_id_text)
+        except ValueError:
+            run_id = None
+        if run_id is None:
+            raise InvalidEffectRecoveryContract("run_id is malformed")
         return cls(
-            run_id=_text(value["run_id"], "run_id"),
+            run_id=run_id,
             activity_id=_text(value["activity_id"], "activity_id"),
-            attempt=_int(value["attempt"], "attempt"),
+            attempt=_bounded_int(
+                value["attempt"],
+                "attempt",
+                _MAX_EFFECT_ATTEMPT,
+            ),
         )
 
 
@@ -88,7 +112,11 @@ class EffectAttemptFence:
 
     def __post_init__(self) -> None:
         _bounded_text(self.worker_id, "worker_id")
-        _positive_int(self.generation, "generation")
+        _bounded_positive_int(
+            self.generation,
+            "generation",
+            _MAX_EFFECT_FENCE_GENERATION,
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -104,7 +132,11 @@ class EffectAttemptFence:
         _strict_keys(value, {"worker_id", "generation"}, "fence")
         return cls(
             worker_id=_text(value["worker_id"], "worker_id"),
-            generation=_int(value["generation"], "generation"),
+            generation=_bounded_int(
+                value["generation"],
+                "generation",
+                _MAX_EFFECT_FENCE_GENERATION,
+            ),
         )
 
 
@@ -590,27 +622,35 @@ def _optional_text(value: object, field: str) -> str | None:
     return _text(value, field)
 
 
-def _int(value: object, field: str) -> int:
-    if type(value) is not int:
-        raise InvalidEffectRecoveryContract(f"{field} must be an integer")
-    return value
-
-
 def _bounded_text(value: object, field: str) -> None:
-    if (
-        not isinstance(value, str)
-        or not value.strip()
-        or len(value) > _MAX_PUBLIC_TEXT_LENGTH
-    ):
+    valid = (
+        isinstance(value, str)
+        and bool(str.strip(value))
+        and str.__len__(value) <= _MAX_PUBLIC_TEXT_LENGTH
+        and not str.__contains__(value, "\x00")
+    )
+    if valid:
+        try:
+            str.encode(value, "utf-8")
+        except UnicodeEncodeError:
+            valid = False
+    if not valid:
         raise InvalidEffectRecoveryContract(
-            f"{field} must be non-empty text of at most "
+            f"{field} must be non-empty PostgreSQL-compatible text of at most "
             f"{_MAX_PUBLIC_TEXT_LENGTH} characters"
         )
 
 
-def _positive_int(value: object, field: str) -> None:
-    if type(value) is not int or value < 1:
-        raise InvalidEffectRecoveryContract(f"{field} must be a positive integer")
+def _bounded_positive_int(value: object, field: str, maximum: int) -> None:
+    _bounded_int(value, field, maximum)
+
+
+def _bounded_int(value: object, field: str, maximum: int) -> int:
+    if type(value) is not int or not 1 <= value <= maximum:
+        raise InvalidEffectRecoveryContract(
+            f"{field} must be an integer from 1 through {maximum}"
+        )
+    return value
 
 
 def _sha256_fingerprint(value: object, field: str) -> None:

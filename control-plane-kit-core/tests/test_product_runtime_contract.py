@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import replace
 from pathlib import Path
 import unittest
 
-from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, RequirementSocket
+from control_plane_kit_core.algebra import (
+    BlockSockets,
+    DeploymentTopology,
+    DockerRuntime,
+    ProviderSocket,
+    RequirementSocket,
+)
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.configuration import (
     ConfigurationArtifact,
@@ -13,23 +20,418 @@ from control_plane_kit_core.configuration import (
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.lifecycle import ResourceLifecycle
 from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    OciImageReference,
     ProductFamily,
+    ProductIdentity,
+    ProductInstanceConfiguration,
     ProviderRuntimePort,
     ProductRuntimeContract,
     ProductRuntimeContractCodec,
     ProductRuntimeContractError,
     RetainedDataMount,
+    instantiate_product,
 )
+import control_plane_kit_core.products as products_language
 from control_plane_kit_core.secrets import (
     SecretEnvironmentDelivery,
     SecretReference,
     SecretUseIntent,
 )
 from control_plane_kit_core.types import Protocol, SocketBinding
+from control_plane_kit_core.topology import ValidationCode, compile_topology, validate_graph
 from control_plane_kit_core.verification import HttpCheck, VerificationContract
 
 
+def _socket_values() -> tuple[
+    tuple[RequirementSocket, RequirementSocket],
+    tuple[ProviderSocket, ProviderSocket],
+]:
+    return (
+        (
+            RequirementSocket("alpha-input", Protocol.HTTP, ("ALPHA_URL",)),
+            RequirementSocket("zeta-input", Protocol.HTTP, ("ZETA_URL",)),
+        ),
+        (
+            ProviderSocket("alpha-output", Protocol.HTTP),
+            ProviderSocket("zeta-output", Protocol.HTTP),
+        ),
+    )
+
+
+def _permuted_sockets(
+    *,
+    reverse_requirements: bool,
+    reverse_providers: bool,
+) -> BlockSockets:
+    requirements, providers = _socket_values()
+    return BlockSockets(
+        requirements=tuple(reversed(requirements)) if reverse_requirements else requirements,
+        providers=tuple(reversed(providers)) if reverse_providers else providers,
+    )
+
+
 class ProductRuntimeContractTests(unittest.TestCase):
+    def test_contract_canonicalizes_each_socket_direction_by_exact_name(self) -> None:
+        canonical = ProductRuntimeContract(
+            sockets=_permuted_sockets(
+                reverse_requirements=False,
+                reverse_providers=False,
+            )
+        )
+        cases = (
+            ("requirements", True, False),
+            ("providers", False, True),
+            ("both", True, True),
+        )
+
+        for name, reverse_requirements, reverse_providers in cases:
+            with self.subTest(name=name):
+                authored = _permuted_sockets(
+                    reverse_requirements=reverse_requirements,
+                    reverse_providers=reverse_providers,
+                )
+                contract = ProductRuntimeContract(sockets=authored)
+
+                self.assertIs(type(contract.sockets), BlockSockets)
+                self.assertEqual(contract.descriptor(), canonical.descriptor())
+                checks = (
+                    ("fresh", contract.sockets is not authored, True),
+                    (
+                        "requirements",
+                        contract.sockets.requirement_names(),
+                        ("alpha-input", "zeta-input"),
+                    ),
+                    (
+                        "providers",
+                        contract.sockets.provider_names(),
+                        ("alpha-output", "zeta-output"),
+                    ),
+                    ("equality", contract, canonical),
+                )
+                for law, observed, expected in checks:
+                    with self.subTest(name=name, law=law):
+                        self.assertEqual(observed, expected)
+
+    def test_block_sockets_remains_an_author_order_value(self) -> None:
+        authored = _permuted_sockets(
+            reverse_requirements=True,
+            reverse_providers=True,
+        )
+
+        self.assertEqual(
+            authored.requirement_names(),
+            ("zeta-input", "alpha-input"),
+        )
+        self.assertEqual(
+            authored.provider_names(),
+            ("zeta-output", "alpha-output"),
+        )
+
+    def test_reverse_multi_socket_contract_has_an_exact_codec_inverse(self) -> None:
+        codec = ProductRuntimeContractCodec()
+        cases = (
+            ("requirements", True, False),
+            ("providers", False, True),
+            ("both", True, True),
+        )
+
+        for name, reverse_requirements, reverse_providers in cases:
+            with self.subTest(name=name):
+                contract = ProductRuntimeContract(
+                    sockets=_permuted_sockets(
+                        reverse_requirements=reverse_requirements,
+                        reverse_providers=reverse_providers,
+                    )
+                )
+                descriptor = codec.encode(contract)
+
+                self.assertEqual(codec.decode(descriptor), contract)
+                self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
+
+    def test_socket_admission_is_exact_and_precedes_virtual_dispatch(self) -> None:
+        dispatches: list[str] = []
+
+        class HostileBlockSockets(BlockSockets):
+            def __getattribute__(self, name):
+                if name in {
+                    "requirements",
+                    "providers",
+                    "requirement_names",
+                    "provider_names",
+                }:
+                    dispatches.append(f"outer.{name}")
+                    raise RuntimeError("outer socket dispatch canary")
+                return super().__getattribute__(name)
+
+        class HostileTuple(tuple):
+            def __iter__(self):
+                dispatches.append("tuple.__iter__")
+                raise RuntimeError("socket tuple dispatch canary")
+
+            def __len__(self):
+                dispatches.append("tuple.__len__")
+                raise RuntimeError("socket tuple length canary")
+
+        class HostileRequirementSocket(RequirementSocket):
+            def __getattribute__(self, name):
+                if name == "name":
+                    dispatches.append("requirement.name")
+                    raise RuntimeError("requirement member dispatch canary")
+                return super().__getattribute__(name)
+
+        class HostileProviderSocket(ProviderSocket):
+            def __getattribute__(self, name):
+                if name == "name":
+                    dispatches.append("provider.name")
+                    raise RuntimeError("provider member dispatch canary")
+                return super().__getattribute__(name)
+
+        class HostileText(str):
+            def __hash__(self):
+                dispatches.append("name.__hash__")
+                raise RuntimeError("socket name hash canary")
+
+            def __eq__(self, other):
+                dispatches.append("name.__eq__")
+                raise RuntimeError("socket name equality canary")
+
+            def __lt__(self, other):
+                dispatches.append("name.__lt__")
+                raise RuntimeError("socket name comparison canary")
+
+        requirement = RequirementSocket("candidate-input", Protocol.HTTP, ("INPUT_URL",))
+        provider = ProviderSocket("candidate-output", Protocol.HTTP)
+        candidates = (
+            (
+                "outer",
+                HostileBlockSockets(),
+                "product sockets must be BlockSockets",
+            ),
+            (
+                "requirement-container",
+                BlockSockets(requirements=HostileTuple((requirement,))),
+                "product requirement sockets are malformed",
+            ),
+            (
+                "provider-container",
+                BlockSockets(providers=HostileTuple((provider,))),
+                "product provider sockets are malformed",
+            ),
+            (
+                "requirement-member",
+                BlockSockets(
+                    requirements=(
+                        HostileRequirementSocket(
+                            "candidate-input",
+                            Protocol.HTTP,
+                            ("INPUT_URL",),
+                        ),
+                    )
+                ),
+                "product requirement sockets are malformed",
+            ),
+            (
+                "provider-member",
+                BlockSockets(
+                    providers=(
+                        HostileProviderSocket("candidate-output", Protocol.HTTP),
+                    )
+                ),
+                "product provider sockets are malformed",
+            ),
+            (
+                "requirement-name",
+                BlockSockets(
+                    requirements=(
+                        RequirementSocket(
+                            HostileText("candidate-input"),
+                            Protocol.HTTP,
+                            ("INPUT_URL",),
+                        ),
+                    )
+                ),
+                "product requirement sockets are malformed",
+            ),
+            (
+                "provider-name",
+                BlockSockets(
+                    providers=(
+                        ProviderSocket(
+                            HostileText("candidate-output"),
+                            Protocol.HTTP,
+                        ),
+                    )
+                ),
+                "product provider sockets are malformed",
+            ),
+        )
+
+        for name, candidate, expected_message in candidates:
+            with self.subTest(name=name):
+                dispatches.clear()
+                caught = None
+                try:
+                    ProductRuntimeContract(sockets=candidate)
+                except Exception as error:  # noqa: BLE001 - classify the public boundary
+                    caught = error
+
+                self.assertIsNotNone(caught)
+                with self.subTest(name=name, law="zero-dispatch"):
+                    self.assertEqual(dispatches, [])
+                with self.subTest(name=name, law="exact-error"):
+                    self.assertIs(type(caught), ProductRuntimeContractError)
+                with self.subTest(name=name, law="fixed-error"):
+                    self.assertEqual(
+                        (
+                            str(caught),
+                            caught.__cause__,
+                            caught.__context__,
+                            "candidate" in str(caught),
+                        ),
+                        (expected_message, None, None, False),
+                    )
+
+    def test_socket_uniqueness_stays_per_direction_without_new_name_grammar(self) -> None:
+        requirement = RequirementSocket("shared", Protocol.HTTP, ("SHARED_URL",))
+        provider = ProviderSocket("shared", Protocol.HTTP)
+        for name, sockets, message in (
+            (
+                "requirements",
+                BlockSockets(requirements=(requirement, requirement)),
+                "requirement socket names must be unique",
+            ),
+            (
+                "providers",
+                BlockSockets(providers=(provider, provider)),
+                "provider socket names must be unique",
+            ),
+        ):
+            with self.subTest(name=name):
+                with self.assertRaises(ProductRuntimeContractError) as raised:
+                    ProductRuntimeContract(sockets=sockets)
+                self.assertEqual(str(raised.exception), message)
+
+        contract = ProductRuntimeContract(
+            sockets=BlockSockets(
+                requirements=(
+                    RequirementSocket("Mixed name/?", Protocol.HTTP, ("MIXED_URL",)),
+                    RequirementSocket("", Protocol.HTTP, ("EMPTY_URL",)),
+                    requirement,
+                ),
+                providers=(
+                    ProviderSocket("Mixed name/?", Protocol.HTTP),
+                    ProviderSocket("", Protocol.HTTP),
+                    provider,
+                ),
+            )
+        )
+
+        for name, observed, expected in (
+            (
+                "requirement-order",
+                contract.sockets.requirement_names(),
+                ("", "Mixed name/?", "shared"),
+            ),
+            (
+                "provider-order",
+                contract.sockets.provider_names(),
+                ("", "Mixed name/?", "shared"),
+            ),
+            (
+                "requirement-lookup",
+                contract.sockets.requirement("shared"),
+                requirement,
+            ),
+            ("provider-lookup", contract.sockets.provider("shared"), provider),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(observed, expected)
+
+    def test_canonical_socket_order_reaches_instantiation_endpoints_and_findings(
+        self,
+    ) -> None:
+        contract = ProductRuntimeContract(
+            sockets=_permuted_sockets(
+                reverse_requirements=True,
+                reverse_providers=True,
+            )
+        )
+        product = ContainerServerProduct(
+            identity=ProductIdentity("example", "ordered-sockets", 1),
+            image=OciImageReference(
+                "ghcr.io",
+                "example/ordered-sockets",
+                "sha256:" + "a" * 64,
+            ),
+            runtime_contract=contract,
+        )
+        block = instantiate_product(
+            product,
+            "ordered",
+            ProductInstanceConfiguration.from_contract(contract),
+        )
+
+        graph = compile_topology(
+            DeploymentTopology("ordered", DockerRuntime(children=(block,)))
+        )
+        node = graph.node("ordered")
+        without_endpoints = graph.update_node(replace(node, endpoints={}))
+        findings = validate_graph(without_endpoints).findings
+        observations = (
+            (
+                "configured-requirements",
+                block.sockets.requirement_names(),
+                ("alpha-input", "zeta-input"),
+            ),
+            (
+                "configured-providers",
+                block.sockets.provider_names(),
+                ("alpha-output", "zeta-output"),
+            ),
+            (
+                "endpoint-insertion",
+                tuple(node.endpoints),
+                ("alpha-output", "zeta-output"),
+            ),
+            (
+                "provider-findings",
+                tuple(
+                    finding.subject.socket_name
+                    for finding in findings
+                    if finding.code is ValidationCode.MISSING_PROVIDER_ENDPOINT
+                ),
+                ("alpha-output", "zeta-output"),
+            ),
+            (
+                "requirement-findings",
+                tuple(
+                    finding.subject.socket_name
+                    for finding in findings
+                    if finding.code is ValidationCode.MISSING_REQUIRED_CONNECTION
+                ),
+                ("alpha-input", "zeta-input"),
+            ),
+        )
+        for name, observed, expected in observations:
+            with self.subTest(name=name):
+                self.assertEqual(observed, expected)
+
+    def test_unexpected_downstream_validation_faults_remain_raw(self) -> None:
+        injected = RuntimeError("internal validation canary")
+        original = products_language._validate_verification
+
+        def fail_if_called(*_args):
+            raise injected
+
+        products_language._validate_verification = fail_if_called
+        try:
+            with self.assertRaises(RuntimeError) as raised:
+                ProductRuntimeContract()
+            self.assertIs(raised.exception, injected)
+        finally:
+            products_language._validate_verification = original
+
     def test_composes_closed_runtime_material_into_descriptor(self) -> None:
         contract = ProductRuntimeContract(
             sockets=BlockSockets(

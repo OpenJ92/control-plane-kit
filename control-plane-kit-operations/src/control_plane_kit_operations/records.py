@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from hashlib import sha256
 from typing import Mapping
@@ -22,10 +24,12 @@ from control_plane_kit_core.operations.lifecycle import (
     ExecutionRequestStatus,
     FailureCategory,
     LifecycleOperationKind,
+    RecoveryDecisionKind,
     activity_event_scope,
+    canonical_execution_lifecycle_contract_set,
 )
-from control_plane_kit_core.planning import ActivityPlan
-from control_plane_kit_core.planning import RiskLevel
+from control_plane_kit_core.operations import EffectAttemptIdentity, RunId
+from control_plane_kit_core.planning import ActivityId, ActivityPlan, RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.probe_intents import (
     EndpointContext,
@@ -35,10 +39,19 @@ from control_plane_kit_core.probe_intents import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
+from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 
 
 class OperationsRecordError(ValueError):
     """Raised when a durable operations record is malformed."""
+
+
+_EVENT_KINDS_PERMITTING_FAILURE = frozenset(
+    event.kind
+    for event in canonical_execution_lifecycle_contract_set().events
+    if event.may_carry_failure
+)
 
 
 class OperationSessionStatus(StrEnum):
@@ -79,6 +92,25 @@ class ObservationStatus(StrEnum):
     REJECTED = "rejected"
     MALFORMED = "malformed"
     UNKNOWN = "unknown"
+
+
+class CoordinatorStatus(StrEnum):
+    """Closed coordinator result statuses at the durable command boundary."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PROGRESSED = "progressed"
+    IN_FLIGHT = "in-flight"
+    UNCERTAIN = "uncertain"
+    UNSUPPORTED = "unsupported"
+    BLOCKED = "blocked"
+
+
+class ExecutionCommandReceiptStatus(StrEnum):
+    """One-way durable state for an admitted execution command."""
+
+    INCOMPLETE = "incomplete"
+    COMPLETED = "completed"
 
 
 class ObservationFreshness(StrEnum):
@@ -428,6 +460,82 @@ class OperationActionRecord:
 
 
 @dataclass(frozen=True)
+class FailedRunCompensationRecord:
+    """Durable admission coordinates for one exact compensation program."""
+
+    program_id: str
+    workspace_id: str
+    request_id: str
+    run_id: str
+    plan_id: str
+    session_id: str
+    action_id: str
+    event_id: str
+    actor_id: str
+    reason: str
+    source_failure: FailureEvidence
+    authority_reference_fingerprint: str
+    command_fingerprint: str
+    evidence_fingerprint: str
+    program_fingerprint: str
+    created_at: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "program_id",
+            "workspace_id",
+            "request_id",
+            "run_id",
+            "plan_id",
+            "session_id",
+            "action_id",
+            "event_id",
+            "actor_id",
+            "reason",
+            "created_at",
+        ):
+            _validate_text(getattr(self, name), name)
+        if type(self.source_failure) is not FailureEvidence:
+            raise OperationsRecordError("source_failure must be FailureEvidence")
+        for name in (
+            "authority_reference_fingerprint",
+            "command_fingerprint",
+            "evidence_fingerprint",
+            "program_fingerprint",
+        ):
+            value = getattr(self, name)
+            if type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+                raise OperationsRecordError(f"{name} must be a lowercase SHA-256")
+
+
+@dataclass(frozen=True, slots=True)
+class FailedRunCompensationAttemptBinding:
+    """Immutable relation from one compensation step to its inverse attempt."""
+
+    program_id: str
+    position: int
+    source_attempt: EffectAttemptIdentity
+    inverse_attempt: EffectAttemptIdentity
+
+    def __post_init__(self) -> None:
+        _validate_text(self.program_id, "program_id")
+        if type(self.position) is not int or self.position < 1:
+            raise OperationsRecordError("position must be positive")
+        if (
+            type(self.source_attempt) is not EffectAttemptIdentity
+            or type(self.inverse_attempt) is not EffectAttemptIdentity
+            or self.inverse_attempt.run_id != self.source_attempt.run_id
+            or self.inverse_attempt.activity_id
+            != self.source_attempt.activity_id
+            or self.source_attempt.attempt == 2_147_483_647
+            or self.inverse_attempt.attempt != self.source_attempt.attempt + 1
+        ):
+            raise OperationsRecordError(
+                "compensation attempt binding identity is invalid"
+            )
+
+
+@dataclass(frozen=True)
 class ActivityPlanRecord:
     """Persisted, inspectable plan before execution."""
 
@@ -574,13 +682,24 @@ class ClaimIdentity:
     """Worker ownership and bounded lease evidence for a claimed request."""
 
     worker_id: str
+    generation: int
     claimed_at: str
     lease_expires_at: str
 
     def __post_init__(self) -> None:
         _validate_text(self.worker_id, "worker_id")
+        if (
+            type(self.generation) is not int
+            or self.generation < 1
+            or self.generation > 2**63 - 1
+        ):
+            raise OperationsRecordError("claim generation is invalid")
         _validate_text(self.claimed_at, "claimed_at")
         _validate_text(self.lease_expires_at, "lease_expires_at")
+
+    @property
+    def fence(self) -> ExecutionLeaseFence:
+        return ExecutionLeaseFence(self.worker_id, self.generation)
 
 
 @dataclass(frozen=True)
@@ -591,12 +710,18 @@ class RetryIdentity:
     prior_run_id: str | None = None
 
     def __post_init__(self) -> None:
-        if type(self.attempt) is not int or self.attempt < 1:
-            raise OperationsRecordError("retry attempt must be a positive integer")
+        if (
+            type(self.attempt) is not int
+            or self.attempt < 1
+            or self.attempt > 2_147_483_647
+        ):
+            raise OperationsRecordError(
+                "retry attempt must be an integer from 1 through 2147483647"
+            )
         if self.attempt == 1 and self.prior_run_id is not None:
             raise OperationsRecordError("first attempt cannot reference a prior run")
         if self.attempt > 1:
-            _validate_text(self.prior_run_id, "prior_run_id")
+            _validate_run_id(self.prior_run_id, "prior_run_id")
 
 
 @dataclass(frozen=True)
@@ -673,6 +798,86 @@ class FailureEvidence:
             raise OperationsRecordError("failure details must be BoundedEvidence")
 
 
+_RECOVERY_DECISIONS = frozenset(
+    {
+        RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+        RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+        RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
+        RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM,
+    }
+)
+
+
+@dataclass(frozen=True)
+class ExecutionLeaseRecoveryEvidence:
+    """Bounded durable evidence for one accepted recovery decision."""
+
+    decision_kind: RecoveryDecisionKind
+    retained_run_id: RunId
+    prior_fence: ExecutionLeaseFence
+    replacement_fence: ExecutionLeaseFence | None
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.decision_kind) is not RecoveryDecisionKind
+            or self.decision_kind not in _RECOVERY_DECISIONS
+        ):
+            raise OperationsRecordError("recovery decision kind is invalid")
+        if type(self.retained_run_id) is not RunId:
+            raise OperationsRecordError("recovery retained run identity is invalid")
+        if type(self.prior_fence) is not ExecutionLeaseFence:
+            raise OperationsRecordError("recovery prior fence is invalid")
+        if self.replacement_fence is not None and type(
+            self.replacement_fence
+        ) is not ExecutionLeaseFence:
+            raise OperationsRecordError("recovery replacement fence is invalid")
+        self._validate_fence_transition()
+
+    def _validate_fence_transition(self) -> None:
+        replacement = self.replacement_fence
+        if self.decision_kind is RecoveryDecisionKind.RETRY_AS_NEW_RUN:
+            if replacement is None or replacement != self.prior_fence:
+                raise OperationsRecordError(
+                    "retry recovery fence transition is invalid"
+                )
+            return
+        if self.decision_kind is RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM:
+            if replacement is not None:
+                raise OperationsRecordError(
+                    "claim abandonment must not carry a replacement fence"
+                )
+            return
+        if replacement is None:
+            raise OperationsRecordError(
+                "claim recovery requires a replacement fence"
+            )
+        if (
+            self.prior_fence.generation == 2**63 - 1
+            or replacement.generation != self.prior_fence.generation + 1
+        ):
+            raise OperationsRecordError("claim recovery generation is invalid")
+        takeover = (
+            self.decision_kind
+            is RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM
+        )
+        same_worker = replacement.worker_id == self.prior_fence.worker_id
+        if takeover == same_worker:
+            raise OperationsRecordError("claim recovery worker transition is invalid")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "decision": self.decision_kind.value,
+            "retained_run_id": self.retained_run_id.value,
+            "prior_fence": self.prior_fence.descriptor(),
+            "replacement_fence": (
+                None
+                if self.replacement_fence is None
+                else self.replacement_fence.descriptor()
+            ),
+        }
+
+
 @dataclass(frozen=True)
 class ExecutionRequestIdentity:
     """Stable ownership coordinates for one execution request."""
@@ -741,12 +946,14 @@ class ActivityRunRecord:
     metadata: BoundedEvidence = field(default_factory=BoundedEvidence)
 
     def __post_init__(self) -> None:
-        _validate_text(self.run_id, "run_id")
+        _validate_run_id(self.run_id, "run_id")
         _validate_text(self.plan_id, "plan_id")
         if not isinstance(self.admission, AdmittedRun):
             raise OperationsRecordError("activity run admission must be AdmittedRun")
         if not isinstance(self.retry, RetryIdentity):
             raise OperationsRecordError("activity run retry identity must be typed")
+        if self.retry.prior_run_id == self.run_id:
+            raise OperationsRecordError("activity run retry identity is incongruent")
         if not isinstance(self.status, ActivityRunStatus):
             raise OperationsRecordError("activity run status must be ActivityRunStatus")
         _validate_text(self.created_at, "created_at")
@@ -755,6 +962,201 @@ class ActivityRunRecord:
         if not isinstance(self.metadata, BoundedEvidence):
             raise OperationsRecordError("activity run metadata must be BoundedEvidence")
         _validate_run_timing(self)
+
+
+@dataclass(frozen=True)
+class ExecutionCommandResultRecord:
+    """Exact bounded result retained for command replay."""
+
+    run: ActivityRunRecord
+    status: CoordinatorStatus
+    effects_attempted: int
+    activity_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.run, ActivityRunRecord):
+            raise OperationsRecordError("execution command result run must be typed")
+        if not isinstance(self.status, CoordinatorStatus):
+            raise OperationsRecordError("execution command result status must be typed")
+        if (
+            type(self.effects_attempted) is not int
+            or self.effects_attempted < 0
+        ):
+            raise OperationsRecordError(
+                "execution command result effect count is invalid"
+            )
+        _validate_optional_activity_id(self.activity_id)
+
+
+def execution_command_intent_fingerprint(
+    *,
+    run_id: str,
+    worker_id: str,
+    authority_scopes: tuple[PolicyScope, ...],
+    claim_generation: int,
+    max_effects: int,
+) -> str:
+    """Fingerprint the complete canonical intent retained by a command receipt."""
+
+    _validate_run_id(run_id, "run_id")
+    _validate_text(worker_id, "worker_id")
+    scopes = tuple(authority_scopes)
+    if (
+        not scopes
+        or not all(isinstance(scope, PolicyScope) for scope in scopes)
+        or scopes != tuple(sorted(set(scopes), key=lambda scope: scope.value))
+    ):
+        raise OperationsRecordError("execution command scopes are not canonical")
+    if (
+        type(claim_generation) is not int
+        or not 1 <= claim_generation <= 2**63 - 1
+    ):
+        raise OperationsRecordError("execution command generation is invalid")
+    max_effects_text = canonical_positive_decimal(max_effects)
+    descriptor = {
+        "domain": "control-plane-kit.operations.execution-command.v1",
+        "command": "deployment.execute",
+        "run_id": run_id,
+        "worker_id": worker_id,
+        "authority_scopes": [scope.value for scope in scopes],
+        "claim_generation": claim_generation,
+        "max_effects": max_effects_text,
+    }
+    payload = json.dumps(
+        descriptor,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return sha256(payload).hexdigest()
+
+
+def canonical_positive_decimal(value: int) -> str:
+    """Render any positive Python integer without narrowing its public domain."""
+
+    if type(value) is not int or value < 1:
+        raise OperationsRecordError("execution command effect bound is invalid")
+    return str(value)
+
+
+def positive_int_from_canonical_decimal(value: object) -> int:
+    """Parse the exact positive decimal representation owned by the store."""
+
+    if type(value) is not str or re.fullmatch(r"[1-9][0-9]*", value) is None:
+        raise OperationsRecordError("execution command effect bound is malformed")
+    parsed = int(value)
+    if canonical_positive_decimal(parsed) != value:
+        raise OperationsRecordError("execution command effect bound is malformed")
+    return parsed
+
+
+def _execution_run_lineage(record: ActivityRunRecord) -> tuple[object, ...]:
+    return (
+        record.run_id,
+        record.plan_id,
+        record.admission.request_id,
+        record.retry.attempt,
+        record.retry.prior_run_id,
+        record.created_at,
+    )
+
+
+def _canonical_timestamp_instant(value: object, field_name: str) -> datetime:
+    try:
+        canonical = validate_canonical_utc_timestamp(value)
+        return datetime.fromisoformat(canonical[:-1] + "+00:00")
+    except (TypeError, ValueError, OverflowError):
+        raise OperationsRecordError(
+            f"execution command {field_name} is invalid"
+        ) from None
+
+
+@dataclass(frozen=True)
+class ExecutionCommandReceiptRecord:
+    """Durable admission and optional completion of one coordinator command."""
+
+    run_id: str
+    idempotency_key: str
+    intent_fingerprint: str
+    worker_id: str
+    authority_scopes: tuple[PolicyScope, ...]
+    claim_generation: int
+    max_effects: int
+    admitted_at: str
+    initial_run: ActivityRunRecord
+    status: ExecutionCommandReceiptStatus = ExecutionCommandReceiptStatus.INCOMPLETE
+    completed_at: str | None = None
+    result: ExecutionCommandResultRecord | None = None
+
+    def __post_init__(self) -> None:
+        _validate_run_id(self.run_id, "run_id")
+        _validate_text(self.idempotency_key, "idempotency_key")
+        if len(self.idempotency_key) > 200:
+            raise OperationsRecordError("execution command key is too long")
+        _validate_text(self.worker_id, "worker_id")
+        scopes = tuple(self.authority_scopes)
+        if (
+            not scopes
+            or not all(isinstance(scope, PolicyScope) for scope in scopes)
+            or scopes != tuple(sorted(set(scopes), key=lambda scope: scope.value))
+        ):
+            raise OperationsRecordError("execution command scopes are not canonical")
+        object.__setattr__(self, "authority_scopes", scopes)
+        if (
+            type(self.claim_generation) is not int
+            or not 1 <= self.claim_generation <= 2**63 - 1
+        ):
+            raise OperationsRecordError("execution command generation is invalid")
+        canonical_positive_decimal(self.max_effects)
+        expected_fingerprint = execution_command_intent_fingerprint(
+            run_id=self.run_id,
+            worker_id=self.worker_id,
+            authority_scopes=scopes,
+            claim_generation=self.claim_generation,
+            max_effects=self.max_effects,
+        )
+        if self.intent_fingerprint != expected_fingerprint:
+            raise OperationsRecordError("execution command fingerprint is invalid")
+        admitted_at = _canonical_timestamp_instant(self.admitted_at, "admitted_at")
+        if (
+            not isinstance(self.initial_run, ActivityRunRecord)
+            or self.initial_run.run_id != self.run_id
+        ):
+            raise OperationsRecordError("execution command initial run is incongruent")
+        if not isinstance(self.status, ExecutionCommandReceiptStatus):
+            raise OperationsRecordError("execution command receipt status is invalid")
+        if self.status is ExecutionCommandReceiptStatus.INCOMPLETE:
+            if self.completed_at is not None or self.result is not None:
+                raise OperationsRecordError(
+                    "incomplete execution command cannot carry a result"
+                )
+        elif (
+            self.completed_at is None
+            or not isinstance(self.result, ExecutionCommandResultRecord)
+            or self.result.run.run_id != self.run_id
+        ):
+            raise OperationsRecordError(
+                "completed execution command requires a congruent result"
+            )
+        else:
+            completed_at = _canonical_timestamp_instant(
+                self.completed_at,
+                "completed_at",
+            )
+            if completed_at < admitted_at:
+                raise OperationsRecordError(
+                    "execution command completion precedes admission"
+                )
+            if self.result.effects_attempted > self.max_effects:
+                raise OperationsRecordError(
+                    "execution command result exceeds its effect bound"
+                )
+            if _execution_run_lineage(self.result.run) != _execution_run_lineage(
+                self.initial_run
+            ):
+                raise OperationsRecordError(
+                    "execution command result run lineage is incongruent"
+                )
 
 
 @dataclass(frozen=True)
@@ -769,16 +1171,17 @@ class ActivityEventRecord:
     activity_id: str | None = None
     evidence: BoundedEvidence = field(default_factory=BoundedEvidence)
     failure: FailureEvidence | None = None
+    recovery: ExecutionLeaseRecoveryEvidence | None = None
 
     def __post_init__(self) -> None:
         _validate_text(self.event_id, "event_id")
-        _validate_text(self.run_id, "run_id")
+        _validate_run_id(self.run_id, "run_id")
         if type(self.ordinal) is not int or self.ordinal < 1:
             raise OperationsRecordError("event ordinal must be a positive integer")
         if not isinstance(self.kind, ActivityEventKind):
             raise OperationsRecordError("activity event kind must be ActivityEventKind")
         _validate_text(self.occurred_at, "occurred_at")
-        _validate_optional_text(self.activity_id, "activity_id")
+        _validate_optional_activity_id(self.activity_id)
         if not isinstance(self.evidence, BoundedEvidence):
             raise OperationsRecordError("activity event evidence must be BoundedEvidence")
         if self.failure is not None and not isinstance(
@@ -787,6 +1190,30 @@ class ActivityEventRecord:
         ):
             raise OperationsRecordError(
                 "activity event failure must be FailureEvidence when present"
+            )
+        if self.kind is ActivityEventKind.RECOVERY_DECISION_RECORDED:
+            if type(self.recovery) is not ExecutionLeaseRecoveryEvidence:
+                raise OperationsRecordError(
+                    "recovery decision event requires typed recovery evidence"
+                )
+            if self.recovery.retained_run_id.value != self.run_id:
+                raise OperationsRecordError(
+                    "recovery decision event run identity is incongruent"
+                )
+            if self.evidence != BoundedEvidence() or self.failure is not None:
+                raise OperationsRecordError(
+                    "recovery decision event carries contradictory evidence"
+                )
+        elif self.recovery is not None:
+            raise OperationsRecordError(
+                "only a recovery decision event may carry recovery evidence"
+            )
+        elif (
+            self.failure is not None
+            and self.kind not in _EVENT_KINDS_PERMITTING_FAILURE
+        ):
+            raise OperationsRecordError(
+                "event kind does not permit failure evidence"
             )
         if activity_event_scope(self.kind) is ActivityEventScope.ACTIVITY:
             if self.activity_id is None:
@@ -983,3 +1410,25 @@ def _validate_optional_text(value: str | None, field: str) -> None:
     if value is None:
         return
     _validate_text(value, field)
+
+
+def _validate_run_id(value: object, field: str) -> None:
+    try:
+        RunId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise OperationsRecordError(f"{field} is malformed")
+
+
+def _validate_optional_activity_id(value: object) -> None:
+    if value is None:
+        return
+    try:
+        ActivityId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise OperationsRecordError("activity_id is malformed")

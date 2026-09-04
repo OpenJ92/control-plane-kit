@@ -19,6 +19,7 @@ from control_plane_kit_core.operations.lifecycle import (
     LifecycleOperationKind,
 )
 from control_plane_kit_core.planning import (
+    ActivityId,
     PlannedActivity,
     ReconcileNode,
     RiskLevel,
@@ -97,7 +98,7 @@ class ExternalReadinessAttestation:
     evidence_ref: str
 
     def __post_init__(self) -> None:
-        _required_text(self.activity_id, "activity_id")
+        _require_activity_id(self.activity_id)
         _required_text(self.evidence_ref, "evidence_ref")
         if len(self.evidence_ref) > 256 or not _EVIDENCE_REFERENCE.fullmatch(
             self.evidence_ref
@@ -767,6 +768,16 @@ def _require_idempotency_key(value: IdempotencyKey) -> None:
 def _required_text(value: object, field: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise InvalidOperationCommand(f"{field} must not be empty")
+
+
+def _require_activity_id(value: object) -> None:
+    try:
+        ActivityId(value)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        return
+    raise InvalidOperationCommand("activity_id is malformed")
 
 
 _EVIDENCE_REFERENCE = re.compile(

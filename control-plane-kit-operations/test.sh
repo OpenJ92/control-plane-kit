@@ -4,8 +4,26 @@ set -eu
 IMAGE="${CPK_OPERATIONS_TEST_IMAGE:-python:3.14-slim}"
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "$ROOT/.." && pwd)"
+ARCHITECTURE_TESTING_COMMIT="7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef"
+ARCHITECTURE_TESTING_ROOT="${CPK_ARCHITECTURE_TESTING_ROOT:-$REPO_ROOT/../control-plane-kit-architecture-testing}"
 NETWORK_NAME="${CPK_OPERATIONS_TEST_NETWORK_NAME:-cpk-operations-test}"
 POSTGRES_CONTAINER="${CPK_OPERATIONS_TEST_POSTGRES_CONTAINER:-cpk-operations-test-postgres}"
+
+if [ ! -d "$ARCHITECTURE_TESTING_ROOT" ]; then
+  echo "Architecture testing checkout is missing" >&2
+  exit 1
+fi
+
+actual_architecture_testing_commit="$(git -C "$ARCHITECTURE_TESTING_ROOT" rev-parse HEAD)"
+if [ "$actual_architecture_testing_commit" != "$ARCHITECTURE_TESTING_COMMIT" ]; then
+  echo "Architecture testing checkout is not at the accepted commit" >&2
+  exit 1
+fi
+
+if [ -n "$(git -C "$ARCHITECTURE_TESTING_ROOT" status --short --untracked-files=all)" ]; then
+  echo "Architecture testing checkout is not clean" >&2
+  exit 1
+fi
 
 cleanup() {
   docker rm -fv "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
@@ -66,8 +84,16 @@ if docker run --rm \
   -v "$ROOT:/source:ro" \
   -v "$REPO_ROOT/docs/architecture/package-module-inventory.json:/package-module-inventory.json:ro" \
   -v "$REPO_ROOT/docs/READ_INTERFACES.md:/read-interfaces.md:ro" \
+  -v "$ARCHITECTURE_TESTING_ROOT:/architecture-testing:ro" \
+  -v "$REPO_ROOT/.github/workflows/tests.yml:/cpk-test-evidence/tests-workflow.yml:ro" \
+  -v "$REPO_ROOT/docs/TESTING.md:/cpk-test-evidence/TESTING.md:ro" \
   --network "$NETWORK_NAME" \
   -e PYTHONDONTWRITEBYTECODE=1 \
+  -e PYTHONPATH=/architecture-testing/src \
+  -e CPK_TEST_WORKFLOW_PATH=/cpk-test-evidence/tests-workflow.yml \
+  -e CPK_TESTING_DOCUMENT_PATH=/cpk-test-evidence/TESTING.md \
+  -e CPK_CORE_SOURCE_ROOT=/core \
+  -e CPK_OPERATIONS_SOURCE_ROOT=/source \
   -e CPK_PACKAGE_MODULE_INVENTORY=/package-module-inventory.json \
   -e CPK_READ_INTERFACES_DOCUMENT=/read-interfaces.md \
   -e CPK_OPERATIONS_TEST_DATABASE_URL=postgresql://cpk:cpk@"$POSTGRES_CONTAINER":5432/cpk \
@@ -94,9 +120,13 @@ docker run --rm \
   "$IMAGE" \
   sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp && python - <<'"'"'PY'"'"'
 import control_plane_kit_operations
+from importlib.util import find_spec
 
 if control_plane_kit_operations.__version__ != "0.1.0":
     raise SystemExit("unexpected control_plane_kit_operations version")
+architecture_testing_absent = find_spec("control_plane_kit_architecture_testing") is None
+if not architecture_testing_absent:
+    raise SystemExit("architecture testing leaked into the clean import container")
 
 print("control-plane-kit-operations import ok")
 PY'

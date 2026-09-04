@@ -314,6 +314,41 @@ class OperationsTableAtlasTests(unittest.TestCase):
                 self.assertEqual(tuple(fields), _REQUIRED_TABLE_FIELDS)
                 self.assertTrue(all(fields.values()))
 
+    def test_run_identity_sections_distinguish_direct_and_derived_ownership(self) -> None:
+        sections = _parse_table_sections(self._atlas_text())
+        expected = {
+            "cpk_activity_events": (
+                "Identity and cardinality",
+                ("run_id", "foreign key derives", "cpk_activity_runs"),
+            ),
+            "cpk_activity_runs": (
+                "Identity and cardinality",
+                ("run_id", "constrained directly", "self-FK-derived", "prior_run_id"),
+            ),
+            "cpk_cloudflare_ingress_resources": (
+                "Identity and cardinality",
+                ("source_run_id", "removed_by_run_id", "direct checks"),
+            ),
+            "cpk_gateway_key_rotation_deployments": (
+                "Identity and cardinality",
+                ("run_id", "direct check"),
+            ),
+            "cpk_generated_ingress_secret_references": (
+                "Identity and cardinality",
+                ("source_run_id", "independently constrained"),
+            ),
+            "cpk_secret_use_authorizations": (
+                "Writers and transactions",
+                ("run_id", "direct", "locale-stable"),
+            ),
+        }
+
+        for relation, (field, phrases) in expected.items():
+            value = sections[relation][field]
+            for phrase in phrases:
+                with self.subTest(relation=relation, phrase=phrase):
+                    self.assertIn(phrase, value)
+
     def test_foreign_key_ledger_is_exact_and_explained(self) -> None:
         self.assertEqual(len(_parse_fk_ledger(_PARSER_WITNESS)), 1)
         text = self._atlas_text()

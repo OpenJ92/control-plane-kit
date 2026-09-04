@@ -36,10 +36,10 @@ _CATEGORIES = frozenset(
 _CONSUMER_KINDS = frozenset({"production", "test-only"})
 _CATEGORY_COUNTS = {
     "public-paged": 14,
-    "fixed-cardinality": 1,
+    "fixed-cardinality": 2,
     "closed-finite": 2,
-    "internal-complete": 22,
-    "exact-verifier": 7,
+    "internal-complete": 24,
+    "exact-verifier": 13,
 }
 _GENERIC_CONSUMERS = frozenset({"internal", "module", "test", "tests"})
 _MODULE = re.compile(r"^control_plane_kit_operations\.postgres(?:\.[a-z][a-z0-9_]*)+$")
@@ -201,19 +201,72 @@ consumer = "{consumer}"
 
 
 class PostgresReadCardinalityPolicyTests(unittest.TestCase):
-    def test_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
+    def _assert_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
         identities = _discover()
 
-        self.assertEqual(len(identities), 46)
-        self.assertEqual(len(set(identities)), 46)
+        self.assertEqual(len(identities), 55)
+        self.assertEqual(len(set(identities)), 55)
         grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")
             self.assertNotRegex(identity.selector, r":\d+$")
             grouped[(identity.module, identity.selector)].append(identity.occurrence)
         repeated = {key: values for key, values in grouped.items() if len(values) > 1}
-        self.assertEqual(len(repeated), 1)
-        self.assertEqual(next(iter(repeated.values())), [1, 2])
+        self.assertEqual(len(repeated), 2)
+        self.assertEqual(set(tuple(values) for values in repeated.values()), {(1, 2)})
+        self.assertEqual(
+            tuple(
+                identity
+                for identity in identities
+                if identity.module
+                == "control_plane_kit_operations.postgres.effect_outcome_store"
+            ),
+            (
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.effect_outcome_store",
+                    "EffectAttemptOutcomeStore.get",
+                ),
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.effect_outcome_store",
+                    "_validate_current_rows",
+                    1,
+                ),
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.effect_outcome_store",
+                    "_validate_current_rows",
+                    2,
+                ),
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                identity
+                for identity in identities
+                if identity.module
+                == "control_plane_kit_operations.postgres.runtime_authority_store"
+                and identity.selector == "RuntimeAuthorityStore.get_active_for_update"
+            ),
+            (
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.runtime_authority_store",
+                    "RuntimeAuthorityStore.get_active_for_update",
+                ),
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                identity
+                for identity in identities
+                if identity.module
+                == "control_plane_kit_operations.postgres.effect_attempt_intent_store"
+            ),
+            (
+                ReadIdentity(
+                    "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+                    "_validate_current_rows",
+                ),
+            ),
+        )
         for key, values in grouped.items():
             if key not in repeated:
                 self.assertEqual(values, [None])
@@ -326,20 +379,29 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
                 ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             )
 
-        advance_scope = (
+        advance_locked_scope = (
             "control_plane_kit_operations.gateway_key_rotations."
-            "GatewayKeyRotationService.advance"
+            "GatewayKeyRotationService._advance_locked"
         )
+        expected_rotation_writers = [advance_locked_scope]
         self.assertEqual(
             [scope for scope, _line in add_transition_calls],
-            [advance_scope],
+            expected_rotation_writers,
         )
-        self.assertEqual([scope for scope, _line in transition_calls], [advance_scope])
+        self.assertEqual(
+            [scope for scope, _line in transition_calls],
+            expected_rotation_writers,
+        )
         self.assertEqual(
             legal_guard_scopes,
             ["control_plane_kit_operations.gateway_key_rotations._transition"],
         )
-        self.assertLess(transition_calls[0][1], add_transition_calls[0][1])
+        for transition_call, add_transition_call in zip(
+            transition_calls,
+            add_transition_calls,
+            strict=True,
+        ):
+            self.assertLess(transition_call[1], add_transition_call[1])
 
         constraints = {
             constraint.name: constraint
@@ -370,6 +432,7 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
         self.assertEqual(deployment_primary.local_columns, ("rotation_id", "phase"))
 
     def test_canonical_inventory_exactly_classifies_every_discovered_read(self) -> None:
+        self._assert_ast_discovery_has_stable_named_occurrence_identities()
         if not INVENTORY_PATH.is_file():
             self.fail("POSTGRES_READ_CARDINALITY.toml is missing")
         rows = _parse_inventory(INVENTORY_PATH.read_text(encoding="utf-8"))

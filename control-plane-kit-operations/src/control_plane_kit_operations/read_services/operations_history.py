@@ -357,7 +357,7 @@ def _run_summary_descriptor(run: ActivityRunRecord) -> dict[str, object]:
 
 
 def _event_descriptor(event: ActivityEventRecord) -> dict[str, object]:
-    return {
+    descriptor = {
         "event_id": event.event_id,
         "run_id": event.run_id,
         "ordinal": event.ordinal,
@@ -367,6 +367,9 @@ def _event_descriptor(event: ActivityEventRecord) -> dict[str, object]:
         "payload": _redact_descriptor_value("payload", event.evidence.descriptor()),
         "failure": _failure_descriptor(event.failure),
     }
+    if event.recovery is not None:
+        descriptor["recovery"] = event.recovery.descriptor()
+    return descriptor
 
 
 def _failure_descriptor(failure: FailureEvidence | None) -> dict[str, object] | None:

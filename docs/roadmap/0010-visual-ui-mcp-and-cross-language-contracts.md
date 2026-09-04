@@ -49,6 +49,14 @@ requirements, control-route contracts, and capability payloads.
 Prepare the package for visual UI, MCP operation, and non-Python block
 participation.
 
+AI agents are first-class consumers and authors of the control-plane language,
+not merely callers of imperative MCP tools. Graph, observation, plan, approval,
+event, and verification descriptors must be stable and expressive enough for an
+authorized AI to read a topology, propose and revise a topology delta, explain
+its required powers and risks, and collaborate with an operator before Gateway
+interpreters perform effects. See
+[`docs/design/0006-ai-consumable-reactive-operations.md`](../design/0006-ai-consumable-reactive-operations.md).
+
 This roadmap should provide:
 
 - stable graph/workspace descriptor schemas for UI,
@@ -59,6 +67,8 @@ This roadmap should provide:
 - JSON descriptor support for non-Python blocks,
 - validation for static descriptors,
 - read-only and eventually approved mutation MCP shapes,
+- AI-consumable, round-trippable topology and activity values,
+- plan validation and amendment without ambient execution authority,
 - UI fixtures,
 - and documentation for graph editor authors.
 

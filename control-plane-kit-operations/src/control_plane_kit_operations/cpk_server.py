@@ -56,6 +56,7 @@ from control_plane_kit_operations.approvals import (
     RequestApproval,
 )
 from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecutionCoordinator
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
     IngressAuthorityAuthorizationDenied,
@@ -84,8 +85,23 @@ from control_plane_kit_operations.delegation_signing_keys import (
     RetireDelegationSigningKeyCommand,
     RevokeDelegationSigningKeyCommand,
 )
+from control_plane_kit_operations.deployment_program import (
+    InvalidDeploymentProgramContract,
+    PrepareDeploymentProgram,
+)
+from control_plane_kit_operations.deployment_program_interpreter import (
+    DeploymentProgram,
+    DeploymentProgramAuthorizationDenied,
+    DeploymentProgramStateConflict,
+)
+from control_plane_kit_operations.deployment_program_projections import (
+    DeploymentApprovalRequired,
+    DeploymentNoChanges,
+    DeploymentReviewBlocked,
+)
 from control_plane_kit_operations.lifecycle import (
     ClaimAndOpenActivityRun,
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
     RunLifecycleCommandService,
     StartActivityRun,
@@ -116,7 +132,10 @@ from control_plane_kit_operations.read_pages import (
     WorkspaceReadScope,
     read_cursor_from_mapping,
 )
-from control_plane_kit_operations.records import ApprovalDecisionKind
+from control_plane_kit_operations.records import (
+    ApprovalDecisionKind,
+    GraphProjectionLineage,
+)
 from control_plane_kit_operations.runtime_authorities import (
     LocalDockerSocketAuthority,
     RegisterRuntimeAuthorityCommand,
@@ -350,6 +369,12 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "command.deployment.plan": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.PLAN_REQUEST,)
     ),
+    "command.deployment.prepare": RouteAuthorizationPolicy(
+        required_scopes=(
+            PolicyScope.INSTANCE_WORKSPACE_EDIT,
+            PolicyScope.PLAN_REQUEST,
+        )
+    ),
     "command.approval.request": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.PLAN_REQUEST,)
     ),
@@ -475,6 +500,7 @@ class CpkServerPlanningService:
         secret_providers: SecretProviderRegistrationService | None = None,
         delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
+        deployment_program: DeploymentProgram | None = None,
     ) -> None:
         self._service = service
         self._workspaces = workspaces
@@ -485,9 +511,18 @@ class CpkServerPlanningService:
         self._secret_providers = secret_providers
         self._delegation_signing_keys = delegation_signing_keys
         self._desired_graphs = desired_graphs
+        self._deployment_program = deployment_program
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         context = _trusted_context(request)
+        if request.route_id == "command.deployment.prepare":
+            if self._deployment_program is None:
+                raise _service_not_configured(request)
+            return _prepare_deployment(
+                self._deployment_program,
+                request,
+                context,
+            )
         if request.route_id == "command.workspace.create":
             if self._workspaces is None:
                 raise _service_not_configured(request)
@@ -760,6 +795,81 @@ class CpkServerPlanningService:
             )
         )
         return result.descriptor()
+
+
+def _prepare_deployment(
+    program: DeploymentProgram,
+    request: CpkServerRouteRequest,
+    context: TrustedCommandContext,
+) -> Mapping[str, object]:
+    payload = _arguments(request)
+    try:
+        result = program.prepare(
+            PrepareDeploymentProgram(
+                context=context,
+                desired=DEFAULT_GRAPH_CODEC.decode(
+                    _mapping(payload, "desired_graph")
+                ),
+                expected_current=_graph_lineage(payload, "expected_current"),
+                expected_desired=_optional_graph_lineage(
+                    payload,
+                    "expected_desired",
+                ),
+                expected_desired_graph_revision=_nonnegative_integer(
+                    payload,
+                    "expected_desired_graph_revision",
+                ),
+                title=_text(payload, "title"),
+                idempotency_key=IdempotencyKey(
+                    _text(payload, "idempotency_key")
+                ),
+                approval_comment=_optional_text(payload, "approval_comment"),
+            )
+        )
+    except DeploymentProgramAuthorizationDenied:
+        raise CpkServerApplicationError(
+            403,
+            "deployment preparation is not authorized",
+        ) from None
+    except DeploymentProgramStateConflict:
+        raise CpkServerApplicationError(
+            409,
+            "deployment preparation state is unavailable",
+        ) from None
+    except (
+        GraphDescriptorError,
+        InvalidDeploymentProgramContract,
+        InvalidOperationCommand,
+        TypeError,
+        ValueError,
+    ):
+        raise CpkServerApplicationError(
+            400,
+            "deployment preparation request is malformed",
+        ) from None
+    return _deployment_preparation_response(result)
+
+
+def _deployment_preparation_response(result: object) -> Mapping[str, object]:
+    if type(result) is DeploymentNoChanges:
+        status = "no-changes"
+    elif type(result) is DeploymentReviewBlocked:
+        status = "review-blocked"
+    elif type(result) is DeploymentApprovalRequired:
+        status = "approval-required"
+    else:
+        raise CpkServerApplicationError(
+            500,
+            "deployment preparation result is unsupported",
+        )
+    response: dict[str, object] = {
+        "status": status,
+        "workspace_id": result.reference.workspace_id,
+        "plan_id": result.reference.plan_id,
+    }
+    if type(result) is DeploymentApprovalRequired:
+        response["approval_request_id"] = result.approval_request_id
+    return response
 
 
 def _handle_secret_provider_command(
@@ -1121,6 +1231,10 @@ class CpkServerLifecycleService:
                         "expected_desired_graph_revision",
                     ),
                     authority=_worker_authority(context),
+                    fence=ExecutionLeaseFence(
+                        context.actor_id,
+                        _claim_generation(payload),
+                    ),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 )
             )
@@ -1132,7 +1246,7 @@ class CpkServerLifecycleService:
             ClaimAndOpenActivityRun(
                 request_id=_path_or_payload(payload, "run_id", "request_id"),
                 authority=_worker_authority(context),
-                lease_expires_at=_text(payload, "lease_expires_at"),
+                lease_duration=_lease_duration(payload),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
             )
         )
@@ -1159,6 +1273,10 @@ class CpkServerExecutionService:
                 StartActivityRun(
                     run_id=_path_or_payload(payload, "run_id", "run_id"),
                     authority=_worker_authority(context),
+                    fence=ExecutionLeaseFence(
+                        context.actor_id,
+                        _claim_generation(payload),
+                    ),
                     idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 )
             )
@@ -1170,6 +1288,10 @@ class CpkServerExecutionService:
             ExecuteActivityRun(
                 run_id=_path_or_payload(payload, "run_id", "run_id"),
                 authority=_worker_authority(context),
+                fence=ExecutionLeaseFence(
+                    context.actor_id,
+                    _claim_generation(payload),
+                ),
                 idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
                 max_effects=_positive_int(payload, "max_effects", default=1),
             )
@@ -1259,6 +1381,7 @@ def cpk_server_services(
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
     gateway_probes: GatewayProbeCommandService | None = None,
+    deployment_program: DeploymentProgram | None = None,
     clock: Callable[[], object] | None = None,
 ) -> Mapping[ControlPlaneServiceRole, CpkServerApplicationService]:
     """Return the complete service map required by cpk-server composition."""
@@ -1270,6 +1393,17 @@ def cpk_server_services(
             ControlPlaneServiceRole.AUTHORIZATION,
         )
     }
+    if (
+        deployment_program is None
+        and operations is not None
+        and desired_graphs is not None
+    ):
+        deployment_program = DeploymentProgram(
+            operations,
+            desired_graphs,
+            planning,
+            approval,
+        )
     return {
         ControlPlaneServiceRole.PLANNING: CpkServerPlanningService(
             planning,
@@ -1281,6 +1415,7 @@ def cpk_server_services(
             secret_providers=secret_providers,
             delegation_signing_keys=delegation_signing_keys,
             desired_graphs=desired_graphs,
+            deployment_program=deployment_program,
         ),
         ControlPlaneServiceRole.APPROVAL: CpkServerApprovalService(approval),
         ControlPlaneServiceRole.ADMISSION: CpkServerAdmissionService(admission),
@@ -1634,6 +1769,28 @@ def _mapping(
     return value
 
 
+def _graph_lineage(
+    values: Mapping[str, object],
+    name: str,
+) -> GraphProjectionLineage:
+    value = _mapping(values, name)
+    if set(value) != {"authored_graph_id", "realized_projection_id"}:
+        raise CpkServerApplicationError(400, f"{name} is malformed")
+    return GraphProjectionLineage(
+        _text(value, "authored_graph_id"),
+        _text(value, "realized_projection_id"),
+    )
+
+
+def _optional_graph_lineage(
+    values: Mapping[str, object],
+    name: str,
+) -> GraphProjectionLineage | None:
+    if values.get(name) is None:
+        return None
+    return _graph_lineage(values, name)
+
+
 def _string_mapping(
     values: Mapping[str, object],
     name: str,
@@ -1684,6 +1841,16 @@ def _nonnegative_integer(values: Mapping[str, object], name: str) -> int:
     return value
 
 
+def _lease_duration(values: Mapping[str, object]) -> ExecutionLeaseDuration:
+    value = values.get("lease_duration_seconds")
+    if type(value) is not int or not 1 <= value <= 3600:
+        raise CpkServerApplicationError(
+            400,
+            "lease_duration_seconds is invalid",
+        )
+    return ExecutionLeaseDuration(value)
+
+
 def _text_tuple(
     values: Mapping[str, object],
     name: str,
@@ -1706,6 +1873,13 @@ def _positive_int(values: Mapping[str, object], name: str, *, default: int) -> i
     value = values.get(name, default)
     if type(value) is not int or value < 1:
         raise CpkServerApplicationError(400, f"{name} must be a positive integer")
+    return value
+
+
+def _claim_generation(values: Mapping[str, object]) -> int:
+    value = values.get("claim_generation")
+    if type(value) is not int or not 1 <= value <= 2**63 - 1:
+        raise CpkServerApplicationError(400, "claim_generation is invalid")
     return value
 
 

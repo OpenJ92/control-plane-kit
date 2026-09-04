@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec
 from control_plane_kit_core.delegation_authority import (
     DelegationAuthorityBinding,
@@ -11,7 +13,25 @@ from control_plane_kit_core.delegation_keys import (
     DelegationKeyPurpose,
     DelegationPublicKey,
 )
+from control_plane_kit_core.operations import EffectResultKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.products import (
+    ContainerServerProduct,
+    OciImageReference,
+    ProductDescriptorCodec,
+    ProductIdentity,
+    ProductReference,
+    ProductRuntimeContract,
+)
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectObservationEvidence,
+    RuntimeEffectObservationFailure,
+    RuntimeEffectObservedIndeterminate,
+)
+from control_plane_kit_core.runtime_effects import (
+    RuntimeEffectFailure,
+    RuntimeEffectResult,
+)
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
 from control_plane_kit_core.types import BlockFamily, RuntimeKind
@@ -19,6 +39,20 @@ from control_plane_kit_operations.approvals import (
     ApprovalCommandService,
     DecideApproval,
     RequestGatewayKeyRotationApproval,
+)
+from control_plane_kit_operations.coordinator import (
+    ActivityExecutionOutcome,
+    ActivityRealizationContext,
+    ExecutionCoordinator,
+)
+from control_plane_kit_operations.effect_attempt_fold_interpreter import (
+    EffectAttemptFoldService,
+)
+from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import (
+    EffectAttemptReconciliationService,
+)
+from control_plane_kit_operations.effect_attempt_start_interpreter import (
+    EffectAttemptStartService,
 )
 from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKey,
@@ -30,6 +64,18 @@ from control_plane_kit_operations.gateway_key_rotations import (
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
     RequestGatewayKeyRotation,
+)
+from control_plane_kit_operations.gateway_key_rotation_overlap_execution import (
+    GatewayKeyRotationOverlapExecutionProgram,
+    ProgressGatewayKeyRotationOverlap,
+)
+from control_plane_kit_operations.lifecycle import (
+    ExecutionWorkerAuthority,
+    RunLifecycleCommandService,
+)
+from control_plane_kit_operations.products import (
+    InlineDescriptorSource,
+    RegisteredProductStatus,
 )
 from control_plane_kit_operations.records import (
     ApprovalDecisionKind,
@@ -59,6 +105,32 @@ T1RIRVI=
 -----END PUBLIC KEY-----
 """
 
+GATEWAY_PRODUCT = ContainerServerProduct(
+    identity=ProductIdentity("control-plane-kit", "gateway-runtime", 1),
+    image=OciImageReference(
+        registry="ghcr.io",
+        repository="openj92/control-plane-kit-servers/gateway-runtime",
+        digest="sha256:" + "a" * 64,
+    ),
+    runtime_contract=ProductRuntimeContract(sockets=BlockSockets()),
+)
+GATEWAY_PRODUCT_DOCUMENT = ProductDescriptorCodec().encode_document(
+    GATEWAY_PRODUCT
+)
+GATEWAY_PRODUCT_REFERENCE = ProductReference.from_document(
+    GATEWAY_PRODUCT_DOCUMENT
+)
+GATEWAY_PRODUCT_METADATA = {
+    "product_identity": GATEWAY_PRODUCT_REFERENCE.identity.key,
+    "product_descriptor_digest": (
+        GATEWAY_PRODUCT_REFERENCE.descriptor_sha256.value
+    ),
+}
+
+assert GATEWAY_PRODUCT.runtime_contract.secret_deliveries == ()
+assert b"secret://" not in GATEWAY_PRODUCT_DOCUMENT.content
+assert b"pull_authority" not in GATEWAY_PRODUCT_DOCUMENT.content
+
 
 class Sequence:
     def __init__(self, *values: str) -> None:
@@ -66,6 +138,103 @@ class Sequence:
 
     def __call__(self) -> str:
         return next(self._values)
+
+
+class CountingIds:
+    def __init__(self, prefix: str) -> None:
+        self.prefix = prefix
+        self.count = 0
+
+    def __call__(self) -> str:
+        self.count += 1
+        return f"{self.prefix}-{self.count}"
+
+
+class SuccessfulAdapter:
+    def execute(
+        self,
+        _context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        return ActivityExecutionOutcome.succeeded()
+
+    def execute_runtime(self, _context, request) -> RuntimeEffectResult:
+        return RuntimeEffectResult.succeeded(request.effect_id)
+
+
+class IndeterminateRuntimeObserver:
+    """Reconcile a committed start without redispatching its provider effect."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, object]] = []
+
+    def observe(self, request, authority):
+        self.calls.append((request, authority))
+        return RuntimeEffectObservedIndeterminate(
+            request.effect_id,
+            request.request_fingerprint,
+            RuntimeEffectObservationEvidence(
+                {"state": "provider-result-unknown"}
+            ),
+            RuntimeEffectObservationFailure(
+                "runtime.effect-uncertain",
+                "runtime provider result is unknown after process loss",
+            ),
+        )
+
+
+def runtime_result_for_outcome(
+    outcome: ActivityExecutionOutcome,
+    effect_id: str,
+) -> RuntimeEffectResult:
+    evidence = outcome.evidence.descriptor()
+    if outcome.kind is EffectResultKind.SUCCEEDED:
+        return RuntimeEffectResult.succeeded(effect_id, evidence=evidence)
+    assert outcome.failure is not None
+    failure = RuntimeEffectFailure(
+        outcome.failure.code,
+        outcome.failure.message,
+        outcome.failure.details.descriptor(),
+    )
+    if outcome.kind is EffectResultKind.FAILED:
+        return RuntimeEffectResult.failed(effect_id, failure)
+    if outcome.kind is EffectResultKind.UNSUPPORTED:
+        return RuntimeEffectResult.unsupported(effect_id, failure)
+    return RuntimeEffectResult.uncertain(effect_id, failure)
+
+
+def effect_attempt_execution_coordinator(
+    unit_of_work_factory,
+    adapter,
+    *,
+    clock,
+    prefix: str,
+) -> ExecutionCoordinator:
+    lifecycle = RunLifecycleCommandService(
+        unit_of_work_factory,
+        clock=clock,
+        id_factory=CountingIds(f"{prefix}-lifecycle"),
+    )
+    fold = EffectAttemptFoldService(
+        unit_of_work_factory,
+        id_factory=CountingIds(f"{prefix}-fold"),
+    )
+    return ExecutionCoordinator(
+        unit_of_work_factory,
+        lifecycle=lifecycle,
+        adapter=adapter,
+        start_service=EffectAttemptStartService(
+            unit_of_work_factory,
+            id_factory=CountingIds(f"{prefix}-start"),
+        ),
+        fold_service=fold,
+        reconciliation_service=EffectAttemptReconciliationService(
+            unit_of_work_factory,
+            IndeterminateRuntimeObserver(),
+            fold,
+        ),
+        clock=clock,
+        id_factory=CountingIds(f"{prefix}-coordinator"),
+    )
 
 
 class SimulatedProcessLoss(BaseException):
@@ -157,6 +326,19 @@ class GatewayRotationOverlapFixture:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
+            registered_product = stores.registered_products.register(
+                workspace_id="workspace-a",
+                descriptor_document=GATEWAY_PRODUCT_DOCUMENT,
+                source=InlineDescriptorSource(),
+                imported_by="operator-a",
+                imported_at="2026-08-02T00:59:59Z",
+            )
+            assert registered_product.status is RegisteredProductStatus.ACTIVE
+            assert registered_product.reference == GATEWAY_PRODUCT_REFERENCE
+            assert all(
+                authored.nodes[node_id].metadata == GATEWAY_PRODUCT_METADATA
+                for node_id in ("gateway-a", "gateway-other")
+            )
             stores.graphs.save(authored_record)
             stores.realized_graphs.save(projection_a)
             stores.workspaces.set_current_graph(
@@ -305,6 +487,55 @@ class GatewayRotationOverlapFixture:
         self.approval_decision_id = decision.decision.decision_id
         self.approval_review_digest = approval.request.subject.review_digest
 
+    def accept_prepared_overlap(
+        self,
+        prepared,
+        *,
+        prefix: str = "accept-overlap",
+        accepted_at: str = "2026-08-02T03:00:00Z",
+    ):
+        ids = CountingIds(prefix)
+        coordinator = effect_attempt_execution_coordinator(
+            self.unit_of_work,
+            SuccessfulAdapter(),
+            clock=lambda: accepted_at,
+            prefix=prefix,
+        )
+        program = GatewayKeyRotationOverlapExecutionProgram(
+            self.unit_of_work,
+            coordinator=coordinator,
+            clock=lambda: accepted_at,
+            trusted_epoch_clock=lambda: 3_000,
+            id_factory=ids,
+        )
+        command = ProgressGatewayKeyRotationOverlap(
+            rotation_id=self.rotation_id,
+            expected_prepared_rotation_version=prepared.rotation.version,
+            actor_id="operator-a",
+            actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
+            worker_authority=ExecutionWorkerAuthority(
+                "worker-a",
+                (PolicyScope.EXECUTION_OPERATE,),
+            ),
+            fence=prepared.handoff.fence,
+            idempotency_key=IdempotencyKey(f"{prefix}:1"),
+        )
+        with self.unit_of_work() as unit_of_work:
+            plan = unit_of_work.stores.activity_history.get_plan(
+                prepared.checkpoint.plan_id
+            )
+        result = None
+        for position, _ in enumerate(plan.plan.activities, start=1):
+            result = program.progress(
+                replace(
+                    command,
+                    idempotency_key=IdempotencyKey(f"{prefix}:{position}"),
+                )
+            )
+        if result is None:
+            raise AssertionError("overlap deployment plan must contain activities")
+        return result
+
     @staticmethod
     def authored_graph() -> DeploymentGraph:
         bindings = tuple(
@@ -323,6 +554,7 @@ class GatewayRotationOverlapFixture:
                 kind="container-server",
                 runtime_id="docker",
                 sockets=BlockSockets(),
+                metadata=dict(GATEWAY_PRODUCT_METADATA),
             )
             for node_id in ("gateway-a", "gateway-other")
         }

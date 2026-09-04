@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import os
 import unittest
 
@@ -13,6 +12,7 @@ from gateway_rotation_overlap_fixture import (
     SimulatedProcessLoss,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     GatewayKeyRotationOverlapPreparationAuthorizationDenied,
     GatewayKeyRotationOverlapPreparationConflict,
@@ -21,13 +21,13 @@ from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     PrepareGatewayKeyRotationOverlap,
 )
 from control_plane_kit_operations.gateway_key_rotations import (
-    AdvanceGatewayKeyRotation,
-    GatewayKeyRotationDeploymentCheckpoint,
     GatewayKeyRotationDeploymentStatus,
-    GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
-from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
+    ExecutionWorkerAuthority,
+)
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 
 
@@ -104,7 +104,7 @@ class GatewayKeyRotationOverlapPreparationTests(
                 "worker-a",
                 (PolicyScope.EXECUTION_OPERATE,),
             ),
-            lease_expires_at="2026-08-02T02:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
 
     def program(
@@ -148,7 +148,9 @@ class GatewayKeyRotationOverlapPreparationTests(
             f"gateway-rotation-{self.rotation_id}-overlap",
         )
         self.assertEqual(checkpoint.desired_revision, 2)
-        self.assertEqual(checkpoint.prepared_at, "2026-08-02T02:05:00Z")
+        self.assertEqual(checkpoint.prepared_at, "2026-08-02T02:04:00Z")
+        self.assertEqual(result.handoff.checkpoint, checkpoint)
+        self.assertEqual(result.handoff.fence, ExecutionLeaseFence("worker-a", 1))
 
         workspace = self.connection.execute(
             "SELECT current_graph_id, desired_graph_id, "
@@ -178,6 +180,7 @@ class GatewayKeyRotationOverlapPreparationTests(
             GatewayKeyRotationOverlapPreparationOutcome.PREPARED_REPLAY,
         )
         self.assertEqual(replay.checkpoint, checkpoint)
+        self.assertEqual(replay.handoff, result.handoff)
         self.assertEqual(self._count("cpk_activity_plans"), 1)
         self.assertEqual(self._count("cpk_execution_requests"), 1)
         self.assertEqual(self._count("cpk_activity_runs"), 1)
@@ -241,29 +244,11 @@ class GatewayKeyRotationOverlapPreparationTests(
     def test_later_rotation_state_is_bounded_and_never_reprepares(self) -> None:
         prepared = self.program().prepare(self.command())
         assert prepared.checkpoint is not None
-        accepted = replace(
-            prepared.checkpoint,
-            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-            accepted_current_graph_id="graph-a",
-            accepted_current_projection_id=(
-                prepared.checkpoint.desired_realized_projection_id
-            ),
-            accepted_at="2026-08-02T03:00:00Z",
+        accepted_result = self.accept_prepared_overlap(
+            prepared,
+            prefix="later-overlap-execution",
         )
-        rotations = GatewayKeyRotationService(self.unit_of_work, clock=lambda: 3_000)
-        rotations.advance(
-            AdvanceGatewayKeyRotation(
-                rotation_id=self.rotation_id,
-                transition_id=f"{self.rotation_id}:overlap-accepted",
-                expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                expected_version=prepared.rotation.version,
-                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
-                advanced_by="operator-a",
-                advanced_at="2026-08-02T03:00:00Z",
-                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
-                deployment=accepted,
-            )
-        )
+        accepted = accepted_result.checkpoint
         counts = self._child_counts()
 
         result = self.program(prefix="late").prepare(self.command())

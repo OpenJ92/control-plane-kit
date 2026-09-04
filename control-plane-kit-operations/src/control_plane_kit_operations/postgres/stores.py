@@ -8,6 +8,21 @@ from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+from control_plane_kit_operations.postgres.effect_attempt_store import (
+    EffectAttemptStore,
+)
+from control_plane_kit_operations.postgres.effect_attempt_intent_store import (
+    EffectAttemptIntentStore,
+)
+from control_plane_kit_operations.postgres.effect_outcome_store import (
+    EffectAttemptOutcomeStore,
+)
+from control_plane_kit_operations.postgres.failed_run_compensation_store import (
+    FailedRunCompensationStore,
+)
+from control_plane_kit_operations.postgres.failed_run_compensation_attempt_store import (
+    FailedRunCompensationAttemptStore,
+)
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
 )
@@ -75,6 +90,13 @@ class PostgresStoreBundle:
     secret_use_authorizations: SecretUseAuthorizationStore = field(init=False)
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
+    effect_attempt_intents: EffectAttemptIntentStore = field(init=False)
+    effect_attempts: EffectAttemptStore = field(init=False)
+    effect_outcomes: EffectAttemptOutcomeStore = field(init=False)
+    failed_run_compensations: FailedRunCompensationStore = field(init=False)
+    failed_run_compensation_attempts: FailedRunCompensationAttemptStore = field(
+        init=False
+    )
     observed_state: PostgresObservedStateStore = field(init=False)
     gateway_probes: GatewayProbeStore = field(init=False)
     node_control_attempts: NodeControlAttemptStore = field(init=False)
@@ -159,6 +181,31 @@ class PostgresStoreBundle:
             self,
             "execution",
             PostgresExecutionStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "effect_attempt_intents",
+            EffectAttemptIntentStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "effect_attempts",
+            EffectAttemptStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "effect_outcomes",
+            EffectAttemptOutcomeStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "failed_run_compensations",
+            FailedRunCompensationStore(self.connection),
+        )
+        object.__setattr__(
+            self,
+            "failed_run_compensation_attempts",
+            FailedRunCompensationAttemptStore(self.connection),
         )
         object.__setattr__(
             self,

@@ -10,6 +10,7 @@ from control_plane_kit_core.operations import (
     FailureCategory,
     InvalidExecutionLifecycleContract,
     LifecycleOperationKind,
+    RecoveryDecisionContract,
     RecoveryDecisionKind,
     RecoveryScope,
     activity_event_scope,
@@ -120,6 +121,30 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                 descriptor
             )
 
+    def test_uncertainty_abandonment_events_are_activity_scoped_nonfailure_truth(
+        self,
+    ) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+
+        for name, value in (
+            ("STEP_UNCERTAINTY_ABANDONED", "step_uncertainty_abandoned"),
+            (
+                "STEP_COMPENSATION_UNCERTAINTY_ABANDONED",
+                "step_compensation_uncertainty_abandoned",
+            ),
+        ):
+            with self.subTest(name=name):
+                kind = getattr(ActivityEventKind, name)
+                event = contract.event(kind)
+                self.assertEqual(kind.value, value)
+                self.assertIs(event.scope, ActivityEventScope.ACTIVITY)
+                self.assertFalse(event.may_carry_failure)
+                self.assertFalse(event.may_carry_recovery)
+                self.assertEqual(
+                    type(event).from_descriptor(event.descriptor()),
+                    event,
+                )
+
     def test_run_timing_and_transition_domains_match_frozen_lifecycle_algebra(self) -> None:
         contract = canonical_execution_lifecycle_contract_set()
         timing = {
@@ -203,6 +228,263 @@ class ExecutionLifecycleContractTests(unittest.TestCase):
                 decision = contract.recovery_decision(kind)
                 self.assertIs(decision.required_scope, scope)
                 self.assertTrue(decision.requires_expired_claim)
+
+    def test_active_claim_renewal_is_an_explicit_closed_decision(self) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+        decision = contract.recovery_decision(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+        )
+
+        self.assertIs(decision.required_scope, RecoveryScope.RENEW_CLAIM)
+        self.assertEqual(
+            decision.allowed_run_statuses,
+            (ActivityRunStatus.CLAIMED,),
+        )
+        self.assertTrue(decision.requires_unexpired_claim)
+        self.assertFalse(decision.requires_expired_claim)
+        self.assertEqual(
+            contract.operation("recovery.decide").accepted_run_statuses,
+            (
+                ActivityRunStatus.CLAIMED,
+                ActivityRunStatus.PAUSED,
+                ActivityRunStatus.FAILED,
+                ActivityRunStatus.PARTIALLY_FAILED,
+            ),
+        )
+
+    def test_retry_requires_exact_unexpired_claim_authority(self) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+        decision = contract.recovery_decision(
+            RecoveryDecisionKind.RETRY_AS_NEW_RUN
+        )
+
+        self.assertIs(decision.required_scope, RecoveryScope.OPERATE)
+        self.assertEqual(
+            decision.allowed_run_statuses,
+            (ActivityRunStatus.FAILED,),
+        )
+        self.assertTrue(decision.requires_no_uncertainty)
+        self.assertTrue(decision.requires_unexpired_claim)
+        self.assertFalse(decision.requires_expired_claim)
+        self.assertEqual(
+            RecoveryDecisionContract.from_descriptor(decision.descriptor()),
+            decision,
+        )
+
+    def test_claim_authority_predicates_are_explicit_and_exact(self) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+        claim_matrix = {
+            RecoveryDecisionKind.RETRY_AS_NEW_RUN: (
+                (ActivityRunStatus.FAILED,),
+                True,
+                False,
+            ),
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM: (
+                (ActivityRunStatus.CLAIMED,),
+                True,
+                False,
+            ),
+            RecoveryDecisionKind.RENEW_EXPIRED_CLAIM: (
+                (ActivityRunStatus.FAILED,),
+                False,
+                True,
+            ),
+            RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM: (
+                (ActivityRunStatus.FAILED,),
+                False,
+                True,
+            ),
+            RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM: (
+                (ActivityRunStatus.FAILED,),
+                False,
+                True,
+            ),
+        }
+
+        for decision in contract.recovery_decisions:
+            with self.subTest(kind=decision.kind):
+                expected = claim_matrix.get(
+                    decision.kind,
+                    (decision.allowed_run_statuses, False, False),
+                )
+                self.assertEqual(
+                    (
+                        decision.allowed_run_statuses,
+                        decision.requires_unexpired_claim,
+                        decision.requires_expired_claim,
+                    ),
+                    expected,
+                )
+                self.assertIs(
+                    decision.descriptor()["requires_unexpired_claim"], expected[1]
+                )
+
+    def test_claim_authority_contract_rejects_incongruent_direct_values(self) -> None:
+        cases = (
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.CLAIMED,),
+                True,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.FAILED,),
+                True,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.CLAIMED,),
+                False,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.CLAIMED,),
+                True,
+                True,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.CLAIMED,),
+                False,
+                True,
+            ),
+            (
+                RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.FAILED,),
+                False,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.REMAIN_PAUSED,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.PAUSED,),
+                True,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.REMAIN_PAUSED,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.PAUSED,),
+                1,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RecoveryScope.RENEW_CLAIM,
+                (ActivityRunStatus.FAILED,),
+                True,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.CLAIMED,),
+                True,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.FAILED,),
+                False,
+                False,
+            ),
+            (
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.FAILED,),
+                False,
+                True,
+            ),
+            (
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.FAILED,),
+                True,
+                True,
+            ),
+            (
+                RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                RecoveryScope.OPERATE,
+                (ActivityRunStatus.FAILED,),
+                1,
+                False,
+            ),
+        )
+
+        for kind, scope, statuses, unexpired, expired in cases:
+            with self.subTest(kind=kind, statuses=statuses):
+                with self.assertRaises(InvalidExecutionLifecycleContract):
+                    RecoveryDecisionContract(
+                        kind=kind,
+                        required_scope=scope,
+                        allowed_run_statuses=statuses,
+                        requires_unexpired_claim=unexpired,
+                        requires_expired_claim=expired,
+                    )
+
+    def test_claim_authority_error_is_fixed_and_candidate_free(self) -> None:
+        with self.assertRaises(InvalidExecutionLifecycleContract) as captured:
+            RecoveryDecisionContract(
+                kind=RecoveryDecisionKind.RETRY_AS_NEW_RUN,
+                required_scope=RecoveryScope.OPERATE,
+                allowed_run_statuses=(ActivityRunStatus.CLAIMED,),
+                requires_unexpired_claim=True,
+            )
+
+        self.assertEqual(
+            str(captured.exception),
+            "claim-authority decision has invalid status or expiry requirement",
+        )
+
+    def test_claim_authority_descriptor_requires_exact_predicate_matrix(self) -> None:
+        contract = canonical_execution_lifecycle_contract_set()
+        active = contract.recovery_decision(
+            RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
+        ).descriptor()
+        expired = contract.recovery_decision(
+            RecoveryDecisionKind.RENEW_EXPIRED_CLAIM
+        ).descriptor()
+        retry = contract.recovery_decision(
+            RecoveryDecisionKind.RETRY_AS_NEW_RUN
+        ).descriptor()
+
+        malformed = []
+        missing = dict(active)
+        del missing["requires_unexpired_claim"]
+        malformed.append(missing)
+        malformed.extend(
+            (
+                {**active, "allowed_run_statuses": [ActivityRunStatus.FAILED.value]},
+                {**active, "required_scope": RecoveryScope.OPERATE.value},
+                {**active, "requires_unexpired_claim": False},
+                {**active, "requires_expired_claim": True},
+                {**expired, "allowed_run_statuses": [ActivityRunStatus.CLAIMED.value]},
+                {**expired, "requires_expired_claim": False},
+                {**expired, "requires_unexpired_claim": True},
+                {**expired, "requires_unexpired_claim": 1},
+                {**expired, "kind": "invented"},
+                {**expired, "extra": False},
+                {**retry, "allowed_run_statuses": [ActivityRunStatus.CLAIMED.value]},
+                {**retry, "required_scope": RecoveryScope.RENEW_CLAIM.value},
+                {**retry, "requires_unexpired_claim": False},
+                {**retry, "requires_expired_claim": True},
+            )
+        )
+
+        for descriptor in malformed:
+            with self.subTest(descriptor=descriptor):
+                with self.assertRaises(InvalidExecutionLifecycleContract):
+                    RecoveryDecisionContract.from_descriptor(descriptor)
 
     def test_durable_enforcement_and_graph_advancement_are_handoff_obligations(self) -> None:
         contract = canonical_execution_lifecycle_contract_set()

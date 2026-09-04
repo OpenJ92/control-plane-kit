@@ -9,6 +9,12 @@ from control_plane_kit_operations.postgres.activity_history import (
     PostgresActivityHistoryStore,
 )
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
+from control_plane_kit_operations.postgres.failed_run_compensation_store import (
+    FailedRunCompensationStore,
+)
+from control_plane_kit_operations.postgres.failed_run_compensation_attempt_store import (
+    FailedRunCompensationAttemptStore,
+)
 from control_plane_kit_operations.postgres.delegation_signing_key_store import (
     DelegationSigningKeyStore,
 )
@@ -57,6 +63,8 @@ from control_plane_kit_operations.postgres.unit_of_work import (
 __all__ = [
     "PostgresActivityHistoryStore",
     "PostgresExecutionStore",
+    "FailedRunCompensationStore",
+    "FailedRunCompensationAttemptStore",
     "DelegationSigningKeyStore",
     "PostgresGraphTopologyStore",
     "PostgresRealizedGraphProjectionStore",

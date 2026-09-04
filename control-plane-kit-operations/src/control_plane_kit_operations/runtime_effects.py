@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Mapping
 
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning.activity_plan import (
     AddSocketConnection,
     NodeTarget,
@@ -35,6 +36,11 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDelivery,
     RuntimeAuthorityReference,
 )
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectIntent,
+    RuntimeEffectIntentSource,
+    runtime_effect_request_for_intent,
+)
 from control_plane_kit_core.runtime_effects import (
     GatewayHttpTarget,
     GatewayPostgresTarget,
@@ -44,7 +50,6 @@ from control_plane_kit_core.runtime_effects import (
     ImagePullAuthority,
     RuntimeEffectKind,
     RuntimeEffectRequest,
-    RuntimeEffectSource,
     RuntimeProductMaterial,
 )
 from control_plane_kit_core.secrets import (
@@ -58,7 +63,10 @@ from control_plane_kit_core.secrets import (
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, Node
 from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.verification import PostgresQueryCheck
-from control_plane_kit_operations.coordinator import ActivityRealizationContext
+from control_plane_kit_operations.coordinator import (
+    ActivityRealizationContext,
+    _CoordinatorContext,
+)
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     GeneratedIngressSecretReference,
@@ -86,15 +94,39 @@ def runtime_effect_request_for_context(
 ) -> RuntimeEffectRequest:
     """Interpret pinned operations material as a pure runtime-effect request."""
 
-    if not isinstance(context, ActivityRealizationContext):
+    if type(context) is not ActivityRealizationContext:
         raise InvalidOperationCommand(
             "runtime effect translation requires ActivityRealizationContext"
         )
-    graph = _material_graph(context)
-    runtime_id = _runtime_id_for_context(context, graph)
-    authority_ref = _runtime_authority_ref_for_context(graph, runtime_id)
-    return RuntimeEffectRequest(
+    intent = _runtime_effect_intent_for_context(context, context.activity)
+    return runtime_effect_request_for_intent(
+        intent,
         effect_id=context.intent_event.event_id,
+        secret_resolution_grants=(),
+    )
+
+
+def _runtime_effect_intent_for_context(
+    context: ActivityRealizationContext | _CoordinatorContext,
+    activity: object,
+) -> RuntimeEffectIntent:
+    """Project pinned realization truth without inventing an event coordinate."""
+
+    if type(context) not in (ActivityRealizationContext, _CoordinatorContext):
+        raise InvalidOperationCommand(
+            "runtime effect translation requires ActivityRealizationContext"
+        )
+    operation = activity.operation
+    try:
+        run_id = RunId(context.run.run_id)
+    except ValueError:
+        run_id = None
+    if run_id is None:
+        raise InvalidOperationCommand("runtime effect run_id is malformed")
+    graph = _material_graph(context, operation)
+    runtime_id = _runtime_id_for_context(context, graph, operation)
+    authority_ref = _runtime_authority_ref_for_context(graph, runtime_id)
+    return RuntimeEffectIntent(
         kind=RuntimeEffectKind.REALIZE_ACTIVITY,
         runtime_kind=_runtime_kind_for_context(context, graph, runtime_id),
         authority_ref=authority_ref,
@@ -102,18 +134,17 @@ def runtime_effect_request_for_context(
             context.runtime_authority_deliveries,
             authority_ref,
         ),
-        source=RuntimeEffectSource(
+        source=RuntimeEffectIntentSource(
             workspace_id=context.request.identity.workspace_id,
             request_id=context.request.identity.request_id,
-            run_id=context.run.run_id,
+            run_id=run_id,
             plan_id=context.plan_record.plan_id,
             base_graph_id=context.plan_record.base_graph_id,
             desired_graph_id=context.plan_record.desired_graph_id,
-            intent_event_id=context.intent_event.event_id,
         ),
-        activity_id=context.activity.activity_id,
-        operation=context.activity.operation,
-        products=_products_for_context(context, graph, runtime_id),
+        activity_id=activity.activity_id,
+        operation=operation,
+        products=_products_for_context(context, graph, runtime_id, operation),
     )
 
 
@@ -182,9 +213,12 @@ def required_secret_uses_for_runtime_effect(
     )
 
 
-def _material_graph(context: ActivityRealizationContext) -> DeploymentGraph:
+def _material_graph(
+    context: ActivityRealizationContext | _CoordinatorContext,
+    operation: object,
+) -> DeploymentGraph:
     if isinstance(
-        context.activity.operation,
+        operation,
         (
             StopNode,
             RemoveNodeResource,
@@ -198,16 +232,20 @@ def _material_graph(context: ActivityRealizationContext) -> DeploymentGraph:
 
 
 def _runtime_id_for_context(
-    context: ActivityRealizationContext,
+    context: ActivityRealizationContext | _CoordinatorContext,
     graph: DeploymentGraph,
+    operation: object,
 ) -> str:
-    node_id = _node_target(context)
+    node_id = _node_target(operation)
     if node_id is not None:
+        missing_node = False
         try:
-            return graph.nodes[node_id].runtime_id
-        except KeyError as error:
-            raise InvalidOperationCommand("runtime effect node target is missing") from error
-    operation = context.activity.operation
+            runtime_id = graph.nodes[node_id].runtime_id
+        except KeyError:
+            missing_node = True
+        if missing_node:
+            raise InvalidOperationCommand("runtime effect node target is missing")
+        return runtime_id
     target = getattr(operation, "target", None)
     runtime_id = getattr(target, "runtime_id", None)
     if isinstance(runtime_id, str) and runtime_id:
@@ -216,25 +254,33 @@ def _runtime_id_for_context(
 
 
 def _runtime_kind_for_context(
-    context: ActivityRealizationContext,
+    context: ActivityRealizationContext | _CoordinatorContext,
     graph: DeploymentGraph,
     runtime_id: str,
 ) -> RuntimeKind:
     del context
+    missing_runtime = False
     try:
-        return graph.runtimes[runtime_id].kind
-    except KeyError as error:
-        raise InvalidOperationCommand("runtime effect runtime target is missing") from error
+        runtime_kind = graph.runtimes[runtime_id].kind
+    except KeyError:
+        missing_runtime = True
+    if missing_runtime:
+        raise InvalidOperationCommand("runtime effect runtime target is missing")
+    return runtime_kind
 
 
 def _runtime_authority_ref_for_context(
     graph: DeploymentGraph,
     runtime_id: str,
 ) -> RuntimeAuthorityReference | None:
+    missing_runtime = False
     try:
-        return graph.runtimes[runtime_id].authority_ref
-    except KeyError as error:
-        raise InvalidOperationCommand("runtime effect runtime target is missing") from error
+        authority_ref = graph.runtimes[runtime_id].authority_ref
+    except KeyError:
+        missing_runtime = True
+    if missing_runtime:
+        raise InvalidOperationCommand("runtime effect runtime target is missing")
+    return authority_ref
 
 
 def _runtime_authority_deliveries_for_context(
@@ -251,17 +297,21 @@ def _runtime_authority_deliveries_for_context(
 
 
 def _products_for_context(
-    context: ActivityRealizationContext,
+    context: ActivityRealizationContext | _CoordinatorContext,
     graph: DeploymentGraph,
     runtime_id: str,
+    operation: object,
 ) -> tuple[RuntimeProductMaterial, ...]:
-    node_id = _node_target(context)
+    node_id = _node_target(operation)
     if node_id is None:
         return ()
+    missing_node = False
     try:
         node = graph.nodes[node_id]
-    except KeyError as error:
-        raise InvalidOperationCommand("runtime effect node target is missing") from error
+    except KeyError:
+        missing_node = True
+    if missing_node:
+        raise InvalidOperationCommand("runtime effect node target is missing")
     product = _registered_product_for_node(context.registered_products, node.metadata)
     public_environment = _public_environment_for_node(
         graph=graph,
@@ -287,7 +337,7 @@ def _products_for_context(
 
 
 def _product_material_for_node(
-    context: ActivityRealizationContext,
+    context: ActivityRealizationContext | _CoordinatorContext,
     graph: DeploymentGraph,
     product: RegisteredProduct,
     node: Node,
@@ -311,7 +361,7 @@ def _product_material_for_node(
 
 def _secret_deliveries_for_node(
     *,
-    context: ActivityRealizationContext,
+    context: ActivityRealizationContext | _CoordinatorContext,
     graph: DeploymentGraph,
     node: Node,
     descriptor_deliveries: tuple[SecretDelivery, ...],
@@ -672,8 +722,7 @@ def _gateway_process_target_map_descriptor(
     return descriptor
 
 
-def _node_target(context: ActivityRealizationContext) -> str | None:
-    operation = context.activity.operation
+def _node_target(operation: object) -> str | None:
     match operation:
         case (
             StartNode(target=NodeTarget(node_id=node_id))

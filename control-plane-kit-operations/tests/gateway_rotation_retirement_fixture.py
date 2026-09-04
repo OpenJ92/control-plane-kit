@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import os
 
 import psycopg
 
-from gateway_rotation_overlap_fixture import GatewayRotationOverlapFixture
+from gateway_rotation_overlap_fixture import (
+    GatewayRotationOverlapFixture,
+    effect_attempt_execution_coordinator,
+    runtime_result_for_outcome,
+)
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
-    ExecutionCoordinator,
 )
 from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
     GatewayKeyRotationOverlapPreparationProgram,
@@ -27,15 +30,15 @@ from control_plane_kit_operations.gateway_key_rotation_retirement_program import
 )
 from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotation,
-    GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
 from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
-    RunLifecycleCommandService,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.workflows import IdempotencyKey
 
 
 class CountingIds:
@@ -57,6 +60,18 @@ class RecordingAdapter:
         self.calls: list[str] = []
 
     def execute(
+        self,
+        context: ActivityRealizationContext,
+    ) -> ActivityExecutionOutcome:
+        return self._next(context)
+
+    def execute_runtime(self, context, request):
+        return runtime_result_for_outcome(
+            self._next(context),
+            request.effect_id,
+        )
+
+    def _next(
         self,
         context: ActivityRealizationContext,
     ) -> ActivityExecutionOutcome:
@@ -105,17 +120,16 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
                 actor_id="operator-a",
                 actor_scopes=self.scopes(),
                 worker_authority=self.worker(),
-                lease_expires_at="2026-08-02T02:30:00Z",
+                lease_duration=ExecutionLeaseDuration(1800),
             )
         )
         checkpoint = overlap.checkpoint
+        accepted = self.accept_prepared_overlap(
+            overlap,
+            prefix="retirement-overlap-execution",
+        )
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.workspaces.set_current_graph(
-                "workspace-a",
-                "graph-a",
-                checkpoint.desired_realized_projection_id,
-            )
             stores.delegation_signing_keys.activate(
                 "workspace-a",
                 overlap.rotation.purpose,
@@ -125,27 +139,8 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
                 activated_at="2026-08-02T03:00:01Z",
             )
             unit_of_work.commit()
-        accepted = replace(
-            checkpoint,
-            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-            accepted_current_graph_id="graph-a",
-            accepted_current_projection_id=checkpoint.desired_realized_projection_id,
-            accepted_at="2026-08-02T03:00:00Z",
-        )
         rotations = GatewayKeyRotationService(self.unit_of_work, clock=lambda: 1_000)
-        ready = rotations.advance(
-            AdvanceGatewayKeyRotation(
-                self.rotation_id,
-                "accept-overlap",
-                GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                overlap.rotation.version,
-                GatewayKeyRotationStatus.OVERLAP_READY,
-                "operator-a",
-                "2026-08-02T03:00:00Z",
-                (PolicyScope.DELEGATION_KEY_ROTATE,),
-                deployment=accepted,
-            )
-        )
+        ready = accepted.rotation
         active = rotations.advance(
             AdvanceGatewayKeyRotation(
                 self.rotation_id,
@@ -199,7 +194,7 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
             actor_id="operator-a",
             actor_scopes=scopes or self.scopes(),
             worker_authority=self.worker(),
-            lease_expires_at="2026-08-02T04:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
 
     def program(
@@ -231,6 +226,7 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
         worker_scopes: tuple[PolicyScope, ...] = (
             PolicyScope.EXECUTION_OPERATE,
         ),
+        idempotency_key: str = "retirement-execute-a",
     ) -> ProgressGatewayKeyRotationRetirement:
         return ProgressGatewayKeyRotationRetirement(
             rotation_id=self.rotation_id,
@@ -242,6 +238,8 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
             actor_id="operator-a",
             actor_scopes=actor_scopes,
             worker_authority=ExecutionWorkerAuthority("worker-a", worker_scopes),
+            fence=ExecutionLeaseFence("worker-a", 1),
+            idempotency_key=IdempotencyKey(idempotency_key),
         )
 
     def execution_program(
@@ -254,13 +252,11 @@ class GatewayRotationRetirementFixture(GatewayRotationOverlapFixture):
         factory = unit_of_work_factory or self.unit_of_work
         ids = CountingIds(prefix)
         clock = lambda: "2026-08-02T05:00:00Z"
-        lifecycle = RunLifecycleCommandService(factory, clock=clock, id_factory=ids)
-        coordinator = ExecutionCoordinator(
+        coordinator = effect_attempt_execution_coordinator(
             factory,
-            lifecycle=lifecycle,
-            adapter=adapter,
+            adapter,
             clock=clock,
-            id_factory=ids,
+            prefix=prefix,
         )
         return GatewayKeyRotationRetirementExecutionProgram(
             factory,

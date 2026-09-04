@@ -10,6 +10,7 @@ from gateway_rotation_overlap_fixture import (
 )
 from gateway_rotation_retirement_fixture import GatewayRotationRetirementFixture
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.gateway_key_rotation_retirement_program import (
     GatewayKeyRotationRetirementPreparationAuthorizationDenied,
@@ -37,6 +38,8 @@ class GatewayKeyRotationRetirementPreparationTests(
             GatewayKeyRotationStatus.RETIREMENT_DEPLOYING,
         )
         checkpoint = result.checkpoint
+        self.assertEqual(result.handoff.checkpoint, checkpoint)
+        self.assertEqual(result.handoff.fence, ExecutionLeaseFence("worker-a", 1))
         self.assertEqual(checkpoint.base_authored_graph_id, "graph-a")
         self.assertEqual(checkpoint.desired_authored_graph_id, "graph-a")
         self.assertEqual(
@@ -67,6 +70,7 @@ class GatewayKeyRotationRetirementPreparationTests(
             GatewayKeyRotationRetirementPreparationOutcome.PREPARED_REPLAY,
         )
         self.assertEqual(replay.checkpoint, checkpoint)
+        self.assertEqual(replay.handoff, result.handoff)
 
     def test_premature_drain_rejects_before_child_or_desired_mutation(self) -> None:
         before = self.child_counts()

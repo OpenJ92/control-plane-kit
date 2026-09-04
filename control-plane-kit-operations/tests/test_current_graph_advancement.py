@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import os
+import queue
+import time
 import unittest
 from dataclasses import replace
 from typing import Any
@@ -9,6 +12,7 @@ from typing import Any
 import psycopg
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
+from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -25,10 +29,13 @@ from control_plane_kit_operations.advancement import (
     CurrentGraphAdvancementCommandService,
     CurrentGraphAdvancementConflict,
     CurrentGraphAdvancementDenied,
+    CurrentGraphAdvancementError,
     CurrentGraphAdvancementIdempotencyConflict,
     CurrentGraphAdvancementIncomplete,
     CurrentGraphAdvancementNotFound,
+    CurrentGraphAdvancementResult,
 )
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import (
@@ -57,8 +64,177 @@ from control_plane_kit_operations.records import (
 from control_plane_kit_operations.workflows import (
     CloseOperationSession,
     IdempotencyKey,
+    InvalidOperationCommand,
     OperationCommandService,
 )
+
+
+class _RunTextSubclass(str):
+    pass
+
+
+INVALID_RUN_IDS = (
+    (object(), ()),
+    (True, ("True",)),
+    (_RunTextSubclass("subclass-canary"), ("subclass-canary",)),
+    ("", ()),
+    (" ", ()),
+    ("-leading-canary", ("leading-canary",)),
+    (".leading-canary", ("leading-canary",)),
+    ("_leading-canary", ("leading-canary",)),
+    (":leading-canary", ("leading-canary",)),
+    ("slash/canary", ("slash/canary",)),
+    ("space canary", ("space canary",)),
+    *tuple(
+        (f"a{chr(code)}control-canary", ("control-canary",))
+        for code in (*range(32), 127)
+    ),
+    ("a" * 201, ("a" * 32,)),
+)
+
+
+def _contract_authority() -> ExecutionWorkerAuthority:
+    return ExecutionWorkerAuthority(
+        "worker-a",
+        (PolicyScope.EXECUTION_OPERATE,),
+    )
+
+
+def _contract_command(run_id: object) -> AdvanceCurrentGraph:
+    return AdvanceCurrentGraph(
+        workspace_id="workspace-a",
+        run_id=run_id,
+        plan_id="plan-a",
+        expected_current_graph_id="graph-current",
+        expected_current_realized_projection_id="projection-current",
+        desired_graph_id="graph-desired",
+        desired_realized_projection_id="projection-desired",
+        expected_desired_graph_revision=1,
+        authority=_contract_authority(),
+        fence=ExecutionLeaseFence("worker-a", 1),
+        idempotency_key=IdempotencyKey("advance-a"),
+    )
+
+
+def _contract_result(
+    run_id: object,
+    *,
+    replayed: bool,
+) -> CurrentGraphAdvancementResult:
+    try:
+        evidence_run_id = RunId(run_id).value
+    except ValueError:
+        evidence_run_id = "run-a"
+    evidence = BoundedEvidence.from_mapping(
+        {
+            "workspace_id": "workspace-a",
+            "plan_id": "plan-a",
+            "run_id": evidence_run_id,
+            "from_authored_graph_id": "graph-current",
+            "from_realized_projection_id": "projection-current",
+            "to_authored_graph_id": "graph-desired",
+            "to_realized_projection_id": "projection-desired",
+            "to_realized_projection_digest": "a" * 64,
+            "desired_graph_revision": 1,
+        }
+    )
+    event = ActivityEventRecord(
+        "event-a",
+        evidence_run_id,
+        1,
+        ActivityEventKind.CURRENT_GRAPH_ADVANCED,
+        "2026-08-14T12:00:00Z",
+        evidence=evidence,
+    )
+    action = OperationActionRecord(
+        "action-a",
+        "session-a",
+        1,
+        LifecycleOperationKind.ADVANCE_CURRENT_GRAPH,
+        "worker-a",
+        payload={
+            **evidence.descriptor(),
+            "execution_request_id": "request-a",
+            "claim_generation": 1,
+            "event_id": "event-a",
+        },
+        created_at="2026-08-14T12:00:00Z",
+    )
+    return CurrentGraphAdvancementResult(
+        workspace_id="workspace-a",
+        from_authored_graph_id="graph-current",
+        from_realized_projection_id="projection-current",
+        to_authored_graph_id="graph-desired",
+        to_realized_projection_id="projection-desired",
+        to_realized_projection_digest="a" * 64,
+        desired_graph_revision=1,
+        run_id=run_id,
+        plan_id="plan-a",
+        event=event,
+        action=action,
+        replayed=replayed,
+    )
+
+
+class CurrentGraphAdvancementContractTests(unittest.TestCase):
+    def assert_invalid_run(self, callback, canaries: tuple[str, ...]) -> None:
+        with self.assertRaises(Exception) as captured:
+            callback()
+        error = captured.exception
+        self.assertIs(type(error), InvalidOperationCommand)
+        self.assertIsNone(error.__cause__)
+        self.assertIsNone(error.__context__)
+        rendered = f"{error!s} {error!r}"
+        self.assertLessEqual(len(rendered), 256)
+        for canary in canaries:
+            self.assertNotIn(canary, rendered)
+
+    def test_command_run_identity_is_canonical_before_unit_of_work(self) -> None:
+        for run_id in ("a", "a._:-0", "a" * 200):
+            with self.subTest(run_id=run_id, boundary="valid"):
+                self.assertEqual(_contract_command(run_id).run_id, run_id)
+        for run_id, canaries in INVALID_RUN_IDS:
+            with self.subTest(run_type=type(run_id).__name__):
+                self.assert_invalid_run(
+                    lambda run_id=run_id: _contract_command(run_id),
+                    canaries,
+                )
+
+    def test_command_requires_exact_congruent_lease_fence(self) -> None:
+        command = _contract_command("run-a")
+
+        class HostileExecutionLeaseFence(ExecutionLeaseFence):
+            pass
+
+        self.assertEqual(command.fence, ExecutionLeaseFence("worker-a", 1))
+        for fence in (
+            object(),
+            HostileExecutionLeaseFence("worker-a", 1),
+            ExecutionLeaseFence("worker-b", 1),
+        ):
+            with self.subTest(fence_type=type(fence).__name__):
+                with self.assertRaises(InvalidOperationCommand) as captured:
+                    replace(command, fence=fence)
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                self.assertLessEqual(len(repr(captured.exception)), 256)
+
+    def test_direct_and_replayed_results_share_canonical_run_admission(self) -> None:
+        for replayed in (False, True):
+            for run_id in ("a", "a._:-0", "a" * 200):
+                with self.subTest(replayed=replayed, run_id=run_id):
+                    result = _contract_result(run_id, replayed=replayed)
+                    self.assertEqual(result.run_id, run_id)
+                    self.assertEqual(result.descriptor()["run_id"], run_id)
+            for run_id, canaries in INVALID_RUN_IDS:
+                with self.subTest(replayed=replayed, run_type=type(run_id).__name__):
+                    self.assert_invalid_run(
+                        lambda run_id=run_id, replayed=replayed: _contract_result(
+                            run_id,
+                            replayed=replayed,
+                        ),
+                        canaries,
+                    )
 
 
 class Sequence:
@@ -96,6 +272,18 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
             id_factory=Sequence(*ids),
         )
 
+    def wait_until_blocked_by(self, worker_pid: int, blocker_pid: int) -> None:
+        deadline = time.monotonic() + 5
+        while True:
+            blocked_by = self.connection.execute(
+                "SELECT pg_blocking_pids(%s)",
+                (worker_pid,),
+            ).fetchone()[0]
+            if blocker_pid in blocked_by:
+                return
+            if time.monotonic() >= deadline:
+                self.fail("advancement did not block on the expected row")
+
     def authority(
         self,
         worker_id: str = "worker-a",
@@ -108,6 +296,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         *,
         key: str = "advance-a",
         worker_id: str = "worker-a",
+        generation: int = 1,
         scopes: tuple[PolicyScope, ...] = (PolicyScope.EXECUTION_OPERATE,),
         expected_current_graph_id: str = "graph-current",
         expected_current_realized_projection_id: str | None = None,
@@ -137,6 +326,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 else expected_desired_graph_revision
             ),
             authority=self.authority(worker_id, scopes),
+            fence=ExecutionLeaseFence(worker_id, generation),
             idempotency_key=IdempotencyKey(key),
         )
 
@@ -189,6 +379,9 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
         )
         self.assertIs(result.event.kind, ActivityEventKind.CURRENT_GRAPH_ADVANCED)
         self.assertIs(result.action.action_type, LifecycleOperationKind.ADVANCE_CURRENT_GRAPH)
+        self.assertEqual(result.action.payload["execution_request_id"], "request-a")
+        self.assertEqual(result.action.payload["claim_generation"], 1)
+        self.assertNotIn("claim_generation", result.event.evidence.descriptor())
         self.assertTrue(replay.replayed)
         self.assertEqual(replay.event, result.event)
         self.assertEqual(replay.action, result.action)
@@ -203,6 +396,419 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 ActivityEventKind.CURRENT_GRAPH_ADVANCED,
             ],
         )
+
+    def test_foreign_stale_and_larger_fences_leave_no_advancement(self) -> None:
+        cases = (
+            ("foreign", "worker-b", 1, None),
+            ("larger", "worker-a", 2, None),
+            ("stale", "worker-a", 1, 2),
+        )
+        for label, worker_id, generation, stored_generation in cases:
+            with self.subTest(label=label):
+                self.reset_truth()
+                self.seed_succeeded_run()
+                if stored_generation is not None:
+                    self.connection.execute(
+                        "UPDATE cpk_execution_requests SET claim_generation = %s "
+                        "WHERE request_id = 'request-a'",
+                        (stored_generation,),
+                    )
+
+                with self.assertRaises(CurrentGraphAdvancementDenied):
+                    self.service("unused-event", "unused-action").execute(
+                        self.command(
+                            key=f"advance-{label}",
+                            worker_id=worker_id,
+                            generation=generation,
+                        )
+                    )
+
+                with self.unit_of_work() as unit_of_work:
+                    stores = unit_of_work.stores
+                    workspace = stores.workspaces.get("workspace-a")
+                    events = stores.execution.events_for_run("run-a")
+                    actions = stores.activity_history.actions_for_session("session-a")
+                self.assertEqual(workspace.current_graph_id, "graph-current")
+                self.assertEqual(
+                    sum(
+                        event.kind is ActivityEventKind.CURRENT_GRAPH_ADVANCED
+                        for event in events
+                    ),
+                    0,
+                )
+                self.assertEqual(
+                    sum(
+                        action.action_type
+                        is LifecycleOperationKind.ADVANCE_CURRENT_GRAPH
+                        for action in actions
+                    ),
+                    0,
+                )
+
+    def test_old_same_key_replay_is_stale_after_generation_replacement(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        accepted = self.service("event-advance", "action-advance").execute(command)
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET claim_generation = 2 "
+            "WHERE request_id = 'request-a'"
+        )
+
+        with self.assertRaises(CurrentGraphAdvancementDenied):
+            self.service("unused-event", "unused-action").execute(command)
+
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            workspace = stores.workspaces.get("workspace-a")
+            events = stores.execution.events_for_run("run-a")
+            actions = stores.activity_history.actions_for_session("session-a")
+        self.assertEqual(workspace.current_graph_id, "graph-desired")
+        self.assertEqual(
+            sum(
+                event.kind is ActivityEventKind.CURRENT_GRAPH_ADVANCED
+                for event in events
+            ),
+            1,
+        )
+        self.assertEqual(
+            sum(
+                action.action_type is LifecycleOperationKind.ADVANCE_CURRENT_GRAPH
+                for action in actions
+            ),
+            1,
+        )
+        self.assertEqual(actions[-1], accepted.action)
+
+    def test_first_execution_locks_request_before_run(self) -> None:
+        self.seed_succeeded_run()
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        worker_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            worker_pids.put(connection.info.backend_pid)
+            return connection
+
+        service = CurrentGraphAdvancementCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "2026-07-22T13:05:00Z",
+            id_factory=Sequence("event-advance", "action-advance"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(service.execute, self.command())
+                worker_pid = worker_pids.get(timeout=5)
+                self.wait_until_blocked_by(worker_pid, blocker_pid)
+                with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                    )
+                blocker.commit()
+                result = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self.assertEqual(result.to_authored_graph_id, "graph-desired")
+
+    def test_first_execution_locks_workspace_before_request_and_run(self) -> None:
+        self.seed_succeeded_run()
+        blocker = psycopg.connect(self.database_url)
+        blocker.execute(
+            "SELECT workspace_id FROM cpk_workspaces "
+            "WHERE workspace_id = 'workspace-a' FOR UPDATE"
+        )
+        blocker_pid = blocker.info.backend_pid
+        worker_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            worker_pids.put(connection.info.backend_pid)
+            return connection
+
+        service = CurrentGraphAdvancementCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "2026-07-22T13:05:00Z",
+            id_factory=Sequence("event-advance", "action-advance"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(service.execute, self.command())
+                worker_pid = worker_pids.get(timeout=5)
+                self.wait_until_blocked_by(worker_pid, blocker_pid)
+                with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT request_id FROM cpk_execution_requests "
+                        "WHERE request_id = 'request-a' FOR UPDATE NOWAIT"
+                    )
+                    probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                    )
+                blocker.commit()
+                result = future.result(timeout=5)
+            finally:
+                blocker.rollback()
+                blocker.close()
+
+        self.assertEqual(result.to_authored_graph_id, "graph-desired")
+
+    def test_replay_locks_request_before_run_but_changed_intent_locks_neither(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        self.service("event-advance", "action-advance").execute(command)
+
+        changed_blocker = psycopg.connect(self.database_url)
+        changed_blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                changed = executor.submit(
+                    self.service("unused-event", "unused-action").execute,
+                    replace(command, fence=ExecutionLeaseFence("worker-a", 2)),
+                )
+                with self.assertRaises(CurrentGraphAdvancementIdempotencyConflict):
+                    changed.result(timeout=5)
+            finally:
+                changed_blocker.rollback()
+                changed_blocker.close()
+
+        replay_blocker = psycopg.connect(self.database_url)
+        replay_blocker.execute(
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
+        )
+        blocker_pid = replay_blocker.info.backend_pid
+        replay_pids: queue.Queue[int] = queue.Queue()
+
+        def connection_factory():
+            connection = psycopg.connect(self.database_url)
+            replay_pids.put(connection.info.backend_pid)
+            return connection
+
+        replay_service = CurrentGraphAdvancementCommandService(
+            lambda: PostgresUnitOfWork(connection_factory),
+            clock=lambda: "2026-07-22T14:00:00Z",
+            id_factory=lambda: self.fail("replay allocated an identity"),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                future = executor.submit(replay_service.execute, command)
+                replay_pid = replay_pids.get(timeout=5)
+                self.wait_until_blocked_by(replay_pid, blocker_pid)
+                with psycopg.connect(self.database_url) as probe:
+                    probe.execute(
+                        "SELECT run_id FROM cpk_activity_runs "
+                        "WHERE run_id = 'run-a' FOR UPDATE NOWAIT"
+                    )
+                replay_blocker.commit()
+                replay = future.result(timeout=5)
+            finally:
+                replay_blocker.rollback()
+                replay_blocker.close()
+
+        self.assertTrue(replay.replayed)
+
+    def test_replay_rejects_malformed_or_incongruent_action_evidence(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        accepted = self.service("event-advance", "action-advance").execute(command)
+        original = dict(accepted.action.payload)
+        mutations = (
+            ("workspace_id", "workspace-canary"),
+            ("plan_id", "plan-canary"),
+            ("execution_request_id", None),
+            ("execution_request_id", "request-canary"),
+            ("run_id", "run-canary"),
+            ("from_authored_graph_id", "from-canary"),
+            ("from_realized_projection_id", "from-projection-canary"),
+            ("to_authored_graph_id", "to-canary"),
+            ("to_realized_projection_id", "to-projection-canary"),
+            ("to_realized_projection_digest", "digest-canary"),
+            ("desired_graph_revision", True),
+            ("claim_generation", None),
+            ("claim_generation", 2),
+            ("event_id", "event-canary"),
+        )
+        for key, candidate in mutations:
+            with self.subTest(key=key, candidate=candidate):
+                payload = dict(original)
+                if candidate is None:
+                    payload.pop(key)
+                else:
+                    payload[key] = candidate
+                self.connection.execute(
+                    "UPDATE cpk_operation_actions SET payload = %s::jsonb "
+                    "WHERE action_id = 'action-advance'",
+                    (json.dumps(payload),),
+                )
+
+                with self.assertRaises(CurrentGraphAdvancementError) as captured:
+                    self.service("unused-event", "unused-action").execute(command)
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                rendered = repr(captured.exception)
+                self.assertLessEqual(len(rendered), 256)
+                self.assertNotIn("canary", rendered)
+
+                self.connection.execute(
+                    "UPDATE cpk_operation_actions SET payload = %s::jsonb "
+                    "WHERE action_id = 'action-advance'",
+                    (json.dumps(original),),
+                )
+
+        self.connection.execute(
+            "UPDATE cpk_operation_actions SET actor_id = 'actor-canary' "
+            "WHERE action_id = 'action-advance'"
+        )
+        with self.assertRaises(CurrentGraphAdvancementError) as captured:
+            self.service("unused-event", "unused-action").execute(command)
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertNotIn("actor-canary", repr(captured.exception))
+        self.connection.execute(
+            "UPDATE cpk_operation_actions SET actor_id = 'worker-a' "
+            "WHERE action_id = 'action-advance'"
+        )
+
+        event_evidence = accepted.event.evidence.descriptor()
+        event_evidence["workspace_id"] = "event-workspace-canary"
+        self.connection.execute(
+            "UPDATE cpk_activity_events "
+            "SET payload = jsonb_set(payload, '{evidence}', %s::jsonb) "
+            "WHERE event_id = 'event-advance'",
+            (json.dumps(event_evidence),),
+        )
+        with self.assertRaises(CurrentGraphAdvancementError) as captured:
+            self.service("unused-event", "unused-action").execute(command)
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertNotIn("event-workspace-canary", repr(captured.exception))
+
+    def test_replay_rejects_run_reassigned_to_another_compatible_request(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        self.service("event-advance", "action-advance").execute(command)
+        accepted_truth = self.advancement_truth()
+        self.connection.execute(
+            "UPDATE cpk_execution_requests "
+            "SET status = 'abandoned', claim_worker_id = NULL, "
+            "claim_generation = NULL, claimed_at = NULL, lease_expires_at = NULL "
+            "WHERE request_id = 'request-a'"
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.execution.add_request(
+                ExecutionRequestRecord(
+                    ExecutionRequestIdentity(
+                        "request-b",
+                        "workspace-a",
+                        "session-a",
+                        "plan-a",
+                    ),
+                    ExecutionRequestStatus.CLAIMED,
+                    "operator-a",
+                    "2026-07-22T13:06:00Z",
+                    "approval-request-a",
+                    "approval-decision-a",
+                    ExecutionIdempotency("execute-b", "fingerprint-b"),
+                    ClaimIdentity(
+                        "worker-a",
+                        1,
+                        "2026-07-22T13:06:30Z",
+                        "2026-07-22T13:16:30Z",
+                    ),
+                )
+            )
+            unit_of_work.commit()
+        self.connection.execute(
+            "UPDATE cpk_activity_runs SET request_id = 'request-b' "
+            "WHERE run_id = 'run-a'"
+        )
+
+        with self.assertRaises(CurrentGraphAdvancementError) as captured:
+            self.service("unused-event", "unused-action").execute(command)
+
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        self.assertEqual(self.advancement_truth(), accepted_truth)
+
+    def test_replay_translates_malformed_persisted_action(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        self.service("event-advance", "action-advance").execute(command)
+        self.connection.execute(
+            "UPDATE cpk_operation_actions "
+            "SET payload = '[\"action-evidence-canary\"]'::jsonb "
+            "WHERE action_id = 'action-advance'"
+        )
+
+        with self.assertRaises(CurrentGraphAdvancementError) as captured:
+            self.service("unused-event", "unused-action").execute(command)
+
+        self.assertIsNone(captured.exception.__cause__)
+        self.assertIsNone(captured.exception.__context__)
+        rendered = f"{captured.exception!s} {captured.exception!r}"
+        self.assertLessEqual(len(rendered), 256)
+        self.assertNotIn("action-evidence-canary", rendered)
+
+    def test_replay_rejects_malformed_or_incongruent_persisted_event(self) -> None:
+        self.seed_succeeded_run()
+        command = self.command()
+        accepted = self.service("event-advance", "action-advance").execute(command)
+        cases = (
+            (
+                {"evidence": 1, "event-evidence-canary": True},
+                "event-evidence-canary",
+            ),
+            (
+                {
+                    "evidence": accepted.event.evidence.descriptor(),
+                    "failure": {
+                        "category": "terminal",
+                        "code": "event-failure-canary",
+                        "message": "event failure canary",
+                        "details": 1,
+                    },
+                },
+                "event-failure-canary",
+            ),
+            (
+                {
+                    "evidence": accepted.event.evidence.descriptor(),
+                    "failure": {
+                        "category": "terminal",
+                        "code": "event-valid-failure-canary",
+                        "message": "event valid failure canary",
+                        "details": {},
+                    },
+                },
+                "event-valid-failure-canary",
+            ),
+        )
+        for payload, canary in cases:
+            with self.subTest(canary=canary):
+                self.connection.execute(
+                    "UPDATE cpk_activity_events SET payload = %s::jsonb "
+                    "WHERE event_id = 'event-advance'",
+                    (json.dumps(payload),),
+                )
+
+                with self.assertRaises(CurrentGraphAdvancementError) as captured:
+                    self.service("unused-event", "unused-action").execute(command)
+
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                rendered = f"{captured.exception!s} {captured.exception!r}"
+                self.assertLessEqual(len(rendered), 256)
+                self.assertNotIn(canary, rendered)
 
     def test_closed_session_cannot_publish_a_new_advancement(self) -> None:
         self.seed_succeeded_run()
@@ -322,7 +928,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
     def test_wrong_workspace_plan_or_run_fails_closed(self) -> None:
         self.seed_succeeded_run()
 
-        with self.assertRaises(CurrentGraphAdvancementNotFound):
+        with self.assertRaises(CurrentGraphAdvancementNotFound) as missing_workspace:
             self.service("unused-event", "unused-action").execute(
                 AdvanceCurrentGraph(
                     workspace_id="workspace-missing",
@@ -338,23 +944,30 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                     ),
                     expected_desired_graph_revision=self.desired_graph_revision,
                     authority=self.authority(),
+                    fence=ExecutionLeaseFence("worker-a", 1),
                     idempotency_key=IdempotencyKey("wrong-workspace"),
                 )
             )
-        with self.assertRaises(CurrentGraphAdvancementNotFound):
+        with self.assertRaises(CurrentGraphAdvancementNotFound) as missing_run:
             self.service("unused-event", "unused-action").execute(
                 replace(
                     self.command(key="wrong-run"),
-                    run_id="run-missing",
+                    run_id="run-missing-canary",
                 )
             )
-        with self.assertRaises(CurrentGraphAdvancementNotFound):
+        with self.assertRaises(CurrentGraphAdvancementNotFound) as missing_plan:
             self.service("unused-event", "unused-action").execute(
                 replace(
                     self.command(key="wrong-plan"),
-                    plan_id="plan-missing",
+                    plan_id="plan-missing-canary",
                 )
             )
+        for captured in (missing_workspace, missing_run, missing_plan):
+            self.assertIsNone(captured.exception.__cause__)
+            self.assertIsNone(captured.exception.__context__)
+            rendered = repr(captured.exception)
+            self.assertLessEqual(len(rendered), 256)
+            self.assertNotIn("canary", rendered)
 
     def test_stable_authored_graph_advances_a_to_overlap_to_b(self) -> None:
         plan = ActivityPlan(
@@ -426,6 +1039,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 desired_realized_projection_id="projection-a-plus-b",
                 expected_desired_graph_revision=workspace.desired_graph_revision,
                 authority=self.authority(),
+                fence=ExecutionLeaseFence("worker-a", 1),
                 idempotency_key=IdempotencyKey("advance-overlap"),
             )
         )
@@ -467,6 +1081,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 desired_realized_projection_id="projection-b",
                 expected_desired_graph_revision=next_workspace.desired_graph_revision,
                 authority=self.authority(),
+                fence=ExecutionLeaseFence("worker-a", 1),
                 idempotency_key=IdempotencyKey("advance-b"),
             )
         )
@@ -652,6 +1267,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                     ExecutionIdempotency("execute-a", "fingerprint-a"),
                     ClaimIdentity(
                         "worker-a",
+                        1,
                         "2026-07-22T12:04:30Z",
                         "2026-07-22T12:14:30Z",
                     ),
@@ -705,6 +1321,16 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                     )
                 )
             unit_of_work.commit()
+
+    def advancement_truth(self) -> tuple[object, ...]:
+        return self.connection.execute(
+            "SELECT current_graph_id, current_realized_projection_id, "
+            "(SELECT COUNT(*) FROM cpk_activity_events "
+            " WHERE event_type = 'current_graph_advanced'), "
+            "(SELECT COUNT(*) FROM cpk_operation_actions "
+            " WHERE action_type = 'advance_current_graph') "
+            "FROM cpk_workspaces WHERE workspace_id = 'workspace-a'"
+        ).fetchone()
 
     def _seed_execution(
         self,
@@ -785,6 +1411,7 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 ExecutionIdempotency(f"execute-{suffix}", f"fingerprint-{suffix}"),
                 ClaimIdentity(
                     "worker-a",
+                    1,
                     "2026-07-22T12:04:30Z",
                     "2026-07-22T12:14:30Z",
                 ),

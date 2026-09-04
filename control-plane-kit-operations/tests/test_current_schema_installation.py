@@ -24,7 +24,15 @@ _EXPECTED_RELATIONS = (
     "cpk_approval_requests",
     "cpk_cloudflare_ingress_resources",
     "cpk_delegation_signing_keys",
+    "cpk_effect_attempt_intents",
+    "cpk_effect_attempt_outcome_observations",
+    "cpk_effect_attempt_outcomes",
+    "cpk_effect_attempts",
+    "cpk_execution_command_receipts",
     "cpk_execution_requests",
+    "cpk_failed_run_compensation_attempt_bindings",
+    "cpk_failed_run_compensation_steps",
+    "cpk_failed_run_compensations",
     "cpk_gateway_key_rotation_deployments",
     "cpk_gateway_key_rotation_revocations",
     "cpk_gateway_key_rotation_transitions",
@@ -107,10 +115,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "60227521dfacd39473c01bac53f062158ee7f9b50f7a287c22faf17a842834fe"
+    "4a06ccf8c2b8f0358cd8737edb9d84a0ca73e4be3fb19bc41be26eb221e2b7c3"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "65c3730e8005315c2798cd8d8cb6de98c27513d7fde27d86fc9bd5291012cf35"
+    "0a999a173207265745f400a84f38810dbe835f4380a2ac419d97350a97aa8256"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -345,10 +353,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 29)
-        self.assertEqual(len(contract.columns), 380)
-        self.assertEqual(len(contract.constraints), 268)
-        self.assertEqual(len(contract.indexes), 94)
+        self.assertEqual(len(contract.relations), 37)
+        self.assertEqual(len(contract.columns), 489)
+        self.assertEqual(len(contract.constraints), 367)
+        self.assertEqual(len(contract.indexes), 120)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -369,6 +377,90 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
             if isinstance(node, ast.ImportFrom)
         }
         self.assertLessEqual(imports, {"__future__", "dataclasses"})
+
+    def test_current_contract_owns_bounded_execution_command_receipts(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        receipt_columns = tuple(
+            value
+            for value in contract.columns
+            if value.relation == "cpk_execution_command_receipts"
+        )
+        self.assertEqual(
+            tuple(value.name for value in receipt_columns),
+            (
+                "run_id",
+                "idempotency_key",
+                "intent_fingerprint",
+                "worker_id",
+                "authority_scopes",
+                "claim_generation",
+                "max_effects",
+                "admitted_at",
+                "initial_run",
+                "receipt_status",
+                "completed_at",
+                "result",
+            ),
+        )
+        columns = {value.name: value for value in receipt_columns}
+        self.assertEqual(columns["max_effects"].formatted_type, "text")
+        self.assertEqual(columns["max_effects"].collation_name, "default")
+        constraints = {
+            value.name: value
+            for value in contract.constraints
+            if value.relation == "cpk_execution_command_receipts"
+        }
+        self.assertEqual(
+            frozenset(constraints),
+            frozenset(
+                {
+                    "cpk_execution_command_receipts_authority_scopes_check",
+                    "cpk_execution_command_receipts_claim_generation_check",
+                    "cpk_execution_command_receipts_idempotency_key_check",
+                    "cpk_execution_command_receipts_initial_run_check",
+                    "cpk_execution_command_receipts_intent_fingerprint_check",
+                    "cpk_execution_command_receipts_max_effects_check",
+                    "cpk_execution_command_receipts_pkey",
+                    "cpk_execution_command_receipts_result_check",
+                    "cpk_execution_command_receipts_run_id_fkey",
+                    "cpk_execution_command_receipts_shape_check",
+                    "cpk_execution_command_receipts_status_check",
+                    "cpk_execution_command_receipts_worker_id_check",
+                }
+            ),
+        )
+        self.assertEqual(
+            constraints["cpk_execution_command_receipts_pkey"].local_columns,
+            ("run_id", "idempotency_key"),
+        )
+        self.assertEqual(
+            constraints["cpk_execution_command_receipts_run_id_fkey"].referenced_relation,
+            "cpk_activity_runs",
+        )
+        self.assertIn(
+            "receipt_status = 'incomplete'",
+            constraints["cpk_execution_command_receipts_shape_check"].check_expression,
+        )
+        self.assertIn(
+            "jsonb_array_length(authority_scopes) <= 37",
+            constraints[
+                "cpk_execution_command_receipts_authority_scopes_check"
+            ].check_expression,
+        )
+        self.assertNotIn(
+            "jsonb_array_length(authority_scopes) <= 16",
+            constraints[
+                "cpk_execution_command_receipts_authority_scopes_check"
+            ].check_expression,
+        )
+        self.assertEqual(
+            constraints[
+                "cpk_execution_command_receipts_max_effects_check"
+            ].check_expression,
+            '((max_effects COLLATE "C") ~ \'^[1-9][0-9]*$\'::text)',
+        )
 
     def test_current_contract_identifies_exact_node_control_vocabulary(self) -> None:
         from control_plane_kit_operations.postgres import current_schema_contract
@@ -416,6 +508,31 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
             hashlib.sha256(payload).hexdigest(),
         )
 
+    def test_current_contract_contains_exact_uncertainty_abandonment_events(
+        self,
+    ) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import schema
+
+        constraints = {
+            value.name: value.check_expression
+            for value in current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints
+        }
+        for event_type in (
+            "step_uncertainty_abandoned",
+            "step_compensation_uncertainty_abandoned",
+        ):
+            with self.subTest(event_type=event_type):
+                self.assertIn(
+                    event_type,
+                    constraints["cpk_activity_events_kind_check"],
+                )
+                self.assertIn(
+                    event_type,
+                    constraints["cpk_activity_events_shape_check"],
+                )
+                self.assertEqual(schema._CURRENT_SCHEMA_SQL.count(event_type), 2)
+
     def test_direct_schema_program_is_unconditional_and_nonhistorical(self) -> None:
         from control_plane_kit_operations.postgres import schema
 
@@ -443,7 +560,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            29,
+            37,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),
@@ -474,7 +591,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (29, 380, 268, 94))
+        self.assertEqual(self._catalog_counts(), (37, 489, 367, 120))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -802,7 +919,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (29, 380, 268, 94))
+        self.assertEqual(self._catalog_counts(), (37, 489, 367, 120))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

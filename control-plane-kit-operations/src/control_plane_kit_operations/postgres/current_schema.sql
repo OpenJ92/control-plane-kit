@@ -5,9 +5,9 @@ CREATE TABLE cpk_activity_events (
     event_type text NOT NULL,
     occurred_at timestamp with time zone NOT NULL,
     payload jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT cpk_activity_events_kind_check CHECK ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'step_started'::text, 'step_succeeded'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text]))),
+    CONSTRAINT cpk_activity_events_kind_check CHECK ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'step_started'::text, 'step_succeeded'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_uncertainty_abandoned'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text, 'step_compensation_uncertainty_abandoned'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text]))),
     CONSTRAINT cpk_activity_events_ordinal_check CHECK ((ordinal > 0)),
-    CONSTRAINT cpk_activity_events_shape_check CHECK (((((event_type = ANY (ARRAY['step_started'::text, 'step_succeeded'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text])) AND (NULLIF((payload ->> 'activity_id'::text), ''::text) IS NOT NULL)) OR ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text])) AND ((payload ->> 'activity_id'::text) IS NULL))) AND (((event_type = 'recovery_decision_recorded'::text) AND (payload ? 'recovery'::text) AND (jsonb_typeof((payload -> 'recovery'::text)) = 'object'::text)) OR ((event_type <> 'recovery_decision_recorded'::text) AND ((NOT (payload ? 'recovery'::text)) OR ((payload -> 'recovery'::text) = 'null'::jsonb))))))
+    CONSTRAINT cpk_activity_events_shape_check CHECK (((((event_type = ANY (ARRAY['step_started'::text, 'step_succeeded'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_uncertainty_abandoned'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text, 'step_compensation_uncertainty_abandoned'::text])) AND (NULLIF((payload ->> 'activity_id'::text), ''::text) IS NOT NULL)) OR ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text])) AND ((payload ->> 'activity_id'::text) IS NULL))) AND (((event_type = 'recovery_decision_recorded'::text) AND (payload ? 'recovery'::text) AND (jsonb_typeof((payload -> 'recovery'::text)) = 'object'::text)) OR ((event_type <> 'recovery_decision_recorded'::text) AND ((NOT (payload ? 'recovery'::text)) OR ((payload -> 'recovery'::text) = 'null'::jsonb))))))
 );
 
 CREATE TABLE cpk_activity_plans (
@@ -37,9 +37,183 @@ CREATE TABLE cpk_activity_runs (
     settled_at timestamp with time zone,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT cpk_activity_runs_attempt_check CHECK (((attempt > 0) AND (((attempt = 1) AND (prior_run_id IS NULL)) OR ((attempt > 1) AND (prior_run_id IS NOT NULL))) AND (prior_run_id IS DISTINCT FROM run_id))),
+    CONSTRAINT cpk_activity_runs_run_id_check CHECK (((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
     CONSTRAINT cpk_activity_runs_settlement_check CHECK ((((status = ANY (ARRAY['cancelled'::text, 'compensated'::text, 'partially_failed'::text, 'succeeded'::text, 'uncompensated_failure'::text])) AND (settled_at IS NOT NULL)) OR ((status <> ALL (ARRAY['cancelled'::text, 'compensated'::text, 'partially_failed'::text, 'succeeded'::text, 'uncompensated_failure'::text])) AND (settled_at IS NULL)))),
     CONSTRAINT cpk_activity_runs_started_check CHECK ((((status = 'claimed'::text) AND (started_at IS NULL)) OR ((status = ANY (ARRAY['cancelled'::text, 'compensated'::text, 'compensating'::text, 'failed'::text, 'partially_failed'::text, 'paused'::text, 'running'::text, 'succeeded'::text, 'uncompensated_failure'::text])) AND (started_at IS NOT NULL)))),
     CONSTRAINT cpk_activity_runs_status_check CHECK ((status = ANY (ARRAY['claimed'::text, 'running'::text, 'paused'::text, 'succeeded'::text, 'failed'::text, 'compensating'::text, 'compensated'::text, 'partially_failed'::text, 'uncompensated_failure'::text, 'cancelled'::text])))
+);
+
+CREATE TABLE cpk_execution_command_receipts (
+    run_id text NOT NULL,
+    idempotency_key text NOT NULL,
+    intent_fingerprint text NOT NULL,
+    worker_id text NOT NULL,
+    authority_scopes jsonb NOT NULL,
+    claim_generation bigint NOT NULL,
+    max_effects text NOT NULL,
+    admitted_at timestamp with time zone NOT NULL,
+    initial_run jsonb NOT NULL,
+    receipt_status text NOT NULL,
+    completed_at timestamp with time zone,
+    result jsonb,
+    CONSTRAINT cpk_execution_command_receipts_idempotency_key_check CHECK (((char_length(idempotency_key) >= 1) AND (char_length(idempotency_key) <= 200))),
+    CONSTRAINT cpk_execution_command_receipts_intent_fingerprint_check CHECK (((intent_fingerprint COLLATE "C") ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_execution_command_receipts_worker_id_check CHECK (((char_length(worker_id) >= 1) AND (char_length(worker_id) <= 512))),
+    CONSTRAINT cpk_execution_command_receipts_authority_scopes_check CHECK (((jsonb_typeof(authority_scopes) = 'array'::text) AND (jsonb_array_length(authority_scopes) >= 1) AND (jsonb_array_length(authority_scopes) <= 37) AND (octet_length((authority_scopes)::text) <= 2048))),
+    CONSTRAINT cpk_execution_command_receipts_claim_generation_check CHECK (((claim_generation >= 1) AND (claim_generation <= 9223372036854775807))),
+    CONSTRAINT cpk_execution_command_receipts_max_effects_check CHECK (((max_effects COLLATE "C") ~ '^[1-9][0-9]*$'::text)),
+    CONSTRAINT cpk_execution_command_receipts_initial_run_check CHECK (((jsonb_typeof(initial_run) = 'object'::text) AND (octet_length((initial_run)::text) <= 16384))),
+    CONSTRAINT cpk_execution_command_receipts_status_check CHECK ((receipt_status = ANY (ARRAY['incomplete'::text, 'completed'::text]))),
+    CONSTRAINT cpk_execution_command_receipts_result_check CHECK (((result IS NULL) OR ((jsonb_typeof(result) = 'object'::text) AND (octet_length((result)::text) <= 16384)))),
+    CONSTRAINT cpk_execution_command_receipts_shape_check CHECK ((((receipt_status = 'incomplete'::text) AND (completed_at IS NULL) AND (result IS NULL)) OR ((receipt_status = 'completed'::text) AND (completed_at IS NOT NULL) AND (result IS NOT NULL))))
+);
+
+CREATE TABLE cpk_failed_run_compensations (
+    program_id text NOT NULL,
+    workspace_id text NOT NULL,
+    request_id text NOT NULL,
+    run_id text NOT NULL,
+    plan_id text NOT NULL,
+    session_id text NOT NULL,
+    action_id text NOT NULL,
+    event_id text NOT NULL,
+    actor_id text NOT NULL,
+    reason text NOT NULL,
+    source_failure jsonb NOT NULL,
+    authority_reference_fingerprint text NOT NULL,
+    command_fingerprint text NOT NULL,
+    evidence_fingerprint text NOT NULL,
+    program_fingerprint text NOT NULL,
+    program_preimage bytea NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    CONSTRAINT cpk_failed_run_compensations_identity_check CHECK (((program_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
+    CONSTRAINT cpk_failed_run_compensations_reason_check CHECK ((reason = 'post-effect-failure'::text)),
+    CONSTRAINT cpk_failed_run_compensations_fingerprint_check CHECK (((authority_reference_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (command_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (evidence_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (program_fingerprint ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT cpk_failed_run_compensations_preimage_check CHECK (((octet_length(program_preimage) >= 1) AND (octet_length(program_preimage) <= 1048576)))
+);
+
+CREATE TABLE cpk_failed_run_compensation_steps (
+    program_id text NOT NULL,
+    position integer NOT NULL,
+    source_run_id text NOT NULL,
+    source_activity_id text NOT NULL,
+    source_attempt integer NOT NULL,
+    source_request_fingerprint text NOT NULL,
+    source_outcome_fingerprint text NOT NULL,
+    source_completion_event_id text NOT NULL,
+    source_completion_ordinal integer NOT NULL,
+    operation jsonb NOT NULL,
+    material_source text NOT NULL,
+    CONSTRAINT cpk_failed_run_compensation_steps_position_check CHECK ((position > 0)),
+    CONSTRAINT cpk_failed_run_compensation_steps_identity_check CHECK (((source_attempt > 0) AND ((source_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((source_activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_failed_run_compensation_steps_fingerprint_check CHECK (((source_request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (source_outcome_fingerprint ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT cpk_failed_run_compensation_steps_completion_check CHECK ((source_completion_ordinal > 0)),
+    CONSTRAINT cpk_failed_run_compensation_steps_material_source_check CHECK ((material_source = ANY (ARRAY['base-graph'::text, 'desired-graph'::text])))
+);
+
+CREATE TABLE cpk_failed_run_compensation_attempt_bindings (
+    program_id text NOT NULL,
+    position integer NOT NULL,
+    source_run_id text NOT NULL,
+    source_activity_id text NOT NULL,
+    source_attempt integer NOT NULL,
+    inverse_run_id text NOT NULL,
+    inverse_activity_id text NOT NULL,
+    inverse_attempt integer NOT NULL,
+    CONSTRAINT cpk_failed_run_compensation_attempt_bindings_identity_check CHECK (((position > 0) AND (source_attempt > 0) AND (source_attempt < 2147483647) AND (inverse_attempt = (source_attempt + 1)) AND (inverse_run_id = source_run_id) AND (inverse_activity_id = source_activity_id)))
+);
+
+CREATE TABLE cpk_effect_attempt_intents (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    request_id text NOT NULL,
+    request_fingerprint text NOT NULL,
+    original_event_id text NOT NULL,
+    original_event_run_id text NOT NULL,
+    original_event_ordinal integer NOT NULL,
+    preimage bytea NOT NULL,
+    CONSTRAINT cpk_effect_attempt_intents_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_effect_attempt_intents_ownership_check CHECK ((original_event_run_id = run_id)),
+    CONSTRAINT cpk_effect_attempt_intents_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_effect_attempt_intents_preimage_check CHECK (((octet_length(preimage) >= 1) AND (octet_length(preimage) <= 1048576)))
+);
+
+CREATE TABLE cpk_effect_attempts (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    request_fingerprint text NOT NULL,
+    fence_worker_id text NOT NULL,
+    fence_generation bigint NOT NULL,
+    status text NOT NULL,
+    outcome_fingerprint text,
+    prior_run_id text,
+    prior_activity_id text,
+    prior_attempt integer,
+    recovery_decision_id text,
+    recovery_resolution text,
+    recovery_uncertain_fingerprint text,
+    recovery_evidence_fingerprint text,
+    original_event_id text NOT NULL,
+    original_event_run_id text NOT NULL,
+    original_event_ordinal integer NOT NULL,
+    latest_event_id text NOT NULL,
+    latest_event_run_id text NOT NULL,
+    latest_event_ordinal integer NOT NULL,
+    CONSTRAINT cpk_effect_attempts_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_effect_attempts_fence_check CHECK (((fence_generation > 0) AND (char_length(fence_worker_id) >= 1) AND (char_length(fence_worker_id) <= 256))),
+    CONSTRAINT cpk_effect_attempts_fingerprint_check CHECK (((request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND ((outcome_fingerprint IS NULL) OR (outcome_fingerprint ~ '^[0-9a-f]{64}$'::text)) AND ((recovery_uncertain_fingerprint IS NULL) OR (recovery_uncertain_fingerprint ~ '^[0-9a-f]{64}$'::text)) AND ((recovery_evidence_fingerprint IS NULL) OR (recovery_evidence_fingerprint ~ '^[0-9a-f]{64}$'::text)))),
+    CONSTRAINT cpk_effect_attempts_prior_check CHECK ((((prior_run_id IS NULL) AND (prior_activity_id IS NULL) AND (prior_attempt IS NULL) AND (attempt = 1)) OR ((prior_run_id IS NOT NULL) AND (prior_activity_id IS NOT NULL) AND (prior_attempt IS NOT NULL) AND (prior_run_id = run_id) AND (prior_activity_id = activity_id) AND (prior_attempt = (attempt - 1)) AND (attempt > 1)))),
+    CONSTRAINT cpk_effect_attempts_state_check CHECK (((status = ANY (ARRAY['started'::text, 'succeeded'::text, 'failed'::text, 'unsupported'::text, 'uncertain'::text, 'abandoned'::text])) AND (((status = 'started'::text) AND (outcome_fingerprint IS NULL)) OR ((status <> 'started'::text) AND (outcome_fingerprint IS NOT NULL))))),
+    CONSTRAINT cpk_effect_attempts_recovery_check CHECK ((((recovery_decision_id IS NULL) AND (recovery_resolution IS NULL) AND (recovery_uncertain_fingerprint IS NULL) AND (recovery_evidence_fingerprint IS NULL) AND (status <> 'abandoned'::text)) OR ((recovery_decision_id IS NOT NULL) AND (recovery_resolution IS NOT NULL) AND (char_length(recovery_decision_id) >= 1) AND (char_length(recovery_decision_id) <= 256) AND (((recovery_resolution = 'succeeded'::text) AND (status = 'succeeded'::text)) OR ((recovery_resolution = 'failed'::text) AND (status = 'failed'::text)) OR ((recovery_resolution = 'abandoned'::text) AND (status = 'abandoned'::text))) AND (recovery_uncertain_fingerprint IS NOT NULL) AND (recovery_evidence_fingerprint IS NOT NULL) AND (outcome_fingerprint = recovery_evidence_fingerprint)))),
+    CONSTRAINT cpk_effect_attempts_event_progression_check CHECK (((original_event_run_id = run_id) AND (latest_event_run_id = run_id) AND (original_event_ordinal > 0) AND (latest_event_ordinal > 0) AND (char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (char_length(latest_event_id) >= 1) AND (char_length(latest_event_id) <= 512) AND (((status = 'started'::text) AND ((latest_event_id, latest_event_run_id, latest_event_ordinal) = (original_event_id, original_event_run_id, original_event_ordinal))) OR ((status <> 'started'::text) AND (latest_event_ordinal > original_event_ordinal)))))
+);
+
+CREATE TABLE cpk_effect_attempt_outcomes (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    request_id text NOT NULL,
+    profile text NOT NULL,
+    preimage bytea NOT NULL,
+    request_fingerprint text NOT NULL,
+    fence_worker_id text NOT NULL,
+    fence_generation bigint NOT NULL,
+    status text NOT NULL,
+    outcome_fingerprint text NOT NULL,
+    prior_run_id text,
+    prior_activity_id text,
+    prior_attempt integer,
+    original_event_id text NOT NULL,
+    original_event_run_id text NOT NULL,
+    original_event_ordinal integer NOT NULL,
+    direct_event_id text NOT NULL,
+    direct_event_run_id text NOT NULL,
+    direct_event_ordinal integer NOT NULL,
+    observation_count integer NOT NULL,
+    CONSTRAINT cpk_effect_attempt_outcomes_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_effect_attempt_outcomes_fence_check CHECK (((fence_generation > 0) AND (char_length(fence_worker_id) >= 1) AND (char_length(fence_worker_id) <= 256))),
+    CONSTRAINT cpk_effect_attempt_outcomes_profile_check CHECK ((profile = ANY (ARRAY['execution-result'::text, 'provider-observation'::text]))),
+    CONSTRAINT cpk_effect_attempt_outcomes_preimage_check CHECK (((octet_length(preimage) >= 1) AND (octet_length(preimage) <= 8192))),
+    CONSTRAINT cpk_effect_attempt_outcomes_fingerprint_check CHECK (((request_fingerprint ~ '^[0-9a-f]{64}$'::text) AND (outcome_fingerprint ~ '^[0-9a-f]{64}$'::text))),
+    CONSTRAINT cpk_effect_attempt_outcomes_prior_check CHECK ((((attempt = 1) AND (prior_run_id IS NULL) AND (prior_activity_id IS NULL) AND (prior_attempt IS NULL)) OR ((attempt > 1) AND (prior_run_id IS NOT NULL) AND (prior_activity_id IS NOT NULL) AND (prior_attempt IS NOT NULL) AND (prior_run_id = run_id) AND (prior_activity_id = activity_id) AND (prior_attempt = (attempt - 1))))),
+    CONSTRAINT cpk_effect_attempt_outcomes_state_check CHECK ((status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'unsupported'::text, 'uncertain'::text]))),
+    CONSTRAINT cpk_effect_attempt_outcomes_event_progression_check CHECK (((original_event_run_id = run_id) AND (direct_event_run_id = run_id) AND (original_event_ordinal > 0) AND (direct_event_ordinal > original_event_ordinal) AND (char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (char_length(direct_event_id) >= 1) AND (char_length(direct_event_id) <= 512))),
+    CONSTRAINT cpk_effect_attempt_outcomes_observation_count_check CHECK (((observation_count >= 0) AND (observation_count <= 8192)))
+);
+
+CREATE TABLE cpk_effect_attempt_outcome_observations (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    observation_count integer NOT NULL,
+    position integer NOT NULL,
+    observation_id text NOT NULL,
+    CONSTRAINT cpk_effect_attempt_outcome_observations_position_check CHECK (((position >= 0) AND (position < observation_count)))
 );
 
 CREATE TABLE cpk_approval_decisions (
@@ -106,7 +280,9 @@ CREATE TABLE cpk_cloudflare_ingress_resources (
     CONSTRAINT cpk_cloudflare_ingress_resources_lifecycle_check CHECK ((lifecycle = ANY (ARRAY['ephemeral'::text, 'retained'::text, 'external'::text]))),
     CONSTRAINT cpk_cloudflare_ingress_resources_metadata_shape_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
     CONSTRAINT cpk_cloudflare_ingress_resources_provider_kind_check CHECK ((provider_kind = 'cloudflare'::text)),
+    CONSTRAINT cpk_cloudflare_ingress_resources_removed_by_run_id_check CHECK (((removed_by_run_id IS NULL) OR ((removed_by_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_cloudflare_ingress_resources_removed_evidence_check CHECK ((((status = 'removed'::text) AND (removed_at IS NOT NULL) AND (removed_by_run_id IS NOT NULL)) OR ((status <> 'removed'::text) AND (removed_at IS NULL) AND (removed_by_run_id IS NULL)))),
+    CONSTRAINT cpk_cloudflare_ingress_resources_source_run_id_check CHECK (((source_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
     CONSTRAINT cpk_cloudflare_ingress_resources_status_check CHECK ((status = ANY (ARRAY['allocating'::text, 'active'::text, 'removing'::text, 'removed'::text, 'uncertain'::text, 'orphaned'::text])))
 );
 
@@ -155,9 +331,11 @@ CREATE TABLE cpk_execution_requests (
     idempotency_key text NOT NULL,
     intent_fingerprint text NOT NULL,
     claim_worker_id text,
+    claim_generation bigint,
     claimed_at timestamp with time zone,
     lease_expires_at timestamp with time zone,
-    CONSTRAINT cpk_execution_requests_claim_check CHECK ((((status = 'claimed'::text) AND (claim_worker_id IS NOT NULL) AND (claimed_at IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR ((status <> 'claimed'::text) AND (claim_worker_id IS NULL) AND (claimed_at IS NULL) AND (lease_expires_at IS NULL)))),
+    CONSTRAINT cpk_execution_requests_claim_check CHECK ((((status = 'claimed'::text) AND (claim_worker_id IS NOT NULL) AND (claim_generation IS NOT NULL) AND (claimed_at IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR ((status <> 'claimed'::text) AND (claim_worker_id IS NULL) AND (claim_generation IS NULL) AND (claimed_at IS NULL) AND (lease_expires_at IS NULL)))),
+    CONSTRAINT cpk_execution_requests_claim_generation_check CHECK (((claim_generation >= 1) AND (claim_generation <= 9223372036854775807))),
     CONSTRAINT cpk_execution_requests_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'claimed'::text, 'cancelled'::text, 'abandoned'::text])))
 );
 
@@ -183,6 +361,7 @@ CREATE TABLE cpk_gateway_key_rotation_deployments (
     CONSTRAINT cpk_gateway_key_rotation_deployments_acceptance_check CHECK ((((status = 'accepted'::text) AND (accepted_current_graph_id IS NOT NULL) AND (accepted_current_projection_id IS NOT NULL) AND (accepted_at IS NOT NULL)) OR ((status = 'prepared'::text) AND (accepted_current_graph_id IS NULL) AND (accepted_current_projection_id IS NULL) AND (accepted_at IS NULL)))),
     CONSTRAINT cpk_gateway_key_rotation_deployments_phase_check CHECK ((phase = ANY (ARRAY['overlap'::text, 'retirement'::text]))),
     CONSTRAINT cpk_gateway_key_rotation_deployments_revision_check CHECK ((desired_revision >= 0)),
+    CONSTRAINT cpk_gateway_key_rotation_deployments_run_id_check CHECK (((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)),
     CONSTRAINT cpk_gateway_key_rotation_deployments_status_check CHECK ((status = ANY (ARRAY['prepared'::text, 'accepted'::text])))
 );
 
@@ -307,7 +486,8 @@ CREATE TABLE cpk_generated_ingress_secret_references (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT cpk_generated_ingress_secret_references_metadata_shape_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
     CONSTRAINT cpk_generated_ingress_secret_references_purpose_check CHECK ((purpose = 'cloudflared-tunnel-token'::text)),
-    CONSTRAINT cpk_generated_ingress_secret_references_ref_check CHECK ((secret_ref ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text))
+    CONSTRAINT cpk_generated_ingress_secret_references_ref_check CHECK ((secret_ref ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
+    CONSTRAINT cpk_generated_ingress_secret_references_source_run_id_check CHECK (((source_run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))
 );
 
 CREATE TABLE cpk_graph_versions (
@@ -387,7 +567,7 @@ CREATE TABLE cpk_operation_actions (
     idempotency_key text,
     intent_fingerprint text,
     CONSTRAINT cpk_operation_actions_ordinal_check CHECK ((ordinal > 0)),
-    CONSTRAINT cpk_operation_actions_type_check CHECK ((action_type = ANY (ARRAY['create-workspace'::text, 'import-product-descriptor'::text, 'register-image-pull-authority'::text, 'register-runtime-authority'::text, 'revoke-runtime-authority'::text, 'register-runtime-authority-delivery'::text, 'revoke-runtime-authority-delivery'::text, 'register-ingress-authority'::text, 'revoke-ingress-authority'::text, 'register-secret-provider'::text, 'revoke-secret-provider'::text, 'register-secret-reference'::text, 'revoke-secret-reference'::text, 'register-delegation-key'::text, 'activate-delegation-key'::text, 'retire-delegation-key'::text, 'revoke-delegation-key'::text, 'start-operation-session'::text, 'close-operation-session'::text, 'cancel-operation-session'::text, 'record-operation-action'::text, 'set-desired-graph'::text, 'publish-desired-realized-projection'::text, 'request-activity-plan'::text, 'request-approval'::text, 'decide-approval'::text, 'request-gateway-probe'::text, 'admit-execution'::text, 'claim-run'::text, 'start-run'::text, 'pause-run'::text, 'resume-run'::text, 'complete-run'::text, 'fail-run'::text, 'complete-compensation'::text, 'fail-compensation'::text, 'cancel-run'::text, 'record-recovery-decision'::text, 'advance-current-graph'::text])))
+    CONSTRAINT cpk_operation_actions_type_check CHECK ((action_type = ANY (ARRAY['create-workspace'::text, 'import-product-descriptor'::text, 'register-image-pull-authority'::text, 'register-runtime-authority'::text, 'revoke-runtime-authority'::text, 'register-runtime-authority-delivery'::text, 'revoke-runtime-authority-delivery'::text, 'register-ingress-authority'::text, 'revoke-ingress-authority'::text, 'register-secret-provider'::text, 'revoke-secret-provider'::text, 'register-secret-reference'::text, 'revoke-secret-reference'::text, 'register-delegation-key'::text, 'activate-delegation-key'::text, 'retire-delegation-key'::text, 'revoke-delegation-key'::text, 'start-operation-session'::text, 'close-operation-session'::text, 'cancel-operation-session'::text, 'record-operation-action'::text, 'set-desired-graph'::text, 'publish-desired-realized-projection'::text, 'request-activity-plan'::text, 'request-approval'::text, 'decide-approval'::text, 'request-gateway-probe'::text, 'admit-execution'::text, 'claim-run'::text, 'start-run'::text, 'pause-run'::text, 'resume-run'::text, 'complete-run'::text, 'fail-run'::text, 'begin-compensation'::text, 'complete-compensation'::text, 'fail-compensation'::text, 'cancel-run'::text, 'record-recovery-decision'::text, 'advance-current-graph'::text])))
 );
 
 CREATE TABLE cpk_operation_sessions (
@@ -603,7 +783,7 @@ CREATE TABLE cpk_secret_use_authorizations (
     CONSTRAINT cpk_secret_use_authorizations_operation_check CHECK (((operation_id IS NULL) OR (operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_probe_check CHECK (((probe_id IS NULL) OR (probe_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_reference_check CHECK ((secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
-    CONSTRAINT cpk_secret_use_authorizations_run_check CHECK (((run_id IS NULL) OR (run_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_secret_use_authorizations_run_check CHECK (((run_id IS NULL) OR ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_session_check CHECK (((session_id IS NULL) OR (session_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text)))
 );
 
@@ -629,6 +809,9 @@ ALTER TABLE ONLY cpk_activity_events
 ALTER TABLE ONLY cpk_activity_events
     ADD CONSTRAINT cpk_activity_events_run_id_ordinal_key UNIQUE (run_id, ordinal);
 
+ALTER TABLE ONLY cpk_activity_events
+    ADD CONSTRAINT cpk_activity_events_event_id_run_id_ordinal_key UNIQUE (event_id, run_id, ordinal);
+
 ALTER TABLE ONLY cpk_activity_plans
     ADD CONSTRAINT cpk_activity_plans_pkey PRIMARY KEY (plan_id);
 
@@ -637,6 +820,72 @@ ALTER TABLE ONLY cpk_activity_plans
 
 ALTER TABLE ONLY cpk_activity_runs
     ADD CONSTRAINT cpk_activity_runs_pkey PRIMARY KEY (run_id);
+
+ALTER TABLE ONLY cpk_activity_runs
+    ADD CONSTRAINT cpk_activity_runs_run_id_request_id_key UNIQUE (run_id, request_id);
+
+ALTER TABLE ONLY cpk_execution_command_receipts
+    ADD CONSTRAINT cpk_execution_command_receipts_pkey PRIMARY KEY (run_id, idempotency_key);
+
+ALTER TABLE ONLY cpk_effect_attempt_intents
+    ADD CONSTRAINT cpk_effect_attempt_intents_pkey PRIMARY KEY (run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempt_intents
+    ADD CONSTRAINT cpk_effect_attempt_intents_original_event_key UNIQUE (original_event_id, original_event_run_id, original_event_ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_intents
+    ADD CONSTRAINT cpk_effect_attempt_intents_commitment_key UNIQUE (run_id, activity_id, attempt, request_fingerprint, original_event_id);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_pkey PRIMARY KEY (run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_original_event_key UNIQUE (original_event_id, original_event_run_id, original_event_ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_latest_event_key UNIQUE (latest_event_id, latest_event_run_id, latest_event_ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_pkey PRIMARY KEY (run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_direct_event_key UNIQUE (direct_event_id, direct_event_run_id, direct_event_ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_membership_key UNIQUE (run_id, activity_id, attempt, workspace_id, observation_count);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
+    ADD CONSTRAINT cpk_effect_attempt_outcome_observations_pkey PRIMARY KEY (run_id, activity_id, attempt, position);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
+    ADD CONSTRAINT cpk_effect_attempt_outcome_observations_observation_key UNIQUE (observation_id) DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_pkey PRIMARY KEY (program_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_run_key UNIQUE (run_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_action_key UNIQUE (action_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_event_key UNIQUE (event_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_pkey PRIMARY KEY (program_id, position);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_source_key UNIQUE (program_id, source_run_id, source_activity_id, source_attempt);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_binding_key UNIQUE (program_id, position, source_run_id, source_activity_id, source_attempt);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_attempt_bindings
+    ADD CONSTRAINT cpk_failed_run_compensation_attempt_bindings_pkey PRIMARY KEY (program_id, position);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_attempt_bindings
+    ADD CONSTRAINT cpk_failed_run_compensation_attempt_bindings_inverse_key UNIQUE (inverse_run_id, inverse_activity_id, inverse_attempt);
 
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_pkey PRIMARY KEY (decision_id);
@@ -670,6 +919,9 @@ ALTER TABLE ONLY cpk_execution_requests
 
 ALTER TABLE ONLY cpk_execution_requests
     ADD CONSTRAINT cpk_execution_requests_workspace_id_idempotency_key_key UNIQUE (workspace_id, idempotency_key);
+
+ALTER TABLE ONLY cpk_execution_requests
+    ADD CONSTRAINT cpk_execution_requests_request_id_workspace_id_key UNIQUE (request_id, workspace_id);
 
 ALTER TABLE ONLY cpk_gateway_key_rotation_deployments
     ADD CONSTRAINT cpk_gateway_key_rotation_deployments_pkey PRIMARY KEY (rotation_id, phase);
@@ -718,6 +970,9 @@ ALTER TABLE ONLY cpk_ingress_authorities
 
 ALTER TABLE ONLY cpk_observations
     ADD CONSTRAINT cpk_observations_pkey PRIMARY KEY (observation_id);
+
+ALTER TABLE ONLY cpk_observations
+    ADD CONSTRAINT cpk_observations_observation_id_workspace_id_key UNIQUE (observation_id, workspace_id);
 
 ALTER TABLE ONLY cpk_operation_actions
     ADD CONSTRAINT cpk_operation_actions_pkey PRIMARY KEY (action_id);
@@ -823,6 +1078,8 @@ CREATE INDEX cpk_delegation_signing_keys_verifier_set ON cpk_delegation_signing_
 
 CREATE UNIQUE INDEX cpk_execution_requests_active_plan ON cpk_execution_requests USING btree (plan_id) WHERE (status = ANY (ARRAY['queued'::text, 'claimed'::text]));
 
+CREATE INDEX cpk_failed_run_compensation_steps_source ON cpk_failed_run_compensation_steps USING btree (source_run_id, source_completion_ordinal DESC, source_activity_id);
+
 CREATE UNIQUE INDEX cpk_gateway_key_rotations_nonterminal_binding ON cpk_gateway_key_rotations USING btree (workspace_id, gateway_node_id, purpose, issuer) WHERE (status <> ALL (ARRAY['completed'::text, 'blocked'::text, 'rejected'::text]));
 
 CREATE INDEX cpk_gateway_probe_workspace_timeline ON cpk_gateway_probe_attempts USING btree (workspace_id, issued_at DESC, probe_id DESC);
@@ -876,6 +1133,87 @@ ALTER TABLE ONLY cpk_activity_runs
 
 ALTER TABLE ONLY cpk_activity_runs
     ADD CONSTRAINT cpk_activity_runs_request_plan_fk FOREIGN KEY (request_id, plan_id) REFERENCES cpk_execution_requests(request_id, plan_id);
+
+ALTER TABLE ONLY cpk_execution_command_receipts
+    ADD CONSTRAINT cpk_execution_command_receipts_run_id_fkey FOREIGN KEY (run_id) REFERENCES cpk_activity_runs(run_id);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_run_id_fkey FOREIGN KEY (run_id) REFERENCES cpk_activity_runs(run_id);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_prior_fkey FOREIGN KEY (prior_run_id, prior_activity_id, prior_attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_original_event_fk FOREIGN KEY (original_event_id, original_event_run_id, original_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_latest_event_fk FOREIGN KEY (latest_event_id, latest_event_run_id, latest_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_intents
+    ADD CONSTRAINT cpk_effect_attempt_intents_run_request_fk FOREIGN KEY (run_id, request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_effect_attempt_intents
+    ADD CONSTRAINT cpk_effect_attempt_intents_request_workspace_fk FOREIGN KEY (request_id, workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_effect_attempt_intents
+    ADD CONSTRAINT cpk_effect_attempt_intents_original_event_fk FOREIGN KEY (original_event_id, original_event_run_id, original_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempts
+    ADD CONSTRAINT cpk_effect_attempts_intent_evidence_fk FOREIGN KEY (run_id, activity_id, attempt, request_fingerprint, original_event_id) REFERENCES cpk_effect_attempt_intents(run_id, activity_id, attempt, request_fingerprint, original_event_id);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_attempt_fk FOREIGN KEY (run_id, activity_id, attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_run_request_fk FOREIGN KEY (run_id, request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_request_workspace_fk FOREIGN KEY (request_id, workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_original_event_fk FOREIGN KEY (original_event_id, original_event_run_id, original_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcomes
+    ADD CONSTRAINT cpk_effect_attempt_outcomes_direct_event_fk FOREIGN KEY (direct_event_id, direct_event_run_id, direct_event_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
+    ADD CONSTRAINT cpk_effect_attempt_outcome_observations_outcome_fk FOREIGN KEY (run_id, activity_id, attempt, workspace_id, observation_count) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt, workspace_id, observation_count) DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE ONLY cpk_effect_attempt_outcome_observations
+    ADD CONSTRAINT cpk_effect_attempt_outcome_observations_observation_fk FOREIGN KEY (observation_id, workspace_id) REFERENCES cpk_observations(observation_id, workspace_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_workspace_fk FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_request_workspace_fk FOREIGN KEY (request_id, workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_run_request_fk FOREIGN KEY (run_id, request_id) REFERENCES cpk_activity_runs(run_id, request_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_plan_session_fk FOREIGN KEY (plan_id, session_id) REFERENCES cpk_activity_plans(plan_id, session_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_action_fk FOREIGN KEY (action_id) REFERENCES cpk_operation_actions(action_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensations
+    ADD CONSTRAINT cpk_failed_run_compensations_event_fk FOREIGN KEY (event_id) REFERENCES cpk_activity_events(event_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_program_fk FOREIGN KEY (program_id) REFERENCES cpk_failed_run_compensations(program_id);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_source_outcome_fk FOREIGN KEY (source_run_id, source_activity_id, source_attempt) REFERENCES cpk_effect_attempt_outcomes(run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_steps
+    ADD CONSTRAINT cpk_failed_run_compensation_steps_completion_event_fk FOREIGN KEY (source_completion_event_id, source_run_id, source_completion_ordinal) REFERENCES cpk_activity_events(event_id, run_id, ordinal);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_attempt_bindings
+    ADD CONSTRAINT cpk_failed_run_compensation_attempt_bindings_source_step_fk FOREIGN KEY (program_id, position, source_run_id, source_activity_id, source_attempt) REFERENCES cpk_failed_run_compensation_steps(program_id, position, source_run_id, source_activity_id, source_attempt);
+
+ALTER TABLE ONLY cpk_failed_run_compensation_attempt_bindings
+    ADD CONSTRAINT cpk_failed_run_compensation_attempt_bindings_inverse_attempt_fk FOREIGN KEY (inverse_run_id, inverse_activity_id, inverse_attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt);
 
 ALTER TABLE ONLY cpk_approval_decisions
     ADD CONSTRAINT cpk_approval_decisions_request_id_fkey FOREIGN KEY (request_id) REFERENCES cpk_approval_requests(request_id);

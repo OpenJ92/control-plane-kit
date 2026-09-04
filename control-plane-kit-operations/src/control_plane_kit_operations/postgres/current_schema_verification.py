@@ -398,6 +398,7 @@ semantic_relations AS (
 ),
 semantic_columns AS (
   SELECT column_value.relname,
+         column_value.attnum,
          column_value.attname,
          jsonb_build_object(
            'relation', column_value.relname,
@@ -473,10 +474,14 @@ semantic_constraints AS (
            'match_type', NULLIF(owned_constraint.match_type, ' '),
            'check_expression', CASE
              WHEN owned_constraint.kind = 'c'
-               THEN pg_get_expr(
-                 owned_constraint.conbin,
-                 owned_constraint.conrelid,
-                 false
+               THEN replace(
+                 pg_get_expr(
+                   owned_constraint.conbin,
+                   owned_constraint.conrelid,
+                   false
+                 ),
+                 '"position"',
+                 'position'
                )
              ELSE NULL
            END
@@ -564,7 +569,7 @@ SELECT
   ),
   COALESCE(
     (SELECT count(*) = %s
-            AND jsonb_agg(value ORDER BY relname, attname) = %s::jsonb
+            AND jsonb_agg(value ORDER BY relname, attnum) = %s::jsonb
      FROM semantic_columns),
     FALSE
   ),

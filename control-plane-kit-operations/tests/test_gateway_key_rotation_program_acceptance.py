@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 import unittest
 
@@ -9,6 +9,8 @@ import psycopg
 from gateway_rotation_overlap_fixture import (
     GatewayRotationOverlapFixture,
     PUBLIC_KEY_B,
+    effect_attempt_execution_coordinator,
+    runtime_result_for_outcome,
 )
 from gateway_rotation_retirement_fixture import CountingIds
 from control_plane_kit_core.delegation_keys import (
@@ -17,6 +19,7 @@ from control_plane_kit_core.delegation_keys import (
     DelegationPublicKey,
 )
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference,
     SecretProviderId,
@@ -32,7 +35,6 @@ from control_plane_kit_operations.approvals import (
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ActivityRealizationContext,
-    ExecutionCoordinator,
 )
 from control_plane_kit_operations.gateway_key_rotation_activation import (
     GatewayKeyRotationActivationOutcome,
@@ -81,11 +83,12 @@ from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKeyStatus,
 )
 from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
     ExecutionWorkerAuthority,
-    RunLifecycleCommandService,
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import ApprovalDecisionKind
+from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
@@ -158,6 +161,12 @@ class RecordingRuntimeAdapter:
             raise AssertionError("runtime effect executed inside Postgres transaction")
         self.calls.append(context.activity.activity_id.value)
         return ActivityExecutionOutcome.succeeded()
+
+    def execute_runtime(self, context, request):
+        return runtime_result_for_outcome(
+            self.execute(context),
+            request.effect_id,
+        )
 
 
 class RecordingGenerationProvider:
@@ -292,7 +301,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_id="operator-a",
             actor_scopes=self._deployment_scopes(),
             worker_authority=self._worker(),
-            lease_expires_at="2026-08-02T02:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
         overlap = GatewayKeyRotationOverlapPreparationProgram(
             self.uow,
@@ -314,6 +323,8 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_id="operator-a",
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
             worker_authority=self._worker(),
+            fence=ExecutionLeaseFence("worker-a", 1),
+            idempotency_key=IdempotencyKey("program-overlap"),
         )
         overlap_ready = self._execute_overlap(overlap_execution_command, runtime)
         overlap_effect_count = len(runtime.calls)
@@ -355,7 +366,7 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_id="operator-a",
             actor_scopes=self._deployment_scopes(),
             worker_authority=self._worker(),
-            lease_expires_at="2026-08-02T04:30:00Z",
+            lease_duration=ExecutionLeaseDuration(1800),
         )
         retirement = GatewayKeyRotationRetirementPreparationProgram(
             self.uow,
@@ -376,6 +387,8 @@ class GatewayKeyRotationProgramAcceptanceTests(
             actor_id="operator-a",
             actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
             worker_authority=self._worker(),
+            fence=ExecutionLeaseFence("worker-a", 1),
+            idempotency_key=IdempotencyKey("program-retirement"),
         )
         retirement_ready = self._execute_retirement(
             retirement_execution_command,
@@ -430,8 +443,16 @@ class GatewayKeyRotationProgramAcceptanceTests(
         self._assert_phase_ledger()
 
     def _execute_overlap(self, command, adapter):
-        for _ in range(32):
-            result = self._overlap_execution_program(adapter).progress(command)
+        program = self._overlap_execution_program(adapter)
+        for position in range(1, 33):
+            result = program.progress(
+                replace(
+                    command,
+                    idempotency_key=IdempotencyKey(
+                        f"{command.idempotency_key.value}:{position}"
+                    ),
+                )
+            )
             if result.rotation.status is GatewayKeyRotationStatus.OVERLAP_READY:
                 return result
         self.fail(
@@ -440,8 +461,16 @@ class GatewayKeyRotationProgramAcceptanceTests(
         )
 
     def _execute_retirement(self, command, adapter):
-        for _ in range(32):
-            result = self._retirement_execution_program(adapter).progress(command)
+        program = self._retirement_execution_program(adapter)
+        for position in range(1, 33):
+            result = program.progress(
+                replace(
+                    command,
+                    idempotency_key=IdempotencyKey(
+                        f"{command.idempotency_key.value}:{position}"
+                    ),
+                )
+            )
             if result.rotation.status is GatewayKeyRotationStatus.RETIREMENT_READY:
                 return result
         self.fail(
@@ -450,17 +479,11 @@ class GatewayKeyRotationProgramAcceptanceTests(
         )
 
     def _overlap_execution_program(self, adapter):
-        lifecycle = RunLifecycleCommandService(
+        coordinator = effect_attempt_execution_coordinator(
             self.uow,
+            adapter,
             clock=lambda: "2026-08-02T03:00:00Z",
-            id_factory=self.ids,
-        )
-        coordinator = ExecutionCoordinator(
-            self.uow,
-            lifecycle=lifecycle,
-            adapter=adapter,
-            clock=lambda: "2026-08-02T03:00:00Z",
-            id_factory=self.ids,
+            prefix="program-overlap",
         )
         return GatewayKeyRotationOverlapExecutionProgram(
             self.uow,
@@ -471,17 +494,11 @@ class GatewayKeyRotationProgramAcceptanceTests(
         )
 
     def _retirement_execution_program(self, adapter):
-        lifecycle = RunLifecycleCommandService(
+        coordinator = effect_attempt_execution_coordinator(
             self.uow,
+            adapter,
             clock=lambda: "2026-08-02T05:00:00Z",
-            id_factory=self.ids,
-        )
-        coordinator = ExecutionCoordinator(
-            self.uow,
-            lifecycle=lifecycle,
-            adapter=adapter,
-            clock=lambda: "2026-08-02T05:00:00Z",
-            id_factory=self.ids,
+            prefix="program-retirement",
         )
         return GatewayKeyRotationRetirementExecutionProgram(
             self.uow,

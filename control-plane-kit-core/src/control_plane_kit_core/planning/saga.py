@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Generic, TypeAlias, TypeVar
 
+from control_plane_kit_core._run_identity import _is_canonical_run_identity
 from control_plane_kit_core.planning.activity_plan import (
     ActivityId,
     ActivityPlan,
@@ -862,6 +863,7 @@ class ActivityJournalEventKind(StrEnum):
     STEP_UNCERTAIN = "step_uncertain"
     STEP_UNCERTAINTY_RESOLVED_SUCCEEDED = "step_uncertainty_resolved_succeeded"
     STEP_UNCERTAINTY_RESOLVED_FAILED = "step_uncertainty_resolved_failed"
+    STEP_UNCERTAINTY_ABANDONED = "step_uncertainty_abandoned"
     RUN_COMPENSATION_STARTED = "run_compensation_started"
     STEP_COMPENSATION_STARTED = "step_compensation_started"
     STEP_COMPENSATION_SUCCEEDED = "step_compensation_succeeded"
@@ -873,6 +875,9 @@ class ActivityJournalEventKind(StrEnum):
     )
     STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED = (
         "step_compensation_uncertainty_resolved_failed"
+    )
+    STEP_COMPENSATION_UNCERTAINTY_ABANDONED = (
+        "step_compensation_uncertainty_abandoned"
     )
 
 
@@ -889,8 +894,8 @@ class ActivityJournalEvent:
     def __post_init__(self) -> None:
         if not isinstance(self.event_id, str) or not self.event_id.strip():
             raise ValueError("activity journal event id must be non-empty text")
-        if not isinstance(self.run_id, str) or not self.run_id.strip():
-            raise ValueError("activity journal run id must be non-empty text")
+        if not _is_canonical_run_identity(self.run_id):
+            raise ValueError("activity journal run id is malformed")
         if not isinstance(self.ordinal, int) or self.ordinal < 1:
             raise ValueError("activity journal ordinal must be a positive integer")
         if not isinstance(self.kind, ActivityJournalEventKind):
@@ -980,6 +985,13 @@ def project_activity_journal(
                     )
                 saga_events.append(SagaStepFailed(step_id))
                 uncertain_by_step.pop(event.activity_id)
+            case ActivityJournalEventKind.STEP_UNCERTAINTY_ABANDONED:
+                if event.activity_id not in uncertain_by_step:
+                    raise SagaJournalError(
+                        "abandonment requires prior uncertain evidence"
+                    )
+                saga_events.append(SagaStepFailed(step_id))
+                uncertain_by_step.pop(event.activity_id)
             case ActivityJournalEventKind.STEP_COMPENSATION_STARTED:
                 saga_events.append(SagaCompensationStarted(step_id))
                 compensation_event_by_step[event.activity_id] = event
@@ -1014,6 +1026,13 @@ def project_activity_journal(
                 if event.activity_id not in compensation_uncertain_by_step:
                     raise SagaJournalError(
                         "compensation failure resolution requires prior uncertain evidence"
+                    )
+                saga_events.append(SagaCompensationFailed(step_id))
+                compensation_uncertain_by_step.pop(event.activity_id)
+            case ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAINTY_ABANDONED:
+                if event.activity_id not in compensation_uncertain_by_step:
+                    raise SagaJournalError(
+                        "compensation abandonment requires prior uncertain evidence"
                     )
                 saga_events.append(SagaCompensationFailed(step_id))
                 compensation_uncertain_by_step.pop(event.activity_id)

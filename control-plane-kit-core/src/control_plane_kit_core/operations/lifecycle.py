@@ -66,6 +66,7 @@ class ActivityEventKind(StrEnum):
     STEP_UNCERTAIN = "step_uncertain"
     STEP_UNCERTAINTY_RESOLVED_SUCCEEDED = "step_uncertainty_resolved_succeeded"
     STEP_UNCERTAINTY_RESOLVED_FAILED = "step_uncertainty_resolved_failed"
+    STEP_UNCERTAINTY_ABANDONED = "step_uncertainty_abandoned"
     STEP_COMPENSATION_STARTED = "step_compensation_started"
     STEP_COMPENSATION_SUCCEEDED = "step_compensation_succeeded"
     STEP_COMPENSATION_FAILED = "step_compensation_failed"
@@ -76,6 +77,9 @@ class ActivityEventKind(StrEnum):
     )
     STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED = (
         "step_compensation_uncertainty_resolved_failed"
+    )
+    STEP_COMPENSATION_UNCERTAINTY_ABANDONED = (
+        "step_compensation_uncertainty_abandoned"
     )
     RECOVERY_DECISION_RECORDED = "recovery_decision_recorded"
     RUN_COMPENSATION_STARTED = "run_compensation_started"
@@ -119,6 +123,7 @@ class RecoveryDecisionKind(StrEnum):
     BEGIN_COMPENSATION = "begin-compensation"
     ACCEPT_UNCOMPENSATED_FAILURE = "accept-uncompensated-failure"
     REMAIN_PAUSED = "remain-paused"
+    RENEW_ACTIVE_CLAIM = "renew-active-claim"
     RENEW_EXPIRED_CLAIM = "renew-expired-claim"
     TAKE_OVER_EXPIRED_CLAIM = "take-over-expired-claim"
     ABANDON_EXPIRED_CLAIM = "abandon-expired-claim"
@@ -134,6 +139,7 @@ class LifecycleOperationKind(StrEnum):
     RESUME_RUN = "resume-run"
     COMPLETE_RUN = "complete-run"
     FAIL_RUN = "fail-run"
+    BEGIN_COMPENSATION = "begin-compensation"
     COMPLETE_COMPENSATION = "complete-compensation"
     FAIL_COMPENSATION = "fail-compensation"
     CANCEL_RUN = "cancel-run"
@@ -298,6 +304,7 @@ class RecoveryDecisionContract:
     requires_compensation_available: bool = False
     requires_intent_match: bool = True
     requires_expired_claim: bool = False
+    requires_unexpired_claim: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, RecoveryDecisionKind):
@@ -329,13 +336,28 @@ class RecoveryDecisionContract:
         )
         _validate_bool(self.requires_intent_match, "requires_intent_match")
         _validate_bool(self.requires_expired_claim, "requires_expired_claim")
+        _validate_bool(self.requires_unexpired_claim, "requires_unexpired_claim")
         if self.requires_uncertainty and self.requires_no_uncertainty:
             raise InvalidExecutionLifecycleContract(
                 "recovery decision cannot require both uncertainty and no uncertainty"
             )
-        if self.requires_expired_claim and self.kind not in _CLAIM_RECOVERY_KINDS:
+        if self.requires_expired_claim and self.requires_unexpired_claim:
             raise InvalidExecutionLifecycleContract(
-                "only claim recovery decisions require expired claim"
+                "recovery decision cannot require both expired and unexpired claim"
+            )
+        claim_requirement = _CLAIM_AUTHORITY_REQUIREMENT_BY_KIND.get(self.kind)
+        if claim_requirement is None:
+            if self.requires_expired_claim or self.requires_unexpired_claim:
+                raise InvalidExecutionLifecycleContract(
+                    "only claim-authority decisions may require claim expiry state"
+                )
+        elif (
+            self.allowed_run_statuses,
+            self.requires_unexpired_claim,
+            self.requires_expired_claim,
+        ) != claim_requirement:
+            raise InvalidExecutionLifecycleContract(
+                "claim-authority decision has invalid status or expiry requirement"
             )
 
     def descriptor(self) -> dict[str, object]:
@@ -350,6 +372,7 @@ class RecoveryDecisionContract:
             "requires_compensation_available": self.requires_compensation_available,
             "requires_intent_match": self.requires_intent_match,
             "requires_expired_claim": self.requires_expired_claim,
+            "requires_unexpired_claim": self.requires_unexpired_claim,
         }
 
     @classmethod
@@ -366,6 +389,7 @@ class RecoveryDecisionContract:
             "requires_compensation_available",
             "requires_intent_match",
             "requires_expired_claim",
+            "requires_unexpired_claim",
         }:
             raise InvalidExecutionLifecycleContract(
                 "recovery decision descriptor has unexpected keys"
@@ -404,6 +428,10 @@ class RecoveryDecisionContract:
                 requires_expired_claim=_bool(
                     value["requires_expired_claim"],
                     "requires_expired_claim",
+                ),
+                requires_unexpired_claim=_bool(
+                    value["requires_unexpired_claim"],
+                    "requires_unexpired_claim",
                 ),
             )
         except ValueError as error:
@@ -848,6 +876,7 @@ _STEP_EVENT_KINDS = frozenset(
         ActivityEventKind.STEP_UNCERTAIN,
         ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
         ActivityEventKind.STEP_UNCERTAINTY_RESOLVED_FAILED,
+        ActivityEventKind.STEP_UNCERTAINTY_ABANDONED,
         ActivityEventKind.STEP_COMPENSATION_STARTED,
         ActivityEventKind.STEP_COMPENSATION_SUCCEEDED,
         ActivityEventKind.STEP_COMPENSATION_FAILED,
@@ -855,6 +884,7 @@ _STEP_EVENT_KINDS = frozenset(
         ActivityEventKind.STEP_COMPENSATION_UNCERTAIN,
         ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED,
         ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_RESOLVED_FAILED,
+        ActivityEventKind.STEP_COMPENSATION_UNCERTAINTY_ABANDONED,
     }
 )
 
@@ -881,18 +911,39 @@ _RECOVERY_SCOPE_BY_KIND = {
     RecoveryDecisionKind.BEGIN_COMPENSATION: RecoveryScope.COMPENSATE,
     RecoveryDecisionKind.ACCEPT_UNCOMPENSATED_FAILURE: RecoveryScope.ACCEPT_LOSS,
     RecoveryDecisionKind.REMAIN_PAUSED: RecoveryScope.OPERATE,
+    RecoveryDecisionKind.RENEW_ACTIVE_CLAIM: RecoveryScope.RENEW_CLAIM,
     RecoveryDecisionKind.RENEW_EXPIRED_CLAIM: RecoveryScope.RENEW_CLAIM,
     RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM: RecoveryScope.TAKE_OVER_CLAIM,
     RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM: RecoveryScope.ABANDON_CLAIM,
 }
 
-_CLAIM_RECOVERY_KINDS = frozenset(
-    {
-        RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
-        RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM,
-        RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM,
-    }
-)
+_CLAIM_AUTHORITY_REQUIREMENT_BY_KIND = {
+    RecoveryDecisionKind.RETRY_AS_NEW_RUN: (
+        (ActivityRunStatus.FAILED,),
+        True,
+        False,
+    ),
+    RecoveryDecisionKind.RENEW_ACTIVE_CLAIM: (
+        (ActivityRunStatus.CLAIMED,),
+        True,
+        False,
+    ),
+    RecoveryDecisionKind.RENEW_EXPIRED_CLAIM: (
+        (ActivityRunStatus.FAILED,),
+        False,
+        True,
+    ),
+    RecoveryDecisionKind.TAKE_OVER_EXPIRED_CLAIM: (
+        (ActivityRunStatus.FAILED,),
+        False,
+        True,
+    ),
+    RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM: (
+        (ActivityRunStatus.FAILED,),
+        False,
+        True,
+    ),
+}
 
 def _canonical_recovery_decisions() -> tuple[RecoveryDecisionContract, ...]:
     return (
@@ -919,6 +970,7 @@ def _canonical_recovery_decisions() -> tuple[RecoveryDecisionContract, ...]:
         RecoveryScope.OPERATE,
         (ActivityRunStatus.FAILED,),
         requires_no_uncertainty=True,
+        requires_unexpired_claim=True,
     ),
     RecoveryDecisionContract(
         RecoveryDecisionKind.BEGIN_COMPENSATION,
@@ -942,6 +994,12 @@ def _canonical_recovery_decisions() -> tuple[RecoveryDecisionContract, ...]:
             ActivityRunStatus.PARTIALLY_FAILED,
         ),
         requires_intent_match=False,
+    ),
+    RecoveryDecisionContract(
+        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+        RecoveryScope.RENEW_CLAIM,
+        (ActivityRunStatus.CLAIMED,),
+        requires_unexpired_claim=True,
     ),
     RecoveryDecisionContract(
         RecoveryDecisionKind.RENEW_EXPIRED_CLAIM,
@@ -1072,6 +1130,21 @@ def _canonical_operations() -> tuple[LifecycleOperationContract, ...]:
         writes_current_graph=False,
     ),
     LifecycleOperationContract(
+        "compensation.begin",
+        LifecycleOperationKind.BEGIN_COMPENSATION,
+        DeploymentProgramStage.EXECUTE,
+        ControlPlaneServiceRole.RECOVERY,
+        "BeginFailedRunCompensation",
+        "FailedRunCompensationResult",
+        (ActivityRunStatus.FAILED,),
+        ActivityRunStatus.COMPENSATING,
+        (ActivityEventKind.RUN_COMPENSATION_STARTED,),
+        requires_current_approval=True,
+        requires_worker_scope=False,
+        requires_current_graph_match=True,
+        writes_current_graph=False,
+    ),
+    LifecycleOperationContract(
         "compensation.complete",
         LifecycleOperationKind.COMPLETE_COMPENSATION,
         DeploymentProgramStage.EXECUTE,
@@ -1128,6 +1201,7 @@ def _canonical_operations() -> tuple[LifecycleOperationContract, ...]:
         "DecideActivityRunRecovery",
         "RecoveryDecisionResult",
         (
+            ActivityRunStatus.CLAIMED,
             ActivityRunStatus.PAUSED,
             ActivityRunStatus.FAILED,
             ActivityRunStatus.PARTIALLY_FAILED,

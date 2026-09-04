@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import unittest
 
-from control_plane_kit_core.algebra import BlockSockets, ProviderSocket
+from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, RequirementSocket
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
@@ -59,8 +60,19 @@ from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
     SecretUseIntent,
 )
-from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_core.topology import GraphSubject
+from control_plane_kit_core.types import Protocol, RuntimeKind
+
+
+def _run_id(value: str):
+    target = "control_plane_kit_core.operations.run_identity"
+    try:
+        module = importlib.import_module(target)
+    except ModuleNotFoundError as error:
+        if error.name != target:
+            raise
+        raise AssertionError("missing #1636 RunId") from error
+    return module.RunId(value)
 
 
 class RuntimeEffectContractTests(unittest.TestCase):
@@ -245,7 +257,6 @@ class RuntimeEffectContractTests(unittest.TestCase):
         self.assertEqual(descriptor["runtime_kind"], "docker")
         self.assertIsNone(descriptor["authority_ref"])
         self.assertEqual(descriptor["authority_deliveries"], [])
-        self.assertEqual(descriptor["secret_resolution_grants"], [])
         self.assertEqual(
             descriptor["source"],
             {
@@ -255,7 +266,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 "plan_id": "plan-a",
                 "base_graph_id": "graph-base",
                 "desired_graph_id": "graph-desired",
-                "intent_event_id": "event-started",
+                "intent_event_id": "effect-a",
             },
         )
         self.assertEqual(
@@ -421,10 +432,6 @@ class RuntimeEffectContractTests(unittest.TestCase):
         )
 
         self.assertEqual(request.secret_resolution_grants, (grant,))
-        self.assertEqual(
-            request.descriptor()["secret_resolution_grants"],
-            [grant.descriptor()],
-        )
         with self.assertRaises(RuntimeEffectContractError):
             RuntimeEffectRequest(
                 effect_id="other-effect",
@@ -499,6 +506,39 @@ class RuntimeEffectContractTests(unittest.TestCase):
                 reference=ProductReference(other, ProductDescriptorDigest("b" * 64)),
                 product=_product(identity),
             )
+
+    def test_product_material_socket_permutations_are_equal_exact_inverses(self) -> None:
+        canonical = _product_material(
+            sockets=_runtime_product_sockets(
+                reverse_requirements=False,
+                reverse_providers=False,
+            )
+        )
+        cases = (
+            ("requirements", True, False),
+            ("providers", False, True),
+            ("both", True, True),
+        )
+
+        for name, reverse_requirements, reverse_providers in cases:
+            with self.subTest(name=name):
+                material = _product_material(
+                    sockets=_runtime_product_sockets(
+                        reverse_requirements=reverse_requirements,
+                        reverse_providers=reverse_providers,
+                    )
+                )
+                descriptor = material.descriptor()
+                restored = RuntimeProductMaterial.from_descriptor(descriptor)
+
+                self.assertEqual(descriptor, canonical.descriptor())
+                self.assertEqual(restored.descriptor(), descriptor)
+                for law, observed, expected in (
+                    ("permutation-equality", material, canonical),
+                    ("exact-inverse", restored, material),
+                ):
+                    with self.subTest(name=name, law=law):
+                        self.assertEqual(observed, expected)
 
     def test_product_material_rejects_wrong_or_duplicate_environment_material(self) -> None:
         identity = ProductIdentity("openj92", "hello-server", 1)
@@ -838,21 +878,40 @@ def _source() -> RuntimeEffectSource:
     return RuntimeEffectSource(
         workspace_id="workspace-a",
         request_id="request-a",
-        run_id="run-a",
+        run_id=_run_id("run-a"),
         plan_id="plan-a",
         base_graph_id="graph-base",
         desired_graph_id="graph-desired",
-        intent_event_id="event-started",
+        intent_event_id="effect-a",
     )
 
 
-def _product_material() -> RuntimeProductMaterial:
+def _runtime_product_sockets(
+    *,
+    reverse_requirements: bool,
+    reverse_providers: bool,
+) -> BlockSockets:
+    requirements = (
+        RequirementSocket("alpha-input", Protocol.HTTP, ("ALPHA_URL",)),
+        RequirementSocket("zeta-input", Protocol.HTTP, ("ZETA_URL",)),
+    )
+    providers = (
+        ProviderSocket("alpha-output", Protocol.HTTP),
+        ProviderSocket("zeta-output", Protocol.HTTP),
+    )
+    return BlockSockets(
+        requirements=tuple(reversed(requirements)) if reverse_requirements else requirements,
+        providers=tuple(reversed(providers)) if reverse_providers else providers,
+    )
+
+
+def _product_material(*, sockets: BlockSockets | None = None) -> RuntimeProductMaterial:
     identity = ProductIdentity("openj92", "hello-server", 1)
     return RuntimeProductMaterial(
         node_id="api",
         runtime_id="docker",
         reference=ProductReference(identity, ProductDescriptorDigest("b" * 64)),
-        product=_product(identity),
+        product=_product(identity, sockets=sockets),
         public_environment=(
             PublicStaticEnvironmentBinding("HELLO_MESSAGE", "Hello from graph"),
         ),
@@ -866,7 +925,11 @@ def _product_material() -> RuntimeProductMaterial:
     )
 
 
-def _product(identity: ProductIdentity) -> ContainerServerProduct:
+def _product(
+    identity: ProductIdentity,
+    *,
+    sockets: BlockSockets | None = None,
+) -> ContainerServerProduct:
     return ContainerServerProduct(
         identity=identity,
         image=OciImageReference(
@@ -875,8 +938,12 @@ def _product(identity: ProductIdentity) -> ContainerServerProduct:
             digest="sha256:" + "a" * 64,
         ),
         runtime_contract=ProductRuntimeContract(
-            sockets=BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
-            provider_ports=(ProviderRuntimePort("http", 8000),),
+            sockets=sockets
+            if sockets is not None
+            else BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
+            provider_ports=()
+            if sockets is not None
+            else (ProviderRuntimePort("http", 8000),),
         ),
     )
 

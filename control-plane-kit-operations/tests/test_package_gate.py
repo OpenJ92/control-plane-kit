@@ -4,12 +4,279 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+from unittest import mock
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = PACKAGE_ROOT.parent
+ARCHITECTURE_TESTING_COMMIT = "7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef"
+WORKFLOW_ENV = "CPK_TEST_WORKFLOW_PATH"
+CORE_SOURCE_ENV = "CPK_CORE_SOURCE_ROOT"
+OPERATIONS_SOURCE_ENV = "CPK_OPERATIONS_SOURCE_ROOT"
+
+
+def _workflow_path() -> Path:
+    return Path(
+        os.environ.get(
+            WORKFLOW_ENV,
+            str(REPOSITORY_ROOT / ".github/workflows/tests.yml"),
+        )
+    )
+
+
+def _core_source_root() -> Path:
+    return Path(
+        os.environ.get(
+            CORE_SOURCE_ENV,
+            str(REPOSITORY_ROOT / "control-plane-kit-core"),
+        )
+    )
+
+
+def _operations_source_root() -> Path:
+    return Path(os.environ.get(OPERATIONS_SOURCE_ENV, str(PACKAGE_ROOT)))
+
+
+def _forbidden_evidence_mounts(volumes: tuple[str, ...]) -> tuple[str, ...]:
+    repository_prefix = f"{REPOSITORY_ROOT}:"
+    return tuple(
+        volume
+        for volume in volumes
+        if volume.startswith(repository_prefix)
+        or volume.endswith(":/cpk-test-evidence:ro")
+    )
+
+
+def _workflow_step(job: str, name: str) -> str:
+    marker = f"      - name: {name}\n"
+    start = job.find(marker)
+    if start == -1:
+        return ""
+    end = job.find("\n      - name: ", start + len(marker))
+    return job[start:] if end == -1 else job[start:end]
 
 
 class OperationsPackageGateTests(unittest.TestCase):
+    def test_ci_checks_out_exact_architecture_testing_source(self) -> None:
+        workflow = _workflow_path().read_text(encoding="utf-8")
+        core_job, operations_job = workflow.split("\n  operations:\n", 1)
+        architecture_checkout = _workflow_step(
+            operations_job,
+            "Check out architecture testing",
+        )
+        operations_gate = _workflow_step(
+            operations_job,
+            "Run authoritative package gate",
+        )
+
+        self.assertEqual(
+            {
+                "repository": (
+                    "repository: OpenJ92/control-plane-kit-architecture-testing"
+                    in architecture_checkout
+                ),
+                "ref": f"ref: {ARCHITECTURE_TESTING_COMMIT}" in architecture_checkout,
+                "path": "path: architecture-testing" in architecture_checkout,
+                "credentials": (
+                    "persist-credentials: false" in architecture_checkout
+                ),
+                "gate_root": (
+                    "CPK_ARCHITECTURE_TESTING_ROOT: "
+                    "${{ github.workspace }}/architecture-testing"
+                    in operations_gate
+                ),
+                "core_absent": (
+                    "control-plane-kit-architecture-testing" not in core_job
+                ),
+            },
+            {
+                "repository": True,
+                "ref": True,
+                "path": True,
+                "credentials": True,
+                "gate_root": True,
+                "core_absent": True,
+            },
+        )
+
+    def test_copied_package_uses_explicit_repository_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence = Path(temporary_directory)
+            workflow = evidence / "tests.yml"
+            core = evidence / "core"
+            operations = evidence / "operations"
+            with mock.patch.dict(
+                os.environ,
+                {
+                    WORKFLOW_ENV: str(workflow),
+                    CORE_SOURCE_ENV: str(core),
+                    OPERATIONS_SOURCE_ENV: str(operations),
+                },
+            ):
+                self.assertEqual(
+                    (
+                        _workflow_path(),
+                        _core_source_root(),
+                        _operations_source_root(),
+                    ),
+                    (workflow, core, operations),
+                )
+
+    def test_behavior_container_alone_receives_architecture_testing(self) -> None:
+        gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
+        result, events = self._run_gate()
+        run_arguments = {
+            phase: arguments
+            for event in events
+            if event.startswith("run:")
+            for _, phase, arguments in (event.split(":", 2),)
+        }
+        phase_exposure = tuple(
+            (
+                phase,
+                ":/architecture-testing:ro" in run_arguments[phase],
+                "PYTHONPATH=/architecture-testing/src" in run_arguments[phase],
+            )
+            for phase in (
+                "integrity",
+                "postgres",
+                "unittest",
+                "compile",
+                "clean-import",
+            )
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            (
+                ARCHITECTURE_TESTING_COMMIT in gate,
+                gate.count("/architecture-testing:ro"),
+                gate.count("PYTHONPATH=/architecture-testing/src"),
+                "git+https" not in gate,
+                "pypi" not in gate.lower(),
+                phase_exposure,
+            ),
+            (
+                True,
+                1,
+                1,
+                True,
+                True,
+                (
+                    ("integrity", False, False),
+                    ("postgres", False, False),
+                    ("unittest", True, True),
+                    ("compile", False, False),
+                    ("clean-import", False, False),
+                ),
+            ),
+        )
+
+    def test_architecture_testing_checkout_rejects_drift_before_test_dispatch(self) -> None:
+        for commit, dirty in (
+            ("f" * 40, False),
+            (ARCHITECTURE_TESTING_COMMIT, True),
+        ):
+            with self.subTest(commit=commit, dirty=dirty):
+                result, events = self._run_gate(
+                    architecture_commit=commit,
+                    architecture_dirty=dirty,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(
+                    [event for event in events if event.startswith("phase:")],
+                    [],
+                )
+
+    def test_repository_evidence_is_exposed_only_to_behavior(self) -> None:
+        result, events = self._run_gate()
+        run_arguments = {
+            phase: arguments
+            for event in events
+            if event.startswith("run:")
+            for _, phase, arguments in (event.split(":", 2),)
+        }
+        volumes = {
+            phase: tuple(
+                event.split(":", 2)[2]
+                for event in events
+                if event.startswith(f"volume:{phase}:")
+            )
+            for phase in run_arguments
+        }
+        markers = (
+            ":/cpk-test-evidence/tests-workflow.yml:ro",
+            ":/cpk-test-evidence/TESTING.md:ro",
+            "CPK_TEST_WORKFLOW_PATH=/cpk-test-evidence/tests-workflow.yml",
+            "CPK_TESTING_DOCUMENT_PATH=/cpk-test-evidence/TESTING.md",
+            "CPK_CORE_SOURCE_ROOT=/core",
+            "CPK_OPERATIONS_SOURCE_ROOT=/source",
+        )
+        broad_mount_canary = (
+            f"{REPOSITORY_ROOT}:/repository:ro",
+            "/tmp/evidence:/cpk-test-evidence:ro",
+            f"{PACKAGE_ROOT}:/source:ro",
+            f"{REPOSITORY_ROOT / 'control-plane-kit-core'}:/core:ro",
+            f"{REPOSITORY_ROOT / 'test_support'}:/test-support:ro",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            (
+                tuple(
+                    (
+                        phase,
+                        tuple(marker in run_arguments[phase] for marker in markers),
+                        _forbidden_evidence_mounts(volumes[phase]),
+                    )
+                    for phase in (
+                        "integrity",
+                        "postgres",
+                        "unittest",
+                        "compile",
+                        "clean-import",
+                    )
+                ),
+                _forbidden_evidence_mounts(broad_mount_canary),
+            ),
+            (
+                (
+                    ("integrity", (False,) * len(markers), ()),
+                    ("postgres", (False,) * len(markers), ()),
+                    ("unittest", (True,) * len(markers), ()),
+                    ("compile", (False,) * len(markers), ()),
+                    ("clean-import", (False,) * len(markers), ()),
+                ),
+                broad_mount_canary[:2],
+            ),
+        )
+
+    def test_clean_import_excludes_architecture_testing(self) -> None:
+        gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'find_spec("control_plane_kit_architecture_testing") is None',
+            gate,
+        )
+
+    def test_production_packages_exclude_architecture_testing(self) -> None:
+        dependency = "control-plane-kit-architecture-testing"
+        for package, package_root in (
+            ("control-plane-kit-core", _core_source_root()),
+            ("control-plane-kit-operations", _operations_source_root()),
+        ):
+            with self.subTest(package=package):
+                metadata = (package_root / "pyproject.toml").read_text(encoding="utf-8")
+                self.assertNotIn(dependency, metadata)
+                for source in (package_root / "src").rglob("*.py"):
+                    self.assertNotIn(
+                        "control_plane_kit_architecture_testing",
+                        source.read_text(encoding="utf-8"),
+                    )
+
+        core_gate = (_core_source_root() / "test.sh").read_text(encoding="utf-8")
+        self.assertNotIn("architecture-testing", core_gate)
+
     def test_postgres_fixture_uses_ephemeral_storage_and_volume_cleanup(self) -> None:
         gate = (PACKAGE_ROOT / "test.sh").read_text(encoding="utf-8")
 
@@ -172,6 +439,8 @@ class OperationsPackageGateTests(unittest.TestCase):
         unittest_status: int = 0,
         log_status: int = 0,
         health_status: str = "healthy",
+        architecture_commit: str = ARCHITECTURE_TESTING_COMMIT,
+        architecture_dirty: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
@@ -215,6 +484,16 @@ class OperationsPackageGateTests(unittest.TestCase):
                         fi
                         printf 'phase:%s\n' "$phase" \
                           >>"$FAKE_DOCKER_EVENTS"
+                        printf 'run:%s:%s\n' "$phase" "$*" \
+                          >>"$FAKE_DOCKER_EVENTS"
+                        previous=""
+                        for argument in "$@"; do
+                          if [ "$previous" = "-v" ]; then
+                            printf 'volume:%s:%s\n' "$phase" "$argument" \
+                              >>"$FAKE_DOCKER_EVENTS"
+                          fi
+                          previous="$argument"
+                        done
                         if [ "$phase" = "postgres" ]; then
                           for argument in "$@"; do
                             printf 'launch:%s\n' "$argument" \
@@ -250,6 +529,37 @@ class OperationsPackageGateTests(unittest.TestCase):
                 encoding="utf-8",
             )
             docker.chmod(0o755)
+            architecture_root = temporary / "architecture-testing"
+            architecture_root.mkdir()
+            git = binary_directory / "git"
+            git.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    set -eu
+
+                    if [ "$1" != "-C" ] || [ "$2" != "$FAKE_ARCHITECTURE_ROOT" ]; then
+                      exit 98
+                    fi
+                    shift 2
+                    case "$1" in
+                      rev-parse)
+                        printf '%s\n' "$FAKE_ARCHITECTURE_COMMIT"
+                        ;;
+                      status)
+                        if [ "$FAKE_ARCHITECTURE_DIRTY" = "1" ]; then
+                          printf ' M candidate\n'
+                        fi
+                        ;;
+                      *)
+                        exit 97
+                        ;;
+                    esac
+                    """
+                ),
+                encoding="utf-8",
+            )
+            git.chmod(0o755)
             sleep = binary_directory / "sleep"
             sleep.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             sleep.chmod(0o755)
@@ -261,6 +571,10 @@ class OperationsPackageGateTests(unittest.TestCase):
                     "FAKE_DOCKER_UNITTEST_STATUS": str(unittest_status),
                     "FAKE_DOCKER_LOG_STATUS": str(log_status),
                     "FAKE_DOCKER_HEALTH_STATUS": health_status,
+                    "FAKE_ARCHITECTURE_ROOT": str(architecture_root),
+                    "FAKE_ARCHITECTURE_COMMIT": architecture_commit,
+                    "FAKE_ARCHITECTURE_DIRTY": "1" if architecture_dirty else "0",
+                    "CPK_ARCHITECTURE_TESTING_ROOT": str(architecture_root),
                 }
             )
             result = subprocess.run(
@@ -271,7 +585,11 @@ class OperationsPackageGateTests(unittest.TestCase):
                 text=True,
                 check=False,
             )
-            events = events_path.read_text(encoding="utf-8").splitlines()
+            events = (
+                events_path.read_text(encoding="utf-8").splitlines()
+                if events_path.is_file()
+                else []
+            )
         return result, events
 
 

@@ -12,14 +12,7 @@ from gateway_rotation_overlap_fixture import (
     CrashAfterCommitUnitOfWork,
     CrashControl,
     GatewayRotationOverlapFixture,
-    PUBLIC_KEY_A,
-    PUBLIC_KEY_B,
-    PUBLIC_KEY_OTHER,
     SimulatedProcessLoss,
-)
-from control_plane_kit_core.delegation_authority import (
-    DelegationVerifierProjection,
-    materialize_delegation_verifiers,
 )
 from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.policies import PolicyScope
@@ -41,19 +34,19 @@ from control_plane_kit_operations.gateway_key_rotation_activation import (
     GatewayKeyRotationActivationProgram,
     ProgressGatewayKeyRotationActivation,
 )
+from control_plane_kit_operations.gateway_key_rotation_overlap_program import (
+    GatewayKeyRotationOverlapPreparationProgram,
+    PrepareGatewayKeyRotationOverlap,
+)
 from control_plane_kit_operations.gateway_key_rotations import (
-    AdvanceGatewayKeyRotation,
-    GatewayKeyRotationDeploymentCheckpoint,
-    GatewayKeyRotationDeploymentPhase,
-    GatewayKeyRotationDeploymentStatus,
     GatewayKeyRotationService,
     GatewayKeyRotationStatus,
 )
-from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
-from control_plane_kit_operations.records import (
-    RealizedGraphProjectionKind,
-    RealizedGraphProjectionRecord,
+from control_plane_kit_operations.lifecycle import (
+    ExecutionLeaseDuration,
+    ExecutionWorkerAuthority,
 )
+from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.secret_providers import (
     RegisterSecretProviderCommand,
     RegisterSecretReferenceCommand,
@@ -254,104 +247,42 @@ class GatewayKeyRotationActivationTests(
         self.assertEqual(self._write_counts(), (2, 2))
 
     def _accept_overlap(self) -> None:
-        rotations = GatewayKeyRotationService(
+        ids = iter(f"activation-overlap-{index}" for index in range(1, 30))
+        timestamps = iter(
+            f"2026-08-02T02:{minute:02d}:00Z" for minute in range(30)
+        )
+        prepared = GatewayKeyRotationOverlapPreparationProgram(
             self.unit_of_work,
-            clock=lambda: self.epoch,
-        )
-        prepared_checkpoint = GatewayKeyRotationDeploymentCheckpoint(
-            phase=GatewayKeyRotationDeploymentPhase.OVERLAP,
-            status=GatewayKeyRotationDeploymentStatus.PREPARED,
-            session_id="overlap-session",
-            plan_id="overlap-plan",
-            approval_request_id=self.approval_request_id,
-            approval_decision_id=self.approval_decision_id,
-            execution_request_id="overlap-request",
-            run_id="overlap-run",
-            base_authored_graph_id="graph-a",
-            base_realized_projection_id="projection-a",
-            desired_authored_graph_id="graph-a",
-            desired_realized_projection_id="projection-ab",
-            desired_revision=2,
-            prepared_at="2026-08-02T03:00:00Z",
-        )
-        generated = rotations.get(self.rotation_id)
-        deploying = rotations.advance(
-            AdvanceGatewayKeyRotation(
+            clock=lambda: next(timestamps),
+            trusted_epoch_clock=lambda: 2_000,
+            id_factory=lambda: next(ids),
+        ).prepare(
+            PrepareGatewayKeyRotationOverlap(
                 rotation_id=self.rotation_id,
-                transition_id="overlap-prepared",
-                expected_status=GatewayKeyRotationStatus.KEY_GENERATED,
-                expected_version=generated.version,
-                target_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                advanced_by="operator-a",
-                advanced_at="2026-08-02T03:00:00Z",
-                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
-                deployment=prepared_checkpoint,
+                expected_rotation_version=self.rotation_version,
+                expected_authored_graph_id="graph-a",
+                expected_current_realized_projection_id="projection-a",
+                expected_desired_realized_projection_id="projection-a",
+                expected_desired_graph_revision=1,
+                actor_id="operator-a",
+                actor_scopes=(
+                    PolicyScope.DELEGATION_KEY_ROTATE,
+                    PolicyScope.PLAN_EXECUTE,
+                    PolicyScope.EXECUTION_OPERATE,
+                ),
+                worker_authority=ExecutionWorkerAuthority(
+                    "worker-a",
+                    (PolicyScope.EXECUTION_OPERATE,),
+                ),
+                lease_duration=ExecutionLeaseDuration(1800),
             )
         )
-        accepted_checkpoint = replace(
-            prepared_checkpoint,
-            status=GatewayKeyRotationDeploymentStatus.ACCEPTED,
-            accepted_current_graph_id="graph-a",
-            accepted_current_projection_id="projection-ab",
+        accepted = self.accept_prepared_overlap(
+            prepared,
+            prefix="activation-overlap-execution",
             accepted_at="2026-08-02T03:30:00Z",
         )
-        accepted = rotations.advance(
-            AdvanceGatewayKeyRotation(
-                rotation_id=self.rotation_id,
-                transition_id="overlap-accepted",
-                expected_status=GatewayKeyRotationStatus.OVERLAP_DEPLOYING,
-                expected_version=deploying.version,
-                target_status=GatewayKeyRotationStatus.OVERLAP_READY,
-                advanced_by="operator-a",
-                advanced_at="2026-08-02T03:30:00Z",
-                actor_scopes=(PolicyScope.DELEGATION_KEY_ROTATE,),
-                deployment=accepted_checkpoint,
-            )
-        )
-        realized_ab = materialize_delegation_verifiers(
-            self.authored_graph(),
-            (
-                DelegationVerifierProjection(
-                    "gateway-a",
-                    DelegationKeyPurpose.GATEWAY_PROBE,
-                    "cpk-server",
-                    "gateway:workspace-a:gateway-a",
-                    "projection-keys-ab",
-                    (
-                        self.public_key("key-a", PUBLIC_KEY_A),
-                        self.public_key("key-b", PUBLIC_KEY_B),
-                    ),
-                ),
-                self.projection(
-                    "gateway-other",
-                    "projection-other",
-                    self.public_key("key-other", PUBLIC_KEY_OTHER),
-                ),
-            ),
-        )
-        with self.unit_of_work() as unit_of_work:
-            unit_of_work.stores.realized_graphs.save(
-                RealizedGraphProjectionRecord.from_graph(
-                    projection_id="projection-ab",
-                    workspace_id="workspace-a",
-                    source_authored_graph_id="graph-a",
-                    projection_kind=(
-                        RealizedGraphProjectionKind.DELEGATION_VERIFIER
-                    ),
-                    projection_key="rotation-overlap-ab",
-                    graph=realized_ab,
-                    created_by="operator-a",
-                    created_at="2026-08-02T03:30:00Z",
-                )
-            )
-            unit_of_work.stores.workspaces.set_current_graph(
-                "workspace-a", "graph-a", "projection-ab"
-            )
-            unit_of_work.stores.workspaces.set_desired_graph(
-                "workspace-a", "graph-a", "projection-ab"
-            )
-            unit_of_work.commit()
-        self.overlap_version = accepted.version
+        self.overlap_version = accepted.rotation.version
 
     def _admit_key_references(self) -> None:
         service = SecretProviderRegistrationService(self.unit_of_work)

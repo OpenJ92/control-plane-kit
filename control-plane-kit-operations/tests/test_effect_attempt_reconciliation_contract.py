@@ -1,0 +1,674 @@
+from __future__ import annotations
+
+import dataclasses
+import inspect
+import json
+import os
+from pathlib import Path
+import typing
+import unittest
+
+import control_plane_kit_operations as operations_root
+from control_plane_kit_core.operations import (
+    ActivityEventKind,
+    EffectAttemptIdentity,
+    EffectAttemptTransition,
+    RunId,
+)
+from control_plane_kit_core.runtime_effect_observation import (
+    RuntimeEffectObservationRequest,
+    RuntimeEffectObservationResult,
+)
+from control_plane_kit_operations.effect_attempt_fold import EffectAttemptFoldResult
+from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.runtime_authorities import RegisteredRuntimeAuthority
+from control_plane_kit_operations.records import ActivityEventRecord
+from control_plane_kit_operations.runtime_effects import (
+    runtime_effect_request_for_context,
+)
+from control_plane_kit_operations.workflows import InvalidOperationCommand
+from tests.effect_outcome_evidence_fixture import (
+    EffectOutcomeEvidenceFixture,
+    ObservedEffectOutcome,
+    REQUEST_FINGERPRINT,
+    effect_outcome_failure,
+    effect_outcome_transition,
+)
+from tests.runtime_effect_reconciliation_fixture import (
+    EffectAttemptReconciliationConflict,
+    EffectAttemptReconciliationDenied,
+    EffectAttemptReconciliationError,
+    EffectAttemptReconciliationNotFound,
+    EffectAttemptReconciliationService,
+    INTERPRETER_MODULE,
+    LANGUAGE_MODULE,
+    ReconcileEffectAttempt,
+    RuntimeEffectObserver,
+    RuntimeEffectReconciliationFixture,
+    _load_optional,
+)
+from tests.test_runtime_effect_translation import _context
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+INVENTORY_PATH = Path(
+    os.environ.get(
+        "CPK_PACKAGE_MODULE_INVENTORY",
+        REPOSITORY_ROOT
+        / "docs"
+        / "architecture"
+        / "package-module-inventory.json",
+    )
+)
+ROOT_EXPORTS = {
+    "EffectAttemptReconciliationConflict",
+    "EffectAttemptReconciliationDenied",
+    "EffectAttemptReconciliationError",
+    "EffectAttemptReconciliationNotFound",
+    "EffectAttemptReconciliationService",
+    "ReconcileEffectAttempt",
+    "RuntimeEffectObserver",
+}
+
+
+class EffectAttemptReconciliationContractTests(
+    RuntimeEffectReconciliationFixture,
+    EffectOutcomeEvidenceFixture,
+    unittest.TestCase,
+):
+    def test_missing_module_guard_preserves_nested_import_failures(self) -> None:
+        nested = ModuleNotFoundError("nested dependency missing")
+        nested.name = "nested_dependency"
+
+        def missing_nested(_name):
+            raise nested
+
+        with self.assertRaises(ModuleNotFoundError) as caught:
+            _load_optional(LANGUAGE_MODULE, missing_nested)
+        self.assertIs(caught.exception, nested)
+
+        def partial_import(_name):
+            raise ImportError("partial public module")
+
+        with self.assertRaises(ImportError):
+            _load_optional(LANGUAGE_MODULE, partial_import)
+
+    def test_command_is_exact_frozen_nominal_and_root_identical(self) -> None:
+        command = self.command()
+        self.assertIs(
+            getattr(operations_root, "ReconcileEffectAttempt", None),
+            ReconcileEffectAttempt,
+        )
+        self.assertEqual(ReconcileEffectAttempt.__module__, LANGUAGE_MODULE)
+        self.assertTrue(dataclasses.is_dataclass(ReconcileEffectAttempt))
+        self.assertTrue(ReconcileEffectAttempt.__dataclass_params__.frozen)
+        self.assertEqual(
+            tuple(field.name for field in dataclasses.fields(ReconcileEffectAttempt)),
+            ("request_id", "identity", "authority", "fence"),
+        )
+        self.assertEqual(
+            command,
+            ReconcileEffectAttempt(
+                command.request_id,
+                command.identity,
+                command.authority,
+                command.fence,
+            ),
+        )
+        self.assertNotIn("from_descriptor", ReconcileEffectAttempt.__dict__)
+
+        class HostileCommand(ReconcileEffectAttempt):
+            pass
+
+        with self.assertRaises(InvalidOperationCommand) as caught:
+            HostileCommand(
+                command.request_id,
+                command.identity,
+                command.authority,
+                command.fence,
+            )
+        self.assertEqual(
+            str(caught.exception),
+            "effect attempt reconciliation command is invalid",
+        )
+        self.assert_safe_error(caught.exception)
+
+    def test_command_rejects_hostile_forged_and_unbounded_coordinates(self) -> None:
+        self.require_language()
+
+        class HostileText(str):
+            dispatches: list[str] = []
+
+            def __getattribute__(self, name):
+                if name == "__class__":
+                    type(self).dispatches.append("__class__")
+                    raise AssertionError("hostile class access dispatched")
+                return str.__getattribute__(self, name)
+
+            def __len__(self):
+                self.dispatches.append("len")
+                raise AssertionError("hostile text length dispatched")
+
+            def __iter__(self):
+                self.dispatches.append("iter")
+                raise AssertionError("hostile text iteration dispatched")
+
+            def encode(self, *_args, **_kwargs):
+                self.dispatches.append("encode")
+                raise AssertionError("hostile text encoding dispatched")
+
+        class HostileInt(int):
+            dispatches: list[str] = []
+
+            def __index__(self):
+                self.dispatches.append("index")
+                raise AssertionError("hostile integer indexing dispatched")
+
+            def __lt__(self, _other):
+                self.dispatches.append("lt")
+                raise AssertionError("hostile integer comparison dispatched")
+
+            def __le__(self, _other):
+                self.dispatches.append("le")
+                raise AssertionError("hostile integer comparison dispatched")
+
+        class HostileTuple(tuple):
+            dispatches: list[str] = []
+
+            def __iter__(self):
+                self.dispatches.append("iter")
+                raise AssertionError("hostile tuple iteration dispatched")
+
+            def __len__(self):
+                self.dispatches.append("len")
+                raise AssertionError("hostile tuple length dispatched")
+
+            def __getitem__(self, _index):
+                self.dispatches.append("getitem")
+                raise AssertionError("hostile tuple indexing dispatched")
+
+        class HostileIdentity(EffectAttemptIdentity):
+            pass
+
+        class HostileAuthority(ExecutionWorkerAuthority):
+            pass
+
+        class HostileFence(ExecutionLeaseFence):
+            pass
+
+        identity = self.identity()
+        hostile_identity = HostileIdentity(
+            identity.run_id,
+            identity.activity_id,
+            identity.attempt,
+        )
+
+        def forge_exact(value_type, **values):
+            value = object.__new__(value_type)
+            for name, field_value in values.items():
+                object.__setattr__(value, name, field_value)
+            return value
+
+        def forged_identity(**changes):
+            values = {
+                "run_id": identity.run_id,
+                "activity_id": identity.activity_id,
+                "attempt": identity.attempt,
+            }
+            values.update(changes)
+            return forge_exact(EffectAttemptIdentity, **values)
+
+        hostile_run_id = forge_exact(
+            RunId,
+            value=HostileText("run-canary"),
+        )
+        malformed_run_id = forge_exact(RunId, value="run\ncanary")
+        hostile_authority_worker = forge_exact(
+            ExecutionWorkerAuthority,
+            worker_id=HostileText("worker-canary"),
+            scopes=self.authority().scopes,
+        )
+        hostile_authority_scopes = forge_exact(
+            ExecutionWorkerAuthority,
+            worker_id="worker-a",
+            scopes=HostileTuple(self.authority().scopes),
+        )
+        malformed_authority_worker = forge_exact(
+            ExecutionWorkerAuthority,
+            worker_id="worker\ncanary",
+            scopes=self.authority().scopes,
+        )
+        malformed_authority_scopes = forge_exact(
+            ExecutionWorkerAuthority,
+            worker_id="worker-a",
+            scopes=("execution:operate",),
+        )
+        hostile_fence_worker = forge_exact(
+            ExecutionLeaseFence,
+            worker_id=HostileText("worker-canary"),
+            generation=7,
+        )
+        hostile_fence_generation = forge_exact(
+            ExecutionLeaseFence,
+            worker_id="worker-a",
+            generation=HostileInt(7),
+        )
+        malformed_fence_worker = forge_exact(
+            ExecutionLeaseFence,
+            worker_id="worker\ncanary",
+            generation=7,
+        )
+        cases = (
+            ({"request_id": ""}, ""),
+            ({"request_id": None}, ""),
+            ({"request_id": True}, ""),
+            ({"request_id": "x" * 513}, "x" * 513),
+            ({"request_id": "request\x00canary"}, "canary"),
+            ({"request_id": "request\ncanary"}, "canary"),
+            ({"request_id": "request-\ud800-canary"}, "canary"),
+            ({"request_id": HostileText("request-canary")}, "request-canary"),
+            ({"identity": hostile_identity}, ""),
+            ({"authority": HostileAuthority("worker-a", ())}, ""),
+            ({"fence": HostileFence("worker-a", 7)}, ""),
+            ({"identity": forged_identity(run_id=hostile_run_id)}, "canary"),
+            ({"identity": forged_identity(run_id=malformed_run_id)}, "canary"),
+            (
+                {
+                    "identity": forged_identity(
+                        activity_id=HostileText("activity-canary")
+                    )
+                },
+                "canary",
+            ),
+            ({"identity": forged_identity(activity_id="activity\ncanary")}, "canary"),
+            ({"identity": forged_identity(attempt=HostileInt(1))}, ""),
+            ({"identity": forged_identity(attempt=0)}, ""),
+            ({"authority": hostile_authority_worker}, "canary"),
+            ({"authority": malformed_authority_worker}, "canary"),
+            ({"authority": hostile_authority_scopes}, ""),
+            ({"authority": malformed_authority_scopes}, ""),
+            ({"fence": hostile_fence_worker}, "canary"),
+            ({"fence": malformed_fence_worker}, "canary"),
+            ({"fence": hostile_fence_generation}, ""),
+            (
+                {
+                    "fence": forge_exact(
+                        ExecutionLeaseFence,
+                        worker_id="worker-a",
+                        generation=0,
+                    )
+                },
+                "",
+            ),
+            ({"authority": self.authority("worker-b")}, "worker-b"),
+        )
+        for changes, canary in cases:
+            with self.subTest(changes=tuple(changes)):
+                HostileText.dispatches.clear()
+                HostileInt.dispatches.clear()
+                HostileTuple.dispatches.clear()
+                with self.assertRaises(InvalidOperationCommand) as caught:
+                    self.command(**changes)
+                self.assertEqual(
+                    str(caught.exception),
+                    "effect attempt reconciliation command is invalid",
+                )
+                self.assert_safe_error(caught.exception, canary)
+                self.assertEqual(HostileText.dispatches, [])
+                self.assertEqual(HostileInt.dispatches, [])
+                self.assertEqual(HostileTuple.dispatches, [])
+
+    def test_public_error_sum_is_closed_root_identical_and_candidate_free(self) -> None:
+        self.require_language()
+        self.assertEqual(EffectAttemptReconciliationError.__bases__, (RuntimeError,))
+        for name, error_type in (
+            (
+                "EffectAttemptReconciliationNotFound",
+                EffectAttemptReconciliationNotFound,
+            ),
+            (
+                "EffectAttemptReconciliationConflict",
+                EffectAttemptReconciliationConflict,
+            ),
+            (
+                "EffectAttemptReconciliationDenied",
+                EffectAttemptReconciliationDenied,
+            ),
+        ):
+            with self.subTest(error=name):
+                self.assertEqual(
+                    error_type.__bases__,
+                    (EffectAttemptReconciliationError,),
+                )
+                self.assertIs(getattr(operations_root, name, None), error_type)
+                error = error_type("fixed categorical error")
+                self.assert_safe_error(
+                    error,
+                    "secret://private-canary",
+                    "https://address-canary",
+                    "provider-payload-canary",
+                )
+        self.assertIs(
+            getattr(operations_root, "EffectAttemptReconciliationError", None),
+            EffectAttemptReconciliationError,
+        )
+
+    def test_observer_protocol_and_existing_fold_result_are_exact(self) -> None:
+        self.require_language()
+        self.require_service()
+        self.assertIs(
+            getattr(operations_root, "RuntimeEffectObserver", None),
+            RuntimeEffectObserver,
+        )
+        self.assertEqual(RuntimeEffectObserver.__module__, LANGUAGE_MODULE)
+        self.assertEqual(RuntimeEffectObserver.__bases__, (typing.Protocol,))
+        self.assertIs(RuntimeEffectObserver._is_protocol, True)
+        self.assertEqual(
+            tuple(inspect.signature(RuntimeEffectObserver.observe).parameters),
+            ("self", "request", "authority"),
+        )
+        hints = typing.get_type_hints(RuntimeEffectObserver.observe)
+        self.assertIs(hints["request"], RuntimeEffectObservationRequest)
+        self.assertEqual(
+            hints["authority"],
+            RegisteredRuntimeAuthority | None,
+        )
+        self.assertEqual(hints["return"], RuntimeEffectObservationResult)
+
+        self.assertIs(
+            getattr(operations_root, "EffectAttemptReconciliationService", None),
+            EffectAttemptReconciliationService,
+        )
+        self.assertEqual(
+            EffectAttemptReconciliationService.__module__,
+            INTERPRETER_MODULE,
+        )
+        self.assertEqual(
+            tuple(inspect.signature(EffectAttemptReconciliationService).parameters),
+            ("unit_of_work_factory", "observer", "fold_service"),
+        )
+        self.assertEqual(
+            tuple(
+                inspect.signature(
+                    EffectAttemptReconciliationService.execute
+                ).parameters
+            ),
+            ("self", "command"),
+        )
+        service_hints = typing.get_type_hints(
+            EffectAttemptReconciliationService.execute
+        )
+        self.assertIs(service_hints["command"], ReconcileEffectAttempt)
+        self.assertEqual(service_hints["return"], EffectAttemptFoldResult)
+        self.assertIs(
+            getattr(operations_root, "EffectAttemptFoldResult"),
+            EffectAttemptFoldResult,
+        )
+
+    def test_all_observation_variants_and_phases_are_lawful_projection_worlds(
+        self,
+    ) -> None:
+        observed_stories = tuple(
+            story
+            for story in self.stories()
+            if story.profile == "provider-observation"
+        )
+        self.assertEqual(len(observed_stories), 12)
+        self.assertEqual(
+            {story.compensation for story in observed_stories},
+            {False, True},
+        )
+        self.assertEqual(
+            {type(story.value).__name__ for story in observed_stories},
+            {
+                "RuntimeEffectObservedAbsent",
+                "RuntimeEffectObservedConflict",
+                "RuntimeEffectObservedFailed",
+                "RuntimeEffectObservedIndeterminate",
+                "RuntimeEffectObservedSucceeded",
+                "RuntimeEffectObserverUnsupported",
+            },
+        )
+
+        for story in observed_stories:
+            with self.subTest(story=story.name, compensation=story.compensation):
+                outcome = self.outcome_for(story)
+                self.assertIs(type(outcome), ObservedEffectOutcome)
+                self.assertEqual(
+                    story.attempt.original_start_event.event_id,
+                    story.value.effect_id,
+                )
+                self.assertEqual(
+                    story.attempt.state.request_fingerprint,
+                    story.value.request_fingerprint,
+                )
+                self.assertIs(
+                    story.attempt.original_start_event.kind,
+                    (
+                        ActivityEventKind.STEP_COMPENSATION_STARTED
+                        if story.compensation
+                        else ActivityEventKind.STEP_STARTED
+                    ),
+                )
+                self.assertEqual(
+                    effect_outcome_transition(outcome),
+                    EffectAttemptTransition(
+                        story.transition,
+                        story.attempt.state.identity,
+                        outcome_fingerprint=story.fingerprint,
+                    ),
+                )
+                self.assertEqual(
+                    effect_outcome_failure(outcome),
+                    self.failure_for(story.failure_row, story.fingerprint),
+                )
+
+    def test_foreign_effect_and_fingerprint_are_individually_lawful_inputs(self) -> None:
+        for compensation in (False, True):
+            story = next(
+                value
+                for value in self.stories()
+                if value.profile == "provider-observation"
+                and value.name == "observed-succeeded"
+                and value.compensation is compensation
+            )
+            foreign_effect = dataclasses.replace(
+                story.value,
+                effect_id="event-foreign",
+            )
+            foreign_fingerprint = dataclasses.replace(
+                story.value,
+                request_fingerprint="b" * 64,
+            )
+            for label, value in (
+                ("effect", foreign_effect),
+                ("fingerprint", foreign_fingerprint),
+            ):
+                with self.subTest(compensation=compensation, mismatch=label):
+                    outcome = ObservedEffectOutcome(
+                        story.attempt.state.identity,
+                        value,
+                    )
+                    effect_outcome_transition(outcome)
+                    effect_outcome_failure(outcome)
+                    self.assertTrue(
+                        value.effect_id
+                        != story.attempt.original_start_event.event_id
+                        or value.request_fingerprint != REQUEST_FINGERPRINT
+                    )
+
+    def test_context_accepts_exact_forward_and_compensation_start_events(self) -> None:
+        base = _context()
+        rejected = []
+        for kind in (
+            ActivityEventKind.STEP_STARTED,
+            ActivityEventKind.STEP_COMPENSATION_STARTED,
+        ):
+            event = self._event_with_kind(base.intent_event, kind)
+            try:
+                context = dataclasses.replace(base, intent_event=event)
+            except InvalidOperationCommand as error:
+                rejected.append((kind, error))
+                continue
+            self.assertIs(context.intent_event.kind, kind)
+            self.assertEqual(
+                runtime_effect_request_for_context(context).effect_id,
+                context.intent_event.event_id,
+            )
+        self.assertEqual(rejected, [])
+
+    def test_context_rejects_every_other_event_kind_with_one_fixed_error(self) -> None:
+        base = _context()
+        admitted = {
+            ActivityEventKind.STEP_STARTED,
+            ActivityEventKind.STEP_COMPENSATION_STARTED,
+        }
+        missing = []
+        errors = []
+        for kind in ActivityEventKind:
+            if kind in admitted:
+                continue
+            event = self._event_with_kind(base.intent_event, kind)
+            try:
+                dataclasses.replace(base, intent_event=event)
+            except InvalidOperationCommand as error:
+                errors.append(error)
+            else:
+                missing.append(kind)
+        self.assertEqual(missing, [])
+        self.assertEqual(
+            {str(error) for error in errors},
+            {
+                "realization intent must be step_started or "
+                "step_compensation_started"
+            },
+        )
+        for error in errors:
+            self.assertIsNone(error.__cause__)
+            self.assertIsNone(error.__context__)
+
+        class HostileKind:
+            dispatches: list[str] = []
+
+            def __init__(self, claims_equality: bool) -> None:
+                self.claims_equality = claims_equality
+
+            def __eq__(self, _other):
+                type(self).dispatches.append("eq")
+                if self.claims_equality:
+                    return True
+                raise AssertionError("hostile event-kind equality dispatched")
+
+        for label, kind in (
+            ("raises", HostileKind(False)),
+            ("claims", HostileKind(True)),
+        ):
+            with self.subTest(hostile_kind=label):
+                HostileKind.dispatches.clear()
+                event = self._event_with_kind(base.intent_event, kind)
+                with self.assertRaises(InvalidOperationCommand) as caught:
+                    dataclasses.replace(base, intent_event=event)
+                self.assertEqual(
+                    str(caught.exception),
+                    "realization intent must be step_started or "
+                    "step_compensation_started",
+                )
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+                self.assertEqual(HostileKind.dispatches, [])
+
+    @staticmethod
+    def _event_with_kind(
+        event: ActivityEventRecord,
+        kind: ActivityEventKind,
+    ) -> ActivityEventRecord:
+        candidate = object.__new__(ActivityEventRecord)
+        for field in dataclasses.fields(ActivityEventRecord):
+            object.__setattr__(
+                candidate,
+                field.name,
+                kind if field.name == "kind" else getattr(event, field.name),
+            )
+        return candidate
+
+    def test_root_and_inventory_publish_only_the_reconciliation_surface(self) -> None:
+        missing = sorted(ROOT_EXPORTS.difference(operations_root.__all__))
+        self.assertEqual(missing, [], "reconciliation root exports are missing")
+
+        inventory = json.loads(INVENTORY_PATH.read_text(encoding="utf-8"))
+        entries = {
+            row["module"]: row
+            for row in inventory["modules"]
+            if row["module"] in {LANGUAGE_MODULE, INTERPRETER_MODULE}
+        }
+        self.assertEqual(set(entries), {LANGUAGE_MODULE, INTERPRETER_MODULE})
+        language = entries[LANGUAGE_MODULE]
+        interpreter = entries[INTERPRETER_MODULE]
+        self.assertEqual(language["owner"], "operation")
+        self.assertEqual(interpreter["owner"], "operation")
+        self.assertEqual(
+            set(language["canonical_public_exports"]),
+            ROOT_EXPORTS - {"EffectAttemptReconciliationService"},
+        )
+        self.assertEqual(
+            interpreter["canonical_public_exports"],
+            ["EffectAttemptReconciliationService"],
+        )
+        self.assertEqual(
+            set(language["internal_dependencies"]),
+            {
+                "control_plane_kit_core.operations",
+                "control_plane_kit_core.policies",
+                "control_plane_kit_core.runtime_effect_observation",
+                "control_plane_kit_operations.execution_leases",
+                "control_plane_kit_operations.lifecycle",
+                "control_plane_kit_operations.runtime_authorities",
+                "control_plane_kit_operations.workflows",
+            },
+        )
+        self.assertEqual(
+            set(interpreter["internal_dependencies"]),
+            {
+                "control_plane_kit_core.operations",
+                "control_plane_kit_core.operations.lifecycle",
+                "control_plane_kit_core.policies",
+                "control_plane_kit_core.runtime_effect_observation",
+                "control_plane_kit_core.secrets",
+                "control_plane_kit_operations.effect_attempt_fold",
+                "control_plane_kit_operations.effect_attempt_intent_evidence",
+                LANGUAGE_MODULE,
+                "control_plane_kit_operations.effect_attempts",
+                "control_plane_kit_operations.effect_outcome_evidence",
+                "control_plane_kit_operations.records",
+                "control_plane_kit_operations.runtime_authorities",
+                "control_plane_kit_operations.runtime_effects",
+                "control_plane_kit_operations.secret_providers",
+                "control_plane_kit_operations.workflows",
+            },
+        )
+        self.assertEqual(
+            set(language["protecting_tests"]),
+            {"tests/test_effect_attempt_reconciliation_contract.py"},
+        )
+        self.assertEqual(
+            set(interpreter["protecting_tests"]),
+            {
+                "tests/test_effect_attempt_reconciliation_interpreter_contract.py",
+                "tests/test_postgres_effect_attempt_reconciliation_authority_grants.py",
+                "tests/test_postgres_effect_attempt_reconciliation_concurrency.py",
+                "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
+                "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
+                "tests/test_postgres_effect_attempt_reconciliation_rollback.py",
+            },
+        )
+        self.assertEqual(
+            interpreter["motivation"],
+            "Owns preflight, durable replay, secret-use authorization, observer "
+            "orchestration, and guarded outcome folding for runtime-effect "
+            "reconciliation.",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1305,6 +1305,28 @@
         "AdvancementGrant",
         "AdvancedDeployment",
         "ExecutionContinuation",
+        "DeploymentProgramProjection",
+        "DeploymentCompleted",
+        "DeploymentSessionStopped",
+        "DeploymentPlanStopped",
+        "DeploymentNoChanges",
+        "DeploymentReviewBlocked",
+        "DeploymentApprovalRequestReady",
+        "DeploymentApprovalRequired",
+        "DeploymentApprovalRejected",
+        "DeploymentReadinessRequired",
+        "DeploymentAdmissionReady",
+        "DeploymentClaimReady",
+        "DeploymentExecutionStopped",
+        "DeploymentExecutionReady",
+        "DeploymentExecutionRunning",
+        "DeploymentExecutionPaused",
+        "DeploymentEffectInFlight",
+        "DeploymentRecoveryRequired",
+        "DeploymentCompensationInProgress",
+        "DeploymentExecutionFailed",
+        "DeploymentExecutionSettled",
+        "DeploymentAdvancementReady",
         "classify_transition"
       ],
       "destination": "control_plane_kit.operations.application.deploy.values",
@@ -4187,6 +4209,136 @@
         "package-surface"
       ],
       "source": "control_plane_kit/core/planning/__init__.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_core._activity_identity",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit_core.operations.recovery",
+        "control_plane_kit_core.planning.activity_plan",
+        "control_plane_kit_core.secrets"
+      ],
+      "migration_prerequisites": [
+        "#1632"
+      ],
+      "module": "control_plane_kit_core._activity_identity",
+      "motivation": "Own one private pure activity-identity grammar shared by Core values without creating an activity-plan and secrets import cycle.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_activity_identity.py"
+      ],
+      "role": "pure-contract",
+      "semantic_roles": [
+        "validation"
+      ],
+      "source": "control_plane_kit_core/_activity_identity.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_core._run_identity",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit_core.operations.run_identity",
+        "control_plane_kit_core.planning.saga",
+        "control_plane_kit_core.secrets"
+      ],
+      "migration_prerequisites": [
+        "#1636"
+      ],
+      "module": "control_plane_kit_core._run_identity",
+      "motivation": "Own one private pure run-identity grammar shared by Core values and string boundaries without introducing planning or secrets import cycles.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_run_identity.py"
+      ],
+      "role": "pure-contract",
+      "semantic_roles": [
+        "validation"
+      ],
+      "source": "control_plane_kit_core/_run_identity.py"
+    },
+    {
+      "canonical_public_exports": [
+        "RunId"
+      ],
+      "destination": "control_plane_kit_core.operations.run_identity",
+      "internal_dependencies": [
+        "control_plane_kit_core._run_identity"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_core.operations.recovery",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_operations.runtime_effects"
+      ],
+      "migration_prerequisites": [
+        "#1636"
+      ],
+      "module": "control_plane_kit_core.operations.run_identity",
+      "motivation": "Expose the canonical frozen nominal identity used by pure run, recovery, and runtime-effect languages while representations remain strings at persistence and wire boundaries.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_run_identity.py"
+      ],
+      "role": "pure-contract",
+      "semantic_roles": [
+        "values",
+        "validation"
+      ],
+      "source": "control_plane_kit_core/operations/run_identity.py"
+    },
+    {
+      "canonical_public_exports": [
+        "RuntimeEffectIntent",
+        "RuntimeEffectIntentSource",
+        "RuntimeEffectObservationEvidence",
+        "RuntimeEffectObservationFailure",
+        "RuntimeEffectObservationRequest",
+        "RuntimeEffectObservationResult",
+        "RuntimeEffectObservedAbsent",
+        "RuntimeEffectObservedConflict",
+        "RuntimeEffectObservedFailed",
+        "RuntimeEffectObservedIndeterminate",
+        "RuntimeEffectObservedSucceeded",
+        "RuntimeEffectObserverUnsupported",
+        "runtime_effect_intent_fingerprint",
+        "runtime_effect_intent_for_request",
+        "runtime_effect_observation_fingerprint",
+        "runtime_effect_request_for_intent",
+        "runtime_effect_result_fingerprint"
+      ],
+      "destination": "control_plane_kit_core.runtime_effect_observation",
+      "internal_dependencies": [
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.secrets"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": [
+        "#1693"
+      ],
+      "module": "control_plane_kit_core.runtime_effect_observation",
+      "motivation": "Own the pure pre-start runtime-effect intent and closed read-only observation language without provider or durable-operation effects.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_runtime_effect_intent.py",
+        "tests/test_runtime_effect_observation.py",
+        "tests/test_runtime_effect_observation_boundary.py"
+      ],
+      "role": "pure-contract",
+      "semantic_roles": [
+        "transformations",
+        "values",
+        "validation"
+      ],
+      "source": "control_plane_kit_core/runtime_effect_observation.py"
     },
     {
       "canonical_public_exports": [
@@ -8492,6 +8644,7 @@
         "CompleteActivityRun",
         "CompleteActivityRunCompensation",
         "DecideActivityRunRecovery",
+        "ExecutionLeaseDuration",
         "ExecutionWorkerAuthority",
         "FailActivityRun",
         "FailActivityRunCompensation",
@@ -9008,6 +9161,7 @@
     },
     {
       "canonical_public_exports": [
+        "ExecutionLeaseDuration",
         "ExecutionWorkerAuthority",
         "ClaimAndOpenActivityRun",
         "StartActivityRun",
@@ -9109,6 +9263,956 @@
         "values"
       ],
       "source": "control_plane_kit/workflows/verification.py"
+    },
+    {
+      "canonical_public_exports": [
+        "FailedRunCompensationEvidence",
+        "FailedRunCompensationLineage",
+        "FailedRunCompensationProgram",
+        "FailedRunCompensationReason",
+        "FailedRunCompensationStep",
+        "InvalidFailedRunCompensationContract",
+        "SuccessfulEffectEvidence"
+      ],
+      "destination": "control_plane_kit_core.operations.compensation",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations.recovery",
+        "control_plane_kit_core.operations.run_identity",
+        "control_plane_kit_core.planning"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_core",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.failed_run_compensation"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.operations.compensation",
+      "motivation": "Owns the closed provider-free evidence and reverse-ordered program algebra for one admitted failed-run compensation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_failed_run_compensation_contract.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py"
+    },
+    {
+      "canonical_public_exports": [
+        "BeginFailedRunCompensation",
+        "FailedRunCompensationCommandService",
+        "FailedRunCompensationConflict",
+        "FailedRunCompensationDenied",
+        "FailedRunCompensationIdempotencyConflict",
+        "FailedRunCompensationNotFound",
+        "FailedRunCompensationRecord",
+        "FailedRunCompensationResult"
+      ],
+      "destination": "control_plane_kit_operations.failed_run_compensation",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.execution_lease_recovery",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.postgres",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.failed_run_compensation",
+      "motivation": "Owns explicit compensation authority, exact durable admission, atomic lifecycle folding, and write-free replay without provider execution.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_failed_run_compensation_command_contract.py",
+        "tests/test_postgres_failed_run_compensation.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/failed_run_compensation.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ExistingCompensationAttemptBinding",
+        "FailedRunCompensationAttemptBinding",
+        "FailedRunCompensationAttemptConflict",
+        "FailedRunCompensationAttemptDenied",
+        "FailedRunCompensationAttemptError",
+        "FailedRunCompensationAttemptNotFound",
+        "FailedRunCompensationAttemptStartResult",
+        "FailedRunCompensationAttemptStartService",
+        "NewlyBoundCompensationAttempt",
+        "StartFailedRunCompensationAttempt"
+      ],
+      "destination": "control_plane_kit_operations.failed_run_compensation_attempt",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.postgres",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.failed_run_compensation_attempt",
+      "motivation": "Owns atomic admission of the first incomplete compensation step as one fresh inverse effect attempt without provider execution or settlement.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_failed_run_compensation_attempt.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/failed_run_compensation_attempt.py"
+    },
+    {
+      "canonical_public_exports": [
+        "FailedRunCompensationStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.failed_run_compensation_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.failed_run_compensation_store",
+      "motivation": "Owns exact PostgreSQL persistence and restart reconstruction for failed-run compensation programs and source effect witnesses.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_failed_run_compensation.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_store.py"
+    },
+    {
+      "canonical_public_exports": [
+        "FailedRunCompensationAttemptStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store",
+      "motivation": "Owns immutable bidirectionally unique PostgreSQL bindings between admitted compensation steps and fresh inverse effect attempts.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_failed_run_compensation_attempt.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_attempt_store.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ActivityExecutionAdapter",
+        "ActivityExecutionDispatcher",
+        "ActivityExecutionOutcome",
+        "ActivityRealizationContext",
+        "CoordinatorStatus",
+        "ExecuteActivityRun",
+        "ExecutionCoordinator",
+        "ExecutionCoordinatorConflict",
+        "ExecutionCoordinatorDenied",
+        "ExecutionCoordinatorError",
+        "ExecutionCoordinatorNotFound",
+        "ExecutionCoordinatorResult",
+        "RuntimeEffectInterpreter",
+        "RuntimeInterpreterDispatcher"
+      ],
+      "destination": "control_plane_kit_operations.coordinator",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.execution",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.planning.saga",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.activity_journal",
+        "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_fold_interpreter",
+        "control_plane_kit_operations.effect_attempt_reconciliation",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
+        "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.ingress_authorities",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.products",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_effects",
+        "control_plane_kit_operations.secret_providers",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.runtime_effects"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.coordinator",
+      "motivation": "Composes durable activity scheduling with exact effect-attempt start, direct fold, and reconciliation services without owning provider or recovery truth.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_coordinator_contract.py",
+        "tests/test_execution_coordinator.py",
+        "tests/test_postgres_effect_attempt_coordinator_budget_lifecycle.py",
+        "tests/test_postgres_effect_attempt_coordinator_concurrency.py",
+        "tests/test_postgres_effect_attempt_coordinator_crash_rollback.py",
+        "tests/test_postgres_effect_attempt_coordinator_compensation_isolation.py",
+        "tests/test_postgres_effect_attempt_coordinator_first_replay.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py"
+    },
+    {
+      "canonical_public_exports": [
+        "runtime_effect_request_for_context"
+      ],
+      "destination": "control_plane_kit_operations.runtime_effects",
+      "internal_dependencies": [
+        "control_plane_kit_core.environment",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning.activity_plan",
+        "control_plane_kit_core.products",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.public_ingress",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_core.types",
+        "control_plane_kit_core.verification",
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.ingress_authorities",
+        "control_plane_kit_operations.products",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.runtime_effects",
+      "motivation": "Projects pinned Operations realization truth into private event-free Core intent and exact post-start runtime requests.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_runtime_effect_translation.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptEventEvidence",
+        "EffectAttemptRecord",
+        "effect_attempt_state_fingerprint"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempts",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempts",
+      "motivation": "Owns the exact immutable Operations commitment between one Core effect-attempt state and its original/latest activity events.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_evidence_contract.py",
+        "tests/test_effect_attempt_record_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempts.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptOutcome",
+        "EffectAttemptOutcomeRecord",
+        "EffectOutcomeProfile",
+        "ExecutionEffectOutcome",
+        "ObservedEffectOutcome",
+        "effect_outcome_failure",
+        "effect_outcome_observation_records",
+        "effect_outcome_transition"
+      ],
+      "destination": "control_plane_kit_operations.effect_outcome_evidence",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_outcome_evidence",
+      "motivation": "Owns provider-free direct outcome evidence, exact attempt snapshots, and ordered endpoint-observation projection.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_outcome_evidence_contract.py",
+        "tests/test_effect_outcome_record_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_outcome_evidence.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptIntentRecord"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_intent_evidence",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_intent_evidence",
+      "motivation": "Owns the exact protected pre-start runtime-effect intent bound to one original effect-attempt start event.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_intent_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_intent_evidence.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptStartConflict",
+        "EffectAttemptStartDenied",
+        "EffectAttemptStartError",
+        "EffectAttemptStartNotFound",
+        "EffectAttemptStartResult",
+        "ExistingAttempt",
+        "NewlyStarted",
+        "StartEffectAttempt"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_start",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.effect_attempt_start_interpreter"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_start",
+      "motivation": "Owns the command, observational replay, and ephemeral newly-started result language for one effect attempt without interpreting durable mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_start_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptStartService"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_start_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.activity_journal",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_start_interpreter",
+      "motivation": "Owns exact command, scope, fence, replay, and atomic durable mutation interpretation for one effect-attempt start.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_start_interpreter_contract.py",
+        "tests/test_postgres_effect_attempt_start_intent.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start_interpreter.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptFoldConflict",
+        "EffectAttemptFoldDenied",
+        "EffectAttemptFoldError",
+        "EffectAttemptFoldNotFound",
+        "EffectAttemptFoldResult",
+        "ExistingFold",
+        "FoldEffectAttempt",
+        "GuardedObservedEffectFold",
+        "NewlyFolded"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_fold",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_authority",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.effect_attempt_fold_interpreter"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_fold",
+      "motivation": "Owns the command, mutation result, and observational replay language for one effect-attempt fold without interpreting durable mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_atomic_effect_attempt_fold_contract.py",
+        "tests/test_effect_attempt_fold_contract.py",
+        "tests/test_guarded_observed_effect_fold_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_fold.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptFoldService"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_fold_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_fold_interpreter",
+      "motivation": "Owns the provider-free atomic durable interpreter for one effect-attempt fold.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_atomic_effect_attempt_fold_contract.py",
+        "tests/test_effect_attempt_fold_interpreter_contract.py",
+        "tests/test_guarded_observed_effect_fold_contract.py",
+        "tests/test_postgres_guarded_observed_effect_fold_authority.py",
+        "tests/test_postgres_guarded_observed_effect_fold_concurrency.py",
+        "tests/test_postgres_guarded_observed_effect_fold_first_replay.py",
+        "tests/test_postgres_guarded_observed_effect_fold_rollback.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_fold_interpreter.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptReconciliationConflict",
+        "EffectAttemptReconciliationDenied",
+        "EffectAttemptReconciliationError",
+        "EffectAttemptReconciliationNotFound",
+        "ReconcileEffectAttempt",
+        "RuntimeEffectObserver"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_reconciliation",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.effect_attempt_reconciliation_interpreter"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_reconciliation",
+      "motivation": "Owns the exact command, fixed errors, and observer protocol for runtime-effect reconciliation without interpreting durable mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_reconciliation_contract.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_reconciliation.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptReconciliationService"
+      ],
+      "destination": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempt_reconciliation",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_effects",
+        "control_plane_kit_operations.secret_providers",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
+      "motivation": "Owns preflight, durable replay, secret-use authorization, observer orchestration, and guarded outcome folding for runtime-effect reconciliation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_effect_attempt_reconciliation_interpreter_contract.py",
+        "tests/test_postgres_effect_attempt_reconciliation_authority_grants.py",
+        "tests/test_postgres_effect_attempt_reconciliation_concurrency.py",
+        "tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
+        "tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
+        "tests/test_postgres_effect_attempt_reconciliation_rollback.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_reconciliation_interpreter.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.effect_attempt_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.effect_attempt_store",
+      "motivation": "Owns the exact PostgreSQL representation and complete-prior compare-and-set for durable effect-attempt records.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_effect_attempt_store_contract.py",
+        "tests/test_postgres_effect_attempt_store.py",
+        "tests/test_postgres_effect_attempt_schema.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_store.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptIntentStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+      "motivation": "Owns exact immutable PostgreSQL persistence and bounded restart reconstruction for protected effect-attempt start intent evidence.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_effect_attempt_intent_store_contract.py",
+        "tests/test_postgres_effect_attempt_intent_store.py",
+        "tests/test_postgres_effect_attempt_intent_schema.py",
+        "tests/test_postgres_effect_attempt_start_intent.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_intent_store.py"
+    },
+    {
+      "canonical_public_exports": [
+        "EffectAttemptOutcomeStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.effect_outcome_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.probe_intents",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.observed_state",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.effect_outcome_store",
+      "motivation": "Owns exact immutable PostgreSQL persistence and bounded restart reconstruction for direct effect-attempt outcome evidence.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_effect_outcome_store_contract.py",
+        "tests/test_postgres_effect_outcome_store.py",
+        "tests/test_postgres_effect_outcome_schema.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_outcome_store.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ActivityRunRetryResult",
+        "RetryFailedActivityRun"
+      ],
+      "destination": "control_plane_kit_operations.activity_run_retry",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_operations.execution_lease_recovery",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.activity_run_retry",
+      "motivation": "Owns the pure command and result language for linked activity-run retry without interpreting mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_activity_run_retry_contract.py",
+        "tests/test_activity_run_retry_result.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry.py"
+    },
+    {
+      "canonical_public_exports": [
+        "AbandonExpiredExecutionClaim",
+        "ExecutionLeaseRecoveryCommand",
+        "ExecutionLeaseRecoveryResult",
+        "RecoveryAuthority",
+        "RenewActiveExecutionClaim",
+        "RenewExpiredExecutionClaim",
+        "TakeOverExpiredExecutionClaim"
+      ],
+      "destination": "control_plane_kit_operations.execution_lease_recovery",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.execution_lease_recovery",
+      "motivation": "Owns the pure command and result language for durable execution-lease recovery without interpreting mutation.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_execution_lease_recovery_contract.py",
+        "tests/test_execution_lease_recovery_result.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations",
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations._execution_lease_recovery_support",
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.activity_journal",
+        "control_plane_kit_operations.activity_run_retry",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.activity_run_retry_interpreter",
+        "control_plane_kit_operations.execution_lease_recovery_interpreter"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations._execution_lease_recovery_support",
+      "motivation": "Owns private total approval, journal, and retry-chain transformations shared by recovery interpreters without exposing a root package surface.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_activity_run_retry_interpreter_contract.py",
+        "tests/test_execution_lease_recovery_retry_totality.py",
+        "tests/test_execution_lease_recovery_support_contract.py",
+        "tests/test_postgres_activity_run_retry_first_replay.py",
+        "tests/test_postgres_execution_lease_recovery_first_replay.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_execution_lease_recovery_support.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ActivityRunRetryCommandService"
+      ],
+      "destination": "control_plane_kit_operations.activity_run_retry_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_operations._execution_lease_recovery_support",
+        "control_plane_kit_operations.activity_run_retry",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.activity_run_retry_interpreter",
+      "motivation": "Interprets one admitted failed-run retry as one atomic linked run, event, and action transaction with exact replay.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_activity_run_retry_interpreter_contract.py",
+        "tests/test_postgres_activity_run_retry_concurrency.py",
+        "tests/test_postgres_activity_run_retry_eligibility_rollback.py",
+        "tests/test_postgres_activity_run_retry_first_replay.py",
+        "tests/test_postgres_activity_run_retry_store_boundaries.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry_interpreter.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ExecutionLeaseRecoveryCommandService"
+      ],
+      "destination": "control_plane_kit_operations.execution_lease_recovery_interpreter",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_operations._execution_lease_recovery_support",
+        "control_plane_kit_operations.execution_lease_recovery",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.execution_lease_recovery_interpreter",
+      "motivation": "Interprets one admitted recovery command as one atomic claim, event, and action transaction with exact replay.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_execution_lease_recovery_eligibility_errors.py",
+        "tests/test_postgres_execution_lease_recovery_first_replay.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery_interpreter.py"
     },
     {
       "module": "control_plane_kit.operations",

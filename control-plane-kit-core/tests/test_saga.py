@@ -25,6 +25,7 @@ from control_plane_kit_core.planning.saga import (
     SagaCompensationRequested,
     SagaCompensationStarted,
     SagaCompensationSucceeded,
+    SagaJournalError,
     SagaProgramError,
     SagaState,
     SagaStateError,
@@ -42,6 +43,7 @@ from control_plane_kit_core.planning.saga import (
     chain,
     compensation_candidates,
     decide,
+    derive_schedule,
     evolve_all,
     initial_state,
     parallel,
@@ -440,6 +442,165 @@ class SagaJournalSuccessorTests(unittest.TestCase):
                     ),
                 ),
             )
+
+    def test_uncertainty_abandonment_is_failed_control_truth_without_blind_compensation(
+        self,
+    ) -> None:
+        abandoned_kind = getattr(
+            ActivityJournalEventKind,
+            "STEP_UNCERTAINTY_ABANDONED",
+        )
+        two_step_plan = ActivityPlan(
+            (
+                activity("confirmed"),
+                activity("abandoned", "confirmed"),
+            )
+        )
+        projection = project_activity_journal(
+            two_step_plan,
+            (
+                event(
+                    1,
+                    ActivityJournalEventKind.STEP_STARTED,
+                    activity_id="confirmed",
+                ),
+                event(
+                    2,
+                    ActivityJournalEventKind.STEP_SUCCEEDED,
+                    activity_id="confirmed",
+                ),
+                event(
+                    3,
+                    ActivityJournalEventKind.STEP_STARTED,
+                    activity_id="abandoned",
+                ),
+                event(
+                    4,
+                    ActivityJournalEventKind.STEP_UNCERTAIN,
+                    activity_id="abandoned",
+                ),
+                event(5, abandoned_kind, activity_id="abandoned"),
+            ),
+        )
+
+        self.assertIs(
+            projection.state.step(SagaStepId("abandoned")).status,
+            SagaStepStatus.FAILED,
+        )
+        self.assertEqual(
+            tuple(value.value for value in projection.state.completion_order),
+            ("confirmed",),
+        )
+        self.assertEqual(projection.uncertain, ())
+        self.assertEqual(
+            tuple(
+                value.activity_id.value
+                for value in derive_schedule(
+                    two_step_plan,
+                    projection.state,
+                ).compensation_ready
+            ),
+            ("confirmed",),
+        )
+
+    def test_compensation_uncertainty_abandonment_projects_compensation_failure(
+        self,
+    ) -> None:
+        abandoned_kind = getattr(
+            ActivityJournalEventKind,
+            "STEP_COMPENSATION_UNCERTAINTY_ABANDONED",
+        )
+        projection = project_activity_journal(
+            plan(),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAIN),
+                event(6, abandoned_kind),
+            ),
+        )
+
+        self.assertIs(
+            projection.state.steps[0].status,
+            SagaStepStatus.COMPENSATION_FAILED,
+        )
+        self.assertEqual(projection.compensation_uncertain, ())
+
+    def test_abandonment_requires_matching_unresolved_phase_once(self) -> None:
+        forward = getattr(
+            ActivityJournalEventKind,
+            "STEP_UNCERTAINTY_ABANDONED",
+        )
+        compensation = getattr(
+            ActivityJournalEventKind,
+            "STEP_COMPENSATION_UNCERTAINTY_ABANDONED",
+        )
+        cases = (
+            (event(1, ActivityJournalEventKind.STEP_STARTED), event(2, forward)),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_UNCERTAIN),
+                event(3, compensation),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_UNCERTAIN),
+                event(3, forward),
+                event(4, forward),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_UNCERTAIN),
+                event(
+                    3,
+                    ActivityJournalEventKind.STEP_UNCERTAINTY_RESOLVED_SUCCEEDED,
+                ),
+                event(4, forward),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, compensation),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAIN),
+                event(6, forward),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAIN),
+                event(6, compensation),
+                event(7, compensation),
+            ),
+            (
+                event(1, ActivityJournalEventKind.STEP_STARTED),
+                event(2, ActivityJournalEventKind.STEP_SUCCEEDED),
+                run_event(3, ActivityJournalEventKind.RUN_COMPENSATION_STARTED),
+                event(4, ActivityJournalEventKind.STEP_COMPENSATION_STARTED),
+                event(5, ActivityJournalEventKind.STEP_COMPENSATION_UNCERTAIN),
+                event(
+                    6,
+                    ActivityJournalEventKind
+                    .STEP_COMPENSATION_UNCERTAINTY_RESOLVED_SUCCEEDED,
+                ),
+                event(7, compensation),
+            ),
+        )
+        for events in cases:
+            with self.subTest(kinds=tuple(value.kind for value in events)):
+                with self.assertRaises(SagaJournalError):
+                    project_activity_journal(plan(), events)
 
     def test_unsupported_is_distinct_durable_failure_evidence(self) -> None:
         projection = project_activity_journal(

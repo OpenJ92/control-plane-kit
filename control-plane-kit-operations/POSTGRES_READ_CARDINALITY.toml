@@ -131,6 +131,22 @@ consumer_kind = "production"
 consumer = "current-backend admission verifies every authored and realized graph row"
 
 [[read]]
+module = "control_plane_kit_operations.postgres.effect_attempt_intent_store"
+selector = "_validate_current_rows"
+category = "exact-verifier"
+sql = "8-row identity keyset pages with guarded protected-byte projection until exact exhaustion"
+consumer_kind = "production"
+consumer = "current-backend admission verifies every immutable effect-attempt intent row"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.effect_attempt_store"
+selector = "_validate_current_rows"
+category = "exact-verifier"
+sql = "effect-attempt identity keyset batches bounded by fixed batch size until exact exhaustion"
+consumer_kind = "production"
+consumer = "current-backend admission verifies every durable effect-attempt row"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.current_schema_verification"
 selector = "namespace_is_object_free"
 category = "exact-verifier"
@@ -292,6 +308,14 @@ consumer = "GraphAuthoringService ExecutionCoordinator and GatewayProbeCommandSe
 
 [[read]]
 module = "control_plane_kit_operations.postgres.runtime_authority_store"
+selector = "RuntimeAuthorityStore.get_active_for_update"
+category = "fixed-cardinality"
+sql = "workspace/reference active filter; FOR UPDATE; exact one-row cardinality"
+consumer_kind = "production"
+consumer = "EffectAttemptFoldService locks the exact active observed-effect runtime authority"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.runtime_authority_store"
 selector = "RuntimeAuthorityStore.list_active"
 category = "internal-complete"
 sql = "workspace active filter; authority identity ascending; intentionally complete"
@@ -369,3 +393,53 @@ category = "internal-complete"
 sql = "workspace/reference filter; admission chronology ascending; intentionally complete supersession chain"
 consumer_kind = "production"
 consumer = "SecretReferenceStore validates replacement and revocation against complete reference history"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.failed_run_compensation_store"
+selector = "FailedRunCompensationStore.successful_effects_for_run"
+category = "internal-complete"
+sql = "exact failed-run filter; reverse durable completion order; intentionally complete succeeded-effect evidence"
+consumer_kind = "production"
+consumer = "FailedRunCompensationCommandService admits one exact reverse-ordered compensation program"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.failed_run_compensation_store"
+selector = "FailedRunCompensationStore._get"
+category = "exact-verifier"
+sql = "exact program identity; complete ordered relational steps; canonical preimage congruence"
+consumer_kind = "production"
+consumer = "FailedRunCompensationCommandService verifies exact restart replay truth"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store"
+selector = "FailedRunCompensationAttemptStore.for_program"
+category = "internal-complete"
+sql = "exact program identity; complete position-ordered immutable compensation-attempt bindings"
+consumer_kind = "production"
+consumer = "FailedRunCompensationAttemptStartService selects only the first incomplete compensation step"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.effect_outcome_store"
+selector = "EffectAttemptOutcomeStore.get"
+category = "exact-verifier"
+sql = "exact attempt and direct-event identity; ordered membership LIMIT observation_count plus one"
+consumer_kind = "production"
+consumer = "direct outcome restart reconstruction"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.effect_outcome_store"
+selector = "_validate_current_rows"
+occurrence = 1
+category = "exact-verifier"
+sql = "identity keyset batches bounded by fixed batch size; each ordered membership LIMIT observation_count plus one"
+consumer_kind = "production"
+consumer = "current schema admission reads every immutable direct outcome page"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.effect_outcome_store"
+selector = "_validate_current_rows"
+occurrence = 2
+category = "exact-verifier"
+sql = "identity keyset batches bounded by fixed batch size; each ordered membership LIMIT observation_count plus one"
+consumer_kind = "production"
+consumer = "current schema admission validates every immutable direct outcome membership"

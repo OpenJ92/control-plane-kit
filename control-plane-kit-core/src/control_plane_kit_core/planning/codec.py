@@ -160,10 +160,12 @@ class ActivityPlanDescriptorCodec:
             _mapping(descriptor.get("compensation"), "compensation")
         )
         activity = PlannedActivity(
-            activity_id=ActivityId(_text(descriptor, "activity_id")),
+            activity_id=_activity_id(_text(descriptor, "activity_id")),
             operation=self._decode_operation(_mapping(descriptor.get("operation"), "operation")),
             dependencies=tuple(
-                ActivityDependency(ActivityId(_primitive_text(value, "dependency")))
+                ActivityDependency(
+                    _activity_id(_primitive_text(value, "dependency"))
+                )
                 for value in _list(descriptor.get("dependencies"), "dependencies")
             ),
             risk=risk,
@@ -429,6 +431,16 @@ def _primitive_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise MalformedActivityPlanDescriptor(f"{name} must be non-empty text")
     return value
+
+
+def _activity_id(value: str) -> ActivityId:
+    try:
+        identity = ActivityId(value)
+    except ValueError:
+        pass
+    else:
+        return identity
+    raise MalformedActivityPlanDescriptor("activity identity is malformed")
 
 
 def _json_value(value: object) -> object:

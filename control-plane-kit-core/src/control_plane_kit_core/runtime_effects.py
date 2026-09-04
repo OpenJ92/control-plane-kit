@@ -19,8 +19,12 @@ from control_plane_kit_core.environment import (
     environment_binding_from_descriptor,
 )
 from control_plane_kit_core.operations.execution import EffectResultKind
+from control_plane_kit_core.operations.run_identity import RunId
 from control_plane_kit_core.planning import ActivityId, ActivityOperation, ReviewChange
-from control_plane_kit_core.planning.codec import activity_operation_descriptor
+from control_plane_kit_core.planning.codec import (
+    ActivityPlanDescriptorError,
+    activity_operation_descriptor,
+)
 from control_plane_kit_core.probe_intents import RuntimeEndpointObservation
 from control_plane_kit_core.products import (
     ContainerServerProduct,
@@ -45,6 +49,10 @@ from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
 )
 from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_core.verification import (
+    VerificationCompleted,
+    VerificationOutcome,
+)
 
 
 _MAX_TEXT = 512
@@ -141,7 +149,7 @@ class RuntimeEffectSource:
 
     workspace_id: str
     request_id: str
-    run_id: str
+    run_id: RunId
     plan_id: str
     base_graph_id: str
     desired_graph_id: str
@@ -151,19 +159,20 @@ class RuntimeEffectSource:
         for value, name in (
             (self.workspace_id, "workspace_id"),
             (self.request_id, "request_id"),
-            (self.run_id, "run_id"),
             (self.plan_id, "plan_id"),
             (self.base_graph_id, "base_graph_id"),
             (self.desired_graph_id, "desired_graph_id"),
             (self.intent_event_id, "intent_event_id"),
         ):
             _required_text(value, name)
+        if type(self.run_id) is not RunId:
+            raise RuntimeEffectContractError("run_id must be RunId")
 
     def descriptor(self) -> dict[str, str]:
         return {
             "workspace_id": self.workspace_id,
             "request_id": self.request_id,
-            "run_id": self.run_id,
+            "run_id": self.run_id.value,
             "plan_id": self.plan_id,
             "base_graph_id": self.base_graph_id,
             "desired_graph_id": self.desired_graph_id,
@@ -173,10 +182,17 @@ class RuntimeEffectSource:
     @classmethod
     def from_descriptor(cls, value: Mapping[str, object]) -> "RuntimeEffectSource":
         _require_keys(value, _SOURCE_KEYS, "runtime effect source")
+        run_id_text = _text(value, "run_id")
+        try:
+            run_id = RunId(run_id_text)
+        except ValueError:
+            run_id = None
+        if run_id is None:
+            raise RuntimeEffectContractError("run_id is malformed")
         return cls(
             workspace_id=_text(value, "workspace_id"),
             request_id=_text(value, "request_id"),
-            run_id=_text(value, "run_id"),
+            run_id=run_id,
             plan_id=_text(value, "plan_id"),
             base_graph_id=_text(value, "base_graph_id"),
             desired_graph_id=_text(value, "desired_graph_id"),
@@ -451,13 +467,32 @@ class RuntimeEffectRequest:
     operation: ActivityOperation
     authority_ref: RuntimeAuthorityReference | None = None
     authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
-    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = ()
+    secret_resolution_grants: tuple[SecretResolutionGrant, ...] = field(
+        default=(),
+        repr=False,
+    )
     products: tuple[RuntimeProductMaterial, ...] = ()
 
     def __post_init__(self) -> None:
         _required_text(self.effect_id, "effect_id")
         if not isinstance(self.source, RuntimeEffectSource):
             raise RuntimeEffectContractError("runtime effect source is malformed")
+        if (
+            type(self.effect_id) is not str
+            or type(self.source.intent_event_id) is not str
+            or self.effect_id != self.source.intent_event_id
+            or "\x00" in self.effect_id
+        ):
+            raise RuntimeEffectContractError(
+                "runtime effect identity must match intent event identity"
+            )
+        if any(
+            0xD800 <= ord(character) <= 0xDFFF
+            for character in self.effect_id
+        ):
+            raise RuntimeEffectContractError(
+                "runtime effect identity must match intent event identity"
+            )
         if not isinstance(self.kind, RuntimeEffectKind):
             raise RuntimeEffectContractError("runtime effect kind must be closed")
         if not isinstance(self.runtime_kind, RuntimeKind):
@@ -565,9 +600,6 @@ class RuntimeEffectRequest:
             "authority_deliveries": [
                 value.descriptor() for value in self.authority_deliveries
             ],
-            "secret_resolution_grants": [
-                value.descriptor() for value in self.secret_resolution_grants
-            ],
             "source": self.source.descriptor(),
             "activity_id": self.activity_id.value,
             "operation": activity_operation_descriptor(self.operation),
@@ -605,7 +637,9 @@ class RuntimeEffectResult:
     kind: EffectResultKind
     evidence: Mapping[str, object] = field(default_factory=dict)
     failure: RuntimeEffectFailure | None = None
-    observations: tuple[RuntimeEndpointObservation, ...] = ()
+    observations: tuple[
+        RuntimeEndpointObservation | VerificationCompleted, ...
+    ] = ()
 
     @classmethod
     def succeeded(
@@ -613,7 +647,9 @@ class RuntimeEffectResult:
         effect_id: str,
         *,
         evidence: Mapping[str, object] | None = None,
-        observations: tuple[RuntimeEndpointObservation, ...] = (),
+        observations: tuple[
+            RuntimeEndpointObservation | VerificationCompleted, ...
+        ] = (),
     ) -> "RuntimeEffectResult":
         return cls(
             effect_id,
@@ -627,24 +663,51 @@ class RuntimeEffectResult:
         cls,
         effect_id: str,
         failure: RuntimeEffectFailure,
+        *,
+        observations: tuple[
+            RuntimeEndpointObservation | VerificationCompleted, ...
+        ] = (),
     ) -> "RuntimeEffectResult":
-        return cls(effect_id, EffectResultKind.FAILED, failure=failure)
+        return cls(
+            effect_id,
+            EffectResultKind.FAILED,
+            failure=failure,
+            observations=observations,
+        )
 
     @classmethod
     def unsupported(
         cls,
         effect_id: str,
         failure: RuntimeEffectFailure,
+        *,
+        observations: tuple[
+            RuntimeEndpointObservation | VerificationCompleted, ...
+        ] = (),
     ) -> "RuntimeEffectResult":
-        return cls(effect_id, EffectResultKind.UNSUPPORTED, failure=failure)
+        return cls(
+            effect_id,
+            EffectResultKind.UNSUPPORTED,
+            failure=failure,
+            observations=observations,
+        )
 
     @classmethod
     def uncertain(
         cls,
         effect_id: str,
         failure: RuntimeEffectFailure,
+        *,
+        observations: tuple[
+            RuntimeEndpointObservation | VerificationCompleted, ...
+        ] = (),
     ) -> "RuntimeEffectResult":
-        return cls(effect_id, EffectResultKind.UNCERTAIN, failure=failure)
+        return cls(
+            effect_id,
+            EffectResultKind.UNCERTAIN,
+            failure=failure,
+            observations=observations,
+        )
 
     def __post_init__(self) -> None:
         _required_text(self.effect_id, "effect_id")
@@ -661,12 +724,21 @@ class RuntimeEffectResult:
         object.__setattr__(self, "evidence", evidence)
         if self.failure is not None and not isinstance(self.failure, RuntimeEffectFailure):
             raise RuntimeEffectContractError("runtime effect failure is malformed")
-        observations = tuple(self.observations)
-        if not all(isinstance(value, RuntimeEndpointObservation) for value in observations):
+        if type(self.observations) is not tuple or not all(
+            type(value) in (RuntimeEndpointObservation, VerificationCompleted)
+            for value in self.observations
+        ):
             raise RuntimeEffectContractError(
                 "runtime effect observations must be RuntimeEndpointObservation"
             )
-        object.__setattr__(self, "observations", observations)
+        if self.kind is EffectResultKind.SUCCEEDED and any(
+            type(value) is VerificationCompleted
+            and value.outcome is not VerificationOutcome.PASSED
+            for value in self.observations
+        ):
+            raise RuntimeEffectContractError(
+                "successful runtime effect cannot carry failed verification"
+            )
         if self.kind is EffectResultKind.SUCCEEDED and self.failure is not None:
             raise RuntimeEffectContractError("successful runtime effect cannot fail")
         if self.kind is not EffectResultKind.SUCCEEDED and self.failure is None:
@@ -678,18 +750,7 @@ class RuntimeEffectResult:
             "kind": self.kind.value,
             "evidence": dict(self.evidence),
             "failure": None if self.failure is None else self.failure.descriptor(),
-            "observations": [
-                value.descriptor()
-                for value in sorted(
-                    self.observations,
-                    key=lambda item: (
-                        item.subject_id,
-                        item.socket_name,
-                        item.graph_id,
-                        item.context.value,
-                    ),
-                )
-            ],
+            "observations": [value.descriptor() for value in self.observations],
         }
 
 

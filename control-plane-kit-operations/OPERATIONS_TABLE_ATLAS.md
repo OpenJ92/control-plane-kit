@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=60227521dfacd39473c01bac53f062158ee7f9b50f7a287c22faf17a842834fe relations=29 columns=380 constraints=268 indexes=94 foreign-keys=54 -->
+<!-- current-schema-contract: sha256=4a06ccf8c2b8f0358cd8737edb9d84a0ca73e4be3fb19bc41be26eb221e2b7c3 relations=37 columns=489 constraints=367 indexes=120 foreign-keys=81 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -28,7 +28,8 @@ repair, data conversion, or inference from an older layout.
 ## Dependency Shape
 
 <!-- multi-table-scc: cpk_graph_versions,cpk_realized_graph_projections,cpk_workspaces -->
-<!-- self-reference: cpk_activity_runs,cpk_secret_providers,cpk_secret_references -->
+<!-- self-reference: cpk_activity_runs,cpk_effect_attempts,cpk_secret_providers,cpk_secret_references -->
+<!-- outcome-aggregate: cpk_effect_attempt_outcomes,cpk_effect_attempt_outcome_observations -->
 <!-- future-impact: 1553,1554,1555,1556,1243,1244 -->
 
 The only multi-table strongly connected component is the workspace lineage
@@ -45,9 +46,10 @@ current and desired heads. Physical deletion reverses that order or clears the
 heads first. The public stores do not expose a general physical workspace
 delete operation.
 
-Self-references express retry ancestry for activity runs and supersession chains
-for provider and secret-reference registrations. Restore roots before their
-descendants and reject missing or cyclic application-level histories.
+Self-references express retry ancestry for activity runs, immediate retry
+ancestry for effect attempts, and supersession chains for provider and
+secret-reference registrations. Restore roots before their descendants and
+reject missing or cyclic application-level histories.
 
 ## Deterministic Assembly And Logical Restore
 
@@ -80,8 +82,14 @@ foreign key and the accepted lineage cycle:
 5. Restore session actions and plans; gateway probe attempts; rotation
    transitions and revocations; and approval requests.
 6. Restore approval decisions, then execution requests.
-7. Restore root activity runs before retry descendants, then restore activity
-   events in run/ordinal order.
+7. Restore root activity runs before retry descendants, then execution-command
+   receipts and activity events in run/ordinal order, immutable start-intent evidence after its
+   original event, and effect attempts in attempt order after all of their
+   intent/original/latest commitments exist. Restore direct effect
+   outcomes after their attempts and both referenced event coordinates, then
+   restore ordered outcome membership after its observation rows. Restore
+   compensation action/event rows before compensation programs, then restore
+   their reverse-ordered steps after the referenced successful outcomes.
 8. Restore secret-use authorizations, rotation deployments,
    `cpk_cloudflare_ingress_resources`, and
    `cpk_generated_ingress_secret_references` after any optional
@@ -264,11 +272,38 @@ cpk_approval_requests -->|cpk_approval_requests_rotation_fk| cpk_gateway_key_rot
 cpk_approval_requests -->|cpk_approval_requests_session_id_fkey| cpk_operation_sessions
 cpk_cloudflare_ingress_resources -->|cpk_cloudflare_ingress_resources_workspace_id_fkey| cpk_workspaces
 cpk_delegation_signing_keys -->|cpk_delegation_signing_keys_workspace_id_fkey| cpk_workspaces
+cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_original_event_fk| cpk_activity_events
+cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_request_workspace_fk| cpk_execution_requests
+cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_run_request_fk| cpk_activity_runs
+cpk_effect_attempt_outcome_observations -->|cpk_effect_attempt_outcome_observations_observation_fk| cpk_observations
+cpk_effect_attempt_outcome_observations -->|cpk_effect_attempt_outcome_observations_outcome_fk| cpk_effect_attempt_outcomes
+cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_attempt_fk| cpk_effect_attempts
+cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_direct_event_fk| cpk_activity_events
+cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_original_event_fk| cpk_activity_events
+cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_request_workspace_fk| cpk_execution_requests
+cpk_effect_attempt_outcomes -->|cpk_effect_attempt_outcomes_run_request_fk| cpk_activity_runs
+cpk_effect_attempts -->|cpk_effect_attempts_intent_evidence_fk| cpk_effect_attempt_intents
+cpk_effect_attempts -->|cpk_effect_attempts_latest_event_fk| cpk_activity_events
+cpk_effect_attempts -->|cpk_effect_attempts_original_event_fk| cpk_activity_events
+cpk_effect_attempts -->|cpk_effect_attempts_prior_fkey| cpk_effect_attempts
+cpk_effect_attempts -->|cpk_effect_attempts_run_id_fkey| cpk_activity_runs
+cpk_execution_command_receipts -->|cpk_execution_command_receipts_run_id_fkey| cpk_activity_runs
 cpk_execution_requests -->|cpk_execution_requests_approval_identity_fk| cpk_approval_decisions
 cpk_execution_requests -->|cpk_execution_requests_approval_request_id_fkey| cpk_approval_requests
 cpk_execution_requests -->|cpk_execution_requests_plan_session_fk| cpk_activity_plans
 cpk_execution_requests -->|cpk_execution_requests_workspace_id_fkey| cpk_workspaces
 cpk_execution_requests -->|cpk_execution_requests_workspace_session_fk| cpk_operation_sessions
+cpk_failed_run_compensation_attempt_bindings -->|cpk_failed_run_compensation_attempt_bindings_inverse_attempt_fk| cpk_effect_attempts
+cpk_failed_run_compensation_attempt_bindings -->|cpk_failed_run_compensation_attempt_bindings_source_step_fk| cpk_failed_run_compensation_steps
+cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_completion_event_fk| cpk_activity_events
+cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_program_fk| cpk_failed_run_compensations
+cpk_failed_run_compensation_steps -->|cpk_failed_run_compensation_steps_source_outcome_fk| cpk_effect_attempt_outcomes
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_action_fk| cpk_operation_actions
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_event_fk| cpk_activity_events
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_plan_session_fk| cpk_activity_plans
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_request_workspace_fk| cpk_execution_requests
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_run_request_fk| cpk_activity_runs
+cpk_failed_run_compensations -->|cpk_failed_run_compensations_workspace_fk| cpk_workspaces
 cpk_gateway_key_rotation_deployments -->|cpk_gateway_key_rotation_deployments_rotation_id_fkey| cpk_gateway_key_rotations
 cpk_gateway_key_rotation_revocations -->|cpk_gateway_key_rotation_revocations_rotation_id_fkey| cpk_gateway_key_rotations
 cpk_gateway_key_rotation_transitions -->|cpk_gateway_key_rotation_transitions_rotation_id_fkey| cpk_gateway_key_rotations
@@ -329,11 +364,38 @@ order is semantically significant for every composite identity.
 | `cpk_approval_requests_session_id_fkey` | `cpk_approval_requests` | `session_id` | `cpk_operation_sessions` | `session_id` | Every approval request belongs to an operation session. |
 | `cpk_cloudflare_ingress_resources_workspace_id_fkey` | `cpk_cloudflare_ingress_resources` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Observed ingress resources are owned by a workspace. |
 | `cpk_delegation_signing_keys_workspace_id_fkey` | `cpk_delegation_signing_keys` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Delegation signing-key registrations are workspace scoped. |
+| `cpk_effect_attempt_intents_original_event_fk` | `cpk_effect_attempt_intents` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Start intent evidence names the exact immutable event that begins the attempt. |
+| `cpk_effect_attempt_intents_request_workspace_fk` | `cpk_effect_attempt_intents` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Intent evidence derives workspace ownership from its execution request. |
+| `cpk_effect_attempt_intents_run_request_fk` | `cpk_effect_attempt_intents` | `run_id, request_id` | `cpk_activity_runs` | `run_id, request_id` | Intent evidence and activity run name the same execution request. |
+| `cpk_effect_attempt_outcome_observations_observation_fk` | `cpk_effect_attempt_outcome_observations` | `observation_id, workspace_id` | `cpk_observations` | `observation_id, workspace_id` | Every ordered member names an immutable observation in the same workspace. |
+| `cpk_effect_attempt_outcome_observations_outcome_fk` | `cpk_effect_attempt_outcome_observations` | `run_id, activity_id, attempt, workspace_id, observation_count` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt, workspace_id, observation_count` | Membership belongs to one exact outcome and copies its bounded expected count. |
+| `cpk_effect_attempt_outcomes_attempt_fk` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | Every historical direct outcome belongs to an existing effect attempt. |
+| `cpk_effect_attempt_outcomes_direct_event_fk` | `cpk_effect_attempt_outcomes` | `direct_event_id, direct_event_run_id, direct_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | The copied direct post-transition state is committed by one immutable event. |
+| `cpk_effect_attempt_outcomes_original_event_fk` | `cpk_effect_attempt_outcomes` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | The historical snapshot retains its exact immutable start event. |
+| `cpk_effect_attempt_outcomes_request_workspace_fk` | `cpk_effect_attempt_outcomes` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Outcome workspace ownership is derived from the run's execution request. |
+| `cpk_effect_attempt_outcomes_run_request_fk` | `cpk_effect_attempt_outcomes` | `run_id, request_id` | `cpk_activity_runs` | `run_id, request_id` | Outcome run and request coordinates must name the same durable run. |
+| `cpk_effect_attempts_intent_evidence_fk` | `cpk_effect_attempts` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | Every attempt requires matching immutable start-intent evidence. |
+| `cpk_effect_attempts_latest_event_fk` | `cpk_effect_attempts` | `latest_event_id, latest_event_run_id, latest_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | The retained state is committed by one exact latest activity event. |
+| `cpk_effect_attempts_original_event_fk` | `cpk_effect_attempts` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Every attempt retains its exact immutable start event. |
+| `cpk_effect_attempts_prior_fkey` | `cpk_effect_attempts` | `prior_run_id, prior_activity_id, prior_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | A retry names the immediately preceding attempt for the same run and activity. |
+| `cpk_effect_attempts_run_id_fkey` | `cpk_effect_attempts` | `run_id` | `cpk_activity_runs` | `run_id` | Every effect attempt belongs to one durable activity run. |
+| `cpk_execution_command_receipts_run_id_fkey` | `cpk_execution_command_receipts` | `run_id` | `cpk_activity_runs` | `run_id` | Every admitted command receipt belongs to the exact run it may advance. |
 | `cpk_execution_requests_approval_identity_fk` | `cpk_execution_requests` | `approval_decision_id, approval_request_id` | `cpk_approval_decisions` | `decision_id, request_id` | The selected decision must resolve the selected request. |
 | `cpk_execution_requests_approval_request_id_fkey` | `cpk_execution_requests` | `approval_request_id` | `cpk_approval_requests` | `request_id` | An approved execution names an existing request. |
 | `cpk_execution_requests_plan_session_fk` | `cpk_execution_requests` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The execution request and plan share one session. |
 | `cpk_execution_requests_workspace_id_fkey` | `cpk_execution_requests` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every execution request is workspace scoped. |
 | `cpk_execution_requests_workspace_session_fk` | `cpk_execution_requests` | `session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | The request workspace must match its session workspace. |
+| `cpk_failed_run_compensation_attempt_bindings_inverse_attempt_fk` | `cpk_failed_run_compensation_attempt_bindings` | `inverse_run_id, inverse_activity_id, inverse_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | Every compensation step binds one fresh inverse effect attempt. |
+| `cpk_failed_run_compensation_attempt_bindings_source_step_fk` | `cpk_failed_run_compensation_attempt_bindings` | `program_id, position, source_run_id, source_activity_id, source_attempt` | `cpk_failed_run_compensation_steps` | `program_id, position, source_run_id, source_activity_id, source_attempt` | A binding must retain the exact admitted program step and successful source identity. |
+| `cpk_failed_run_compensation_steps_completion_event_fk` | `cpk_failed_run_compensation_steps` | `source_completion_event_id, source_run_id, source_completion_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Every compensation step cites the exact direct success event that admitted its inverse. |
+| `cpk_failed_run_compensation_steps_program_fk` | `cpk_failed_run_compensation_steps` | `program_id` | `cpk_failed_run_compensations` | `program_id` | Every ordered inverse belongs to one immutable compensation program. |
+| `cpk_failed_run_compensation_steps_source_outcome_fk` | `cpk_failed_run_compensation_steps` | `source_run_id, source_activity_id, source_attempt` | `cpk_effect_attempt_outcomes` | `run_id, activity_id, attempt` | A compensation step is admitted only from one durable direct effect outcome. |
+| `cpk_failed_run_compensations_action_fk` | `cpk_failed_run_compensations` | `action_id` | `cpk_operation_actions` | `action_id` | The program is authorized by one exact durable operator action. |
+| `cpk_failed_run_compensations_event_fk` | `cpk_failed_run_compensations` | `event_id` | `cpk_activity_events` | `event_id` | The program names the event that starts the compensating run fold. |
+| `cpk_failed_run_compensations_plan_session_fk` | `cpk_failed_run_compensations` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The compensation program preserves the exact admitted plan and session. |
+| `cpk_failed_run_compensations_request_workspace_fk` | `cpk_failed_run_compensations` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Recovery request ownership remains bound to the original workspace. |
+| `cpk_failed_run_compensations_run_request_fk` | `cpk_failed_run_compensations` | `run_id, request_id` | `cpk_activity_runs` | `run_id, request_id` | The compensated failed run belongs to the exact original execution request. |
+| `cpk_failed_run_compensations_workspace_fk` | `cpk_failed_run_compensations` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every compensation program is scoped to one durable workspace. |
 | `cpk_gateway_key_rotation_deployments_rotation_id_fkey` | `cpk_gateway_key_rotation_deployments` | `rotation_id` | `cpk_gateway_key_rotations` | `rotation_id` | Deployment-phase evidence belongs to one key rotation. |
 | `cpk_gateway_key_rotation_revocations_rotation_id_fkey` | `cpk_gateway_key_rotation_revocations` | `rotation_id` | `cpk_gateway_key_rotations` | `rotation_id` | Old-secret revocation evidence belongs to one key rotation. |
 | `cpk_gateway_key_rotation_transitions_rotation_id_fkey` | `cpk_gateway_key_rotation_transitions` | `rotation_id` | `cpk_gateway_key_rotations` | `rotation_id` | Every lifecycle transition belongs to one key rotation. |
@@ -377,9 +439,9 @@ order is semantically significant for every composite identity.
 
 ### `cpk_activity_events`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns the ordered, bounded event stream emitted by one activity run.
-- **Identity and cardinality:** `event_id` is primary; `(run_id, ordinal)` permits exactly one event at each run position.
+- **Identity and cardinality:** `event_id` is primary; `(run_id, ordinal)` permits exactly one event at each run position, and the validated immediate run foreign key derives the canonical run-identity law from `cpk_activity_runs`.
 - **Outgoing foreign keys:** `run_id` requires the owning `cpk_activity_runs` row.
-- **Inbound dependents:** Generated ingress-secret records may cite event identifiers as provenance, but no database foreign key couples that external provenance tuple.
+- **Inbound dependents:** Effect-attempt rows bind exact original and latest event triples. Generated ingress-secret records may also cite event identifiers as provenance without a database foreign key.
 - **Writers and transactions:** `PostgresExecutionStore.add_event` performs one direct insert in the caller's run transaction; it does not compare an existing event for replay equivalence.
 - **Readers and projections:** Activity-history queries read events by run and ordinal for operator-facing execution narratives.
 - **Mutation, locks, retries, and idempotency:** Inserts are append-only; duplicate `event_id` or `(run_id, ordinal)` is rejected by PostgreSQL, while command/workflow idempotency is owned outside this row.
@@ -403,7 +465,7 @@ order is semantically significant for every composite identity.
 
 ### `cpk_activity_runs`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns each execution attempt, its status, timing, retry ancestry, and bounded metadata.
-- **Identity and cardinality:** `run_id` is primary; `attempt` and `prior_run_id` describe a retry chain without replacing earlier attempts.
+- **Identity and cardinality:** Canonical ASCII `run_id` is primary and constrained directly; `attempt` and the self-FK-derived `prior_run_id` describe a retry chain without replacing earlier attempts.
 - **Outgoing foreign keys:** `(request_id, plan_id)` binds the run to the exact execution request, and `prior_run_id` may bind a predecessor run.
 - **Inbound dependents:** Activity events belong to runs; generated ingress and rotation evidence may cite run identifiers as durable provenance.
 - **Writers and transactions:** Claiming and settling a run occur in explicit execution transactions with status predicates.
@@ -442,7 +504,7 @@ order is semantically significant for every composite identity.
 
 ### `cpk_cloudflare_ingress_resources`
 - **Durable meaning and owner:** `IngressResourceStore` owns observed Cloudflare ingress resource identity and lifecycle evidence for a workspace.
-- **Identity and cardinality:** `(workspace_id, ingress_id, epoch)` is primary, preserving successive observed epochs without identity collapse.
+- **Identity and cardinality:** `(workspace_id, ingress_id, epoch)` is primary, preserving successive observed epochs without identity collapse; independent `source_run_id` and optional `removed_by_run_id` provenance obey the canonical ASCII run grammar through direct checks.
 - **Outgoing foreign keys:** `workspace_id` must name the owning workspace.
 - **Inbound dependents:** No current table references these rows; workflows correlate source run, activity, and event identifiers as provenance values.
 - **Writers and transactions:** Ingress effects record observations and removals after provider outcomes in explicit operations transactions.
@@ -466,22 +528,126 @@ order is semantically significant for every composite identity.
 - **Sensitive material:** `public_key_pem` and its fingerprint are public material; `private_key_reference` is a sensitive locator, never a private key or signing result.
 - **Future impact:** #1553 and #1554 add transit authority language but must preserve exact purpose separation and defer private-key resolution to immediate I/O.
 
+### `cpk_effect_attempt_intents`
+- **Durable meaning and owner:** `EffectAttemptIntentStore` owns one immutable protected runtime-effect intent for the exact original start event of an effect attempt.
+- **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary through `cpk_effect_attempt_intents_pkey`; `cpk_effect_attempt_intents_original_event_key` makes the original event triple independently unique, and `cpk_effect_attempt_intents_commitment_key` commits attempt identity, request fingerprint, and original event identity.
+- **Outgoing foreign keys:** Composite run/request and request/workspace references derive ownership, while the original event triple names the immutable start event.
+- **Inbound dependents:** Every `cpk_effect_attempts` row must cite matching intent evidence through the reduced commitment key, making a started attempt without evidence unrepresentable.
+- **Writers and transactions:** `EffectAttemptIntentStore.insert` appends on the caller connection after the event and before the attempt; it never commits, rolls back, locks, updates, deletes, or upserts.
+- **Readers and projections:** Exact identity lookup reconstructs the full public intent record; current verification scans primary-key pages of at most eight rows and rejects orphan evidence.
+- **Mutation, locks, retries, and idempotency:** Rows are immutable; primary/event uniqueness exposes races, while exact start replay reads and compares the protected evidence without rewriting it.
+- **Lifecycle, retention, deletion, and restore:** Restore runs and requests, then the exact relation sequence `cpk_activity_events,cpk_effect_attempt_intents,cpk_effect_attempts`. Logical and fixture teardown reverses that sequence as `cpk_effect_attempts,cpk_effect_attempt_intents,cpk_activity_events`; this ordering grants no runtime delete, drop, migration, or repair authority. Restrictive references retain the complete chain.
+- **JSON boundary:** `preimage` contains exact canonical Core intent descriptor bytes, bounded to 1..1048576 octets and decoded, re-encoded, fingerprinted, and reconstructed through public values.
+- **Sensitive material:** The protected descriptor may contain lawful opaque secret references and endpoint topology but excludes grants, resolved secrets, request envelopes, and effect/event identifiers; errors and reprs do not disclose it.
+- **Future impact:** #1708 and #1694 may consume the verified intent during runtime authority and observation, but cannot rewrite it or move recovery authority from #1107.
+
+### `cpk_effect_attempt_outcome_observations`
+- **Durable meaning and owner:** `EffectAttemptOutcomeStore` owns ordered membership between one direct outcome and its exact immutable endpoint observations.
+- **Identity and cardinality:** `(run_id, activity_id, attempt, position)` is primary; `observation_id` is relation-wide unique, and every row copies the aggregate's bounded observation count.
+- **Outgoing foreign keys:** The aggregate identity, workspace, and copied count bind one outcome; observation identity plus workspace bind one immutable observation row.
+- **Inbound dependents:** No current relation references membership rows.
+- **Writers and transactions:** `EffectAttemptOutcomeStore.insert` appends membership after its outcome in the same caller-owned transaction and never commits independently.
+- **Readers and projections:** Exact restart reads order by position with `LIMIT observation_count + 1`; current verification performs the same bounded completeness check for each outcome.
+- **Mutation, locks, retries, and idempotency:** Rows are immutable, never locked or upserted, and relation-wide observation uniqueness rejects reuse across outcomes.
+- **Lifecycle, retention, deletion, and restore:** Restrictive references retain both outcome and observation; restore outcomes and observations before their ordered membership.
+- **JSON boundary:** None; membership contains only normalized identity, count, ordinal, and observation coordinates.
+- **Sensitive material:** No endpoint body is duplicated here; only bounded observation identifiers and workspace ownership are retained.
+- **Future impact:** #1699 may append this membership atomically with a direct fold, while #1107 must define distinct recovery evidence rather than reuse direct membership authority.
+
+### `cpk_effect_attempt_outcomes`
+- **Durable meaning and owner:** `EffectAttemptOutcomeStore` owns one immutable direct post-transition outcome and a copied historical effect-attempt state snapshot for exact restart reconstruction.
+- **Identity and cardinality:** `(run_id, activity_id, attempt)` permits zero or one direct outcome per attempt; the direct event triple is independently unique, and a candidate key binds workspace plus copied observation count.
+- **Outgoing foreign keys:** The row binds its attempt, run/request, request/workspace, and exact original/direct immutable activity-event triples through restrictive composite references.
+- **Inbound dependents:** Ordered outcome-observation membership cites the aggregate identity, workspace, and copied count.
+- **Writers and transactions:** `EffectAttemptOutcomeStore.insert` derives request/workspace ownership from durable run truth and inserts on the caller connection without commit, rollback, lock, update, delete, or upsert authority.
+- **Readers and projections:** Exact attempt-plus-direct-event lookup reconstructs strict Core preimage values, copied state, immutable events, and ordered observations; current verification scans identity keyset pages of at most 64 rows.
+- **Mutation, locks, retries, and idempotency:** The aggregate is immutable and uniqueness exposes conflicting direct outcomes as raw database integrity diagnostics; replay selection belongs to #1699.
+- **Lifecycle, retention, deletion, and restore:** Restore requests, runs, events, attempts, and observations first; later recovery may change current attempt truth without changing this historical direct snapshot.
+- **JSON boundary:** `preimage` stores only exact canonical RFC 8785 bytes for the inner Core result or observation, bounded to 1..8192 octets and decoded, re-encoded, fingerprinted, and reconstructed through public constructors.
+- **Sensitive material:** Stored preimages use the accepted bounded and redacted Core language; errors do not disclose candidate bytes, fingerprints, endpoint material, or driver parameters.
+- **Future impact:** #1699 owns atomic direct fold plus append order. Recovery selection and exact recovery evidence remain #1107 and cannot mutate or reinterpret this direct row.
+
+### `cpk_effect_attempts`
+- **Durable meaning and owner:** `EffectAttemptStore` owns the exact retained Operations representation of one Core effect-attempt state and the activity events that commit its beginning and latest transition.
+- **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary. Original and latest event triples are independently unique, so one event cannot silently commit two attempt roles.
+- **Outgoing foreign keys:** `run_id` names the activity run; the reduced intent-evidence commitment requires exact immutable start evidence; an optional predecessor triple names the immediately prior same-run/activity attempt; original and latest event triples name exact activity events.
+- **Inbound dependents:** Retry descendants may cite a row through the self-reference, and direct outcome evidence may cite its exact attempt identity.
+- **Writers and transactions:** `insert_absent` and complete-prior `compare_and_set` execute within the caller's transaction after the caller has appended the referenced event; the store never commits or appends events itself.
+- **Readers and projections:** Exact reads and row-locking reads reconstruct typed Core state plus authoritative event records. Current-schema verification scans every row in bounded deterministic primary-key pages.
+- **Mutation, locks, retries, and idempotency:** Identity-targeted insert is first-write-wins. Compare-and-set matches the complete physical prior row with null-safe equality; retry appends a new attempt linked to its immediate predecessor.
+- **Lifecycle, retention, deletion, and restore:** Restore runs, original events, and immutable intent evidence first, then attempts in ascending attempt order. Restrictive intent, event, run, and predecessor references retain the evidence chain.
+- **JSON boundary:** None; state, fence, recovery, predecessor, and event coordinates are represented as bounded typed columns and reconstructed through the existing record algebra.
+- **Sensitive material:** Only fingerprints, bounded worker/decision identifiers, and event coordinates are retained. Provider payloads, exception text, credentials, addresses, and secret values are excluded.
+- **Future impact:** #1684 and #1685 may read and mutate this representation through explicit transaction programs; they must preserve store-owned exact decoding, complete-prior CAS, and caller-owned effect authority.
+
+### `cpk_execution_command_receipts`
+- **Durable meaning and owner:** `PostgresExecutionStore` owns admission and exact completed replay truth for one `ExecutionCoordinator` command.
+- **Identity and cardinality:** `(run_id, idempotency_key)` is primary. The canonical intent fingerprint binds worker, the complete normalized `PolicyScope` set, claim generation, and the positive decimal effect bound without retaining the key inside the fingerprint.
+- **Outgoing foreign keys:** `run_id` must name the activity run the command was admitted to advance.
+- **Inbound dependents:** No table depends on a receipt; public command replay reads it through the coordinator.
+- **Writers and transactions:** Admission locks the command key, validates request/run authority in the established request-before-run order, and inserts `incomplete` before progress. Completion compare-and-sets that row to `completed` in a later transaction after execution returns normally.
+- **Readers and projections:** A completed replay returns the exact stored bounded result. An incomplete replay uses a fresh locked current-run read and returns uncertainty without progress or effect dispatch; the initial run snapshot is correlation evidence only.
+- **Mutation, locks, retries, and idempotency:** State is one-way `incomplete` to `completed`; changed intent conflicts, and neither escaped execution nor completion-persistence failure authorizes redispatch.
+- **Lifecycle, retention, deletion, and restore:** Restore runs before receipts. Restrictive run ownership retains receipts with their operational history; there is no public reset or delete path.
+- **JSON boundary:** Normalized scopes, initial run correlation, and the exact completed result are closed typed documents validated at the store boundary. Reconstruction recomputes the intent fingerprint and rejects effect-count, run-lineage, or completion-time drift. Join and command identity remain relational.
+- **Sensitive material:** Receipts contain bounded operational coordinates only, never provider payloads, exception text, credentials, tokens, or secret values.
+- **Future impact:** A future command family needs a distinct domain-separated fingerprint and explicit result codec rather than widening this receipt implicitly.
+
 ### `cpk_execution_requests`
-- **Durable meaning and owner:** `PostgresExecutionStore` owns durable requests to execute an approved activity plan, including claim leases.
+- **Durable meaning and owner:** `PostgresExecutionStore` owns durable requests to execute an approved activity plan, including database-timed, generation-fenced claim leases.
 - **Identity and cardinality:** `request_id` is primary; workspace idempotency is unique; `(request_id, plan_id)` binds downstream runs.
 - **Outgoing foreign keys:** The workspace, session, plan, approval request, and approval decision must all agree through composite identities.
 - **Inbound dependents:** Activity runs bind the exact `(request_id, plan_id)` pair.
 - **Writers and transactions:** Request creation and the guarded queued-to-claimed transition run in explicit short transactions; run settlement belongs to `cpk_activity_runs`.
 - **Readers and projections:** Workers query claimable requests; history projections expose bounded status and ownership facts.
-- **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; claim leases use guarded updates so one worker owns an attempt.
+- **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; request-row locks serialize claim and lease observation, and generation one gives the initial claim an exact fence identity. #1656 owns monotonic generation changes during renewal or takeover.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, session, plan, request, decision, then execution request and runs; settled requests remain durable history.
 - **JSON boundary:** None; intent identity is a digest and all relationships are relational.
 - **Sensitive material:** Worker and actor identifiers are bounded operational metadata; no effect payload, credential, or secret value is stored.
 - **Future impact:** #1555 must decide whether node-control attempts reuse this approved-plan queue or own a distinct intent table without weakening approval identity.
 
+### `cpk_failed_run_compensation_attempt_bindings`
+- **Durable meaning and owner:** `FailedRunCompensationAttemptStore` owns the immutable relation between one admitted compensation step and its fresh inverse attempt.
+- **Identity and cardinality:** `(program_id, position)` is primary and the inverse attempt identity is independently unique, making the relation bidirectional and one-to-one.
+- **Outgoing foreign keys:** The row names the exact ordered source step and the exact newly started inverse effect attempt.
+- **Inbound dependents:** No current relation depends on a binding; later execution reads it as durable admission truth.
+- **Writers and transactions:** `FailedRunCompensationAttemptStartService` appends the start event, protected intent, attempt, and binding in one caller-owned transaction.
+- **Readers and projections:** Exact replay reads by program position or reverse attempt identity and reconstructs the same typed binding.
+- **Mutation, locks, retries, and idempotency:** Rows are immutable; the program row serializes first-incomplete-step selection, and exact replay performs no writes.
+- **Lifecycle, retention, deletion, and restore:** Restore programs and steps, source outcomes, start events, protected intents, and attempts before restoring bindings.
+- **JSON boundary:** None; both identities and the ordered program coordinate are bounded relational columns.
+- **Sensitive material:** The relation contains only durable topology identities; no protected intent payload, authority material, diagnostics, address, or secret value is copied into it.
+- **Future impact:** #1729 may dispatch only the exact bound attempt and must not infer a different inverse or synthesize a replacement binding.
+
+### `cpk_failed_run_compensation_steps`
+- **Durable meaning and owner:** `FailedRunCompensationStore` owns the exact reverse-ordered inverse operations admitted from proven successful effects.
+- **Identity and cardinality:** `(program_id, position)` is primary; one source effect identity may occur only once in a program.
+- **Outgoing foreign keys:** Each step binds its program, immutable direct effect outcome, and exact direct success event coordinate.
+- **Inbound dependents:** Compensation-attempt bindings cite the exact ordered step and successful source identity.
+- **Writers and transactions:** The failed-run compensation command appends every step in the same caller-owned transaction as its program, action, start event, and run fold.
+- **Readers and projections:** Restart reconstruction reads positions in ascending order and verifies the closed Core program fingerprint.
+- **Mutation, locks, retries, and idempotency:** Steps are immutable; replay reads the existing program without allocating identifiers or rewriting rows.
+- **Lifecycle, retention, deletion, and restore:** Restore successful outcomes and events, then the program, then its steps; restrictive references preserve source evidence.
+- **JSON boundary:** `operation` is one closed Core activity-operation descriptor; source identities, fingerprints, and material source remain relational.
+- **Sensitive material:** Steps contain topology operation identifiers and fingerprints only; provider diagnostics, credentials, addresses, and secret values are forbidden.
+- **Future impact:** #1729 may interpret these values only through their exact binding; it cannot reorder, broaden, or infer additional external actions.
+
+### `cpk_failed_run_compensations`
+- **Durable meaning and owner:** `FailedRunCompensationStore` owns one authorized immutable compensation decision and complete exact program preimage for a failed run.
+- **Identity and cardinality:** `program_id` is primary; run, action, and start event are each unique so one failed run admits at most one program.
+- **Outgoing foreign keys:** Workspace, request, run, plan/session, operator action, and compensation-start event must all exist and agree with the original durable lineage.
+- **Inbound dependents:** Ordered compensation steps cite the program; no provider or public-interface table derives authority from it.
+- **Writers and transactions:** `FailedRunCompensationCommandService` appends the program with its action/event and atomically folds FAILED to COMPENSATING in one unit of work.
+- **Readers and projections:** Exact idempotent replay reconstructs the stored Core program and compares command, evidence, authority-reference, and program fingerprints.
+- **Mutation, locks, retries, and idempotency:** Rows are immutable and one run is unique; action idempotency serializes first admission and exact replay is write-free.
+- **Lifecycle, retention, deletion, and restore:** Restore original plan/request/run/effects, then action and start event, then program and steps; the original outcomes remain unchanged.
+- **JSON boundary:** `source_failure` is a closed bounded Operations failure and `program_preimage` is canonical closed Core descriptor bytes bounded to one MiB.
+- **Sensitive material:** Only the authority-reference SHA-256 is stored; raw authority material, provider messages, logs, commands, paths, addresses, and secret values are excluded.
+- **Future impact:** #1726 owns interpretation and completion; #1107 retains uncertainty resolution and must not mutate this admission preimage.
+
 ### `cpk_gateway_key_rotation_deployments`
 - **Durable meaning and owner:** `GatewayKeyRotationStore` owns prepared and accepted graph-deployment evidence for each rotation phase.
-- **Identity and cardinality:** `(rotation_id, phase)` is primary, allowing one exact record per lifecycle phase.
+- **Identity and cardinality:** `(rotation_id, phase)` is primary, allowing one exact record per lifecycle phase; its independent deployment `run_id` obeys the canonical ASCII run grammar through a direct check.
 - **Outgoing foreign keys:** `rotation_id` must name the owning gateway-key rotation.
 - **Inbound dependents:** No current relation references deployments; rotation workflows read them as phase evidence.
 - **Writers and transactions:** Preparation and acceptance evidence is committed atomically with the corresponding rotation transition.
@@ -546,7 +712,7 @@ order is semantically significant for every composite identity.
 
 ### `cpk_generated_ingress_secret_references`
 - **Durable meaning and owner:** `GeneratedIngressSecretReferenceStore` owns references to secrets created by ingress activity and their exact source provenance.
-- **Identity and cardinality:** `(workspace_id, purpose, source_run_id, source_activity_id, source_event_id)` is the primary provenance identity.
+- **Identity and cardinality:** `(workspace_id, purpose, source_run_id, source_activity_id, source_event_id)` is the primary provenance identity, with `source_run_id` independently constrained to the canonical ASCII run grammar.
 - **Outgoing foreign keys:** `workspace_id` must name the owning workspace.
 - **Inbound dependents:** No current relation references these rows; ingress reconciliation resolves them through store APIs.
 - **Writers and transactions:** Effects record the opaque reference after successful generation, with source provenance in the caller's unit of work.
@@ -731,7 +897,7 @@ order is semantically significant for every composite identity.
 - **Identity and cardinality:** `authorization_id` is primary; workspace correlation is unique; `(authorization_id, workspace_id)` preserves exact audit identity.
 - **Outgoing foreign keys:** Workspace, provider registration, and secret-reference registration must exist and agree on workspace.
 - **Inbound dependents:** No current relation references authorizations; effects consume the committed record by service contract.
-- **Writers and transactions:** Authorization commits in its own authorization unit of work before resolution or external I/O; optional operation/session/run/activity/effect/probe columns retain correlation provenance without an atomic owning-intent insert.
+- **Writers and transactions:** Authorization commits in its own authorization unit of work before resolution or external I/O; optional operation/session/run/activity/effect/probe columns retain correlation provenance without an atomic owning-intent insert, and optional `run_id` has a direct locale-stable canonical ASCII check.
 - **Readers and projections:** Secret policy, effect execution, and audit projections read intent, references, actor, correlation, and operation provenance.
 - **Mutation, locks, retries, and idempotency:** Authorizations are immutable; workspace correlation and intent fingerprint distinguish replay from conflicting secret use.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, provider, and reference first; authorizations remain durable even after referenced registrations are revoked.

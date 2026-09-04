@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import json
 import os
@@ -21,6 +21,11 @@ from control_plane_kit_core.identity import (
     WorkspaceGrant,
 )
 from control_plane_kit_core.planning import ActivityPlan
+from control_plane_kit_core.probe_intents import (
+    EndpointContext,
+    ProbeKind,
+    ProbeOutcome,
+)
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import IngressAuthorityReference
 from control_plane_kit_core.algebra import (
@@ -29,7 +34,10 @@ from control_plane_kit_core.algebra import (
     DockerRuntime,
     ProviderSocket,
 )
-from control_plane_kit_core.runtime_effects import ImagePullAuthority
+from control_plane_kit_core.runtime_effects import (
+    ImagePullAuthority,
+    RuntimeEffectResult,
+)
 from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
@@ -46,6 +54,7 @@ from control_plane_kit_operations.cpk_server import (
     CpkServerAdmissionService,
     CpkServerApplicationError,
     CpkServerApprovalService,
+    CpkServerExecutionService,
     CpkServerLifecycleService,
     CpkServerOperationsApplication,
     CpkServerPlanningService,
@@ -60,9 +69,30 @@ from control_plane_kit_operations.coordinator import (
     ActivityExecutionOutcome,
     ExecutionCoordinator,
 )
+from control_plane_kit_operations.effect_attempt_fold_interpreter import (
+    EffectAttemptFoldService,
+)
+from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import (
+    EffectAttemptReconciliationService,
+)
+from control_plane_kit_operations.effect_attempt_start_interpreter import (
+    EffectAttemptStartService,
+)
 from control_plane_kit_operations.lifecycle import RunLifecycleCommandService
 from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyRegistrationService,
+)
+from control_plane_kit_operations.deployment_program import (
+    DeploymentProgramReference,
+    PrepareDeploymentProgram,
+)
+from control_plane_kit_operations.deployment_program_interpreter import (
+    DeploymentProgram,
+)
+from control_plane_kit_operations.deployment_program_projections import (
+    DeploymentApprovalRequired,
+    DeploymentNoChanges,
+    DeploymentReviewBlocked,
 )
 from control_plane_kit_operations.ingress_authorities import (
     IngressAuthorityRegistrationService,
@@ -82,9 +112,13 @@ from control_plane_kit_operations.records import (
     ActivityPlanStatus,
     BoundedEvidence,
     GraphVersionRecord,
+    GraphProjectionLineage,
     OperationActionRecord,
     OperationSessionRecord,
     OperationSessionStatus,
+    ObservationFreshness,
+    ObservationRecord,
+    ObservationStatus,
     WorkspaceRecord,
 )
 from control_plane_kit_operations.runtime_authorities import (
@@ -93,7 +127,11 @@ from control_plane_kit_operations.runtime_authorities import (
 from control_plane_kit_operations.secret_providers import (
     SecretProviderRegistrationService,
 )
-from control_plane_kit_operations.workflows import OperationCommandService
+from control_plane_kit_operations.workflows import (
+    IdempotencyKey,
+    InvalidOperationCommand,
+    OperationCommandService,
+)
 from control_plane_kit_operations.workspaces import WorkspaceCommandService
 
 
@@ -147,6 +185,16 @@ class RecordingService:
         return DescriptorResult({"command_type": type(command).__name__})
 
 
+class RecordingDeploymentProgram:
+    def __init__(self, result: object) -> None:
+        self.result = result
+        self.commands: list[PrepareDeploymentProgram] = []
+
+    def prepare(self, command: PrepareDeploymentProgram) -> object:
+        self.commands.append(command)
+        return self.result
+
+
 class DescriptorResult:
     def __init__(self, descriptor: dict[str, object]) -> None:
         self._descriptor = descriptor
@@ -175,6 +223,409 @@ class SucceedingActivityAdapter:
         return ActivityExecutionOutcome.succeeded(
             BoundedEvidence.from_mapping({"activity_id": activity_id})
         )
+
+    def execute_runtime(self, context, request) -> RuntimeEffectResult:
+        activity_id = context.activity.activity_id.value
+        self.activities.append(activity_id)
+        return RuntimeEffectResult.succeeded(
+            request.effect_id,
+            evidence={"activity_id": activity_id},
+        )
+
+
+class _ForbiddenObserver:
+    def observe(self, _request, _authority):
+        raise AssertionError("server predecessor unexpectedly reconciled an effect")
+
+
+class _UnreadableArguments(dict):
+    def __getitem__(self, key):
+        raise AssertionError("unsupported recovery arguments were decoded")
+
+    def __iter__(self):
+        raise AssertionError("unsupported recovery arguments were decoded")
+
+    def get(self, key, default=None):
+        raise AssertionError("unsupported recovery arguments were decoded")
+
+    def items(self):
+        raise AssertionError("unsupported recovery arguments were decoded")
+
+
+def foreign_worker_principal() -> AuthenticatedPrincipal:
+    return AuthenticatedPrincipal(
+        PrincipalIdentity(
+            issuer="urn:test:cpk-server-adapters",
+            subject_id="worker-a",
+            kind=PrincipalKind.WORKER,
+        ),
+        (
+            WorkspaceGrant(
+                "workspace-other",
+                (PolicyScope.EXECUTION_OPERATE,),
+            ),
+        ),
+    )
+
+
+class RunIdentityAdapterContractTests(unittest.TestCase):
+    def services(self):
+        lifecycle = RecordingService()
+        execution = RecordingService()
+        advancement = RecordingService()
+        return (
+            CpkServerExecutionService(execution, lifecycle=lifecycle),
+            CpkServerLifecycleService(RecordingService(), advancement=advancement),
+            lifecycle,
+            execution,
+            advancement,
+        )
+
+    def command_request(
+        self,
+        route_id: str,
+        role: ControlPlaneServiceRole,
+        *,
+        surface: str,
+        run_id: str,
+        principal: AuthenticatedPrincipal | None = None,
+    ) -> RouteRequest:
+        path = {"workspace_id": "workspace-a", "run_id": run_id}
+        payload: dict[str, object]
+        if route_id == "command.run.start":
+            payload = {
+                "idempotency_key": "start-a",
+                "claim_generation": 1,
+            }
+        elif route_id == "command.deployment.execute":
+            payload = {
+                "idempotency_key": "execute-a",
+                "claim_generation": 1,
+                "max_effects": 1,
+            }
+        else:
+            payload = {
+                "plan_id": "plan-a",
+                "expected_current_graph_id": "graph-current",
+                "expected_current_realized_projection_id": "projection-current",
+                "desired_graph_id": "graph-desired",
+                "desired_realized_projection_id": "projection-desired",
+                "expected_desired_graph_revision": 1,
+                "claim_generation": 1,
+                "idempotency_key": "advance-a",
+            }
+        if surface == "mcp":
+            payload = {**path, **payload}
+            path = {}
+        return RouteRequest(
+            surface=surface,
+            route_id=route_id,
+            service_role=role,
+            path_parameters=path,
+            payload=payload,
+            principal=principal or worker_principal(),
+        )
+
+    def test_implemented_http_and_mcp_routes_reject_noncanonical_run_before_callback(self) -> None:
+        execution_service, lifecycle_service, lifecycle, execution, advancement = (
+            self.services()
+        )
+        cases = (
+            (
+                "command.run.start",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+            ),
+            (
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+            ),
+            (
+                "command.graph.advance-current",
+                ControlPlaneServiceRole.LIFECYCLE,
+                lifecycle_service,
+            ),
+        )
+        for route_id, role, service in cases:
+            for surface in ("http", "mcp"):
+                with self.subTest(route_id=route_id, surface=surface):
+                    with self.assertRaises(InvalidOperationCommand) as captured:
+                        service.handle(
+                            self.command_request(
+                                route_id,
+                                role,
+                                surface=surface,
+                                run_id="slash/run-canary",
+                            )
+                        )
+                    self.assertIsNone(captured.exception.__cause__)
+                    self.assertIsNone(captured.exception.__context__)
+                    self.assertNotIn("slash/run-canary", repr(captured.exception))
+        self.assertEqual(lifecycle.commands, [])
+        self.assertEqual(execution.commands, [])
+        self.assertEqual(advancement.commands, [])
+
+        entered = False
+
+        def forbidden_unit_of_work():
+            nonlocal entered
+            entered = True
+            raise AssertionError("malformed run reached read unit of work")
+
+        read_service = CpkServerReadService(forbidden_unit_of_work)
+        for surface in ("http", "mcp"):
+            path = {
+                "workspace_id": "workspace-a",
+                "run_id": "slash/run-canary",
+            }
+            payload: dict[str, object] = {"limit": 1}
+            if surface == "mcp":
+                payload = {**path, **payload}
+                path = {}
+            with self.subTest(route_id="read.run-events", surface=surface):
+                with self.assertRaises(CpkServerApplicationError) as captured:
+                    read_service.handle(
+                        RouteRequest(
+                            surface=surface,
+                            route_id="read.run-events",
+                            service_role=ControlPlaneServiceRole.READS,
+                            path_parameters=path,
+                            payload=payload,
+                        )
+                    )
+                self.assertEqual(captured.exception.status, 400)
+                self.assertEqual(captured.exception.message, "read page request is malformed")
+                self.assertNotIn("slash/run-canary", repr(captured.exception))
+        self.assertFalse(entered)
+
+    def test_workspace_denial_precedes_run_and_cursor_decoding_for_all_routes(self) -> None:
+        execution_service, lifecycle_service, lifecycle, execution, advancement = (
+            self.services()
+        )
+        cases = (
+            (
+                "command.run.start",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+            ),
+            (
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+            ),
+            (
+                "command.graph.advance-current",
+                ControlPlaneServiceRole.LIFECYCLE,
+                lifecycle_service,
+            ),
+        )
+        for route_id, role, service in cases:
+            for surface in ("http", "mcp"):
+                with self.subTest(route_id=route_id, surface=surface):
+                    with self.assertRaises(CpkServerApplicationError) as captured:
+                        service.handle(
+                            self.command_request(
+                                route_id,
+                                role,
+                                surface=surface,
+                                run_id="slash/run-canary",
+                                principal=foreign_worker_principal(),
+                            )
+                        )
+                    self.assertEqual(captured.exception.status, 403)
+        self.assertEqual(lifecycle.commands, [])
+        self.assertEqual(execution.commands, [])
+        self.assertEqual(advancement.commands, [])
+
+    def test_post_claim_routes_require_bounded_generation_before_service_entry(self) -> None:
+        cases = (
+            ("command.run.start", ControlPlaneServiceRole.EXECUTION, 0),
+            ("command.deployment.execute", ControlPlaneServiceRole.EXECUTION, 1),
+            ("command.graph.advance-current", ControlPlaneServiceRole.LIFECYCLE, 2),
+        )
+        for route_id, role, recorder_index in cases:
+            for surface in ("http", "mcp"):
+                for candidate in (None, True, 0, -1, 2**63, "generation-canary"):
+                    execution_service, lifecycle_service, lifecycle, execution, advancement = (
+                        self.services()
+                    )
+                    services = {
+                        ControlPlaneServiceRole.EXECUTION: execution_service,
+                        ControlPlaneServiceRole.LIFECYCLE: lifecycle_service,
+                    }
+                    recorders = (lifecycle, execution, advancement)
+                    request = self.command_request(
+                        route_id,
+                        role,
+                        surface=surface,
+                        run_id="run-a",
+                    )
+                    payload = dict(request.payload)
+                    if candidate is None:
+                        payload.pop("claim_generation", None)
+                    else:
+                        payload["claim_generation"] = candidate
+                    with self.subTest(
+                        route_id=route_id,
+                        surface=surface,
+                        candidate=candidate,
+                    ):
+                        with self.assertRaises(CpkServerApplicationError) as captured:
+                            services[role].handle(
+                                replace(request, payload=payload)
+                            )
+                        self.assertEqual(captured.exception.status, 400)
+                        self.assertEqual(
+                            captured.exception.message,
+                            "claim_generation is invalid",
+                        )
+                        self.assertNotIn("generation-canary", repr(captured.exception))
+                        self.assertEqual(recorders[recorder_index].commands, [])
+
+    def test_execution_fence_worker_comes_only_from_authenticated_actor(self) -> None:
+        execution_service, lifecycle_service, lifecycle, execution, advancement = (
+            self.services()
+        )
+
+        for route_id, role, service, recorder in (
+            (
+                "command.run.start",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+                lifecycle,
+            ),
+            (
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                execution_service,
+                execution,
+            ),
+            (
+                "command.graph.advance-current",
+                ControlPlaneServiceRole.LIFECYCLE,
+                lifecycle_service,
+                advancement,
+            ),
+        ):
+            request = self.command_request(
+                route_id,
+                role,
+                surface="http",
+                run_id="run-a",
+                principal=worker_principal(subject_id="trusted-worker"),
+            )
+            service.handle(
+                replace(
+                    request,
+                    payload={
+                        **request.payload,
+                        "worker_id": "hostile-worker-canary",
+                        "claim_generation": 7,
+                    },
+                )
+            )
+
+            command = recorder.commands[-1]
+            self.assertEqual(command.authority.worker_id, "trusted-worker")
+            self.assertEqual(command.fence.worker_id, "trusted-worker")
+            self.assertEqual(command.fence.generation, 7)
+
+        entered = False
+
+        def forbidden_unit_of_work():
+            nonlocal entered
+            entered = True
+            raise AssertionError("denied read reached unit of work")
+
+        read_service = CpkServerReadService(forbidden_unit_of_work)
+        with self.assertRaises(CpkServerApplicationError) as captured:
+            read_service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.run-events",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "run_id": "slash/run-canary",
+                    },
+                    payload={"after": {"hostile": True}, "limit": 1},
+                    principal=operator_principal(workspace_ids=("workspace-other",)),
+                )
+            )
+        self.assertEqual(captured.exception.status, 403)
+        self.assertFalse(entered)
+
+    def test_claim_and_unsupported_recovery_routes_do_not_parse_run_identity(self) -> None:
+        commands = RecordingService()
+        lifecycle_service = CpkServerLifecycleService(commands)
+        try:
+            result = lifecycle_service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.run.claim",
+                    service_role=ControlPlaneServiceRole.LIFECYCLE,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "run_id": "request/legacy",
+                    },
+                    payload={
+                        "lease_duration_seconds": 600,
+                        "idempotency_key": "claim-a",
+                    },
+                    principal=worker_principal(),
+                )
+            )
+        except CpkServerApplicationError as error:
+            self.fail(
+                f"bounded lease-duration claim was rejected with {error.status}"
+            )
+        self.assertEqual(result["command_type"], "ClaimAndOpenActivityRun")
+        self.assertEqual(
+            len(commands.commands),
+            1,
+            "bounded lease-duration claim did not reach the lifecycle service",
+        )
+        self.assertEqual(commands.commands[0].request_id, "request/legacy")
+        self.assertEqual(commands.commands[0].lease_duration.seconds, 600)
+
+        with self.assertRaises(CpkServerApplicationError) as captured:
+            lifecycle_service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="command.run.claim",
+                    service_role=ControlPlaneServiceRole.LIFECYCLE,
+                    path_parameters={
+                        "workspace_id": "workspace-a",
+                        "run_id": "request/legacy",
+                    },
+                    payload={
+                        "lease_expires_at": "2026-08-14T13:00:00Z",
+                        "idempotency_key": "claim-old",
+                    },
+                    principal=worker_principal(),
+                )
+            )
+        self.assertEqual(captured.exception.status, 400)
+
+        unsupported = CpkServerUnsupportedService(ControlPlaneServiceRole.RECOVERY)
+        for surface in ("http", "mcp"):
+            with self.subTest(surface=surface):
+                with self.assertRaises(CpkServerApplicationError) as captured:
+                    unsupported.handle(
+                        RouteRequest(
+                            surface=surface,
+                            route_id="command.recovery.decide",
+                            service_role=ControlPlaneServiceRole.RECOVERY,
+                            path_parameters={
+                                "workspace_id": "workspace-a",
+                                "run_id": "not/a/run",
+                            },
+                            payload=_UnreadableArguments(),
+                            principal=worker_principal(),
+                        )
+                    )
+                self.assertEqual(captured.exception.status, 501)
 
 
 class CpkServerOperationsAdapterTests(unittest.TestCase):
@@ -216,6 +667,93 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 "graph-current",
             )
             unit_of_work.commit()
+
+    def test_http_and_mcp_retain_two_verification_checks_for_one_node(self) -> None:
+        self.seed_workspace()
+        digest = "d" * 64
+        subjects = (
+            "verification:" + "a" * 64,
+            "verification:" + "b" * 64,
+        )
+        checks = (
+            (subjects[0], "liveness", "/health/live", None, None),
+            (subjects[1], "root-response", "/", digest, True),
+        )
+        with self.unit_of_work() as unit_of_work:
+            for index, (subject, check_id, path, expected, matched) in enumerate(
+                checks,
+                start=1,
+            ):
+                unit_of_work.stores.observed_state.put(
+                    ObservationRecord(
+                        observation_id=f"verification-observation-{index}",
+                        workspace_id="workspace-a",
+                        subject_id=subject,
+                        status=ObservationStatus.VERIFIED,
+                        observed_at="2026-07-22T13:00:00Z",
+                        evidence=BoundedEvidence.from_mapping(
+                            {
+                                "http_verification": {
+                                    "run_id": "run-a",
+                                    "activity_id": "verify-router",
+                                    "attempt": 1,
+                                    "effect_id": "effect-router",
+                                    "node_id": "router",
+                                    "check_id": check_id,
+                                    "provider_socket": "public",
+                                    "path": path,
+                                    "http_status": 200,
+                                    "response_bytes": 21,
+                                    "expected_body_sha256": expected,
+                                    "body_sha256_matches": matched,
+                                }
+                            }
+                        ),
+                        freshness=ObservationFreshness.FRESH,
+                        graph_id="graph-current",
+                        probe_kind=ProbeKind.APPLICATION_HEALTH,
+                        probe_outcome=ProbeOutcome.HEALTHY,
+                        endpoint_context=EndpointContext.RUNTIME_PRIVATE,
+                    )
+                )
+            unit_of_work.commit()
+
+        service = CpkServerReadService(
+            self.unit_of_work,
+            clock=lambda: datetime(2026, 7, 22, 13, 1, tzinfo=timezone.utc),
+        )
+
+        def request(surface: str) -> RouteRequest:
+            return RouteRequest(
+                surface=surface,
+                route_id="read.observed-state",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters=(
+                    {"workspace_id": "workspace-a"} if surface == "http" else {}
+                ),
+                payload=(
+                    {"limit": 100}
+                    if surface == "http"
+                    else {"workspace_id": "workspace-a", "limit": 100}
+                ),
+            )
+
+        http = service.handle(request("http"))
+        mcp = service.handle(request("mcp"))
+
+        self.assertEqual(http, mcp)
+        self.assertEqual(http["next_cursor"], None)
+        self.assertEqual(
+            tuple(item["subject_id"] for item in http["items"]),
+            subjects,
+        )
+        self.assertEqual(
+            tuple(
+                item["payload"]["http_verification"]["check_id"]
+                for item in http["items"]
+            ),
+            ("liveness", "root-response"),
+        )
 
     def seed_session_action(self) -> None:
         self.seed_workspace()
@@ -1216,6 +1754,222 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         )
         self.assertEqual(revoked["status"], "revoked")
 
+    def test_deployment_prepare_maps_http_and_mcp_to_closed_redacted_results(self) -> None:
+        reference = DeploymentProgramReference("workspace-a", "plan-a")
+        cases = (
+            (
+                DeploymentNoChanges(reference),
+                {
+                    "status": "no-changes",
+                    "workspace_id": "workspace-a",
+                    "plan_id": "plan-a",
+                },
+            ),
+            (
+                DeploymentReviewBlocked(reference),
+                {
+                    "status": "review-blocked",
+                    "workspace_id": "workspace-a",
+                    "plan_id": "plan-a",
+                },
+            ),
+            (
+                DeploymentApprovalRequired(reference, "approval-a"),
+                {
+                    "status": "approval-required",
+                    "workspace_id": "workspace-a",
+                    "plan_id": "plan-a",
+                    "approval_request_id": "approval-a",
+                },
+            ),
+        )
+        payload = {
+            "desired_graph": DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("desired")),
+            "expected_current": {
+                "authored_graph_id": "graph-current",
+                "realized_projection_id": "projection-current",
+            },
+            "expected_desired": {
+                "authored_graph_id": "graph-prior-desired",
+                "realized_projection_id": "projection-prior-desired",
+            },
+            "expected_desired_graph_revision": 7,
+            "title": "do-not-disclose title",
+            "idempotency_key": "prepare-a",
+            "approval_comment": "do-not-disclose comment",
+        }
+
+        for projection, expected in cases:
+            with self.subTest(status=expected["status"]):
+                program = RecordingDeploymentProgram(projection)
+                service = CpkServerPlanningService(
+                    RecordingService(),
+                    deployment_program=program,
+                )
+                http = service.handle(
+                    RouteRequest(
+                        surface="http",
+                        route_id="command.deployment.prepare",
+                        service_role=ControlPlaneServiceRole.PLANNING,
+                        path_parameters={"workspace_id": "workspace-a"},
+                        payload=payload,
+                    )
+                )
+                mcp = service.handle(
+                    RouteRequest(
+                        surface="mcp",
+                        route_id="command.deployment.prepare",
+                        service_role=ControlPlaneServiceRole.PLANNING,
+                        path_parameters={},
+                        payload={"workspace_id": "workspace-a", **payload},
+                    )
+                )
+
+                self.assertEqual(http, expected)
+                self.assertEqual(mcp, expected)
+                self.assertEqual(program.commands[0], program.commands[1])
+                command = program.commands[0]
+                self.assertEqual(command.context.actor_id, "operator-a")
+                self.assertEqual(command.desired, DeploymentGraph("desired"))
+                self.assertEqual(
+                    command.expected_current,
+                    GraphProjectionLineage("graph-current", "projection-current"),
+                )
+                self.assertEqual(command.expected_desired_graph_revision, 7)
+                self.assertEqual(command.idempotency_key, IdempotencyKey("prepare-a"))
+                rendered = repr(http)
+                self.assertNotIn("do-not-disclose", rendered)
+                self.assertNotIn("desired_graph", rendered)
+
+    def test_deployment_prepare_authorizes_before_program_access(self) -> None:
+        program = RecordingDeploymentProgram(
+            DeploymentNoChanges(
+                DeploymentProgramReference("workspace-a", "plan-a")
+            )
+        )
+        service = CpkServerPlanningService(
+            RecordingService(),
+            deployment_program=program,
+        )
+        payload = {
+            "desired_graph": DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("desired")),
+            "expected_current": {
+                "authored_graph_id": "graph-current",
+                "realized_projection_id": "projection-current",
+            },
+            "expected_desired": None,
+            "expected_desired_graph_revision": 0,
+            "title": "Prepare deployment",
+            "idempotency_key": "prepare-a",
+        }
+        principals = (
+            operator_principal(workspace_ids=("workspace-b",)),
+            operator_principal(scopes=(PolicyScope.PLAN_REQUEST,)),
+        )
+
+        for principal in principals:
+            with self.subTest(principal=principal.identity.subject_id):
+                with self.assertRaises(CpkServerApplicationError) as raised:
+                    service.handle(
+                        RouteRequest(
+                            surface="http",
+                            route_id="command.deployment.prepare",
+                            service_role=ControlPlaneServiceRole.PLANNING,
+                            path_parameters={"workspace_id": "workspace-a"},
+                            payload=payload,
+                            principal=principal,
+                        )
+                    )
+                self.assertEqual(raised.exception.status, 403)
+        self.assertEqual(program.commands, [])
+
+    def test_deployment_prepare_replays_durable_no_change_without_effects(self) -> None:
+        self.seed_workspace()
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+        program = DeploymentProgram(
+            OperationCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-08-31T12:00:00Z",
+                id_factory=GeneratedIds("prepare-session"),
+            ),
+            DesiredGraphCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-08-31T12:01:00Z",
+                id_factory=GeneratedIds("prepare-desired"),
+            ),
+            ActivityPlanningCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-08-31T12:02:00Z",
+                id_factory=GeneratedIds("prepare-plan"),
+            ),
+            ApprovalCommandService(
+                self.unit_of_work,
+                clock=lambda: "2026-08-31T12:03:00Z",
+                id_factory=GeneratedIds("prepare-approval"),
+            ),
+        )
+        service = CpkServerPlanningService(
+            RecordingService(),
+            deployment_program=program,
+        )
+        payload = {
+            "desired_graph": DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("current")),
+            "expected_current": {
+                "authored_graph_id": "graph-current",
+                "realized_projection_id": workspace.current_realized_projection_id,
+            },
+            "expected_desired": None,
+            "expected_desired_graph_revision": 0,
+            "title": "No-change deployment",
+            "idempotency_key": "prepare-replay-a",
+        }
+
+        http = service.handle(
+            RouteRequest(
+                surface="http",
+                route_id="command.deployment.prepare",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload=payload,
+            )
+        )
+        mcp = service.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="command.deployment.prepare",
+                service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={},
+                payload={"workspace_id": "workspace-a", **payload},
+            )
+        )
+
+        self.assertEqual(http, mcp)
+        self.assertEqual(http["status"], "no-changes")
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_operation_sessions"
+            ).fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            self.connection.execute(
+                "SELECT count(*) FROM cpk_activity_plans"
+            ).fetchone()[0],
+            1,
+        )
+        for relation in (
+            "cpk_approval_requests",
+            "cpk_execution_requests",
+            "cpk_activity_runs",
+            "cpk_effect_attempts",
+        ):
+            with self.subTest(relation=relation):
+                count = self.connection.execute(
+                    f"SELECT count(*) FROM {relation}"
+                ).fetchone()[0]
+                self.assertEqual(count, 0)
+
     def test_command_route_translates_payload_to_existing_planning_command(self) -> None:
         recording = RecordingService()
         service = CpkServerPlanningService(recording)
@@ -1381,12 +2135,16 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         self.assertEqual(decided["state"], "approved")
         self.assertEqual(decided["request_id"], "approval-a")
 
-    def test_public_workflow_routes_plan_approve_admit_claim_execute_and_advance(self) -> None:
+    def test_public_deployment_chain_derives_coordinates_replays_and_advances(self) -> None:
         adapter = SucceedingActivityAdapter()
         lifecycle = RunLifecycleCommandService(
             self.unit_of_work,
             clock=lambda: "2026-07-22T10:10:00Z",
             id_factory=GeneratedIds("lifecycle"),
+        )
+        fold = EffectAttemptFoldService(
+            self.unit_of_work,
+            id_factory=GeneratedIds("effect-fold"),
         )
         application = CpkServerOperationsApplication(
             cpk_server_services(
@@ -1427,6 +2185,16 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                     self.unit_of_work,
                     lifecycle=lifecycle,
                     adapter=adapter,
+                    start_service=EffectAttemptStartService(
+                        self.unit_of_work,
+                        id_factory=GeneratedIds("effect-start"),
+                    ),
+                    fold_service=fold,
+                    reconciliation_service=EffectAttemptReconciliationService(
+                        self.unit_of_work,
+                        _ForbiddenObserver(),
+                        fold,
+                    ),
                     clock=lambda: "2026-07-22T10:11:00Z",
                     id_factory=GeneratedIds("execution"),
                 ),
@@ -1442,249 +2210,358 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             self.product("hello-server")
         )
 
-        workspace = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.workspace.create",
-                service_role=ControlPlaneServiceRole.PLANNING,
-                path_parameters={},
-                payload={
-                    "workspace_id": "workspace-a",
-                    "name": "Workspace A",
-                    "actor_id": "operator-a",
-                    "idempotency_key": "workspace-a",
-                },
+        def invoke(
+            surface: str,
+            route_id: str,
+            service_role: ControlPlaneServiceRole,
+            *,
+            path: dict[str, str] | None = None,
+            payload: dict[str, object] | None = None,
+            principal: AuthenticatedPrincipal | None = None,
+        ) -> dict[str, object]:
+            path_parameters = dict(path or {})
+            arguments = dict(payload or {})
+            if surface == "mcp":
+                arguments = {**path_parameters, **arguments}
+                path_parameters = {}
+            return dict(
+                application.handle(
+                    RouteRequest(
+                        surface=surface,
+                        route_id=route_id,
+                        service_role=service_role,
+                        path_parameters=path_parameters,
+                        payload=arguments,
+                        principal=principal or operator_principal(),
+                    )
+                )
             )
+
+        def read_both(
+            route_id: str,
+            *,
+            path: dict[str, str],
+            payload: dict[str, object] | None = None,
+        ) -> dict[str, object]:
+            http = invoke(
+                "http",
+                route_id,
+                ControlPlaneServiceRole.READS,
+                path=path,
+                payload=payload,
+            )
+            mcp = invoke(
+                "mcp",
+                route_id,
+                ControlPlaneServiceRole.READS,
+                path=path,
+                payload=payload,
+            )
+            self.assertEqual(mcp, http)
+            return http
+
+        def assert_replay(
+            original: dict[str, object], replay: dict[str, object]
+        ) -> None:
+            self.assertFalse(original["replayed"])
+            self.assertTrue(replay["replayed"])
+            self.assertEqual(
+                {key: value for key, value in replay.items() if key != "replayed"},
+                {key: value for key, value in original.items() if key != "replayed"},
+            )
+
+        workspace = invoke(
+            "http",
+            "command.workspace.create",
+            ControlPlaneServiceRole.PLANNING,
+            payload={
+                "workspace_id": "workspace-a",
+                "name": "Workspace A",
+                "idempotency_key": "workspace-a",
+            },
         )
-        current_graph_id = str(workspace["workspace"]["current_graph_id"])
+        workspace_truth = dict(workspace["workspace"])
+        current_graph_id = str(workspace_truth["current_graph_id"])
         current_projection_id = str(
-            workspace["workspace"]["current_realized_projection_id"]
+            workspace_truth["current_realized_projection_id"]
         )
 
-        application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.product.import",
-                service_role=ControlPlaneServiceRole.PLANNING,
-                path_parameters={"workspace_id": "workspace-a"},
-                payload={
-                    "descriptor_document": json.loads(
-                        product_document.content.decode("utf-8")
-                    ),
-                    "actor_id": "operator-a",
-                    "imported_at": "2026-07-22T10:00:30Z",
-                    "idempotency_key": "import-product-a",
-                },
-            )
-        )
-
-        session = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.operation-session.start",
-                service_role=ControlPlaneServiceRole.LIFECYCLE,
-                path_parameters={"workspace_id": "workspace-a"},
-                payload={
-                    "actor_id": "operator-a",
-                    "title": "Initial deployment",
-                    "idempotency_key": "session-a",
-                },
-            )
-        )
-        session_id = str(session["session_id"])
-
-        desired = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.desired-graph.set",
-                service_role=ControlPlaneServiceRole.PLANNING,
-                path_parameters={"workspace_id": "workspace-a"},
-                payload={
-                    "session_id": session_id,
-                    "actor_id": "operator-a",
-                    "graph": DEFAULT_GRAPH_CODEC.encode(
-                        self.graph_from_document(product_document.product)
-                    ),
-                    "expected_desired_graph_id": None,
-                    "expected_desired_realized_projection_id": None,
-                    "expected_desired_graph_revision": 0,
-                    "idempotency_key": "desired-a",
-                },
-            )
-        )
-        desired_graph_id = str(desired["desired_graph_id"])
-        desired_projection_id = str(
-            desired["desired_realized_projection_id"]
-        )
-        desired_revision = int(desired["desired_graph_revision"])
-
-        planned = application.handle(
-            RouteRequest(
-                surface="mcp",
-                route_id="command.deployment.plan",
-                service_role=ControlPlaneServiceRole.PLANNING,
-                path_parameters={},
-                payload={
-                    "workspace_id": "workspace-a",
-                    "session_id": session_id,
-                    "actor_id": "operator-a",
-                    "expected_current_graph_id": current_graph_id,
-                    "expected_desired_graph_id": desired_graph_id,
-                    "expected_current_realized_projection_id": (
-                        current_projection_id
-                    ),
-                    "expected_desired_realized_projection_id": (
-                        desired_projection_id
-                    ),
-                    "expected_desired_graph_revision": desired_revision,
-                    "idempotency_key": "plan-a",
-                },
-            )
-        )
-        plan_id = str(planned["plan_id"])
-        self.assertEqual(
-            planned["base_realized_projection_id"],
-            current_projection_id,
-        )
-        self.assertEqual(
-            planned["desired_realized_projection_id"],
-            desired_projection_id,
-        )
-        self.assertEqual(planned["desired_graph_revision"], desired_revision)
-
-        requested = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.approval.request",
-                service_role=ControlPlaneServiceRole.APPROVAL,
-                path_parameters={"workspace_id": "workspace-a", "plan_id": plan_id},
-                payload={
-                    "session_id": session_id,
-                    "actor_id": "operator-a",
-                    "actor_scopes": [PolicyScope.PLAN_REQUEST.value],
-                    "idempotency_key": "approval-request-a",
-                },
-            )
-        )
-        approval_request_id = str(requested["request_id"])
-
-        pending = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="read.pending-approvals",
-                service_role=ControlPlaneServiceRole.READS,
-                path_parameters={"workspace_id": "workspace-a"},
-                payload={"limit": 10},
-            )
-        )
-        self.assertEqual(pending["items"][0]["request_id"], approval_request_id)
-
-        detail = application.handle(
-            RouteRequest(
-                surface="mcp",
-                route_id="read.approval-detail",
-                service_role=ControlPlaneServiceRole.READS,
-                path_parameters={},
-                payload={"workspace_id": "workspace-a", "approval_id": approval_request_id},
-            )
-        )
-        self.assertEqual(detail["plan"]["plan_id"], plan_id)
-
-        application.handle(
-            RouteRequest(
-                surface="mcp",
-                route_id="command.approval.decide",
-                service_role=ControlPlaneServiceRole.APPROVAL,
-                path_parameters={},
-                payload={
-                    "workspace_id": "workspace-a",
-                    "session_id": session_id,
-                    "request_id": approval_request_id,
-                    "actor_id": "manager-a",
-                    "actor_scopes": [requested["required_scope"]],
-                    "decision": "approved",
-                    "idempotency_key": "approval-decision-a",
-                },
-                principal=operator_principal(
-                    subject_id="manager-a",
-                    scopes=(PolicyScope.PLAN_APPROVE,),
+        invoke(
+            "mcp",
+            "command.product.import",
+            ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": str(workspace_truth["workspace_id"])},
+            payload={
+                "descriptor_document": json.loads(
+                    product_document.content.decode("utf-8")
                 ),
-            )
+                "imported_at": "2026-07-22T10:00:30Z",
+                "idempotency_key": "import-product-a",
+            },
         )
 
-        admitted = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.deployment.admit",
-                service_role=ControlPlaneServiceRole.ADMISSION,
-                path_parameters={"workspace_id": "workspace-a", "plan_id": plan_id},
-                payload={
-                    "session_id": session_id,
-                    "approval_request_id": approval_request_id,
-                    "actor_id": "operator-a",
-                    "actor_scopes": [PolicyScope.PLAN_EXECUTE.value],
-                    "idempotency_key": "admit-a",
-                    "readiness": [],
-                },
-            )
+        prepare_payload = {
+            "desired_graph": DEFAULT_GRAPH_CODEC.encode(
+                self.graph_from_document(product_document.product)
+            ),
+            "expected_current": {
+                "authored_graph_id": current_graph_id,
+                "realized_projection_id": current_projection_id,
+            },
+            "expected_desired": None,
+            "expected_desired_graph_revision": int(
+                workspace_truth["desired_graph_revision"]
+            ),
+            "title": "Initial deployment",
+            "idempotency_key": "prepare-a",
+        }
+        prepared = invoke(
+            "http",
+            "command.deployment.prepare",
+            ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"},
+            payload=prepare_payload,
         )
+        prepared_replay = invoke(
+            "mcp",
+            "command.deployment.prepare",
+            ControlPlaneServiceRole.PLANNING,
+            path={"workspace_id": "workspace-a"},
+            payload=prepare_payload,
+        )
+        self.assertEqual(prepared_replay, prepared)
+        self.assertEqual(prepared["status"], "approval-required")
+        plan_id = str(prepared["plan_id"])
+        approval_request_id = str(prepared["approval_request_id"])
+
+        plan_detail = read_both(
+            "read.plan-detail",
+            path={"workspace_id": "workspace-a", "plan_id": plan_id},
+        )
+        plan = dict(plan_detail["plan"])
+        session_id = str(plan["session_id"])
+        self.assertEqual(plan["base_graph_id"], current_graph_id)
+        self.assertEqual(
+            plan["base_realized_projection_id"], current_projection_id
+        )
+        desired_graph_id = str(plan["desired_graph_id"])
+        desired_projection_id = str(plan["desired_realized_projection_id"])
+        desired_revision = int(plan["desired_graph_revision"])
+
+        approval_detail = read_both(
+            "read.approval-detail",
+            path={
+                "workspace_id": "workspace-a",
+                "approval_id": approval_request_id,
+            },
+        )
+        approval = dict(approval_detail["approval"])
+        self.assertEqual(approval["request_id"], approval_request_id)
+        self.assertEqual(approval["session_id"], session_id)
+        self.assertEqual(approval_detail["plan"], plan)
+        self.assertEqual(approval["state"], "pending")
+        self.assertEqual(
+            approval["destructive"],
+            bool(dict(plan["risk_summary"])["destructive_count"]),
+        )
+
+        session_plans = read_both(
+            "read.session-plans",
+            path={"workspace_id": "workspace-a", "session_id": session_id},
+            payload={"limit": 10},
+        )
+        session_approvals = read_both(
+            "read.session-approvals",
+            path={"workspace_id": "workspace-a", "session_id": session_id},
+            payload={"limit": 10},
+        )
+        self.assertEqual(
+            [item["plan_id"] for item in session_plans["items"]], [plan_id]
+        )
+        self.assertEqual(
+            [item["request_id"] for item in session_approvals["items"]],
+            [approval_request_id],
+        )
+
+        decision_payload = {
+            "session_id": session_id,
+            "decision": "approved",
+            "idempotency_key": "approval-decision-a",
+        }
+        manager = operator_principal(
+            subject_id="manager-a",
+            scopes=(PolicyScope.PLAN_APPROVE,),
+        )
+        decided = invoke(
+            "mcp",
+            "command.approval.decide",
+            ControlPlaneServiceRole.APPROVAL,
+            path={
+                "workspace_id": "workspace-a",
+                "approval_id": approval_request_id,
+            },
+            payload=decision_payload,
+            principal=manager,
+        )
+        decided_replay = invoke(
+            "http",
+            "command.approval.decide",
+            ControlPlaneServiceRole.APPROVAL,
+            path={
+                "workspace_id": "workspace-a",
+                "approval_id": approval_request_id,
+            },
+            payload=decision_payload,
+            principal=manager,
+        )
+        assert_replay(decided, decided_replay)
+        self.assertEqual(decided["scope"], approval["required_scope"])
+        self.assertEqual(decided["destructive"], approval["destructive"])
+
+        admission_payload = {
+            "session_id": str(approval["session_id"]),
+            "approval_request_id": str(approval["request_id"]),
+            "idempotency_key": "admit-a",
+            "readiness": [],
+        }
+        admitted = invoke(
+            "http",
+            "command.deployment.admit",
+            ControlPlaneServiceRole.ADMISSION,
+            path={"workspace_id": "workspace-a", "plan_id": plan_id},
+            payload=admission_payload,
+        )
+        admitted_replay = invoke(
+            "mcp",
+            "command.deployment.admit",
+            ControlPlaneServiceRole.ADMISSION,
+            path={"workspace_id": "workspace-a", "plan_id": plan_id},
+            payload=admission_payload,
+        )
+        assert_replay(admitted, admitted_replay)
         request_id = str(admitted["execution_request_id"])
 
-        claimed = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.run.claim",
-                service_role=ControlPlaneServiceRole.LIFECYCLE,
-                path_parameters={"workspace_id": "workspace-a", "run_id": request_id},
-                payload={
-                    "worker_id": "worker-a",
-                    "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-                    "lease_expires_at": "2026-07-22T10:30:00Z",
-                    "idempotency_key": "claim-a",
-                },
-                principal=worker_principal(),
-            )
+        worker = worker_principal()
+        claim_payload = {
+            "lease_duration_seconds": 1800,
+            "idempotency_key": "claim-a",
+        }
+        claimed = invoke(
+            "mcp",
+            "command.run.claim",
+            ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": request_id},
+            payload=claim_payload,
+            principal=worker,
         )
+        claimed_replay = invoke(
+            "http",
+            "command.run.claim",
+            ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": request_id},
+            payload=claim_payload,
+            principal=worker,
+        )
+        assert_replay(claimed, claimed_replay)
         run_id = str(claimed["run_id"])
+        claim_generation = int(claimed["claim_generation"])
 
-        application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.run.start",
-                service_role=ControlPlaneServiceRole.EXECUTION,
-                path_parameters={"workspace_id": "workspace-a", "run_id": run_id},
-                payload={
-                    "worker_id": "worker-a",
-                    "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-                    "idempotency_key": "start-a",
-                },
-                principal=worker_principal(),
-            )
+        start_payload = {
+            "claim_generation": claim_generation,
+            "idempotency_key": "start-a",
+        }
+        started = invoke(
+            "http",
+            "command.run.start",
+            ControlPlaneServiceRole.EXECUTION,
+            path={"workspace_id": "workspace-a", "run_id": run_id},
+            payload=start_payload,
+            principal=worker,
         )
+        started_replay = invoke(
+            "mcp",
+            "command.run.start",
+            ControlPlaneServiceRole.EXECUTION,
+            path={"workspace_id": "workspace-a", "run_id": run_id},
+            payload=start_payload,
+            principal=worker,
+        )
+        assert_replay(started, started_replay)
 
-        executed = application.handle(
-            RouteRequest(
-                surface="mcp",
-                route_id="command.deployment.execute",
-                service_role=ControlPlaneServiceRole.EXECUTION,
-                path_parameters={},
-                payload={
-                    "workspace_id": "workspace-a",
-                    "run_id": run_id,
-                    "worker_id": "worker-a",
-                    "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
-                    "idempotency_key": "execute-a",
-                    "max_effects": 10,
-                },
-                principal=worker_principal(),
+        plan_runs = read_both(
+            "read.plan-runs",
+            path={"workspace_id": "workspace-a", "plan_id": plan_id},
+            payload={"limit": 100},
+        )
+        self.assertEqual([item["run_id"] for item in plan_runs["items"]], [run_id])
+
+        terminal = None
+        for ordinal in range(1, 16):
+            execute_payload = {
+                "claim_generation": claim_generation,
+                "idempotency_key": f"execute-{ordinal}",
+                "max_effects": 1,
+            }
+            surface = "mcp" if ordinal % 2 else "http"
+            replay_surface = "http" if surface == "mcp" else "mcp"
+            executed = invoke(
+                surface,
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": run_id},
+                payload=execute_payload,
+                principal=worker,
             )
-        )
-        self.assertEqual(executed["coordinator_status"], "completed")
-        self.assertEqual(executed["run_status"], "succeeded")
-        self.assertEqual(
-            [activity.split(":", 1)[0] for activity in adapter.activities],
-            ["start-runtime", "start-node", "wait-healthy"],
-        )
+            status = str(executed["coordinator_status"])
+            if status not in {"progressed", "completed"}:
+                self.assertIn(
+                    status,
+                    {"in-flight", "uncertain", "blocked", "failed", "unsupported"},
+                )
+                stopped_current = read_both(
+                    "read.current-graph",
+                    path={"workspace_id": "workspace-a"},
+                )
+                self.assertEqual(stopped_current["graph_id"], current_graph_id)
+                terminal = executed
+                break
+
+            activities_after_execute = tuple(adapter.activities)
+            events_after_execute = read_both(
+                "read.run-events",
+                path={"workspace_id": "workspace-a", "run_id": run_id},
+                payload={"limit": 100},
+            )
+            replay = invoke(
+                replay_surface,
+                "command.deployment.execute",
+                ControlPlaneServiceRole.EXECUTION,
+                path={"workspace_id": "workspace-a", "run_id": run_id},
+                payload=execute_payload,
+                principal=worker,
+            )
+            events_after_replay = read_both(
+                "read.run-events",
+                path={"workspace_id": "workspace-a", "run_id": run_id},
+                payload={"limit": 100},
+            )
+            self.assertEqual(
+                (replay, tuple(adapter.activities), events_after_replay),
+                (executed, activities_after_execute, events_after_execute),
+            )
+            if status == "completed":
+                terminal = executed
+                break
+
+            before_advance = read_both(
+                "read.current-graph",
+                path={"workspace_id": "workspace-a"},
+            )
+            self.assertEqual(before_advance["graph_id"], current_graph_id)
+
+        self.assertIsNotNone(terminal)
+        self.assertEqual(terminal["coordinator_status"], "completed")
+        self.assertEqual(terminal["run_status"], "succeeded")
 
         advance_payload = {
             "plan_id": plan_id,
@@ -1693,32 +2570,24 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             "desired_graph_id": desired_graph_id,
             "desired_realized_projection_id": desired_projection_id,
             "expected_desired_graph_revision": desired_revision,
-            "worker_id": "worker-a",
-            "actor_scopes": [PolicyScope.EXECUTION_OPERATE.value],
+            "claim_generation": claim_generation,
             "idempotency_key": "advance-a",
         }
-        advanced = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="command.graph.advance-current",
-                service_role=ControlPlaneServiceRole.LIFECYCLE,
-                path_parameters={"workspace_id": "workspace-a", "run_id": run_id},
-                payload=advance_payload,
-                principal=worker_principal(),
-            )
+        advanced = invoke(
+            "http",
+            "command.graph.advance-current",
+            ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": run_id},
+            payload=advance_payload,
+            principal=worker,
         )
-        advanced_mcp = application.handle(
-            RouteRequest(
-                surface="mcp",
-                route_id="command.graph.advance-current",
-                service_role=ControlPlaneServiceRole.LIFECYCLE,
-                path_parameters={
-                    "workspace_id": "workspace-a",
-                    "run_id": run_id,
-                },
-                payload=advance_payload,
-                principal=worker_principal(),
-            )
+        advanced_mcp = invoke(
+            "mcp",
+            "command.graph.advance-current",
+            ControlPlaneServiceRole.LIFECYCLE,
+            path={"workspace_id": "workspace-a", "run_id": run_id},
+            payload=advance_payload,
+            principal=worker,
         )
         self.assertEqual(advanced["from_graph_id"], current_graph_id)
         self.assertEqual(advanced["to_graph_id"], desired_graph_id)
@@ -1737,14 +2606,9 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             advanced["to_realized_projection_id"],
         )
 
-        current = application.handle(
-            RouteRequest(
-                surface="http",
-                route_id="read.current-graph",
-                service_role=ControlPlaneServiceRole.READS,
-                path_parameters={"workspace_id": "workspace-a"},
-                payload={},
-            )
+        current = read_both(
+            "read.current-graph",
+            path={"workspace_id": "workspace-a"},
         )
         self.assertEqual(current["graph_id"], desired_graph_id)
         self.assertEqual(current["authored_graph_id"], desired_graph_id)
@@ -1752,16 +2616,21 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
             current["realized_projection_id"],
             desired_projection_id,
         )
-        current_mcp = application.handle(
-            RouteRequest(
-                surface="mcp",
-                route_id="read.current-graph",
-                service_role=ControlPlaneServiceRole.READS,
-                path_parameters={},
-                payload={"workspace_id": "workspace-a"},
-            )
+        completed_runs = read_both(
+            "read.plan-runs",
+            path={"workspace_id": "workspace-a", "plan_id": plan_id},
+            payload={"limit": 100},
         )
-        self.assertEqual(current_mcp, current)
+        completed_events = read_both(
+            "read.run-events",
+            path={"workspace_id": "workspace-a", "run_id": run_id},
+            payload={"limit": 100},
+        )
+        self.assertEqual(len(completed_runs["items"]), 1)
+        self.assertEqual(completed_runs["items"][0]["status"], "succeeded")
+        event_ids = [item["event_id"] for item in completed_events["items"]]
+        self.assertEqual(len(event_ids), len(set(event_ids)))
+        self.assertEqual(len(adapter.activities), len(set(adapter.activities)))
 
     def test_unsupported_services_fail_closed_until_extracted(self) -> None:
         service = CpkServerUnsupportedService(ControlPlaneServiceRole.RECOVERY)
