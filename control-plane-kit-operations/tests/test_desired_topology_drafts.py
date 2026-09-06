@@ -140,7 +140,49 @@ class DesiredTopologyDraftTests(DraftCatalogueFixture, unittest.TestCase):
                 service.execute(changed)
         self.assertEqual(self.catalogue_truth(), before)
 
+    def test_replay_rejects_malformed_or_uncorrelated_action_coordinates_before_allocation(self):
+        from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftError
+        from psycopg.types.json import Jsonb
+
+        create = self.create_command()
+        first = self.catalogue().execute(create)
+        revise = self.revise_command(first)
+        second = self.catalogue().execute(revise)
+
+        def allocation_forbidden():
+            self.fail("invalid replay allocated an identity")
+
+        for command, result in ((create, first), (revise, second)):
+            original = result.descriptor()
+            invalid_payloads = (
+                {key: value for key, value in original.items() if key != "graph_id"},
+                {**original, "extra": "private-marker"},
+                {**original, "revision": True},
+                {**original, "revision": "1"},
+                {**original, "draft_id": "x" * 513},
+                {**original, "draft_id": "missing-draft"},
+                {**original, "graph_id": "workspace-a-current"},
+                {**original, "revision": 99},
+                first.descriptor() if command is revise else second.descriptor(),
+            )
+            for payload in invalid_payloads:
+                with self.subTest(command=type(command).__name__, payload=payload):
+                    self.connection.execute("UPDATE cpk_operation_actions SET payload=%s "
+                        "WHERE session_id=%s AND idempotency_key=%s",
+                        (Jsonb(payload), command.session_id, command.idempotency_key.value))
+                    before = self.catalogue_truth()
+                    with self.assertRaises(DesiredTopologyDraftError) as error:
+                        self.catalogue(id_factory=allocation_forbidden).execute(command)
+                    self.assertLessEqual(len(str(error.exception)), 512)
+                    self.assertNotIn("private-marker", str(error.exception))
+                    self.assertEqual(self.catalogue_truth(), before)
+            self.connection.execute("UPDATE cpk_operation_actions SET payload=%s "
+                "WHERE session_id=%s AND idempotency_key=%s",
+                (Jsonb(original), command.session_id, command.idempotency_key.value))
+            self.assertEqual(self.catalogue(id_factory=allocation_forbidden).execute(command), result)
+
     def test_concurrent_distinct_revision_commands_have_one_winner_and_reject_stale_head(self):
+
         from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftConflict
 
         first = self.create()

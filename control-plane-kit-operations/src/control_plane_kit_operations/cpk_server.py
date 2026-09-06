@@ -170,6 +170,7 @@ from control_plane_kit_operations.workflows import (
     CancelOperationSession,
     CloseOperationSession,
     IdempotencyKey,
+    InvalidOperationCommand,
     OperationCommandService,
     RecordOperationAction,
     StartOperationSession,
@@ -462,6 +463,12 @@ class CpkServerReadService:
                 page_failure = True
             if page_failure:
                 raise CpkServerApplicationError(400, "read page request is malformed")
+        if request.route_id == "read.desired-topology-draft-revision":
+            try:
+                DraftReadScope(_workspace_id(read_arguments), _text(read_arguments, "draft_id"))
+            except ReadPageError:
+                raise CpkServerApplicationError(400, "draft read identity is malformed") from None
+            _draft_revision(read_arguments)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             kwargs: dict[str, object] = {
@@ -1415,6 +1422,7 @@ def cpk_server_services(
     ingress_authorities: IngressAuthorityRegistrationService | None = None,
     secret_providers: SecretProviderRegistrationService | None = None,
     delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
+    desired_topology_drafts: DesiredTopologyDraftCommandService | None = None,
     desired_graphs: DesiredGraphCommandService | None = None,
     operations: OperationCommandService | None = None,
     advancement: CurrentGraphAdvancementCommandService | None = None,
@@ -1452,6 +1460,7 @@ def cpk_server_services(
             ingress_authorities=ingress_authorities,
             secret_providers=secret_providers,
             delegation_signing_keys=delegation_signing_keys,
+            desired_topology_drafts=desired_topology_drafts,
             desired_graphs=desired_graphs,
             deployment_program=deployment_program,
         ),
@@ -1928,7 +1937,7 @@ def _text_tuple(
 def _draft_idempotency_key(values: Mapping[str, object]) -> IdempotencyKey:
     try:
         return IdempotencyKey(_text(values, "idempotency_key"))
-    except ValueError:
+    except (ValueError, InvalidOperationCommand):
         raise CpkServerApplicationError(400, "draft idempotency key is malformed") from None
 
 

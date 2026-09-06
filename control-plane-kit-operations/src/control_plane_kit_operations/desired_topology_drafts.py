@@ -116,6 +116,11 @@ class DesiredTopologyDraftResult:
     revision: int
     graph_id: str
 
+    def __post_init__(self) -> None:
+        for name in ("workspace_id", "draft_id", "graph_id"):
+            _text(getattr(self, name), name)
+        _revision_number(self.revision)
+
     def descriptor(self) -> dict[str, object]:
         return dict(vars(self))
 
@@ -167,13 +172,15 @@ class DesiredTopologyDraftCommandService:
         with self._uow() as uow:
             history = uow.stores.activity_history
             history.lock_action_idempotency(command.session_id, command.idempotency_key.value)
-            existing = history.action_for_idempotency(command.session_id, command.idempotency_key.value)
+            try:
+                existing = history.action_for_idempotency(command.session_id, command.idempotency_key.value)
+            except (ValueError, TypeError):
+                raise DesiredTopologyDraftConflict("draft replay evidence is malformed") from None
+
             if existing is not None:
                 if existing.action_type != kind or existing.intent_fingerprint != fingerprint:
                     raise DesiredTopologyDraftConflict("idempotency key already records different intent")
-                result = DesiredTopologyDraftResult(**dict(existing.payload))
-                if result.workspace_id != context.workspace_id:
-                    raise DesiredTopologyDraftConflict("draft replay evidence is incongruent")
+                result = _replay_result(uow, command, existing, descriptor)
                 uow.commit()
                 return result
             try:
@@ -224,3 +231,37 @@ class DesiredTopologyDraftCommandService:
                 intent_fingerprint=fingerprint))
             uow.commit()
             return result
+
+
+def _replay_result(uow, command, action, graph_descriptor) -> DesiredTopologyDraftResult:
+    """Resolve closed action coordinates through retained immutable evidence only."""
+    try:
+        payload = action.payload
+        if set(payload) != {"workspace_id", "draft_id", "revision", "graph_id"}:
+            raise ValueError
+        result = DesiredTopologyDraftResult(**dict(payload))
+        creating = isinstance(command, CreateDesiredTopologyDraft)
+        expected_revision = 1 if creating else command.expected_head_revision + 1
+        if (result.workspace_id != command.context.workspace_id
+                or result.revision != expected_revision
+                or (not creating and result.draft_id != command.draft_id)):
+            raise ValueError
+        revision = uow.stores.desired_topology_drafts.revision(
+            result.workspace_id, result.draft_id, result.revision)
+        graph = uow.stores.graphs.get(result.graph_id)
+        if (revision.workspace_id != result.workspace_id
+                or revision.draft_id != result.draft_id
+                or revision.revision != result.revision
+                or revision.graph_id != result.graph_id
+                or graph.workspace_id != result.workspace_id
+                or graph.graph_id != result.graph_id
+                or graph.graph_descriptor != graph_descriptor
+                or action.actor_id != command.context.actor_id
+                or revision.created_by != action.actor_id
+                or graph.created_by != action.actor_id
+                or revision.created_at != action.created_at
+                or graph.created_at != action.created_at):
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        raise DesiredTopologyDraftConflict("draft replay evidence is incongruent") from None
+    return result

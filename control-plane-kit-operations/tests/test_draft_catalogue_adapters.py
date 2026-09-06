@@ -6,7 +6,7 @@ from control_plane_kit_core.operations import ControlPlaneServiceRole
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.cpk_server import (
-    CpkServerApplicationError, CpkServerReadService,
+    CpkServerApplicationError, CpkServerReadService, cpk_server_services,
 )
 
 from draft_catalogue_fixture import CatalogueRequest, DraftCatalogueFixture, principal
@@ -19,7 +19,12 @@ class DraftCatalogueAdapterTests(DraftCatalogueFixture, unittest.TestCase):
         self.require_catalogue_relations()
 
     def test_create_revise_and_all_three_reads_share_http_mcp_results(self):
-        service = self.planning_adapter(self.catalogue())
+        # Exercise the real composition factory, not only its planning adapter.
+        services = cpk_server_services(unit_of_work_factory=self.unit_of_work,
+            planning=None, approval=None, admission=None, lifecycle=None, execution=None,
+            desired_topology_drafts=self.catalogue())
+        service = services[ControlPlaneServiceRole.PLANNING]
+
         before = self.runtime_truth()
         payload = {
             "session_id": self.sessions["workspace-a"], "title": "Draft A",
@@ -101,7 +106,39 @@ class DraftCatalogueAdapterTests(DraftCatalogueFixture, unittest.TestCase):
             self.assertEqual(responses[0], responses[1])
             self.assertEqual(self.catalogue_truth(), before)
 
+    def test_overlong_command_key_is_bounded_400_on_both_surfaces_without_writes(self):
+        service = self.planning_adapter(self.catalogue())
+        before = self.catalogue_truth()
+        errors = []
+        for surface in ("http", "mcp"):
+            request = self.request(surface, "command.desired-topology-draft.create", {
+                "session_id": self.sessions["workspace-a"], "title": "Draft",
+                "graph": DEFAULT_GRAPH_CODEC.encode(self.graph()), "idempotency_key": "private-marker" * 20,
+            })
+            with self.assertRaises(CpkServerApplicationError) as error:
+                service.handle(request)
+            self.assertEqual(error.exception.status, 400)
+            self.assertLessEqual(len(str(error.exception)), 512)
+            self.assertNotIn("private-marker", str(error.exception))
+            errors.append(error.exception.descriptor())
+        self.assertEqual(errors[0], errors[1])
+        self.assertEqual(self.catalogue_truth(), before)
+
+    def test_revision_detail_rejects_overlong_draft_before_opening_read_transaction(self):
+        def forbidden_uow():
+            self.fail("malformed draft identity opened a read transaction")
+
+        reads = CpkServerReadService(forbidden_uow)
+        for surface in ("http", "mcp"):
+            request = self.request(surface, "read.desired-topology-draft-revision", {},
+                                   draft_id="x" * 513, revision=1)
+            with self.assertRaises(CpkServerApplicationError) as error:
+                reads.handle(request)
+            self.assertEqual(error.exception.status, 400)
+            self.assertLessEqual(len(str(error.exception)), 512)
+
     def request(self, surface, route, payload, *, actor="default", **path):
+
         path = {"workspace_id": "workspace-a", **path}
         if surface == "mcp":
             payload = {**path, **payload}
