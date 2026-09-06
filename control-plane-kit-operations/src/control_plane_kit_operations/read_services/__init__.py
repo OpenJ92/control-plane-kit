@@ -7,7 +7,7 @@ from .observations import (
     ProjectedObservation,
     project_observation,
 )
-from .models import FocusedDetailReadModel
+from .models import FocusedDetailReadModel, OperatorOverviewReadModel
 from .workspace_graph import (
     ControlSurfaceReadModel,
     GraphPointerReadModel,
@@ -21,6 +21,7 @@ __all__ = [
     "GraphPointerReadModel",
     "InstanceReadService",
     "ObservationFreshnessPolicy",
+    "OperatorOverviewReadModel",
     "ProjectedObservation",
     "ReadModelError",
     "WorkspaceReadModel",

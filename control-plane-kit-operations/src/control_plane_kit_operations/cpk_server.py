@@ -256,6 +256,7 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.current-graph": _WORKSPACE_READ,
     "read.desired-graph": _WORKSPACE_READ,
     "read.operator-graph": _WORKSPACE_READ,
+    "read.operator-overview": _WORKSPACE_READ,
     "read.activity": _WORKSPACE_READ,
     "read.sessions": _WORKSPACE_READ,
     "read.session-detail": _WORKSPACE_READ,
@@ -1461,6 +1462,12 @@ def _read_model(
             _workspace_id(args),
             pointer=_optional_text(args, "pointer") or "current",
         )
+    if route_id == "read.operator-overview":
+        return service.operator_overview(
+            _workspace_id(args),
+            limit=_positive_int(args, "limit", default=50),
+            after=None if args.get("after") is None else read_cursor_from_mapping(args["after"]),
+        )
     if route_id == "read.activity":
         return service.activity_sessions(
             _required_page_request(page_request, ReadCollection.ACTIVITY_SESSIONS)
@@ -1609,6 +1616,7 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 
 
 _CLOSED_READ_ARGUMENTS = {
+    "read.operator-overview": (None, True),
     "read.activity": (None, True),
     "read.sessions": (None, True),
     "read.session-actions": ("session_id", True),

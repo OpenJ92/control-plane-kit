@@ -114,6 +114,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "OperatorGraphReadResponse",
                 ),
                 (
+                    "read.operator-overview",
+                    "read.operator-overview",
+                    "get_operator_overview",
+                    "OperatorOverviewReadResponse",
+                ),
+                (
                     "read.pending-approvals",
                     "read.pending-approvals",
                     "list_pending_approvals",

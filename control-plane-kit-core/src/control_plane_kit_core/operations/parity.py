@@ -878,6 +878,12 @@ _OPERATOR_READ_PROJECTIONS = (
         "IngressAuthorityDetailReadResponse",
     ),
     (
+        "read.operator-overview",
+        "read.operator-overview",
+        "get_operator_overview",
+        "OperatorOverviewReadResponse",
+    ),
+    (
         "read.operator-graph",
         "read.operator-graph",
         "get_operator_graph",

@@ -409,6 +409,57 @@ class PostgresActivityHistoryStore:
             )
         return record
 
+    def overview_plans(
+        self, workspace_id: str, desired_graph_id: str,
+        desired_realized_projection_id: str, desired_graph_revision: int,
+    ) -> tuple[ActivityPlanRecord, ...]:
+        """Return at most two eligible plans; ordering never elects a winner."""
+        rows = self._connection.execute(
+            """
+            SELECT plan.plan_id, plan.session_id, plan.base_graph_id,
+                   plan.desired_graph_id, plan.base_realized_projection_id,
+                   plan.desired_realized_projection_id, plan.desired_graph_revision,
+                   plan.status, plan.created_at, plan.payload
+            FROM cpk_activity_plans AS plan
+            JOIN cpk_operation_sessions AS session
+              ON session.session_id = plan.session_id
+            WHERE session.workspace_id = %s AND session.status = 'open'
+              AND plan.status = 'planned' AND plan.desired_graph_id = %s
+              AND plan.desired_realized_projection_id = %s
+              AND plan.desired_graph_revision = %s
+            ORDER BY plan.created_at, plan.plan_id
+            LIMIT 2
+            """,
+            (workspace_id, desired_graph_id, desired_realized_projection_id,
+             desired_graph_revision),
+        ).fetchall()
+        return tuple(_plan_record(row) for row in rows)
+
+    def overview_pending_approvals(
+        self, plan_id: str,
+    ) -> tuple[ApprovalRequestRecord, ...]:
+        """Bound pending plan approvals without hiding incongruent sessions."""
+        rows = self._connection.execute(
+            """
+            SELECT request.request_id, request.session_id, request.plan_id,
+                   request.rotation_id, request.subject_kind,
+                   request.subject_payload, request.review_digest,
+                   request.requested_by, request.requested_at,
+                   request.required_scope, request.max_risk, request.destructive,
+                   request.comment, request.idempotency_key, request.intent_fingerprint
+            FROM cpk_approval_requests AS request
+            WHERE request.plan_id = %s
+              AND NOT EXISTS (
+                SELECT 1 FROM cpk_approval_decisions AS decision
+                WHERE decision.request_id = request.request_id
+              )
+            ORDER BY request.requested_at, request.request_id
+            LIMIT 2
+            """,
+            (plan_id,),
+        ).fetchall()
+        return tuple(_approval_request_record(row) for row in rows)
+
     def get_plan(self, plan_id: str) -> ActivityPlanRecord:
         row = self._connection.execute(
             """

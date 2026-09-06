@@ -319,6 +319,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "GraphReadResponse",
             ),
             (
+                "read.operator-overview",
+                "/workspaces/{workspace_id}/overview",
+                "OperatorOverviewReadResponse",
+            ),
+            (
                 "read.operator-graph",
                 "/workspaces/{workspace_id}/operator-graph",
                 "OperatorGraphReadResponse",

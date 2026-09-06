@@ -21,6 +21,7 @@ class ReadProjectionKind(StrEnum):
     CURRENT_GRAPH = "current-graph"
     DESIRED_GRAPH = "desired-graph"
     OPERATOR_GRAPH = "operator-graph"
+    OPERATOR_OVERVIEW = "operator-overview"
     ACTIVITY_TIMELINE = "activity-timeline"
     OPEN_SESSIONS = "open-sessions"
     SESSION_DETAIL = "session-detail"
@@ -55,6 +56,7 @@ class ReadProjectionPolicy(StrEnum):
 
     REDACTED_WORKSPACE = "redacted-workspace"
     REDACTED_GRAPH_DESCRIPTOR = "redacted-graph-descriptor"
+    REDACTED_OPERATOR_OVERVIEW = "redacted-operator-overview"
     REDACTED_CONTROL_SURFACE = "redacted-control-surface"
     REDACTED_PAGED_HISTORY = "redacted-paged-history"
     PINNED_PLAN_AND_RECOVERY = "pinned-plan-and-recovery"
@@ -447,6 +449,14 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.OPERATOR_GRAPH,
         "OperatorGraphReadResponse",
         ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+    ),
+    _ProjectionDefinition(
+        "read.operator-overview",
+        ReadProjectionKind.OPERATOR_OVERVIEW,
+        "OperatorOverviewReadResponse",
+        ReadProjectionPolicy.REDACTED_OPERATOR_OVERVIEW,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.pending-approvals",

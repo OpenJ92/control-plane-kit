@@ -7,6 +7,7 @@ from control_plane_kit_core.operations import (
     HttpApiContract,
     HttpAuthScope,
     HttpOperationSafety,
+    HttpSchemaRef,
     InvalidReadProjectionContract,
     McpStreamableHttpContract,
     ReadProjectionContract,
@@ -20,6 +21,88 @@ from control_plane_kit_core.operations import (
 
 
 class ReadProjectionContractTests(unittest.TestCase):
+    def test_operator_overview_is_one_closed_http_mcp_read_projection(self) -> None:
+        projections = canonical_operator_read_projection_set()
+        http_api = HttpApiContract(operator_read_http_routes())
+        parity = operator_read_projection_parity(
+            http_api,
+            McpStreamableHttpContract(),
+        )
+
+        with self.subTest(boundary="projection"):
+            self.assertEqual(
+                [
+                    (
+                        projection.operation_id,
+                        projection.kind.value,
+                        projection.response_schema,
+                        projection.policy.value,
+                        projection.requires_workspace_scope,
+                        projection.paged,
+                        projection.max_page_size,
+                    )
+                    for projection in projections.projections
+                    if projection.operation_id == "read.operator-overview"
+                ],
+                [
+                    (
+                        "read.operator-overview",
+                        "operator-overview",
+                        "OperatorOverviewReadResponse",
+                        "redacted-operator-overview",
+                        True,
+                        True,
+                        100,
+                    )
+                ],
+            )
+        with self.subTest(boundary="http"):
+            self.assertEqual(
+                [
+                    (
+                        route.route_id,
+                        route.method.value,
+                        route.path_template,
+                        route.response_schema,
+                        route.auth_scope.value,
+                        route.safety.value,
+                    )
+                    for route in http_api.routes
+                    if route.route_id == "read.operator-overview"
+                ],
+                [
+                    (
+                        "read.operator-overview",
+                        "GET",
+                        "/workspaces/{workspace_id}/overview",
+                        HttpSchemaRef("OperatorOverviewReadResponse", max_bytes=65536),
+                        "read",
+                        "read-only",
+                    )
+                ],
+            )
+        with self.subTest(boundary="mcp-parity"):
+            self.assertEqual(
+                [
+                    (
+                        binding.operation_id,
+                        binding.http_route_id,
+                        binding.mcp_tool_name,
+                        binding.projection_schema,
+                    )
+                    for binding in parity.projections
+                    if binding.operation_id == "read.operator-overview"
+                ],
+                [
+                    (
+                        "read.operator-overview",
+                        "read.operator-overview",
+                        "get_operator_overview",
+                        "OperatorOverviewReadResponse",
+                    )
+                ],
+            )
+
     def test_gateway_probe_timeline_uses_the_common_page_bound(self) -> None:
         projection = canonical_operator_read_projection_set().projection(
             "read.gateway-probe-timeline"
@@ -155,6 +238,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
                     True,
                     False,
+                ),
+                (
+                    "read.operator-overview",
+                    ReadProjectionKind.OPERATOR_OVERVIEW,
+                    "OperatorOverviewReadResponse",
+                    ReadProjectionPolicy.REDACTED_OPERATOR_OVERVIEW,
+                    True,
+                    True,
                 ),
                 (
                     "read.pending-approvals",

@@ -2,6 +2,38 @@ version = 1
 
 [[read]]
 module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.overview_plans"
+category = "fixed-cardinality"
+sql = "workspace open-session and exact desired-lineage filters; LIMIT two eligible plans"
+consumer_kind = "production"
+consumer = "operator-overview projection validates unique current workflow and base lineage"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.overview_pending_approvals"
+category = "fixed-cardinality"
+sql = "plan filter and no recorded decision; LIMIT two pending approvals"
+consumer_kind = "production"
+consumer = "operator-overview projection reports pending approval or ambiguity"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.overview_runs"
+category = "fixed-cardinality"
+sql = "plan filter; bounded 101-row sentinel CTE; return at most 100 records or unavailable"
+consumer_kind = "production"
+consumer = "operator-overview projection validates bounded current retry lineage"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.overview_receipts"
+category = "fixed-cardinality"
+sql = "selected-run filter; unresolved admissions or latest completions; LIMIT two candidates"
+consumer_kind = "production"
+consumer = "operator-overview projection preserves uncertain or uniquely latest command truth"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
 selector = "PostgresActivityHistoryStore.sessions_for_workspace"
 category = "internal-complete"
 sql = "workspace filter; created_at/session_id ascending; intentionally complete"
