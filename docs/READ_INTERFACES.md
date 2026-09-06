@@ -115,3 +115,49 @@ requests traverse the same operations application against real Postgres.
 The retired aggregate CLI, `create_instance_read_app`, and
 `ReadOnlyMcpAdapter` imports are historical APIs. They are not current
 compatibility surfaces.
+
+## Saved topology catalogue (#1762)
+
+Authenticated workspace operators can save alternative desired-topology designs
+without changing either workspace graph pointer. Operations owns the named draft
+and append-only revision catalogue; each revision references an immutable Core
+graph version. Saving or revising does not prepare a plan, request approval, or
+execute runtime effects.
+
+| Route | HTTP path under `/workspaces/{workspace_id}` | MCP tool |
+| --- | --- | --- |
+| `command.desired-topology-draft.create` | POST `/desired-topology-drafts` | `create_desired_topology_draft` |
+| `command.desired-topology-draft.revise` | POST `/desired-topology-drafts/{draft_id}/revisions` | `revise_desired_topology_draft` |
+| `read.desired-topology-drafts` | GET `/desired-topology-drafts` | `list_desired_topology_drafts` |
+| `read.desired-topology-draft-revisions` | GET `/desired-topology-drafts/{draft_id}/revisions` | `list_desired_topology_draft_revisions` |
+| `read.desired-topology-draft-revision` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}` | `get_desired_topology_draft_revision` |
+
+Create accepts `session_id`, `idempotency_key`, `title`, and a Core `graph`
+descriptor. Revise accepts the same session/key/graph inputs and requires
+`expected_head_revision`. Actor identity and workspace edit/read permissions come
+from the authenticated principal. Titles contain 1–512 characters and no controls;
+graph JSON transport is bounded to 1 MiB. Exact revision reads apply existing graph
+redaction; summaries contain no graph bodies. Titles are operator-authored text,
+so callers must not use them to store credentials.
+
+The collection reads accept `limit` (1–100, default 50) and `after`. Draft summaries
+order by creation instant, then draft identity; revision summaries order by revision,
+then graph identity. Their cursors bind collection, workspace, and (for revisions)
+draft identity. These domains are independent of overview/run-event pagination.
+
+The transaction lock order is action idempotency key, operation session, workspace,
+then draft. Identical replay returns the original workspace/draft/revision/graph
+coordinate before current session status, product registration, or head admission.
+Changed intent and stale heads conflict. First publication validates Core graph
+semantics and workspace-active product references. Graph, draft head, immutable
+revision and bounded action evidence commit together, or all roll back. A retry
+uses the same session and key. There are no provider calls or compensation steps.
+
+The new exact schema includes two catalogue relations, a composite workspace/graph
+foreign key, and a deferred composite head/revision foreign key. Saved-only graphs
+participate in current-row verification. This changes the exact-current schema:
+a populated older namespace requires an explicit reset; no in-place migration or
+data-preserving upgrade is provided. Do not install over a retained demo database
+without separately accepting its reset boundary. This feature does not perform a
+reset. Selection/unused retirement belongs to #1763; saved preparation belongs to
+#1764.

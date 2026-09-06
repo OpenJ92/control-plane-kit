@@ -33,6 +33,8 @@ class ReadPageError(ValueError):
 class ReadCollection(StrEnum):
     """Finite Operations-owned collection vocabulary."""
 
+    DESIRED_TOPOLOGY_DRAFTS = "desired-topology-drafts"
+    DESIRED_TOPOLOGY_DRAFT_REVISIONS = "desired-topology-draft-revisions"
     ACTIVITY_SESSIONS = "activity-sessions"
     OPEN_SESSIONS = "open-sessions"
     SESSION_ACTIONS = "session-actions"
@@ -111,7 +113,21 @@ class RunReadScope:
         return {"workspace_id": self.workspace_id, "run_id": self.run_id}
 
 
-ReadScope = WorkspaceReadScope | SessionReadScope | PlanReadScope | RunReadScope
+@dataclass(frozen=True, slots=True)
+class DraftReadScope:
+    workspace_id: str
+    draft_id: str
+
+    def __post_init__(self) -> None:
+        _general_identifier(self.workspace_id)
+        _general_identifier(self.draft_id)
+
+    def descriptor(self) -> dict[str, str]:
+        return {"workspace_id": self.workspace_id, "draft_id": self.draft_id}
+
+
+ReadScope = WorkspaceReadScope | SessionReadScope | PlanReadScope | RunReadScope | DraftReadScope
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +259,8 @@ class ReadCollectionSpec:
 
 
 READ_COLLECTION_SPECS = (
+    ReadCollectionSpec(ReadCollection.DESIRED_TOPOLOGY_DRAFTS, "read.desired-topology-drafts", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "draft_id")),
+    ReadCollectionSpec(ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS, "read.desired-topology-draft-revisions", DraftReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("revision", "graph_id")),
     ReadCollectionSpec(ReadCollection.ACTIVITY_SESSIONS, "read.activity", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
     ReadCollectionSpec(ReadCollection.OPEN_SESSIONS, "read.sessions", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
     ReadCollectionSpec(ReadCollection.SESSION_ACTIONS, "read.session-actions", SessionReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("ordinal", "action_id")),
@@ -489,6 +507,9 @@ def _scope_from_mapping(scope_type: type[ReadScope], value: object) -> ReadScope
     if scope_type is WorkspaceReadScope:
         _exact_keys(value, frozenset({"workspace_id"}), "workspace scope")
         return WorkspaceReadScope(value["workspace_id"])
+    if scope_type is DraftReadScope:
+        _exact_keys(value, frozenset({"workspace_id", "draft_id"}), "draft scope")
+        return DraftReadScope(value["workspace_id"], value["draft_id"])
     if scope_type is SessionReadScope:
         _exact_keys(value, frozenset({"workspace_id", "session_id"}), "session scope")
         return SessionReadScope(value["workspace_id"], value["session_id"])
@@ -566,6 +587,7 @@ def _matching_cursor(request: ReadPageRequest, cursor: ReadCursor) -> None:
 
 
 __all__ = [
+    "DraftReadScope",
     "READ_COLLECTION_SPECS",
     "DelegationKeyReadCursor",
     "EpochReadCursor",

@@ -21,6 +21,9 @@ class ReadProjectionKind(StrEnum):
     CURRENT_GRAPH = "current-graph"
     DESIRED_GRAPH = "desired-graph"
     OPERATOR_GRAPH = "operator-graph"
+    DESIRED_TOPOLOGY_DRAFTS = "desired-topology-drafts"
+    DESIRED_TOPOLOGY_DRAFT_REVISIONS = "desired-topology-draft-revisions"
+    DESIRED_TOPOLOGY_DRAFT_REVISION = "desired-topology-draft-revision"
     OPERATOR_OVERVIEW = "operator-overview"
     ACTIVITY_TIMELINE = "activity-timeline"
     OPEN_SESSIONS = "open-sessions"
@@ -449,6 +452,30 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.OPERATOR_GRAPH,
         "OperatorGraphReadResponse",
         ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-drafts",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFTS,
+        "DesiredTopologyDraftsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revisions",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
+        "DesiredTopologyDraftRevisionsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION,
+        "DesiredTopologyDraftRevisionReadResponse",
+        ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+        paged=False,
+        max_page_size=None,
     ),
     _ProjectionDefinition(
         "read.operator-overview",

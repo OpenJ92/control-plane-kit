@@ -121,7 +121,12 @@ from control_plane_kit_operations.products import (
     RegisterImagePullAuthorityCommand,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
+from control_plane_kit_operations.desired_topology_drafts import (
+    CreateDesiredTopologyDraft, ReviseDesiredTopologyDraft, DesiredTopologyDraftCommandService,
+    DesiredTopologyDraftError, DesiredTopologyDraftConflict,
+)
 from control_plane_kit_operations.read_pages import (
+    DraftReadScope,
     PlanReadScope,
     ReadCollection,
     ReadPageError,
@@ -252,6 +257,11 @@ _WORKER_OPERATION = RouteAuthorizationPolicy(
 )
 
 _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
+    "read.desired-topology-drafts": _WORKSPACE_READ,
+    "read.desired-topology-draft-revisions": _WORKSPACE_READ,
+    "read.desired-topology-draft-revision": _WORKSPACE_READ,
+    "command.desired-topology-draft.create": _WORKSPACE_EDIT,
+    "command.desired-topology-draft.revise": _WORKSPACE_EDIT,
     "read.workspace": _WORKSPACE_READ,
     "read.current-graph": _WORKSPACE_READ,
     "read.desired-graph": _WORKSPACE_READ,
@@ -432,6 +442,8 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id.startswith("read.desired-topology-draft"):
+            _trusted_context(request)
         read_arguments = (
             _closed_read_arguments(request)
             if request.route_id in _CLOSED_READ_ARGUMENTS
@@ -468,6 +480,8 @@ class CpkServerReadService:
                 "gateway_probe_store": stores.gateway_probes,
                 "delegation_signing_key_store": stores.delegation_signing_keys,
             }
+            if request.route_id.startswith("read.desired-topology-draft"):
+                kwargs["desired_topology_draft_store"] = stores.desired_topology_drafts
             if self._clock is not None:
                 kwargs["clock"] = self._clock
             service = InstanceReadService(**kwargs)
@@ -500,6 +514,7 @@ class CpkServerPlanningService:
         ingress_authorities: IngressAuthorityRegistrationService | None = None,
         secret_providers: SecretProviderRegistrationService | None = None,
         delegation_signing_keys: DelegationSigningKeyRegistrationService | None = None,
+        desired_topology_drafts: DesiredTopologyDraftCommandService | None = None,
         desired_graphs: DesiredGraphCommandService | None = None,
         deployment_program: DeploymentProgram | None = None,
     ) -> None:
@@ -511,11 +526,33 @@ class CpkServerPlanningService:
         self._ingress_authorities = ingress_authorities
         self._secret_providers = secret_providers
         self._delegation_signing_keys = delegation_signing_keys
+        self._desired_topology_drafts = desired_topology_drafts
         self._desired_graphs = desired_graphs
         self._deployment_program = deployment_program
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         context = _trusted_context(request)
+        if request.route_id in {"command.desired-topology-draft.create", "command.desired-topology-draft.revise"}:
+            if self._desired_topology_drafts is None:
+                raise _service_not_configured(request)
+            values = _arguments(request)
+            try:
+                graph = DEFAULT_GRAPH_CODEC.decode(_mapping(values, "graph"))
+            except (ValueError, TypeError, KeyError):
+                raise CpkServerApplicationError(400, "draft graph is malformed") from None
+            arguments = dict(context=context, session_id=_text(values, "session_id"), graph=graph,
+                             idempotency_key=_draft_idempotency_key(values))
+            if request.route_id.endswith(".create"):
+                command = CreateDesiredTopologyDraft(**arguments, title=values.get("title"))
+            else:
+                command = ReviseDesiredTopologyDraft(**arguments, draft_id=_text(values, "draft_id"),
+                    expected_head_revision=_positive_int(values, "expected_head_revision", default=0))
+            try:
+                return self._desired_topology_drafts.execute(command).descriptor()
+            except DesiredTopologyDraftConflict:
+                raise CpkServerApplicationError(409, "draft intent conflicts with current truth") from None
+            except DesiredTopologyDraftError:
+                raise CpkServerApplicationError(400, "draft command was not admitted") from None
         if request.route_id == "command.deployment.prepare":
             if self._deployment_program is None:
                 raise _service_not_configured(request)
@@ -1457,6 +1494,10 @@ def _read_model(
         return service.current_graph(_workspace_id(args))
     if route_id == "read.desired-graph":
         return service.desired_graph(_workspace_id(args))
+    if route_id in {"read.desired-topology-drafts", "read.desired-topology-draft-revisions"}:
+        return service.desired_topology_drafts(_required_page_request(page_request, _PAGED_READ_COLLECTIONS[route_id]))
+    if route_id == "read.desired-topology-draft-revision":
+        return service.desired_topology_draft_revision(_workspace_id(args), _text(args, "draft_id"), _draft_revision(args))
     if route_id == "read.operator-graph":
         return service.operator_graph(
             _workspace_id(args),
@@ -1616,6 +1657,9 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 
 
 _CLOSED_READ_ARGUMENTS = {
+    "read.desired-topology-drafts": (None, True),
+    "read.desired-topology-draft-revisions": ("draft_id", True),
+    "read.desired-topology-draft-revision": (("draft_id", "revision"), False),
     "read.operator-overview": (None, True),
     "read.activity": (None, True),
     "read.sessions": (None, True),
@@ -1639,6 +1683,8 @@ _CLOSED_READ_ARGUMENTS = {
 }
 
 _PAGED_READ_COLLECTIONS = {
+    "read.desired-topology-drafts": ReadCollection.DESIRED_TOPOLOGY_DRAFTS,
+    "read.desired-topology-draft-revisions": ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
     "read.activity": ReadCollection.ACTIVITY_SESSIONS,
     "read.sessions": ReadCollection.OPEN_SESSIONS,
     "read.session-actions": ReadCollection.SESSION_ACTIONS,
@@ -1662,7 +1708,7 @@ def _closed_read_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     if type(request.path_parameters) is not dict or type(request.payload) is not dict:
         raise CpkServerApplicationError(400, "read arguments are malformed")
     parent, paged = _CLOSED_READ_ARGUMENTS[request.route_id]
-    required = {"workspace_id"} | (set() if parent is None else {parent})
+    required = {"workspace_id"} | (set() if parent is None else set(parent) if isinstance(parent, tuple) else {parent})
     optional = {"limit", "after"} if paged else set()
     path = dict(request.path_parameters)
     payload = dict(request.payload)
@@ -1708,6 +1754,8 @@ def _read_page_request_for_route(
             workspace_id,
             _text(values, "session_id"),
         )
+    elif collection is ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS:
+        scope = DraftReadScope(workspace_id, _text(values, "draft_id"))
     elif collection is ReadCollection.PLAN_RUNS:
         scope = PlanReadScope(workspace_id, _text(values, "plan_id"))
     elif collection is ReadCollection.RUN_EVENTS:
@@ -1875,6 +1923,22 @@ def _text_tuple(
             f"{name} must be a nonempty bounded list of text",
         )
     return tuple(value)
+
+
+def _draft_idempotency_key(values: Mapping[str, object]) -> IdempotencyKey:
+    try:
+        return IdempotencyKey(_text(values, "idempotency_key"))
+    except ValueError:
+        raise CpkServerApplicationError(400, "draft idempotency key is malformed") from None
+
+
+def _draft_revision(values: Mapping[str, object]) -> int:
+    value = values.get("revision")
+    if type(value) is str and value.isascii() and value.isdecimal() and len(value) <= 19:
+        value = int(value)
+    if type(value) is not int or not 1 <= value <= 9_223_372_036_854_775_807:
+        raise CpkServerApplicationError(400, "revision must be positive and bounded")
+    return value
 
 
 def _positive_int(values: Mapping[str, object], name: str, *, default: int) -> int:
