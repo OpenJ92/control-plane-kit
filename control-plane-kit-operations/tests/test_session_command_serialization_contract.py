@@ -20,6 +20,8 @@ EXPECTED_COMMANDS = {
     "close-operation-session",
     "cancel-operation-session",
     "record-operation-action",
+    "create-desired-topology-draft",
+    "revise-desired-topology-draft",
     "set-desired-graph",
     "publish-desired-realized-projection",
     "request-activity-plan",

@@ -49,6 +49,10 @@ from .workspace_graph import (
 )
 
 
+from .desired_topology_drafts import _DesiredTopologyDraftReadProjection
+from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftStore
+
+
 class InstanceReadService:
     """Compose canonical operations stores into read-only instance views."""
 
@@ -67,6 +71,7 @@ class InstanceReadService:
         secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
         delegation_signing_key_store: DelegationSigningKeyStore | None = None,
+        desired_topology_draft_store: DesiredTopologyDraftStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -75,6 +80,9 @@ class InstanceReadService:
             workspace_store,
             graph_topology_store,
             graph_codec=graph_codec,
+        )
+        self._desired_topology_drafts = _DesiredTopologyDraftReadProjection(
+            self._workspace_graph.require_workspace, graph_topology_store, desired_topology_draft_store,
         )
         self._operator_overview = _OperatorOverviewReadProjection(
             workspace_store, graph_topology_store, activity_history_store, execution_store,
@@ -105,6 +113,12 @@ class InstanceReadService:
             gateway_probe_store=gateway_probe_store,
             delegation_signing_key_store=delegation_signing_key_store,
         )
+
+    def desired_topology_drafts(self, request: ReadPageRequest):
+        return self._desired_topology_drafts.page(request)
+
+    def desired_topology_draft_revision(self, workspace_id: str, draft_id: str, revision: int):
+        return self._desired_topology_drafts.detail(workspace_id, draft_id, revision)
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         return self._workspace_graph.workspace(workspace_id)

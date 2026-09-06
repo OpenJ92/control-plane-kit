@@ -475,3 +475,21 @@ category = "exact-verifier"
 sql = "identity keyset batches bounded by fixed batch size; each ordered membership LIMIT observation_count plus one"
 consumer_kind = "production"
 consumer = "current schema admission validates every immutable direct outcome membership"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.desired_topology_draft_store"
+selector = "PostgresDesiredTopologyDraftStore.page"
+occurrence = 1
+category = "public-paged"
+sql = "workspace filter; created_at/draft_id ascending keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService desired_topology_drafts draft summaries"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.desired_topology_draft_store"
+selector = "PostgresDesiredTopologyDraftStore.page"
+occurrence = 2
+category = "public-paged"
+sql = "workspace/draft filter; revision/graph_id ascending keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService desired_topology_drafts revision summaries"

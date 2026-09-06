@@ -319,6 +319,21 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "GraphReadResponse",
             ),
             (
+                "read.desired-topology-drafts",
+                "/workspaces/{workspace_id}/desired-topology-drafts",
+                "DesiredTopologyDraftsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revisions",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions",
+                "DesiredTopologyDraftRevisionsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}",
+                "DesiredTopologyDraftRevisionReadResponse",
+            ),
+            (
                 "read.operator-overview",
                 "/workspaces/{workspace_id}/overview",
                 "OperatorOverviewReadResponse",
@@ -686,6 +701,24 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 HttpOperationSafety.COMMAND,
                 "RecordOperationActionRequest",
                 "OperationCommandResult",
+            ),
+            (
+                "command.desired-topology-draft.create",
+                "/workspaces/{workspace_id}/desired-topology-drafts",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "CreateDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftResult",
+            ),
+            (
+                "command.desired-topology-draft.revise",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "ReviseDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftResult",
             ),
             (
                 "command.desired-graph.set",
