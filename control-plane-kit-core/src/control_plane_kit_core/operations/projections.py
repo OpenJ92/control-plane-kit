@@ -455,6 +455,8 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.OPERATOR_OVERVIEW,
         "OperatorOverviewReadResponse",
         ReadProjectionPolicy.REDACTED_OPERATOR_OVERVIEW,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.pending-approvals",

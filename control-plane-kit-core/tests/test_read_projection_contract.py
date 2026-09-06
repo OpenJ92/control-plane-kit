@@ -39,6 +39,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                         projection.policy.value,
                         projection.requires_workspace_scope,
                         projection.paged,
+                        projection.max_page_size,
                     )
                     for projection in projections.projections
                     if projection.operation_id == "read.operator-overview"
@@ -50,7 +51,8 @@ class ReadProjectionContractTests(unittest.TestCase):
                         "OperatorOverviewReadResponse",
                         "redacted-operator-overview",
                         True,
-                        False,
+                        True,
+                        100,
                     )
                 ],
             )
@@ -243,7 +245,7 @@ class ReadProjectionContractTests(unittest.TestCase):
                     "OperatorOverviewReadResponse",
                     ReadProjectionPolicy.REDACTED_OPERATOR_OVERVIEW,
                     True,
-                    False,
+                    True,
                 ),
                 (
                     "read.pending-approvals",
