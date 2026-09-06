@@ -76,6 +76,22 @@
       "session_rule": "requires OPEN after lock"
     },
     {
+      "command": "create-desired-topology-draft",
+      "service": "DesiredTopologyDraftCommandService.execute",
+      "writer": "desired_topology_drafts.py:DesiredTopologyDraftCommandService.execute",
+      "source": "desired_topology_drafts.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize revision CAS"
+    },
+    {
+      "command": "revise-desired-topology-draft",
+      "service": "DesiredTopologyDraftCommandService.execute",
+      "writer": "desired_topology_drafts.py:DesiredTopologyDraftCommandService.execute",
+      "source": "desired_topology_drafts.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize revision CAS"
+    },
+    {
       "command": "set-desired-graph",
       "service": "DesiredGraphCommandService.execute",
       "writer": "planning.py:DesiredGraphCommandService.execute",
