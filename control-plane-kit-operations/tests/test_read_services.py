@@ -71,6 +71,13 @@ from control_plane_kit_operations import (
     ReadModelError,
     WorkspaceRecord,
 )
+from control_plane_kit_operations.records import (
+    CoordinatorStatus,
+    ExecutionCommandReceiptRecord,
+    ExecutionCommandReceiptStatus,
+    ExecutionCommandResultRecord,
+    execution_command_intent_fingerprint,
+)
 from control_plane_kit_operations.read_pages import (
     PlanReadScope,
     ReadCollection,
@@ -116,6 +123,389 @@ class InstanceReadServiceTests(unittest.TestCase):
             or (lambda: datetime(2026, 7, 22, 13, 5, tzinfo=timezone.utc)),
             observation_freshness=ObservationFreshnessPolicy(),
         )
+
+    def operator_overview(self) -> dict[str, object]:
+        return self.service().operator_overview("workspace-a").descriptor()
+
+    def test_operator_overview_projects_one_pending_workflow_and_next_action(self) -> None:
+        self.seed_activity()
+
+        overview = self.operator_overview()
+
+        self.assertEqual(
+            set(overview),
+            {"workspace_id", "kind", "graphs", "workflow", "history", "next_action"},
+        )
+        self.assertEqual(overview["workspace_id"], "workspace-a")
+        self.assertEqual(overview["kind"], "operator-overview")
+        self.assertEqual(
+            overview["graphs"],
+            {
+                "current": {
+                    "assigned": True,
+                    "graph_id": "graph-current",
+                    "realized_projection_id": self.connection.execute(
+                        "SELECT current_realized_projection_id FROM cpk_workspaces "
+                        "WHERE workspace_id = 'workspace-a'"
+                    ).fetchone()[0],
+                },
+                "desired": {
+                    "assigned": True,
+                    "graph_id": "graph-desired",
+                    "realized_projection_id": self.connection.execute(
+                        "SELECT desired_realized_projection_id FROM cpk_workspaces "
+                        "WHERE workspace_id = 'workspace-a'"
+                    ).fetchone()[0],
+                    "revision": 1,
+                },
+                "relation": "diverged",
+            },
+        )
+        self.assertEqual(
+            overview["workflow"],
+            {
+                "selection": "selected",
+                "session": {"session_id": "session-a", "status": "open"},
+                "plan": {"plan_id": "plan-a", "status": "planned"},
+                "approval": {
+                    "request_id": "approval-a",
+                    "state": "pending",
+                    "required_scope": "plan:approve",
+                    "destructive": False,
+                },
+                "run_selection": "none",
+                "run": None,
+                "command": {
+                    "receipt_state": "none",
+                    "coordinator_status": None,
+                    "effects_attempted": None,
+                    "activity_id": None,
+                },
+            },
+        )
+        self.assertEqual(
+            overview["history"],
+            {"state": "none", "run_id": None, "items": [], "next_cursor": None},
+        )
+        self.assertEqual(
+            overview["next_action"],
+            {
+                "state": "available",
+                "operation_id": "command.approval.decide",
+                "required_scopes": ["plan:approve"],
+                "coordinates": {
+                    "workspace_id": "workspace-a",
+                    "session_id": "session-a",
+                    "plan_id": "plan-a",
+                    "approval_request_id": "approval-a",
+                },
+            },
+        )
+        rendered = repr(overview)
+        self.assertNotIn("do-not-disclose", rendered)
+        self.assertNotIn("metadata", rendered)
+        self.assertNotIn("payload", rendered)
+
+    def test_operator_overview_rejects_a_plan_from_a_stale_base(self) -> None:
+        self.seed_activity()
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.graphs.save(
+                GraphVersionRecord.from_graph(
+                    graph_id="graph-new-base",
+                    workspace_id="workspace-a",
+                    version=3,
+                    graph=DeploymentGraph("graph-new-base"),
+                    created_by="operator-a",
+                    created_at="2026-07-22T11:04:00Z",
+                )
+            )
+            unit_of_work.stores.workspaces.set_current_graph("workspace-a", "graph-new-base")
+            unit_of_work.commit()
+
+        overview = self.operator_overview()
+        self.assertEqual(overview["graphs"]["relation"], "diverged")
+        self.assertEqual(overview["workflow"]["selection"], "unavailable")
+        self.assertIsNone(overview["workflow"]["plan"])
+        self.assertNotEqual(overview["next_action"]["state"], "available")
+
+    def test_operator_overview_marks_plural_plans_ambiguous(self) -> None:
+        self.seed_activity()
+        with self.unit_of_work() as unit_of_work:
+            workspace = unit_of_work.stores.workspaces.get("workspace-a")
+            unit_of_work.stores.activity_history.add_session(
+                OperationSessionRecord(
+                    session_id="session-b",
+                    workspace_id="workspace-a",
+                    actor_id="operator-b",
+                    title="Competing deploy",
+                    status=OperationSessionStatus.OPEN,
+                    created_at="2026-07-22T11:04:00Z",
+                )
+            )
+            unit_of_work.stores.activity_history.add_plan(
+                ActivityPlanRecord(
+                    plan_id="plan-b",
+                    session_id="session-b",
+                    base_graph_id="graph-current",
+                    desired_graph_id="graph-desired",
+                    status=ActivityPlanStatus.PLANNED,
+                    created_at="2026-07-22T11:05:00Z",
+                    plan=ActivityPlan(()),
+                    base_realized_projection_id=workspace.current_realized_projection_id,
+                    desired_realized_projection_id=workspace.desired_realized_projection_id,
+                    desired_graph_revision=workspace.desired_graph_revision,
+                )
+            )
+            unit_of_work.commit()
+
+        ambiguous = self.operator_overview()
+        self.assertEqual(ambiguous["workflow"]["selection"], "ambiguous")
+        self.assertEqual(ambiguous["workflow"]["session"], None)
+        self.assertEqual(ambiguous["workflow"]["plan"], None)
+        self.assertEqual(ambiguous["workflow"]["run_selection"], "unavailable")
+        self.assertEqual(ambiguous["history"]["state"], "unavailable")
+        self.assertEqual(ambiguous["next_action"]["state"], "ambiguous")
+
+    def test_operator_overview_marks_a_gapped_run_lineage_unavailable(self) -> None:
+        self.seed_activity()
+        self.seed_overview_request_and_runs(broken=True)
+
+        unavailable = self.operator_overview()
+        self.assertEqual(unavailable["workflow"]["selection"], "selected")
+        self.assertEqual(unavailable["workflow"]["run_selection"], "unavailable")
+        self.assertEqual(unavailable["workflow"]["run"], None)
+        self.assertEqual(unavailable["history"]["state"], "unavailable")
+        self.assertEqual(unavailable["next_action"]["state"], "unavailable")
+
+    def test_operator_overview_keeps_incomplete_outcome_unknown_with_empty_history(self) -> None:
+        self.seed_activity()
+        self.seed_overview_request_and_runs()
+        stores = PostgresStoreBundle(self.connection)
+        run = stores.execution.get_run("run-2")
+        scopes = (PolicyScope.EXECUTION_OPERATE,)
+        stores.execution.add_command_receipt(
+            ExecutionCommandReceiptRecord(
+                run_id=run.run_id,
+                idempotency_key="execute-a",
+                intent_fingerprint=execution_command_intent_fingerprint(
+                    run_id=run.run_id,
+                    worker_id="worker-a",
+                    authority_scopes=scopes,
+                    claim_generation=1,
+                    max_effects=1,
+                ),
+                worker_id="worker-a",
+                authority_scopes=scopes,
+                claim_generation=1,
+                max_effects=1,
+                admitted_at="2026-07-22T11:10:00Z",
+                initial_run=run,
+            )
+        )
+
+        overview = self.operator_overview()
+        self.assertEqual(
+            overview["workflow"]["command"],
+            {
+                "receipt_state": "incomplete",
+                "coordinator_status": None,
+                "effects_attempted": None,
+                "activity_id": None,
+            },
+        )
+        self.assertEqual(
+            overview["history"],
+            {"state": "available", "run_id": "run-2", "items": [], "next_cursor": None},
+        )
+        self.assertNotEqual(overview["next_action"]["state"], "available")
+
+    def test_operator_overview_uses_the_latest_sequential_completed_receipt(self) -> None:
+        self.seed_activity()
+        self.seed_overview_request_and_runs()
+        stores = PostgresStoreBundle(self.connection)
+        run = stores.execution.get_run("run-2")
+        scopes = (PolicyScope.EXECUTION_OPERATE,)
+        for key, minute, activity in (
+            ("execute-z", "10", "activity-a"),
+            ("execute-a", "12", "activity-b"),
+        ):
+            stores.execution.add_command_receipt(
+                ExecutionCommandReceiptRecord(
+                    run_id=run.run_id,
+                    idempotency_key=key,
+                    intent_fingerprint=execution_command_intent_fingerprint(
+                        run_id=run.run_id, worker_id="worker-a", authority_scopes=scopes,
+                        claim_generation=1, max_effects=1,
+                    ),
+                    worker_id="worker-a",
+                    authority_scopes=scopes,
+                    claim_generation=1,
+                    max_effects=1,
+                    admitted_at=f"2026-07-22T11:{minute}:00Z",
+                    initial_run=run,
+                    status=ExecutionCommandReceiptStatus.COMPLETED,
+                    completed_at=f"2026-07-22T11:{minute}:30Z",
+                    result=ExecutionCommandResultRecord(
+                        run=run, status=CoordinatorStatus.PROGRESSED,
+                        effects_attempted=1, activity_id=activity,
+                    ),
+                )
+            )
+
+        overview = self.operator_overview()
+        self.assertEqual(
+            overview["workflow"]["command"],
+            {"receipt_state": "completed", "coordinator_status": "progressed",
+             "effects_attempted": 1, "activity_id": "activity-b"},
+        )
+        self.assertEqual(overview["next_action"]["state"], "available")
+        self.assertEqual(overview["next_action"]["operation_id"], "command.deployment.execute")
+        self.assertEqual(overview["next_action"]["coordinates"]["run_id"], "run-2")
+
+    def test_operator_overview_selects_one_run_receipt_and_bounded_history(self) -> None:
+        self.seed_activity()
+        self.seed_overview_request_and_runs()
+        stores = PostgresStoreBundle(self.connection)
+        run = stores.execution.get_run("run-2")
+        scopes = (PolicyScope.EXECUTION_OPERATE,)
+        fingerprint = execution_command_intent_fingerprint(
+            run_id=run.run_id,
+            worker_id="worker-a",
+            authority_scopes=scopes,
+            claim_generation=1,
+            max_effects=1,
+        )
+        stores.execution.add_command_receipt(
+            ExecutionCommandReceiptRecord(
+                run_id=run.run_id,
+                idempotency_key="execute-a",
+                intent_fingerprint=fingerprint,
+                worker_id="worker-a",
+                authority_scopes=scopes,
+                claim_generation=1,
+                max_effects=1,
+                admitted_at="2026-07-22T11:10:00Z",
+                initial_run=run,
+                status=ExecutionCommandReceiptStatus.COMPLETED,
+                completed_at="2026-07-22T11:11:00Z",
+                result=ExecutionCommandResultRecord(
+                    run=run,
+                    status=CoordinatorStatus.PROGRESSED,
+                    effects_attempted=1,
+                    activity_id="activity-a",
+                ),
+            )
+        )
+        with self.connection.cursor() as cursor:
+            cursor.executemany(
+                """
+                INSERT INTO cpk_activity_events
+                  (event_id, run_id, ordinal, event_type, occurred_at, payload)
+                VALUES (%s, 'run-2', %s, 'step_started',
+                        '2026-07-22T11:12:00Z', %s)
+                """,
+                (
+                    (
+                        f"event-{ordinal:03d}",
+                        ordinal,
+                        psycopg.types.json.Jsonb(
+                            {
+                                "activity_id": "activity-a",
+                                "evidence": {
+                                    "url": "http://private.example.invalid",
+                                    "note": f"event-{ordinal:03d}",
+                                },
+                            }
+                        ),
+                    )
+                    for ordinal in range(1, 102)
+                ),
+            )
+
+        overview = self.operator_overview()
+        workflow = overview["workflow"]
+        self.assertEqual(workflow["run_selection"], "selected")
+        self.assertEqual(
+            workflow["run"],
+            {
+                "run_id": "run-2",
+                "request_id": "request-a",
+                "status": "running",
+                "attempt": 2,
+            },
+        )
+        self.assertEqual(
+            workflow["command"],
+            {
+                "receipt_state": "completed",
+                "coordinator_status": "progressed",
+                "effects_attempted": 1,
+                "activity_id": "activity-a",
+            },
+        )
+        history = overview["history"]
+        self.assertEqual(history["state"], "available")
+        self.assertEqual(history["run_id"], "run-2")
+        self.assertGreater(len(history["items"]), 0)
+        self.assertLessEqual(len(history["items"]), 100)
+        self.assertIsNotNone(history["next_cursor"])
+        self.assertEqual(
+            [item["event_id"] for item in history["items"]],
+            [f"event-{ordinal:03d}" for ordinal in range(1, len(history["items"]) + 1)],
+        )
+        self.assertTrue(
+            all(item["run_id"] == "run-2" for item in history["items"])
+        )
+        self.assertTrue(
+            all(item["payload"]["url"] == "<redacted>" for item in history["items"])
+        )
+        self.assertEqual(
+            overview["next_action"],
+            {
+                "state": "available",
+                "operation_id": "command.deployment.execute",
+                "required_scopes": ["execution:operate"],
+                "coordinates": {
+                    "workspace_id": "workspace-a",
+                    "session_id": "session-a",
+                    "plan_id": "plan-a",
+                    "request_id": "request-a",
+                    "run_id": "run-2",
+                },
+            },
+        )
+
+        for other_key in ("execute-b", "execute-c"):
+            stores.execution.add_command_receipt(
+                ExecutionCommandReceiptRecord(
+                    run_id=run.run_id,
+                    idempotency_key=other_key,
+                    intent_fingerprint=execution_command_intent_fingerprint(
+                        run_id=run.run_id,
+                        worker_id="worker-a",
+                        authority_scopes=scopes,
+                        claim_generation=1,
+                        max_effects=2,
+                    ),
+                    worker_id="worker-a",
+                    authority_scopes=scopes,
+                    claim_generation=1,
+                    max_effects=2,
+                    admitted_at="2026-07-22T11:13:00Z",
+                    initial_run=run,
+                )
+            )
+        ambiguous_receipt = self.operator_overview()
+        self.assertEqual(
+            ambiguous_receipt["workflow"]["command"],
+            {
+                "receipt_state": "ambiguous",
+                "coordinator_status": None,
+                "effects_attempted": None,
+                "activity_id": None,
+            },
+        )
+        self.assertNotEqual(ambiguous_receipt["next_action"]["state"], "available")
 
     def test_workspace_and_graph_reads_are_redacted(self) -> None:
         self.seed_graphs()
@@ -750,6 +1140,41 @@ class InstanceReadServiceTests(unittest.TestCase):
                 )
             )
             unit_of_work.commit()
+
+    def seed_overview_request_and_runs(self, *, broken: bool = False) -> None:
+        attempt = 3 if broken else 2
+        self.connection.execute(
+            """
+            INSERT INTO cpk_approval_decisions
+              (decision_id, request_id, actor_id, decision, scope, decided_at)
+            VALUES ('decision-a', 'approval-a', 'manager-a', 'approved',
+                    'plan:approve', '2026-07-22T11:04:00Z');
+            INSERT INTO cpk_execution_requests
+              (request_id, workspace_id, session_id, plan_id, status,
+               requested_by, requested_at, approval_request_id,
+               approval_decision_id, idempotency_key, intent_fingerprint,
+               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
+            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'claimed',
+                    'operator-a', '2026-07-22T11:05:00Z', 'approval-a',
+                    'decision-a', 'admit-a', 'fingerprint-a',
+                    'worker-a', 1, '2026-07-22T11:05:00Z', '2026-07-22T12:05:00Z');
+            INSERT INTO cpk_activity_runs
+              (run_id, plan_id, request_id, attempt, prior_run_id, status,
+               created_at, started_at, metadata)
+            VALUES ('run-1', 'plan-a', 'request-a', 1, NULL, 'failed',
+                    '2026-07-22T11:06:00Z', '2026-07-22T11:07:00Z', '{}'::jsonb)
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO cpk_activity_runs
+              (run_id, plan_id, request_id, attempt, prior_run_id, status,
+               created_at, started_at, metadata)
+            VALUES ('run-2', 'plan-a', 'request-a', %s, 'run-1', 'running',
+                    '2026-07-22T11:08:00Z', '2026-07-22T11:09:00Z', '{}'::jsonb)
+            """,
+            (attempt,),
+        )
 
     def seed_activity_with_public_ingress(self) -> None:
         base = DeploymentGraph("public-ingress-base")

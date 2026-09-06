@@ -12,13 +12,15 @@ from control_plane_kit_core.topology import (
     GraphDescriptorCodec,
 )
 from control_plane_kit_operations.read_pages import (
+    ReadCursor,
     ReadPage,
     ReadPageRequest,
 )
 
 from .authority_secrets import _AuthoritySecretReadProjection
 from .gateway_security import _GatewaySecurityReadProjection
-from .models import FocusedDetailReadModel
+from .models import FocusedDetailReadModel, OperatorOverviewReadModel
+from .operator_overview import _OperatorOverviewReadProjection
 from .observations import (
     ObservationFreshnessPolicy,
     _ObservationReadProjection,
@@ -74,6 +76,9 @@ class InstanceReadService:
             graph_topology_store,
             graph_codec=graph_codec,
         )
+        self._operator_overview = _OperatorOverviewReadProjection(
+            workspace_store, graph_topology_store, activity_history_store, execution_store,
+        )
         self._operations_history = _OperationsHistoryReadProjection(
             self._workspace_graph.require_workspace,
             graph_topology_store,
@@ -103,6 +108,11 @@ class InstanceReadService:
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         return self._workspace_graph.workspace(workspace_id)
+
+    def operator_overview(
+        self, workspace_id: str, *, limit: int = 50, after: ReadCursor | None = None,
+    ) -> OperatorOverviewReadModel:
+        return self._operator_overview.read(workspace_id, limit=limit, after=after)
 
     def current_graph(self, workspace_id: str) -> GraphPointerReadModel:
         return self._workspace_graph.current_graph(workspace_id)
