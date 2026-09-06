@@ -2096,6 +2096,7 @@ def _read_error_status(error: ReadModelError) -> int:
     if message.startswith(
         (
             "missing workspace",
+            "missing draft",
             "missing session",
             "missing plan",
             "missing run in workspace",

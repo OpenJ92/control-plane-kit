@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import psycopg
 
-from control_plane_kit_core.algebra import BlockSockets, RequirementSocket
+from control_plane_kit_core.algebra import RequirementSocket
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_operations.cpk_server import CpkServerApplicationError
@@ -84,7 +84,7 @@ class DesiredTopologyDraftTests(DraftCatalogueFixture, unittest.TestCase):
 
         graph = self.graph()
         node = graph.nodes["app"]
-        invalid = replace(graph, nodes={"app": replace(node, sockets=BlockSockets(
+        invalid = replace(graph, nodes={"app": replace(node, sockets=replace(node.sockets,
             requirements=(RequirementSocket("upstream", Protocol.HTTP, ("UPSTREAM_URL",), True),),
         ))})
         DEFAULT_GRAPH_CODEC.encode(invalid)  # Encodable is not equivalent to semantically valid.
