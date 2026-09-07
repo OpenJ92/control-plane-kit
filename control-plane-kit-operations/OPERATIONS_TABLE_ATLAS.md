@@ -919,6 +919,19 @@ deleting its retained draft history.
 - **Sensitive material:** Secret references are sensitive locators only; resolved values, credentials, and delivery-time private material are never persisted.
 - **Future impact:** #1556 must resolve signing material immediately at the effect boundary rather than borrowing runtime delivery storage.
 
+### `cpk_saved_preparation_sources`
+- **Durable meaning and owner:** `PostgresSavedPreparationSourceStore` owns the explicit immutable saved input of a preparation session, not deployment success.
+- **Identity and cardinality:** Session primary key; many sessions may reference one `(workspace_id, draft_id, revision)`; reverse index follows that tuple then session ID.
+- **Outgoing foreign keys:** Immediate NO ACTION composite references to same-workspace session and immutable revision. No redundant graph ID.
+- **Inbound dependents:** None; plans and runs retain their existing session/plan relationships.
+- **Writers and transactions:** Saved admission inserts source after the session/start action and before their shared UoW commit. No independent commit or upsert.
+- **Readers and projections:** Tenant-scoped get supports replay and existing saved overview; current-data verification checks source/immutable commitment congruence.
+- **Mutation, locks, retries, and idempotency:** Session-key -> workspace -> draft precedes fresh admission. Replay requires the original source and never repairs missing evidence. No update/delete methods.
+- **Lifecycle, retention, deletion, and restore:** Retain source through head/selection/session changes. Fresh exact-schema installation only; older retained installations stay pinned, with no reset, transfer, import or backfill release.
+- **JSON boundary:** Source has no JSON. Shared saved metadata/fingerprint validator checks the immutable session commitment and revision-derived graph. Install-time candidate traversal uses batches64 and SQL byte caps under existing schema transaction/SHARE locks; memory is bounded, total work and lock duration are not.
+- **Sensitive material:** Only bounded identifiers and revision ordinal; no graph body, credentials or provider output. Errors omit malformed retained values.
+- **Future impact:** #1773 may consume this fact for bounded history; it must distinguish saved input from target graph association and accepted advancement. No per-HTTP global scan or repair engine. Complete erased saved evidence plus missing source is inherently indistinguishable.
+
 ### `cpk_secret_providers`
 - **Durable meaning and owner:** `SecretProviderStore` owns workspace-scoped provider registrations, allowed use policy, status, and supersession lineage.
 - **Identity and cardinality:** `registration_id` is primary and `(registration_id, workspace_id)` is the exact composite referenced by secret records.
@@ -970,16 +983,3 @@ deleting its retained draft history.
 - **JSON boundary:** `metadata` is bounded workspace context and never substitutes for graph, projection, lifecycle, or routing identity.
 - **Sensitive material:** Workspace names and metadata are protected control-plane context; credentials, secret values, private keys, and caller-selected network routes are forbidden.
 - **Future impact:** #1555 verifies explicit gateway and command targets against this workspace's accepted current lineage; #1556 executes only after that durable authorization.
-
-### `cpk_saved_preparation_sources`
-- **Durable meaning and owner:** `PostgresSavedPreparationSourceStore` owns the explicit immutable saved input of a preparation session, not deployment success.
-- **Identity and cardinality:** Session primary key; many sessions may reference one `(workspace_id, draft_id, revision)`; reverse index follows that tuple then session ID.
-- **Outgoing foreign keys:** Immediate NO ACTION composite references to same-workspace session and immutable revision. No redundant graph ID.
-- **Inbound dependents:** None; plans and runs retain their existing session/plan relationships.
-- **Writers and transactions:** Saved admission inserts source after the session/start action and before their shared UoW commit. No independent commit or upsert.
-- **Readers and projections:** Tenant-scoped get supports replay and existing saved overview; current-data verification checks source/immutable commitment congruence.
-- **Mutation, locks, retries, and idempotency:** Session-key -> workspace -> draft precedes fresh admission. Replay requires the original source and never repairs missing evidence. No update/delete methods.
-- **Lifecycle, retention, deletion, and restore:** Retain source through head/selection/session changes. Fresh exact-schema installation only; older retained installations stay pinned, with no reset, transfer, import or backfill release.
-- **JSON boundary:** Source has no JSON. Shared saved metadata/fingerprint validator checks the immutable session commitment and revision-derived graph. Install-time candidate traversal uses batches64 and SQL byte caps under existing schema transaction/SHARE locks; memory is bounded, total work and lock duration are not.
-- **Sensitive material:** Only bounded identifiers and revision ordinal; no graph body, credentials or provider output. Errors omit malformed retained values.
-- **Future impact:** #1773 may consume this fact for bounded history; it must distinguish saved input from target graph association and accepted advancement. No per-HTTP global scan or repair engine. Complete erased saved evidence plus missing source is inherently indistinguishable.

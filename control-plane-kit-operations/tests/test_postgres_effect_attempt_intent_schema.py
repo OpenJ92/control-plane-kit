@@ -116,7 +116,7 @@ class PostgresEffectAttemptIntentSchemaTests(
         self.assertEqual(len(contract.indexes), 129)
         self.assertEqual(
             sum(value.kind == "f" for value in contract.constraints),
-            85,
+            87,
         )
         columns = tuple(
             value.name for value in contract.columns if value.relation == RELATION

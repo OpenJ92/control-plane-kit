@@ -162,6 +162,14 @@ class SavedPreparationSourceTests(SavedPreparationFixture, unittest.TestCase):
             (session.session_id, draft.draft_id))
         self.assert_current_rejected_without_repair()
 
+    def test_current_validation_does_not_omit_empty_session_id_candidate(self):
+        self.connection.execute("INSERT INTO cpk_operation_sessions "
+            "(session_id,workspace_id,actor_id,title,status,created_at,metadata) "
+            "VALUES ('','workspace-a','operator-a','Malformed saved evidence','open',"
+            "'2026-09-07T00:00:00Z',%s)",
+            (Jsonb({"deployment_prepare_saved_unknown": "orphan"}),))
+        self.assert_current_rejected_without_repair()
+
     def test_current_validation_rejects_orphan_saved_keys_without_source(self):
         draft = self.selected()
         result = self.program().prepare(self.prepare_command(draft))

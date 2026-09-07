@@ -59,7 +59,7 @@ LEFT JOIN cpk_saved_preparation_sources AS source ON source.session_id=session.s
 LEFT JOIN cpk_desired_topology_draft_revisions AS revision
   ON (revision.workspace_id,revision.draft_id,revision.revision)=
      (source.workspace_id,source.draft_id,source.revision)
-WHERE session.session_id > %s AND (
+WHERE (%s::text IS NULL OR session.session_id > %s) AND (
   source.session_id IS NOT NULL OR session.metadata ? 'deployment_prepare_source'
   OR EXISTS (SELECT 1 FROM jsonb_object_keys(
     CASE WHEN jsonb_typeof(session.metadata)='object' THEN session.metadata ELSE '{}'::jsonb END
@@ -70,9 +70,9 @@ ORDER BY session.session_id LIMIT %s
 
 
 def _validate_current_rows(connection: PostgresConnection) -> None:
-    last_session = ""
+    last_session = None
     while True:
-        rows = connection.execute(_SCAN, (last_session, _BATCH_SIZE)).fetchall()
+        rows = connection.execute(_SCAN, (last_session, last_session, _BATCH_SIZE)).fetchall()
         if not rows:
             return
         if len(rows) > _BATCH_SIZE:

@@ -52,6 +52,7 @@ _EXPECTED_RELATIONS = (
     "cpk_registered_products",
     "cpk_runtime_authorities",
     "cpk_runtime_authority_deliveries",
+    "cpk_saved_preparation_sources",
     "cpk_secret_providers",
     "cpk_secret_references",
     "cpk_secret_use_authorizations",
@@ -562,7 +563,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            39,
+            40,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),
