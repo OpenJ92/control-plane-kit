@@ -66,12 +66,22 @@ class DraftSelectionAdapterTests(DraftSelectionFixture, unittest.TestCase):
         for surface in ("http", "mcp"):
             for route in ("command.desired-topology-draft.select", "command.desired-topology-draft.delete",
                           "read.operator-overview"):
-                for actor in (None, principal("workspace-b"), principal(scopes=())):
-                    request = self.request(surface, route, {"actor_scopes": [s.value for s in PolicyScope]},
+                for actor_label, actor in (("missing", None), ("foreign-workspace", principal("workspace-b")),
+                                           ("missing-scope", principal(scopes=()))):
+                    payload = {} if route.startswith("read.") else {"actor_scopes": [s.value for s in PolicyScope]}
+                    request = self.request(surface, route, payload,
                                            draft_id=None if route.startswith("read.") else "draft", actor=actor)
-                    with self.subTest(surface=surface, route=route), self.assertRaises(CpkServerApplicationError) as error:
-                        services[request.service_role].handle(request)
-                    self.assertEqual(error.exception.status, 403)
+                    with self.subTest(surface=surface, route=route, actor=actor_label):
+                        with self.assertRaises(CpkServerApplicationError) as error:
+                            services[request.service_role].handle(request)
+                        self.assertEqual(error.exception.status, 403)
+            # Closed overview arguments reject forged authority before any transaction.
+            request = self.request(surface, "read.operator-overview",
+                                   {"actor_scopes": [s.value for s in PolicyScope]})
+            with self.subTest(surface=surface, route="read.operator-overview", actor="forged-scopes"):
+                with self.assertRaises(CpkServerApplicationError) as error:
+                    services[request.service_role].handle(request)
+                self.assertEqual(error.exception.status, 400)
 
     def test_missing_or_malformed_fences_and_stale_conflicts_match_bounded_http_mcp_errors(self):
         first = self.create()
