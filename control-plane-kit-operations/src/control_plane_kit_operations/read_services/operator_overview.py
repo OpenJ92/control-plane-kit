@@ -277,8 +277,12 @@ class _OperatorOverviewReadProjection:
 
     def _prepared_draft(self, workspace, plan, session):
         try:
+            source = (None if self._saved_sources is None else
+                      self._saved_sources.get(workspace.workspace_id, session.session_id))
             metadata = saved_preparation_session_metadata(session)
             if metadata is None:
+                if source is not None:
+                    raise _Unavailable()
                 return {"state": "none", "revision": None}
             if self._drafts is None:
                 raise _Unavailable()
@@ -293,8 +297,7 @@ class _OperatorOverviewReadProjection:
                                              int(metadata[prefix + "revision"]))
             if self._saved_sources is None:
                 raise _Unavailable()
-            validate_saved_preparation_source(
-                self._saved_sources.get(workspace.workspace_id, session.session_id), session, revision)
+            validate_saved_preparation_source(source, session, revision)
             if (revision.workspace_id != workspace.workspace_id
                 or revision.draft_id != metadata[prefix + "draft_id"]
                 or revision.revision != int(metadata[prefix + "revision"])

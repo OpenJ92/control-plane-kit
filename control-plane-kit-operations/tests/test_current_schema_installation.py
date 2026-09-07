@@ -121,7 +121,7 @@ _CURRENT_CONTRACT_SHA256 = (
     "154537da2ed7fa98fe0d784b5d1e37b9cf8c3287a719ccf3cf3d4e1dbf253189"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "01ec10be7cda512b120f8cae2125642de861a46d68d9dfaf38b113a61ccb0cee"
+    "0a451dd7127f3633e19a9b3f3fce1e2822d94c6f077259cc3cf8b0d6194e1ef7"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1

@@ -164,9 +164,16 @@ class SavedPreparationAdapterTests(SavedPreparationFixture, unittest.TestCase):
                 projection = self.overview()["workflow"]["prepared_draft"]
                 self.assertEqual(projection, {"state": "unavailable", "revision": None})
                 self.assertNotIn("private-canary", repr(projection))
-        # Wholly stripped evidence cannot be distinguished from legacy metadata.
+        # A retained source still identifies missing saved commitment evidence.
         legacy = {key: value for key, value in original.items()
                   if key not in SAVED_ONLY_KEYS and key != "deployment_prepare_source"}
         self.connection.execute("UPDATE cpk_operation_sessions SET metadata=%s WHERE session_id=%s", (Jsonb(legacy), session.session_id))
+        before = self.all_truth(), self.rows("cpk_saved_preparation_sources")
+        self.assertEqual(self.overview()["workflow"]["prepared_draft"], {"state": "unavailable", "revision": None})
+        self.assertEqual((self.all_truth(), self.rows("cpk_saved_preparation_sources")), before)
+        # Complete erasure of both kinds of evidence remains indistinguishable.
+        self.connection.execute("DELETE FROM cpk_saved_preparation_sources WHERE session_id=%s", (session.session_id,))
+        before = self.all_truth(), self.rows("cpk_saved_preparation_sources")
         self.assertEqual(self.overview()["workflow"]["prepared_draft"], {"state": "none", "revision": None})
+        self.assertEqual((self.all_truth(), self.rows("cpk_saved_preparation_sources")), before)
         self.connection.execute("UPDATE cpk_operation_sessions SET metadata=%s WHERE session_id=%s", (Jsonb(original), session.session_id))
