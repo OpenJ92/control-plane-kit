@@ -116,6 +116,7 @@ class InstanceReadServiceTests(unittest.TestCase):
         return InstanceReadService(
             workspace_store=stores.workspaces,
             graph_topology_store=stores.graphs,
+            desired_topology_draft_store=stores.desired_topology_drafts,
             activity_history_store=stores.activity_history,
             execution_store=stores.execution,
             observed_state_store=stores.observed_state,
@@ -157,6 +158,7 @@ class InstanceReadServiceTests(unittest.TestCase):
                         "WHERE workspace_id = 'workspace-a'"
                     ).fetchone()[0],
                     "revision": 1,
+                    "draft": {"state": "none", "selected": None, "head": None},
                 },
                 "relation": "diverged",
             },

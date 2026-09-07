@@ -22,6 +22,8 @@ EXPECTED_COMMANDS = {
     "record-operation-action",
     "create-desired-topology-draft",
     "revise-desired-topology-draft",
+    "select-desired-topology-draft",
+    "delete-desired-topology-draft",
     "set-desired-graph",
     "publish-desired-realized-projection",
     "request-activity-plan",

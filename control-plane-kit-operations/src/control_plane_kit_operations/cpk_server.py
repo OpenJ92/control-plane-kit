@@ -124,6 +124,7 @@ from control_plane_kit_operations.read_services import InstanceReadService, Read
 from control_plane_kit_operations.desired_topology_drafts import (
     CreateDesiredTopologyDraft, ReviseDesiredTopologyDraft, DesiredTopologyDraftCommandService,
     DesiredTopologyDraftError, DesiredTopologyDraftConflict,
+    SelectDesiredTopologyDraft, DeleteDesiredTopologyDraft,
 )
 from control_plane_kit_operations.read_pages import (
     DraftReadScope,
@@ -263,6 +264,8 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.desired-topology-draft-revision": _WORKSPACE_READ,
     "command.desired-topology-draft.create": _WORKSPACE_EDIT,
     "command.desired-topology-draft.revise": _WORKSPACE_EDIT,
+    "command.desired-topology-draft.select": _WORKSPACE_EDIT,
+    "command.desired-topology-draft.delete": _WORKSPACE_EDIT,
     "read.workspace": _WORKSPACE_READ,
     "read.current-graph": _WORKSPACE_READ,
     "read.desired-graph": _WORKSPACE_READ,
@@ -487,7 +490,7 @@ class CpkServerReadService:
                 "gateway_probe_store": stores.gateway_probes,
                 "delegation_signing_key_store": stores.delegation_signing_keys,
             }
-            if request.route_id.startswith("read.desired-topology-draft"):
+            if request.route_id.startswith("read.desired-topology-draft") or request.route_id == "read.operator-overview":
                 kwargs["desired_topology_draft_store"] = stores.desired_topology_drafts
             if self._clock is not None:
                 kwargs["clock"] = self._clock
@@ -539,6 +542,29 @@ class CpkServerPlanningService:
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         context = _trusted_context(request)
+        if request.route_id in {"command.desired-topology-draft.select", "command.desired-topology-draft.delete"}:
+            if self._desired_topology_drafts is None:
+                raise _service_not_configured(request)
+            values = _arguments(request)
+            arguments = dict(context=context, session_id=_text(values, "session_id"),
+                             draft_id=_text(values, "draft_id"), idempotency_key=_draft_idempotency_key(values))
+            if request.route_id.endswith(".select"):
+                for name in ("expected_desired_graph_id", "expected_desired_realized_projection_id"):
+                    if name not in values:
+                        raise CpkServerApplicationError(400, "expected desired lineage is required")
+                command = SelectDesiredTopologyDraft(**arguments, revision=_draft_revision(values),
+                    expected_desired_graph_id=_optional_text(values, "expected_desired_graph_id"),
+                    expected_desired_realized_projection_id=_optional_text(values, "expected_desired_realized_projection_id"),
+                    expected_desired_graph_revision=_nonnegative_integer(values, "expected_desired_graph_revision"))
+            else:
+                command = DeleteDesiredTopologyDraft(**arguments,
+                    expected_head_revision=_positive_int(values, "expected_head_revision", default=0))
+            try:
+                return self._desired_topology_drafts.execute(command).descriptor()
+            except DesiredTopologyDraftConflict:
+                raise CpkServerApplicationError(409, "draft intent conflicts with current truth") from None
+            except DesiredTopologyDraftError:
+                raise CpkServerApplicationError(400, "draft command was not admitted") from None
         if request.route_id in {"command.desired-topology-draft.create", "command.desired-topology-draft.revise"}:
             if self._desired_topology_drafts is None:
                 raise _service_not_configured(request)

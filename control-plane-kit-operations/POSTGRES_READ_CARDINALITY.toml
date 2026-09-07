@@ -493,3 +493,11 @@ category = "public-paged"
 sql = "workspace/draft filter; revision/graph_id ascending keyset; LIMIT limit plus one"
 consumer_kind = "production"
 consumer = "InstanceReadService desired_topology_drafts revision summaries"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.desired_topology_draft_store"
+selector = "PostgresDesiredTopologyDraftStore.revisions_for_graph"
+category = "fixed-cardinality"
+sql = "workspace and unique graph key filter; LIMIT two proves zero/one mapping or unavailable"
+consumer_kind = "production"
+consumer = "operator-overview resolves exact selected draft and rereads catalogue anchors"
