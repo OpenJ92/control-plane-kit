@@ -85,7 +85,7 @@ class InstanceReadService:
             self._workspace_graph.require_workspace, graph_topology_store, desired_topology_draft_store,
         )
         self._operator_overview = _OperatorOverviewReadProjection(
-            workspace_store, graph_topology_store, activity_history_store, execution_store,
+            workspace_store, graph_topology_store, activity_history_store, execution_store, desired_topology_draft_store,
         )
         self._operations_history = _OperationsHistoryReadProjection(
             self._workspace_graph.require_workspace,

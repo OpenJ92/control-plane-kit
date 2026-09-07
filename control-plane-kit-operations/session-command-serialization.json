@@ -92,6 +92,22 @@
       "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize revision CAS"
     },
     {
+      "command": "select-desired-topology-draft",
+      "service": "DesiredTopologyDraftCommandService.execute",
+      "writer": "desired_topology_drafts.py:_execute_reference_command",
+      "source": "desired_topology_drafts.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize exact desired tuple check/update and unused-reference tombstone against planning"
+    },
+    {
+      "command": "delete-desired-topology-draft",
+      "service": "DesiredTopologyDraftCommandService.execute",
+      "writer": "desired_topology_drafts.py:_execute_reference_command",
+      "source": "desired_topology_drafts.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize exact desired tuple check/update and unused-reference tombstone against planning"
+    },
+    {
       "command": "set-desired-graph",
       "service": "DesiredGraphCommandService.execute",
       "writer": "planning.py:DesiredGraphCommandService.execute",

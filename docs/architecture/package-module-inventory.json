@@ -10281,7 +10281,7 @@
       "owner": "operation",
       "destination": "control_plane_kit_operations.desired_topology_drafts",
       "role": "durable-control-plane-operation",
-      "motivation": "Owns saved desired-topology catalogue truth and bounded projections without selecting or executing graphs.",
+      "motivation": "Owns saved desired-topology catalogue truth and bounded projections including exact desired selection and unused tombstone without execution.",
       "internal_dependencies": [
         "control_plane_kit_core.identity",
         "control_plane_kit_core.operations",
@@ -10302,6 +10302,10 @@
       "canonical_public_exports": [
         "CreateDesiredTopologyDraft",
         "ReviseDesiredTopologyDraft",
+        "SelectDesiredTopologyDraft",
+        "DeleteDesiredTopologyDraft",
+        "DesiredTopologyDraftSelectionResult",
+        "DesiredTopologyDraftDeletionResult",
         "DesiredTopologyDraftCommandService",
         "DesiredTopologyDraftResult",
         "DesiredTopologyDraftRecord",
@@ -10319,7 +10323,9 @@
       "movement": "remain",
       "protecting_tests": [
         "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
-        "control-plane-kit-operations/tests/test_draft_catalogue_adapters.py"
+        "control-plane-kit-operations/tests/test_draft_catalogue_adapters.py",
+        "control-plane-kit-operations/tests/test_draft_selection.py",
+        "control-plane-kit-operations/tests/test_draft_selection_adapters.py"
       ]
     },
     {

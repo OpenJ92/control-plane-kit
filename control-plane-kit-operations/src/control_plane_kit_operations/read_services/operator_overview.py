@@ -6,6 +6,9 @@ from datetime import datetime
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_operations.desired_topology_drafts import (
+    DesiredTopologyDraftStore, DesiredTopologyDraftRecord, DesiredTopologyDraftRevisionRecord,
+)
 from control_plane_kit_operations.read_pages import (
     ReadCollection, ReadCursor, ReadPage, ReadPageError, ReadPageRequest,
     RunReadScope, WorkspaceReadScope,
@@ -25,6 +28,10 @@ from .protocols import ActivityHistoryStore, ExecutionStore, GraphTopologyStore,
 
 class _Unavailable(ValueError):
     """A bounded observation cannot substantiate a congruent overview."""
+
+
+def _draft_state(state):
+    return {"state": state, "selected": None, "head": None}
 
 
 def _coordinate(value: str) -> str:
@@ -64,11 +71,13 @@ def _offer(operation: str, scopes: tuple[PolicyScope, ...],
 
 class _OperatorOverviewReadProjection:
     def __init__(self, workspaces: WorkspaceStore, graphs: GraphTopologyStore,
-                 history: ActivityHistoryStore | None, execution: ExecutionStore | None) -> None:
+                 history: ActivityHistoryStore | None, execution: ExecutionStore | None,
+                 drafts: DesiredTopologyDraftStore | None = None) -> None:
         self._workspaces = workspaces
         self._graphs = graphs
         self._history = history
         self._execution = execution
+        self._drafts = drafts
 
     def read(self, workspace_id: str, *, limit: int = 50,
              after: ReadCursor | None = None) -> OperatorOverviewReadModel:
@@ -86,7 +95,7 @@ class _OperatorOverviewReadProjection:
         graphs = {"current": {"assigned": False, "graph_id": None,
                               "realized_projection_id": None},
                   "desired": {"assigned": False, "graph_id": None,
-                              "realized_projection_id": None, "revision": None},
+                              "realized_projection_id": None, "revision": None, "draft": _draft_state("unavailable")},
                   "relation": "unavailable"}
         workflow = _workflow("unavailable")
         history = _history("unavailable")
@@ -96,6 +105,8 @@ class _OperatorOverviewReadProjection:
             if not isinstance(workspace, WorkspaceRecord) or workspace.workspace_id != workspace_id:
                 raise _Unavailable()
             graphs = self._graph_pointers(workspace)
+            navigation, draft_anchor = self._draft_navigation(workspace)
+            graphs["desired"]["draft"] = navigation
             if self._history is None or self._execution is None:
                 raise _Unavailable()
             plans = (() if workspace.desired_lineage is None else
@@ -175,12 +186,16 @@ class _OperatorOverviewReadProjection:
                 workspace.desired_realized_projection_id, workspace.desired_graph_revision,
             ) != plans:
                 raise _Unavailable()
+            if self._draft_navigation(workspace)[1] != draft_anchor:
+                graphs["desired"]["draft"] = _draft_state("unavailable")
             if self._anchors(self._workspaces.get(workspace_id)) != self._anchors(workspace):
+                graphs["desired"]["draft"] = _draft_state("unavailable")
                 graphs = {**graphs, "relation": "unavailable"}
                 raise _Unavailable()
         except ReadPageError:
             raise
         except (KeyError, ValueError, TypeError, AttributeError):
+            graphs["desired"]["draft"] = _draft_state("unavailable")
             # No store exception text, raw payload, or partly selected foreign
             # coordinate escapes the fail-closed response.
             workflow = _workflow("unavailable")
@@ -195,6 +210,39 @@ class _OperatorOverviewReadProjection:
         return (workspace.workspace_id, workspace.current_graph_id,
                 workspace.current_realized_projection_id, workspace.desired_graph_id,
                 workspace.desired_realized_projection_id, workspace.desired_graph_revision)
+
+    def _draft_navigation(self, workspace: WorkspaceRecord):
+        if workspace.desired_graph_id is None:
+            return _draft_state("none"), ()
+        try:
+            if self._drafts is None:
+                raise _Unavailable()
+            revisions = self._drafts.revisions_for_graph(workspace.workspace_id, workspace.desired_graph_id)
+            if not isinstance(revisions, tuple) or len(revisions) > 1:
+                raise _Unavailable()
+            if not revisions:
+                return _draft_state("none"), ()
+            selected = revisions[0]
+            if (not isinstance(selected, DesiredTopologyDraftRevisionRecord)
+                    or selected.workspace_id != workspace.workspace_id
+                    or selected.graph_id != workspace.desired_graph_id):
+                raise _Unavailable()
+            draft = self._drafts.get(workspace.workspace_id, selected.draft_id)
+            if (not isinstance(draft, DesiredTopologyDraftRecord)
+                    or (draft.workspace_id, draft.draft_id) != (workspace.workspace_id, selected.draft_id)
+                    or draft.deleted_at is not None or draft.head_revision < selected.revision):
+                raise _Unavailable()
+            head = self._drafts.revision(workspace.workspace_id, draft.draft_id, draft.head_revision)
+            if (not isinstance(head, DesiredTopologyDraftRevisionRecord)
+                    or (head.workspace_id, head.draft_id, head.revision)
+                    != (workspace.workspace_id, draft.draft_id, draft.head_revision)):
+                raise _Unavailable()
+            def coordinates(revision):
+                return {"draft_id": _coordinate(revision.draft_id), "revision": revision.revision,
+                        "graph_id": _coordinate(revision.graph_id)}
+            return {"state": "selected", "selected": coordinates(selected), "head": coordinates(head)}, (draft, selected, head)
+        except (KeyError, ValueError, TypeError, AttributeError):
+            return _draft_state("unavailable"), None
 
     def _graph_pointers(self, workspace: WorkspaceRecord) -> dict[str, object]:
         pointers = {}

@@ -116,7 +116,7 @@ The retired aggregate CLI, `create_instance_read_app`, and
 `ReadOnlyMcpAdapter` imports are historical APIs. They are not current
 compatibility surfaces.
 
-## Saved topology catalogue (#1762)
+## Saved topology catalogue (#1762–#1763)
 
 Authenticated workspace operators can save alternative desired-topology designs
 without changing either workspace graph pointer. Operations owns the named draft
@@ -128,6 +128,8 @@ execute runtime effects.
 | --- | --- | --- |
 | `command.desired-topology-draft.create` | POST `/desired-topology-drafts` | `create_desired_topology_draft` |
 | `command.desired-topology-draft.revise` | POST `/desired-topology-drafts/{draft_id}/revisions` | `revise_desired_topology_draft` |
+| `command.desired-topology-draft.select` | POST `/desired-topology-drafts/{draft_id}/select` | `select_desired_topology_draft` |
+| `command.desired-topology-draft.delete` | POST `/desired-topology-drafts/{draft_id}/delete` | `delete_desired_topology_draft` |
 | `read.desired-topology-drafts` | GET `/desired-topology-drafts` | `list_desired_topology_drafts` |
 | `read.desired-topology-draft-revisions` | GET `/desired-topology-drafts/{draft_id}/revisions` | `list_desired_topology_draft_revisions` |
 | `read.desired-topology-draft-revision` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}` | `get_desired_topology_draft_revision` |
@@ -159,5 +161,47 @@ participate in current-row verification. This changes the exact-current schema:
 a populated older namespace requires an explicit reset; no in-place migration or
 data-preserving upgrade is provided. Do not install over a retained demo database
 without separately accepting its reset boundary. This feature does not perform a
-reset. Selection/unused retirement belongs to #1763; saved preparation belongs to
-#1764.
+reset. Saved preparation belongs to #1764.
+
+Select accepts `session_id`, `idempotency_key`, exact `revision`, and all three
+expected desired fields: `expected_desired_graph_id`,
+`expected_desired_realized_projection_id`, `expected_desired_graph_revision`.
+The graph/projection fields are explicitly nullable as a pair. The command
+revalidates saved Core graph semantics and workspace-active products after
+locking. It creates or reuses the deterministic identity projection of the saved
+graph, never another authored graph. Holding the workspace row lock, it checks
+the complete expected tuple then updates/increments generation. Selecting the
+same graph increments generation too; overflow and stale/ABA requests fail
+without writes. Current graph truth, plans and runtime resources do not change.
+
+Delete accepts the same session/key and `expected_head_revision`. It tombstones
+only a live draft whose entire revision history is unused by workspace
+current/desired pointers and all retained plan base/desired graph references.
+Separate indexed EXISTS checks run while holding the workspace and draft locks;
+planning holds that same workspace lock through its plan commit. Tombstoning
+preserves graphs, projections, revisions and actions. Tombstoned summaries,
+revision history and exact detail remain readable; new select/revise commands
+are rejected. There is no graph cascade, runtime teardown or compensation.
+
+Selection results retain workspace/draft/revision/graph, desired projection ID
+and resulting desired generation. Delete results retain workspace/draft/head and
+exact deletion actor/time. Their action payloads contain only these bounded
+coordinates. Replay verifies immutable revision/graph/identity-projection or
+retained tombstone evidence before current session, product, head, tombstone or
+desired admission. It returns the historical result even after later changes,
+without new writes; malformed retained evidence fails closed. Product admission
+uses the existing registration read contract and adds no new revocation fence.
+
+`read.operator-overview` adds only `graphs.desired.draft` with `state`, `selected`
+and `head`. A selected/head value is `{draft_id, revision, graph_id}`; the two
+revisions may differ. A legacy desired graph with no catalogue mapping yields
+`none`; a malformed, plural or tombstoned mapping yields `unavailable` with null
+coordinates. Workspace and draft/head anchors are reread to reject observed
+changes. These fields add no title, graph body, catalogue page or event cursor.
+The existing workflow and informational next-action projection still grants no
+authority. Saved-revision preparation remains #1764.
+
+The #1763 schema change adds only two plan graph lookup indexes and the two
+operation-action kinds. Its exact baseline is 39 relations, 503 columns,
+379 constraints, 127 indexes and 85 foreign keys; the same explicit reset-on-drift
+boundary applies. No retained database is reset by these commands.

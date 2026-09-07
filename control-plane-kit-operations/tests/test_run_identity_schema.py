@@ -142,7 +142,7 @@ class RunIdentitySchemaStaticTests(unittest.TestCase):
         self.assertEqual(len(contract.relations), 39)
         self.assertEqual(len(contract.columns), 503)
         self.assertEqual(len(contract.constraints), 379)
-        self.assertEqual(len(contract.indexes), 125)
+        self.assertEqual(len(contract.indexes), 127)
 
     def test_contract_has_six_exact_direct_checks(self) -> None:
         constraints = {

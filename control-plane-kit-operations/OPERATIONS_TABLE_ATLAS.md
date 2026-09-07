@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=64fcc40a4e926b9705d983b7fde268ef7d48ece9cf11cdaba98ba31f84f26504 relations=39 columns=503 constraints=379 indexes=125 foreign-keys=85 -->
+<!-- current-schema-contract: sha256=6e4ef9ff20f9faceb9e135f4a2591f49ed5a247a84802947fb4cee34f584076a relations=39 columns=503 constraints=379 indexes=127 foreign-keys=85 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -467,6 +467,12 @@ order is semantically significant for every composite identity.
 - **Future impact:** Node-control dispatch in #1555 and #1556 may add event kinds, but must preserve ordered secret-free history.
 
 ### `cpk_activity_plans`
+
+`cpk_activity_plans_base_graph` and `cpk_activity_plans_desired_graph` are separate
+leading graph indexes for unused-draft retention proofs. Each EXISTS arm targets
+one index, including cancelled and superseded plans. No plan status permits
+deleting its retained draft history.
+
 - **Durable meaning and owner:** `PostgresActivityHistoryStore` owns the inspectable plan connecting operator intent to exact base and desired graph realizations.
 - **Identity and cardinality:** `plan_id` is primary and `(plan_id, session_id)` is the composite identity consumed by execution requests.
 - **Outgoing foreign keys:** The session must exist, and both base and desired `(projection_id, graph_id)` pairs must name projections of the stated authored graphs.
@@ -555,7 +561,7 @@ order is semantically significant for every composite identity.
 - **Lifecycle, retention, deletion, and restore:** Retain prior revisions. Restore saved graphs first, then draft and revisions together with the head FK deferred until commit; no graph/runtime cleanup is authorized.
 - **JSON boundary:** No graph blob is duplicated here; `graph_id` references the existing graph descriptor and codec boundary.
 - **Sensitive material:** Bounded graph coordinates are history evidence; exact graph reads use existing redaction and never resolve secret references.
-- **Future impact:** #1763 selects an exact retained revision; #1764 prepares it. Neither may change its immutable graph identity.
+- **Future impact:** #1764 prepares the exact selected revision; selection does not change its immutable graph identity.
 
 ### `cpk_desired_topology_drafts`
 - **Durable meaning and owner:** `PostgresDesiredTopologyDraftStore` owns named workspace design alternatives and their head/retirement evidence.
@@ -563,12 +569,12 @@ order is semantically significant for every composite identity.
 - **Outgoing foreign keys:** Workspace ownership and deferred `(workspace_id, draft_id, head_revision)` revision identity are explicit relational proofs.
 - **Inbound dependents:** Immutable revision rows reference this draft through their composite tenant key.
 - **Writers and transactions:** Create/revise save intent in one unit of work with graph/revision/action evidence; neither operation changes current/desired pointers or plans.
-- **Readers and projections:** Draft summaries use the `(workspace_id, created_at, draft_id)` chronology index and bounded independent cursors.
-- **Mutation, locks, retries, and idempotency:** Revision requires expected-head CAS after session/workspace/draft locks; changed intent conflicts, and exact action replay performs no head admission or allocation.
-- **Lifecycle, retention, deletion, and restore:** Creation starts live at revision one. Nullable paired retirement fields reserve #1763; no retirement command exists here. Restore head and revisions atomically with saved graphs already present.
-- **JSON boundary:** No JSON payload; graph intent remains in immutable graph versions and actions contain only four bounded coordinates.
+- **Readers and projections:** Draft summaries use the `(workspace_id, created_at, draft_id)` chronology index and bounded independent cursors. Overview exposes only exact selected/head coordinates through the unique workspace/graph revision mapping.
+- **Mutation, locks, retries, and idempotency:** Revision requires expected-head CAS after session/workspace/draft locks. Selection holds the workspace row lock, checks the exact desired graph/projection/generation tuple, then updates and increments generation even for the same graph; it reuses the immutable identity projection. Delete uses separate indexed EXISTS checks for any revision referenced by workspace current/desired truth or any plan status. Planning holds the same workspace lock through commit. Exact replay validates retained evidence before current-state admission; changed intent conflicts.
+- **Lifecycle, retention, deletion, and restore:** Creation starts live at revision one. Paired retirement actor/time fields are written only for unused drafts at an exact expected head; tombstones and revision reads remain visible. Restore head and revisions atomically with saved graphs already present.
+- **JSON boundary:** No JSON payload; graph intent remains in immutable graph versions. Create/revise actions retain four coordinates; select actions add projection/generation, and delete actions retain exact head/actor/time evidence.
 - **Sensitive material:** Title is operator-authored bounded text and must not hold credentials; action payloads omit title and graph bodies.
-- **Future impact:** #1763 owns selection and unused retirement; #1764 owns saved preparation. Schema changes require an explicit reset boundary, never an inferred in-place migration.
+- **Future impact:** #1764 owns saved preparation from the exact selected revision. Schema changes require an explicit reset boundary, never an inferred in-place migration.
 
 ### `cpk_effect_attempt_intents`
 

@@ -98,3 +98,38 @@ class PostgresDesiredTopologyDraftStore:
         else:
             raise ReadPageError("unsupported catalogue read collection")
         return ReadPage.from_candidates(request, candidates)
+
+    def revisions_for_graph(self, workspace_id: str, graph_id: str) -> tuple[DesiredTopologyDraftRevisionRecord, ...]:
+        rows = self.connection.execute("SELECT " + _REVISION + " FROM cpk_desired_topology_draft_revisions "
+            "WHERE workspace_id=%s AND graph_id=%s LIMIT 2", (workspace_id, graph_id)).fetchall()
+        return tuple(_revision(row) for row in rows)
+
+    def has_references(self, workspace_id: str, draft_id: str) -> bool:
+        # The caller holds workspace then draft locks. Planning holds the same
+        # workspace lock through its plan insert, so this proof cannot race it.
+        # Each plan arm uses its own leading graph index; statuses do not relax
+        # retention, and no revision/history rows are materialized in Python.
+        row = self.connection.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM cpk_desired_topology_draft_revisions r
+                WHERE r.workspace_id=%s AND r.draft_id=%s AND (
+                    EXISTS (SELECT 1 FROM cpk_workspaces w
+                            WHERE w.workspace_id=r.workspace_id AND w.current_graph_id=r.graph_id)
+                    OR EXISTS (SELECT 1 FROM cpk_workspaces w
+                               WHERE w.workspace_id=r.workspace_id AND w.desired_graph_id=r.graph_id)
+                    OR EXISTS (SELECT 1 FROM cpk_activity_plans p WHERE p.base_graph_id=r.graph_id)
+                    OR EXISTS (SELECT 1 FROM cpk_activity_plans p WHERE p.desired_graph_id=r.graph_id)
+                )
+            )
+        """, (workspace_id, draft_id)).fetchone()
+        return row[0]
+
+    def tombstone(self, workspace_id: str, draft_id: str, *, expected_head_revision: int,
+                  deleted_by: str, deleted_at: str) -> DesiredTopologyDraftRecord:
+        row = self.connection.execute("UPDATE cpk_desired_topology_drafts SET deleted_by=%s, deleted_at=%s "
+            "WHERE workspace_id=%s AND draft_id=%s AND head_revision=%s AND deleted_at IS NULL RETURNING " + _DRAFT,
+            (deleted_by, encode_postgres_timestamp(deleted_at), workspace_id, draft_id,
+             expected_head_revision)).fetchone()
+        if row is None:
+            raise DesiredTopologyDraftConflict("draft head is stale or retired")
+        return _draft(row)
