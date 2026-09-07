@@ -88,7 +88,9 @@ from control_plane_kit_operations.delegation_signing_keys import (
 from control_plane_kit_operations.deployment_program import (
     InvalidDeploymentProgramContract,
     PrepareDeploymentProgram,
+    SavedDesiredTopologyRevision,
 )
+from control_plane_kit_operations.saved_deployment_preparation import SavedDeploymentPreparationService
 from control_plane_kit_operations.deployment_program_interpreter import (
     DeploymentProgram,
     DeploymentProgramAuthorizationDenied,
@@ -875,12 +877,16 @@ def _prepare_deployment(
 ) -> Mapping[str, object]:
     payload = _arguments(request)
     try:
+        inline = "desired_graph" in payload
+        saved = "draft_id" in payload or "revision" in payload
+        if inline == saved:
+            raise ValueError("preparation requires one input mode")
+        desired = (DEFAULT_GRAPH_CODEC.decode(_mapping(payload, "desired_graph")) if inline
+                   else SavedDesiredTopologyRevision(_text(payload, "draft_id"), _draft_revision(payload)))
         result = program.prepare(
             PrepareDeploymentProgram(
                 context=context,
-                desired=DEFAULT_GRAPH_CODEC.decode(
-                    _mapping(payload, "desired_graph")
-                ),
+                desired=desired,
                 expected_current=_graph_lineage(payload, "expected_current"),
                 expected_desired=_optional_graph_lineage(
                     payload,
@@ -1475,6 +1481,7 @@ def cpk_server_services(
             desired_graphs,
             planning,
             approval,
+            saved_preparations=SavedDeploymentPreparationService(unit_of_work_factory, operations),
         )
     return {
         ControlPlaneServiceRole.PLANNING: CpkServerPlanningService(

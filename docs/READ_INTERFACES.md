@@ -161,7 +161,7 @@ participate in current-row verification. This changes the exact-current schema:
 a populated older namespace requires an explicit reset; no in-place migration or
 data-preserving upgrade is provided. Do not install over a retained demo database
 without separately accepting its reset boundary. This feature does not perform a
-reset. Saved preparation belongs to #1764.
+reset. Saved preparation consumes these immutable coordinates as described below.
 
 Select accepts `session_id`, `idempotency_key`, exact `revision`, and all three
 expected desired fields: `expected_desired_graph_id`,
@@ -199,9 +199,74 @@ revisions may differ. A legacy desired graph with no catalogue mapping yields
 coordinates. Workspace and draft/head anchors are reread to reject observed
 changes. These fields add no title, graph body, catalogue page or event cursor.
 The existing workflow and informational next-action projection still grants no
-authority. Saved-revision preparation remains #1764.
+authority. Saved-revision preparation uses the existing program continuation below.
 
 The #1763 schema change adds only two plan graph lookup indexes and the two
 operation-action kinds. Its exact baseline is 39 relations, 503 columns,
 379 constraints, 127 indexes and 85 foreign keys; the same explicit reset-on-drift
 boundary applies. No retained database is reset by these commands.
+
+### Prepare an exact saved revision
+
+`command.deployment.prepare` / `prepare_deployment` retains its existing route,
+authentication and result variants. Supply exactly one input mode: inline
+`desired_graph`, or both `draft_id` and `revision`. Mixing modes, including an
+explicit null `desired_graph`, is malformed. Saved mode additionally requires
+`expected_current` and `expected_desired`, each containing `authored_graph_id`
+and `realized_projection_id`, plus positive `expected_desired_graph_revision`.
+The existing `title`, `idempotency_key` and optional `approval_comment` remain.
+
+Operations accepts `PrepareDeploymentProgram(desired=SavedDesiredTopologyRevision(
+ draft_id, revision), ...)`. The exact revision must be selected; it may be older
+than the draft head. Admission compares both complete graph/projection lineages
+and desired generation under the workspace lock, validates retained graph
+semantics, the desired identity projection and current projection membership,
+and re-reads workspace-active desired products. Preparation neither copies nor
+publishes graphs, creates projections, nor increments desired generation.
+
+The saved service locks the workspace-scoped session idempotency key, then the
+workspace and draft before creating the existing session/start action in one
+transaction. The session-start operation accepts a caller-owned transaction and
+never commits it. Existing plan and approval-request services retain their own
+subsequent commit boundaries. If selection changes after admission but before a
+new plan, preparation fails stale and retains the admitted session; it never
+reselects or rebases automatically. A retry with identical intent reuses existing
+session/plan/approval evidence. Completed historical replay survives later
+selection changes, draft revisions, product revocation and session closure.
+Changed intent sharing the parent key conflicts, including inline versus saved
+mode. Corrupt retained evidence fails closed.
+
+Saved session metadata is a closed nine-string protocol. The marker is
+`deployment_prepare_source: saved-revision.v1`, accompanied by
+`deployment_prepare_intent_sha256` and seven `deployment_prepare_saved_` keys:
+`draft_id`, `revision`, `graph_id`, `current_graph_id`, `current_projection_id`,
+`desired_projection_id`, and `desired_generation`. Revision and generation are
+canonical positive decimal strings. The owner computes the SHA256 commitment
+from canonical JSON of the saved profile, authenticated workspace/actor, exact
+saved input, both lineage fences, generation, title and comment. Caller scopes
+are not durable authority. Replay correlates the complete session/start-action
+identity, actor, title, key, metadata, fingerprints, action kind/ordinal/payload
+and creation time with immutable revision and graph/projection records.
+
+The existing overview adds `workflow.prepared_draft`:
+
+```json
+{"state":"prepared","revision":{"draft_id":"draft-a","revision":1,"graph_id":"graph-a"}}
+```
+
+This coordinate comes only from the session of the plan already selected by the
+overview. It does not introduce a latest-preparation selector or alter the run
+history cursor. Inline/legacy evidence yields `{"state":"none","revision":null}`.
+Ambiguous workflow, malformed/incongruent metadata or missing immutable evidence
+yields `{"state":"unavailable","revision":null}`. Every reserved saved key
+requires the exact marker and complete mapping. Removing all saved evidence is
+indistinguishable from legacy metadata; the read does not claim to detect that
+erasure. Existing plan/session and saved-revision anchors are reread before the
+projection is returned.
+
+Security/data: workspace-edit and plan-request are both required. Results and
+errors contain bounded coordinates, not graph bodies, submitted title/comment
+or credentials. Preparation requests review; it does not approve, execute,
+advance current truth or call a provider. Product admission has the existing
+ACTIVE reread but no new concurrent revocation fence. No schema migration or
+retained-database reset is part of this capability.
