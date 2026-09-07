@@ -21,6 +21,10 @@ class ReadProjectionKind(StrEnum):
     CURRENT_GRAPH = "current-graph"
     DESIRED_GRAPH = "desired-graph"
     OPERATOR_GRAPH = "operator-graph"
+    DESIRED_TOPOLOGY_DRAFTS = "desired-topology-drafts"
+    DESIRED_TOPOLOGY_DRAFT_REVISIONS = "desired-topology-draft-revisions"
+    DESIRED_TOPOLOGY_DRAFT_REVISION = "desired-topology-draft-revision"
+    OPERATOR_OVERVIEW = "operator-overview"
     ACTIVITY_TIMELINE = "activity-timeline"
     OPEN_SESSIONS = "open-sessions"
     SESSION_DETAIL = "session-detail"
@@ -55,6 +59,7 @@ class ReadProjectionPolicy(StrEnum):
 
     REDACTED_WORKSPACE = "redacted-workspace"
     REDACTED_GRAPH_DESCRIPTOR = "redacted-graph-descriptor"
+    REDACTED_OPERATOR_OVERVIEW = "redacted-operator-overview"
     REDACTED_CONTROL_SURFACE = "redacted-control-surface"
     REDACTED_PAGED_HISTORY = "redacted-paged-history"
     PINNED_PLAN_AND_RECOVERY = "pinned-plan-and-recovery"
@@ -447,6 +452,38 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.OPERATOR_GRAPH,
         "OperatorGraphReadResponse",
         ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-drafts",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFTS,
+        "DesiredTopologyDraftsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revisions",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
+        "DesiredTopologyDraftRevisionsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION,
+        "DesiredTopologyDraftRevisionReadResponse",
+        ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
+        paged=False,
+        max_page_size=None,
+    ),
+    _ProjectionDefinition(
+        "read.operator-overview",
+        ReadProjectionKind.OPERATOR_OVERVIEW,
+        "OperatorOverviewReadResponse",
+        ReadProjectionPolicy.REDACTED_OPERATOR_OVERVIEW,
+        paged=True,
+        max_page_size=100,
     ),
     _ProjectionDefinition(
         "read.pending-approvals",

@@ -61,6 +61,10 @@ class OperatorCommandKind(StrEnum):
     CLOSE_OPERATION_SESSION = "close-operation-session"
     CANCEL_OPERATION_SESSION = "cancel-operation-session"
     RECORD_OPERATION_ACTION = "record-operation-action"
+    CREATE_DESIRED_TOPOLOGY_DRAFT = "create-desired-topology-draft"
+    REVISE_DESIRED_TOPOLOGY_DRAFT = "revise-desired-topology-draft"
+    SELECT_DESIRED_TOPOLOGY_DRAFT = "select-desired-topology-draft"
+    DELETE_DESIRED_TOPOLOGY_DRAFT = "delete-desired-topology-draft"
     SET_DESIRED_GRAPH = "set-desired-graph"
     PUBLISH_DESIRED_REALIZED_PROJECTION = "publish-desired-realized-projection"
     REQUEST_ACTIVITY_PLAN = "request-activity-plan"
@@ -132,6 +136,10 @@ _KIND_FAMILY = {
     OperatorCommandKind.CLOSE_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.CANCEL_OPERATION_SESSION: OperatorCommandFamily.OPERATION_SESSION,
     OperatorCommandKind.RECORD_OPERATION_ACTION: OperatorCommandFamily.OPERATION_SESSION,
+    OperatorCommandKind.CREATE_DESIRED_TOPOLOGY_DRAFT: OperatorCommandFamily.DESIRED_GRAPH,
+    OperatorCommandKind.REVISE_DESIRED_TOPOLOGY_DRAFT: OperatorCommandFamily.DESIRED_GRAPH,
+    OperatorCommandKind.SELECT_DESIRED_TOPOLOGY_DRAFT: OperatorCommandFamily.DESIRED_GRAPH,
+    OperatorCommandKind.DELETE_DESIRED_TOPOLOGY_DRAFT: OperatorCommandFamily.DESIRED_GRAPH,
     OperatorCommandKind.SET_DESIRED_GRAPH: OperatorCommandFamily.DESIRED_GRAPH,
     OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION: (
         OperatorCommandFamily.DESIRED_GRAPH
@@ -675,6 +683,54 @@ _CANONICAL_COMMANDS = (
         "ApprovalRequestResult",
         ApprovalPolicy.SUBMITS_FOR_APPROVAL,
         CommandPayloadPolicy.APPROVAL_RISK_EVIDENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-topology-draft.create",
+        OperatorCommandKind.CREATE_DESIRED_TOPOLOGY_DRAFT,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "CreateDesiredTopologyDraft",
+        "DesiredTopologyDraftResult",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-topology-draft.revise",
+        OperatorCommandKind.REVISE_DESIRED_TOPOLOGY_DRAFT,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "ReviseDesiredTopologyDraft",
+        "DesiredTopologyDraftResult",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-topology-draft.select",
+        OperatorCommandKind.SELECT_DESIRED_TOPOLOGY_DRAFT,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "SelectDesiredTopologyDraft",
+        "DesiredTopologyDraftSelectionResult",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
+        requires_open_session=True,
+    ),
+    _CommandDefinition(
+        "desired-topology-draft.delete",
+        OperatorCommandKind.DELETE_DESIRED_TOPOLOGY_DRAFT,
+        OperatorCommandFamily.DESIRED_GRAPH,
+        DeploymentProgramStage.PLAN,
+        ControlPlaneServiceRole.PLANNING,
+        "DeleteDesiredTopologyDraft",
+        "DesiredTopologyDraftDeletionResult",
+        ApprovalPolicy.NOT_REQUIRED,
+        CommandPayloadPolicy.GRAPH_DESCRIPTOR_REFERENCE,
         requires_open_session=True,
     ),
     _CommandDefinition(

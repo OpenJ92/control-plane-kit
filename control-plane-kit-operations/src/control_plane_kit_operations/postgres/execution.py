@@ -587,6 +587,56 @@ class PostgresExecutionStore:
         ).fetchall()
         return tuple(_activity_run(row) for row in rows)
 
+    def overview_runs(self, plan_id: str) -> tuple[ActivityRunRecord, ...] | None:
+        """Return up to 100 records, or unknown on bounded overflow evidence."""
+        rows = self._connection.execute(
+            """
+            WITH bounded AS MATERIALIZED (
+                SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
+                       created_at, started_at, settled_at, metadata
+                FROM cpk_activity_runs WHERE plan_id = %s
+                ORDER BY attempt, run_id LIMIT 101
+            )
+            SELECT bounded.*, (SELECT count(*) > 100 FROM bounded)
+            FROM bounded ORDER BY attempt, run_id LIMIT 100
+            """,
+            (plan_id,),
+        ).fetchall()
+        if rows and rows[0][10]:
+            return None
+        return tuple(_activity_run(row[:10]) for row in rows)
+
+    def overview_receipts(
+        self, run_id: str,
+    ) -> tuple[ExecutionCommandReceiptRecord, ...]:
+        """Prefer unresolved admissions, otherwise the newest two completions.
+
+        Key order only stabilizes the bounded result; equal completion times
+        must remain ambiguous to the projection.
+        """
+        _require_run_id(run_id)
+        rows = self._connection.execute(
+            """
+            SELECT run_id, idempotency_key, intent_fingerprint, worker_id,
+                   authority_scopes, claim_generation, max_effects, admitted_at,
+                   initial_run, receipt_status, completed_at, result
+            FROM cpk_execution_command_receipts AS receipt
+            WHERE receipt.run_id = %s
+              AND (
+                receipt.receipt_status = 'incomplete'
+                OR NOT EXISTS (
+                    SELECT 1 FROM cpk_execution_command_receipts AS unresolved
+                    WHERE unresolved.run_id = receipt.run_id
+                      AND unresolved.receipt_status = 'incomplete'
+                )
+              )
+            ORDER BY completed_at DESC NULLS FIRST, admitted_at DESC, idempotency_key
+            LIMIT 2
+            """,
+            (run_id,),
+        ).fetchall()
+        return tuple(_command_receipt(row) for row in rows)
+
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]:
         rows = self._connection.execute(
             """

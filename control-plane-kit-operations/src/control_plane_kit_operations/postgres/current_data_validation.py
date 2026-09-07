@@ -34,6 +34,8 @@ WITH referenced(graph_id) AS (
   SELECT base_graph_id FROM cpk_activity_plans
   UNION
   SELECT desired_graph_id FROM cpk_activity_plans
+  UNION
+  SELECT graph_id FROM cpk_desired_topology_draft_revisions
 )
 SELECT octet_length(graph.graph_id) BETWEEN 1 AND %s,
        CASE WHEN octet_length(graph.graph_id) BETWEEN 1 AND %s
