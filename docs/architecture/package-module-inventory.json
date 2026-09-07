@@ -10449,7 +10449,40 @@
     "operation",
     "interpreter",
     "product",
-    "entrypoint"
+    "entrypoint",
+    {
+      "module": "control_plane_kit_operations.postgres.saved_preparation_source_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/saved_preparation_source_store.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.postgres.saved_preparation_source_store",
+      "role": "durable-store",
+      "motivation": "Owns relational saved preparation sources and bounded retained source integrity under caller transactions.",
+      "internal_dependencies": [
+        "control_plane_kit_operations.desired_topology_drafts",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.saved_deployment_preparation",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.postgres.temporal"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "durable-store"
+      ],
+      "canonical_public_exports": [
+        "PostgresSavedPreparationSourceStore"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.current_data_validation"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_saved_preparation_sources.py",
+        "control-plane-kit-operations/tests/test_saved_preparation_adapters.py"
+      ]
+    }
   ],
   "schema": "control-plane-kit-package-inventory/v1"
 }

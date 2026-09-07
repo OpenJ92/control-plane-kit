@@ -11,7 +11,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations.deployment_program import PrepareDeploymentProgram, SavedDesiredTopologyRevision
 from control_plane_kit_operations.graph_authoring import product_references_in_graph
 from control_plane_kit_operations.products import RegisteredProductStatus
-from control_plane_kit_operations.records import RealizedGraphProjectionRecord
+from control_plane_kit_operations.records import RealizedGraphProjectionRecord, SavedPreparationSourceRecord
 from control_plane_kit_operations.workflows import IdempotencyKey, OperationCommandError, StartOperationSession, _fingerprint
 
 
@@ -66,6 +66,20 @@ def saved_preparation_session_metadata(session):
     return metadata
 
 
+def validate_saved_preparation_source(source, session, revision):
+    """Correlate the relational identity with its immutable admission commitment."""
+    metadata = saved_preparation_session_metadata(session)
+    if (type(source) is not SavedPreparationSourceRecord or metadata is None
+        or source.session_id != session.session_id or source.workspace_id != session.workspace_id
+        or source.workspace_id != revision.workspace_id or source.draft_id != revision.draft_id
+        or source.revision != revision.revision
+        or source.draft_id != metadata["deployment_prepare_saved_draft_id"]
+        or str(source.revision) != metadata["deployment_prepare_saved_revision"]
+        or revision.graph_id != metadata["deployment_prepare_saved_graph_id"]):
+        raise SavedPreparationError("saved preparation source is unavailable")
+    return metadata
+
+
 def _metadata(command):
     current = {"authored_graph_id": command.expected_current.authored_graph_id,
                "realized_projection_id": command.expected_current.realized_projection_id}
@@ -114,6 +128,11 @@ class SavedDeploymentPreparationService:
                     result = self._operations.start_in_unit_of_work(uow, start)
                     _validate_start(result, start)
                     _immutable_graphs(uow.stores, command)
+                    source = uow.stores.saved_preparation_sources.get(
+                        command.context.workspace_id, result.session.session_id)
+                    revision = uow.stores.desired_topology_drafts.revision(
+                        command.context.workspace_id, command.desired.draft_id, command.desired.revision)
+                    validate_saved_preparation_source(source, result.session, revision)
                     uow.commit()
                     return result
                 # No existing session row: key -> workspace -> draft precedes inserts.
@@ -133,6 +152,9 @@ class SavedDeploymentPreparationService:
                         raise SavedPreparationError("saved preparation state is unavailable")
                 result = self._operations.start_in_unit_of_work(uow, start)
                 _validate_start(result, start)
+                uow.stores.saved_preparation_sources.insert(SavedPreparationSourceRecord(
+                    result.session.session_id, command.context.workspace_id,
+                    command.desired.draft_id, command.desired.revision))
                 uow.commit()
                 return result
         except (KeyError, ValueError, TypeError, AttributeError, OperationCommandError):

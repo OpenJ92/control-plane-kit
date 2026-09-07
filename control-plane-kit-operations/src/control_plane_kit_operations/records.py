@@ -47,6 +47,24 @@ class OperationsRecordError(ValueError):
     """Raised when a durable operations record is malformed."""
 
 
+@dataclass(frozen=True)
+class SavedPreparationSourceRecord:
+    """The immutable saved revision explicitly admitted by one session."""
+
+    session_id: str
+    workspace_id: str
+    draft_id: str
+    revision: int
+
+    def __post_init__(self) -> None:
+        for value in (self.session_id, self.workspace_id, self.draft_id):
+            if (type(value) is not str or not value.strip() or len(value) > 512
+                    or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+                raise OperationsRecordError("saved preparation source identity is malformed")
+        if type(self.revision) is not int or not 1 <= self.revision <= 9_223_372_036_854_775_807:
+            raise OperationsRecordError("saved preparation source revision is malformed")
+
+
 _EVENT_KINDS_PERMITTING_FAILURE = frozenset(
     event.kind
     for event in canonical_execution_lifecycle_contract_set().events

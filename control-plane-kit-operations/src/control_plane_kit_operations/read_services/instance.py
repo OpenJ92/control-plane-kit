@@ -51,6 +51,7 @@ from .workspace_graph import (
 
 from .desired_topology_drafts import _DesiredTopologyDraftReadProjection
 from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftStore
+from .protocols import SavedPreparationSourceStore
 
 
 class InstanceReadService:
@@ -72,6 +73,7 @@ class InstanceReadService:
         gateway_probe_store: GatewayProbeStore | None = None,
         delegation_signing_key_store: DelegationSigningKeyStore | None = None,
         desired_topology_draft_store: DesiredTopologyDraftStore | None = None,
+        saved_preparation_source_store: SavedPreparationSourceStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -85,7 +87,8 @@ class InstanceReadService:
             self._workspace_graph.require_workspace, graph_topology_store, desired_topology_draft_store,
         )
         self._operator_overview = _OperatorOverviewReadProjection(
-            workspace_store, graph_topology_store, activity_history_store, execution_store, desired_topology_draft_store,
+            workspace_store, graph_topology_store, activity_history_store, execution_store,
+            desired_topology_draft_store, saved_preparation_source_store,
         )
         self._operations_history = _OperationsHistoryReadProjection(
             self._workspace_graph.require_workspace,

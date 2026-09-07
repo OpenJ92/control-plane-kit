@@ -1382,3 +1382,14 @@ ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired
 ALTER TABLE ONLY cpk_desired_topology_drafts ADD CONSTRAINT cpk_desired_topology_drafts_head_fkey FOREIGN KEY (workspace_id, draft_id, head_revision) REFERENCES cpk_desired_topology_draft_revisions(workspace_id, draft_id, revision) DEFERRABLE INITIALLY DEFERRED;
 ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired_topology_draft_revisions_draft_fkey FOREIGN KEY (workspace_id, draft_id) REFERENCES cpk_desired_topology_drafts(workspace_id, draft_id);
 CREATE INDEX cpk_desired_topology_drafts_chronology ON cpk_desired_topology_drafts USING btree (workspace_id, created_at, draft_id);
+
+CREATE TABLE cpk_saved_preparation_sources (
+    session_id text NOT NULL,
+    workspace_id text NOT NULL,
+    draft_id text NOT NULL,
+    revision bigint NOT NULL,
+    CONSTRAINT cpk_saved_preparation_sources_pkey PRIMARY KEY (session_id),
+    CONSTRAINT cpk_saved_preparation_sources_session_fkey FOREIGN KEY (session_id, workspace_id) REFERENCES cpk_operation_sessions(session_id, workspace_id),
+    CONSTRAINT cpk_saved_preparation_sources_revision_fkey FOREIGN KEY (workspace_id, draft_id, revision) REFERENCES cpk_desired_topology_draft_revisions(workspace_id, draft_id, revision)
+);
+CREATE INDEX cpk_saved_preparation_sources_revision ON cpk_saved_preparation_sources (workspace_id, draft_id, revision, session_id);
