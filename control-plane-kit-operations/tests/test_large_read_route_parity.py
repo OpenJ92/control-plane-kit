@@ -304,10 +304,19 @@ class LargeReadRouteParityTests(unittest.TestCase):
         self.assertEqual(len({case.route_id for case in cases}), 18)
         self.assertEqual(len({case.collection for case in cases}), 18)
         self.assertEqual(len({case.direct_method for case in cases}), 17)
+        # Revision max10 traversal/parity is owned by test_revision_history_pages.
+        revision = {("read.desired-topology-draft-revision-" + suffix.lower(),
+                     getattr(ReadCollection, "DESIRED_TOPOLOGY_DRAFT_REVISION_" + suffix, None))
+                    for suffix in ("PREPARATIONS", "ATTEMPTS")}
+        self.assertNotIn(None, {collection for _, collection in revision}, "missing revision history collections")
+        legacy = {(case.route_id, case.collection) for case in cases}
+        self.assertFalse(legacy & revision)
         self.assertEqual(
-            {(case.route_id, case.collection) for case in cases},
+            legacy | revision,
             {(spec.route_id, spec.collection) for spec in READ_COLLECTION_SPECS},
         )
+        self.assertEqual(len(READ_COLLECTION_SPECS), 20)
+        self.assertEqual({collection for _, collection in legacy | revision}, set(ReadCollection))
         for case in cases:
             self.assertTrue(callable(getattr(InstanceReadService, case.direct_method)))
 

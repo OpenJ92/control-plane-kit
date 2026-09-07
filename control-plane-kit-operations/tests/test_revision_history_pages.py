@@ -15,7 +15,14 @@ class RevisionHistoryPageTests(RevisionHistoryFixture, unittest.TestCase):
         self.connection.execute("INSERT INTO cpk_operation_sessions "
             "(session_id,workspace_id,actor_id,title,status,created_at) "
             "VALUES (%s,'workspace-a','operator-a','Hidden','open',%s)", (oversized, "2099-01-01T00:00:00Z"))
-        self.clone_plan(plan, plan_id="hidden-plan", session_id=oversized)
+        # Deliberately retained malformed identity: bypass typed record admission,
+        # while copying a valid plan's graph/projection foreign keys and payload.
+        self.connection.execute("INSERT INTO cpk_activity_plans "
+            "(plan_id,session_id,base_graph_id,desired_graph_id,base_realized_projection_id,"
+            "desired_realized_projection_id,desired_graph_revision,status,created_at,payload) "
+            "SELECT 'hidden-plan',%s,base_graph_id,desired_graph_id,base_realized_projection_id,"
+            "desired_realized_projection_id,desired_graph_revision,status,created_at,payload "
+            "FROM cpk_activity_plans WHERE plan_id=%s", (oversized, plan.plan_id))
         before = self.history_truth()
         with self.assertRaises(ValueError) as captured:
             self.page(draft, "preparations", limit=1)

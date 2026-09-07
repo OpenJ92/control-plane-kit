@@ -184,6 +184,22 @@ class ReadProjectionContractTests(unittest.TestCase):
                     False,
                 ),
                 (
+                    "read.desired-topology-draft-revision-attempts",
+                    ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS,
+                    "DesiredTopologyDraftRevisionAttemptsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
+                    "read.desired-topology-draft-revision-preparations",
+                    ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS,
+                    "DesiredTopologyDraftRevisionPreparationsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
                     "read.desired-topology-draft-revisions",
                     ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
                     "DesiredTopologyDraftRevisionsReadResponse",

@@ -19,6 +19,13 @@ class RevisionHistoryValueTests(unittest.TestCase):
         self.scope = self.scope_type("workspace-a", "draft-a", 1)
 
     def test_revision_scope_and_cursor_are_closed_and_collection_specific(self):
+        for field in ("workspace_id", "draft_id"):
+            for value in (None, True, 1, "", "bad\nidentifier", "bad\x00identifier", "x" * 513, "\U0001f680" * 513):
+                values = {"workspace_id": "workspace-a", "draft_id": "draft-a", "revision": 1, field: value}
+                with self.subTest(field=field, value=value), self.assertRaises(ReadPageError):
+                    self.scope_type(**values)
+            values = {"workspace_id": "workspace-a", "draft_id": "draft-a", "revision": 1, field: "\U0001f680" * 512}
+            self.assertEqual(getattr(self.scope_type(**values), field), values[field])
         for revision in (True, 0, -1, 2**63, "1"):
             with self.subTest(revision=revision), self.assertRaises(ReadPageError):
                 self.scope_type("workspace-a", "draft-a", revision)

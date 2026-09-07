@@ -64,7 +64,8 @@ class RevisionHistoryFixture(SavedPreparationFixture):
             uow.commit()
         return plan
 
-    def add_attempt(self, plan, suffix, *, status=ActivityRunStatus.SUCCEEDED, created_at=NOW):
+    def add_attempt(self, plan, suffix, *, status=ActivityRunStatus.SUCCEEDED, created_at=NOW, include_run=True,
+                    workspace="workspace-a"):
         """Persist test-only recorded relationships; claim no execution/advancement."""
         settled = status in {ActivityRunStatus.SUCCEEDED, ActivityRunStatus.COMPENSATED,
             ActivityRunStatus.PARTIALLY_FAILED, ActivityRunStatus.UNCOMPENSATED_FAILURE, ActivityRunStatus.CANCELLED}
@@ -78,10 +79,11 @@ class RevisionHistoryFixture(SavedPreparationFixture):
             stores.activity_history.add_approval_decision(ApprovalDecisionRecord("decision-" + suffix,
                 "approval-" + suffix, "operator-a", ApprovalDecisionKind.APPROVED, PolicyScope.PLAN_APPROVE, created_at))
             stores.execution.add_request(ExecutionRequestRecord(
-                ExecutionRequestIdentity("request-" + suffix, "workspace-a", plan.session_id, plan.plan_id),
+                ExecutionRequestIdentity("request-" + suffix, workspace, plan.session_id, plan.plan_id),
                 ExecutionRequestStatus.CANCELLED, "operator-a", created_at, "approval-" + suffix,
                 "decision-" + suffix, ExecutionIdempotency("execute-" + suffix, "fixture-" + suffix)))
-            stores.execution.add_run(run)
+            if include_run:
+                stores.execution.add_run(run)
             uow.commit()
         return run
 

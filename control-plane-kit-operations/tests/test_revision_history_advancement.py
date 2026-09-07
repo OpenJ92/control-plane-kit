@@ -81,9 +81,11 @@ class RevisionHistoryAdvancementTests(unittest.TestCase):
         result = self.accepted()
         original = dict(result.action.payload)
         for key, value in (("execution_request_id", "other-request"), ("plan_id", "other-plan"),
+                           ("run_id", "other-run"), ("claim_generation", 0),
                            ("event_id", "other-event"), ("workspace_id", "other-workspace"),
                            ("from_authored_graph_id", "other-base"),
                            ("from_realized_projection_id", "other-base-projection"),
+                           ("to_authored_graph_id", "other-desired-graph"),
                            ("to_realized_projection_id", "other-desired-projection"),
                            ("to_realized_projection_digest", "0" * 64),
                            ("desired_graph_revision", 999), ("extra", "private-canary" * 7000)):
@@ -102,6 +104,24 @@ class RevisionHistoryAdvancementTests(unittest.TestCase):
         self.fixture.connection.execute("UPDATE cpk_operation_actions SET created_at='2026-07-22T13:05:00Z' "
                                         "WHERE action_id='action-advance'")
         raw = self.fixture.connection.execute("SELECT payload FROM cpk_activity_events WHERE event_id='event-advance'").fetchone()[0]
+        for key, value in (("workspace_id", "other-workspace"), ("run_id", "other-run"),
+                           ("plan_id", "other-plan"), ("from_authored_graph_id", "other-base"),
+                           ("from_realized_projection_id", "other-base-projection"),
+                           ("to_authored_graph_id", "other-desired-graph"),
+                           ("to_realized_projection_id", "other-desired-projection"),
+                           ("to_realized_projection_digest", "0" * 64), ("desired_graph_revision", 999)):
+            payload = {**raw, "evidence": {**raw["evidence"], key: value}}
+            self.fixture.connection.execute("UPDATE cpk_activity_events SET payload=%s WHERE event_id='event-advance'",
+                                            (Jsonb(payload),))
+            with self.subTest(event_field=key):
+                self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
+                self.assertEqual(self.fixture.connection.execute(
+                    "SELECT payload FROM cpk_activity_events WHERE event_id='event-advance'").fetchone()[0], payload)
+        self.fixture.connection.execute("UPDATE cpk_activity_events SET payload=%s, occurred_at='2026-07-22T13:06:00Z' "
+                                        "WHERE event_id='event-advance'", (Jsonb(raw),))
+        self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
+        self.fixture.connection.execute("UPDATE cpk_activity_events SET occurred_at='2026-07-22T13:05:00Z' "
+                                        "WHERE event_id='event-advance'")
         self.fixture.connection.execute("UPDATE cpk_activity_events SET payload=%s WHERE event_id='event-advance'",
                                         (Jsonb({**raw, "extra": "private-canary" * 7000}),))
         self.assertEqual(self.page()["items"][0]["advancement"]["state"], "unavailable")
