@@ -20,6 +20,7 @@ from control_plane_kit_operations.approvals import (
 from control_plane_kit_operations.deployment_program import (
     DeploymentProgramReference,
     PrepareDeploymentProgram,
+    SavedDesiredTopologyRevision,
 )
 from control_plane_kit_operations.deployment_program_projections import (
     DeploymentApprovalRequired,
@@ -36,6 +37,7 @@ from control_plane_kit_operations.planning import (
     RequestActivityPlan,
     SetDesiredGraph,
 )
+from control_plane_kit_operations.saved_deployment_preparation import SavedPreparationError
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     InvalidOperationCommand,
@@ -66,58 +68,79 @@ class DeploymentProgram:
         desired_graphs: DesiredGraphCommandService,
         planning: ActivityPlanningCommandService,
         approvals: ApprovalCommandService,
+        *, saved_preparations=None,
     ) -> None:
         self._operations = operations
         self._desired_graphs = desired_graphs
         self._planning = planning
         self._approvals = approvals
+        self._saved_preparations = saved_preparations
 
     def prepare(
         self,
         command: PrepareDeploymentProgram,
     ) -> DeploymentProgramProjection:
         _authorize(command)
-        _validate_desired(command)
+        if type(command.desired) is not SavedDesiredTopologyRevision:
+            _validate_desired(command)
         keys = _child_keys(command)
-        session_result = _execute_state(
-            self._operations,
-            StartOperationSession(
-                workspace_id=command.context.workspace_id,
-                actor_id=command.context.actor_id,
-                title=command.title,
-                idempotency_key=keys["session"],
-                metadata={
-                    "deployment_prepare_intent_sha256": _intent_digest(command)
-                },
-            ),
-            OperationCommandError,
-        )
-        session_id = session_result.session.session_id
-        expected_desired = command.expected_desired
-        desired_result = _execute_state(
-            self._desired_graphs,
-            SetDesiredGraph(
-                session_id=session_id,
-                workspace_id=command.context.workspace_id,
-                actor_id=command.context.actor_id,
-                graph=command.desired,
-                expected_desired_graph_id=(
-                    None
-                    if expected_desired is None
-                    else expected_desired.authored_graph_id
+        if type(command.desired) is SavedDesiredTopologyRevision:
+            if self._saved_preparations is None:
+                raise DeploymentProgramStateConflict("saved preparation service is unavailable")
+            failed = False
+            try:
+                session_result = self._saved_preparations.start(command, session_key=keys["session"])
+            except SavedPreparationError:
+                failed = True
+            if failed:
+                raise DeploymentProgramStateConflict("deployment preparation state is unavailable")
+            session_id = session_result.session.session_id
+            desired_graph_id = command.expected_desired.authored_graph_id
+            desired_projection_id = command.expected_desired.realized_projection_id
+            desired_generation = command.expected_desired_graph_revision
+        else:
+            session_result = _execute_state(
+                self._operations,
+                StartOperationSession(
+                    workspace_id=command.context.workspace_id,
+                    actor_id=command.context.actor_id,
+                    title=command.title,
+                    idempotency_key=keys["session"],
+                    metadata={
+                        "deployment_prepare_intent_sha256": _intent_digest(command)
+                    },
                 ),
-                expected_desired_realized_projection_id=(
-                    None
-                    if expected_desired is None
-                    else expected_desired.realized_projection_id
+                OperationCommandError,
+            )
+            session_id = session_result.session.session_id
+            expected_desired = command.expected_desired
+            desired_result = _execute_state(
+                self._desired_graphs,
+                SetDesiredGraph(
+                    session_id=session_id,
+                    workspace_id=command.context.workspace_id,
+                    actor_id=command.context.actor_id,
+                    graph=command.desired,
+                    expected_desired_graph_id=(
+                        None
+                        if expected_desired is None
+                        else expected_desired.authored_graph_id
+                    ),
+                    expected_desired_realized_projection_id=(
+                        None
+                        if expected_desired is None
+                        else expected_desired.realized_projection_id
+                    ),
+                    expected_desired_graph_revision=(
+                        command.expected_desired_graph_revision
+                    ),
+                    idempotency_key=keys["desired"],
                 ),
-                expected_desired_graph_revision=(
-                    command.expected_desired_graph_revision
-                ),
-                idempotency_key=keys["desired"],
-            ),
-            DesiredGraphCommandError,
-        )
+                DesiredGraphCommandError,
+            )
+            desired_graph_id = desired_result.graph_version_id
+            desired_projection_id = desired_result.desired_realized_projection_id
+            desired_generation = desired_result.desired_graph_revision
         planning_result = _execute_state(
             self._planning,
             RequestActivityPlan(
@@ -130,12 +153,12 @@ class DeploymentProgram:
                 expected_current_realized_projection_id=(
                     command.expected_current.realized_projection_id
                 ),
-                expected_desired_graph_id=desired_result.graph_version_id,
+                expected_desired_graph_id=desired_graph_id,
                 expected_desired_realized_projection_id=(
-                    desired_result.desired_realized_projection_id
+                    desired_projection_id
                 ),
                 expected_desired_graph_revision=(
-                    desired_result.desired_graph_revision
+                    desired_generation
                 ),
                 idempotency_key=keys["plan"],
             ),

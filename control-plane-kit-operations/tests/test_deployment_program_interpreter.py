@@ -529,7 +529,7 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
         constructor = inspect.signature(self.module().DeploymentProgram)
         self.assertEqual(
             tuple(constructor.parameters),
-            ("operations", "desired_graphs", "planning", "approvals"),
+            ("operations", "desired_graphs", "planning", "approvals", "saved_preparations"),
         )
         annotations = inspect.get_annotations(
             self.module().DeploymentProgram.prepare,
@@ -557,6 +557,7 @@ class DeploymentProgramInterpreterTests(unittest.TestCase):
             "control_plane_kit_operations.deployment_transitions",
             "control_plane_kit_operations.planning",
             "control_plane_kit_operations.workflows",
+            "control_plane_kit_operations.saved_deployment_preparation",
         }
         self.assertEqual(self._imported_modules(source), allowed_imports)
         hostile_sources = (

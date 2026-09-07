@@ -91,6 +91,7 @@ from .deployment_program import (
     DeploymentProgramReference,
     InvalidDeploymentProgramContract,
     PrepareDeploymentProgram,
+    SavedDesiredTopologyRevision,
     ProgressDeploymentProgram,
 )
 from .deployment_program_interpreter import (
@@ -665,6 +666,7 @@ __all__ = [
     "DeploymentProgramReference",
     "InvalidDeploymentProgramContract",
     "PrepareDeploymentProgram",
+    "SavedDesiredTopologyRevision",
     "ProgressDeploymentProgram",
     "DeploymentProgram",
     "DeploymentProgramAuthorizationDenied",

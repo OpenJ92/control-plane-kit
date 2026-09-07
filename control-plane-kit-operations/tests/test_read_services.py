@@ -167,6 +167,7 @@ class InstanceReadServiceTests(unittest.TestCase):
             overview["workflow"],
             {
                 "selection": "selected",
+                "prepared_draft": {"state": "none", "revision": None},
                 "session": {"session_id": "session-a", "status": "open"},
                 "plan": {"plan_id": "plan-a", "status": "planned"},
                 "approval": {

@@ -20,6 +20,8 @@ from control_plane_kit_operations.records import (
     OperationSessionStatus, WorkspaceRecord,
 )
 
+from control_plane_kit_operations.saved_deployment_preparation import saved_preparation_session_metadata
+
 from .errors import ReadModelError
 from .models import OperatorOverviewReadModel
 from .operations_history import _event_descriptor
@@ -50,7 +52,8 @@ def _command(state: str = "none") -> dict[str, object]:
 def _workflow(state: str = "none") -> dict[str, object]:
     return {"selection": state, "session": None, "plan": None, "approval": None,
             "run_selection": "none" if state == "none" else "unavailable",
-            "run": None, "command": _command()}
+            "run": None, "command": _command(),
+            "prepared_draft": {"state": "none" if state == "none" else "unavailable", "revision": None}}
 
 
 def _history(state: str, run_id: str | None = None) -> dict[str, object]:
@@ -133,6 +136,8 @@ class _OperatorOverviewReadProjection:
                 workflow["session"] = {"session_id": _coordinate(session.session_id),
                                        "status": session.status.value}
                 workflow["plan"] = {"plan_id": _coordinate(plan.plan_id), "status": plan.status.value}
+                prepared_draft = self._prepared_draft(workspace, plan, session)
+                workflow["prepared_draft"] = prepared_draft
                 coordinates = {**coordinates, "session_id": session.session_id, "plan_id": plan.plan_id}
                 approvals = self._history.overview_pending_approvals(plan.plan_id)
                 if not isinstance(approvals, tuple) or len(approvals) > 2:
@@ -179,6 +184,8 @@ class _OperatorOverviewReadProjection:
                         raise _Unavailable()
                     if self._execution.overview_runs(plan.plan_id) != runs:
                         raise _Unavailable()
+                if prepared_draft != self._prepared_draft(workspace, plan, session):
+                    raise _Unavailable()
                 if self._history.get_plan(plan.plan_id) != plan or self._history.get_session(session.session_id) != session:
                     raise _Unavailable()
             if workspace.desired_lineage is not None and self._history.overview_plans(
@@ -262,6 +269,35 @@ class _OperatorOverviewReadProjection:
         pointers["relation"] = ("unassigned" if workspace.desired_lineage is None else
                                 "converged" if workspace.current_lineage == workspace.desired_lineage else "diverged")
         return pointers
+
+    def _prepared_draft(self, workspace, plan, session):
+        try:
+            metadata = saved_preparation_session_metadata(session)
+            if metadata is None:
+                return {"state": "none", "revision": None}
+            if self._drafts is None:
+                raise _Unavailable()
+            prefix = "deployment_prepare_saved_"
+            if (metadata[prefix + "graph_id"], metadata[prefix + "desired_projection_id"],
+                int(metadata[prefix + "desired_generation"]), metadata[prefix + "current_graph_id"],
+                metadata[prefix + "current_projection_id"]) != (
+                    plan.desired_graph_id, plan.desired_realized_projection_id, plan.desired_graph_revision,
+                    plan.base_graph_id, plan.base_realized_projection_id):
+                raise _Unavailable()
+            revision = self._drafts.revision(workspace.workspace_id, metadata[prefix + "draft_id"],
+                                             int(metadata[prefix + "revision"]))
+            if (revision.workspace_id != workspace.workspace_id
+                or revision.draft_id != metadata[prefix + "draft_id"]
+                or revision.revision != int(metadata[prefix + "revision"])
+                or revision.graph_id != plan.desired_graph_id):
+                raise _Unavailable()
+            graph = self._graphs.get(revision.graph_id)
+            if graph.workspace_id != workspace.workspace_id or graph.graph_id != revision.graph_id:
+                raise _Unavailable()
+            return {"state": "prepared", "revision": {"draft_id": _coordinate(revision.draft_id),
+                    "revision": revision.revision, "graph_id": _coordinate(revision.graph_id)}}
+        except (KeyError, ValueError, TypeError, AttributeError):
+            return {"state": "unavailable", "revision": None}
 
     def _validate_plan(
         self, workspace: WorkspaceRecord, plan: ActivityPlanRecord,
