@@ -494,6 +494,8 @@ class CpkServerReadService:
             }
             if request.route_id.startswith("read.desired-topology-draft") or request.route_id == "read.operator-overview":
                 kwargs["desired_topology_draft_store"] = stores.desired_topology_drafts
+            if request.route_id == "read.operator-overview":
+                kwargs["saved_preparation_source_store"] = stores.saved_preparation_sources
             if self._clock is not None:
                 kwargs["clock"] = self._clock
             service = InstanceReadService(**kwargs)

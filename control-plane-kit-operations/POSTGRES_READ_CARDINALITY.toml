@@ -501,3 +501,11 @@ category = "fixed-cardinality"
 sql = "workspace and unique graph key filter; LIMIT two proves zero/one mapping or unavailable"
 consumer_kind = "production"
 consumer = "operator-overview resolves exact selected draft and rereads catalogue anchors"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.saved_preparation_source_store"
+selector = "_validate_current_rows"
+category = "exact-verifier"
+sql = "saved-key or source-owner session candidates; session_id ascending keyset; LIMIT 64 and SQL byte caps before decode; complete traversal, not bounded total work"
+consumer_kind = "production"
+consumer = "current schema verification checks bidirectional saved source and immutable session commitment integrity"

@@ -270,3 +270,16 @@ or credentials. Preparation requests review; it does not approve, execute,
 advance current truth or call a provider. Product admission has the existing
 ACTIVE reread but no new concurrent revocation fence. No schema migration or
 retained-database reset is part of this capability.
+
+Relational saved provenance (#1772): new exact schemas record one
+`cpk_saved_preparation_sources` row per saved admission session, referencing its
+same-workspace immutable revision. Historical replay and prepared overview require
+that source to agree with the unchanged nine-field session commitment and
+revision graph; missing or contradictory evidence is unavailable and never
+recreated. No new read route or positive inline-origin claim is introduced.
+The installer verifies saved-key/source-owner candidates in byte-guarded batches
+of at most 64 under its existing transaction and relation locks. Batch size
+bounds memory and transfer, not total work or lock duration; no global scan runs
+per HTTP read. An older schema is rejected without writes. The retained acceptance
+installation stays pinned; no migration, reset, backfill, history import or
+new-UI compatibility with that installation is implied.

@@ -20,7 +20,10 @@ from control_plane_kit_operations.records import (
     OperationSessionStatus, WorkspaceRecord,
 )
 
-from control_plane_kit_operations.saved_deployment_preparation import saved_preparation_session_metadata
+from control_plane_kit_operations.saved_deployment_preparation import (
+    saved_preparation_session_metadata, validate_saved_preparation_source,
+)
+from .protocols import SavedPreparationSourceStore
 
 from .errors import ReadModelError
 from .models import OperatorOverviewReadModel
@@ -75,12 +78,14 @@ def _offer(operation: str, scopes: tuple[PolicyScope, ...],
 class _OperatorOverviewReadProjection:
     def __init__(self, workspaces: WorkspaceStore, graphs: GraphTopologyStore,
                  history: ActivityHistoryStore | None, execution: ExecutionStore | None,
-                 drafts: DesiredTopologyDraftStore | None = None) -> None:
+                 drafts: DesiredTopologyDraftStore | None = None,
+                 saved_sources: SavedPreparationSourceStore | None = None) -> None:
         self._workspaces = workspaces
         self._graphs = graphs
         self._history = history
         self._execution = execution
         self._drafts = drafts
+        self._saved_sources = saved_sources
 
     def read(self, workspace_id: str, *, limit: int = 50,
              after: ReadCursor | None = None) -> OperatorOverviewReadModel:
@@ -272,8 +277,12 @@ class _OperatorOverviewReadProjection:
 
     def _prepared_draft(self, workspace, plan, session):
         try:
+            source = (None if self._saved_sources is None else
+                      self._saved_sources.get(workspace.workspace_id, session.session_id))
             metadata = saved_preparation_session_metadata(session)
             if metadata is None:
+                if source is not None:
+                    raise _Unavailable()
                 return {"state": "none", "revision": None}
             if self._drafts is None:
                 raise _Unavailable()
@@ -286,6 +295,9 @@ class _OperatorOverviewReadProjection:
                 raise _Unavailable()
             revision = self._drafts.revision(workspace.workspace_id, metadata[prefix + "draft_id"],
                                              int(metadata[prefix + "revision"]))
+            if self._saved_sources is None:
+                raise _Unavailable()
+            validate_saved_preparation_source(source, session, revision)
             if (revision.workspace_id != workspace.workspace_id
                 or revision.draft_id != metadata[prefix + "draft_id"]
                 or revision.revision != int(metadata[prefix + "revision"])

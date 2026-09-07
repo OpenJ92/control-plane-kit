@@ -49,7 +49,7 @@
       "writer": "workflows.py:OperationCommandService.start_in_unit_of_work",
       "source": "workflows.py",
       "roles": ["command-identity", "action-ordinal"],
-      "session_rule": "creates the session row; its workspace-scoped start identity lock is the pre-row exception; saved preparation holds this key then workspace and draft before invoking the non-committing writer; ordinary start and saved admission own their commits"
+      "session_rule": "creates the session row; its workspace-scoped start identity lock is the pre-row exception; saved preparation holds this key then workspace and draft before invoking the non-committing writer; ordinary start and saved admission own their commits; saved admission inserts its relational source in the same UoW before commit"
     },
     {
       "command": "close-operation-session",

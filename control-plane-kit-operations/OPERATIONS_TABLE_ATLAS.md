@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=6e4ef9ff20f9faceb9e135f4a2591f49ed5a247a84802947fb4cee34f584076a relations=39 columns=503 constraints=379 indexes=127 foreign-keys=85 -->
+<!-- current-schema-contract: sha256=154537da2ed7fa98fe0d784b5d1e37b9cf8c3287a719ccf3cf3d4e1dbf253189 relations=40 columns=507 constraints=382 indexes=129 foreign-keys=87 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -341,6 +341,8 @@ cpk_realized_graph_projections -->|cpk_realized_graph_projections_workspace_id_f
 cpk_registered_products -->|cpk_registered_products_workspace_id_fkey| cpk_workspaces
 cpk_runtime_authorities -->|cpk_runtime_authorities_workspace_id_fkey| cpk_workspaces
 cpk_runtime_authority_deliveries -->|cpk_runtime_authority_deliveries_workspace_id_fkey| cpk_workspaces
+cpk_saved_preparation_sources -->|cpk_saved_preparation_sources_revision_fkey| cpk_desired_topology_draft_revisions
+cpk_saved_preparation_sources -->|cpk_saved_preparation_sources_session_fkey| cpk_operation_sessions
 cpk_secret_providers -->|cpk_secret_providers_supersedes_fk| cpk_secret_providers
 cpk_secret_providers -->|cpk_secret_providers_workspace_id_fkey| cpk_workspaces
 cpk_secret_references -->|cpk_secret_references_provider_fk| cpk_secret_providers
@@ -437,6 +439,8 @@ order is semantically significant for every composite identity.
 | `cpk_registered_products_workspace_id_fkey` | `cpk_registered_products` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Product descriptor registrations are workspace scoped. |
 | `cpk_runtime_authorities_workspace_id_fkey` | `cpk_runtime_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime authority registrations are workspace scoped. |
 | `cpk_runtime_authority_deliveries_workspace_id_fkey` | `cpk_runtime_authority_deliveries` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime authority delivery records are workspace scoped. |
+| `cpk_saved_preparation_sources_revision_fkey` | `cpk_saved_preparation_sources` | `workspace_id, draft_id, revision` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id, revision` | Saved admission names one immutable same-workspace revision. |
+| `cpk_saved_preparation_sources_session_fkey` | `cpk_saved_preparation_sources` | `session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | Source and preparation session belong to the same workspace. |
 | `cpk_secret_providers_supersedes_fk` | `cpk_secret_providers` | `supersedes_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | A provider replacement can supersede only a same-workspace registration. |
 | `cpk_secret_providers_workspace_id_fkey` | `cpk_secret_providers` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Secret-provider registrations are workspace scoped. |
 | `cpk_secret_references_provider_fk` | `cpk_secret_references` | `provider_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | A secret reference names a provider in the same workspace. |
@@ -914,6 +918,19 @@ deleting its retained draft history.
 - **JSON boundary:** `delivery`, `secret_references`, and `metadata` are strict bounded documents.
 - **Sensitive material:** Secret references are sensitive locators only; resolved values, credentials, and delivery-time private material are never persisted.
 - **Future impact:** #1556 must resolve signing material immediately at the effect boundary rather than borrowing runtime delivery storage.
+
+### `cpk_saved_preparation_sources`
+- **Durable meaning and owner:** `PostgresSavedPreparationSourceStore` owns the explicit immutable saved input of a preparation session, not deployment success.
+- **Identity and cardinality:** Session primary key; many sessions may reference one `(workspace_id, draft_id, revision)`; reverse index follows that tuple then session ID.
+- **Outgoing foreign keys:** Immediate NO ACTION composite references to same-workspace session and immutable revision. No redundant graph ID.
+- **Inbound dependents:** None; plans and runs retain their existing session/plan relationships.
+- **Writers and transactions:** Saved admission inserts source after the session/start action and before their shared UoW commit. No independent commit or upsert.
+- **Readers and projections:** Tenant-scoped get supports replay and existing saved overview; current-data verification checks source/immutable commitment congruence.
+- **Mutation, locks, retries, and idempotency:** Session-key -> workspace -> draft precedes fresh admission. Replay requires the original source and never repairs missing evidence. No update/delete methods.
+- **Lifecycle, retention, deletion, and restore:** Retain source through head/selection/session changes. Fresh exact-schema installation only; older retained installations stay pinned, with no reset, transfer, import or backfill release.
+- **JSON boundary:** Source has no JSON. Shared saved metadata/fingerprint validator checks the immutable session commitment and revision-derived graph. Install-time candidate traversal uses batches64 and SQL byte caps under existing schema transaction/SHARE locks; memory is bounded, total work and lock duration are not.
+- **Sensitive material:** Only bounded identifiers and revision ordinal; no graph body, credentials or provider output. Errors omit malformed retained values.
+- **Future impact:** #1773 may consume this fact for bounded history; it must distinguish saved input from target graph association and accepted advancement. No per-HTTP global scan or repair engine. Complete erased saved evidence plus missing source is inherently indistinguishable.
 
 ### `cpk_secret_providers`
 - **Durable meaning and owner:** `SecretProviderStore` owns workspace-scoped provider registrations, allowed use policy, status, and supersession lineage.

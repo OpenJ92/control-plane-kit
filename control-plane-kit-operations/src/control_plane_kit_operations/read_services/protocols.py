@@ -21,12 +21,19 @@ from control_plane_kit_operations.records import (
     GraphVersionRecord,
     ObservationRecord,
     OperationSessionRecord,
+    SavedPreparationSourceRecord,
     WorkspaceRecord,
 )
+
+
 from control_plane_kit_operations.secret_providers import (
     RegisteredSecretProvider,
     RegisteredSecretReference,
 )
+
+
+class SavedPreparationSourceStore(Protocol):
+    def get(self, workspace_id: str, session_id: str) -> SavedPreparationSourceRecord | None: ...
 
 
 class WorkspaceStore(Protocol):

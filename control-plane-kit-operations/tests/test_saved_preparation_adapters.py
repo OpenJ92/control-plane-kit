@@ -111,6 +111,27 @@ class SavedPreparationAdapterTests(SavedPreparationFixture, unittest.TestCase):
         self.assertNotIn("Prepare saved draft", repr(overview))
         self.assertNotIn("deployment_prepare_intent_sha256", repr(overview))
 
+    def test_overview_requires_congruent_relational_saved_source_without_repair(self):
+        self.assertIsNotNone(self.connection.execute(
+            "SELECT to_regclass('cpk_saved_preparation_sources')").fetchone()[0],
+            "missing saved-preparation source relation")
+        draft = self.selected()
+        result = self.program().prepare(self.prepare_command(draft))
+        session = self.prepared_session(result)
+        later = self.catalogue().execute(self.revise_command(draft))
+        self.assertEqual(self.overview()["workflow"]["prepared_draft"]["state"], "prepared")
+        self.connection.execute("UPDATE cpk_saved_preparation_sources SET revision=%s WHERE session_id=%s",
+                                (later.revision, session.session_id))
+        for state in ("wrong-revision", "missing"):
+            if state == "missing":
+                self.connection.execute("DELETE FROM cpk_saved_preparation_sources WHERE session_id=%s",
+                                        (session.session_id,))
+            before = self.all_truth(), self.rows("cpk_saved_preparation_sources")
+            with self.subTest(state=state):
+                self.assertEqual(self.overview()["workflow"]["prepared_draft"],
+                                 {"state": "unavailable", "revision": None})
+            self.assertEqual((self.all_truth(), self.rows("cpk_saved_preparation_sources")), before)
+
     def test_overview_closed_saved_discriminator_rejects_partial_false_or_extra_evidence(self):
         draft = self.selected()
         command = self.prepare_command(draft)
@@ -143,9 +164,16 @@ class SavedPreparationAdapterTests(SavedPreparationFixture, unittest.TestCase):
                 projection = self.overview()["workflow"]["prepared_draft"]
                 self.assertEqual(projection, {"state": "unavailable", "revision": None})
                 self.assertNotIn("private-canary", repr(projection))
-        # Wholly stripped evidence cannot be distinguished from legacy metadata.
+        # A retained source still identifies missing saved commitment evidence.
         legacy = {key: value for key, value in original.items()
                   if key not in SAVED_ONLY_KEYS and key != "deployment_prepare_source"}
         self.connection.execute("UPDATE cpk_operation_sessions SET metadata=%s WHERE session_id=%s", (Jsonb(legacy), session.session_id))
+        before = self.all_truth(), self.rows("cpk_saved_preparation_sources")
+        self.assertEqual(self.overview()["workflow"]["prepared_draft"], {"state": "unavailable", "revision": None})
+        self.assertEqual((self.all_truth(), self.rows("cpk_saved_preparation_sources")), before)
+        # Complete erasure of both kinds of evidence remains indistinguishable.
+        self.connection.execute("DELETE FROM cpk_saved_preparation_sources WHERE session_id=%s", (session.session_id,))
+        before = self.all_truth(), self.rows("cpk_saved_preparation_sources")
         self.assertEqual(self.overview()["workflow"]["prepared_draft"], {"state": "none", "revision": None})
+        self.assertEqual((self.all_truth(), self.rows("cpk_saved_preparation_sources")), before)
         self.connection.execute("UPDATE cpk_operation_sessions SET metadata=%s WHERE session_id=%s", (Jsonb(original), session.session_id))
