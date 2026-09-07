@@ -5,7 +5,6 @@ import unittest
 from control_plane_kit_operations.postgres.stores import PostgresStoreBundle
 from control_plane_kit_operations.workflows import IdempotencyKey, StartOperationSession
 from revision_history_fixture import RevisionHistoryFixture
-from draft_catalogue_fixture import NOW
 
 
 class RevisionHistoryPageTests(RevisionHistoryFixture, unittest.TestCase):
@@ -15,7 +14,7 @@ class RevisionHistoryPageTests(RevisionHistoryFixture, unittest.TestCase):
         oversized = "\U0001f680" * 513
         self.connection.execute("INSERT INTO cpk_operation_sessions "
             "(session_id,workspace_id,actor_id,title,status,created_at) "
-            "VALUES (%s,'workspace-a','operator-a','Hidden','open',%s)", (oversized, NOW))
+            "VALUES (%s,'workspace-a','operator-a','Hidden','open',%s)", (oversized, "2099-01-01T00:00:00Z"))
         self.clone_plan(plan, plan_id="hidden-plan", session_id=oversized)
         before = self.history_truth()
         with self.assertRaises(ValueError) as captured:
