@@ -58,6 +58,20 @@ class RevisionHistoryAdvancementTests(unittest.TestCase):
         self.fixture.connection.execute("DELETE FROM cpk_operation_actions WHERE action_id='action-advance'")
         self.assertEqual(self.page()["items"][0]["advancement"], {"state": "unavailable", "receipt": None})
 
+    def test_accepted_history_survives_current_claim_rotation_and_removal(self):
+        self.accepted()
+        accepted = self.page()["items"][0]["advancement"]
+        self.assertEqual(accepted["state"], "accepted")
+        self.fixture.connection.execute("UPDATE cpk_execution_requests "
+            "SET claim_worker_id='later-worker', claim_generation=2 WHERE request_id='request-a'")
+        self.assertEqual(self.page()["items"][0]["advancement"], accepted)
+        self.fixture.connection.execute("UPDATE cpk_execution_requests SET status='cancelled', "
+            "claim_worker_id=NULL,claim_generation=NULL,claimed_at=NULL,lease_expires_at=NULL "
+            "WHERE request_id='request-a'")
+        self.assertEqual(self.page()["items"][0]["advancement"], accepted)
+        self.assertEqual(self.fixture.connection.execute("SELECT status,claim_worker_id,claim_generation "
+            "FROM cpk_execution_requests WHERE request_id='request-a'").fetchone(), ("cancelled", None, None))
+
     def test_action_without_event_is_unavailable(self):
         self.accepted()
         self.fixture.connection.execute("DELETE FROM cpk_activity_events WHERE event_id='event-advance'")
