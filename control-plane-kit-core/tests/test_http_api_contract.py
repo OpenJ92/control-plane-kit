@@ -30,6 +30,8 @@ class HttpApiContractTests(unittest.TestCase):
                 ("GET", "/workspaces/{workspace_id}/desired-topology-drafts"),
                 ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions"),
                 ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}"),
+                ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts"),
+                ("GET", "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations"),
                 ("GET", "/workspaces/{workspace_id}/gateway-probes"),
                 ("GET", "/workspaces/{workspace_id}/gateway-probes/{probe_id}"),
                 (
@@ -145,6 +147,8 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/desired-topology-drafts",
                 "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions",
                 "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations",
                 "/workspaces/{workspace_id}/gateway-probes",
                 "/workspaces/{workspace_id}/gateway-probes/{probe_id}",
                 "/workspaces/{workspace_id}/gateways/{gateway_node_id}/verifier-configuration",

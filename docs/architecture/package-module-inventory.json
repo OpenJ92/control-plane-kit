@@ -10486,7 +10486,8 @@
       "internal_dependencies": [
         "control_plane_kit_operations.advancement",
         "control_plane_kit_operations.read_pages",
-        "control_plane_kit_operations.saved_deployment_preparation"
+        "control_plane_kit_operations.saved_deployment_preparation",
+        "control_plane_kit_operations.workflows"
       ],
       "optional_external_dependencies": [],
       "semantic_roles": [
