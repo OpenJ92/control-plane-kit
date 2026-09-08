@@ -118,7 +118,7 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "3dd8be6e3664097d99c643357fc18d370f732e92c50a303b1de06a5343b5b058"
+    "37a48893471f491ed6257918132a36278833cfc2cddb2491ffaa58d68ff2d6c7"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
     "64f42f37937dcbbc4c086089e52d78d227e65c36a8d94fb2397636d7c67e18ba"
@@ -601,6 +601,58 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             ).fetchone(),
             (True,),
         )
+
+    def test_current_sql_revision_history_indexes_match_semantic_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import current_schema_verification
+        from control_plane_kit_operations.postgres import schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        names = (
+            "cpk_activity_events_current_graph_advancement",
+            "cpk_operation_actions_current_graph_advancement",
+        )
+        self.connection.execute(schema._CURRENT_SCHEMA_SQL)
+        # Reuse the verifier's semantic observation, preserving its four bounded
+        # catalog candidate sets; expose only the two issue-owned descriptors.
+        query, separator, _ = (
+            current_schema_verification._CURRENT_SCHEMA_CONTRACT_QUERY.partition(
+                "\nSELECT\n  COALESCE("
+            )
+        )
+        self.assertTrue(separator, "semantic verifier query boundary changed")
+        rows = self.connection.execute(
+            query + "\nSELECT value FROM semantic_indexes "
+            "WHERE index_name = ANY(%s) ORDER BY relname, index_name LIMIT 2",
+            (
+                len(contract.relations) + 1,
+                len(contract.columns) + 1,
+                len(contract.constraints) + 1,
+                len(contract.indexes) + 1,
+                list(names),
+            ),
+        ).fetchall()
+        expected = [
+            json.loads(json.dumps(dataclasses.asdict(index)))
+            for index in contract.indexes
+            if index.name in names
+        ]
+        self.assertEqual(len(expected), 2)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([row[0]["name"] for row in rows], list(names))
+        self.assertEqual([index["name"] for index in expected], list(names))
+        observed_by_name = {row[0]["name"]: row[0] for row in rows}
+        expected_by_name = {index["name"]: index for index in expected}
+        self.assertEqual(set(observed_by_name), set(names))
+        self.assertEqual(set(expected_by_name), set(names))
+        for name in names:
+            observed_index = observed_by_name[name]
+            expected_index = expected_by_name[name]
+            self.assertEqual(set(observed_index), set(expected_index))
+            for field in sorted(expected_index):
+                with self.subTest(index=name, field=field):
+                    self.assertEqual(observed_index[field], expected_index[field])
+        postgres.install_schema(self.connection)
 
     def test_fresh_schema_persists_new_authority_purpose_and_intents(self) -> None:
         postgres.install_schema(self.connection)

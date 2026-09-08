@@ -15,7 +15,7 @@ from control_plane_kit_operations.revision_history import (
 )
 from .activity_history import _action_record, _session_record
 from .execution import _activity_event
-from .temporal import encode_postgres_timestamp, encode_postgres_cursor_timestamp
+from .temporal import decode_postgres_timestamp, encode_postgres_cursor_timestamp
 
 
 _PREPARATIONS = ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS
@@ -139,7 +139,7 @@ def _decode_optional(decoder, values, date_positions):
         row = list(values)
         for position in date_positions:
             if row[position] is not None:
-                row[position] = encode_postgres_timestamp(row[position])
+                row[position] = encode_postgres_cursor_timestamp(row[position])
         return decoder(row)
     except (ValueError, TypeError, KeyError, IndexError, AttributeError):
         return None
@@ -147,7 +147,8 @@ def _decode_optional(decoder, values, date_positions):
 
 def _source(scope, row, *, plan=None):
     source = _decode_optional(lambda value: SavedPreparationSourceRecord(*value), row["source"], ())
-    revision = _decode_optional(lambda value: DesiredTopologyDraftRevisionRecord(*value), row["source_revision"], ())
+    revision = _decode_optional(lambda value: DesiredTopologyDraftRevisionRecord(
+        *value[:5], decode_postgres_timestamp(value[5])), row["source_revision"], (5,))
     session = _decode_optional(_session_record, row["session"], (5, 6))
     start = _decode_optional(_action_record, row["start"], (6,))
     return saved_revision_source(scope, source, session, revision, start, plan=plan)

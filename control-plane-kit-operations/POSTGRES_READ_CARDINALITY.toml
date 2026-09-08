@@ -1,6 +1,14 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.revision_history_store"
+selector = "PostgresRevisionHistoryStore.page"
+category = "public-paged"
+sql = "exact workspace/draft/revision membership; temporal keyset; LIMIT limit plus one, at most eleven candidates; bounded source and receipt evidence"
+consumer_kind = "production"
+consumer = "InstanceReadService revision preparation and attempt history pages"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.activity_history"
 selector = "PostgresActivityHistoryStore.overview_plans"
 category = "fixed-cardinality"

@@ -7,9 +7,9 @@ from psycopg.types.json import Jsonb
 from control_plane_kit_core.operations import ActivityRunStatus
 from control_plane_kit_core.planning import ActivityPlan
 from control_plane_kit_core.topology import DeploymentGraph
-from control_plane_kit_operations.records import GraphVersionRecord, RetryIdentity, SavedPreparationSourceRecord
+from control_plane_kit_operations.records import GraphVersionRecord, OperationsRecordError, RetryIdentity, SavedPreparationSourceRecord
 from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftRecord, DesiredTopologyDraftRevisionRecord
-from control_plane_kit_operations.workflows import IdempotencyKey, StartOperationSession
+from control_plane_kit_operations.workflows import CloseOperationSession, IdempotencyKey, StartOperationSession
 from saved_preparation_fixture import InterruptedPreparation
 from revision_history_fixture import RevisionHistoryFixture
 from draft_catalogue_fixture import NOW
@@ -38,15 +38,38 @@ class RevisionHistoryTests(RevisionHistoryFixture, unittest.TestCase):
                 uow.stores.desired_topology_drafts.append(DesiredTopologyDraftRevisionRecord(
                     "workspace-b", value.draft_id, 1, graph_id, "operator-a", NOW),
                     expected_head_revision=None)
+            # Deliberately adversarial source association on a generic session:
+            # this is not evidence of successful saved preparation admission.
             uow.stores.saved_preparation_sources.insert(SavedPreparationSourceRecord(
                 foreign_session, "workspace-b", empty.draft_id, 1))
             uow.commit()
-        # A foreign session can retain a plan referencing this exact authored
-        # target through valid plan/projection FKs. Tenant membership still wins.
-        foreign_plan = self.clone_plan(plan, plan_id="foreign-plan", session_id=foreign_session)
+        before_rejection = self.history_truth()
+        with self.assertRaises(OperationsRecordError):
+            self.clone_plan(plan, plan_id="rejected-foreign-plan", session_id=foreign_session)
+        self.assertEqual(self.history_truth(), before_rejection)
+        with self.unit_of_work() as uow:
+            base = uow.stores.realized_graphs.identity_for_authored("workspace-b", "workspace-b-current")
+            desired = uow.stores.realized_graphs.identity_for_authored("workspace-b", "foreign-history-graph-2")
+            uow.stores.realized_graphs.save(base)
+            uow.stores.realized_graphs.save(desired)
+            uow.commit()
+        foreign_plan = self.clone_plan(plan, plan_id="foreign-plan", session_id=foreign_session,
+            base_graph_id=base.source_authored_graph_id, base_realized_projection_id=base.projection_id,
+            desired_graph_id=desired.source_authored_graph_id, desired_realized_projection_id=desired.projection_id,
+            plan=ActivityPlan(()))
         self.add_attempt(foreign_plan, "foreign", workspace="workspace-b")
+        self._assert_foreign_history_excluded(draft, empty, plan.session_id)
+        # Invalid retained-state fixture only: preserve the desired graph/projection
+        # FK pair while crossing tenant ownership. No constraint is disabled and
+        # the request/run still belong to the foreign session and workspace.
+        self.connection.execute("UPDATE cpk_activity_plans SET desired_graph_id=%s, "
+            "desired_realized_projection_id=%s WHERE plan_id=%s",
+            (plan.desired_graph_id, plan.desired_realized_projection_id, foreign_plan.plan_id))
+        self._assert_foreign_history_excluded(draft, empty, plan.session_id)
+
+    def _assert_foreign_history_excluded(self, draft, empty, local_session):
         before = self.history_truth()
-        self.assertEqual([item["session_id"] for item in self.page(draft, "preparations").items], [plan.session_id])
+        self.assertEqual([item["session_id"] for item in self.page(draft, "preparations").items], [local_session])
         self.assertEqual(self.page(draft, "attempts").items, ())
         self.assertFalse(self.detail(draft)["history"]["attempts_present"])
         for kind in ("preparations", "attempts"):
@@ -63,6 +86,32 @@ class RevisionHistoryTests(RevisionHistoryFixture, unittest.TestCase):
         self.assertEqual(self.detail(draft)["history"], {"scope": HISTORY_SCOPE,
             "preparations_present": False, "attempts_present": False, "completeness": "association-records-only"})
         self.assertEqual(self.history_truth(), before)
+
+    def test_saved_evidence_preserves_whole_and_fractional_instants_and_nullable_close(self):
+        for index, (instant, public_instant) in enumerate((
+                ("2026-09-06T18:00:00Z", "2026-09-06T18:00:00.000000Z"),
+                ("2026-09-06T18:00:00.123456Z", "2026-09-06T18:00:00.123456Z"))):
+            with self.subTest(instant=instant):
+                catalogue = self.catalogue(clock=lambda: instant)
+                draft = catalogue.execute(self.create_command(key="timestamp-" + str(index)))
+                catalogue.execute(self.select_command(draft, key="select-timestamp-" + str(index)))
+                commands = self.operations(clock=lambda: instant)
+                result = self.program(operations=commands).prepare(
+                    self.prepare_command(draft, key="prepare-timestamp-" + str(index)))
+                session = self.prepared_session(result)
+                self.assertEqual(session.created_at, instant)
+                self.assertIsNone(session.closed_at)
+                for closed in (False, True):
+                    if closed:
+                        commands.execute(CloseOperationSession(session.session_id, "operator-a",
+                            IdempotencyKey("close-timestamp-" + str(index))))
+                    before = self.history_truth()
+                    row = self.page(draft, "preparations").items[0]
+                    self.assertEqual(row["created_at"], public_instant)
+                    self.assertEqual(row["session_status"], "closed" if closed else "open")
+                    self.assertEqual(row["source"], {"state": "saved", "draft_id": draft.draft_id,
+                        "revision": draft.revision, "graph_id": draft.graph_id})
+                    self.assertEqual(self.history_truth(), before)
 
     def test_source_only_target_only_and_both_union_are_deduplicated(self):
         draft = self.selected()

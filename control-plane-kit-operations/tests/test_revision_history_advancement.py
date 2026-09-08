@@ -38,6 +38,16 @@ class RevisionHistoryAdvancementTests(unittest.TestCase):
     def accepted(self):
         return self.fixture.service("event-advance", "action-advance").execute(self.fixture.command())
 
+    def test_accepted_receipt_preserves_nonzero_microseconds(self):
+        result = advancement_fixture.CurrentGraphAdvancementCommandService(
+            self.fixture.unit_of_work, clock=lambda: "2026-07-22T13:05:00.123456Z",
+            id_factory=advancement_fixture.Sequence("event-advance", "action-advance"),
+        ).execute(self.fixture.command())
+        self.assertEqual(self.page()["items"][0]["advancement"], {
+            "state": "accepted", "receipt": {"event_id": result.event.event_id,
+                "action_id": result.action.action_id, "occurred_at": "2026-07-22T13:05:00.123456Z",
+                "to_realized_projection_digest": self.fixture.desired_projection.projection_digest}})
+
     def test_success_without_receipt_is_none_recorded_then_real_acceptance_survives_pointer_change(self):
         row = self.page()["items"][0]
         self.assertEqual(row["advancement"], {"state": "none-recorded", "receipt": None})

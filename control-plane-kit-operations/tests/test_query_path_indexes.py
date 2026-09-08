@@ -93,7 +93,7 @@ class QueryPathIndexContractTests(unittest.TestCase):
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         indexes = {value.name: value for value in contract.indexes}
 
-        self.assertEqual(len(contract.indexes), 129)
+        self.assertEqual(len(contract.indexes), 131)
         for name, (relation, keys, predicate) in _EXPECTED_QUERY_PATH_INDEXES.items():
             with self.subTest(index=name):
                 value = indexes[name]

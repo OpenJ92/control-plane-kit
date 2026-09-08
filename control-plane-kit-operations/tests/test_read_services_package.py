@@ -22,6 +22,7 @@ _EXPECTED_MODULES = {
     "operations_history",
     "operator_overview",
     "protocols",
+    "revision_history",
     "workspace_graph",
 }
 
