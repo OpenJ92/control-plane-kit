@@ -72,6 +72,18 @@ class AdapterParityContractTests(unittest.TestCase):
                     "DesiredTopologyDraftRevisionReadResponse",
                 ),
                 (
+                    "read.desired-topology-draft-revision-attempts",
+                    "read.desired-topology-draft-revision-attempts",
+                    "list_desired_topology_draft_revision_attempts",
+                    "DesiredTopologyDraftRevisionAttemptsReadResponse",
+                ),
+                (
+                    "read.desired-topology-draft-revision-preparations",
+                    "read.desired-topology-draft-revision-preparations",
+                    "list_desired_topology_draft_revision_preparations",
+                    "DesiredTopologyDraftRevisionPreparationsReadResponse",
+                ),
+                (
                     "read.desired-topology-draft-revisions",
                     "read.desired-topology-draft-revisions",
                     "list_desired_topology_draft_revisions",

@@ -113,6 +113,10 @@ class ReadProjectionContractTests(unittest.TestCase):
 
     def test_canonical_projection_set_is_closed_bounded_and_read_only(self) -> None:
         projections = canonical_operator_read_projection_set()
+        history_attempts = getattr(ReadProjectionKind, "DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS", None)
+        history_preparations = getattr(ReadProjectionKind, "DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS", None)
+        self.assertIsNotNone(history_attempts, "missing revision history attempts projection")
+        self.assertIsNotNone(history_preparations, "missing revision history preparations projection")
 
         self.assertEqual(
             [
@@ -182,6 +186,22 @@ class ReadProjectionContractTests(unittest.TestCase):
                     ReadProjectionPolicy.REDACTED_GRAPH_DESCRIPTOR,
                     True,
                     False,
+                ),
+                (
+                    "read.desired-topology-draft-revision-attempts",
+                    history_attempts,
+                    "DesiredTopologyDraftRevisionAttemptsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
+                ),
+                (
+                    "read.desired-topology-draft-revision-preparations",
+                    history_preparations,
+                    "DesiredTopologyDraftRevisionPreparationsReadResponse",
+                    ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+                    True,
+                    True,
                 ),
                 (
                     "read.desired-topology-draft-revisions",

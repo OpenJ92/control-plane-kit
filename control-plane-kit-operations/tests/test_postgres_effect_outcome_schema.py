@@ -132,7 +132,7 @@ class PostgresEffectOutcomeSchemaTests(
         self.assertEqual(tuple(columns[MEMBERSHIP]), MEMBERSHIP_COLUMNS)
         self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.columns), 507)
         self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.constraints), 382)
-        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes), 129)
+        self.assertEqual(len(CURRENT_POSTGRES_SCHEMA_CONTRACT.indexes), 131)
 
     def test_exact_candidate_keys_and_restrictive_composite_foreign_keys(self) -> None:
         constraints = {

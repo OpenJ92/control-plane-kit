@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+import json
 import re
 from typing import Callable, Generic, TypeVar
 import unicodedata
@@ -35,6 +36,8 @@ class ReadCollection(StrEnum):
 
     DESIRED_TOPOLOGY_DRAFTS = "desired-topology-drafts"
     DESIRED_TOPOLOGY_DRAFT_REVISIONS = "desired-topology-draft-revisions"
+    DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS = "desired-topology-draft-revision-preparations"
+    DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS = "desired-topology-draft-revision-attempts"
     ACTIVITY_SESSIONS = "activity-sessions"
     OPEN_SESSIONS = "open-sessions"
     SESSION_ACTIONS = "session-actions"
@@ -126,7 +129,23 @@ class DraftReadScope:
         return {"workspace_id": self.workspace_id, "draft_id": self.draft_id}
 
 
-ReadScope = WorkspaceReadScope | SessionReadScope | PlanReadScope | RunReadScope | DraftReadScope
+@dataclass(frozen=True, slots=True)
+class RevisionReadScope:
+    workspace_id: str
+    draft_id: str
+    revision: int
+
+    def __post_init__(self) -> None:
+        _general_identifier(self.workspace_id)
+        _general_identifier(self.draft_id)
+        if type(self.revision) is not int or not 1 <= self.revision <= _POSTGRES_INT8_MAX:
+            raise ReadPageError("revision scope is malformed")
+
+    def descriptor(self) -> dict[str, object]:
+        return {"workspace_id": self.workspace_id, "draft_id": self.draft_id, "revision": self.revision}
+
+
+ReadScope = WorkspaceReadScope | SessionReadScope | PlanReadScope | RunReadScope | DraftReadScope | RevisionReadScope
 
 
 
@@ -256,9 +275,13 @@ class ReadCollectionSpec:
     cursor_type: type[ReadCursor]
     order: ReadOrder
     position_fields: tuple[str, ...]
+    max_page_size: int = 100
+    default_page_size: int = 50
 
 
 READ_COLLECTION_SPECS = (
+    ReadCollectionSpec(ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS, "read.desired-topology-draft-revision-preparations", RevisionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id"), 10, 10),
+    ReadCollectionSpec(ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS, "read.desired-topology-draft-revision-attempts", RevisionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "run_id"), 10, 10),
     ReadCollectionSpec(ReadCollection.DESIRED_TOPOLOGY_DRAFTS, "read.desired-topology-drafts", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "draft_id")),
     ReadCollectionSpec(ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS, "read.desired-topology-draft-revisions", DraftReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("revision", "graph_id")),
     ReadCollectionSpec(ReadCollection.ACTIVITY_SESSIONS, "read.activity", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
@@ -317,7 +340,7 @@ class ReadPageRequest:
         spec = read_collection_spec(self.collection)
         if type(self.scope) is not spec.scope_type:
             raise ReadPageError("read request scope is incongruent")
-        if type(self.limit) is not int or not 1 <= self.limit <= 100:
+        if type(self.limit) is not int or not 1 <= self.limit <= spec.max_page_size:
             raise ReadPageError("read page limit is malformed")
         if self.cursor is not None and (
             type(self.cursor) is not spec.cursor_type
@@ -412,7 +435,7 @@ class ReadPage(Generic[T]):
     def descriptor(self) -> dict[str, object]:
         if any(type(item) is not dict for item in self.items):
             raise ReadPageError("read page item projection is malformed")
-        return {
+        descriptor = {
             "workspace_id": self.request.scope.workspace_id,
             "kind": self.request.collection.value,
             "limit": self.request.limit,
@@ -421,6 +444,14 @@ class ReadPage(Generic[T]):
                 None if self.next_cursor is None else self.next_cursor.descriptor()
             ),
         }
+        if isinstance(self.request.scope, RevisionReadScope):
+            try:
+                payload = json.dumps(descriptor, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            except (TypeError, ValueError, RecursionError):
+                raise ReadPageError("revision history descriptor is malformed") from None
+            if len(payload) > 1048576:
+                raise ReadPageError("revision history descriptor is too large")
+        return descriptor
 
 
 def _general_identifier(value: object) -> None:
@@ -510,6 +541,9 @@ def _scope_from_mapping(scope_type: type[ReadScope], value: object) -> ReadScope
     if scope_type is DraftReadScope:
         _exact_keys(value, frozenset({"workspace_id", "draft_id"}), "draft scope")
         return DraftReadScope(value["workspace_id"], value["draft_id"])
+    if scope_type is RevisionReadScope:
+        _exact_keys(value, frozenset({"workspace_id", "draft_id", "revision"}), "revision scope")
+        return RevisionReadScope(value["workspace_id"], value["draft_id"], value["revision"])
     if scope_type is SessionReadScope:
         _exact_keys(value, frozenset({"workspace_id", "session_id"}), "session scope")
         return SessionReadScope(value["workspace_id"], value["session_id"])
@@ -587,6 +621,7 @@ def _matching_cursor(request: ReadPageRequest, cursor: ReadCursor) -> None:
 
 
 __all__ = [
+    "RevisionReadScope",
     "DraftReadScope",
     "READ_COLLECTION_SPECS",
     "DelegationKeyReadCursor",

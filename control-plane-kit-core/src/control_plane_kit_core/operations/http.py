@@ -334,6 +334,16 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "DesiredTopologyDraftRevisionReadResponse",
             ),
             (
+                "read.desired-topology-draft-revision-preparations",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations",
+                "DesiredTopologyDraftRevisionPreparationsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision-attempts",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts",
+                "DesiredTopologyDraftRevisionAttemptsReadResponse",
+            ),
+            (
                 "read.operator-overview",
                 "/workspaces/{workspace_id}/overview",
                 "OperatorOverviewReadResponse",
@@ -853,7 +863,10 @@ def _read_route(
         service_role=ControlPlaneServiceRole.READS,
         auth_scope=HttpAuthScope.READ,
         safety=HttpOperationSafety.READ_ONLY,
-        response_schema=HttpSchemaRef(response_schema),
+        response_schema=HttpSchemaRef(response_schema, max_bytes=1048576 if route_id in {
+            "read.desired-topology-draft-revision-preparations",
+            "read.desired-topology-draft-revision-attempts",
+        } else 65536),
     )
 
 

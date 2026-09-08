@@ -9,6 +9,7 @@ from control_plane_kit_operations.postgres.activity_history import (
 )
 from control_plane_kit_operations.postgres.desired_topology_draft_store import PostgresDesiredTopologyDraftStore
 from control_plane_kit_operations.postgres.saved_preparation_source_store import PostgresSavedPreparationSourceStore
+from control_plane_kit_operations.postgres.revision_history_store import PostgresRevisionHistoryStore
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
 from control_plane_kit_operations.postgres.effect_attempt_store import (
     EffectAttemptStore,
@@ -78,6 +79,7 @@ class PostgresStoreBundle:
 
     desired_topology_drafts: PostgresDesiredTopologyDraftStore = field(init=False)
     saved_preparation_sources: PostgresSavedPreparationSourceStore = field(init=False)
+    revision_history: PostgresRevisionHistoryStore = field(init=False)
     connection: PostgresConnection
     workspaces: PostgresWorkspaceStore = field(init=False)
     graphs: PostgresGraphTopologyStore = field(init=False)
@@ -113,6 +115,7 @@ class PostgresStoreBundle:
     def __post_init__(self) -> None:
         object.__setattr__(self, "desired_topology_drafts", PostgresDesiredTopologyDraftStore(self.connection))
         object.__setattr__(self, "saved_preparation_sources", PostgresSavedPreparationSourceStore(self.connection))
+        object.__setattr__(self, "revision_history", PostgresRevisionHistoryStore(self.connection))
         object.__setattr__(
             self,
             "workspaces",

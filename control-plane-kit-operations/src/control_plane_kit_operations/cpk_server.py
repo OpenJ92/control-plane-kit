@@ -130,6 +130,8 @@ from control_plane_kit_operations.desired_topology_drafts import (
 )
 from control_plane_kit_operations.read_pages import (
     DraftReadScope,
+    RevisionReadScope,
+    read_collection_spec,
     PlanReadScope,
     ReadCollection,
     ReadPageError,
@@ -264,6 +266,8 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.desired-topology-drafts": _WORKSPACE_READ,
     "read.desired-topology-draft-revisions": _WORKSPACE_READ,
     "read.desired-topology-draft-revision": _WORKSPACE_READ,
+    "read.desired-topology-draft-revision-preparations": _WORKSPACE_READ,
+    "read.desired-topology-draft-revision-attempts": _WORKSPACE_READ,
     "command.desired-topology-draft.create": _WORKSPACE_EDIT,
     "command.desired-topology-draft.revise": _WORKSPACE_EDIT,
     "command.desired-topology-draft.select": _WORKSPACE_EDIT,
@@ -494,6 +498,8 @@ class CpkServerReadService:
             }
             if request.route_id.startswith("read.desired-topology-draft") or request.route_id == "read.operator-overview":
                 kwargs["desired_topology_draft_store"] = stores.desired_topology_drafts
+            if request.route_id.startswith("read.desired-topology-draft-revision"):
+                kwargs["revision_history_store"] = stores.revision_history
             if request.route_id == "read.operator-overview":
                 kwargs["saved_preparation_source_store"] = stores.saved_preparation_sources
             if self._clock is not None:
@@ -1542,6 +1548,8 @@ def _read_model(
         return service.desired_topology_drafts(_required_page_request(page_request, _PAGED_READ_COLLECTIONS[route_id]))
     if route_id == "read.desired-topology-draft-revision":
         return service.desired_topology_draft_revision(_workspace_id(args), _text(args, "draft_id"), _draft_revision(args))
+    if route_id in {"read.desired-topology-draft-revision-preparations", "read.desired-topology-draft-revision-attempts"}:
+        return service.desired_topology_draft_revision_history(_required_page_request(page_request, _PAGED_READ_COLLECTIONS[route_id]))
     if route_id == "read.operator-graph":
         return service.operator_graph(
             _workspace_id(args),
@@ -1704,6 +1712,8 @@ _CLOSED_READ_ARGUMENTS = {
     "read.desired-topology-drafts": (None, True),
     "read.desired-topology-draft-revisions": ("draft_id", True),
     "read.desired-topology-draft-revision": (("draft_id", "revision"), False),
+    "read.desired-topology-draft-revision-preparations": (("draft_id", "revision"), True),
+    "read.desired-topology-draft-revision-attempts": (("draft_id", "revision"), True),
     "read.operator-overview": (None, True),
     "read.activity": (None, True),
     "read.sessions": (None, True),
@@ -1729,6 +1739,8 @@ _CLOSED_READ_ARGUMENTS = {
 _PAGED_READ_COLLECTIONS = {
     "read.desired-topology-drafts": ReadCollection.DESIRED_TOPOLOGY_DRAFTS,
     "read.desired-topology-draft-revisions": ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
+    "read.desired-topology-draft-revision-preparations": ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS,
+    "read.desired-topology-draft-revision-attempts": ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS,
     "read.activity": ReadCollection.ACTIVITY_SESSIONS,
     "read.sessions": ReadCollection.OPEN_SESSIONS,
     "read.session-actions": ReadCollection.SESSION_ACTIONS,
@@ -1778,7 +1790,7 @@ def _read_page_request(
     return ReadPageRequest(
         collection,
         scope,
-        _positive_int(values, "limit", default=50),
+        _positive_int(values, "limit", default=read_collection_spec(collection).default_page_size),
         cursor,
     )
 
@@ -1800,6 +1812,9 @@ def _read_page_request_for_route(
         )
     elif collection is ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS:
         scope = DraftReadScope(workspace_id, _text(values, "draft_id"))
+    elif collection in {ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS,
+                        ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS}:
+        scope = RevisionReadScope(workspace_id, _text(values, "draft_id"), _draft_revision(values))
     elif collection is ReadCollection.PLAN_RUNS:
         scope = PlanReadScope(workspace_id, _text(values, "plan_id"))
     elif collection is ReadCollection.RUN_EVENTS:

@@ -93,12 +93,20 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
             connection.close()
 
-    def test_all_eighteen_collections_cross_two_maximum_pages_exactly(self) -> None:
+    def test_legacy_eighteen_collections_cross_two_maximum_pages_exactly(self) -> None:
         with self._seeded() as (connection, handles):
             self._seed_catalogue(connection, handles.activity_workspace_id)
             cases = self._cases(connection, handles)
             self.assertEqual(len(cases), 18)
-            self.assertEqual({case.collection for case in cases}, set(ReadCollection))
+            # The two max10 revision collections have their 201-row traversal
+            # in test_revision_history_pages, using the preparation owner fixture.
+            revision = {getattr(ReadCollection, "DESIRED_TOPOLOGY_DRAFT_REVISION_" + suffix, None)
+                        for suffix in ("PREPARATIONS", "ATTEMPTS")}
+            self.assertNotIn(None, revision, "missing revision history collections")
+            legacy = {case.collection for case in cases}
+            self.assertFalse(legacy & revision)
+            self.assertEqual(legacy | revision, set(ReadCollection))
+            self.assertEqual(len(ReadCollection), 20)
 
             for case in cases:
                 with self.subTest(collection=case.collection.value):

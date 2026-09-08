@@ -52,6 +52,8 @@ from .workspace_graph import (
 from .desired_topology_drafts import _DesiredTopologyDraftReadProjection
 from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftStore
 from .protocols import SavedPreparationSourceStore
+from control_plane_kit_operations.revision_history import RevisionHistoryStore
+from .revision_history import _RevisionHistoryReadProjection
 
 
 class InstanceReadService:
@@ -74,6 +76,7 @@ class InstanceReadService:
         delegation_signing_key_store: DelegationSigningKeyStore | None = None,
         desired_topology_draft_store: DesiredTopologyDraftStore | None = None,
         saved_preparation_source_store: SavedPreparationSourceStore | None = None,
+        revision_history_store: RevisionHistoryStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -85,7 +88,9 @@ class InstanceReadService:
         )
         self._desired_topology_drafts = _DesiredTopologyDraftReadProjection(
             self._workspace_graph.require_workspace, graph_topology_store, desired_topology_draft_store,
+            revision_history_store,
         )
+        self._revision_history = _RevisionHistoryReadProjection(self._workspace_graph.require_workspace, revision_history_store)
         self._operator_overview = _OperatorOverviewReadProjection(
             workspace_store, graph_topology_store, activity_history_store, execution_store,
             desired_topology_draft_store, saved_preparation_source_store,
@@ -122,6 +127,9 @@ class InstanceReadService:
 
     def desired_topology_draft_revision(self, workspace_id: str, draft_id: str, revision: int):
         return self._desired_topology_drafts.detail(workspace_id, draft_id, revision)
+
+    def desired_topology_draft_revision_history(self, request: ReadPageRequest):
+        return self._revision_history.page(request)
 
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         return self._workspace_graph.workspace(workspace_id)
