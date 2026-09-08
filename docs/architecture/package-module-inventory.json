@@ -10475,6 +10475,101 @@
         "control-plane-kit-operations/tests/test_saved_preparation_adapters.py",
         "control-plane-kit-operations/tests/test_saved_preparation_values.py"
       ]
+    },
+    {
+      "module": "control_plane_kit_operations.revision_history",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/revision_history.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.revision_history",
+      "role": "read-projection",
+      "motivation": "Pure saved provenance and historical advancement attribution; no current fencing or external effects.",
+      "internal_dependencies": [
+        "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.saved_deployment_preparation"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "read-projection"
+      ],
+      "canonical_public_exports": [
+        "RevisionHistoryStore"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.revision_history_store",
+        "control_plane_kit_operations.read_services.revision_history",
+        "control_plane_kit_operations.read_services.instance"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_revision_history.py",
+        "control-plane-kit-operations/tests/test_revision_history_pages.py",
+        "control-plane-kit-operations/tests/test_revision_history_advancement.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.revision_history_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/revision_history_store.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.postgres.revision_history_store",
+      "role": "durable-store",
+      "motivation": "One bounded set-based revision history query per page over caller-owned durable truth.",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.desired_topology_drafts",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.revision_history",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.temporal"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "durable-store"
+      ],
+      "canonical_public_exports": [
+        "PostgresRevisionHistoryStore"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_revision_history.py",
+        "control-plane-kit-operations/tests/test_revision_history_pages.py",
+        "control-plane-kit-operations/tests/test_revision_history_advancement.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.read_services.revision_history",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/revision_history.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.read_services.revision_history",
+      "role": "read-projection",
+      "motivation": "Compose the revision history owner through the read service boundary and bounded missing-parent errors.",
+      "internal_dependencies": [
+        "control_plane_kit_operations.revision_history",
+        "control_plane_kit_operations.read_services.errors"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "read-projection"
+      ],
+      "canonical_public_exports": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations.read_services.instance",
+        "control_plane_kit_operations.read_services.desired_topology_drafts"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_revision_history.py",
+        "control-plane-kit-operations/tests/test_revision_history_pages.py",
+        "control-plane-kit-operations/tests/test_revision_history_advancement.py"
+      ]
     }
   ],
   "owner_vocabulary": [

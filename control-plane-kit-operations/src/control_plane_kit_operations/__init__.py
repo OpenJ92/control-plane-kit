@@ -572,6 +572,7 @@ from .execution_lease_recovery_interpreter import (
 )
 from .read_pages import (
     DraftReadScope,
+    RevisionReadScope,
     READ_COLLECTION_SPECS,
     DelegationKeyReadCursor,
     EpochReadCursor,
@@ -652,6 +653,7 @@ __all__ = [
     "SessionReadScope",
     "TemporalReadCursor",
     "DraftReadScope",
+    "RevisionReadScope",
     "WorkspaceReadScope",
     "read_collection_spec",
     "read_cursor_from_mapping",

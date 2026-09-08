@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=154537da2ed7fa98fe0d784b5d1e37b9cf8c3287a719ccf3cf3d4e1dbf253189 relations=40 columns=507 constraints=382 indexes=129 foreign-keys=87 -->
+<!-- current-schema-contract: sha256=3dd8be6e3664097d99c643357fc18d370f732e92c50a303b1de06a5343b5b058 relations=40 columns=507 constraints=382 indexes=131 foreign-keys=87 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -463,7 +463,7 @@ order is semantically significant for every composite identity.
 - **Outgoing foreign keys:** `run_id` requires the owning `cpk_activity_runs` row.
 - **Inbound dependents:** Effect-attempt rows bind exact original and latest event triples. Generated ingress-secret records may also cite event identifiers as provenance without a database foreign key.
 - **Writers and transactions:** `PostgresExecutionStore.add_event` performs one direct insert in the caller's run transaction; it does not compare an existing event for replay equivalence.
-- **Readers and projections:** Activity-history queries read events by run and ordinal for operator-facing execution narratives.
+- **Readers and projections:** Activity-history queries read events by run and ordinal for operator-facing execution narratives. Revision history probes at most two advancement events through the partial `(run_id, event_id)` index restricted to `current_graph_advanced`, then validates a correlated historical action/event pair.
 - **Mutation, locks, retries, and idempotency:** Inserts are append-only; duplicate `event_id` or `(run_id, ordinal)` is rejected by PostgreSQL, while command/workflow idempotency is owned outside this row.
 - **Lifecycle, retention, deletion, and restore:** Restore runs before events and preserve ordinal order; restrictive ownership prevents deleting a run with events.
 - **JSON boundary:** `_activity_event` requires an object and reconstructs `ActivityEventRecord`, `BoundedEvidence`, and optional `FailureEvidence` directly from `payload`.
@@ -847,7 +847,7 @@ deleting its retained draft history.
 - **Outgoing foreign keys:** `session_id` must name the owning operation session.
 - **Inbound dependents:** No current relation references actions; some provenance fields elsewhere retain action identifiers without database coupling.
 - **Writers and transactions:** Actions append with session state in the caller's activity-history transaction.
-- **Readers and projections:** Activity timelines read actions by session and ordinal, decoding their typed payloads.
+- **Readers and projections:** Activity timelines read actions by session and ordinal, decoding their typed payloads. Revision history probes at most two advancement actions through the partial `(session_id, payload->>'run_id', action_id)` index restricted to `advance-current-graph`; current mutable worker claims do not determine historical receipt validity.
 - **Mutation, locks, retries, and idempotency:** Append-only ordering and idempotency fingerprints distinguish same intent from a conflicting action.
 - **Lifecycle, retention, deletion, and restore:** Restore sessions before actions and preserve ordinal order; action history is not rewritten after closure.
 - **JSON boundary:** `payload` is the canonical action-specific document.

@@ -133,6 +133,8 @@ execute runtime effects.
 | `read.desired-topology-drafts` | GET `/desired-topology-drafts` | `list_desired_topology_drafts` |
 | `read.desired-topology-draft-revisions` | GET `/desired-topology-drafts/{draft_id}/revisions` | `list_desired_topology_draft_revisions` |
 | `read.desired-topology-draft-revision` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}` | `get_desired_topology_draft_revision` |
+| `read.desired-topology-draft-revision-preparations` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations` | `list_desired_topology_draft_revision_preparations` |
+| `read.desired-topology-draft-revision-attempts` | GET `/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts` | `list_desired_topology_draft_revision_attempts` |
 
 Create accepts `session_id`, `idempotency_key`, `title`, and a Core `graph`
 descriptor. Revise accepts the same session/key/graph inputs and requires
@@ -142,10 +144,68 @@ graph JSON transport is bounded to 1 MiB. Exact revision reads apply existing gr
 redaction; summaries contain no graph bodies. Titles are operator-authored text,
 so callers must not use them to store credentials.
 
-The collection reads accept `limit` (1–100, default 50) and `after`. Draft summaries
+The draft and revision catalogue reads accept `limit` (1–100, default 50) and `after`. Draft summaries
 order by creation instant, then draft identity; revision summaries order by revision,
 then graph identity. Their cursors bind collection, workspace, and (for revisions)
 draft identity. These domains are independent of overview/run-event pagination.
+
+The two revision-history collections use `limit` 1–10 (default 10) and separate
+`after` cursors. A cursor binds the exact collection, workspace, draft, positive
+int8 revision, and canonical microsecond UTC instant plus item identity. A cursor
+from another collection or revision is rejected before opening the read UoW.
+Existing read authorization applies before argument/cursor decoding. These routes
+introduce no mutation or external effect and return no private source metadata,
+action payload, event payload, credentials, or provider addresses.
+
+Preparations are the deduplicated union of exact saved-source sessions and
+sessions containing a plan whose desired authored graph is this revision's graph.
+They order by session creation time and session ID. Each item exposes session
+identity/status, independent `source_linked` and `has_target_plan` association
+flags, source attribution, and three exact-target presence booleans for plans,
+execution requests, and attempts. Presence comes from complete membership, never
+the current page or unrelated sibling plans.
+
+Attempts order by run creation time and run ID. Every run is independently
+qualified through its own exact-target plan and congruent tenant/session/request
+identities. Items retain all recorded run statuses, request/plan/run/prior IDs,
+attempt number, the actual five-field plan fence, and advancement attribution.
+Desired selection generation is not a draft revision ordinal. `source` is either
+`saved` with the exact revision coordinates or `unavailable` with null coordinates;
+saved attribution requires the immutable source/session/start commitment and,
+for attempts, the entire committed plan fence. Missing or incongruent provenance
+does not erase a true target association or establish inline origin.
+
+`advancement` is `accepted`, `none-recorded`, or `unavailable`. Acceptance requires
+exactly one correlated retained advancement action/event pair and its actual plan
+transition and projection digest. The compact receipt contains event/action IDs,
+occurred-at, and the lowercase projection digest. Neither candidate means
+none-recorded; orphan, duplicate, oversized, or incongruent evidence is unavailable.
+Run success alone proves no advancement. Later current-pointer or mutable worker
+claim changes do not invalidate historical acceptance; no command replay,
+current worker fencing, planner, or provider inspection is involved.
+
+Revision detail adds `history` with scope
+`source-or-target-sessions-and-exact-target-attempts`, complete
+`preparations_present` / `attempts_present` booleans, and completeness
+`association-records-only`. Old revisions and tombstoned drafts remain readable.
+False presence describes retained identity associations, not universal absence
+across copied graphs or erased records. Lists remain bounded summaries.
+
+Each page obtains membership, presence, and private evidence in one set-based
+read-committed SELECT, optionally preceded by immutable parent admission. SQL
+guards identifiers at 2048 UTF-8 bytes (public grammar remains 512 characters),
+each private evidence blob at 64 KiB, and each receipt probe at two candidates.
+The owner validates all `limit+1` candidates, including hidden lookahead, and emits
+the last exposed cursor. Unsafe identity/tenant/paging evidence fails the whole
+page with a bounded error. Canonical owner-descriptor JSON using `ensure_ascii`,
+sorted keys, compact separators, UTF-8 and no newline is capped at 1 MiB; this is
+not a claim about complete HTTP/MCP wrapper or wire size.
+
+Pagination bounds returned data, not UNION deduplication or sorting cost. Existing
+source/target/timeline indexes and two partial receipt indexes support the query;
+owning Postgres tests retain representative EXPLAIN evidence without requiring an
+optimizer tree. Later pages see later commits; backdated rows before a cursor can
+be missed. Refresh/restart is a fresh traversal, not a historical snapshot.
 
 The transaction lock order is action idempotency key, operation session, workspace,
 then draft. Identical replay returns the original workspace/draft/revision/graph

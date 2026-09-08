@@ -1,6 +1,7 @@
 """Bounded saved-intent projections; graph redaction stays with graph reads."""
 from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftStore
-from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest
+from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest, RevisionReadScope
+from .revision_history import _RevisionHistoryReadProjection
 from .errors import ReadModelError
 from .models import FocusedDetailReadModel
 from .workspace_graph import _redact_graph_descriptor, _decode_valid_graph
@@ -8,10 +9,11 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 
 
 class _DesiredTopologyDraftReadProjection:
-    def __init__(self, require_workspace, graphs, store: DesiredTopologyDraftStore | None):
+    def __init__(self, require_workspace, graphs, store: DesiredTopologyDraftStore | None, history_store=None):
         self._workspace = require_workspace
         self._graphs = graphs
         self._store = store
+        self._history = _RevisionHistoryReadProjection(require_workspace, history_store)
 
     def _require_store(self):
         if self._store is None:
@@ -40,4 +42,5 @@ class _DesiredTopologyDraftReadProjection:
             raise ReadModelError("invalid draft graph reference")
         _decode_valid_graph(DEFAULT_GRAPH_CODEC, graph.graph_descriptor)
         return FocusedDetailReadModel(workspace_id, "desired-topology-draft-revision",
-            {**record.descriptor(), "graph_descriptor": _redact_graph_descriptor(graph.graph_descriptor)})
+            {**record.descriptor(), "graph_descriptor": _redact_graph_descriptor(graph.graph_descriptor),
+             "history": self._history.presence(RevisionReadScope(workspace_id, draft_id, revision))})

@@ -166,11 +166,17 @@ def _validate_start(result, command):
     session, action = result.session, result.action
     if (session.workspace_id != command.workspace_id or session.actor_id != command.actor_id
         or session.title != command.title or session.idempotency_key != command.idempotency_key.value
-        or dict(session.metadata) != dict(command.metadata)
-        or action.session_id != session.session_id or action.ordinal != 1
+        or dict(session.metadata) != dict(command.metadata)):
+        raise SavedPreparationError("saved preparation evidence is unavailable")
+    validate_saved_preparation_start(session, action)
+
+
+def validate_saved_preparation_start(session, action):
+    """Validate retained start evidence without replaying an operation command."""
+    if (action.session_id != session.session_id or action.ordinal != 1
         or action.action_type is not OperatorCommandKind.START_OPERATION_SESSION
-        or action.actor_id != command.actor_id or dict(action.payload) != {"workspace_id": command.workspace_id}
-        or action.idempotency_key != command.idempotency_key.value
+        or action.actor_id != session.actor_id or dict(action.payload) != {"workspace_id": session.workspace_id}
+        or action.idempotency_key != session.idempotency_key
         or action.intent_fingerprint != session.intent_fingerprint or action.created_at != session.created_at):
         raise SavedPreparationError("saved preparation evidence is unavailable")
 

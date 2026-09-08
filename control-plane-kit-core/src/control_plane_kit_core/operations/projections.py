@@ -24,6 +24,8 @@ class ReadProjectionKind(StrEnum):
     DESIRED_TOPOLOGY_DRAFTS = "desired-topology-drafts"
     DESIRED_TOPOLOGY_DRAFT_REVISIONS = "desired-topology-draft-revisions"
     DESIRED_TOPOLOGY_DRAFT_REVISION = "desired-topology-draft-revision"
+    DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS = "desired-topology-draft-revision-preparations"
+    DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS = "desired-topology-draft-revision-attempts"
     OPERATOR_OVERVIEW = "operator-overview"
     ACTIVITY_TIMELINE = "activity-timeline"
     OPEN_SESSIONS = "open-sessions"
@@ -460,6 +462,22 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
         paged=True,
         max_page_size=100,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision-preparations",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS,
+        "DesiredTopologyDraftRevisionPreparationsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=10,
+    ),
+    _ProjectionDefinition(
+        "read.desired-topology-draft-revision-attempts",
+        ReadProjectionKind.DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS,
+        "DesiredTopologyDraftRevisionAttemptsReadResponse",
+        ReadProjectionPolicy.REDACTED_PAGED_HISTORY,
+        paged=True,
+        max_page_size=10,
     ),
     _ProjectionDefinition(
         "read.desired-topology-draft-revisions",

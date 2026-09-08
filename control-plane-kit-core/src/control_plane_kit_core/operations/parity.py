@@ -896,6 +896,18 @@ _OPERATOR_READ_PROJECTIONS = (
         "DesiredTopologyDraftRevisionReadResponse",
     ),
     (
+        "read.desired-topology-draft-revision-preparations",
+        "read.desired-topology-draft-revision-preparations",
+        "list_desired_topology_draft_revision_preparations",
+        "DesiredTopologyDraftRevisionPreparationsReadResponse",
+    ),
+    (
+        "read.desired-topology-draft-revision-attempts",
+        "read.desired-topology-draft-revision-attempts",
+        "list_desired_topology_draft_revision_attempts",
+        "DesiredTopologyDraftRevisionAttemptsReadResponse",
+    ),
+    (
         "read.operator-overview",
         "read.operator-overview",
         "get_operator_overview",
