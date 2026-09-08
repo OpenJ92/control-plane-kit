@@ -64,6 +64,8 @@ class SecretUseIntent(StrEnum):
         "gateway.node-control-transit-signing-key"
     )
     WORKLOAD_NODE_CONTROL_SIGNING_KEY = "workload.node-control-signing-key"
+    SECRETS_CUSTODY_ROOT_KEY = "secrets.custody-root-key"
+    SECRETS_PROVIDER_CREDENTIALS_DOCUMENT = "secrets.provider-credentials-document"
 
 
 class SecretCustodyStatus(StrEnum):
