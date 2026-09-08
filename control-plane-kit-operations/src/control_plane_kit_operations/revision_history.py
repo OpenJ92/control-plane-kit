@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from control_plane_kit_operations.advancement import CurrentGraphAdvancementResult
+from control_plane_kit_operations.advancement import CurrentGraphAdvancementError, CurrentGraphAdvancementResult
+from control_plane_kit_operations.workflows import InvalidOperationCommand
 from control_plane_kit_operations.read_pages import (
     ReadPage, ReadPageRequest, RevisionReadScope, _canonical_instant, _general_identifier,
 )
@@ -80,7 +81,7 @@ def historical_advancement(*, workspace_id, session_id, plan_id, plan, request_i
         _general_identifier(result.action.action_id)
         # SQL evidence codecs produce the same closed microsecond UTC language.
         _canonical_instant(event.occurred_at)
-    except (ValueError, TypeError, KeyError, AttributeError):
+    except (CurrentGraphAdvancementError, InvalidOperationCommand, ValueError, TypeError, KeyError, AttributeError):
         return unavailable
     return {"state": "accepted", "receipt": {"event_id": event.event_id,
         "action_id": action.action_id, "occurred_at": event.occurred_at,
