@@ -64,6 +64,16 @@ that schema only when CPK's owned namespace is object-free. An already-current
 namespace is verified without mutation. Any other owned state fails with a
 bounded reset-required error; CPK does not infer or execute a repair.
 
+The current secret-use authorization constraint includes Core's existing
+`secrets.custody-root-key` and `secrets.provider-credentials-document` intents.
+Namespaces created with the earlier narrower constraint are noncurrent even
+when their rows would satisfy the new constraint. Installing newer code over
+those databases does not upgrade them: verification reports reset-required
+without changing their schema or records. A new deployment needs a fresh owned
+namespace; preserve valued data before any separately authorized reset or
+export/reset/import procedure. Retained uncertain runs must not be replayed as
+part of this schema change.
+
 This is deliberately package-local. It creates and verifies CPK's durable
 operations tables; it does not inspect, reset, or modify application schemas
 deployed by CPK.

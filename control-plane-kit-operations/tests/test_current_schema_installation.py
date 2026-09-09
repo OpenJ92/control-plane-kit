@@ -118,10 +118,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "37a48893471f491ed6257918132a36278833cfc2cddb2491ffaa58d68ff2d6c7"
+    "6dff163cf72add13406d168d8e7389cdada4e6885e345c2534307753c5d24f4c"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "64f42f37937dcbbc4c086089e52d78d227e65c36a8d94fb2397636d7c67e18ba"
+    "e1bc40971ae2299c62305abb572cc2dc610c83ccc10afbd5039aaa7d290fffe6"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -171,7 +171,7 @@ _OLD_INTENT_EXPRESSION = (
     "'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, "
     "'postgres.password'::text]))"
 )
-_INTENT_EXPRESSION = (
+_PRE_SECRETS_INTENT_EXPRESSION = (
     "(use_intent = ANY (ARRAY['application.control-token'::text, "
     "'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, "
     "'docker.local-socket-access-marker'::text, "
@@ -182,6 +182,20 @@ _INTENT_EXPRESSION = (
     "'postgres.password'::text, "
     "'gateway.node-control-transit-signing-key'::text, "
     "'workload.node-control-signing-key'::text]))"
+)
+_INTENT_EXPRESSION = (
+    "(use_intent = ANY (ARRAY['application.control-token'::text, "
+    "'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, "
+    "'docker.local-socket-access-marker'::text, "
+    "'docker.remote-tls.ca-certificate'::text, "
+    "'docker.remote-tls.client-certificate'::text, "
+    "'docker.remote-tls.client-key'::text, "
+    "'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, "
+    "'postgres.password'::text, "
+    "'gateway.node-control-transit-signing-key'::text, "
+    "'workload.node-control-signing-key'::text, "
+    "'secrets.custody-root-key'::text, "
+    "'secrets.provider-credentials-document'::text]))"
 )
 _TARGET_CONSTRAINTS = {
     "cpk_delegation_signing_keys_purpose_check": (
@@ -756,6 +770,31 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                     [("workspace-a", "Workspace A", "created")],
                 )
                 self._assert_calls_are_read_only(recorder.calls)
+
+    def test_pre_secrets_intent_constraint_is_reset_required_without_repair(self) -> None:
+        postgres.install_schema(self.connection)
+        self._seed_authority_vocabulary_rows()
+        self.connection.execute(
+            "ALTER TABLE cpk_secret_use_authorizations "
+            "DROP CONSTRAINT cpk_secret_use_authorizations_intent_check"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_secret_use_authorizations "
+            "ADD CONSTRAINT cpk_secret_use_authorizations_intent_check "
+            f"CHECK ({_PRE_SECRETS_INTENT_EXPRESSION})"
+        )
+        before_constraints = self._constraint_snapshot()
+        before_objects = self._object_identities()
+        before_rows = self._authority_rows()
+        recorder = _RecordingConnection(self.connection)
+
+        error = _captured_install_error(recorder)
+
+        self._assert_install_error(error, "operations schema reset is required")
+        self.assertEqual(self._constraint_snapshot(), before_constraints)
+        self.assertEqual(self._object_identities(), before_objects)
+        self.assertEqual(self._authority_rows(), before_rows)
+        self._assert_calls_are_read_only(recorder.calls)
 
     def test_current_reinstall_is_query_only_and_identity_stable(self) -> None:
         postgres.install_schema(self.connection)
