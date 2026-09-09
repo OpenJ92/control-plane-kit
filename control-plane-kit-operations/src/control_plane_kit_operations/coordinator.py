@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Literal, Mapping, Protocol
 
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
@@ -648,12 +648,17 @@ class RuntimeInterpreterDispatcher:
                     )
                 result = execute_with_authority(request, authority)
         except Exception:  # noqa: BLE001 - provider faults become direct uncertainty.
-            pass
-        if (
-            type(result) is not RuntimeEffectResult
-            or result.effect_id != request.effect_id
-        ):
-            return _uncertain_runtime_result(request)
+            return _uncertain_runtime_result(
+                request, boundary="interpreter", reason="exception",
+            )
+        if type(result) is not RuntimeEffectResult:
+            return _uncertain_runtime_result(
+                request, boundary="interpreter", reason="invalid-result-type",
+            )
+        if result.effect_id != request.effect_id:
+            return _uncertain_runtime_result(
+                request, boundary="interpreter", reason="effect-id-mismatch",
+            )
         return result
 
     def _authorize_secret_resolutions(
@@ -1148,12 +1153,18 @@ class ExecutionCoordinator:
                         request,
                     )
                 except Exception:  # noqa: BLE001 - provider faults become uncertainty.
-                    pass
-                if (
-                    type(runtime_result) is not RuntimeEffectResult
-                    or runtime_result.effect_id != request.effect_id
-                ):
-                    runtime_result = _uncertain_runtime_result(request)
+                    runtime_result = _uncertain_runtime_result(
+                        request, boundary="adapter", reason="exception",
+                    )
+                else:
+                    if type(runtime_result) is not RuntimeEffectResult:
+                        runtime_result = _uncertain_runtime_result(
+                            request, boundary="adapter", reason="invalid-result-type",
+                        )
+                    elif runtime_result.effect_id != request.effect_id:
+                        runtime_result = _uncertain_runtime_result(
+                            request, boundary="adapter", reason="effect-id-mismatch",
+                        )
                 outcome = ExecutionEffectOutcome(
                     attempt.state.identity,
                     attempt.state.request_fingerprint,
@@ -1810,12 +1821,16 @@ def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
 
 def _uncertain_runtime_result(
     request: RuntimeEffectRequest,
+    *,
+    boundary: Literal["interpreter", "adapter"],
+    reason: Literal["exception", "invalid-result-type", "effect-id-mismatch"],
 ) -> RuntimeEffectResult:
     return RuntimeEffectResult.uncertain(
         request.effect_id,
         RuntimeEffectFailure(
             "runtime.provider-result-unknown",
             "runtime provider result could not be admitted",
+            details={"boundary": boundary, "reason": reason},
         ),
     )
 

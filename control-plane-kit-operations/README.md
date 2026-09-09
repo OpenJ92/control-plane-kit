@@ -106,6 +106,23 @@ Operations defines the dispatcher protocols and application sequencing. The
 Python Docker SDK and Cloudflare client remain in
 `control-plane-kit-interpreters`.
 
+When an interpreter or its enclosing adapter raises an exception, returns the
+wrong result type, or returns a mismatched effect identity, Operations preserves
+an uncertain result with code `runtime.provider-result-unknown`. Its retained
+failure details contain only fixed categories, for example:
+
+```json
+{"boundary": "adapter", "reason": "exception"}
+```
+
+`boundary` is `interpreter` or `adapter`; `reason` is `exception`,
+`invalid-result-type`, or `effect-id-mismatch`. A valid inner result passes
+through the adapter unchanged. No exception text, class name, trace, or rejected
+result representation is retained. These details belong to the exact durable
+outcome; normalized public summaries may omit them. They identify a boundary,
+not a root cause or evidence that an effect is safe to retry. Historical
+outcomes are unchanged.
+
 ## Registrations And Authorities
 
 Workspace-scoped registration services admit bounded metadata for:
