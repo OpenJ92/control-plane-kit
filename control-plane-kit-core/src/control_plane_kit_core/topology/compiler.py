@@ -95,6 +95,7 @@ def _materialize_block(block: DeployBlock, runtime: RuntimeContext) -> Node:
         lifecycle=materialized.lifecycle,
         configuration_artifacts=materialized.configuration_artifacts,
         secret_deliveries=materialized.secret_deliveries,
+        runtime_authority_deliveries=getattr(materialized, "runtime_authority_deliveries", ()),
     )
 
 

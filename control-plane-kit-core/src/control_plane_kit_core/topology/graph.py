@@ -28,7 +28,10 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL, ResourceLifecycle
 from control_plane_kit_core.public_ingress import NamedPublicIngress
-from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityReference, RuntimeAuthorityAccessDelivery,
+    normalize_runtime_authority_deliveries,
+)
 from control_plane_kit_core.types import (
     BlockFamily,
     EndpointScope,
@@ -115,8 +118,11 @@ class Node:
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
     delegation_verifier_projection: DelegationVerifierProjection | None = None
+    runtime_authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "runtime_authority_deliveries",
+                           normalize_runtime_authority_deliveries(self.runtime_authority_deliveries))
         if "environment" in self.metadata:
             raise ValueError("node metadata must not contain environment values")
         if not isinstance(self.public_environment, tuple) or not all(
@@ -265,6 +271,10 @@ class Node:
             descriptor["delegation_verifier_projection"] = (
                 self.delegation_verifier_projection.descriptor()
             )
+        if self.runtime_authority_deliveries:
+            descriptor["runtime_authority_deliveries"] = [
+                delivery.descriptor() for delivery in self.runtime_authority_deliveries
+            ]
         return descriptor
 
 

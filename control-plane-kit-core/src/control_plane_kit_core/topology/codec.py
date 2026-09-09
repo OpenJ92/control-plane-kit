@@ -44,6 +44,7 @@ from control_plane_kit_core.node_control import (
 )
 from control_plane_kit_core.public_ingress import NamedPublicIngressCodec
 from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDeliveryCodec,
     RuntimeAuthorityReference,
     RuntimeAuthorityReferenceCodec,
     RuntimeEffectContractError,
@@ -269,7 +270,11 @@ class GraphDescriptorCodec:
                 raise MalformedGraphDescriptor(str(error)) from error
         self._validate(graph)
         encoded = self.encode(graph)
-        if encoded != _json_value(descriptor):
+        canonical_input = _json_value(descriptor)
+        for node in canonical_input.get("nodes", {}).values():
+            if node.get("runtime_authority_deliveries") == []:
+                node.pop("runtime_authority_deliveries")
+        if encoded != canonical_input:
             raise LossyGraphDescriptor("descriptor does not round-trip through the typed graph codec")
         return graph
 
@@ -381,6 +386,10 @@ class GraphDescriptorCodec:
             ),
             delegation_verifier_projection=_delegation_verifier_projection(
                 descriptor.get("delegation_verifier_projection")
+            ),
+            runtime_authority_deliveries=tuple(
+                RuntimeAuthorityAccessDeliveryCodec().decode(_mapping(value, "process delivery"))
+                for value in _list(descriptor.get("runtime_authority_deliveries", []))
             ),
         )
 

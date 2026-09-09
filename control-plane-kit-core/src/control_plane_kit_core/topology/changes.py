@@ -15,6 +15,7 @@ from control_plane_kit_core.environment import (
     SocketDerivedEnvironmentBinding,
 )
 from control_plane_kit_core.public_ingress import NamedPublicIngress
+from control_plane_kit_core.runtime_authority import RuntimeAuthorityAccessDelivery
 from control_plane_kit_core.secrets import SecretDelivery, secret_delivery_sort_key
 from control_plane_kit_core.topology.graph import (
     Edge,
@@ -60,6 +61,7 @@ class StructuralField(StrEnum):
     NODE_METADATA = "node-metadata"
     CONFIGURATION_ARTIFACTS = "configuration-artifacts"
     SECRET_DELIVERIES = "secret-deliveries"
+    RUNTIME_AUTHORITY_DELIVERIES = "runtime-authority-deliveries"
     DELEGATION_AUTHORITIES = "delegation-authorities"
     DELEGATION_VERIFIER_PROJECTION = "delegation-verifier-projection"
     RESOURCE_LIFECYCLE = "resource-lifecycle"
@@ -165,6 +167,30 @@ class SecretDeliveriesValue:
             descriptor["reference_id"] = _REDACTED
             descriptors.append(descriptor)
         return descriptors
+
+
+@dataclass(frozen=True)
+class RuntimeAuthorityDeliveriesValue:
+    values: tuple[RuntimeAuthorityAccessDelivery, ...]
+
+    def descriptor(self) -> list[dict[str, object]]:
+        return [
+            {
+                "authority_ref": value.authority_ref.descriptor(),
+                "delivery_kind": value.delivery_kind.value,
+                "secret_references": [
+                    {
+                        "label": reference.label,
+                        "reference_id": _REDACTED,
+                        "reference_fingerprint": hashlib.sha256(
+                            reference.reference.reference_id.encode("utf-8")
+                        ).hexdigest(),
+                    }
+                    for reference in value.secret_references
+                ],
+            }
+            for value in sorted(self.values)
+        ]
 
 
 @dataclass(frozen=True)
@@ -291,6 +317,9 @@ class NodeValue:
             "secret_deliveries": SecretDeliveriesValue(
                 self.node.secret_deliveries
             ).descriptor(),
+            **({"runtime_authority_deliveries": RuntimeAuthorityDeliveriesValue(
+                self.node.runtime_authority_deliveries
+            ).descriptor()} if self.node.runtime_authority_deliveries else {}),
             "delegation_verifier_projection": DelegationVerifierProjectionValue(
                 self.node.delegation_verifier_projection
             ).descriptor(),
@@ -335,6 +364,7 @@ DiffValue: TypeAlias = (
     | EnvironmentBindingsValue
     | ConfigurationArtifactsValue
     | SecretDeliveriesValue
+    | RuntimeAuthorityDeliveriesValue
     | EndpointValue
     | SocketContractValue
     | BlockSpecValue
