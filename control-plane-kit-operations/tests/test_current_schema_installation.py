@@ -203,6 +203,7 @@ _TARGET_CONSTRAINTS = {
         _OLD_INTENT_EXPRESSION,
     ),
 }
+_PRE_SECRETS_INTENT_EXPRESSION = _INTENT_EXPRESSION
 _APPROVAL_SCOPE_VALUES = (
     "hub:instance:create",
     "hub:instance:read",
@@ -756,6 +757,31 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                     [("workspace-a", "Workspace A", "created")],
                 )
                 self._assert_calls_are_read_only(recorder.calls)
+
+    def test_pre_secrets_intent_constraint_is_reset_required_without_repair(self) -> None:
+        postgres.install_schema(self.connection)
+        self._seed_authority_vocabulary_rows()
+        self.connection.execute(
+            "ALTER TABLE cpk_secret_use_authorizations "
+            "DROP CONSTRAINT cpk_secret_use_authorizations_intent_check"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_secret_use_authorizations "
+            "ADD CONSTRAINT cpk_secret_use_authorizations_intent_check "
+            f"CHECK ({_PRE_SECRETS_INTENT_EXPRESSION})"
+        )
+        before_constraints = self._constraint_snapshot()
+        before_objects = self._object_identities()
+        before_rows = self._authority_rows()
+        recorder = _RecordingConnection(self.connection)
+
+        error = _captured_install_error(recorder)
+
+        self._assert_install_error(error, "operations schema reset is required")
+        self.assertEqual(self._constraint_snapshot(), before_constraints)
+        self.assertEqual(self._object_identities(), before_objects)
+        self.assertEqual(self._authority_rows(), before_rows)
+        self._assert_calls_are_read_only(recorder.calls)
 
     def test_current_reinstall_is_query_only_and_identity_stable(self) -> None:
         postgres.install_schema(self.connection)
