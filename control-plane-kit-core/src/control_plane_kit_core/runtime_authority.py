@@ -175,6 +175,20 @@ class RuntimeAuthorityAccessDelivery:
         }
 
 
+def normalize_runtime_authority_deliveries(
+    values: tuple[RuntimeAuthorityAccessDelivery, ...],
+) -> tuple[RuntimeAuthorityAccessDelivery, ...]:
+    """Canonicalize explicit process delivery declarations; never infer access."""
+    if not isinstance(values, tuple) or not all(
+        isinstance(value, RuntimeAuthorityAccessDelivery) for value in values
+    ):
+        raise RuntimeEffectContractError("process deliveries must be a typed tuple")
+    references = tuple(value.authority_ref for value in values)
+    if len(set(references)) != len(references):
+        raise RuntimeEffectContractError("process deliveries must be unique by authority")
+    return tuple(sorted(values))
+
+
 class RuntimeAuthorityAccessDeliveryCodec:
     """Strict codec for runtime authority access delivery contracts."""
 

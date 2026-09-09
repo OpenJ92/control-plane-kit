@@ -35,6 +35,10 @@ from control_plane_kit_core.secrets import (
     secret_delivery_from_descriptor,
     secret_delivery_sort_key,
 )
+from control_plane_kit_core.runtime_authority import (
+    RuntimeAuthorityAccessDelivery,
+    normalize_runtime_authority_deliveries,
+)
 from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
 from control_plane_kit_core.types import Protocol, SocketBinding
 from control_plane_kit_core.verification import VerificationContract, expected_protocols
@@ -1288,8 +1292,11 @@ class ProductInstanceConfiguration:
     configuration_artifacts: tuple[ConfigurationArtifact, ...] = ()
     secret_deliveries: tuple[SecretDelivery, ...] = ()
     requirement_secret_deliveries: tuple[RequirementSecretDelivery, ...] = ()
+    runtime_authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "runtime_authority_deliveries",
+                           normalize_runtime_authority_deliveries(self.runtime_authority_deliveries))
         public_environment = tuple(self.public_environment)
         if not all(
             isinstance(value, PublicStaticEnvironmentBinding)
@@ -1373,6 +1380,7 @@ class ProductMaterializedBlock:
     lifecycle: ResourceLifecycle
     configuration_artifacts: tuple[ConfigurationArtifact, ...]
     secret_deliveries: tuple[SecretDelivery, ...]
+    runtime_authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1419,6 +1427,7 @@ class OciContainerProductImplementation:
             lifecycle=self.document.product.runtime_contract.lifecycle,
             configuration_artifacts=self.configuration.configuration_artifacts,
             secret_deliveries=self.configuration.secret_deliveries,
+            runtime_authority_deliveries=self.configuration.runtime_authority_deliveries,
         )
 
 
