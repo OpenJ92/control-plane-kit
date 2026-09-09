@@ -63,14 +63,13 @@ class NodeAuthorityDeliveryTests(unittest.TestCase):
         descriptor = GraphDescriptorCodec().encode(graph())
         self.assertNotIn("runtime_authority_deliveries", canonical(descriptor))
         fixture = Path(__file__).parent / "fixtures" / "node_authority_empty_graph.json"
-        if fixture.exists():
-            frozen = fixture.read_text().strip()
-            self.assertEqual(canonical(descriptor), frozen)
-            self.assertEqual(canonical(GraphDescriptorCodec().encode(
-                GraphDescriptorCodec().decode(json.loads(frozen)))), frozen)
-        else:
-            print("NODE_AUTHORITY_EMPTY_BASELINE=" + canonical(descriptor), flush=True)
-        self.assertEqual(len(hashlib.sha256(canonical(descriptor).encode()).hexdigest()), 64)
+        # Captured from unchanged production at 0c53845 during the owning red gate.
+        frozen = fixture.read_text().strip()
+        self.assertEqual(canonical(descriptor), frozen)
+        self.assertEqual(canonical(GraphDescriptorCodec().encode(
+            GraphDescriptorCodec().decode(json.loads(frozen)))), frozen)
+        self.assertEqual(hashlib.sha256(canonical(descriptor).encode()).digest(),
+                         hashlib.sha256(frozen.encode()).digest())
 
     def test_only_explicit_instance_receives_delivery(self):
         desired = graph(deliveries=(DELIVERY,))
