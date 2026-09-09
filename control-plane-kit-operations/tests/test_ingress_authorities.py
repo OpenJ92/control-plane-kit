@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 import unittest
 
@@ -16,6 +17,7 @@ from control_plane_kit_operations.ingress_authorities import (
     CloudflareOwnedIngressResource,
     CloudflareTunnelTokenDeliveryStep,
     CloudflareZoneIngressAuthority,
+    CloudflareZoneIngressAuthorityCodec,
     GeneratedSecretPurpose,
     GeneratedSecretRecordingConflict,
     IngressAuthorityAuthorizationDenied,
@@ -48,6 +50,29 @@ from control_plane_kit_operations.read_pages import (
 
 
 class IngressAuthorityValueTests(unittest.TestCase):
+    def test_exact_hostname_authority_roundtrips_and_matches_only_its_host(self) -> None:
+        authority = replace(self.cloudflare_authority(),
+                            allowed_hostname_pattern="cpk-child.openj92.dev")
+        codec = CloudflareZoneIngressAuthorityCodec()
+        self.assertEqual(codec.decode(codec.encode(authority)), authority)
+        self.assertTrue(authority.allows_hostname("cpk-child.openj92.dev"))
+        for hostname in ("cpk-other.openj92.dev", "cpk-child-2.openj92.dev",
+                         "nested.cpk-child.openj92.dev", "cpk-child.example.com"):
+            with self.subTest(hostname=hostname):
+                self.assertFalse(authority.allows_hostname(hostname))
+
+    def test_exact_hostname_support_preserves_zone_and_pattern_restrictions(self) -> None:
+        for pattern in ("openj92.dev", "cpk-child.example.com", "nested.cpk-child.openj92.dev",
+                        "CPK-child.openj92.dev", "-child.openj92.dev", "child-.openj92.dev",
+                        "child..openj92.dev", "child.openj92.dev.", "*.openj92.dev",
+                        "cpk-**.openj92.dev"):
+            with self.subTest(pattern=pattern):
+                with self.assertRaises(IngressAuthorityRegistrationError):
+                    replace(self.cloudflare_authority(), allowed_hostname_pattern=pattern)
+        wildcard = self.cloudflare_authority()
+        self.assertTrue(wildcard.allows_hostname("cpk-gateway-001.openj92.dev"))
+        self.assertFalse(wildcard.allows_hostname("cpk-child.openj92.dev"))
+
     def test_cloudflare_zone_authority_descriptor_is_secret_free(self) -> None:
         authority = CloudflareZoneIngressAuthority(
             account_id="account-openj92",
@@ -436,6 +461,26 @@ class IngressAuthorityStoreTests(unittest.TestCase):
 
     def unit_of_work(self) -> PostgresUnitOfWork:
         return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
+
+    def test_exact_hostname_registration_preserves_its_narrow_authority(self) -> None:
+        authority = replace(self.cloudflare_authority(),
+                            allowed_hostname_pattern="cpk-child.openj92.dev")
+        registered = IngressAuthorityRegistrationService(self.unit_of_work).register(
+            RegisterIngressAuthorityCommand(
+                workspace_id="workspace-a",
+                authority_ref=IngressAuthorityReference("exact-child-ingress"),
+                authority=authority,
+                admitted_by="operator-a",
+                admitted_at="2026-07-27T22:50:00.000001Z",
+                actor_scopes=(PolicyScope.INGRESS_AUTHORITY_REGISTER,),
+            )
+        )
+        with self.unit_of_work() as unit_of_work:
+            stored, = unit_of_work.stores.ingress_authorities.list_active("workspace-a")
+            self.assertEqual(stored, registered)
+            self.assertEqual(stored.authority, authority)
+            self.assertTrue(stored.authority.allows_hostname("cpk-child.openj92.dev"))
+            self.assertFalse(stored.authority.allows_hostname("cpk-other.openj92.dev"))
 
     def test_service_registers_workspace_scoped_ingress_authority(self) -> None:
         service = IngressAuthorityRegistrationService(self.unit_of_work)
