@@ -301,6 +301,17 @@ class PostgresEffectOutcomeStoreTests(
     def test_uncertain_direct_snapshot_survives_later_current_recovery(self) -> None:
         self.require_store()
         story = self.story_named("execution-uncertain")
+        original_fingerprint = story.fingerprint
+        details = {"boundary": "adapter", "reason": "exception"}
+        story = replace(
+            story,
+            value=replace(
+                story.value,
+                failure=replace(story.value.failure, details=details),
+            ),
+        )
+        story = replace(story, attempt=self.direct_attempt_for(story))
+        self.assertNotEqual(story.fingerprint, original_fingerprint)
         record = self.record_for(story)
         self.assertEqual(self.persist_outcome(record), record)
         recovered = self.recover_current_attempt(record)
@@ -312,6 +323,8 @@ class PostgresEffectOutcomeStoreTests(
                 record.attempt.latest_transition_event.event_id,
             )
         self.assertEqual(loaded, record)
+        self.assertEqual(loaded.outcome.result.failure.details, details)
+        self.assertEqual(loaded.outcome.outcome_fingerprint, story.fingerprint)
         self.assertIsNone(loaded.attempt.state.recovery_decision)
         self.assertEqual(loaded.attempt.state.status.value, "uncertain")
 

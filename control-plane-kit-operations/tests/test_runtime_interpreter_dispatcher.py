@@ -315,6 +315,10 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                 dispatches.append("eq")
                 raise AssertionError("hostile runtime result equality dispatched")
 
+            def __repr__(self):
+                dispatches.append("repr")
+                raise AssertionError("hostile runtime result repr dispatched")
+
         lawful = RuntimeEffectResult.succeeded(request.effect_id)
         hostile = object.__new__(HostileResult)
         for item in fields(RuntimeEffectResult):
@@ -328,11 +332,17 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
             (
                 "wrong-arm",
                 RecordingInterpreter("docker", ActivityExecutionOutcome.succeeded()),
+                "invalid-result-type",
             ),
-            ("hostile-subclass", RecordingInterpreter("docker", hostile)),
-            ("provider-fault", RaisingInterpreter()),
+            ("hostile-subclass", RecordingInterpreter("docker", hostile), "invalid-result-type"),
+            ("provider-fault", RaisingInterpreter(), "exception"),
+            (
+                "wrong-effect-id",
+                RecordingInterpreter("docker", RuntimeEffectResult.succeeded("other-effect")),
+                "effect-id-mismatch",
+            ),
         )
-        for label, interpreter in cases:
+        for label, interpreter, reason in cases:
             with self.subTest(case=label):
                 dispatches.clear()
                 dispatcher = RuntimeInterpreterDispatcher(
@@ -350,6 +360,10 @@ class RuntimeInterpreterDispatcherTests(unittest.TestCase):
                 self.assertIsNotNone(result.failure)
                 assert result.failure is not None
                 self.assertEqual(result.failure.code, "runtime.provider-result-unknown")
+                self.assertEqual(
+                    result.failure.details,
+                    {"boundary": "interpreter", "reason": reason},
+                )
                 rendered = f"{result!r} {result.failure!r}"
                 self.assertNotIn("provider-secret-canary", rendered)
                 self.assertEqual(dispatches, [])
