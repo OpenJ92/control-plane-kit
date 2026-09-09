@@ -630,6 +630,7 @@ class RuntimeInterpreterDispatcher:
                 runtime_kind=runtime_kind,
             )
         result = None
+        uncertainty_reason = None
         try:
             if authority is None:
                 result = interpreter.execute(request)
@@ -648,12 +649,16 @@ class RuntimeInterpreterDispatcher:
                     )
                 result = execute_with_authority(request, authority)
         except Exception:  # noqa: BLE001 - provider faults become direct uncertainty.
-            pass
-        if (
-            type(result) is not RuntimeEffectResult
-            or result.effect_id != request.effect_id
-        ):
-            return _uncertain_runtime_result(request)
+            uncertainty_reason = "exception"
+        else:
+            if type(result) is not RuntimeEffectResult:
+                uncertainty_reason = "invalid-result-type"
+            elif result.effect_id != request.effect_id:
+                uncertainty_reason = "effect-id-mismatch"
+        if uncertainty_reason is not None:
+            return _uncertain_runtime_result(
+                request, boundary="interpreter", reason=uncertainty_reason,
+            )
         return result
 
     def _authorize_secret_resolutions(
@@ -1142,18 +1147,23 @@ class ExecutionCoordinator:
                     secret_resolution_grants=(),
                 )
                 runtime_result = None
+                uncertainty_reason = None
                 try:
                     runtime_result = self._adapter.execute_runtime(
                         realization,
                         request,
                     )
                 except Exception:  # noqa: BLE001 - provider faults become uncertainty.
-                    pass
-                if (
-                    type(runtime_result) is not RuntimeEffectResult
-                    or runtime_result.effect_id != request.effect_id
-                ):
-                    runtime_result = _uncertain_runtime_result(request)
+                    uncertainty_reason = "exception"
+                else:
+                    if type(runtime_result) is not RuntimeEffectResult:
+                        uncertainty_reason = "invalid-result-type"
+                    elif runtime_result.effect_id != request.effect_id:
+                        uncertainty_reason = "effect-id-mismatch"
+                if uncertainty_reason is not None:
+                    runtime_result = _uncertain_runtime_result(
+                        request, boundary="adapter", reason=uncertainty_reason,
+                    )
                 outcome = ExecutionEffectOutcome(
                     attempt.state.identity,
                     attempt.state.request_fingerprint,
@@ -1810,12 +1820,16 @@ def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
 
 def _uncertain_runtime_result(
     request: RuntimeEffectRequest,
+    *,
+    boundary: str,
+    reason: str,
 ) -> RuntimeEffectResult:
     return RuntimeEffectResult.uncertain(
         request.effect_id,
         RuntimeEffectFailure(
             "runtime.provider-result-unknown",
             "runtime provider result could not be admitted",
+            details={"boundary": boundary, "reason": reason},
         ),
     )
 

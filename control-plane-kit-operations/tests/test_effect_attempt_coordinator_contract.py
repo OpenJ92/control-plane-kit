@@ -27,7 +27,7 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_fingerprint,
     runtime_effect_intent_for_request,
 )
-from control_plane_kit_core.runtime_effects import RuntimeEffectResult
+from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionAdapter,
     ActivityExecutionDispatcher,
@@ -1082,25 +1082,41 @@ class EffectAttemptCoordinatorContractTests(
 
     def test_adapter_fault_and_wrong_arm_become_one_direct_uncertain_fold(self) -> None:
         started = self.newly_started()
-        cases = (
-            ("raised", RuntimeError("provider-secret-canary")),
-            ("wrong-arm", ActivityExecutionOutcome.succeeded()),
+        inner_result = RuntimeEffectResult.uncertain(
+            started.attempt.original_start_event.event_id,
+            RuntimeEffectFailure(
+                "runtime.provider-result-unknown",
+                "runtime provider result could not be admitted",
+                details={"boundary": "interpreter", "reason": "exception"},
+            ),
         )
-        for label, adapter_value in cases:
+        cases = (
+            ("raised", RuntimeError("provider-secret-canary"), "adapter", "exception"),
+            ("wrong-arm", ActivityExecutionOutcome.succeeded(), "adapter", "invalid-result-type"),
+            ("wrong-effect-id", RuntimeEffectResult.succeeded("other-effect"), "adapter", "effect-id-mismatch"),
+            ("inner-uncertainty", inner_result, "interpreter", "exception"),
+        )
+        for label, adapter_value, boundary, reason in cases:
             with self.subTest(case=label):
+                start = RecordingStartService(started)
+                adapter = RecordingCoordinatorAdapter(adapter_value)
+                reconciliation = RecordingReconciliationService()
                 fold = RecordingFoldService(
                     lambda command: self.fold_result_for(command, started)
                 )
                 coordinator = self.db_free_coordinator(
-                    start_service=RecordingStartService(started),
+                    start_service=start,
                     fold_service=fold,
-                    reconciliation_service=RecordingReconciliationService(),
-                    adapter=RecordingCoordinatorAdapter(adapter_value),
+                    reconciliation_service=reconciliation,
+                    adapter=adapter,
                 )
 
                 outcome = coordinator.execute(self.coordinator_command())
 
                 self.assertEqual(outcome.effects_attempted, 1)
+                self.assertEqual(len(start.commands), 1)
+                self.assertEqual(len(adapter.runtime_calls), 1)
+                self.assertEqual(reconciliation.commands, [])
                 self.assertEqual(len(fold.commands), 1)
                 result = fold.commands[0].outcome.result
                 self.assertIs(type(result), RuntimeEffectResult)
@@ -1112,6 +1128,9 @@ class EffectAttemptCoordinatorContractTests(
                 self.assertIsNotNone(result.failure)
                 assert result.failure is not None
                 self.assertEqual(result.failure.code, "runtime.provider-result-unknown")
+                self.assertEqual(result.failure.details, {"boundary": boundary, "reason": reason})
+                if label == "inner-uncertainty":
+                    self.assertEqual(result, inner_result)
                 self.assertNotIn("provider-secret-canary", repr(result))
                 self.assertEqual(coordinator.legacy_writes, [])
                 self.assertEqual(coordinator.effect_ledger, [])
