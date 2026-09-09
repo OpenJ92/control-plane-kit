@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Literal, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
@@ -630,6 +630,7 @@ class RuntimeInterpreterDispatcher:
                 runtime_kind=runtime_kind,
             )
         result = None
+        uncertainty_reason = None
         try:
             if authority is None:
                 result = interpreter.execute(request)
@@ -648,16 +649,15 @@ class RuntimeInterpreterDispatcher:
                     )
                 result = execute_with_authority(request, authority)
         except Exception:  # noqa: BLE001 - provider faults become direct uncertainty.
+            uncertainty_reason = "exception"
+        else:
+            if type(result) is not RuntimeEffectResult:
+                uncertainty_reason = "invalid-result-type"
+            elif result.effect_id != request.effect_id:
+                uncertainty_reason = "effect-id-mismatch"
+        if uncertainty_reason is not None:
             return _uncertain_runtime_result(
-                request, boundary="interpreter", reason="exception",
-            )
-        if type(result) is not RuntimeEffectResult:
-            return _uncertain_runtime_result(
-                request, boundary="interpreter", reason="invalid-result-type",
-            )
-        if result.effect_id != request.effect_id:
-            return _uncertain_runtime_result(
-                request, boundary="interpreter", reason="effect-id-mismatch",
+                request, boundary="interpreter", reason=uncertainty_reason,
             )
         return result
 
@@ -1147,24 +1147,23 @@ class ExecutionCoordinator:
                     secret_resolution_grants=(),
                 )
                 runtime_result = None
+                uncertainty_reason = None
                 try:
                     runtime_result = self._adapter.execute_runtime(
                         realization,
                         request,
                     )
                 except Exception:  # noqa: BLE001 - provider faults become uncertainty.
-                    runtime_result = _uncertain_runtime_result(
-                        request, boundary="adapter", reason="exception",
-                    )
+                    uncertainty_reason = "exception"
                 else:
                     if type(runtime_result) is not RuntimeEffectResult:
-                        runtime_result = _uncertain_runtime_result(
-                            request, boundary="adapter", reason="invalid-result-type",
-                        )
+                        uncertainty_reason = "invalid-result-type"
                     elif runtime_result.effect_id != request.effect_id:
-                        runtime_result = _uncertain_runtime_result(
-                            request, boundary="adapter", reason="effect-id-mismatch",
-                        )
+                        uncertainty_reason = "effect-id-mismatch"
+                if uncertainty_reason is not None:
+                    runtime_result = _uncertain_runtime_result(
+                        request, boundary="adapter", reason=uncertainty_reason,
+                    )
                 outcome = ExecutionEffectOutcome(
                     attempt.state.identity,
                     attempt.state.request_fingerprint,
@@ -1822,8 +1821,8 @@ def _require_operate_scope(authority: ExecutionWorkerAuthority) -> None:
 def _uncertain_runtime_result(
     request: RuntimeEffectRequest,
     *,
-    boundary: Literal["interpreter", "adapter"],
-    reason: Literal["exception", "invalid-result-type", "effect-id-mismatch"],
+    boundary: str,
+    reason: str,
 ) -> RuntimeEffectResult:
     return RuntimeEffectResult.uncertain(
         request.effect_id,
