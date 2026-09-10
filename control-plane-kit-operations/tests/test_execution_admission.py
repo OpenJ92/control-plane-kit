@@ -250,6 +250,16 @@ class ExecutionAdmissionTests(unittest.TestCase):
         admission, command = self._seed_authority_delivery_plan()
         accepted = self.admission_service("delivery-execution", "delivery-action").execute(command)
         with self.unit_of_work() as unit_of_work:
+            approved_plan = unit_of_work.stores.activity_history.get_plan("delivery-plan")
+        # A distinct approved plan isolates revoked delivery admission from the
+        # existing one-active-request-per-plan constraint. Keep the first receipt.
+        self.seed_plan_truth(
+            plan_id="revoked-plan", approval_request_id="revoked-approval",
+            approval_decision_id="revoked-decision", plan=approved_plan.plan,
+            base_graph_id=approved_plan.base_graph_id,
+            desired_graph_id=approved_plan.desired_graph_id,
+        )
+        with self.unit_of_work() as unit_of_work:
             unit_of_work.stores.runtime_authority_deliveries.revoke(
                 "workspace-a", admission.authority_ref)
             unit_of_work.commit()
@@ -258,7 +268,7 @@ class ExecutionAdmissionTests(unittest.TestCase):
         with self.assertRaises(ExecutionAdmissionDenied):
             self.admission_service("rejected-execution", "rejected-action").execute(
                 self.command(
-                    plan_id="delivery-plan", approval_request_id="delivery-approval",
+                    plan_id="revoked-plan", approval_request_id="revoked-approval",
                     scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE),
                     key="fresh-after-revocation",
                 )

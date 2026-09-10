@@ -990,7 +990,7 @@ def _admitted_node_delivery(delivery=None) -> RegisteredRuntimeAuthorityDelivery
 def _authority_recipient_graph(delivery) -> DeploymentGraph:
     original = _graph(authority_ref=delivery.authority_ref)
     nodes = {
-        name: replace(original.node("api"), node_id=name,
+        name: replace(original.node("api"), node_id=name, block_spec=BlockSpec(name),
                       runtime_authority_deliveries=(delivery,) if name == "controller" else ())
         for name in ("controller", "database", "custody")
     }

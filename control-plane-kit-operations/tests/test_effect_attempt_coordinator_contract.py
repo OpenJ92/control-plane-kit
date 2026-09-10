@@ -940,7 +940,7 @@ class EffectAttemptCoordinatorContractTests(
         graph = _graph(authority_ref=admitted.authority_ref)
         desired = replace(graph, nodes={"api": replace(
             graph.node("api"), runtime_authority_deliveries=(admitted.delivery,))})
-        start = RecordingStartService()
+        start = RecordingStartService(EffectAttemptStartDenied())
         fold = RecordingFoldService()
         reconcile = RecordingReconciliationService()
         adapter = RecordingCoordinatorAdapter()
@@ -955,9 +955,10 @@ class EffectAttemptCoordinatorContractTests(
             desired_graph=_context(desired_graph=desired).desired_graph,
             runtime_authority_deliveries=(),
         )
-        with self.assertRaises(InvalidOperationCommand):
+        with self.assertRaises((InvalidOperationCommand, ExecutionCoordinatorDenied)) as raised:
             coordinator.execute(self.coordinator_command())
         self.assertEqual(start.commands, [])
+        self.assertIsInstance(raised.exception, InvalidOperationCommand)
         self.assertEqual(fold.commands, [])
         self.assertEqual(reconcile.commands, [])
         self.assertEqual(adapter.runtime_calls, [])
