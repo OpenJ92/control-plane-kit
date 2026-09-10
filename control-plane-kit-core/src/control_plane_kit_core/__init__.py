@@ -320,6 +320,11 @@ from control_plane_kit_core.public_ingress import (
     PublicIngressTarget,
     PublicIngressTargetCodec,
 )
+from control_plane_kit_core.runtime_authority import (
+    RemoteDockerTlsConnectionAdmission,
+    runtime_connection_secret_uses,
+    validate_runtime_connection_grants,
+)
 from control_plane_kit_core.runtime_effects import (
     GatewayHttpTarget,
     GatewayPostgresTarget,
@@ -589,6 +594,9 @@ __all__ = [
     "PublicIngressTargetCodec",
     "ImagePullAuthority",
     "ImagePullAuthorityCodec",
+    "RemoteDockerTlsConnectionAdmission",
+    "runtime_connection_secret_uses",
+    "validate_runtime_connection_grants",
     "RuntimeAuthorityAccessDelivery",
     "RuntimeAuthorityAccessDeliveryCodec",
     "RuntimeAuthorityAccessDeliveryKind",
