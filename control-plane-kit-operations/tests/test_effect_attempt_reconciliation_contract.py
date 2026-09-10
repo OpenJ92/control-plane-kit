@@ -633,6 +633,7 @@ class EffectAttemptReconciliationContractTests(
                 "control_plane_kit_core.operations",
                 "control_plane_kit_core.operations.lifecycle",
                 "control_plane_kit_core.policies",
+                "control_plane_kit_core.runtime_authority",
                 "control_plane_kit_core.runtime_effect_observation",
                 "control_plane_kit_core.secrets",
                 "control_plane_kit_operations.effect_attempt_fold",
