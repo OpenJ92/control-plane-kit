@@ -24,7 +24,11 @@ from control_plane_kit_core.planning import (
     ActivityPlan,
     NodeTarget,
     PlannedActivity,
+    ReconcileNode,
+    RemoveNodeResource,
     StartNode,
+    StartRuntime,
+    StopNode,
     StopRuntime,
     RuntimeTarget,
 )
@@ -51,6 +55,7 @@ from control_plane_kit_core.products import (
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDelivery,
     RuntimeAuthorityAccessDeliveryKind,
+    RuntimeAuthorityDeliverySecretReference,
     RuntimeAuthorityReference,
 )
 from control_plane_kit_core.runtime_effect_observation import (
@@ -114,6 +119,7 @@ from control_plane_kit_operations.runtime_effects import (
 )
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthorityDelivery,
+    RegisteredRuntimeAuthorityDeliveryStatus,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
@@ -421,7 +427,7 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
         self.assertNotIn("tcp://", repr(request.descriptor()))
 
-    def test_context_carries_matching_authority_delivery_without_socket_material(self) -> None:
+    def test_registration_alone_does_not_deliver_process_authority(self) -> None:
         delivery = RegisteredRuntimeAuthorityDelivery.from_delivery(
             workspace_id="workspace-a",
             delivery=RuntimeAuthorityAccessDelivery(
@@ -440,12 +446,120 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         request = runtime_effect_request_for_context(context)
 
         self.assertEqual(request.authority_ref, RuntimeAuthorityReference("local-docker"))
-        self.assertEqual(
-            tuple(value.delivery_kind for value in request.authority_deliveries),
-            (RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,),
-        )
+        self.assertEqual(request.authority_deliveries, ())
         self.assertNotIn("/var/run/docker.sock", repr(request.descriptor()))
         self.assertNotIn("unix://", repr(request.descriptor()))
+
+    def test_only_declared_recipient_receives_exact_admitted_material(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _authority_recipient_graph(admitted.delivery)
+        for operation_type in (StartNode, ReconcileNode):
+            for node_id in ("controller", "database", "custody"):
+                with self.subTest(operation=operation_type, node=node_id):
+                    context = _context(
+                        desired_graph=graph,
+                        activity=PlannedActivity(ActivityId("selected-node"),
+                                                 operation_type(NodeTarget(node_id))),
+                        runtime_authority_deliveries=(admitted,),
+                    )
+                    request = runtime_effect_request_for_context(context)
+                    expected = (admitted.delivery,) if node_id == "controller" else ()
+                    self.assertEqual(request.authority_deliveries, expected)
+                    self.assertEqual(request.products[0].node_id, node_id)
+                    self.assertEqual(request.products[0].runtime_authority_deliveries, expected)
+                    self.assertNotIn("/var/run/docker.sock", repr(request.descriptor()))
+
+    def test_requested_delivery_requires_exact_active_workspace_admission(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _authority_recipient_graph(admitted.delivery)
+        different_kind = replace(
+            admitted.delivery,
+            delivery_kind=RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
+            secret_references=(RuntimeAuthorityDeliverySecretReference(
+                "client-key", SecretReference("secret://example/client/key")),),
+        )
+        cases = {
+            "missing": (),
+            "revoked": (replace(admitted, status=RegisteredRuntimeAuthorityDeliveryStatus.REVOKED),),
+            "foreign workspace": (replace(admitted, workspace_id="workspace-other"),),
+            "different material": (_admitted_node_delivery(different_kind),),
+            "different authority": (_admitted_node_delivery(replace(
+                admitted.delivery, authority_ref=RuntimeAuthorityReference("other-docker"))),),
+        }
+        for label, admissions in cases.items():
+            with self.subTest(case=label):
+                with self.assertRaises(InvalidOperationCommand):
+                    context = _context(
+                        desired_graph=graph,
+                        activity=PlannedActivity(ActivityId("start-controller"),
+                                                 StartNode(NodeTarget("controller"))),
+                        runtime_authority_deliveries=admissions,
+                    )
+                    runtime_effect_request_for_context(context)
+
+    def test_admission_for_reference_does_not_authorize_different_secret_reference(self) -> None:
+        delivery = RuntimeAuthorityAccessDelivery(
+            RuntimeAuthorityReference("local-docker"),
+            RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
+            (RuntimeAuthorityDeliverySecretReference(
+                "client-key", SecretReference("secret://example/client/one")),),
+        )
+        changed = replace(delivery, secret_references=(RuntimeAuthorityDeliverySecretReference(
+            "client-key", SecretReference("secret://example/client/two")),))
+        context = _context(
+            desired_graph=_authority_recipient_graph(changed),
+            activity=PlannedActivity(ActivityId("start-controller"),
+                                     StartNode(NodeTarget("controller"))),
+            runtime_authority_deliveries=(_admitted_node_delivery(delivery),),
+        )
+        with self.assertRaises(InvalidOperationCommand) as raised:
+            runtime_effect_request_for_context(context)
+        self.assertNotIn("secret://", str(raised.exception))
+
+    def test_declared_delivery_must_match_enclosing_runtime_authority(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _authority_recipient_graph(admitted.delivery)
+        for authority_ref in (None, RuntimeAuthorityReference("other-docker")):
+            with self.subTest(authority=authority_ref):
+                changed = replace(graph, runtimes={"docker": replace(
+                    graph.runtimes["docker"], authority_ref=authority_ref)})
+                context = _context(
+                    desired_graph=changed,
+                    activity=PlannedActivity(ActivityId("start-controller"),
+                                             StartNode(NodeTarget("controller"))),
+                    runtime_authority_deliveries=(admitted,),
+                )
+                with self.assertRaises(InvalidOperationCommand):
+                    runtime_effect_request_for_context(context)
+
+    def test_runtime_only_activity_selects_no_process_delivery(self) -> None:
+        admitted = _admitted_node_delivery()
+        context = _context(
+            desired_graph=_authority_recipient_graph(admitted.delivery),
+            activity=PlannedActivity(ActivityId("start-runtime"),
+                                     StartRuntime(RuntimeTarget("docker"))),
+            runtime_authority_deliveries=(admitted,),
+        )
+        request = runtime_effect_request_for_context(context)
+        self.assertEqual(request.authority_ref, admitted.authority_ref)
+        self.assertEqual(request.authority_deliveries, ())
+        self.assertEqual(request.products, ())
+
+    def test_teardown_retains_declared_material_without_delivery_admission(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _authority_recipient_graph(admitted.delivery)
+        for operation_type in (StopNode, RemoveNodeResource):
+            with self.subTest(operation=operation_type):
+                context = _context(
+                    base_graph=graph,
+                    activity=PlannedActivity(ActivityId("remove-controller"),
+                                             operation_type(NodeTarget("controller"))),
+                )
+                request = runtime_effect_request_for_context(context)
+                self.assertEqual(request.authority_ref, admitted.authority_ref)
+                self.assertEqual(request.authority_deliveries, ())
+                self.assertEqual(request.products[0].runtime_authority_deliveries,
+                                 (admitted.delivery,))
 
     def test_context_translates_only_compiled_socket_bound_secret_deliveries(
         self,
@@ -743,6 +857,7 @@ def _context(
     *,
     run_id: str = "run-a",
     activity: PlannedActivity | None = None,
+    base_graph: DeploymentGraph | None = None,
     desired_graph: DeploymentGraph | None = None,
     pull_authorities: tuple[RegisteredImagePullAuthority, ...] = (),
     runtime_authority_deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...] = (),
@@ -790,7 +905,7 @@ def _context(
                 graph_id="graph-base",
                 workspace_id="workspace-a",
                 version=1,
-                graph=graph,
+                graph=graph if base_graph is None else base_graph,
                 created_by="operator-a",
                 created_at="2026-07-22T09:00:00Z",
             )
@@ -858,6 +973,29 @@ def _pinned_context() -> _CoordinatorContext:
         authority=realization.authority,
         fence=realization.fence,
     )
+
+
+def _admitted_node_delivery(delivery=None) -> RegisteredRuntimeAuthorityDelivery:
+    return RegisteredRuntimeAuthorityDelivery.from_delivery(
+        workspace_id="workspace-a",
+        delivery=delivery or RuntimeAuthorityAccessDelivery(
+            RuntimeAuthorityReference("local-docker"),
+            RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+        ),
+        admitted_by="operator-a",
+        admitted_at="2026-07-22T10:03:00Z",
+    )
+
+
+def _authority_recipient_graph(delivery) -> DeploymentGraph:
+    original = _graph(authority_ref=delivery.authority_ref)
+    nodes = {
+        name: replace(original.node("api"), node_id=name,
+                      runtime_authority_deliveries=(delivery,) if name == "controller" else ())
+        for name in ("controller", "database", "custody")
+    }
+    return replace(original, nodes=nodes, runtimes={"docker": replace(
+        original.runtimes["docker"], children=tuple(nodes))})
 
 
 def _graph(

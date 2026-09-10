@@ -24,7 +24,9 @@ from control_plane_kit_core.products import (
     instantiate_product,
 )
 from control_plane_kit_core.topology import DeploymentGraph, compile_topology
-from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.types import Protocol, RuntimeKind
+from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+from tests.test_runtime_effect_translation import _admitted_node_delivery
 from control_plane_kit_operations.planning import (
     ActivityPlanningCommandService,
     ActivityPlanningGraphStateConflict,
@@ -213,13 +215,14 @@ class PlanningCommandTests(unittest.TestCase):
         *,
         key: str = "desired",
         actor_id: str = "operator-a",
+        graph: DeploymentGraph | None = None,
     ):
         return (service or self.desired_service("graph-desired", "action-desired")).execute(
             SetDesiredGraph(
                 session_id="session-a",
                 workspace_id="workspace-a",
                 actor_id=actor_id,
-                graph=self.product_graph(),
+                graph=self.product_graph() if graph is None else graph,
                 expected_desired_graph_id=None,
                 idempotency_key=IdempotencyKey(key),
             )
@@ -478,6 +481,47 @@ class PlanningCommandTests(unittest.TestCase):
                     idempotency_key=IdempotencyKey("closed"),
                 )
             )
+
+    def test_planning_requires_active_exact_delivery_before_writing_plan(self) -> None:
+        admission = _admitted_node_delivery()
+        block = instantiate_product(
+            self.document.product, "app",
+            ProductInstanceConfiguration(runtime_authority_deliveries=(admission.delivery,)),
+        )
+        desired = compile_topology(DeploymentTopology(
+            "desired", DockerRuntime(authority_ref=admission.authority_ref, children=(block,))))
+        self.set_desired(graph=desired)
+        with self.assertRaises(ActivityPlanningGraphStateConflict):
+            self.request_plan()
+        with self.unit_of_work() as unit_of_work:
+            with self.assertRaises(KeyError):
+                unit_of_work.stores.activity_history.get_plan("plan-a")
+            unit_of_work.stores.runtime_authorities.register(
+                workspace_id="workspace-a", authority_ref=admission.authority_ref,
+                runtime_kind=RuntimeKind.DOCKER, authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a", admitted_at="2026-07-22T10:02:00Z",
+            )
+            unit_of_work.stores.runtime_authority_deliveries.register(
+                workspace_id="workspace-a", delivery=admission.delivery,
+                admitted_by="operator-a", admitted_at="2026-07-22T10:02:00Z",
+            )
+            unit_of_work.commit()
+        accepted = self.request_plan()
+        self.assertEqual(accepted.plan_record.desired_graph_id, "graph-desired")
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.runtime_authority_deliveries.revoke(
+                "workspace-a", admission.authority_ref)
+            unit_of_work.commit()
+        # Existing immutable plan replay is no new authority. A fresh plan
+        # request must recheck admission before it records new work.
+        replay = self.request_plan()
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.plan_record, accepted.plan_record)
+        with self.assertRaises(ActivityPlanningGraphStateConflict):
+            self.request_plan(self.planning_service("plan-b", "action-plan-b"), key="plan-b")
+        with self.unit_of_work() as unit_of_work:
+            with self.assertRaises(KeyError):
+                unit_of_work.stores.activity_history.get_plan("plan-b")
 
     def test_planning_pins_current_and_desired_graph_truth(self) -> None:
         self.set_desired()
