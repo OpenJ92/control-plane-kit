@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 import re
 from typing import Mapping
 
-from control_plane_kit_core.secrets import SecretReference, SecretResolutionError
+from control_plane_kit_core.secrets import (
+    SecretReference,
+    SecretResolutionError,
+    SecretResolutionGrant,
+    SecretUseIntent,
+)
 
 
 _MAX_TEXT = 512
 _RUNTIME_AUTHORITY_REFERENCE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
 _DELIVERY_LABEL = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+_CONNECTION_CORRELATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
 _RUNTIME_AUTHORITY_REFERENCE_KEYS = frozenset({"reference_id"})
 _DELIVERY_SECRET_REFERENCE_KEYS = frozenset({"label", "reference_id"})
 _RUNTIME_AUTHORITY_ACCESS_DELIVERY_KEYS = frozenset(
@@ -62,6 +68,101 @@ class RuntimeAuthorityReferenceCodec:
         if not isinstance(reference_id, str):
             raise RuntimeEffectContractError("reference_id must be text")
         return RuntimeAuthorityReference(reference_id)
+
+
+@dataclass(frozen=True)
+class RemoteDockerTlsConnectionAdmission:
+    """Private connection context, independent of access delivered to a process.
+
+    This pure value does not establish durable authorization or resolve secrets.
+    Operations selects the authority; an interpreter requires complete grants
+    before using the connection. The descriptor is redacted, not a storage codec.
+    """
+
+    authority_ref: RuntimeAuthorityReference
+    ca_certificate: SecretReference = field(repr=False)
+    client_certificate: SecretReference = field(repr=False)
+    client_key: SecretReference = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if type(self.authority_ref) is not RuntimeAuthorityReference:
+            raise RuntimeEffectContractError("connection authority is malformed")
+        if any(
+            type(value) is not SecretReference
+            for value in (self.ca_certificate, self.client_certificate, self.client_key)
+        ):
+            raise RuntimeEffectContractError("connection credential references are malformed")
+
+    def descriptor(self) -> dict[str, object]:
+        return {
+            "kind": "remote-docker-tls",
+            "authority_ref": self.authority_ref.descriptor(),
+            "ca_certificate": "[redacted]",
+            "client_certificate": "[redacted]",
+            "client_key": "[redacted]",
+        }
+
+
+def runtime_connection_secret_uses(
+    admission: RemoteDockerTlsConnectionAdmission | None,
+    *,
+    authority_ref: RuntimeAuthorityReference,
+) -> tuple[tuple[SecretReference, SecretUseIntent], ...]:
+    """Derive exactly the named connection uses for the expected authority."""
+    if type(authority_ref) is not RuntimeAuthorityReference:
+        raise RuntimeEffectContractError("expected connection authority is malformed")
+    if admission is None:
+        return ()
+    if type(admission) is not RemoteDockerTlsConnectionAdmission:
+        raise RuntimeEffectContractError("connection admission is malformed")
+    if admission.authority_ref != authority_ref:
+        raise RuntimeEffectContractError("connection authority does not match")
+    return (
+        (admission.ca_certificate, SecretUseIntent.DOCKER_REMOTE_TLS_CA_CERTIFICATE),
+        (admission.client_certificate, SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_CERTIFICATE),
+        (admission.client_key, SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_KEY),
+    )
+
+
+def validate_runtime_connection_grants(
+    admission: RemoteDockerTlsConnectionAdmission | None,
+    grants: tuple[SecretResolutionGrant, ...],
+    *,
+    authority_ref: RuntimeAuthorityReference,
+    workspace_id: str,
+    effect_id: str,
+    run_id: str,
+    activity_id: str,
+) -> None:
+    """Check supplied connection grants, without authorizing a connection.
+
+    Empty and partial tuples are structurally valid. Connection completeness is
+    an interpreter requirement before resolution or provider access. Callers
+    must validate product and pull grants independently, never silently discard
+    unrelated uses to make a mixed grant collection pass this boundary.
+    """
+    if any(
+        type(value) is not str or _CONNECTION_CORRELATION_ID.fullmatch(value) is None
+        for value in (workspace_id, effect_id, run_id, activity_id)
+    ):
+        raise RuntimeEffectContractError("expected connection correlation is malformed")
+    allowed = runtime_connection_secret_uses(admission, authority_ref=authority_ref)
+    if type(grants) is not tuple or any(
+        type(value) is not SecretResolutionGrant for value in grants
+    ):
+        raise RuntimeEffectContractError("connection grants are malformed")
+    uses = tuple((grant.reference, grant.intent) for grant in grants)
+    if len(set(uses)) != len(uses):
+        raise RuntimeEffectContractError("connection grants are duplicated")
+    if any(
+        use not in allowed
+        or grant.workspace_id != workspace_id
+        or grant.effect_id != effect_id
+        or grant.run_id != run_id
+        or grant.activity_id != activity_id
+        for grant, use in zip(grants, uses, strict=True)
+    ):
+        raise RuntimeEffectContractError("connection grant is not admitted")
 
 
 @dataclass(frozen=True, order=True)

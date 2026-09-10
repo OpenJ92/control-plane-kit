@@ -206,6 +206,19 @@ class RuntimeConnectionAdmissionTests(unittest.TestCase):
                         admission, supplied, **COORDINATES
                     ), "foreign-private-coordinate", grant.reference.reference_id,
                 )
+                for malformed in (None, "", 42):
+                    self.assert_rejected(
+                        lambda: language.validate_runtime_connection_grants(
+                            admission, (), **{**COORDINATES, coordinate: malformed}
+                        )
+                    )
+        absent = replace(grant, effect_id=None, run_id=None, activity_id=None)
+        self.assert_rejected(
+            lambda: language.validate_runtime_connection_grants(
+                admission, (absent,),
+                **{**COORDINATES, "effect_id": None, "run_id": None, "activity_id": None},
+            )
+        )
 
     def test_carrier_and_grant_collection_are_closed_typed_values(self):
         language = _language()
