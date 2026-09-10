@@ -539,6 +539,7 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
             ),
             (
                 ("runtime_request", True, False),
+                ("connection_admission", True, False),
                 ("intent", False, True),
                 ("request_fingerprint", False, True),
             ),
