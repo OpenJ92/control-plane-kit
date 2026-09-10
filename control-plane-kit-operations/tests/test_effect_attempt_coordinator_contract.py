@@ -375,12 +375,12 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
     ("control_plane_kit_operations.products", "RegisteredImagePullAuthority", None),
     ("control_plane_kit_operations.products", "RegisteredProduct", None),
     ("control_plane_kit_operations.runtime_authorities", "RegisteredRuntimeAuthority", None),
+    ("control_plane_kit_operations.runtime_authorities", "RemoteDockerTlsAuthority", None),
     (
         "control_plane_kit_operations.runtime_authorities",
         "RuntimeAuthorityRegistrationError",
         None,
     ),
-    ("control_plane_kit_operations.runtime_authorities", "RemoteDockerTlsAuthority", None),
     (
         "control_plane_kit_operations.runtime_authorities",
         "_admitted_runtime_authority_deliveries",
