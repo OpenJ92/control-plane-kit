@@ -23,6 +23,7 @@ from control_plane_kit_core.planning import (
     PlannedActivity,
     ReconcileNode,
     RiskLevel,
+    StartNode,
     SwitchSocketConnection,
     compile_activity_plan,
 )
@@ -59,6 +60,10 @@ from control_plane_kit_operations.records import (
     OperationSessionStatus,
     RealizedGraphProjectionKind,
     WorkspaceRecord,
+)
+from control_plane_kit_operations.runtime_authorities import (
+    RuntimeAuthorityRegistrationError,
+    _admitted_runtime_authority_deliveries,
 )
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
@@ -369,6 +374,26 @@ class ExecutionAdmissionCommandService:
                     desired=desired,
                 )
             _require_authority_use_scopes(command.actor_scopes, current, desired)
+            delivery_admissions = None
+            delivery_denied = False
+            try:
+                for activity in plan.plan.activities:
+                    if not isinstance(activity.operation, (StartNode, ReconcileNode)):
+                        continue
+                    node = desired.nodes[activity.operation.target.node_id]
+                    if not node.runtime_authority_deliveries:
+                        continue
+                    if delivery_admissions is None:
+                        delivery_admissions = stores.runtime_authority_deliveries.list_active(command.workspace_id)
+                    _admitted_runtime_authority_deliveries(
+                        node.runtime_authority_deliveries, delivery_admissions,
+                        workspace_id=command.workspace_id,
+                        authority_ref=desired.runtimes[node.runtime_id].authority_ref,
+                    )
+            except (KeyError, RuntimeAuthorityRegistrationError):
+                delivery_denied = True
+            if delivery_denied:
+                raise ExecutionAdmissionDenied("planned process authority is not admitted")
             required = _readiness_required(plan.plan.activities, current, desired)
             supplied = {item.activity_id for item in command.readiness}
             unexpected = supplied - required

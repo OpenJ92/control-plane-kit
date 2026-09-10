@@ -11,13 +11,16 @@ from typing import TypeAlias
 
 import rfc8785
 
+from control_plane_kit_core.runtime_authority import (
+    RemoteDockerTlsConnectionAdmission,
+    validate_runtime_connection_grants,
+)
 from control_plane_kit_core.runtime_effects import (
     ActivityId,
     ActivityPlanDescriptorError,
     EffectResultKind,
     RunId,
     RuntimeAuthorityAccessDelivery,
-    RuntimeAuthorityAccessDeliveryKind,
     RuntimeAuthorityReference,
     RuntimeEffectContractError,
     RuntimeEffectFailure,
@@ -29,6 +32,7 @@ from control_plane_kit_core.runtime_effects import (
     RuntimeKind,
     RuntimeProductMaterial,
     activity_operation_descriptor,
+    _validate_runtime_authority_recipient,
 )
 from control_plane_kit_core.secrets import SecretResolutionGrant, SecretUseIntent
 from control_plane_kit_core.verification import (
@@ -128,6 +132,9 @@ class RuntimeEffectIntent:
             type(value) is RuntimeProductMaterial for value in self.products
         ):
             raise RuntimeEffectContractError("runtime effect intent products are malformed")
+        _validate_runtime_authority_recipient(
+            self.operation, self.authority_ref, self.authority_deliveries, self.products
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -236,6 +243,7 @@ class RuntimeEffectObservationRequest:
     """Exact post-start request delivered to a read-only runtime observer."""
 
     runtime_request: RuntimeEffectRequest = field(repr=False)
+    connection_admission: RemoteDockerTlsConnectionAdmission | None = field(default=None, repr=False)
     intent: RuntimeEffectIntent = field(init=False)
     request_fingerprint: str = field(init=False)
 
@@ -243,7 +251,7 @@ class RuntimeEffectObservationRequest:
         if type(self.runtime_request) is not RuntimeEffectRequest:
             raise RuntimeEffectContractError("runtime observation requires exact request")
         intent = runtime_effect_intent_for_request(self.runtime_request)
-        _validate_grants(self.runtime_request)
+        _validate_grants(self.runtime_request, self.connection_admission)
         object.__setattr__(self, "intent", intent)
         object.__setattr__(
             self,
@@ -491,14 +499,34 @@ def runtime_effect_result_fingerprint(result: RuntimeEffectResult) -> str:
     )
 
 
-def _validate_grants(request: RuntimeEffectRequest) -> None:
+def _validate_grants(
+    request: RuntimeEffectRequest,
+    connection_admission: RemoteDockerTlsConnectionAdmission | None,
+) -> None:
     grants = request.secret_resolution_grants
     if type(grants) is not tuple or not all(type(value) is SecretResolutionGrant for value in grants):
         raise RuntimeEffectContractError("runtime observation grants are malformed")
     uses = tuple((value.reference, value.intent) for value in grants)
     if len(set(uses)) != len(uses):
         raise RuntimeEffectContractError("runtime observation grants are duplicated")
+    connection_intents = {
+        SecretUseIntent.DOCKER_REMOTE_TLS_CA_CERTIFICATE,
+        SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_CERTIFICATE,
+        SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_KEY,
+    }
+    connection_grants = tuple(grant for grant in grants if grant.intent in connection_intents)
+    if connection_admission is not None or connection_grants:
+        validate_runtime_connection_grants(
+            connection_admission, connection_grants,
+            authority_ref=request.authority_ref,
+            workspace_id=request.source.workspace_id,
+            effect_id=request.effect_id,
+            run_id=request.source.run_id.value,
+            activity_id=request.activity_id.value,
+        )
     allowed = _allowed_grant_uses(request)
+    # Only already-validated connection uses join the other grant domains.
+    allowed.update((grant.reference, grant.intent) for grant in connection_grants)
     if any(
         use not in allowed
         or grant.workspace_id != request.source.workspace_id
@@ -514,20 +542,6 @@ def _allowed_grant_uses(
     request: RuntimeEffectRequest,
 ) -> set[tuple[object, SecretUseIntent]]:
     allowed: set[tuple[object, SecretUseIntent]] = set()
-    delivery_intents = {
-        "ca-cert": SecretUseIntent.DOCKER_REMOTE_TLS_CA_CERTIFICATE,
-        "client-cert": SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_CERTIFICATE,
-        "client-key": SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_KEY,
-    }
-    for delivery in request.authority_deliveries:
-        if (
-            delivery.delivery_kind
-            is RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES
-        ):
-            for reference in delivery.secret_references:
-                intent = delivery_intents.get(reference.label)
-                if intent is not None:
-                    allowed.add((reference.reference, intent))
     for material in request.products:
         contract = material.product.runtime_contract
         for delivery in contract.secret_deliveries:

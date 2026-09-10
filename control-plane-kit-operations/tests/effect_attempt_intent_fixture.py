@@ -393,8 +393,17 @@ class EffectAttemptIntentFixture:
         run_id: str = "run-a",
         activity_id: str = "start-runtime",
         products: tuple[RuntimeProductMaterial, ...] | None = None,
+        process_delivery: bool = True,
     ) -> RuntimeEffectIntent:
         delivery = authority_delivery()
+        products = (product_material(),) if products is None else products
+        products = tuple(
+            replace(
+                product,
+                runtime_authority_deliveries=(delivery,) if process_delivery and product.node_id == "api" else (),
+            )
+            for product in products
+        )
         request = RuntimeEffectRequest(
             effect_id=EVENT_ID,
             kind=RuntimeEffectKind.REALIZE_ACTIVITY,
@@ -415,8 +424,8 @@ class EffectAttemptIntentFixture:
                 else StartNode(NodeTarget("api"))
             ),
             authority_ref=delivery.authority_ref,
-            authority_deliveries=(delivery,),
-            products=(product_material(),) if products is None else products,
+            authority_deliveries=(delivery,) if process_delivery and not compensation else (),
+            products=products,
         )
         return runtime_effect_intent_for_request(request)
 
@@ -471,10 +480,10 @@ class EffectAttemptIntentFixture:
         )
         lower = 1
         upper = len(products)
-        accepted = self.intent(products=(products[0],))
+        accepted = self.intent(products=(products[0],), process_delivery=False)
         while lower <= upper:
             middle = (lower + upper) // 2
-            candidate = self.intent(products=products[:middle])
+            candidate = self.intent(products=products[:middle], process_delivery=False)
             if len(rfc8785.dumps(candidate.descriptor())) <= INTENT_MAX_BYTES:
                 accepted = candidate
                 lower = middle + 1

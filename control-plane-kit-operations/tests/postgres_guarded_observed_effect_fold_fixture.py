@@ -86,7 +86,10 @@ class PostgresGuardedObservedEffectFoldFixture(
             activity_id=current.state.identity.activity_id,
         )
         if authority_ref is False:
-            intent = replace(intent, authority_ref=None, authority_deliveries=())
+            intent = replace(
+                intent, authority_ref=None, authority_deliveries=(),
+                products=tuple(replace(product, runtime_authority_deliveries=()) for product in intent.products),
+            )
         return intent
 
     def intent_record(self, current, *, intent=None):

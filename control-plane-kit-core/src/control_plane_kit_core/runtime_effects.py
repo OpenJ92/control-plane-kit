@@ -20,7 +20,9 @@ from control_plane_kit_core.environment import (
 )
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.run_identity import RunId
-from control_plane_kit_core.planning import ActivityId, ActivityOperation, ReviewChange
+from control_plane_kit_core.planning import (
+    ActivityId, ActivityOperation, ReconcileNode, ReviewChange, StartNode,
+)
 from control_plane_kit_core.planning.codec import (
     ActivityPlanDescriptorError,
     activity_operation_descriptor,
@@ -604,6 +606,9 @@ class RuntimeEffectRequest:
         if len(set(node_ids)) != len(node_ids):
             raise RuntimeEffectContractError("runtime product node ids must be unique")
         object.__setattr__(self, "products", products)
+        _validate_runtime_authority_recipient(
+            self.operation, self.authority_ref, self.authority_deliveries, products
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -621,6 +626,27 @@ class RuntimeEffectRequest:
             "operation": activity_operation_descriptor(self.operation),
             "products": [value.descriptor() for value in self.products],
         }
+
+
+def _validate_runtime_authority_recipient(
+    operation: object,
+    authority_ref: RuntimeAuthorityReference | None,
+    deliveries: tuple[RuntimeAuthorityAccessDelivery, ...],
+    products: tuple[RuntimeProductMaterial, ...],
+) -> None:
+    """Bind selected process access to exactly one declared recipient."""
+    if not isinstance(operation, (StartNode, ReconcileNode)):
+        if deliveries:
+            raise RuntimeEffectContractError("operation cannot deliver process authority")
+        return
+    if not deliveries and not any(product.runtime_authority_deliveries for product in products):
+        return
+    if len(products) != 1 or products[0].node_id != operation.target.node_id:
+        raise RuntimeEffectContractError("process authority requires exact target material")
+    if deliveries != products[0].runtime_authority_deliveries:
+        raise RuntimeEffectContractError("process authority must match target declaration")
+    if authority_ref is None or any(delivery.authority_ref != authority_ref for delivery in deliveries):
+        raise RuntimeEffectContractError("process authority must match runtime authority")
 
 
 @dataclass(frozen=True)

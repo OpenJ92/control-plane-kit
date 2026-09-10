@@ -27,6 +27,7 @@ from control_plane_kit_core.products import (
     ProviderRuntimePort,
 )
 from control_plane_kit_core.runtime_authority import (
+    RemoteDockerTlsConnectionAdmission,
     RuntimeAuthorityAccessDelivery,
     RuntimeAuthorityAccessDeliveryKind,
     RuntimeAuthorityDeliverySecretReference,
@@ -110,6 +111,15 @@ def _delivery() -> RuntimeAuthorityAccessDelivery:
                 "client-key", "secret://local/workspace-a/docker/client-key"
             ),
         ),
+    )
+
+
+def _connection() -> RemoteDockerTlsConnectionAdmission:
+    return RemoteDockerTlsConnectionAdmission(
+        RuntimeAuthorityReference("remote-docker"),
+        SecretReference("secret://local/workspace-a/docker/ca-cert"),
+        SecretReference("secret://local/workspace-a/docker/client-cert"),
+        SecretReference("secret://local/workspace-a/docker/client-key"),
     )
 
 
@@ -245,7 +255,6 @@ def _request(
     effect_id: str = "event-started-a",
     products: tuple[RuntimeProductMaterial, ...] = (),
 ) -> RuntimeEffectRequest:
-    delivery = _delivery()
     return RuntimeEffectRequest(
         effect_id=effect_id,
         kind=RuntimeEffectKind.REALIZE_ACTIVITY,
@@ -261,8 +270,8 @@ def _request(
         ),
         activity_id=ActivityId("activity-a"),
         operation=StartNode(NodeTarget("api")),
-        authority_ref=delivery.authority_ref,
-        authority_deliveries=(delivery,),
+        authority_ref=RuntimeAuthorityReference("remote-docker"),
+        authority_deliveries=(),
         secret_resolution_grants=grants,
         products=products,
     )
@@ -362,8 +371,8 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
             secret_resolution_grants=second_grants,
         )
         ungranted = language.RuntimeEffectObservationRequest(ungranted_request)
-        first = language.RuntimeEffectObservationRequest(first_request)
-        second = language.RuntimeEffectObservationRequest(second_request)
+        first = language.RuntimeEffectObservationRequest(first_request, connection_admission=_connection())
+        second = language.RuntimeEffectObservationRequest(second_request, connection_admission=_connection())
 
         self.assertEqual(first.intent, ungranted.intent)
         self.assertEqual(second.intent, ungranted.intent)
@@ -418,7 +427,7 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
                 "secret://local/workspace-a/postgres/password",
                 SecretUseIntent.POSTGRES_PASSWORD,
             ),
-            "runtime authority delivery": (
+            "runtime connection": (
                 "secret://local/workspace-a/docker/client-key",
                 SecretUseIntent.DOCKER_REMOTE_TLS_CLIENT_KEY,
             ),
@@ -448,7 +457,7 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
 
             with self.subTest(family=name, case="positive"):
                 request = _request(grants=(admitted,), products=(_grant_product(),))
-                observation = language.RuntimeEffectObservationRequest(request)
+                observation = language.RuntimeEffectObservationRequest(request, connection_admission=_connection())
                 self.assertIs(observation.runtime_request.secret_resolution_grants[0], admitted)
 
             for case, rejected in (
@@ -461,7 +470,7 @@ class RuntimeEffectObservationRequestTests(unittest.TestCase):
                         products=(_grant_product(),),
                     )
                     with self.assertRaises(RuntimeEffectContractError) as caught:
-                        language.RuntimeEffectObservationRequest(request)
+                        language.RuntimeEffectObservationRequest(request, connection_admission=_connection())
                     message = str(caught.exception) + repr(caught.exception)
                     self.assertNotIn(rejected.reference.reference_id, message)
                     self.assertNotIn(rejected.authorization_id, message)
