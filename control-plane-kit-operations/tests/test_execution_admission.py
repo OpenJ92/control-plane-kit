@@ -6,6 +6,9 @@ import os
 import unittest
 
 import psycopg
+from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+from tests.test_runtime_effect_translation import _admitted_node_delivery
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.algebra import (
@@ -203,6 +206,86 @@ class ExecutionAdmissionTests(unittest.TestCase):
             idempotency_key=IdempotencyKey(key),
             readiness=readiness,
         )
+
+    def _seed_authority_delivery_plan(self, *, teardown=False):
+        admission = _admitted_node_delivery()
+        block = instantiate_product(
+            self.document.product, "app",
+            ProductInstanceConfiguration(runtime_authority_deliveries=(admission.delivery,)),
+        )
+        current = compile_topology(DeploymentTopology(
+            "current", DockerRuntime(authority_ref=admission.authority_ref)))
+        desired = compile_topology(DeploymentTopology(
+            "desired", DockerRuntime(authority_ref=admission.authority_ref, children=(block,))))
+        if teardown:
+            current, desired = desired, current
+        self.seed_graphs("delivery-base", current, "delivery-desired", desired)
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            stores.workspaces.set_current_graph("workspace-a", "delivery-base")
+            stores.workspaces.set_desired_graph("workspace-a", "delivery-desired")
+            stores.runtime_authorities.register(
+                workspace_id="workspace-a", authority_ref=admission.authority_ref,
+                runtime_kind=RuntimeKind.DOCKER, authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a", admitted_at="2026-07-22T12:01:00Z",
+            )
+            stores.runtime_authority_deliveries.register(
+                workspace_id="workspace-a", delivery=admission.delivery,
+                admitted_by="operator-a", admitted_at="2026-07-22T12:01:00Z",
+            )
+            unit_of_work.commit()
+        self.seed_plan_truth(
+            plan_id="delivery-plan", approval_request_id="delivery-approval",
+            approval_decision_id="delivery-decision", base_graph_id="delivery-base",
+            desired_graph_id="delivery-desired",
+            plan=compile_activity_plan(diff_graphs(validate_graph(current), validate_graph(desired))),
+        )
+        command = self.command(
+            plan_id="delivery-plan", approval_request_id="delivery-approval",
+            scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE),
+        )
+        return admission, command
+
+    def test_revocation_after_approval_blocks_new_execution_but_preserves_receipt(self) -> None:
+        admission, command = self._seed_authority_delivery_plan()
+        accepted = self.admission_service("delivery-execution", "delivery-action").execute(command)
+        with self.unit_of_work() as unit_of_work:
+            approved_plan = unit_of_work.stores.activity_history.get_plan("delivery-plan")
+        # A distinct approved plan isolates revoked delivery admission from the
+        # existing one-active-request-per-plan constraint. Keep the first receipt.
+        self.seed_plan_truth(
+            plan_id="revoked-plan", approval_request_id="revoked-approval",
+            approval_decision_id="revoked-decision", plan=approved_plan.plan,
+            base_graph_id=approved_plan.base_graph_id,
+            desired_graph_id=approved_plan.desired_graph_id,
+        )
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.runtime_authority_deliveries.revoke(
+                "workspace-a", admission.authority_ref)
+            unit_of_work.commit()
+        replay = self.admission_service("unused", "unused").execute(command)
+        self.assertEqual(replay.request, accepted.request)
+        with self.assertRaises(ExecutionAdmissionDenied):
+            self.admission_service("rejected-execution", "rejected-action").execute(
+                self.command(
+                    plan_id="revoked-plan", approval_request_id="revoked-approval",
+                    scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE),
+                    key="fresh-after-revocation",
+                )
+            )
+        with self.unit_of_work() as unit_of_work:
+            with self.assertRaises(KeyError):
+                unit_of_work.stores.execution.get_request("rejected-execution")
+
+    def test_revoked_process_delivery_does_not_block_approved_teardown(self) -> None:
+        admission, command = self._seed_authority_delivery_plan(teardown=True)
+        with self.unit_of_work() as unit_of_work:
+            unit_of_work.stores.runtime_authority_deliveries.revoke(
+                "workspace-a", admission.authority_ref)
+            unit_of_work.commit()
+        accepted = self.admission_service("teardown-execution", "teardown-action").execute(command)
+        self.assertIs(accepted.request.status, ExecutionRequestStatus.QUEUED)
+        self.assertEqual(accepted.request.identity.plan_id, "delivery-plan")
 
     def test_approved_current_plan_is_atomically_admitted_without_effect_dependency(
         self,

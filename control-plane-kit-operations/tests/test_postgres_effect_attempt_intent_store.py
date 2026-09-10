@@ -173,7 +173,7 @@ class PostgresEffectAttemptIntentStoreTests(
                 ),
                 "request_id",
             ),
-            ("content", self.intent(products=()), "request_fingerprint"),
+            ("content", self.intent(products=(), process_delivery=False), "request_fingerprint"),
         )
         for label, candidate, drifted_coordinate in alternate_intents:
             with self.subTest(copied_column_drift=label):

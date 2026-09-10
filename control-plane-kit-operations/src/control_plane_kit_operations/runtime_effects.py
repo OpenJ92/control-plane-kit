@@ -81,8 +81,9 @@ from control_plane_kit_operations.products import (
 )
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthority,
-    RegisteredRuntimeAuthorityDelivery,
     RemoteDockerTlsAuthority,
+    RuntimeAuthorityRegistrationError,
+    _admitted_runtime_authority_deliveries,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
@@ -131,8 +132,7 @@ def _runtime_effect_intent_for_context(
         runtime_kind=_runtime_kind_for_context(context, graph, runtime_id),
         authority_ref=authority_ref,
         authority_deliveries=_runtime_authority_deliveries_for_context(
-            context.runtime_authority_deliveries,
-            authority_ref,
+            context, graph, operation, authority_ref,
         ),
         source=RuntimeEffectIntentSource(
             workspace_id=context.request.identity.workspace_id,
@@ -284,16 +284,26 @@ def _runtime_authority_ref_for_context(
 
 
 def _runtime_authority_deliveries_for_context(
-    deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...],
+    context: ActivityRealizationContext | _CoordinatorContext,
+    graph: DeploymentGraph,
+    operation: object,
     authority_ref: RuntimeAuthorityReference | None,
 ) -> tuple[RuntimeAuthorityAccessDelivery, ...]:
-    if authority_ref is None:
+    if not isinstance(operation, (StartNode, ReconcileNode)):
         return ()
-    return tuple(
-        delivery.delivery
-        for delivery in sorted(deliveries, key=lambda value: value.delivery_id)
-        if delivery.authority_ref == authority_ref
-    )
+    denied = False
+    try:
+        requested = graph.nodes[operation.target.node_id].runtime_authority_deliveries
+        selected = _admitted_runtime_authority_deliveries(
+            requested, context.runtime_authority_deliveries,
+            workspace_id=context.request.identity.workspace_id,
+            authority_ref=authority_ref,
+        )
+    except (KeyError, RuntimeAuthorityRegistrationError):
+        denied = True
+    if denied:
+        raise InvalidOperationCommand("runtime effect process authority is not admitted")
+    return selected
 
 
 def _products_for_context(
@@ -328,6 +338,7 @@ def _products_for_context(
             product=_product_material_for_node(context, graph, product, node),
             public_environment=public_environment,
             socket_environment=node.socket_environment,
+            runtime_authority_deliveries=node.runtime_authority_deliveries,
             pull_authority=_pull_authority_for_product(
                 context.image_pull_authorities,
                 product.descriptor_document.product.image,

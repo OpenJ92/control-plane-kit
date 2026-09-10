@@ -96,6 +96,7 @@ class PostgresEffectAttemptStartFixture(
         plan_id: str = "plan-a",
         activity_id: str = "start-runtime",
         products=None,
+        process_delivery: bool = False,
     ):
         value = EffectAttemptStartFixture.intent(
             self,
@@ -104,6 +105,7 @@ class PostgresEffectAttemptStartFixture(
             run_id=run_id,
             activity_id=activity_id,
             products=products,
+            process_delivery=process_delivery,
         )
         return replace(
             value,

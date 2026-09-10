@@ -77,6 +77,7 @@ from tests.effect_attempt_coordinator_fixture import (
     RecordingStartService,
 )
 from tests.test_runtime_interpreter_dispatcher import context_for
+from tests.test_runtime_effect_translation import _admitted_node_delivery, _context, _graph
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -374,12 +375,17 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
     ("control_plane_kit_operations.products", "RegisteredImagePullAuthority", None),
     ("control_plane_kit_operations.products", "RegisteredProduct", None),
     ("control_plane_kit_operations.runtime_authorities", "RegisteredRuntimeAuthority", None),
+    ("control_plane_kit_operations.runtime_authorities", "RemoteDockerTlsAuthority", None),
     (
         "control_plane_kit_operations.runtime_authorities",
-        "RegisteredRuntimeAuthorityDelivery",
+        "RuntimeAuthorityRegistrationError",
         None,
     ),
-    ("control_plane_kit_operations.runtime_authorities", "RemoteDockerTlsAuthority", None),
+    (
+        "control_plane_kit_operations.runtime_authorities",
+        "_admitted_runtime_authority_deliveries",
+        None,
+    ),
     ("control_plane_kit_operations.workflows", "InvalidOperationCommand", None),
     ("dataclasses", "replace", None),
     ("json", None, None),
@@ -628,7 +634,12 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
         "cloudflare_tunnel_token_delivery_plan",
         1,
     ),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 30),
+    (
+        "control_plane_kit_operations.runtime_authorities."
+        "_admitted_runtime_authority_deliveries",
+        1,
+    ),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 31),
     ("dataclasses.replace", 2),
     ("gateway_node.provider_socket", 1),
     ("gateway_target_map_for_node", 1),
@@ -637,16 +648,16 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("graph_id.strip", 2),
     ("hasattr", 2),
     ("int", 1),
-    ("isinstance", 14),
+    ("isinstance", 15),
     ("json.dumps", 1),
     ("len", 7),
     ("metadata.get", 2),
     ("postgres_target.get", 3),
     ("set", 1),
-    ("sorted", 7),
+    ("sorted", 6),
     ("source_edges.setdefault", 1),
     ("targets.values", 1),
-    ("tuple", 17),
+    ("tuple", 16),
     ("type", 2),
     ("uses.add", 3),
     ("uses.update", 1),
@@ -933,6 +944,36 @@ class EffectAttemptCoordinatorContractTests(
             )
             self.assertIsNone(error.__cause__)
             self.assertIsNone(error.__context__)
+
+    def test_withdrawn_delivery_admission_blocks_before_new_attempt_or_effect(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _graph(authority_ref=admitted.authority_ref)
+        desired = replace(graph, nodes={"api": replace(
+            graph.node("api"), runtime_authority_deliveries=(admitted.delivery,))})
+        start = RecordingStartService(EffectAttemptStartDenied())
+        fold = RecordingFoldService()
+        reconcile = RecordingReconciliationService()
+        adapter = RecordingCoordinatorAdapter()
+        coordinator = self.db_free_coordinator(
+            start_service=start, fold_service=fold,
+            reconciliation_service=reconcile, adapter=adapter,
+        )
+        # A pinned approved graph still requests delivery; the fresh active
+        # admission snapshot no longer contains it. No provider effect is legal.
+        coordinator.pinned_context = replace(
+            coordinator.pinned_context,
+            desired_graph=_context(desired_graph=desired).desired_graph,
+            runtime_authority_deliveries=(),
+        )
+        with self.assertRaises((InvalidOperationCommand, ExecutionCoordinatorDenied)) as raised:
+            coordinator.execute(self.coordinator_command())
+        self.assertEqual(start.commands, [])
+        self.assertIsInstance(raised.exception, InvalidOperationCommand)
+        self.assertEqual(fold.commands, [])
+        self.assertEqual(reconcile.commands, [])
+        self.assertEqual(adapter.runtime_calls, [])
+        self.assertEqual(adapter.legacy_contexts, [])
+        self.assertEqual(coordinator.legacy_writes, [])
 
     def test_live_start_binds_exact_event_request_and_folds_once(self) -> None:
         started = self.newly_started()

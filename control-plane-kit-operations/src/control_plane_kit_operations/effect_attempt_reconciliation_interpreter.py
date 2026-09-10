@@ -7,6 +7,7 @@ from typing import Any, Callable
 from control_plane_kit_core.operations import EffectAttemptStatus
 from control_plane_kit_core.operations.lifecycle import ExecutionRequestStatus
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_authority import RemoteDockerTlsConnectionAdmission
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservationRequest,
     runtime_effect_request_for_intent,
@@ -47,6 +48,7 @@ from control_plane_kit_operations.records import (
 )
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthority,
+    RemoteDockerTlsAuthority,
     RuntimeAuthorityNotFound,
     RuntimeAuthorityRegistrationError,
 )
@@ -417,7 +419,18 @@ def _fresh_observed_fold(
             )
             uses_pending = False
 
-    observation_request = RuntimeEffectObservationRequest(runtime_request)
+    connection_admission = None
+    if runtime_authority is not None and isinstance(runtime_authority.authority, RemoteDockerTlsAuthority):
+        remote = runtime_authority.authority
+        connection_admission = RemoteDockerTlsConnectionAdmission(
+            runtime_authority.authority_ref,
+            remote.ca_certificate,
+            remote.client_certificate,
+            remote.client_key,
+        )
+    observation_request = RuntimeEffectObservationRequest(
+        runtime_request, connection_admission=connection_admission
+    )
     observation_result = self._observer.observe(
         observation_request,
         runtime_authority,

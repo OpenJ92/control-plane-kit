@@ -323,6 +323,37 @@ class RegisteredRuntimeAuthorityDelivery:
         )
 
 
+def _admitted_runtime_authority_deliveries(
+    requested: tuple[RuntimeAuthorityAccessDelivery, ...],
+    admitted: tuple[RegisteredRuntimeAuthorityDelivery, ...],
+    *,
+    workspace_id: str,
+    authority_ref: RuntimeAuthorityReference | None,
+) -> tuple[RuntimeAuthorityAccessDelivery, ...]:
+    """Validate exact desired material against a current admission snapshot."""
+    if type(requested) is not tuple or any(type(value) is not RuntimeAuthorityAccessDelivery for value in requested):
+        raise RuntimeAuthorityRegistrationError("declared process authority is not admitted")
+    if not requested:
+        return ()
+    if (
+        type(admitted) is not tuple
+        or any(type(value) is not RegisteredRuntimeAuthorityDelivery for value in admitted)
+        or type(authority_ref) is not RuntimeAuthorityReference
+    ):
+        raise RuntimeAuthorityRegistrationError("declared process authority is not admitted")
+    for delivery in requested:
+        matches = tuple(value for value in admitted if value.authority_ref == delivery.authority_ref)
+        if (
+            delivery.authority_ref != authority_ref
+            or len(matches) != 1
+            or matches[0].workspace_id != workspace_id
+            or matches[0].status is not RegisteredRuntimeAuthorityDeliveryStatus.ACTIVE
+            or matches[0].delivery != delivery
+        ):
+            raise RuntimeAuthorityRegistrationError("declared process authority is not admitted")
+    return requested
+
+
 @dataclass(frozen=True)
 class RegisterRuntimeAuthorityCommand:
     """Application command to admit one runtime authority for a workspace."""

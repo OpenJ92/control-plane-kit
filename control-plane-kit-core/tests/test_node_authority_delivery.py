@@ -158,6 +158,7 @@ class NodeAuthorityDeliveryTests(unittest.TestCase):
         request = RuntimeEffectRequest(
             effect_id="intent-event", kind=RuntimeEffectKind.REALIZE_ACTIVITY,
             runtime_kind=RuntimeKind.DOCKER, authority_ref=AUTHORITY,
+            authority_deliveries=(DELIVERY,),
             source=RuntimeEffectSource(
                 workspace_id="workspace", request_id="request", run_id=RunId("run-1"),
                 plan_id="plan", base_graph_id="before", desired_graph_id="after",
@@ -170,7 +171,7 @@ class NodeAuthorityDeliveryTests(unittest.TestCase):
         self.assertEqual(intent.products[0].runtime_authority_deliveries, (DELIVERY,))
         self.assertNotEqual(runtime_effect_intent_fingerprint(intent),
                             runtime_effect_intent_fingerprint(runtime_effect_intent_for_request(
-                                replace(request, products=(plain,)))))
+                                replace(request, products=(plain,), authority_deliveries=()))))
 
     def test_reference_changes_remain_distinct_in_redacted_plan_evidence(self):
         values = [RuntimeAuthorityAccessDelivery(

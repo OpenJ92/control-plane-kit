@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import hashlib
 import json
 import os
 from pathlib import Path
 import unittest
+
+import rfc8785
 
 from control_plane_kit_operations.records import (
     BoundedEvidence,
@@ -72,6 +75,27 @@ class EffectAttemptEvidenceContractTests(
         self.assertNotEqual(actual[2], actual[6])
         self.assertEqual(
             actual[0],
+            "43337b1a401cc0c12b659ba606b728cdce876717d28891bff9f961d053420fc4",
+        )
+        # Preserve the selected-only historical commitment as raw evidence.
+        # It is not a valid current typed intent or a replay/adoption input.
+        historical_intent = self.intent_for_attempt().descriptor()
+        for product in historical_intent["products"]:
+            del product["runtime_authority_deliveries"]
+        historical_request_fingerprint = hashlib.sha256(
+            b"control-plane-kit.runtime-effect-intent.v1\x00"
+            + rfc8785.dumps(historical_intent)
+        ).hexdigest()
+        historical_state = {
+            **states[0].descriptor(),
+            "request_fingerprint": historical_request_fingerprint,
+        }
+        historical_canonical = json.dumps(
+            historical_state, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        self.assertEqual(
+            hashlib.sha256(historical_canonical).hexdigest(),
             "6aa8cca9f9e9766ac724d12fdd40174b5e577f59690477d3aad8e07d34bd8989",
         )
 
