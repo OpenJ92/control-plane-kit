@@ -188,6 +188,7 @@ class PostgresEffectAttemptReconciliationFixture(
         authority_ref=True,
         remote=False,
         zero_use=False,
+        process_delivery=True,
     ):
         story = story or self.observed_story()
         if zero_use:
@@ -221,6 +222,7 @@ class PostgresEffectAttemptReconciliationFixture(
         current, intent, record = self.seed_guarded_source(
             story,
             authority_ref=authority_ref,
+            process_delivery=process_delivery,
         )
         authority = (
             None
