@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 25 pending, 0 authored,
-134 reviewed, 8 excluded.
+167 tracked paths: 24 pending, 0 authored,
+135 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -328,6 +328,14 @@ mapping/raw evidence and names/live-handler limits matched. Six local links,
 whitespace and source/test guards passed. Other selected owner reads remain
 author context; no whole-owner/test credit or execution was added.
 
+North reviewed the full surface-read result owner (591 lines), note and retained
+fixture, plus selected tests 175–290, 355–466 and 559–792. Kepler's full 792-line
+test read supplies the remaining author context, not a whole-test North review.
+Variant fields, derived claims, exact 7/8 keys, construction-time context bounds,
+size-before-keys, trusted-kind routing, selective errors and structural coverage
+matched. Five links, whitespace and source/test guards passed; no execution or
+additional test credit was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -369,7 +377,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/identity.py](../../../control-plane-kit-core/src/control_plane_kit_core/identity.py) | source | reviewed | [companion](src/control_plane_kit_core/identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/lifecycle.py](../../../control-plane-kit-core/src/control_plane_kit_core/lifecycle.py) | source | reviewed | [companion](src/control_plane_kit_core/lifecycle.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/node_control.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/node_control_surface_read_results.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control_surface_read_results.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/node_control_surface_read_results.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control_surface_read_results.py) | source | reviewed | [companion](src/control_plane_kit_core/node_control_surface_read_results.py.md) | North PASS: full owner/note/fixture, selected actual tests; Kepler full governing-test author context. No execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/node_control_surface_reads.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control_surface_reads.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/node_control_transit.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control_transit.py) | source | reviewed | [companion](src/control_plane_kit_core/node_control_transit.py.md) | North PASS: full owner/test/helpers/note/fixture and selected actual Operations consumers. No corrections or execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/__init__.py.md) | North: both facades and boundary test fully read; selected consumer imports. |
