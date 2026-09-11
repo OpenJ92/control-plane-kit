@@ -60,7 +60,7 @@
     {
       "source": "build-parity-manifest.sh",
       "companion": "docs/implementation/build-parity-manifest.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -186,7 +186,7 @@
     {
       "source": "extraction_parity/manifest.py",
       "companion": "docs/implementation/extraction_parity/manifest.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -264,7 +264,7 @@
     {
       "source": "extraction_parity/tests/test_parity_manifest.py",
       "companion": "docs/implementation/extraction_parity/tests/test_parity_manifest.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
