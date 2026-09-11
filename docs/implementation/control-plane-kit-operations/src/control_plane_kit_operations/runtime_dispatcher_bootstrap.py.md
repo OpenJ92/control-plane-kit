@@ -1,0 +1,10 @@
+Source: [control-plane-kit-operations/src/control_plane_kit_operations/runtime_dispatcher_bootstrap.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_dispatcher_bootstrap.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+This is a pure process-capability configuration value, not a dispatcher, workspace authority registration or execution approval. It imports only the Core [RuntimeKind vocabulary](../../../../../control-plane-kit-core/src/control_plane_kit_core/types.py) and standard-library dataclasses. Accepting a kind does not establish that an interpreter package is installed or can perform the requested operation.
+
+Construction copies kinds to a tuple, rejects non-RuntimeKind elements, deduplicates and sorts by enum value. Empty is valid and means disabled. The process parser accepts comma-separated enum values with surrounding whitespace removed; exact `none` means disabled. Empty fields, unknown kinds and `none` mixed with other values fail. The parser is case-sensitive and does not accept arbitrary plugin names.
+
+`enabled` means only that the normalized tuple is nonempty. `descriptor()` and string rendering expose that configuration, without provider endpoints or credentials. This owner neither reads environment variables nor imports SDKs, creates clients, registers authority or mutates durable state. Entrypoints choose how to obtain the string and compose concrete implementations; [coordinator.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py) separately owns RuntimeInterpreterDispatcher and its request/authority handoff.
+
+[test_runtime_dispatcher_bootstrap.py](../../../../../control-plane-kit-operations/tests/test_runtime_dispatcher_bootstrap.py) checks disabled/normalized configuration, representative parser rejection and direct import isolation. It is not evidence of actual provider availability or authorized dispatch.

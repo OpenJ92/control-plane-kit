@@ -677,13 +677,13 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_dispatcher_bootstrap.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/runtime_dispatcher_bootstrap.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1775,13 +1775,13 @@
     {
       "source": "control-plane-kit-operations/tests/test_runtime_dispatcher_bootstrap.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_runtime_dispatcher_bootstrap.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/tests/test_runtime_effect_translation.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_runtime_effect_translation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
