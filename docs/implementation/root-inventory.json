@@ -84,7 +84,7 @@
     {
       "source": "current-backend.contracts.json",
       "companion": "docs/implementation/current-backend.contracts.json.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -108,7 +108,7 @@
     {
       "source": "current_backend/contracts.py",
       "companion": "docs/implementation/current_backend/contracts.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -138,7 +138,7 @@
     {
       "source": "current_backend/tests/test_contracts.py",
       "companion": "docs/implementation/current_backend/tests/test_contracts.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
