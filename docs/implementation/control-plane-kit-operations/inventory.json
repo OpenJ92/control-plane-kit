@@ -311,7 +311,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement_program.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement_program.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1253,7 +1253,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_retirement_program.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_retirement_program.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
