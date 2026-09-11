@@ -239,7 +239,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/foundation.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/foundation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -707,7 +707,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/workspaces.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/workspaces.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
