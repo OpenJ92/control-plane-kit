@@ -1157,13 +1157,13 @@
     {
       "source": "control-plane-kit-operations/tests/test_execution_lease_recovery_retry_totality.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_recovery_retry_totality.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/tests/test_execution_lease_recovery_support_contract.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_recovery_support_contract.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
