@@ -623,7 +623,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/observations.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/observations.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1343,7 +1343,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_observation_read_projection.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_observation_read_projection.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
