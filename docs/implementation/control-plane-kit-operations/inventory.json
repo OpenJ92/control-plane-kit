@@ -1391,7 +1391,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_activity_run_retry_eligibility_rollback.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_activity_run_retry_eligibility_rollback.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
