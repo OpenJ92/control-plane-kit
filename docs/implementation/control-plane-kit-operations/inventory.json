@@ -1199,13 +1199,13 @@
     {
       "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_deployment_fencing.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_deployment_fencing.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_deployment_lock_order.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_deployment_lock_order.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
