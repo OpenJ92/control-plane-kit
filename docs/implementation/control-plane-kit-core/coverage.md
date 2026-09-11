@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 98 pending, 0 authored,
-61 reviewed, 8 excluded.
+167 tracked paths: 92 pending, 0 authored,
+67 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -43,6 +43,16 @@ activity and policy contracts. No documentation findings remained.
 North also read the full 90-line public-key identity owner, full 80-line test
 and both companions; normalization, fingerprint and projection limits matched
 source. No cryptographic or runtime execution was claimed.
+
+North reviewed all six saga/scenario notes. He directly read saga syntax,
+state/transitions, compensation, schedule/evidence checks and the full journal
+projection, omitting selected simple command/event declarations. He checked
+scenario constructors, identity projection, expectation generation, catalogue
+membership and consequential graph helpers. Compensation behavioral tests and
+selected saga, scheduling and scenario assertions were read. Downstream
+coordinator/advancement use was checked narrowly. This was not a full read of
+both large source files or all associated tests; no documentation findings
+remained and no executable validation was performed.
 
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
@@ -109,8 +119,8 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/planning/codec.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/codec.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/codec.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/src/control_plane_kit_core/planning/compiler.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/compiler.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/compiler.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/src/control_plane_kit_core/planning/recovery.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/recovery.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/recovery.py.md) | North: full owner, test and both recovery notes read. |
-| [control-plane-kit-core/src/control_plane_kit_core/planning/saga.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/saga.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/planning/saga.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/saga.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/saga.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
+| [control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/scenarios.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/policies.py](../../../control-plane-kit-core/src/control_plane_kit_core/policies.py) | source | reviewed | [companion](src/control_plane_kit_core/policies.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/src/control_plane_kit_core/probe_intents.py](../../../control-plane-kit-core/src/control_plane_kit_core/probe_intents.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/products.py](../../../control-plane-kit-core/src/control_plane_kit_core/products.py) | source | pending | — | Initial authoring backlog. |
@@ -146,7 +156,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_authorization_history_parity_contract.py](../../../control-plane-kit-core/tests/test_authorization_history_parity_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_command_parity_contract.py](../../../control-plane-kit-core/tests/test_command_parity_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_command_workflow_contract.py](../../../control-plane-kit-core/tests/test_command_workflow_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_compensation_planning.py](../../../control-plane-kit-core/tests/test_compensation_planning.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_compensation_planning.py](../../../control-plane-kit-core/tests/test_compensation_planning.py) | test / assertion support | reviewed | [companion](tests/test_compensation_planning.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_configuration_artifacts.py](../../../control-plane-kit-core/tests/test_configuration_artifacts.py) | test / assertion support | reviewed | [companion](tests/test_configuration_artifacts.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_container_server_product.py](../../../control-plane-kit-core/tests/test_container_server_product.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_control_contracts.py](../../../control-plane-kit-core/tests/test_control_contracts.py) | test / assertion support | pending | — | Initial authoring backlog. |
@@ -192,7 +202,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_oci_image_reference.py](../../../control-plane-kit-core/tests/test_oci_image_reference.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_package_boundary.py](../../../control-plane-kit-core/tests/test_package_boundary.py) | test / assertion support | reviewed | [companion](tests/test_package_boundary.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_persistence_boundary_contract.py](../../../control-plane-kit-core/tests/test_persistence_boundary_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_planning_scenarios.py](../../../control-plane-kit-core/tests/test_planning_scenarios.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_planning_scenarios.py](../../../control-plane-kit-core/tests/test_planning_scenarios.py) | test / assertion support | reviewed | [companion](tests/test_planning_scenarios.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_policies.py](../../../control-plane-kit-core/tests/test_policies.py) | test / assertion support | reviewed | [companion](tests/test_policies.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/tests/test_probe_intents.py](../../../control-plane-kit-core/tests/test_probe_intents.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_process_operational_contract.py](../../../control-plane-kit-core/tests/test_process_operational_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
@@ -217,9 +227,9 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_runtime_effect_observation.py](../../../control-plane-kit-core/tests/test_runtime_effect_observation.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effect_observation.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_runtime_effect_observation_boundary.py](../../../control-plane-kit-core/tests/test_runtime_effect_observation_boundary.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effect_observation_boundary.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_runtime_effects.py](../../../control-plane-kit-core/tests/test_runtime_effects.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_saga.py](../../../control-plane-kit-core/tests/test_saga.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_saga.py](../../../control-plane-kit-core/tests/test_saga.py) | test / assertion support | reviewed | [companion](tests/test_saga.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_scaffold.py](../../../control-plane-kit-core/tests/test_scaffold.py) | test / assertion support | reviewed | [companion](tests/test_scaffold.py.md) | North: consequential claims checked; navigation sampled. |
-| [control-plane-kit-core/tests/test_scheduling.py](../../../control-plane-kit-core/tests/test_scheduling.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_scheduling.py](../../../control-plane-kit-core/tests/test_scheduling.py) | test / assertion support | reviewed | [companion](tests/test_scheduling.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_secret_provider_contract.py](../../../control-plane-kit-core/tests/test_secret_provider_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_temporal_history_read_contract.py](../../../control-plane-kit-core/tests/test_temporal_history_read_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_topology_graph.py](../../../control-plane-kit-core/tests/test_topology_graph.py) | test / assertion support | reviewed | [companion](tests/test_topology_graph.py.md) | North: consequential graph contracts checked; test bodies sampled. |
