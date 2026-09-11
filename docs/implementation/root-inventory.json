@@ -174,7 +174,7 @@
     {
       "source": "extraction_parity/differential.py",
       "companion": "docs/implementation/extraction_parity/differential.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -240,7 +240,7 @@
     {
       "source": "extraction_parity/tests/test_differential_language.py",
       "companion": "docs/implementation/extraction_parity/tests/test_differential_language.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
