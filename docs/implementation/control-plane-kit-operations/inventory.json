@@ -53,7 +53,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_temporal.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/_temporal.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -551,7 +551,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/temporal.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/temporal.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
