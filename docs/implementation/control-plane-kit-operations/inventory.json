@@ -143,7 +143,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/desired_realized_projections.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/desired_realized_projections.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -329,7 +329,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/graph_authoring.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/graph_authoring.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1283,7 +1283,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_graph_authoring.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_graph_authoring.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
