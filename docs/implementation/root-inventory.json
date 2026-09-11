@@ -156,7 +156,7 @@
     {
       "source": "extraction_parity/__init__.py",
       "companion": "docs/implementation/extraction_parity/__init__.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -234,7 +234,7 @@
     {
       "source": "extraction_parity/tests/__init__.py",
       "companion": "docs/implementation/extraction_parity/tests/__init__.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
