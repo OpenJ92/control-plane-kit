@@ -959,7 +959,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_current_graph_advancement.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_current_graph_advancement.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
