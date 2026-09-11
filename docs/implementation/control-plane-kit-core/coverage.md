@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 72 pending, 0 authored,
-87 reviewed, 8 excluded.
+167 tracked paths: 70 pending, 0 authored,
+89 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -98,6 +98,12 @@ PEM/fingerprint context. Intent, constructor/rendering limits, the single-node
 projection slot and planned operations versus provider results matched source.
 No companion correction or executable validation was needed.
 
+North read the full 444-line gateway-delegation owner, full 342-line test and
+both notes, plus selected actual target admission and Operations grant
+construction. Unsigned values/digests versus signature/replay authority, partial
+path validation, lifetime versus clock checks and type-name test limits matched
+source. No documentation correction or executable validation was required.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -135,7 +141,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/delegation_authority.py](../../../control-plane-kit-core/src/control_plane_kit_core/delegation_authority.py) | source | reviewed | [companion](src/control_plane_kit_core/delegation_authority.py.md) | North: full delegation owner/test/notes; actual environment/diff/graph checks. |
 | [control-plane-kit-core/src/control_plane_kit_core/delegation_keys.py](../../../control-plane-kit-core/src/control_plane_kit_core/delegation_keys.py) | source | reviewed | [companion](src/control_plane_kit_core/delegation_keys.py.md) | North: full public-key owner, test and both notes read. |
 | [control-plane-kit-core/src/control_plane_kit_core/environment.py](../../../control-plane-kit-core/src/control_plane_kit_core/environment.py) | source | reviewed | [companion](src/control_plane_kit_core/environment.py.md) | North: source claims checked; test navigation sampled. |
-| [control-plane-kit-core/src/control_plane_kit_core/gateway_delegation.py](../../../control-plane-kit-core/src/control_plane_kit_core/gateway_delegation.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/gateway_delegation.py](../../../control-plane-kit-core/src/control_plane_kit_core/gateway_delegation.py) | source | reviewed | [companion](src/control_plane_kit_core/gateway_delegation.py.md) | North: full gateway owner/test/notes; selected target admission and grant construction. |
 | [control-plane-kit-core/src/control_plane_kit_core/identity.py](../../../control-plane-kit-core/src/control_plane_kit_core/identity.py) | source | reviewed | [companion](src/control_plane_kit_core/identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/lifecycle.py](../../../control-plane-kit-core/src/control_plane_kit_core/lifecycle.py) | source | reviewed | [companion](src/control_plane_kit_core/lifecycle.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/node_control.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control.py) | source | pending | — | Initial authoring backlog. |
@@ -219,7 +225,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_extract_d_closeout.py](../../../control-plane-kit-core/tests/test_extract_d_closeout.py) | test / assertion support | reviewed | [companion](tests/test_extract_d_closeout.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_extract_d_topology.py](../../../control-plane-kit-core/tests/test_extract_d_topology.py) | test / assertion support | reviewed | [companion](tests/test_extract_d_topology.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_failed_run_compensation_contract.py](../../../control-plane-kit-core/tests/test_failed_run_compensation_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_gateway_delegation.py](../../../control-plane-kit-core/tests/test_gateway_delegation.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_gateway_delegation.py](../../../control-plane-kit-core/tests/test_gateway_delegation.py) | test / assertion support | reviewed | [companion](tests/test_gateway_delegation.py.md) | North: full gateway owner/test/notes; selected target admission and grant construction. |
 | [control-plane-kit-core/tests/test_graph_codec.py](../../../control-plane-kit-core/tests/test_graph_codec.py) | test / assertion support | reviewed | [companion](tests/test_graph_codec.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_graph_diff.py](../../../control-plane-kit-core/tests/test_graph_diff.py) | test / assertion support | reviewed | [companion](tests/test_graph_diff.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_graph_validation.py](../../../control-plane-kit-core/tests/test_graph_validation.py) | test / assertion support | reviewed | [companion](tests/test_graph_validation.py.md) | North: consequential graph contracts checked; test bodies sampled. |
