@@ -1439,7 +1439,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_first_replay.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_first_replay.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
