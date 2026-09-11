@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 20 pending, 0 authored,
-139 reviewed, 8 excluded.
+167 tracked paths: 19 pending, 0 authored,
+140 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -365,6 +365,14 @@ finite import roots and pytest-only discovery limits matched. Three links,
 whitespace and source/test/harness guards passed; no execution or extra coverage
 credit was added.
 
+North reviewed the full execution-coordinator test (180 lines), all six tests and
+note, selected owner 1–212, 237–350, 455–705 and 781–902, semantic guards, sorted
+factory and selected error wrapping. Kepler's full 917-line owner read remains
+separate author context. Enum-set/union coverage, selected flags, source-only
+approval/idempotency laws and the two sorted-command negatives matched. Three
+links, whitespace and source/test guards passed; no execution or owner credit
+was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -480,7 +488,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_draft_selection_contract.py](../../../control-plane-kit-core/tests/test_draft_selection_contract.py) | test / assertion support | reviewed | [companion](tests/test_draft_selection_contract.py.md) | North: full tests/notes/UoW helpers; selected exact HTTP/parity/projection entries. |
 | [control-plane-kit-core/tests/test_effect_recovery_contract.py](../../../control-plane-kit-core/tests/test_effect_recovery_contract.py) | test / assertion support | reviewed | [companion](tests/test_effect_recovery_contract.py.md) | North: full owner/test/identity helpers; selected Operations fold/start boundaries. |
 | [control-plane-kit-core/tests/test_environment_secrets.py](../../../control-plane-kit-core/tests/test_environment_secrets.py) | test / assertion support | reviewed | [companion](tests/test_environment_secrets.py.md) | North: source claims checked; test navigation sampled. |
-| [control-plane-kit-core/tests/test_execution_coordinator_contract.py](../../../control-plane-kit-core/tests/test_execution_coordinator_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_execution_coordinator_contract.py](../../../control-plane-kit-core/tests/test_execution_coordinator_contract.py) | test / assertion support | reviewed | [companion](tests/test_execution_coordinator_contract.py.md) | North PASS: full six-test source/note and selected owner guards/factory; Kepler full owner context. No execution. |
 | [control-plane-kit-core/tests/test_execution_lifecycle_contract.py](../../../control-plane-kit-core/tests/test_execution_lifecycle_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_external_product_fixture.py](../../../control-plane-kit-core/tests/test_external_product_fixture.py) | test / assertion support | reviewed | [companion](tests/test_external_product_fixture.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_extract_d_closeout.py](../../../control-plane-kit-core/tests/test_extract_d_closeout.py) | test / assertion support | reviewed | [companion](tests/test_extract_d_closeout.py.md) | North: consequential claims checked; navigation sampled. |
