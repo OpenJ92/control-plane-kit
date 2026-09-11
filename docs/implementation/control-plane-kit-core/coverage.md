@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 4 pending, 0 authored,
-155 reviewed, 8 excluded.
+167 tracked paths: 3 pending, 0 authored,
+156 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -494,6 +494,15 @@ matched. The note matched North's approved SHA-256. Eight local links and three
 exact external git paths, whitespace and frozen source checks passed; no provider
 execution or durable authorization evidence was added.
 
+North read all 953 runtime-effect test lines, twenty-five tests, five helpers
+and the note, with selected actual request/product/image/result/gateway guards,
+authority contracts and product socket normalization. The supposed grant-effect
+negative fails at request/source identity before grant matching; this assertion
+does not independently prove that later law. Synthetic fixtures, selected
+negative cases and disclosure limits matched. The note matched North's approved
+SHA-256. Six links, whitespace and frozen Core source/test checks passed; no
+source/test change or runtime execution was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -666,7 +675,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_runtime_effect_intent.py](../../../control-plane-kit-core/tests/test_runtime_effect_intent.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effect_intent.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_runtime_effect_observation.py](../../../control-plane-kit-core/tests/test_runtime_effect_observation.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effect_observation.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_runtime_effect_observation_boundary.py](../../../control-plane-kit-core/tests/test_runtime_effect_observation_boundary.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effect_observation_boundary.py.md) | North: source claims checked; test navigation sampled. |
-| [control-plane-kit-core/tests/test_runtime_effects.py](../../../control-plane-kit-core/tests/test_runtime_effects.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_runtime_effects.py](../../../control-plane-kit-core/tests/test_runtime_effects.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effects.py.md) | North: full suite/note/25 tests/five helpers; selected actual owner/imported guards and normalization; grant-negative guard ordering confirmed. |
 | [control-plane-kit-core/tests/test_saga.py](../../../control-plane-kit-core/tests/test_saga.py) | test / assertion support | reviewed | [companion](tests/test_saga.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_scaffold.py](../../../control-plane-kit-core/tests/test_scaffold.py) | test / assertion support | reviewed | [companion](tests/test_scaffold.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_scheduling.py](../../../control-plane-kit-core/tests/test_scheduling.py) | test / assertion support | reviewed | [companion](tests/test_scheduling.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
