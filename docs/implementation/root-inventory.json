@@ -114,7 +114,7 @@
     {
       "source": "current_backend/runner.py",
       "companion": "docs/implementation/current_backend/runner.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -126,13 +126,13 @@
     {
       "source": "current_backend/tests/__init__.py",
       "companion": "docs/implementation/current_backend/tests/__init__.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "current_backend/tests/approved_skips.json",
       "companion": "docs/implementation/current_backend/tests/approved_skips.json.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -144,7 +144,7 @@
     {
       "source": "current_backend/tests/test_runner.py",
       "companion": "docs/implementation/current_backend/tests/test_runner.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
