@@ -449,7 +449,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_attempt_store.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_attempt_store.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
