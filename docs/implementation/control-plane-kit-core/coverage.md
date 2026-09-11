@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 38 pending, 0 authored,
-121 reviewed, 8 excluded.
+167 tracked paths: 36 pending, 0 authored,
+123 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -240,6 +240,15 @@ ten selected repr cases versus descriptors, self-derived digest and four raw
 source-text exclusions. Nine links, whitespace and source guards passed. No
 corrections, execution or full large-owner coverage credit were added.
 
+North reviewed the full canonical-wire fixture (151 lines), full 195-line test
+and both companions. He checked actual weighted-state, grant-codec and raw/numeric
+parser paths, selected workload-wire and graph-reference tests, the dependency
+pin and public contract, with retained request/grant/shared-owner context. All
+eight tests' stated limits matched source: stored expectations versus computed
+equality, number substrings, mapping versus raw decoding, and the first-issued
+epoch rejection. Twelve local links, whitespace and source guards passed. No
+corrections, execution or full large-owner coverage credit were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -329,7 +338,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/contract_security_assertions.py](../../../control-plane-kit-core/tests/contract_security_assertions.py) | test / assertion support | reviewed | [companion](tests/contract_security_assertions.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/fixtures/external-products/proxy/product.cpk.json](../../../control-plane-kit-core/tests/fixtures/external-products/proxy/product.cpk.json) | authored fixture | reviewed | [companion](tests/fixtures/external-products/proxy/product.cpk.json.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/fixtures/node_authority_empty_graph.json](../../../control-plane-kit-core/tests/fixtures/node_authority_empty_graph.json) | authored fixture | reviewed | [companion](tests/fixtures/node_authority_empty_graph.json.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
-| [control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_canonical_wire_v1.json.md) | North PASS: full fixture/test/notes, actual selected canonical/raw/numeric paths and fixture consumers. No corrections or execution. |
 | [control-plane-kit-core/tests/fixtures/node_control_public_material_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_public_material_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_public_material_v1.json.md) | North PASS: full fixture/test/notes, retained shared owner and selected actual consumers. No corrections or execution. |
 | [control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/fixtures/node_control_transit_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_transit_canonical_wire_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
@@ -372,7 +381,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_milestone_closeout.py](../../../control-plane-kit-core/tests/test_milestone_closeout.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_authority_delivery.py](../../../control-plane-kit-core/tests/test_node_authority_delivery.py) | test / assertion support | reviewed | [companion](tests/test_node_authority_delivery.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/tests/test_node_control.py](../../../control-plane-kit-core/tests/test_node_control.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_node_control_canonical_wire.py](../../../control-plane-kit-core/tests/test_node_control_canonical_wire.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_node_control_canonical_wire.py](../../../control-plane-kit-core/tests/test_node_control_canonical_wire.py) | test / assertion support | reviewed | [companion](tests/test_node_control_canonical_wire.py.md) | North PASS: full test/fixture/notes and selected owners/dependency declaration. Fixed/computed and numeric evidence limits checked; no execution. |
 | [control-plane-kit-core/tests/test_node_control_graph_references.py](../../../control-plane-kit-core/tests/test_node_control_graph_references.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_operation_contracts.py](../../../control-plane-kit-core/tests/test_node_control_operation_contracts.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_public_material.py](../../../control-plane-kit-core/tests/test_node_control_public_material.py) | test / assertion support | reviewed | [companion](tests/test_node_control_public_material.py.md) | North PASS: full test/fixture/notes and selected construction, codec, representation and validation paths. No corrections or execution. |
