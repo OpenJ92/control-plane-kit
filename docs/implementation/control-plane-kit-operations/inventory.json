@@ -929,7 +929,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_architecture_testing_dependency.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_architecture_testing_dependency.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
