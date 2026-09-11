@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 18 pending, 0 authored,
-141 reviewed, 8 excluded.
+167 tracked paths: 17 pending, 0 authored,
+142 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -379,6 +379,14 @@ multiplicity, selective error wrapping and implementation obligations matched.
 The published note matched North's reviewed SHA-256. Four links, whitespace and
 source/test guards passed; no execution or additional test credit was added.
 
+North reviewed all 519 lines and thirteen tests of the lifecycle contract suite,
+its companion and selected actual lifecycle constructor/table/factory/aggregate
+paths. Literal, enum-relative and self-derived expectations, fourteen direct
+and fifteen descriptor negatives, the single fixed-message assertion and the
+metadata/execution distinction matched. The published note matched North's
+reviewed SHA-256. Two links, whitespace and source/test guards passed. No whole
+lifecycle-owner credit or executable evidence was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -495,7 +503,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_effect_recovery_contract.py](../../../control-plane-kit-core/tests/test_effect_recovery_contract.py) | test / assertion support | reviewed | [companion](tests/test_effect_recovery_contract.py.md) | North: full owner/test/identity helpers; selected Operations fold/start boundaries. |
 | [control-plane-kit-core/tests/test_environment_secrets.py](../../../control-plane-kit-core/tests/test_environment_secrets.py) | test / assertion support | reviewed | [companion](tests/test_environment_secrets.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_execution_coordinator_contract.py](../../../control-plane-kit-core/tests/test_execution_coordinator_contract.py) | test / assertion support | reviewed | [companion](tests/test_execution_coordinator_contract.py.md) | North PASS: full six-test source/note and selected owner guards/factory; Kepler full owner context. No execution. |
-| [control-plane-kit-core/tests/test_execution_lifecycle_contract.py](../../../control-plane-kit-core/tests/test_execution_lifecycle_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_execution_lifecycle_contract.py](../../../control-plane-kit-core/tests/test_execution_lifecycle_contract.py) | test / assertion support | reviewed | [companion](tests/test_execution_lifecycle_contract.py.md) | North PASS: full 519-line test/note and selected actual owner constructor/table/factory/aggregate paths. No execution or whole-owner credit. |
 | [control-plane-kit-core/tests/test_external_product_fixture.py](../../../control-plane-kit-core/tests/test_external_product_fixture.py) | test / assertion support | reviewed | [companion](tests/test_external_product_fixture.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_extract_d_closeout.py](../../../control-plane-kit-core/tests/test_extract_d_closeout.py) | test / assertion support | reviewed | [companion](tests/test_extract_d_closeout.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_extract_d_topology.py](../../../control-plane-kit-core/tests/test_extract_d_topology.py) | test / assertion support | reviewed | [companion](tests/test_extract_d_topology.py.md) | North: consequential claims checked; navigation sampled. |
