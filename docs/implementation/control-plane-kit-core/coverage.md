@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 43 pending, 0 authored,
-116 reviewed, 8 excluded.
+167 tracked paths: 42 pending, 0 authored,
+117 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -212,6 +212,15 @@ addresses and assertion/readiness limits matched source. Ten links, whitespace
 and source guards passed; no corrections, executable validation or new full
 products.py/compiler review credit were added.
 
+North read the full runtime-contract test (755 lines), hostile fixtures and
+companion. He retained actual runtime constructor/descriptor/codec/materializer
+context and checked exact socket admission, socket/port/lifecycle/path helpers,
+algebra sockets, graph validation loops and selected environment/configuration
+contracts. The static-import wording was corrected to acknowledge local import
+aliases remain covered. All 23 tests' stated limits matched source; six links,
+whitespace and source guards passed. No executable validation, inferred code
+defect or full products.py audit was claimed.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -371,7 +380,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_product_instantiation.py](../../../control-plane-kit-core/tests/test_product_instantiation.py) | test / assertion support | reviewed | [companion](tests/test_product_instantiation.py.md) | North PASS: full test/helpers/note, actual instantiation/configuration and selected graph contracts. No execution. |
 | [control-plane-kit-core/tests/test_product_pipeline_propagation.py](../../../control-plane-kit-core/tests/test_product_pipeline_propagation.py) | test / assertion support | reviewed | [companion](tests/test_product_pipeline_propagation.py.md) | North PASS: full test/helpers/note, selected actual materialization/graph/diff/planning paths. No execution. |
 | [control-plane-kit-core/tests/test_product_reference.py](../../../control-plane-kit-core/tests/test_product_reference.py) | test / assertion support | reviewed | [companion](tests/test_product_reference.py.md) | North PASS: full test/helper/note, selected reference/identity/document/catalogue boundaries. No execution. |
-| [control-plane-kit-core/tests/test_product_runtime_contract.py](../../../control-plane-kit-core/tests/test_product_runtime_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_product_runtime_contract.py](../../../control-plane-kit-core/tests/test_product_runtime_contract.py) | test / assertion support | reviewed | [companion](tests/test_product_runtime_contract.py.md) | North PASS: full test/hostile fixtures/note; actual runtime contract and selected validators. Static-import alias wording corrected; no execution. |
 | [control-plane-kit-core/tests/test_protocol.py](../../../control-plane-kit-core/tests/test_protocol.py) | test / assertion support | reviewed | [companion](tests/test_protocol.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_public_ingress.py](../../../control-plane-kit-core/tests/test_public_ingress.py) | test / assertion support | reviewed | [companion](tests/test_public_ingress.py.md) | North: full ingress owner/test/notes; exact graph references and origin helper. |
 | [control-plane-kit-core/tests/test_read_projection_contract.py](../../../control-plane-kit-core/tests/test_read_projection_contract.py) | test / assertion support | reviewed | [companion](tests/test_read_projection_contract.py.md) | North: full owner/test/notes, prior security helper; selected HTTP/parity. |
