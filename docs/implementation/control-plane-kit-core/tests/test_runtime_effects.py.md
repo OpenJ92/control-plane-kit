@@ -88,7 +88,7 @@ valid request/source identity. The source does contain those grant guards, but
 this assertion does not independently protect them.
 
 The duplicate-grant negative supplies the same grant twice and requires a unique
-error. The owner deduplicates by reference/intent; this test does not vary
+error. The owner rejects duplicate reference/intent pairs; this test does not vary
 authorization ID while retaining the same use. Another test rejects a raw string
 instead of RuntimeEffectKind and rejects ReviewChange as executable work, checking
 the respective message fragments. None of these tests proves approval, exact
