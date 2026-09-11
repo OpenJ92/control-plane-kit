@@ -1,0 +1,12 @@
+Source: [control-plane-kit-core/tests/test_failed_run_compensation_contract.py](../../../../control-plane-kit-core/tests/test_failed_run_compensation_contract.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+Three pure tests exercise the [failed-run compensation value owner](../src/control_plane_kit_core/operations/compensation.py.md). The complete fixture supplies a failed-run lineage and two synthetic successful effects: node completion at ordinal 6 followed by runtime completion at ordinal 4. Its steps stop the node and runtime using desired-graph material. These fingerprints and event names are invented witnesses; the tests do not establish any external success or load durable history.
+
+The positive test compares the entire literal descriptor, round-trips it through the decoder, checks a 64-character lowercase hexadecimal fingerprint and compares repeated fingerprint calls. Despite “exact” in its name, it does not pin an independently calculated digest or test fingerprint sensitivity to changed fields.
+
+Five negative factories reverse the existing numbered steps, introduce a position gap, supply a malformed failure fingerprint, add an extra program field and add an extra step field. Reversing steps also makes positions noncontiguous, so that case does not independently prove the evidence constructor rejects ascending completion order. The provider-message canary is an unknown-key rejection example, not an assertion that exception text or causes are redacted. There is no full matrix for same-run membership, duplicate attempts/ordinals, primitive subclasses, nested operation closure, inverse correctness or persisted evidence correlation.
+
+The export test's “only through core operations” name is narrower than its assertions: it checks that seven objects are identical in the defining module, operations facade and Core root. It proves both facades expose those objects; it does not prohibit other exports or exhaustively certify __all__. The import helper returns None only for the specifically missing target module and re-raises other ModuleNotFoundError failures.
+
+Full 265-line test/helper file and full 427-line owner read, with selected actual facade imports and the owner's consequential codec/admission dependencies. Execution belongs to the normal Docker-backed Core suite; no executable validation accompanied this documentation review.

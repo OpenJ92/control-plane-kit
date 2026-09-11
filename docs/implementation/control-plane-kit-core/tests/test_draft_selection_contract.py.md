@@ -1,0 +1,10 @@
+Source: [control-plane-kit-core/tests/test_draft_selection_contract.py](../../../../control-plane-kit-core/tests/test_draft_selection_contract.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+One positive test covers select and delete catalogue commands. Each must use POST at its exact workspace/draft action path, PLAN_WRITE scope and COMMAND safety; both request and response schema byte bounds must be positive. Each parity binding must name its corresponding MCP tool, require idempotency and declare that no separate approval is required.
+
+The [_uow fixture](../../../../control-plane-kit-core/tests/test_command_parity_contract.py) constructs Core service/transaction declarations. It opens no transaction or connection. The actual [HTTP route table](../../../../control-plane-kit-core/src/control_plane_kit_core/operations/http.py) and [parity factory](../../../../control-plane-kit-core/src/control_plane_kit_core/operations/parity.py) compose those values with the MCP contract. The test does not separately assert exact byte maxima, schema names, service roles, external-effect policy or workspace flags. Its dictionary is lookup machinery, not an independent duplicate-route test.
+
+The method's authenticated/idempotent/effect-free name describes intended contract properties; no credentials, repeated command, store mutation or provider is exercised. Concrete selection changes desired intent, while deletion tombstones a catalogue header under Operations retention rules. Those behaviors and their rejection cases belong to Operations tests, not this declaration test. No-approval metadata here does not confer permission to delete runtime resources or bypass deployment approval.
+
+Full 33-line test read with the actual _program/_transaction_rule/_uow helpers and selected exact HTTP/parity entries; previously reviewed MCP/transaction context retained. No executable validation or live adapter conformance is claimed.
