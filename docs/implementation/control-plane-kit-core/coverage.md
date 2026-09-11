@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 1 pending, 0 authored,
-158 reviewed, 8 excluded.
+167 tracked paths: 0 pending, 0 authored,
+159 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -520,6 +520,16 @@ effect boundaries matched, including the exact scope of graph-edge checks.
 The note matched North's approved SHA-256. Ten links, whitespace and frozen
 Core source/test checks passed; no source changes, execution or live evidence.
 
+North read the full 2209-line Products owner and note, the full descriptor,
+catalogue, OCI and instantiation suites/helpers, and selected actual algebra,
+compiler and Operations import/registration/reload consumers. Custom canonical
+JSON, mapping/raw/direct-document distinctions, finite filters, contract-key
+substitution, catalogue duplicate-content handling and pure graph material
+matched source. The note matched North's approved SHA-256. Eleven links,
+whitespace and frozen source/dependency checks passed. All 159 included Core
+paths now have reviewed companions; this is documentation coverage completion,
+not an exhaustive behavioral audit, merge or live acceptance.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -589,7 +599,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/scenarios.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/policies.py](../../../control-plane-kit-core/src/control_plane_kit_core/policies.py) | source | reviewed | [companion](src/control_plane_kit_core/policies.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/src/control_plane_kit_core/probe_intents.py](../../../control-plane-kit-core/src/control_plane_kit_core/probe_intents.py) | source | reviewed | [companion](src/control_plane_kit_core/probe_intents.py.md) | North: full probe owner and notes read; selected tests checked. |
-| [control-plane-kit-core/src/control_plane_kit_core/products.py](../../../control-plane-kit-core/src/control_plane_kit_core/products.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/products.py](../../../control-plane-kit-core/src/control_plane_kit_core/products.py) | source | reviewed | [companion](src/control_plane_kit_core/products.py.md) | North: full owner/note and descriptor/catalogue/OCI/instantiation suites; selected actual algebra/compiler and Operations consumers. |
 | [control-plane-kit-core/src/control_plane_kit_core/public_ingress.py](../../../control-plane-kit-core/src/control_plane_kit_core/public_ingress.py) | source | reviewed | [companion](src/control_plane_kit_core/public_ingress.py.md) | North: full ingress owner/test/notes; exact graph references and origin helper. |
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py) | source | reviewed | [companion](src/control_plane_kit_core/runtime_authority.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py) | source | reviewed | [companion](src/control_plane_kit_core/runtime_effect_observation.py.md) | North: source claims checked; test navigation sampled. |
