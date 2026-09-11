@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 60 pending, 0 authored,
-99 reviewed, 8 excluded.
+167 tracked paths: 58 pending, 0 authored,
+101 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -138,6 +138,13 @@ checked selectively. Canonical associations versus wider admission, boolean
 page limits and declaration versus adapter evidence matched source. No
 correction or executable validation was required.
 
+North read the full effect-recovery owner (679 lines), full test (750 lines),
+RunId/activity/run identity helpers and both companions. Actual Operations
+fold authority/historical-fence and start transaction/persistence paths were
+checked selectively. Local fold consistency, retry lineage, evidence matching,
+character/integer bounds and event-vocabulary test limits matched source.
+No source change or executable validation was performed.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -194,7 +201,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/operations/persistence.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/persistence.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/persistence.py.md) | North: full persistence owner/test/notes; actual enforcement enum and selected store bundle. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/process.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/process.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/process.py.md) | North: full process owner/test/notes/security helper; selected imported contracts. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/projections.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/projections.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/projections.py.md) | North: full owner/test/notes, prior security helper; selected HTTP/parity. |
-| [control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/recovery.py.md) | North: full owner/test/identity helpers; selected Operations fold/start boundaries. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/run_identity.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/run_identity.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/run_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/services.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/services.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/services.py.md) | North: complete service owner across two reads, full test and both notes. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/transactions.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/transactions.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/transactions.py.md) | North: full transaction owner/test/notes and Postgres UOW; selected service contracts. |
@@ -251,7 +258,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_deployment_program_boundary.py](../../../control-plane-kit-core/tests/test_deployment_program_boundary.py) | test / assertion support | reviewed | [companion](tests/test_deployment_program_boundary.py.md) | North: complete service owner across two reads, full test and both notes. |
 | [control-plane-kit-core/tests/test_draft_catalogue_contract.py](../../../control-plane-kit-core/tests/test_draft_catalogue_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_draft_selection_contract.py](../../../control-plane-kit-core/tests/test_draft_selection_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_effect_recovery_contract.py](../../../control-plane-kit-core/tests/test_effect_recovery_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_effect_recovery_contract.py](../../../control-plane-kit-core/tests/test_effect_recovery_contract.py) | test / assertion support | reviewed | [companion](tests/test_effect_recovery_contract.py.md) | North: full owner/test/identity helpers; selected Operations fold/start boundaries. |
 | [control-plane-kit-core/tests/test_environment_secrets.py](../../../control-plane-kit-core/tests/test_environment_secrets.py) | test / assertion support | reviewed | [companion](tests/test_environment_secrets.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_execution_coordinator_contract.py](../../../control-plane-kit-core/tests/test_execution_coordinator_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_execution_lifecycle_contract.py](../../../control-plane-kit-core/tests/test_execution_lifecycle_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
