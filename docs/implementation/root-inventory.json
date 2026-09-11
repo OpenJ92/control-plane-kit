@@ -168,7 +168,7 @@
     {
       "source": "extraction_parity/demos.py",
       "companion": "docs/implementation/extraction_parity/demos.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -276,7 +276,7 @@
     {
       "source": "extraction_parity/tests/test_reference_demo_inventory.py",
       "companion": "docs/implementation/extraction_parity/tests/test_reference_demo_inventory.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -354,7 +354,7 @@
     {
       "source": "validate-reference-demos.sh",
       "companion": "docs/implementation/validate-reference-demos.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
