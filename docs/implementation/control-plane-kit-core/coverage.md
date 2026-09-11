@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 7 pending, 0 authored,
-152 reviewed, 8 excluded.
+167 tracked paths: 6 pending, 0 authored,
+153 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -469,6 +469,14 @@ set limits, required subsets, marker filters and entrypoint agreement matched.
 The note matched North's reviewed SHA-256. Five links, whitespace and frozen
 Core source/test guards passed; no owner credit or actual deployment evidence.
 
+North completed all 827 handoff owner lines, every constructor/decoder/factory
+and private helper, the note, retained the full 447-line/thirteen-test suite and
+checked actual dependencies/facades and scoped Core/Operations consumer search.
+Value equality, permissive requirement/subset rules, finite marker filtering,
+nested content, publication policy and smoke-set limits matched. The note matched
+North's reviewed SHA-256. Eight links, whitespace and frozen Core source/test
+guards passed; no code, executable validation or actual provider/deployment proof.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -517,7 +525,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/operations/commands.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/commands.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/commands.py.md) | North PASS: full 850-line owner, 476-line suite/helper/note, actual selected policy/Operations consumers and scoped symbol search. No execution or consumer coverage. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/compensation.py.md) | North PASS: full owner/test/notes; selected identity, codec, planned-activity validation, facade and Operations admission contracts. No execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/execution.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/execution.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/execution.py.md) | North PASS: full owner/test/note, selected actual shared context. Reviewed note hash verified. No execution. |
-| [control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/handoff.py.md) | North PASS: full 827-line owner/helpers/note, retained full 447-line suite, actual dependencies and scoped consumer search. No execution or consumer credit. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/http.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/http.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/http.py.md) | North PASS: full 919-line owner/tables/helpers/note, retained HTTP/parity suites and actual selected consumers. No execution or consumer credit. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/lifecycle.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/lifecycle.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/lifecycle.py.md) | North PASS: full 1301-line owner/note, retained full 519-line test and selected actual Operations records. No source repair or execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/mcp.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/mcp.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/mcp.py.md) | North: full owner/test and notes; selected Protocol contract, prior process context. |
