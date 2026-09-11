@@ -257,7 +257,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_deployment_execution.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_deployment_execution.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
