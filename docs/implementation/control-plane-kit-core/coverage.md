@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 31 pending, 0 authored,
-128 reviewed, 8 excluded.
+167 tracked paths: 30 pending, 0 authored,
+129 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -282,6 +282,14 @@ Strict-negative and root/union assertion limits matched source. Four links,
 whitespace and source/test guards passed; no corrections, execution or full
 large-owner credit were added.
 
+North reviewed the full surface test (379 lines), nine tests/helpers and note,
+surface constructor/codec and proxy fixture. Selected actual BlockSpec, product
+instantiation, graph codec/validation/diff and PureImplementation were checked,
+with retained product admission context. Count-before-item failures, fixed
+compatibility fixtures, filtered diff/error-code assertions and limits on
+reachability/authority claims matched. Six links, whitespace and source/test
+guards passed; no corrections, execution or additional owner credit were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -422,7 +430,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_node_control_result_variants.py](../../../control-plane-kit-core/tests/test_node_control_result_variants.py) | test / assertion support | reviewed | [companion](tests/test_node_control_result_variants.py.md) | North PASS: full test/helpers/note, actual result constructors and retained codec/variable context. Matrix and binding limits verified; no corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_surface_read_authority.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_authority.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_surface_read_results.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_results.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_node_control_surfaces.py](../../../control-plane-kit-core/tests/test_node_control_surfaces.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_node_control_surfaces.py](../../../control-plane-kit-core/tests/test_node_control_surfaces.py) | test / assertion support | reviewed | [companion](tests/test_node_control_surfaces.py.md) | North PASS: full nine-test suite/helpers/note, surface constructor/codec and fixture; selected actual product/graph consumers. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_topology.py](../../../control-plane-kit-core/tests/test_node_control_topology.py) | test / assertion support | reviewed | [companion](tests/test_node_control_topology.py.md) | North PASS: full documentation guard/note and governing topology document; historical/current limits checked. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_transit.py](../../../control-plane-kit-core/tests/test_node_control_transit.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_workload_wire.py](../../../control-plane-kit-core/tests/test_node_control_workload_wire.py) | test / assertion support | reviewed | [companion](tests/test_node_control_workload_wire.py.md) | North PASS: full test/helpers/note and fixture context, selected actual raw/codec/constructor paths. No corrections or execution. |
