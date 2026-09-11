@@ -1787,7 +1787,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_runtime_interpreter_dispatcher.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_runtime_interpreter_dispatcher.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
