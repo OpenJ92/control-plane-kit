@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 90 pending, 0 authored,
-69 reviewed, 8 excluded.
+167 tracked paths: 86 pending, 0 authored,
+73 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -58,6 +58,12 @@ policy/descriptor/outcome tests. TimeoutPolicy's finite-timing gap and direct
 intent-kind override limits were confirmed from source, without executed or
 downstream-impact claims. No documentation findings remained.
 
+North read both control-contract and control-route owners and all four notes in
+full, the complete route test, and selected contract validation, projection and
+patch assertions. Raw values, snapshot redaction, direct construction limits
+and route metadata versus enforcement matched source. No documentation findings
+remained; no executable validation was performed.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -90,8 +96,8 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/capabilities.py](../../../control-plane-kit-core/src/control_plane_kit_core/capabilities.py) | source | reviewed | [companion](src/control_plane_kit_core/capabilities.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/configuration.py](../../../control-plane-kit-core/src/control_plane_kit_core/configuration.py) | source | reviewed | [companion](src/control_plane_kit_core/configuration.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/configuration_rendering.py](../../../control-plane-kit-core/src/control_plane_kit_core/configuration_rendering.py) | source | reviewed | [companion](src/control_plane_kit_core/configuration_rendering.py.md) | North: consequential claims checked; navigation sampled. |
-| [control-plane-kit-core/src/control_plane_kit_core/control_contracts.py](../../../control-plane-kit-core/src/control_plane_kit_core/control_contracts.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/control_routes.py](../../../control-plane-kit-core/src/control_plane_kit_core/control_routes.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/control_contracts.py](../../../control-plane-kit-core/src/control_plane_kit_core/control_contracts.py) | source | reviewed | [companion](src/control_plane_kit_core/control_contracts.py.md) | North: full owners, four notes and route test; contract tests sampled. |
+| [control-plane-kit-core/src/control_plane_kit_core/control_routes.py](../../../control-plane-kit-core/src/control_plane_kit_core/control_routes.py) | source | reviewed | [companion](src/control_plane_kit_core/control_routes.py.md) | North: full owners, four notes and route test; contract tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/delegation_authority.py](../../../control-plane-kit-core/src/control_plane_kit_core/delegation_authority.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/delegation_keys.py](../../../control-plane-kit-core/src/control_plane_kit_core/delegation_keys.py) | source | reviewed | [companion](src/control_plane_kit_core/delegation_keys.py.md) | North: full public-key owner, test and both notes read. |
 | [control-plane-kit-core/src/control_plane_kit_core/environment.py](../../../control-plane-kit-core/src/control_plane_kit_core/environment.py) | source | reviewed | [companion](src/control_plane_kit_core/environment.py.md) | North: source claims checked; test navigation sampled. |
@@ -163,8 +169,8 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_compensation_planning.py](../../../control-plane-kit-core/tests/test_compensation_planning.py) | test / assertion support | reviewed | [companion](tests/test_compensation_planning.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_configuration_artifacts.py](../../../control-plane-kit-core/tests/test_configuration_artifacts.py) | test / assertion support | reviewed | [companion](tests/test_configuration_artifacts.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_container_server_product.py](../../../control-plane-kit-core/tests/test_container_server_product.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_control_contracts.py](../../../control-plane-kit-core/tests/test_control_contracts.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_control_routes.py](../../../control-plane-kit-core/tests/test_control_routes.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_control_contracts.py](../../../control-plane-kit-core/tests/test_control_contracts.py) | test / assertion support | reviewed | [companion](tests/test_control_contracts.py.md) | North: full owners, four notes and route test; contract tests sampled. |
+| [control-plane-kit-core/tests/test_control_routes.py](../../../control-plane-kit-core/tests/test_control_routes.py) | test / assertion support | reviewed | [companion](tests/test_control_routes.py.md) | North: full owners, four notes and route test; contract tests sampled. |
 | [control-plane-kit-core/tests/test_cpk_server_entrypoint_handoff.py](../../../control-plane-kit-core/tests/test_cpk_server_entrypoint_handoff.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_delegation_authority_projection.py](../../../control-plane-kit-core/tests/test_delegation_authority_projection.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_delegation_keys.py](../../../control-plane-kit-core/tests/test_delegation_keys.py) | test / assertion support | reviewed | [companion](tests/test_delegation_keys.py.md) | North: full public-key owner, test and both notes read. |
