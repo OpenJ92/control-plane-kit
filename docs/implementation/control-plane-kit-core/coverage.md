@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 30 pending, 0 authored,
-129 reviewed, 8 excluded.
+167 tracked paths: 29 pending, 0 authored,
+130 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -290,6 +290,14 @@ compatibility fixtures, filtered diff/error-code assertions and limits on
 reachability/authority claims matched. Six links, whitespace and source/test
 guards passed; no corrections, execution or additional owner credit were added.
 
+North reviewed the full node-control test (592 lines), fourteen tests/helpers
+and note, fresh full unsigned comparator/result/audience and actual routes and
+capability with retained state/request/grant/codec context. Five audience tests,
+the 256/257-byte witness, nine mismatch cases, untested temporal endpoints and
+the misnamed probe-grant substitution were accurately bounded. Three links,
+whitespace and source/test guards passed; no corrections, execution or additional
+owner credit were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -421,7 +429,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_mcp_streamable_http_contract.py](../../../control-plane-kit-core/tests/test_mcp_streamable_http_contract.py) | test / assertion support | reviewed | [companion](tests/test_mcp_streamable_http_contract.py.md) | North: full owner/test and notes; selected Protocol contract, prior process context. |
 | [control-plane-kit-core/tests/test_milestone_closeout.py](../../../control-plane-kit-core/tests/test_milestone_closeout.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_authority_delivery.py](../../../control-plane-kit-core/tests/test_node_authority_delivery.py) | test / assertion support | reviewed | [companion](tests/test_node_authority_delivery.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
-| [control-plane-kit-core/tests/test_node_control.py](../../../control-plane-kit-core/tests/test_node_control.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_node_control.py](../../../control-plane-kit-core/tests/test_node_control.py) | test / assertion support | reviewed | [companion](tests/test_node_control.py.md) | North PASS: full fourteen-test suite/helpers/note, audience/grant comparator and selected declaration/constructor context. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_canonical_wire.py](../../../control-plane-kit-core/tests/test_node_control_canonical_wire.py) | test / assertion support | reviewed | [companion](tests/test_node_control_canonical_wire.py.md) | North PASS: full test/fixture/notes and selected owners/dependency declaration. Fixed/computed and numeric evidence limits checked; no execution. |
 | [control-plane-kit-core/tests/test_node_control_graph_references.py](../../../control-plane-kit-core/tests/test_node_control_graph_references.py) | test / assertion support | reviewed | [companion](tests/test_node_control_graph_references.py.md) | North PASS: full test/note, actual selected nominal/codec/wrapper/export paths and fixture context. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_operation_contracts.py](../../../control-plane-kit-core/tests/test_node_control_operation_contracts.py) | test / assertion support | reviewed | [companion](tests/test_node_control_operation_contracts.py.md) | North PASS: full test/note, actual operation/variable owner and result consumer; retained descriptor codec and selected guards. No corrections or execution. |
