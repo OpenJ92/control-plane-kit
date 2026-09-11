@@ -515,7 +515,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/revision_history_store.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/revision_history_store.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -665,7 +665,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/revision_history.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/revision_history.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -881,7 +881,7 @@
     {
       "source": "control-plane-kit-operations/tests/revision_history_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/revision_history_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
