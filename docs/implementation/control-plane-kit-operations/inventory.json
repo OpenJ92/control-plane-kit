@@ -1835,7 +1835,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_session_serialization_primitives.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_session_serialization_primitives.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
