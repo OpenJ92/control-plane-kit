@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 54 pending, 0 authored,
-105 reviewed, 8 excluded.
+167 tracked paths: 52 pending, 0 authored,
+107 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -160,6 +160,15 @@ approval metadata matched source. North checked whitespace/source guards;
 Kepler checked nine local links, acknowledged but not rerun by North. No
 corrections or executable validation were required.
 
+North read the full failed-run compensation owner (427 lines), test/helpers
+(265 lines) and both notes. He checked selected recovery/RunId construction,
+standalone operation codec and target helpers, PlannedActivity validation,
+compensation selection, facade exports and Operations admission lines 165–360.
+Structural evidence/order versus durable inverse selection, decoder limits and
+test assertion boundaries matched source. Source/whitespace guards passed;
+Kepler's link check was acknowledged. No corrections or executable validation
+were required.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -206,7 +215,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/node_control_transit.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control_transit.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/__init__.py.md) | North: both facades and boundary test fully read; selected consumer imports. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/commands.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/commands.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/compensation.py.md) | North PASS: full owner/test/notes; selected identity, codec, planned-activity validation, facade and Operations admission contracts. No execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/execution.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/execution.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/http.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/http.py) | source | pending | — | Initial authoring backlog. |
@@ -280,7 +289,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_external_product_fixture.py](../../../control-plane-kit-core/tests/test_external_product_fixture.py) | test / assertion support | reviewed | [companion](tests/test_external_product_fixture.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_extract_d_closeout.py](../../../control-plane-kit-core/tests/test_extract_d_closeout.py) | test / assertion support | reviewed | [companion](tests/test_extract_d_closeout.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_extract_d_topology.py](../../../control-plane-kit-core/tests/test_extract_d_topology.py) | test / assertion support | reviewed | [companion](tests/test_extract_d_topology.py.md) | North: consequential claims checked; navigation sampled. |
-| [control-plane-kit-core/tests/test_failed_run_compensation_contract.py](../../../control-plane-kit-core/tests/test_failed_run_compensation_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_failed_run_compensation_contract.py](../../../control-plane-kit-core/tests/test_failed_run_compensation_contract.py) | test / assertion support | reviewed | [companion](tests/test_failed_run_compensation_contract.py.md) | North PASS: full test/helpers, owner and notes; selected actual exports and consequential dependencies. No execution. |
 | [control-plane-kit-core/tests/test_gateway_delegation.py](../../../control-plane-kit-core/tests/test_gateway_delegation.py) | test / assertion support | reviewed | [companion](tests/test_gateway_delegation.py.md) | North: full gateway owner/test/notes; selected target admission and grant construction. |
 | [control-plane-kit-core/tests/test_graph_codec.py](../../../control-plane-kit-core/tests/test_graph_codec.py) | test / assertion support | reviewed | [companion](tests/test_graph_codec.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_graph_diff.py](../../../control-plane-kit-core/tests/test_graph_diff.py) | test / assertion support | reviewed | [companion](tests/test_graph_diff.py.md) | North: consequential graph contracts checked; test bodies sampled. |
