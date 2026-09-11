@@ -1577,7 +1577,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_codec.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_codec.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
