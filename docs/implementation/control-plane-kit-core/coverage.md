@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 15 pending, 0 authored,
-144 reviewed, 8 excluded.
+167 tracked paths: 14 pending, 0 authored,
+145 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -403,6 +403,16 @@ flags, three negatives with duplicate overlap and cause-retention limits matched
 The note matched North's reviewed SHA-256. Three links, whitespace and frozen
 source/test guards passed; no whole-owner credit or executable evidence was added.
 
+North completed the full 850-line commands owner, full 476-line suite/helper and
+note, with actual shared policy enums and Operations workflows 1–82/records
+448–485. Scoped symbol search confirmed only owner/facade references for the
+factory, contract records and payload-policy enum in Core/Operations sources.
+The 11-family/31-kind/14-policy catalogue, factory defaults versus constructor
+freedoms, ID/kind integrity distinctions, mapping/error limits and actual enum
+consumers matched. The note matched North's reviewed SHA-256. Seven links,
+whitespace and frozen Core source/test plus selected Operations guards passed.
+No source repair, executable evidence or additional consumer coverage was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -448,7 +458,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/node_control_surface_reads.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control_surface_reads.py) | source | reviewed | [companion](src/control_plane_kit_core/node_control_surface_reads.py.md) | North PASS: full owner/note, selected authority tests, full result-owner/fixtures. Kepler full authority-test context. No execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/node_control_transit.py](../../../control-plane-kit-core/src/control_plane_kit_core/node_control_transit.py) | source | reviewed | [companion](src/control_plane_kit_core/node_control_transit.py.md) | North PASS: full owner/test/helpers/note/fixture and selected actual Operations consumers. No corrections or execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/__init__.py.md) | North: both facades and boundary test fully read; selected consumer imports. |
-| [control-plane-kit-core/src/control_plane_kit_core/operations/commands.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/commands.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/operations/commands.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/commands.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/commands.py.md) | North PASS: full 850-line owner, 476-line suite/helper/note, actual selected policy/Operations consumers and scoped symbol search. No execution or consumer coverage. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/compensation.py.md) | North PASS: full owner/test/notes; selected identity, codec, planned-activity validation, facade and Operations admission contracts. No execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/execution.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/execution.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/execution.py.md) | North PASS: full owner/test/note, selected actual shared context. Reviewed note hash verified. No execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py) | source | pending | — | Initial authoring backlog. |
