@@ -270,7 +270,7 @@
     {
       "source": "extraction_parity/tests/test_parity_validation.py",
       "companion": "docs/implementation/extraction_parity/tests/test_parity_validation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -312,7 +312,7 @@
     {
       "source": "extraction_parity/validation.py",
       "companion": "docs/implementation/extraction_parity/validation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -348,7 +348,7 @@
     {
       "source": "validate-parity.sh",
       "companion": "docs/implementation/validate-parity.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
