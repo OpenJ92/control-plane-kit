@@ -1409,7 +1409,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_atomic_effect_attempt_fold.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_atomic_effect_attempt_fold.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
