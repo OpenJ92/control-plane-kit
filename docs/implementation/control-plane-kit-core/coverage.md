@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 45 pending, 0 authored,
-114 reviewed, 8 excluded.
+167 tracked paths: 43 pending, 0 authored,
+116 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -203,6 +203,15 @@ eight-import/ten-annotation source guard matched source. Three links, whitespace
 and source guards passed; no corrections, executable validation or full
 products.py review credit were added.
 
+North read both instantiation/pipeline tests (340/156 lines) and their notes,
+checking actual product configuration/materialization/instantiation and matching
+helpers, selected secret keys, topology compiler/node/codec propagation,
+metadata diff and activity reconciliation/start/readiness contracts. Exact key
+matching versus configurable values, inactive unconnected requirements, planned
+addresses and assertion/readiness limits matched source. Ten links, whitespace
+and source guards passed; no corrections, executable validation or new full
+products.py/compiler review credit were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -359,8 +368,8 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_product_descriptor.py](../../../control-plane-kit-core/tests/test_product_descriptor.py) | test / assertion support | reviewed | [companion](tests/test_product_descriptor.py.md) | North PASS: full test/helpers/note and bounded snapshot; retained actual document codec. No execution. |
 | [control-plane-kit-core/tests/test_product_descriptor_hardening.py](../../../control-plane-kit-core/tests/test_product_descriptor_hardening.py) | test / assertion support | reviewed | [companion](tests/test_product_descriptor_hardening.py.md) | North PASS: full test/helper/note, selected nested rejection contracts and retained catalogue. No execution. |
 | [control-plane-kit-core/tests/test_product_identity.py](../../../control-plane-kit-core/tests/test_product_identity.py) | test / assertion support | reviewed | [companion](tests/test_product_identity.py.md) | North PASS: full test/note; retained selected identity/codec/uniqueness and validators. No execution. |
-| [control-plane-kit-core/tests/test_product_instantiation.py](../../../control-plane-kit-core/tests/test_product_instantiation.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_product_pipeline_propagation.py](../../../control-plane-kit-core/tests/test_product_pipeline_propagation.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_product_instantiation.py](../../../control-plane-kit-core/tests/test_product_instantiation.py) | test / assertion support | reviewed | [companion](tests/test_product_instantiation.py.md) | North PASS: full test/helpers/note, actual instantiation/configuration and selected graph contracts. No execution. |
+| [control-plane-kit-core/tests/test_product_pipeline_propagation.py](../../../control-plane-kit-core/tests/test_product_pipeline_propagation.py) | test / assertion support | reviewed | [companion](tests/test_product_pipeline_propagation.py.md) | North PASS: full test/helpers/note, selected actual materialization/graph/diff/planning paths. No execution. |
 | [control-plane-kit-core/tests/test_product_reference.py](../../../control-plane-kit-core/tests/test_product_reference.py) | test / assertion support | reviewed | [companion](tests/test_product_reference.py.md) | North PASS: full test/helper/note, selected reference/identity/document/catalogue boundaries. No execution. |
 | [control-plane-kit-core/tests/test_product_runtime_contract.py](../../../control-plane-kit-core/tests/test_product_runtime_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_protocol.py](../../../control-plane-kit-core/tests/test_protocol.py) | test / assertion support | reviewed | [companion](tests/test_protocol.py.md) | North: seven owners read; governing tests sampled. |
