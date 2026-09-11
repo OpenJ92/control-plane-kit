@@ -887,7 +887,7 @@
     {
       "source": "control-plane-kit-operations/tests/runtime_effect_reconciliation_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/runtime_effect_reconciliation_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
