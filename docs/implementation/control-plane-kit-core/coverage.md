@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 24 pending, 0 authored,
-135 reviewed, 8 excluded.
+167 tracked paths: 23 pending, 0 authored,
+136 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -336,6 +336,13 @@ size-before-keys, trusted-kind routing, selective errors and structural coverage
 matched. Five links, whitespace and source/test guards passed; no execution or
 additional test credit was added.
 
+North completed the full surface-read result test (792 lines), all eight tests
+and helpers, with full owner/fixture context. Exact fields/union, socket and
+same-size declaration binding, finite coverage/field matrices, maximum witnesses,
+count-before-subset rejection, diagnostics and export/AST/milestone limits matched.
+Four links, whitespace and source/test guards passed; no execution or additional
+owner credit was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -475,7 +482,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_node_control_public_wire_ownership.py](../../../control-plane-kit-core/tests/test_node_control_public_wire_ownership.py) | test / assertion support | reviewed | [companion](tests/test_node_control_public_wire_ownership.py.md) | North PASS: full test/shared owner/notes/fixtures and selected consumer composition. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_result_variants.py](../../../control-plane-kit-core/tests/test_node_control_result_variants.py) | test / assertion support | reviewed | [companion](tests/test_node_control_result_variants.py.md) | North PASS: full test/helpers/note, actual result constructors and retained codec/variable context. Matrix and binding limits verified; no corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_surface_read_authority.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_authority.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_node_control_surface_read_results.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_results.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_node_control_surface_read_results.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_results.py) | test / assertion support | reviewed | [companion](tests/test_node_control_surface_read_results.py.md) | North PASS: full eight-test suite/helpers/note/owner/fixture. No execution or additional owner credit. |
 | [control-plane-kit-core/tests/test_node_control_surfaces.py](../../../control-plane-kit-core/tests/test_node_control_surfaces.py) | test / assertion support | reviewed | [companion](tests/test_node_control_surfaces.py.md) | North PASS: full nine-test suite/helpers/note, surface constructor/codec and fixture; selected actual product/graph consumers. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_topology.py](../../../control-plane-kit-core/tests/test_node_control_topology.py) | test / assertion support | reviewed | [companion](tests/test_node_control_topology.py.md) | North PASS: full documentation guard/note and governing topology document; historical/current limits checked. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_transit.py](../../../control-plane-kit-core/tests/test_node_control_transit.py) | test / assertion support | reviewed | [companion](tests/test_node_control_transit.py.md) | North PASS: full nine-test suite/helpers/owner/fixture retained, full note checked. No corrections or execution. |
