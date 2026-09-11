@@ -1325,7 +1325,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_node_control_attempts.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_node_control_attempts.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
