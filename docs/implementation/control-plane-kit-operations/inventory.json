@@ -1685,7 +1685,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_read_pages.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_read_pages.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
