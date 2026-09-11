@@ -1583,7 +1583,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_concurrency.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_concurrency.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
