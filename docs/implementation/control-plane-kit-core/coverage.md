@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 32 pending, 0 authored,
-127 reviewed, 8 excluded.
+167 tracked paths: 31 pending, 0 authored,
+128 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -274,6 +274,14 @@ and the legacy shape's simultaneous missing/unknown fields. Three links,
 whitespace and source/test guards passed; no corrections, execution or full
 large-owner credit were added.
 
+North reviewed the full result-variants test (504 lines), helpers and companion,
+fresh evidence/result constructors and retained full result-codec/variable
+context. The finite enum-product matrix was distinguished from valid read
+successes; variable codec compatibility was not presented as request binding.
+Strict-negative and root/union assertion limits matched source. Four links,
+whitespace and source/test guards passed; no corrections, execution or full
+large-owner credit were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -411,7 +419,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_node_control_operation_contracts.py](../../../control-plane-kit-core/tests/test_node_control_operation_contracts.py) | test / assertion support | reviewed | [companion](tests/test_node_control_operation_contracts.py.md) | North PASS: full test/note, actual operation/variable owner and result consumer; retained descriptor codec and selected guards. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_public_material.py](../../../control-plane-kit-core/tests/test_node_control_public_material.py) | test / assertion support | reviewed | [companion](tests/test_node_control_public_material.py.md) | North PASS: full test/fixture/notes and selected construction, codec, representation and validation paths. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_public_wire_ownership.py](../../../control-plane-kit-core/tests/test_node_control_public_wire_ownership.py) | test / assertion support | reviewed | [companion](tests/test_node_control_public_wire_ownership.py.md) | North PASS: full test/shared owner/notes/fixtures and selected consumer composition. No corrections or execution. |
-| [control-plane-kit-core/tests/test_node_control_result_variants.py](../../../control-plane-kit-core/tests/test_node_control_result_variants.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_node_control_result_variants.py](../../../control-plane-kit-core/tests/test_node_control_result_variants.py) | test / assertion support | reviewed | [companion](tests/test_node_control_result_variants.py.md) | North PASS: full test/helpers/note, actual result constructors and retained codec/variable context. Matrix and binding limits verified; no corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_surface_read_authority.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_authority.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_surface_read_results.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_results.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_surfaces.py](../../../control-plane-kit-core/tests/test_node_control_surfaces.py) | test / assertion support | pending | — | Initial authoring backlog. |
