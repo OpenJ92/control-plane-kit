@@ -1619,7 +1619,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_failed_run_compensation_attempt.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_failed_run_compensation_attempt.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
