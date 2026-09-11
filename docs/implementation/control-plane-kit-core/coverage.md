@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 125 pending, 0 authored,
-34 reviewed, 8 excluded.
+167 tracked paths: 113 pending, 0 authored,
+46 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -26,7 +26,10 @@ test sampling. North then reviewed all sixteen configuration/verification and
 harness/navigation notes, directly checking the configuration/renderer/capability
 owners and full shell harness, with targeted verification/source-test checks.
 This does not claim a full verification-file audit. No executable validation
-was added.
+was added. North reviewed the twelve graph notes, reading the full compiler,
+checking graph construction, codec/validation/diff and disclosure contracts,
+and sampling relevant test bodies. The secret-reference fingerprint wording
+was corrected against the exact descriptor variants before publication.
 
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
@@ -103,13 +106,13 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py) | source | reviewed | [companion](src/control_plane_kit_core/runtime_effect_observation.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/secrets.py](../../../control-plane-kit-core/src/control_plane_kit_core/secrets.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/topology/__init__.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/__init__.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/topology/changes.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/changes.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/topology/codec.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/codec.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/topology/compiler.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/compiler.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/topology/diff.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/diff.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/topology/graph.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/graph.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/topology/validation.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/validation.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/topology/__init__.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/__init__.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/__init__.py.md) | North: consequential graph contracts checked; test bodies sampled. |
+| [control-plane-kit-core/src/control_plane_kit_core/topology/changes.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/changes.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/changes.py.md) | North: consequential graph contracts checked; test bodies sampled. |
+| [control-plane-kit-core/src/control_plane_kit_core/topology/codec.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/codec.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/codec.py.md) | North: consequential graph contracts checked; test bodies sampled. |
+| [control-plane-kit-core/src/control_plane_kit_core/topology/compiler.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/compiler.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/compiler.py.md) | North: consequential graph contracts checked; test bodies sampled. |
+| [control-plane-kit-core/src/control_plane_kit_core/topology/diff.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/diff.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/diff.py.md) | North: consequential graph contracts checked; test bodies sampled. |
+| [control-plane-kit-core/src/control_plane_kit_core/topology/graph.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/graph.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/graph.py.md) | North: consequential graph contracts checked; test bodies sampled. |
+| [control-plane-kit-core/src/control_plane_kit_core/topology/validation.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/validation.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/validation.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/types.py](../../../control-plane-kit-core/src/control_plane_kit_core/types.py) | source | reviewed | [companion](src/control_plane_kit_core/types.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/verification.py](../../../control-plane-kit-core/src/control_plane_kit_core/verification.py) | source | reviewed | [companion](src/control_plane_kit_core/verification.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/test.sh](../../../control-plane-kit-core/test.sh) | suite harness | reviewed | [companion](test.sh.md) | North: consequential claims checked; navigation sampled. |
@@ -150,12 +153,12 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_extract_d_topology.py](../../../control-plane-kit-core/tests/test_extract_d_topology.py) | test / assertion support | reviewed | [companion](tests/test_extract_d_topology.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_failed_run_compensation_contract.py](../../../control-plane-kit-core/tests/test_failed_run_compensation_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_gateway_delegation.py](../../../control-plane-kit-core/tests/test_gateway_delegation.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_graph_codec.py](../../../control-plane-kit-core/tests/test_graph_codec.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_graph_diff.py](../../../control-plane-kit-core/tests/test_graph_diff.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_graph_validation.py](../../../control-plane-kit-core/tests/test_graph_validation.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_graph_codec.py](../../../control-plane-kit-core/tests/test_graph_codec.py) | test / assertion support | reviewed | [companion](tests/test_graph_codec.py.md) | North: consequential graph contracts checked; test bodies sampled. |
+| [control-plane-kit-core/tests/test_graph_diff.py](../../../control-plane-kit-core/tests/test_graph_diff.py) | test / assertion support | reviewed | [companion](tests/test_graph_diff.py.md) | North: consequential graph contracts checked; test bodies sampled. |
+| [control-plane-kit-core/tests/test_graph_validation.py](../../../control-plane-kit-core/tests/test_graph_validation.py) | test / assertion support | reviewed | [companion](tests/test_graph_validation.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_http_api_contract.py](../../../control-plane-kit-core/tests/test_http_api_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_identity.py](../../../control-plane-kit-core/tests/test_identity.py) | test / assertion support | reviewed | [companion](tests/test_identity.py.md) | North: seven owners read; governing tests sampled. |
-| [control-plane-kit-core/tests/test_kernel_pipeline.py](../../../control-plane-kit-core/tests/test_kernel_pipeline.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_kernel_pipeline.py](../../../control-plane-kit-core/tests/test_kernel_pipeline.py) | test / assertion support | reviewed | [companion](tests/test_kernel_pipeline.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_mcp_streamable_http_contract.py](../../../control-plane-kit-core/tests/test_mcp_streamable_http_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_milestone_closeout.py](../../../control-plane-kit-core/tests/test_milestone_closeout.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_authority_delivery.py](../../../control-plane-kit-core/tests/test_node_authority_delivery.py) | test / assertion support | pending | — | Initial authoring backlog. |
@@ -206,6 +209,6 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_scheduling.py](../../../control-plane-kit-core/tests/test_scheduling.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_secret_provider_contract.py](../../../control-plane-kit-core/tests/test_secret_provider_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_temporal_history_read_contract.py](../../../control-plane-kit-core/tests/test_temporal_history_read_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_topology_graph.py](../../../control-plane-kit-core/tests/test_topology_graph.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_topology_graph.py](../../../control-plane-kit-core/tests/test_topology_graph.py) | test / assertion support | reviewed | [companion](tests/test_topology_graph.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_unit_of_work_boundary.py](../../../control-plane-kit-core/tests/test_unit_of_work_boundary.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_verification_capabilities.py](../../../control-plane-kit-core/tests/test_verification_capabilities.py) | test / assertion support | reviewed | [companion](tests/test_verification_capabilities.py.md) | North: consequential claims checked; navigation sampled. |
