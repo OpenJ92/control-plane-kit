@@ -1763,7 +1763,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_run_provenance_authority_identity.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_run_provenance_authority_identity.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
