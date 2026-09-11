@@ -527,7 +527,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/saved_preparation_source_store.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/saved_preparation_source_store.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1349,7 +1349,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_operations_history_read_projection.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_operations_history_read_projection.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1805,7 +1805,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_saved_preparation_sources.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_saved_preparation_sources.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
