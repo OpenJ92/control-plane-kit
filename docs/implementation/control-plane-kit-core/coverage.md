@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 6 pending, 0 authored,
-153 reviewed, 8 excluded.
+167 tracked paths: 5 pending, 0 authored,
+154 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -477,6 +477,14 @@ nested content, publication policy and smoke-set limits matched. The note matche
 North's reviewed SHA-256. Eight links, whitespace and frozen Core source/test
 guards passed; no code, executable validation or actual provider/deployment proof.
 
+North reviewed the full 272-line/seven-test secret-provider contract suite and
+note, actual endpoint codec, grant/receipt constructors, matching predicates,
+descriptors and identity guards, four scopes and matching catalogue entries.
+Ordered intents, bootstrap replacements, positive-only custody, combined version
+mismatch, benign descriptor assertions and catalogue subset limits matched. The
+note matched North's reviewed SHA-256. Six links, whitespace and frozen Core
+source/test guards passed; no provider or durable authorization proof was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -653,7 +661,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_saga.py](../../../control-plane-kit-core/tests/test_saga.py) | test / assertion support | reviewed | [companion](tests/test_saga.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_scaffold.py](../../../control-plane-kit-core/tests/test_scaffold.py) | test / assertion support | reviewed | [companion](tests/test_scaffold.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_scheduling.py](../../../control-plane-kit-core/tests/test_scheduling.py) | test / assertion support | reviewed | [companion](tests/test_scheduling.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
-| [control-plane-kit-core/tests/test_secret_provider_contract.py](../../../control-plane-kit-core/tests/test_secret_provider_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_secret_provider_contract.py](../../../control-plane-kit-core/tests/test_secret_provider_contract.py) | test / assertion support | reviewed | [companion](tests/test_secret_provider_contract.py.md) | North: full suite/note; actual endpoint, grants/receipts/guards, scopes and matching catalogue entries. |
 | [control-plane-kit-core/tests/test_temporal_history_read_contract.py](../../../control-plane-kit-core/tests/test_temporal_history_read_contract.py) | test / assertion support | reviewed | [companion](tests/test_temporal_history_read_contract.py.md) | North: full tests/notes; selected exact HTTP/parity entries; prior projection/MCP context. |
 | [control-plane-kit-core/tests/test_topology_graph.py](../../../control-plane-kit-core/tests/test_topology_graph.py) | test / assertion support | reviewed | [companion](tests/test_topology_graph.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_unit_of_work_boundary.py](../../../control-plane-kit-core/tests/test_unit_of_work_boundary.py) | test / assertion support | reviewed | [companion](tests/test_unit_of_work_boundary.py.md) | North: full transaction owner/test/notes and Postgres UOW; selected service contracts. |
