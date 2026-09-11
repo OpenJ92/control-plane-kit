@@ -1319,7 +1319,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_native_temporal_ordering.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_native_temporal_ordering.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1673,7 +1673,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_temporal_read_pages.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_temporal_read_pages.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
