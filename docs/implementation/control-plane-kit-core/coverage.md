@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 33 pending, 0 authored,
-126 reviewed, 8 excluded.
+167 tracked paths: 32 pending, 0 authored,
+127 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -266,6 +266,14 @@ maximum-grant claims, limited malformed canaries and process-global recursion
 restoration. Eight links, whitespace and source/test/dependency-declaration
 guards passed; no corrections, execution or large-owner credit were added.
 
+North reviewed the full operation-contract test (300 lines), helpers and note,
+full result-codec consumer and operation/variable owner sections, with retained
+variable codec and checked kind-codec table, key guards and root binding. All
+five tests' counts and limits matched, including the map state-codec mismatch
+and the legacy shape's simultaneous missing/unknown fields. Three links,
+whitespace and source/test guards passed; no corrections, execution or full
+large-owner credit were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -400,7 +408,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_node_control.py](../../../control-plane-kit-core/tests/test_node_control.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_canonical_wire.py](../../../control-plane-kit-core/tests/test_node_control_canonical_wire.py) | test / assertion support | reviewed | [companion](tests/test_node_control_canonical_wire.py.md) | North PASS: full test/fixture/notes and selected owners/dependency declaration. Fixed/computed and numeric evidence limits checked; no execution. |
 | [control-plane-kit-core/tests/test_node_control_graph_references.py](../../../control-plane-kit-core/tests/test_node_control_graph_references.py) | test / assertion support | reviewed | [companion](tests/test_node_control_graph_references.py.md) | North PASS: full test/note, actual selected nominal/codec/wrapper/export paths and fixture context. No corrections or execution. |
-| [control-plane-kit-core/tests/test_node_control_operation_contracts.py](../../../control-plane-kit-core/tests/test_node_control_operation_contracts.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_node_control_operation_contracts.py](../../../control-plane-kit-core/tests/test_node_control_operation_contracts.py) | test / assertion support | reviewed | [companion](tests/test_node_control_operation_contracts.py.md) | North PASS: full test/note, actual operation/variable owner and result consumer; retained descriptor codec and selected guards. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_public_material.py](../../../control-plane-kit-core/tests/test_node_control_public_material.py) | test / assertion support | reviewed | [companion](tests/test_node_control_public_material.py.md) | North PASS: full test/fixture/notes and selected construction, codec, representation and validation paths. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_public_wire_ownership.py](../../../control-plane-kit-core/tests/test_node_control_public_wire_ownership.py) | test / assertion support | reviewed | [companion](tests/test_node_control_public_wire_ownership.py.md) | North PASS: full test/shared owner/notes/fixtures and selected consumer composition. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_result_variants.py](../../../control-plane-kit-core/tests/test_node_control_result_variants.py) | test / assertion support | pending | — | Initial authoring backlog. |
