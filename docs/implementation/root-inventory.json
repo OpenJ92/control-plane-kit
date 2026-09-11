@@ -216,7 +216,7 @@
     {
       "source": "extraction_parity/reference.py",
       "companion": "docs/implementation/extraction_parity/reference.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -288,7 +288,7 @@
     {
       "source": "extraction_parity/tests/test_reference_parity_evidence.py",
       "companion": "docs/implementation/extraction_parity/tests/test_reference_parity_evidence.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -324,7 +324,7 @@
     {
       "source": "reference-test.sh",
       "companion": "docs/implementation/reference-test.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
