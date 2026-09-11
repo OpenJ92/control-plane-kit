@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 92 pending, 0 authored,
-67 reviewed, 8 excluded.
+167 tracked paths: 90 pending, 0 authored,
+69 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -53,6 +53,10 @@ selected saga, scheduling and scenario assertions were read. Downstream
 coordinator/advancement use was checked narrowly. This was not a full read of
 both large source files or all associated tests; no documentation findings
 remained and no executable validation was performed.
+North then read the full 653-line probe-intent owner, both notes and selected
+policy/descriptor/outcome tests. TimeoutPolicy's finite-timing gap and direct
+intent-kind override limits were confirmed from source, without executed or
+downstream-impact claims. No documentation findings remained.
 
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
@@ -122,7 +126,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/planning/saga.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/saga.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/saga.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/scenarios.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/scenarios.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/policies.py](../../../control-plane-kit-core/src/control_plane_kit_core/policies.py) | source | reviewed | [companion](src/control_plane_kit_core/policies.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
-| [control-plane-kit-core/src/control_plane_kit_core/probe_intents.py](../../../control-plane-kit-core/src/control_plane_kit_core/probe_intents.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/probe_intents.py](../../../control-plane-kit-core/src/control_plane_kit_core/probe_intents.py) | source | reviewed | [companion](src/control_plane_kit_core/probe_intents.py.md) | North: full probe owner and notes read; selected tests checked. |
 | [control-plane-kit-core/src/control_plane_kit_core/products.py](../../../control-plane-kit-core/src/control_plane_kit_core/products.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/public_ingress.py](../../../control-plane-kit-core/src/control_plane_kit_core/public_ingress.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py) | source | pending | — | Initial authoring backlog. |
@@ -204,7 +208,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_persistence_boundary_contract.py](../../../control-plane-kit-core/tests/test_persistence_boundary_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_planning_scenarios.py](../../../control-plane-kit-core/tests/test_planning_scenarios.py) | test / assertion support | reviewed | [companion](tests/test_planning_scenarios.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_policies.py](../../../control-plane-kit-core/tests/test_policies.py) | test / assertion support | reviewed | [companion](tests/test_policies.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
-| [control-plane-kit-core/tests/test_probe_intents.py](../../../control-plane-kit-core/tests/test_probe_intents.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_probe_intents.py](../../../control-plane-kit-core/tests/test_probe_intents.py) | test / assertion support | reviewed | [companion](tests/test_probe_intents.py.md) | North: full probe owner and notes read; selected tests checked. |
 | [control-plane-kit-core/tests/test_process_operational_contract.py](../../../control-plane-kit-core/tests/test_process_operational_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_product_catalog.py](../../../control-plane-kit-core/tests/test_product_catalog.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_product_descriptor.py](../../../control-plane-kit-core/tests/test_product_descriptor.py) | test / assertion support | pending | — | Initial authoring backlog. |
