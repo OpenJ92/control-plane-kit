@@ -815,7 +815,7 @@
     {
       "source": "control-plane-kit-operations/tests/graph_lineage_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/graph_lineage_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
