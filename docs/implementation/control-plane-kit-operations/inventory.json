@@ -1721,19 +1721,19 @@
     {
       "source": "control-plane-kit-operations/tests/test_revision_history.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/tests/test_revision_history_adapters.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history_adapters.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/tests/test_revision_history_advancement.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history_advancement.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1745,7 +1745,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_revision_history_values.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history_values.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
