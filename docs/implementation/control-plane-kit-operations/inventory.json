@@ -1085,7 +1085,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_effect_attempt_record_contract.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_record_contract.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
