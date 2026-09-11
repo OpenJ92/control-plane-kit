@@ -1661,7 +1661,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_read_cardinality.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_read_cardinality.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
