@@ -821,7 +821,7 @@
     {
       "source": "control-plane-kit-operations/tests/guarded_observed_effect_fold_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/guarded_observed_effect_fold_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
