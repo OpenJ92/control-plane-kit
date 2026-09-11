@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 62 pending, 0 authored,
-97 reviewed, 8 excluded.
+167 tracked paths: 60 pending, 0 authored,
+99 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -131,6 +131,13 @@ StrEnum admission limits, path/codec/error boundaries and declaration versus
 transport conformance matched source. No corrections or executable validation
 were required.
 
+North read the full projection-contract owner (611 lines), full test (515 lines)
+and both notes, retaining the previously read full security helper. Actual
+HTTP scope/safety/schema and parity constructor/factory/overview binding were
+checked selectively. Canonical associations versus wider admission, boolean
+page limits and declaration versus adapter evidence matched source. No
+correction or executable validation was required.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -186,7 +193,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/operations/parity.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/parity.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/persistence.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/persistence.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/persistence.py.md) | North: full persistence owner/test/notes; actual enforcement enum and selected store bundle. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/process.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/process.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/process.py.md) | North: full process owner/test/notes/security helper; selected imported contracts. |
-| [control-plane-kit-core/src/control_plane_kit_core/operations/projections.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/projections.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/operations/projections.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/projections.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/projections.py.md) | North: full owner/test/notes, prior security helper; selected HTTP/parity. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/run_identity.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/run_identity.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/run_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/services.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/services.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/services.py.md) | North: complete service owner across two reads, full test and both notes. |
@@ -293,7 +300,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_product_runtime_contract.py](../../../control-plane-kit-core/tests/test_product_runtime_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_protocol.py](../../../control-plane-kit-core/tests/test_protocol.py) | test / assertion support | reviewed | [companion](tests/test_protocol.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_public_ingress.py](../../../control-plane-kit-core/tests/test_public_ingress.py) | test / assertion support | reviewed | [companion](tests/test_public_ingress.py.md) | North: full ingress owner/test/notes; exact graph references and origin helper. |
-| [control-plane-kit-core/tests/test_read_projection_contract.py](../../../control-plane-kit-core/tests/test_read_projection_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_read_projection_contract.py](../../../control-plane-kit-core/tests/test_read_projection_contract.py) | test / assertion support | reviewed | [companion](tests/test_read_projection_contract.py.md) | North: full owner/test/notes, prior security helper; selected HTTP/parity. |
 | [control-plane-kit-core/tests/test_recovery_planning.py](../../../control-plane-kit-core/tests/test_recovery_planning.py) | test / assertion support | reviewed | [companion](tests/test_recovery_planning.py.md) | North: full owner, test and both recovery notes read. |
 | [control-plane-kit-core/tests/test_resource_lifecycle.py](../../../control-plane-kit-core/tests/test_resource_lifecycle.py) | test / assertion support | reviewed | [companion](tests/test_resource_lifecycle.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_revision_history_contract.py](../../../control-plane-kit-core/tests/test_revision_history_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
