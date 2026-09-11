@@ -689,7 +689,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/saved_deployment_preparation.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/saved_deployment_preparation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1799,7 +1799,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_saved_preparation_adapters.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_saved_preparation_adapters.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1811,7 +1811,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_saved_preparation_values.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_saved_preparation_values.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
