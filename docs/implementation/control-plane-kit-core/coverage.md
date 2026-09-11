@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 26 pending, 0 authored,
-133 reviewed, 8 excluded.
+167 tracked paths: 25 pending, 0 authored,
+134 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -320,6 +320,14 @@ representation and five verifier directions matched. Repr/error/AST guarantees
 were appropriately finite. Four links, whitespace and source/test guards passed;
 no corrections, execution or additional owner credit were added.
 
+North reviewed the full surface-read fixture (213 lines) and note, selected actual
+authority helpers/canonical assertions, result context/assertion helpers and full
+canonical-result test, declaration owner and result context/name/coverage guards,
+plus the governing wire section. Eight vectors, two contexts, identity preimages,
+mapping/raw evidence and names/live-handler limits matched. Six local links,
+whitespace and source/test guards passed. Other selected owner reads remain
+author context; no whole-owner/test credit or execution was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -411,7 +419,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/fixtures/node_authority_empty_graph.json](../../../control-plane-kit-core/tests/fixtures/node_authority_empty_graph.json) | authored fixture | reviewed | [companion](tests/fixtures/node_authority_empty_graph.json.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_canonical_wire_v1.json.md) | North PASS: full fixture/test/notes, actual selected canonical/raw/numeric paths and fixture consumers. No corrections or execution. |
 | [control-plane-kit-core/tests/fixtures/node_control_public_material_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_public_material_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_public_material_v1.json.md) | North PASS: full fixture/test/notes, retained shared owner and selected actual consumers. No corrections or execution. |
-| [control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_surface_read_canonical_wire_v1.json.md) | North PASS: full fixture/note, selected actual consumers and declaration/result context. No whole-owner/test credit or execution. |
 | [control-plane-kit-core/tests/fixtures/node_control_transit_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_transit_canonical_wire_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_transit_canonical_wire_v1.json.md) | North PASS: full fixture/note, selected actual consumer tests/helpers and descriptor/codec context. No corrections or execution. |
 | [control-plane-kit-core/tests/test_activity_identity.py](../../../control-plane-kit-core/tests/test_activity_identity.py) | test / assertion support | reviewed | [companion](tests/test_activity_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_activity_plan.py](../../../control-plane-kit-core/tests/test_activity_plan.py) | test / assertion support | reviewed | [companion](tests/test_activity_plan.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
