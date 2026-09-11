@@ -6,19 +6,19 @@
     {
       "source": ".github/workflows/current-backend.yml",
       "companion": "docs/implementation/.github/workflows/current-backend.yml.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": ".github/workflows/tests.yml",
       "companion": "docs/implementation/.github/workflows/tests.yml.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": ".gitignore",
       "companion": "docs/implementation/.gitignore.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -78,7 +78,7 @@
     {
       "source": "current-backend-test.sh",
       "companion": "docs/implementation/current-backend-test.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
