@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 80 pending, 0 authored,
-79 reviewed, 8 excluded.
+167 tracked paths: 78 pending, 0 authored,
+81 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -70,6 +70,13 @@ fixture inspection. The observation-carrier rejection wording was qualified to
 connection grants requiring a carrier. This does not claim full reads of every
 test body or executed validation. No documentation findings remained.
 
+North read the full 260-line transaction owner, full 125-line governing test,
+both companions and actual Postgres unit-of-work owner, with selected imported
+service binding/program-role contracts. The author read that imported owner in
+full; the reviewer did not claim a full imported-service audit. Declaration
+limits and negative-test guard precedence matched source. No documentation
+findings or executable validation were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -129,7 +136,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/run_identity.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/run_identity.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/run_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/services.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/services.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/operations/transactions.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/transactions.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/operations/transactions.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/transactions.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/transactions.py.md) | North: full transaction owner/test/notes and Postgres UOW; selected service contracts. |
 | [control-plane-kit-core/src/control_plane_kit_core/planning/__init__.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/__init__.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/__init__.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/src/control_plane_kit_core/planning/activity_plan.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/activity_plan.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/activity_plan.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/src/control_plane_kit_core/planning/codec.py](../../../control-plane-kit-core/src/control_plane_kit_core/planning/codec.py) | source | reviewed | [companion](src/control_plane_kit_core/planning/codec.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
@@ -249,5 +256,5 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_secret_provider_contract.py](../../../control-plane-kit-core/tests/test_secret_provider_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_temporal_history_read_contract.py](../../../control-plane-kit-core/tests/test_temporal_history_read_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_topology_graph.py](../../../control-plane-kit-core/tests/test_topology_graph.py) | test / assertion support | reviewed | [companion](tests/test_topology_graph.py.md) | North: consequential graph contracts checked; test bodies sampled. |
-| [control-plane-kit-core/tests/test_unit_of_work_boundary.py](../../../control-plane-kit-core/tests/test_unit_of_work_boundary.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_unit_of_work_boundary.py](../../../control-plane-kit-core/tests/test_unit_of_work_boundary.py) | test / assertion support | reviewed | [companion](tests/test_unit_of_work_boundary.py.md) | North: full transaction owner/test/notes and Postgres UOW; selected service contracts. |
 | [control-plane-kit-core/tests/test_verification_capabilities.py](../../../control-plane-kit-core/tests/test_verification_capabilities.py) | test / assertion support | reviewed | [companion](tests/test_verification_capabilities.py.md) | North: consequential claims checked; navigation sampled. |
