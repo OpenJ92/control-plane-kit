@@ -29,7 +29,7 @@
     {
       "source": "control-plane-kit-operations/pyproject.toml",
       "companion": "docs/implementation/control-plane-kit-operations/pyproject.toml.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -713,7 +713,7 @@
     {
       "source": "control-plane-kit-operations/test.sh",
       "companion": "docs/implementation/control-plane-kit-operations/test.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
