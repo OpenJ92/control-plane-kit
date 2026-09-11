@@ -228,7 +228,7 @@
     {
       "source": "extraction_parity/runner.py",
       "companion": "docs/implementation/extraction_parity/runner.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -246,7 +246,7 @@
     {
       "source": "extraction_parity/tests/test_differential_runner.py",
       "companion": "docs/implementation/extraction_parity/tests/test_differential_runner.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
