@@ -1,0 +1,367 @@
+{
+  "issue": "OpenJ92/control-plane-kit#1800",
+  "base": "087a89253b14b3bb438af9042ea779976886a79e",
+  "scope": "Tracked root files, .github, current_backend, extraction_parity and test_support. Core and Operations have separate inventories. Existing docs and historical artifacts remain reference owners outside this companion slice; source notes must identify consumed artifacts and their evidence limits.",
+  "entries": [
+    {
+      "source": ".github/workflows/current-backend.yml",
+      "companion": "docs/implementation/.github/workflows/current-backend.yml.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": ".github/workflows/tests.yml",
+      "companion": "docs/implementation/.github/workflows/tests.yml.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": ".gitignore",
+      "companion": "docs/implementation/.gitignore.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "AGENTS.md",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Existing governance or prose maintained directly; no recursive mirror."
+    },
+    {
+      "source": "DESIGN.md",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Existing governance or prose maintained directly; no recursive mirror."
+    },
+    {
+      "source": "LICENSE",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Legal text remains authoritative and is not mirrored."
+    },
+    {
+      "source": "README.md",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Existing governance or prose maintained directly; no recursive mirror."
+    },
+    {
+      "source": "SERVER_PRODUCT_ROLLOUT.md",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Existing governance or prose maintained directly; no recursive mirror."
+    },
+    {
+      "source": "build-legacy-retirement-manifest.sh",
+      "companion": "docs/implementation/build-legacy-retirement-manifest.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "build-parity-manifest.sh",
+      "companion": "docs/implementation/build-parity-manifest.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "build-semantic-test-migration-inventory.sh",
+      "companion": "docs/implementation/build-semantic-test-migration-inventory.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "classify-reference-laws.sh",
+      "companion": "docs/implementation/classify-reference-laws.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current-backend-test.sh",
+      "companion": "docs/implementation/current-backend-test.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current-backend.contracts.json",
+      "companion": "docs/implementation/current-backend.contracts.json.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current-backend.lock.json",
+      "companion": "docs/implementation/current-backend.lock.json.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/README.md",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Existing governance or prose maintained directly; no recursive mirror."
+    },
+    {
+      "source": "current_backend/__init__.py",
+      "companion": "docs/implementation/current_backend/__init__.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/contracts.py",
+      "companion": "docs/implementation/current_backend/contracts.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/runner.py",
+      "companion": "docs/implementation/current_backend/runner.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/source_lock.py",
+      "companion": "docs/implementation/current_backend/source_lock.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/tests/__init__.py",
+      "companion": "docs/implementation/current_backend/tests/__init__.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/tests/approved_skips.json",
+      "companion": "docs/implementation/current_backend/tests/approved_skips.json.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/tests/test_contracts.py",
+      "companion": "docs/implementation/current_backend/tests/test_contracts.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/tests/test_runner.py",
+      "companion": "docs/implementation/current_backend/tests/test_runner.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "current_backend/tests/test_source_lock.py",
+      "companion": "docs/implementation/current_backend/tests/test_source_lock.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/__init__.py",
+      "companion": "docs/implementation/extraction_parity/__init__.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/completion.py",
+      "companion": "docs/implementation/extraction_parity/completion.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/demos.py",
+      "companion": "docs/implementation/extraction_parity/demos.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/differential.py",
+      "companion": "docs/implementation/extraction_parity/differential.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/inventory.py",
+      "companion": "docs/implementation/extraction_parity/inventory.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/manifest.py",
+      "companion": "docs/implementation/extraction_parity/manifest.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/migration_inventory.py",
+      "companion": "docs/implementation/extraction_parity/migration_inventory.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/ownership.py",
+      "companion": "docs/implementation/extraction_parity/ownership.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/reconciliation.py",
+      "companion": "docs/implementation/extraction_parity/reconciliation.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/reconciliation_builder.py",
+      "companion": "docs/implementation/extraction_parity/reconciliation_builder.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/reference.py",
+      "companion": "docs/implementation/extraction_parity/reference.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/retirement.py",
+      "companion": "docs/implementation/extraction_parity/retirement.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/runner.py",
+      "companion": "docs/implementation/extraction_parity/runner.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/__init__.py",
+      "companion": "docs/implementation/extraction_parity/tests/__init__.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_differential_language.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_differential_language.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_differential_runner.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_differential_runner.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_legacy_retirement.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_legacy_retirement.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_migration_inventory.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_migration_inventory.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_parity_manifest.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_parity_manifest.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_parity_validation.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_parity_validation.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_reference_demo_inventory.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_reference_demo_inventory.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_reference_law_ownership.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_reference_law_ownership.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_reference_parity_evidence.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_reference_parity_evidence.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_reference_test_inventory.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_reference_test_inventory.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_semantic_completion.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_semantic_completion.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/tests/test_semantic_reconciliation.py",
+      "companion": "docs/implementation/extraction_parity/tests/test_semantic_reconciliation.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "extraction_parity/validation.py",
+      "companion": "docs/implementation/extraction_parity/validation.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "reference-inventory.sh",
+      "companion": "docs/implementation/reference-inventory.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "reference-test.sh",
+      "companion": "docs/implementation/reference-test.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "test_support/package_integrity.py",
+      "companion": "docs/implementation/test_support/package_integrity.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "test_support/tests/test_package_integrity.py",
+      "companion": "docs/implementation/test_support/tests/test_package_integrity.py.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "validate-legacy-retirement.sh",
+      "companion": "docs/implementation/validate-legacy-retirement.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "validate-parity.sh",
+      "companion": "docs/implementation/validate-parity.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "validate-reference-demos.sh",
+      "companion": "docs/implementation/validate-reference-demos.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    },
+    {
+      "source": "validate-semantic-test-migration-inventory.sh",
+      "companion": "docs/implementation/validate-semantic-test-migration-inventory.sh.md",
+      "status": "pending",
+      "exclusion_reason": null
+    }
+  ]
+}
