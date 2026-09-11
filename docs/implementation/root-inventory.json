@@ -204,13 +204,13 @@
     {
       "source": "extraction_parity/reconciliation.py",
       "companion": "docs/implementation/extraction_parity/reconciliation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "extraction_parity/reconciliation_builder.py",
       "companion": "docs/implementation/extraction_parity/reconciliation_builder.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -306,7 +306,7 @@
     {
       "source": "extraction_parity/tests/test_semantic_reconciliation.py",
       "companion": "docs/implementation/extraction_parity/tests/test_semantic_reconciliation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
