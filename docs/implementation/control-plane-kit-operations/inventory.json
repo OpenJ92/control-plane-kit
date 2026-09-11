@@ -719,7 +719,7 @@
     {
       "source": "control-plane-kit-operations/tests/activity_run_retry_interpreter_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/activity_run_retry_interpreter_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -911,7 +911,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_activity_run_retry_interpreter_contract.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_activity_run_retry_interpreter_contract.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
