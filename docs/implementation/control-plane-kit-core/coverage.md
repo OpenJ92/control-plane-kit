@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 29 pending, 0 authored,
-130 reviewed, 8 excluded.
+167 tracked paths: 28 pending, 0 authored,
+131 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -298,6 +298,13 @@ the misnamed probe-grant substitution were accurately bounded. Three links,
 whitespace and source/test guards passed; no corrections, execution or additional
 owner credit were added.
 
+North reviewed the transit fixture companion, retaining the full 34-line fixture,
+full workload substitution test and transit codec/parser. Selected actual transit
+helpers/canonical-vector test and governing wire document were refreshed. The
+request preimage, nested/outer digest distinction, unsigned/signing boundary and
+consumer/export limits matched. Five links, whitespace and source/test guards
+passed; no corrections, execution or additional owner credit were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -390,7 +397,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_canonical_wire_v1.json.md) | North PASS: full fixture/test/notes, actual selected canonical/raw/numeric paths and fixture consumers. No corrections or execution. |
 | [control-plane-kit-core/tests/fixtures/node_control_public_material_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_public_material_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_public_material_v1.json.md) | North PASS: full fixture/test/notes, retained shared owner and selected actual consumers. No corrections or execution. |
 | [control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/fixtures/node_control_transit_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_transit_canonical_wire_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/fixtures/node_control_transit_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_transit_canonical_wire_v1.json) | authored fixture | reviewed | [companion](tests/fixtures/node_control_transit_canonical_wire_v1.json.md) | North PASS: full fixture/note, selected actual consumer tests/helpers and descriptor/codec context. No corrections or execution. |
 | [control-plane-kit-core/tests/test_activity_identity.py](../../../control-plane-kit-core/tests/test_activity_identity.py) | test / assertion support | reviewed | [companion](tests/test_activity_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_activity_plan.py](../../../control-plane-kit-core/tests/test_activity_plan.py) | test / assertion support | reviewed | [companion](tests/test_activity_plan.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/tests/test_activity_plan_codec.py](../../../control-plane-kit-core/tests/test_activity_plan_codec.py) | test / assertion support | reviewed | [companion](tests/test_activity_plan_codec.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
