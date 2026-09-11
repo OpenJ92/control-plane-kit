@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 9 pending, 0 authored,
-150 reviewed, 8 excluded.
+167 tracked paths: 8 pending, 0 authored,
+151 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -453,6 +453,14 @@ order, declared bounds versus runtime enforcement and selected negative-case
 limits matched. Two links, whitespace and frozen Core source/test guards passed;
 no HTTP-owner credit or executable evidence was added.
 
+North completed all 919 HTTP owner lines, both full 37-route tables/private
+helpers and note, retaining the full 250-line HTTP and three parity suites.
+Actual selected process/handoff consumers and scoped symbols were checked.
+Declared integer bounds, empty error-status admission, minimal path validation,
+destructive-role freedom, subset/order behavior and factory defaults matched.
+The note matched North's reviewed SHA-256. Five links, whitespace and frozen
+Core source/test guards passed; no runtime enforcement or executable evidence.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -502,7 +510,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/compensation.py.md) | North PASS: full owner/test/notes; selected identity, codec, planned-activity validation, facade and Operations admission contracts. No execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/execution.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/execution.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/execution.py.md) | North PASS: full owner/test/note, selected actual shared context. Reviewed note hash verified. No execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/handoff.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/operations/http.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/http.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/operations/http.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/http.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/http.py.md) | North PASS: full 919-line owner/tables/helpers/note, retained HTTP/parity suites and actual selected consumers. No execution or consumer credit. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/lifecycle.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/lifecycle.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/lifecycle.py.md) | North PASS: full 1301-line owner/note, retained full 519-line test and selected actual Operations records. No source repair or execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/mcp.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/mcp.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/mcp.py.md) | North: full owner/test and notes; selected Protocol contract, prior process context. |
 | [control-plane-kit-core/src/control_plane_kit_core/operations/parity.py](../../../control-plane-kit-core/src/control_plane_kit_core/operations/parity.py) | source | reviewed | [companion](src/control_plane_kit_core/operations/parity.py.md) | North and Vale PASS: full owner; North full tables/helpers, retained three suites and actual selected handoff/import context. No corrections or execution. |
