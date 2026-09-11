@@ -1289,7 +1289,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_guarded_observed_effect_fold_contract.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_guarded_observed_effect_fold_contract.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
