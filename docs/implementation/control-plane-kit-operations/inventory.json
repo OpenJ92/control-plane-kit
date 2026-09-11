@@ -1589,7 +1589,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_eligibility_errors.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_eligibility_errors.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
