@@ -162,7 +162,7 @@
     {
       "source": "extraction_parity/completion.py",
       "companion": "docs/implementation/extraction_parity/completion.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -300,7 +300,7 @@
     {
       "source": "extraction_parity/tests/test_semantic_completion.py",
       "companion": "docs/implementation/extraction_parity/tests/test_semantic_completion.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
