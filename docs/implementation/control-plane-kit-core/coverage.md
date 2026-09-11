@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 10 pending, 0 authored,
-149 reviewed, 8 excluded.
+167 tracked paths: 9 pending, 0 authored,
+150 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -445,6 +445,14 @@ cross-family identity limits and metadata-versus-runtime evidence matched. The
 note matched North's reviewed SHA-256. Eight links, whitespace and frozen Core
 source/test guards passed; no implementation, executable or provider evidence.
 
+North reviewed all 250 lines/seven HTTP contract tests, the note, actual HTTP
+1–299/895–919 and retained read-factory/helper context. One transient review-status
+sentence was replaced with an enduring test-only coverage statement before
+approval. The corrected note matched North's reviewed SHA-256. Literal route
+order, declared bounds versus runtime enforcement and selected negative-case
+limits matched. Two links, whitespace and frozen Core source/test guards passed;
+no HTTP-owner credit or executable evidence was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -570,7 +578,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_graph_codec.py](../../../control-plane-kit-core/tests/test_graph_codec.py) | test / assertion support | reviewed | [companion](tests/test_graph_codec.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_graph_diff.py](../../../control-plane-kit-core/tests/test_graph_diff.py) | test / assertion support | reviewed | [companion](tests/test_graph_diff.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_graph_validation.py](../../../control-plane-kit-core/tests/test_graph_validation.py) | test / assertion support | reviewed | [companion](tests/test_graph_validation.py.md) | North: consequential graph contracts checked; test bodies sampled. |
-| [control-plane-kit-core/tests/test_http_api_contract.py](../../../control-plane-kit-core/tests/test_http_api_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_http_api_contract.py](../../../control-plane-kit-core/tests/test_http_api_contract.py) | test / assertion support | reviewed | [companion](tests/test_http_api_contract.py.md) | North PASS: full 250-line/seven-test suite/note and actual selected HTTP constructors/validators; corrected enduring scope sentence. No owner credit or execution. |
 | [control-plane-kit-core/tests/test_identity.py](../../../control-plane-kit-core/tests/test_identity.py) | test / assertion support | reviewed | [companion](tests/test_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_kernel_pipeline.py](../../../control-plane-kit-core/tests/test_kernel_pipeline.py) | test / assertion support | reviewed | [companion](tests/test_kernel_pipeline.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_mcp_streamable_http_contract.py](../../../control-plane-kit-core/tests/test_mcp_streamable_http_contract.py) | test / assertion support | reviewed | [companion](tests/test_mcp_streamable_http_contract.py.md) | North: full owner/test and notes; selected Protocol contract, prior process context. |
