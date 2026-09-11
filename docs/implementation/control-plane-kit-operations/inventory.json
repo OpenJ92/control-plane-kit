@@ -791,7 +791,7 @@
     {
       "source": "control-plane-kit-operations/tests/failed_run_compensation_attempt_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/failed_run_compensation_attempt_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
