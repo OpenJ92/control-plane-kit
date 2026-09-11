@@ -17,7 +17,7 @@
     {
       "source": "control-plane-kit-operations/POSTGRES_READ_CARDINALITY.toml",
       "companion": "docs/implementation/control-plane-kit-operations/POSTGRES_READ_CARDINALITY.toml.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
