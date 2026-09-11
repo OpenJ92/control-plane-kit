@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 16 pending, 0 authored,
-143 reviewed, 8 excluded.
+167 tracked paths: 15 pending, 0 authored,
+144 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -395,6 +395,14 @@ and descriptor/error limits matched. The note matched North's reviewed SHA-256.
 Five links, whitespace and frozen Core source/test plus selected records guards
 passed. No source repair, executable validation or additional test credit.
 
+North reviewed the full 476-line command-workflow suite, all four tests, the full
+security assertion helper and note, with actual owner 154–434 and 814–850 checked
+alongside Kepler's selected definition/mapping reads. The explicit 31-row,
+eight-field ordering, benign helper checks without a bound assertion, selected
+flags, three negatives with duplicate overlap and cause-retention limits matched.
+The note matched North's reviewed SHA-256. Three links, whitespace and frozen
+source/test guards passed; no whole-owner credit or executable evidence was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -496,7 +504,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_approval_subjects.py](../../../control-plane-kit-core/tests/test_approval_subjects.py) | test / assertion support | reviewed | [companion](tests/test_approval_subjects.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/tests/test_authorization_history_parity_contract.py](../../../control-plane-kit-core/tests/test_authorization_history_parity_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_command_parity_contract.py](../../../control-plane-kit-core/tests/test_command_parity_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_command_workflow_contract.py](../../../control-plane-kit-core/tests/test_command_workflow_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_command_workflow_contract.py](../../../control-plane-kit-core/tests/test_command_workflow_contract.py) | test / assertion support | reviewed | [companion](tests/test_command_workflow_contract.py.md) | North PASS: full 476-line suite/helper/note and selected actual owner guards/factory; Kepler selected definitions/mapping. No owner credit or execution. |
 | [control-plane-kit-core/tests/test_compensation_planning.py](../../../control-plane-kit-core/tests/test_compensation_planning.py) | test / assertion support | reviewed | [companion](tests/test_compensation_planning.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_configuration_artifacts.py](../../../control-plane-kit-core/tests/test_configuration_artifacts.py) | test / assertion support | reviewed | [companion](tests/test_configuration_artifacts.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_container_server_product.py](../../../control-plane-kit-core/tests/test_container_server_product.py) | test / assertion support | reviewed | [companion](tests/test_container_server_product.py.md) | North PASS: full test/helper/note and runtime constructor/descriptor; retained product/codec contracts. No execution. |
