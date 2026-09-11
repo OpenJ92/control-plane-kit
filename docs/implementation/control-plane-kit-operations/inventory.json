@@ -65,7 +65,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
