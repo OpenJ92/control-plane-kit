@@ -1025,19 +1025,19 @@
     {
       "source": "control-plane-kit-operations/tests/test_draft_catalogue_adapters.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_draft_catalogue_adapters.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/tests/test_draft_selection.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_draft_selection.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/tests/test_draft_selection_adapters.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_draft_selection_adapters.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
