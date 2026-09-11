@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 3 pending, 0 authored,
-156 reviewed, 8 excluded.
+167 tracked paths: 2 pending, 0 authored,
+157 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -503,6 +503,15 @@ negative cases and disclosure limits matched. The note matched North's approved
 SHA-256. Six links, whitespace and frozen Core source/test checks passed; no
 source/test change or runtime execution was added.
 
+North completed all 1241 runtime-effect owner lines across test/owner review,
+the full note and duplicate-rejection wording correction, selected actual
+Operations dispatch/authorization/product overlays, observation/fingerprint
+boundaries and exact external Docker dispatch source. Conditional recipient and
+grant limits, mutable copied evidence/shallow descriptors, local versus aggregate
+caps and constructor versus decoder limits matched. The corrected note matched
+North's approved SHA-256. Ten local links and one exact external git path,
+whitespace and frozen source checks passed; no execution or source changes.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -576,7 +585,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/public_ingress.py](../../../control-plane-kit-core/src/control_plane_kit_core/public_ingress.py) | source | reviewed | [companion](src/control_plane_kit_core/public_ingress.py.md) | North: full ingress owner/test/notes; exact graph references and origin helper. |
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py) | source | reviewed | [companion](src/control_plane_kit_core/runtime_authority.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py) | source | reviewed | [companion](src/control_plane_kit_core/runtime_effect_observation.py.md) | North: source claims checked; test navigation sampled. |
-| [control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py) | source | reviewed | [companion](src/control_plane_kit_core/runtime_effects.py.md) | North: full owner/note and correction; primary suite retained, actual selected Operations/observation/external consumers checked. |
 | [control-plane-kit-core/src/control_plane_kit_core/secrets.py](../../../control-plane-kit-core/src/control_plane_kit_core/secrets.py) | source | reviewed | [companion](src/control_plane_kit_core/secrets.py.md) | North: full owner/helpers/two suites; selected Core/Operations consumers and exact external interpreter bodies. |
 | [control-plane-kit-core/src/control_plane_kit_core/topology/__init__.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/__init__.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/__init__.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/topology/changes.py](../../../control-plane-kit-core/src/control_plane_kit_core/topology/changes.py) | source | reviewed | [companion](src/control_plane_kit_core/topology/changes.py.md) | North: consequential graph contracts checked; test bodies sampled. |
