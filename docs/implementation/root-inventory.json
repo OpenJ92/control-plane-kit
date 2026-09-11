@@ -54,7 +54,7 @@
     {
       "source": "build-legacy-retirement-manifest.sh",
       "companion": "docs/implementation/build-legacy-retirement-manifest.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -222,7 +222,7 @@
     {
       "source": "extraction_parity/retirement.py",
       "companion": "docs/implementation/extraction_parity/retirement.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -252,7 +252,7 @@
     {
       "source": "extraction_parity/tests/test_legacy_retirement.py",
       "companion": "docs/implementation/extraction_parity/tests/test_legacy_retirement.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -342,7 +342,7 @@
     {
       "source": "validate-legacy-retirement.sh",
       "companion": "docs/implementation/validate-legacy-retirement.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
