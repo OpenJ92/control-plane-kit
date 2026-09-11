@@ -66,7 +66,7 @@
     {
       "source": "build-semantic-test-migration-inventory.sh",
       "companion": "docs/implementation/build-semantic-test-migration-inventory.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -192,7 +192,7 @@
     {
       "source": "extraction_parity/migration_inventory.py",
       "companion": "docs/implementation/extraction_parity/migration_inventory.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -258,7 +258,7 @@
     {
       "source": "extraction_parity/tests/test_migration_inventory.py",
       "companion": "docs/implementation/extraction_parity/tests/test_migration_inventory.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -360,7 +360,7 @@
     {
       "source": "validate-semantic-test-migration-inventory.sh",
       "companion": "docs/implementation/validate-semantic-test-migration-inventory.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     }
   ]
