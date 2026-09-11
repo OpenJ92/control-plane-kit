@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 46 pending, 0 authored,
-113 reviewed, 8 excluded.
+167 tracked paths: 45 pending, 0 authored,
+114 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -195,6 +195,14 @@ disclosure assertions and non-isolating negative fixtures matched source.
 Nine links, whitespace and source guards passed. No correction, executable
 validation or full products.py review credit was added.
 
+North read the complete container-product test (138 lines), its companion and
+runtime-contract construction/descriptor, retaining the immediately preceding
+product/runtime codec, identity/OCI and text-validator reviews. Fixture-level
+hash/frozen assertions, isolated variant rejection, metadata examples and the
+eight-import/ten-annotation source guard matched source. Three links, whitespace
+and source guards passed; no corrections, executable validation or full
+products.py review credit were added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -299,7 +307,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_command_workflow_contract.py](../../../control-plane-kit-core/tests/test_command_workflow_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_compensation_planning.py](../../../control-plane-kit-core/tests/test_compensation_planning.py) | test / assertion support | reviewed | [companion](tests/test_compensation_planning.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_configuration_artifacts.py](../../../control-plane-kit-core/tests/test_configuration_artifacts.py) | test / assertion support | reviewed | [companion](tests/test_configuration_artifacts.py.md) | North: consequential claims checked; navigation sampled. |
-| [control-plane-kit-core/tests/test_container_server_product.py](../../../control-plane-kit-core/tests/test_container_server_product.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_container_server_product.py](../../../control-plane-kit-core/tests/test_container_server_product.py) | test / assertion support | reviewed | [companion](tests/test_container_server_product.py.md) | North PASS: full test/helper/note and runtime constructor/descriptor; retained product/codec contracts. No execution. |
 | [control-plane-kit-core/tests/test_control_contracts.py](../../../control-plane-kit-core/tests/test_control_contracts.py) | test / assertion support | reviewed | [companion](tests/test_control_contracts.py.md) | North: full owners, four notes and route test; contract tests sampled. |
 | [control-plane-kit-core/tests/test_control_routes.py](../../../control-plane-kit-core/tests/test_control_routes.py) | test / assertion support | reviewed | [companion](tests/test_control_routes.py.md) | North: full owners, four notes and route test; contract tests sampled. |
 | [control-plane-kit-core/tests/test_cpk_server_entrypoint_handoff.py](../../../control-plane-kit-core/tests/test_cpk_server_entrypoint_handoff.py) | test / assertion support | pending | — | Initial authoring backlog. |
