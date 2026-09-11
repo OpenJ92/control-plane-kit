@@ -1,0 +1,10 @@
+Source: [control-plane-kit-operations/tests/test_read_services_package.py](../../../../control-plane-kit-operations/tests/test_read_services_package.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+This is existing package-ownership evidence, not a read-service behavioral or provider suite. It imports the installed facade/root, inspects package files and parses Python source to check the known 14-module subtree, selected canonical public-object identities, internal protocol visibility, workspace-family placement and the local import graph. It contains no database setup or provider call.
+
+The selected public-identity map does not enumerate every current facade export (for example, OperatorOverviewReadModel is outside that map); the selected protocol map likewise is not an exhaustive current protocol inventory. Do not describe these loops as a complete API audit. Other checks deliberately freeze particular class/helper placements and exact foundation import sets: they record the existing decomposition, not a general prescription to add structural policing to new behavior tests.
+
+The local import parser handles several ordinary relative/absolute forms and is tested with representative snippets. The cycle walk traverses those discovered edges among known package leaves; it is not a proof over dynamic imports or all external packages. Workspace projection checks rule out an instance-facade/planning import edge. Foundation checks keep errors/models/protocols/redaction independent of the facade and cyclic foundation imports.
+
+Full test file and the selected foundation/facade owners read. Runtime query ownership, auth, workspace isolation, bounds, redaction, ordering and transaction consistency need their concrete service/store tests; a green import topology cannot establish them. No tests were run for this note. Any executable validation uses the established `control-plane-kit-operations/test.sh`, never host imports or an alternate harness.

@@ -575,13 +575,13 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/__init__.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/__init__.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/_redaction.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/_redaction.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -599,7 +599,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/errors.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/errors.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -617,7 +617,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/models.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/models.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -641,7 +641,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/protocols.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/protocols.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1703,7 +1703,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_read_services_package.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_read_services_package.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
