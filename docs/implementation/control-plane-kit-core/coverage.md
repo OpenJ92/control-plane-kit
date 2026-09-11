@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 42 pending, 0 authored,
-117 reviewed, 8 excluded.
+167 tracked paths: 40 pending, 0 authored,
+119 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -221,6 +221,15 @@ aliases remain covered. All 23 tests' stated limits matched source; six links,
 whitespace and source guards passed. No executable validation, inferred code
 defect or full products.py audit was claimed.
 
+North read the full private public-wire owner (163 lines), ownership test
+(197 lines), both companions and both JSON fixture inputs. He independently
+checked the selected consumer guard, error and size-bound paths. Finite lexical
+classification, one ASCII decoding pass, shape/material precedence, exact epoch
+type, selected canonicalization failures, actual fixture consumption and AST
+limits matched source. Nine local links, whitespace and source guards passed;
+no corrections, imports, tests or provider execution were required. Fixture
+dependency reads add no companion coverage.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -246,7 +255,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/pyproject.toml](../../../control-plane-kit-core/pyproject.toml) | build / dependencies | reviewed | [companion](pyproject.toml.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/__init__.py](../../../control-plane-kit-core/src/control_plane_kit_core/__init__.py) | source | reviewed | [companion](src/control_plane_kit_core/__init__.py.md) | North: both facades and boundary test fully read; selected consumer imports. |
 | [control-plane-kit-core/src/control_plane_kit_core/_activity_identity.py](../../../control-plane-kit-core/src/control_plane_kit_core/_activity_identity.py) | source | reviewed | [companion](src/control_plane_kit_core/_activity_identity.py.md) | North: seven owners read; governing tests sampled. |
-| [control-plane-kit-core/src/control_plane_kit_core/_node_control_public_wire.py](../../../control-plane-kit-core/src/control_plane_kit_core/_node_control_public_wire.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/_node_control_public_wire.py](../../../control-plane-kit-core/src/control_plane_kit_core/_node_control_public_wire.py) | source | reviewed | [companion](src/control_plane_kit_core/_node_control_public_wire.py.md) | North PASS: full owner/test/notes/fixtures and selected actual consumer guards. No corrections or execution. |
 | [control-plane-kit-core/src/control_plane_kit_core/_run_identity.py](../../../control-plane-kit-core/src/control_plane_kit_core/_run_identity.py) | source | reviewed | [companion](src/control_plane_kit_core/_run_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/algebra.py](../../../control-plane-kit-core/src/control_plane_kit_core/algebra.py) | source | reviewed | [companion](src/control_plane_kit_core/algebra.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/approval_subjects.py](../../../control-plane-kit-core/src/control_plane_kit_core/approval_subjects.py) | source | reviewed | [companion](src/control_plane_kit_core/approval_subjects.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
@@ -357,7 +366,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_node_control_graph_references.py](../../../control-plane-kit-core/tests/test_node_control_graph_references.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_operation_contracts.py](../../../control-plane-kit-core/tests/test_node_control_operation_contracts.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_public_material.py](../../../control-plane-kit-core/tests/test_node_control_public_material.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_node_control_public_wire_ownership.py](../../../control-plane-kit-core/tests/test_node_control_public_wire_ownership.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_node_control_public_wire_ownership.py](../../../control-plane-kit-core/tests/test_node_control_public_wire_ownership.py) | test / assertion support | reviewed | [companion](tests/test_node_control_public_wire_ownership.py.md) | North PASS: full test/shared owner/notes/fixtures and selected consumer composition. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_result_variants.py](../../../control-plane-kit-core/tests/test_node_control_result_variants.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_surface_read_authority.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_authority.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_surface_read_results.py](../../../control-plane-kit-core/tests/test_node_control_surface_read_results.py) | test / assertion support | pending | — | Initial authoring backlog. |
