@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 56 pending, 0 authored,
-103 reviewed, 8 excluded.
+167 tracked paths: 54 pending, 0 authored,
+105 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -152,6 +152,14 @@ declaration checks, positive-only assertions and unasserted fields matched
 source. These tests do not prove adapter behavior, authorization, pagination
 execution or universal association integrity. No executable validation occurred.
 
+North read the full draft-catalogue/selection contract tests (60/33 lines), both
+notes and complete program/transaction/UoW fixture helpers. Selected exact
+HTTP/parity/projection entries were checked with prior projection/MCP context.
+Positive declarations, byte-bound limits, unasserted fields and catalogue
+approval metadata matched source. North checked whitespace/source guards;
+Kepler checked nine local links, acknowledged but not rerun by North. No
+corrections or executable validation were required.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -263,8 +271,8 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_delegation_authority_projection.py](../../../control-plane-kit-core/tests/test_delegation_authority_projection.py) | test / assertion support | reviewed | [companion](tests/test_delegation_authority_projection.py.md) | North: full delegation owner/test/notes; actual environment/diff/graph checks. |
 | [control-plane-kit-core/tests/test_delegation_keys.py](../../../control-plane-kit-core/tests/test_delegation_keys.py) | test / assertion support | reviewed | [companion](tests/test_delegation_keys.py.md) | North: full public-key owner, test and both notes read. |
 | [control-plane-kit-core/tests/test_deployment_program_boundary.py](../../../control-plane-kit-core/tests/test_deployment_program_boundary.py) | test / assertion support | reviewed | [companion](tests/test_deployment_program_boundary.py.md) | North: complete service owner across two reads, full test and both notes. |
-| [control-plane-kit-core/tests/test_draft_catalogue_contract.py](../../../control-plane-kit-core/tests/test_draft_catalogue_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_draft_selection_contract.py](../../../control-plane-kit-core/tests/test_draft_selection_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_draft_catalogue_contract.py](../../../control-plane-kit-core/tests/test_draft_catalogue_contract.py) | test / assertion support | reviewed | [companion](tests/test_draft_catalogue_contract.py.md) | North: full tests/notes/UoW helpers; selected exact HTTP/parity/projection entries. |
+| [control-plane-kit-core/tests/test_draft_selection_contract.py](../../../control-plane-kit-core/tests/test_draft_selection_contract.py) | test / assertion support | reviewed | [companion](tests/test_draft_selection_contract.py.md) | North: full tests/notes/UoW helpers; selected exact HTTP/parity/projection entries. |
 | [control-plane-kit-core/tests/test_effect_recovery_contract.py](../../../control-plane-kit-core/tests/test_effect_recovery_contract.py) | test / assertion support | reviewed | [companion](tests/test_effect_recovery_contract.py.md) | North: full owner/test/identity helpers; selected Operations fold/start boundaries. |
 | [control-plane-kit-core/tests/test_environment_secrets.py](../../../control-plane-kit-core/tests/test_environment_secrets.py) | test / assertion support | reviewed | [companion](tests/test_environment_secrets.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_execution_coordinator_contract.py](../../../control-plane-kit-core/tests/test_execution_coordinator_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
