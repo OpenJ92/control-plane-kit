@@ -17,7 +17,7 @@
     {
       "source": "control-plane-kit-operations/POSTGRES_READ_CARDINALITY.toml",
       "companion": "docs/implementation/control-plane-kit-operations/POSTGRES_READ_CARDINALITY.toml.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -35,13 +35,13 @@
     {
       "source": "control-plane-kit-operations/session-command-serialization.json",
       "companion": "docs/implementation/control-plane-kit-operations/session-command-serialization.json.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/__init__.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/__init__.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1361,7 +1361,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_package_boundary.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_package_boundary.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
