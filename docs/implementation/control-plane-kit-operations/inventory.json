@@ -269,7 +269,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -569,7 +569,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_pages.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_pages.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -803,7 +803,7 @@
     {
       "source": "control-plane-kit-operations/tests/gateway_rotation_overlap_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/gateway_rotation_overlap_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1235,7 +1235,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_projection.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_projection.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
