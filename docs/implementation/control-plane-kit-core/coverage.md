@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 21 pending, 0 authored,
-138 reviewed, 8 excluded.
+167 tracked paths: 20 pending, 0 authored,
+139 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -358,6 +358,13 @@ str-only diagnostics, issuer-only material matrix, strict-field and constructor
 cases and selected export/from-import guards matched. Five links, whitespace and
 source/test guards passed; no execution or additional owner credit was added.
 
+North reviewed the full milestone-closeout test (135 lines), all three tests and
+helpers, full note and Core harness, with retained surface-result textual-assertion
+context. Filesystem inventory, literal initializer names, relative-from handling,
+finite import roots and pytest-only discovery limits matched. Three links,
+whitespace and source/test/harness guards passed; no execution or extra coverage
+credit was added.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -487,7 +494,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_identity.py](../../../control-plane-kit-core/tests/test_identity.py) | test / assertion support | reviewed | [companion](tests/test_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_kernel_pipeline.py](../../../control-plane-kit-core/tests/test_kernel_pipeline.py) | test / assertion support | reviewed | [companion](tests/test_kernel_pipeline.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_mcp_streamable_http_contract.py](../../../control-plane-kit-core/tests/test_mcp_streamable_http_contract.py) | test / assertion support | reviewed | [companion](tests/test_mcp_streamable_http_contract.py.md) | North: full owner/test and notes; selected Protocol contract, prior process context. |
-| [control-plane-kit-core/tests/test_milestone_closeout.py](../../../control-plane-kit-core/tests/test_milestone_closeout.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_milestone_closeout.py](../../../control-plane-kit-core/tests/test_milestone_closeout.py) | test / assertion support | reviewed | [companion](tests/test_milestone_closeout.py.md) | North PASS: full three-test file/helpers/note/harness; actual surface-result assertion retained. No execution. |
 | [control-plane-kit-core/tests/test_node_authority_delivery.py](../../../control-plane-kit-core/tests/test_node_authority_delivery.py) | test / assertion support | reviewed | [companion](tests/test_node_authority_delivery.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/tests/test_node_control.py](../../../control-plane-kit-core/tests/test_node_control.py) | test / assertion support | reviewed | [companion](tests/test_node_control.py.md) | North PASS: full fourteen-test suite/helpers/note, audience/grant comparator and selected declaration/constructor context. No corrections or execution. |
 | [control-plane-kit-core/tests/test_node_control_canonical_wire.py](../../../control-plane-kit-core/tests/test_node_control_canonical_wire.py) | test / assertion support | reviewed | [companion](tests/test_node_control_canonical_wire.py.md) | North PASS: full test/fixture/notes and selected owners/dependency declaration. Fixed/computed and numeric evidence limits checked; no execution. |
