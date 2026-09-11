@@ -1,0 +1,9 @@
+# Operations implementation companions
+
+This slice follows the [CPK #1799 convention](https://github.com/OpenJ92/control-plane-kit/issues/1799). Append the repository-relative source path with its original suffix to `docs/implementation/`, then append `.md`. Each note starts with its source link and same-change reminder. Read it with actual owner source and selected contract-bearing dependencies, never instead of them.
+
+The [initial inventory](inventory.json) covers tracked implementation, tests, schemas and meaningful process/build inputs. Existing guidance is maintained directly rather than recursively mirrored. Six first-batch notes have independent consequential-claim review; the PR records its depth. Pending means rollout work, not certified absence of defects or a reason to block unrelated work.
+
+Keep maintenance in the existing PR flow: inspect the actual source/dependency diff, pair relevant creates/moves/removals, and update affected meaning. If unchanged, record “companion reviewed; no semantic update needed” in the normal decision log. Bring newly touched pending files current. Verify selected dependency versions and coordinate actual adoption across repositories; reverse links are not exhaustive.
+
+No per-file timestamp/hash churn, extra report or new validation programme is required. Review consequential claims against source. Documentation coverage does not establish provider outcomes, resolve uncertainty, or grant authority to execute effects.

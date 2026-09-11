@@ -6,6 +6,22 @@ This package inherits the repository root `AGENTS.md`,
 `docs/OPERATING_MODEL.md`, and `docs/TESTING.md`. These rules tighten that
 contract for durable control-plane application services and may not weaken it.
 
+## Implementation Companions
+
+Read the relevant `docs/implementation/control-plane-kit-operations/<package-relative-source-path>.md`
+note from the repository root before changing its owner. Verify source and the
+contract-bearing imports at the version this package actually uses. UPDATE the
+companion in the same change when responsibilities, contracts, authority,
+transactions, evidence or dependency assumptions change; create/move/remove
+notes with their source. The initial inventory lives in that docs subtree.
+
+Review the actual source/dependency diff before handoff. Use one normal PR
+sentence for updated notes or “companion reviewed; no semantic update needed.”
+Bring newly touched pending notes current without holding unrelated work on
+the entire rollout. No extra report, hash churn or validation framework is
+required. Different-author review checks consequential claims against source;
+companions never grant execution or data access authority.
+
 ## Ownership
 
 `control-plane-kit-operations` owns current durable control-plane truth:
