@@ -149,7 +149,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/desired_topology_drafts.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/desired_topology_drafts.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -419,7 +419,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/desired_topology_draft_store.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/desired_topology_draft_store.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1019,7 +1019,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_desired_topology_drafts.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
