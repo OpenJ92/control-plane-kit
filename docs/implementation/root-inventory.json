@@ -330,13 +330,13 @@
     {
       "source": "test_support/package_integrity.py",
       "companion": "docs/implementation/test_support/package_integrity.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "test_support/tests/test_package_integrity.py",
       "companion": "docs/implementation/test_support/tests/test_package_integrity.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
