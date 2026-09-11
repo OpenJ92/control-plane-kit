@@ -17,7 +17,7 @@
     {
       "source": "control-plane-kit-operations/POSTGRES_READ_CARDINALITY.toml",
       "companion": "docs/implementation/control-plane-kit-operations/POSTGRES_READ_CARDINALITY.toml.md",
-      "status": "reviewed",
+      "status": "pending",
       "exclusion_reason": null
     },
     {
@@ -35,13 +35,13 @@
     {
       "source": "control-plane-kit-operations/session-command-serialization.json",
       "companion": "docs/implementation/control-plane-kit-operations/session-command-serialization.json.md",
-      "status": "reviewed",
+      "status": "pending",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/__init__.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/__init__.py.md",
-      "status": "reviewed",
+      "status": "pending",
       "exclusion_reason": null
     },
     {
@@ -317,7 +317,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotations.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotations.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -461,7 +461,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/gateway_key_rotation_store.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/gateway_key_rotation_store.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1259,7 +1259,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_gateway_key_rotations.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotations.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
