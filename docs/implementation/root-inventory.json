@@ -72,7 +72,7 @@
     {
       "source": "classify-reference-laws.sh",
       "companion": "docs/implementation/classify-reference-laws.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -198,7 +198,7 @@
     {
       "source": "extraction_parity/ownership.py",
       "companion": "docs/implementation/extraction_parity/ownership.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -282,7 +282,7 @@
     {
       "source": "extraction_parity/tests/test_reference_law_ownership.py",
       "companion": "docs/implementation/extraction_parity/tests/test_reference_law_ownership.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
