@@ -377,7 +377,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/__init__.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/__init__.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -389,7 +389,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_data_validation.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_data_validation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
