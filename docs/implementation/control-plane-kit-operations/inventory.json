@@ -635,7 +635,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/operator_overview.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/operator_overview.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1697,7 +1697,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_read_services_documentation.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_read_services_documentation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1853,7 +1853,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_workspace_graph_read_projection.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_workspace_graph_read_projection.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
