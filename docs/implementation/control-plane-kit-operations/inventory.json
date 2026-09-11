@@ -1175,7 +1175,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_failed_run_compensation_command_contract.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_failed_run_compensation_command_contract.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
