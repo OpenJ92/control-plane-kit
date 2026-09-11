@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 14 pending, 0 authored,
-145 reviewed, 8 excluded.
+167 tracked paths: 13 pending, 0 authored,
+146 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -413,6 +413,14 @@ consumers matched. The note matched North's reviewed SHA-256. Seven links,
 whitespace and frozen Core source/test plus selected Operations guards passed.
 No source repair, executable evidence or additional consumer coverage was added.
 
+North reviewed the full 515-line command-parity suite, all five tests, three
+helpers and note, with actual parity 375–512/784–818, transaction 36–106 and the
+HTTP execution definition checked. The ordered 37-row/six-field mapping, valid
+weakened unit-of-work fixture, destructive AFTER_COMMIT rejection, permitted
+singleton bindings and overlapping policy/identity negatives matched. The note
+matched North's reviewed SHA-256. Four links, whitespace and frozen source/test
+guards passed. No whole-owner credit, live transport or executable evidence.
+
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
 exports and test harnesses remain included. No generated/vendor/lock files
@@ -513,7 +521,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_adapter_parity_contract.py](../../../control-plane-kit-core/tests/test_adapter_parity_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_approval_subjects.py](../../../control-plane-kit-core/tests/test_approval_subjects.py) | test / assertion support | reviewed | [companion](tests/test_approval_subjects.py.md) | North: owners read fully; planning tests sampled, policy tests read fully. |
 | [control-plane-kit-core/tests/test_authorization_history_parity_contract.py](../../../control-plane-kit-core/tests/test_authorization_history_parity_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_command_parity_contract.py](../../../control-plane-kit-core/tests/test_command_parity_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_command_parity_contract.py](../../../control-plane-kit-core/tests/test_command_parity_contract.py) | test / assertion support | reviewed | [companion](tests/test_command_parity_contract.py.md) | North PASS: full 515-line suite/helpers/note and selected actual parity/transaction/HTTP guards. No whole-owner credit or execution. |
 | [control-plane-kit-core/tests/test_command_workflow_contract.py](../../../control-plane-kit-core/tests/test_command_workflow_contract.py) | test / assertion support | reviewed | [companion](tests/test_command_workflow_contract.py.md) | North PASS: full 476-line suite/helper/note and selected actual owner guards/factory; Kepler selected definitions/mapping. No owner credit or execution. |
 | [control-plane-kit-core/tests/test_compensation_planning.py](../../../control-plane-kit-core/tests/test_compensation_planning.py) | test / assertion support | reviewed | [companion](tests/test_compensation_planning.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_configuration_artifacts.py](../../../control-plane-kit-core/tests/test_configuration_artifacts.py) | test / assertion support | reviewed | [companion](tests/test_configuration_artifacts.py.md) | North: consequential claims checked; navigation sampled. |
