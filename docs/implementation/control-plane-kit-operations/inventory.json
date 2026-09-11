@@ -209,7 +209,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
