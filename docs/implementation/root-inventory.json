@@ -180,7 +180,7 @@
     {
       "source": "extraction_parity/inventory.py",
       "companion": "docs/implementation/extraction_parity/inventory.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -294,7 +294,7 @@
     {
       "source": "extraction_parity/tests/test_reference_test_inventory.py",
       "companion": "docs/implementation/extraction_parity/tests/test_reference_test_inventory.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -318,7 +318,7 @@
     {
       "source": "reference-inventory.sh",
       "companion": "docs/implementation/reference-inventory.sh.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
