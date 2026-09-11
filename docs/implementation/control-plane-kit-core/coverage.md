@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 58 pending, 0 authored,
-101 reviewed, 8 excluded.
+167 tracked paths: 56 pending, 0 authored,
+103 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -144,6 +144,13 @@ fold authority/historical-fence and start transaction/persistence paths were
 checked selectively. Local fold consistency, retry lineage, evidence matching,
 character/integer bounds and event-vocabulary test limits matched source.
 No source change or executable validation was performed.
+
+North read both history-contract test files in full (33 and 96 lines) and their
+companions, checking selected exact HTTP/parity route and tool entries with
+prior full projection/MCP context. Route/projection aliases, ten/100-item
+declaration checks, positive-only assertions and unasserted fields matched
+source. These tests do not prove adapter behavior, authorization, pagination
+execution or universal association integrity. No executable validation occurred.
 
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
@@ -310,7 +317,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_read_projection_contract.py](../../../control-plane-kit-core/tests/test_read_projection_contract.py) | test / assertion support | reviewed | [companion](tests/test_read_projection_contract.py.md) | North: full owner/test/notes, prior security helper; selected HTTP/parity. |
 | [control-plane-kit-core/tests/test_recovery_planning.py](../../../control-plane-kit-core/tests/test_recovery_planning.py) | test / assertion support | reviewed | [companion](tests/test_recovery_planning.py.md) | North: full owner, test and both recovery notes read. |
 | [control-plane-kit-core/tests/test_resource_lifecycle.py](../../../control-plane-kit-core/tests/test_resource_lifecycle.py) | test / assertion support | reviewed | [companion](tests/test_resource_lifecycle.py.md) | North: seven owners read; governing tests sampled. |
-| [control-plane-kit-core/tests/test_revision_history_contract.py](../../../control-plane-kit-core/tests/test_revision_history_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_revision_history_contract.py](../../../control-plane-kit-core/tests/test_revision_history_contract.py) | test / assertion support | reviewed | [companion](tests/test_revision_history_contract.py.md) | North: full tests/notes; selected exact HTTP/parity entries; prior projection/MCP context. |
 | [control-plane-kit-core/tests/test_run_identity.py](../../../control-plane-kit-core/tests/test_run_identity.py) | test / assertion support | reviewed | [companion](tests/test_run_identity.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_runtime_authority_recipient.py](../../../control-plane-kit-core/tests/test_runtime_authority_recipient.py) | test / assertion support | reviewed | [companion](tests/test_runtime_authority_recipient.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/tests/test_runtime_connection_admission.py](../../../control-plane-kit-core/tests/test_runtime_connection_admission.py) | test / assertion support | reviewed | [companion](tests/test_runtime_connection_admission.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
@@ -322,7 +329,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_scaffold.py](../../../control-plane-kit-core/tests/test_scaffold.py) | test / assertion support | reviewed | [companion](tests/test_scaffold.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_scheduling.py](../../../control-plane-kit-core/tests/test_scheduling.py) | test / assertion support | reviewed | [companion](tests/test_scheduling.py.md) | North: consequential saga/scenario owners checked; tests sampled. |
 | [control-plane-kit-core/tests/test_secret_provider_contract.py](../../../control-plane-kit-core/tests/test_secret_provider_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_temporal_history_read_contract.py](../../../control-plane-kit-core/tests/test_temporal_history_read_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_temporal_history_read_contract.py](../../../control-plane-kit-core/tests/test_temporal_history_read_contract.py) | test / assertion support | reviewed | [companion](tests/test_temporal_history_read_contract.py.md) | North: full tests/notes; selected exact HTTP/parity entries; prior projection/MCP context. |
 | [control-plane-kit-core/tests/test_topology_graph.py](../../../control-plane-kit-core/tests/test_topology_graph.py) | test / assertion support | reviewed | [companion](tests/test_topology_graph.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_unit_of_work_boundary.py](../../../control-plane-kit-core/tests/test_unit_of_work_boundary.py) | test / assertion support | reviewed | [companion](tests/test_unit_of_work_boundary.py.md) | North: full transaction owner/test/notes and Postgres UOW; selected service contracts. |
 | [control-plane-kit-core/tests/test_verification_capabilities.py](../../../control-plane-kit-core/tests/test_verification_capabilities.py) | test / assertion support | reviewed | [companion](tests/test_verification_capabilities.py.md) | North: consequential claims checked; navigation sampled. |
