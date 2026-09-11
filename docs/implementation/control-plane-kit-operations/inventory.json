@@ -737,13 +737,13 @@
     {
       "source": "control-plane-kit-operations/tests/draft_catalogue_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/draft_catalogue_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
       "source": "control-plane-kit-operations/tests/draft_selection_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/draft_selection_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -893,7 +893,7 @@
     {
       "source": "control-plane-kit-operations/tests/saved_preparation_fixture.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/saved_preparation_fixture.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1793,7 +1793,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_saved_preparation.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_saved_preparation.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
