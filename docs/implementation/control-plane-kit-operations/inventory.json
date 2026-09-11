@@ -587,7 +587,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/authority_secrets.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/authority_secrets.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -605,7 +605,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/gateway_security.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/gateway_security.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -947,7 +947,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_authority_secret_read_projection.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_authority_secret_read_projection.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
@@ -1277,7 +1277,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_gateway_security_read_projection.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_security_read_projection.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
