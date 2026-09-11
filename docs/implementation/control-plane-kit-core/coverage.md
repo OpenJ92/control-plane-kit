@@ -8,8 +8,8 @@ This is a rollout index, not a companion to a source file or a recurring
 per-file freshness ledger. The historical package-module inventory is not this
 scope's source of truth.
 
-167 tracked paths: 86 pending, 0 authored,
-73 reviewed, 8 excluded.
+167 tracked paths: 80 pending, 0 authored,
+79 reviewed, 8 excluded.
 “Authored” means the note exists after author source inspection. It does not
 claim peer approval or fresh executable validation. Peer-review depth and source
 coordinates belong in the batch PR. The first calibration is not completion
@@ -63,6 +63,12 @@ full, the complete route test, and selected contract validation, projection and
 patch assertions. Raw values, snapshot redaction, direct construction limits
 and route metadata versus enforcement matched source. No documentation findings
 remained; no executable validation was performed.
+
+North read the full runtime-authority owner, exact recipient validator and all
+six authority companions, with selected observation paths, test bodies and
+fixture inspection. The observation-carrier rejection wording was qualified to
+connection grants requiring a carrier. This does not claim full reads of every
+test body or executed validation. No documentation findings remained.
 
 Existing Markdown is maintained as its own prose/agent contract and is excluded
 from recursive mirroring. Authored fixtures, test policy JSON, package metadata,
@@ -135,7 +141,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/src/control_plane_kit_core/probe_intents.py](../../../control-plane-kit-core/src/control_plane_kit_core/probe_intents.py) | source | reviewed | [companion](src/control_plane_kit_core/probe_intents.py.md) | North: full probe owner and notes read; selected tests checked. |
 | [control-plane-kit-core/src/control_plane_kit_core/products.py](../../../control-plane-kit-core/src/control_plane_kit_core/products.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/public_ingress.py](../../../control-plane-kit-core/src/control_plane_kit_core/public_ingress.py) | source | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py) | source | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_authority.py) | source | reviewed | [companion](src/control_plane_kit_core/runtime_authority.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py) | source | reviewed | [companion](src/control_plane_kit_core/runtime_effect_observation.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py](../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effects.py) | source | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/src/control_plane_kit_core/secrets.py](../../../control-plane-kit-core/src/control_plane_kit_core/secrets.py) | source | pending | — | Initial authoring backlog. |
@@ -152,7 +158,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/approved_skips.json](../../../control-plane-kit-core/tests/approved_skips.json) | test policy data | reviewed | [companion](tests/approved_skips.json.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/contract_security_assertions.py](../../../control-plane-kit-core/tests/contract_security_assertions.py) | test / assertion support | reviewed | [companion](tests/contract_security_assertions.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/fixtures/external-products/proxy/product.cpk.json](../../../control-plane-kit-core/tests/fixtures/external-products/proxy/product.cpk.json) | authored fixture | reviewed | [companion](tests/fixtures/external-products/proxy/product.cpk.json.md) | North: consequential claims checked; navigation sampled. |
-| [control-plane-kit-core/tests/fixtures/node_authority_empty_graph.json](../../../control-plane-kit-core/tests/fixtures/node_authority_empty_graph.json) | authored fixture | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/fixtures/node_authority_empty_graph.json](../../../control-plane-kit-core/tests/fixtures/node_authority_empty_graph.json) | authored fixture | reviewed | [companion](tests/fixtures/node_authority_empty_graph.json.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_canonical_wire_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/fixtures/node_control_public_material_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_public_material_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json](../../../control-plane-kit-core/tests/fixtures/node_control_surface_read_canonical_wire_v1.json) | authored fixture | pending | — | Initial authoring backlog. |
@@ -194,7 +200,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_kernel_pipeline.py](../../../control-plane-kit-core/tests/test_kernel_pipeline.py) | test / assertion support | reviewed | [companion](tests/test_kernel_pipeline.py.md) | North: consequential graph contracts checked; test bodies sampled. |
 | [control-plane-kit-core/tests/test_mcp_streamable_http_contract.py](../../../control-plane-kit-core/tests/test_mcp_streamable_http_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_milestone_closeout.py](../../../control-plane-kit-core/tests/test_milestone_closeout.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_node_authority_delivery.py](../../../control-plane-kit-core/tests/test_node_authority_delivery.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_node_authority_delivery.py](../../../control-plane-kit-core/tests/test_node_authority_delivery.py) | test / assertion support | reviewed | [companion](tests/test_node_authority_delivery.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/tests/test_node_control.py](../../../control-plane-kit-core/tests/test_node_control.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_canonical_wire.py](../../../control-plane-kit-core/tests/test_node_control_canonical_wire.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_graph_references.py](../../../control-plane-kit-core/tests/test_node_control_graph_references.py) | test / assertion support | pending | — | Initial authoring backlog. |
@@ -208,7 +214,7 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_node_control_topology.py](../../../control-plane-kit-core/tests/test_node_control_topology.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_transit.py](../../../control-plane-kit-core/tests/test_node_control_transit.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_node_control_workload_wire.py](../../../control-plane-kit-core/tests/test_node_control_workload_wire.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_observation_connection_admission.py](../../../control-plane-kit-core/tests/test_observation_connection_admission.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_observation_connection_admission.py](../../../control-plane-kit-core/tests/test_observation_connection_admission.py) | test / assertion support | reviewed | [companion](tests/test_observation_connection_admission.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/tests/test_oci_image_reference.py](../../../control-plane-kit-core/tests/test_oci_image_reference.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_package_boundary.py](../../../control-plane-kit-core/tests/test_package_boundary.py) | test / assertion support | reviewed | [companion](tests/test_package_boundary.py.md) | North: consequential claims checked; navigation sampled. |
 | [control-plane-kit-core/tests/test_persistence_boundary_contract.py](../../../control-plane-kit-core/tests/test_persistence_boundary_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
@@ -231,8 +237,8 @@ its resolution is separate from coverage status.
 | [control-plane-kit-core/tests/test_resource_lifecycle.py](../../../control-plane-kit-core/tests/test_resource_lifecycle.py) | test / assertion support | reviewed | [companion](tests/test_resource_lifecycle.py.md) | North: seven owners read; governing tests sampled. |
 | [control-plane-kit-core/tests/test_revision_history_contract.py](../../../control-plane-kit-core/tests/test_revision_history_contract.py) | test / assertion support | pending | — | Initial authoring backlog. |
 | [control-plane-kit-core/tests/test_run_identity.py](../../../control-plane-kit-core/tests/test_run_identity.py) | test / assertion support | reviewed | [companion](tests/test_run_identity.py.md) | North: seven owners read; governing tests sampled. |
-| [control-plane-kit-core/tests/test_runtime_authority_recipient.py](../../../control-plane-kit-core/tests/test_runtime_authority_recipient.py) | test / assertion support | pending | — | Initial authoring backlog. |
-| [control-plane-kit-core/tests/test_runtime_connection_admission.py](../../../control-plane-kit-core/tests/test_runtime_connection_admission.py) | test / assertion support | pending | — | Initial authoring backlog. |
+| [control-plane-kit-core/tests/test_runtime_authority_recipient.py](../../../control-plane-kit-core/tests/test_runtime_authority_recipient.py) | test / assertion support | reviewed | [companion](tests/test_runtime_authority_recipient.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
+| [control-plane-kit-core/tests/test_runtime_connection_admission.py](../../../control-plane-kit-core/tests/test_runtime_connection_admission.py) | test / assertion support | reviewed | [companion](tests/test_runtime_connection_admission.py.md) | North: full authority owner and recipient validator; selected observation/tests/fixture. |
 | [control-plane-kit-core/tests/test_runtime_effect_intent.py](../../../control-plane-kit-core/tests/test_runtime_effect_intent.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effect_intent.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_runtime_effect_observation.py](../../../control-plane-kit-core/tests/test_runtime_effect_observation.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effect_observation.py.md) | North: source claims checked; test navigation sampled. |
 | [control-plane-kit-core/tests/test_runtime_effect_observation_boundary.py](../../../control-plane-kit-core/tests/test_runtime_effect_observation_boundary.py) | test / assertion support | reviewed | [companion](tests/test_runtime_effect_observation_boundary.py.md) | North: source claims checked; test navigation sampled. |
