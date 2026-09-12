@@ -413,7 +413,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/delegation_signing_key_store.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/delegation_signing_key_store.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
