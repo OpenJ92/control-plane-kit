@@ -335,7 +335,7 @@ def _products_for_context(
             node_id=node_id,
             runtime_id=runtime_id,
             reference=product.reference,
-            product=_product_material_for_node(context, graph, product, node),
+            product=_product_material_for_node(context, graph, product, node, operation),
             public_environment=public_environment,
             socket_environment=node.socket_environment,
             runtime_authority_deliveries=node.runtime_authority_deliveries,
@@ -352,22 +352,32 @@ def _product_material_for_node(
     graph: DeploymentGraph,
     product: RegisteredProduct,
     node: Node,
+    operation: object,
 ):
     descriptor_product = product.descriptor_document.product
     runtime_contract = descriptor_product.runtime_contract
+    deliveries = _secret_deliveries_for_node(context=context, graph=graph, node=node)
+    if isinstance(operation, (StartNode, ReconcileNode)):
+        selected_keys = tuple(_secret_delivery_contract_key(value) for value in deliveries)
+        for declared in runtime_contract.secret_deliveries:
+            if selected_keys.count(_secret_delivery_contract_key(declared)) != 1:
+                raise InvalidOperationCommand(
+                    "runtime effect secret delivery contract is not satisfied"
+                )
     return replace(
         descriptor_product,
         runtime_contract=replace(
             runtime_contract,
             verification=node.block_spec.verification,
-            secret_deliveries=_secret_deliveries_for_node(
-                context=context,
-                graph=graph,
-                node=node,
-                descriptor_deliveries=runtime_contract.secret_deliveries,
-            ),
+            secret_deliveries=deliveries,
         ),
     )
+
+
+def _secret_delivery_contract_key(value: SecretDelivery) -> tuple[str, str, str, str, str]:
+    # References are selected per instance; every other field defines the slot.
+    kind, target, _reference, intent, policy, binding = secret_delivery_sort_key(value)
+    return kind, target, intent, policy, binding
 
 
 def _secret_deliveries_for_node(
@@ -375,9 +385,10 @@ def _secret_deliveries_for_node(
     context: ActivityRealizationContext | _CoordinatorContext,
     graph: DeploymentGraph,
     node: Node,
-    descriptor_deliveries: tuple[SecretDelivery, ...],
 ) -> tuple[SecretDelivery, ...]:
-    deliveries = tuple(descriptor_deliveries) + tuple(node.secret_deliveries)
+    # The compiled node already owns configured references for descriptor slots
+    # and active socket deliveries. Descriptor defaults are not extra material.
+    deliveries = tuple(node.secret_deliveries)
     if _has_tunnel_token_delivery(deliveries):
         return tuple(sorted(deliveries, key=secret_delivery_sort_key))
     ingress = _connector_ingress_for_node(graph, node.node_id)

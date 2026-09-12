@@ -77,7 +77,9 @@ from tests.effect_attempt_coordinator_fixture import (
     RecordingStartService,
 )
 from tests.test_runtime_interpreter_dispatcher import context_for
-from tests.test_runtime_effect_translation import _admitted_node_delivery, _context, _graph
+from tests.test_runtime_effect_translation import (
+    _admitted_node_delivery, _context, _graph, _secret_contract_context,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -599,6 +601,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("_runtime_id_for_context", 1),
     ("_runtime_kind_for_context", 1),
     ("_secret_deliveries_for_node", 1),
+    ("_secret_delivery_contract_key", 2),
     ("_with_source_edges", 1),
     ("any", 2),
     ("authority.authority.permits", 1),
@@ -628,6 +631,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("control_plane_kit_core.runtime_effects.GatewayTargetId", 1),
     ("control_plane_kit_core.runtime_effects.GatewayTargetMap", 1),
     ("control_plane_kit_core.runtime_effects.RuntimeProductMaterial", 1),
+    ("control_plane_kit_core.secrets.secret_delivery_sort_key", 1),
     ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 2),
     (
         "control_plane_kit_operations.ingress_authorities."
@@ -639,7 +643,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
         "_admitted_runtime_authority_deliveries",
         1,
     ),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 31),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 32),
     ("dataclasses.replace", 2),
     ("gateway_node.provider_socket", 1),
     ("gateway_target_map_for_node", 1),
@@ -648,11 +652,12 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("graph_id.strip", 2),
     ("hasattr", 2),
     ("int", 1),
-    ("isinstance", 15),
+    ("isinstance", 16),
     ("json.dumps", 1),
     ("len", 7),
     ("metadata.get", 2),
     ("postgres_target.get", 3),
+    ("selected_keys.count", 1),
     ("set", 1),
     ("sorted", 6),
     ("source_edges.setdefault", 1),
@@ -974,6 +979,40 @@ class EffectAttemptCoordinatorContractTests(
         self.assertEqual(adapter.runtime_calls, [])
         self.assertEqual(adapter.legacy_contexts, [])
         self.assertEqual(coordinator.legacy_writes, [])
+
+    def test_missing_secret_slots_block_before_new_attempt_or_effect(self) -> None:
+        empty = _secret_contract_context(selected_deliveries=())
+        declared = empty.registered_products[0].descriptor_document.product.runtime_contract.secret_deliveries
+        for selected in ((), declared[:1]):
+            with self.subTest(selected_count=len(selected)):
+                context = _secret_contract_context(selected_deliveries=selected)
+                start = RecordingStartService(EffectAttemptStartDenied())
+                fold = RecordingFoldService()
+                reconcile = RecordingReconciliationService()
+                adapter = RecordingCoordinatorAdapter()
+                coordinator = self.db_free_coordinator(
+                    start_service=start, fold_service=fold,
+                    reconciliation_service=reconcile, adapter=adapter,
+                )
+                coordinator.pinned_context = replace(
+                    coordinator.pinned_context,
+                    desired_graph=context.desired_graph,
+                    registered_products=context.registered_products,
+                )
+                with self.assertRaises((InvalidOperationCommand, ExecutionCoordinatorDenied)) as raised:
+                    coordinator.execute(self.coordinator_command())
+                self.assertIs(type(raised.exception), InvalidOperationCommand)
+                self.assertEqual(str(raised.exception),
+                                 "runtime effect secret delivery contract is not satisfied")
+                self.assertIsNone(raised.exception.__cause__)
+                self.assertIsNone(raised.exception.__context__)
+                self.assertEqual(start.commands, [])
+                self.assertEqual(fold.commands, [])
+                self.assertEqual(reconcile.commands, [])
+                self.assertEqual(adapter.runtime_calls, [])
+                self.assertEqual(adapter.legacy_contexts, [])
+                self.assertEqual(coordinator.legacy_writes, [])
+                self.assertEqual(coordinator.effect_ledger, [])
 
     def test_live_start_binds_exact_event_request_and_folds_once(self) -> None:
         started = self.newly_started()

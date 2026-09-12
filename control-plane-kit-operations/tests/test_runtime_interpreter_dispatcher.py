@@ -1191,6 +1191,7 @@ def graph_with_node(
                     "product_identity": reference.identity.key,
                     "product_descriptor_digest": reference.descriptor_sha256.value,
                 },
+                secret_deliveries=product.descriptor_document.product.runtime_contract.secret_deliveries,
             )
         },
         runtimes={
