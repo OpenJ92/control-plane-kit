@@ -953,7 +953,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_cpk_server_adapters.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_cpk_server_adapters.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
