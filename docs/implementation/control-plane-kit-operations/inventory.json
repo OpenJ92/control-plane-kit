@@ -1373,7 +1373,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_planning_commands.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_planning_commands.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
