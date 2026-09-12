@@ -1,0 +1,10 @@
+Source: [control-plane-kit-operations/tests/test_observation_read_projection.py](../../../../control-plane-kit-operations/tests/test_observation_read_projection.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+These tests exercise the real observation projection with typed records and fake workspace, clock and page-store capabilities. Precedence vectors distinguish recorded stale, absent correlation, graph change, malformed time, future time, expiry and the exact five-minute fresh boundary while preserving source-record identity. Policy tests reject nonpositive ages and a naive read instant.
+
+Trace assertions establish workspace-before-clock-before-store ordering and early exits. Missing/foreign workspace failures are injected by the fixture capability, not actual authorization decisions. Selected malformed clock values and missing-store errors have fixed messages and no cause/context; an injected store RuntimeError deliberately escapes unchanged. That last law is not a promise of universal exception redaction.
+
+A two-candidate/one-item page proves request/cursor identity, visible-item selection and nested address/URL/environment-binding redaction without changing the source record. These examples do not exhaust sensitive values or prove SQL ordering, transaction consistency, provider freshness or concurrent graph changes. The fake clock and page do not open a database or issue probes.
+
+The second class contains inherited extraction guards over class/function names, one-step facade delegation, retained attributes and selected forbidden import forms. They preserve this package split, not general runtime correctness or a mandate for new AST-policing machinery. Full 514-line test owner and [144-line implementation](../src/control_plane_kit_operations/read_services/observations.py.md) read; selected real record/page/store contracts were checked, but no tests were executed for this documentation change.

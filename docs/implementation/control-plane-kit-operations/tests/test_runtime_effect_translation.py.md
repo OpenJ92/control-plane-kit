@@ -1,0 +1,12 @@
+Source: [control-plane-kit-operations/tests/test_runtime_effect_translation.py](../../../../control-plane-kit-operations/tests/test_runtime_effect_translation.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+This suite supplies in-memory pinned graphs, registrations and coordinator/realization records to [runtime_effects.py](../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py). It tests the Operations-to-Core bridge, not provider execution or database admission. Fixture identities, timestamps and addresses are examples; the laws concern their exact relations.
+
+The intent tests distinguish event-free material from post-start requests: changing the supplied event changes effect identity but not intent/fingerprint, with empty grants at that binding boundary. Exact-context rejection tests use hostile subclasses and assert no attribute dispatch. The malformed run test fails at OperationsRecord construction, so it must not be credited as later translator admission.
+
+Selected laws cover product/graph material, node verification overriding descriptor verification, most-specific registered pull reference, base-graph teardown, and authority reference versus explicitly declared delivery. Negative delivery rows cover missing/revoked/foreign/mismatched admissions; runtime-only requests deliver none. Teardown retains product declarations without granting request-level delivery. Compiled socket-bound secrets and generated connector-token selection preserve their current owners, including the active resource's source epoch correlation.
+
+Gateway rows assert graph-derived HTTP/Postgres process maps, declared provider ports and absence of target-map injection into an ordinary fixture without the binding. Secret/address assertions concern selected descriptors and known canaries, not universal object redaction. They do not prove DNS, socket access, actual token custody or live gateway routing. Dispatcher authorization and interpreter behavior have separate owners/tests; do not expand this file into a duplicate provider state machine.
+
+Review depth for this note: method inventory and the described target bodies were read, with helper setup sampled rather than independently auditing every fixture. No suite was executed for documentation; authorized validation remains the unmodified Operations Docker-backed package suite.

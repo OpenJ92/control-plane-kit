@@ -1,0 +1,1866 @@
+{
+  "issue": "OpenJ92/control-plane-kit#1802",
+  "scope": "Initial tracked-file coverage; not semantic certification or a perpetual freshness ledger.",
+  "entries": [
+    {
+      "source": "control-plane-kit-operations/AGENTS.md",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Governing instructions; maintained directly."
+    },
+    {
+      "source": "control-plane-kit-operations/OPERATIONS_TABLE_ATLAS.md",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Existing schema ownership prose; maintained directly."
+    },
+    {
+      "source": "control-plane-kit-operations/POSTGRES_READ_CARDINALITY.toml",
+      "companion": "docs/implementation/control-plane-kit-operations/POSTGRES_READ_CARDINALITY.toml.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/README.md",
+      "companion": null,
+      "status": "excluded",
+      "exclusion_reason": "Existing package guide; maintained directly."
+    },
+    {
+      "source": "control-plane-kit-operations/pyproject.toml",
+      "companion": "docs/implementation/control-plane-kit-operations/pyproject.toml.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/session-command-serialization.json",
+      "companion": "docs/implementation/control-plane-kit-operations/session-command-serialization.json.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/__init__.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/__init__.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_execution_lease_recovery_support.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/_execution_lease_recovery_support.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_temporal.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/_temporal.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/activity_journal.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/activity_journal.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry_interpreter.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/activity_run_retry_interpreter.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/admission.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/admission.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/advancement.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/advancement.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/approvals.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/approvals.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/cpk_server.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/delegation_key_generation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/delegation_key_generation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/delegation_signing_keys.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/delegation_signing_keys.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/deployment_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/deployment_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/deployment_program_interpreter.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/deployment_program_interpreter.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/deployment_program_projections.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/deployment_program_projections.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/deployment_transitions.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/deployment_transitions.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/desired_realized_projections.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/desired_realized_projections.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/desired_topology_drafts.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/desired_topology_drafts.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_fold.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_fold.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_fold_interpreter.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_fold_interpreter.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_intent_evidence.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_intent_evidence.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_reconciliation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_reconciliation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_reconciliation_interpreter.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_reconciliation_interpreter.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start_interpreter.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start_interpreter.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_attempts.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_attempts.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_outcome_evidence.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_outcome_evidence.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery_interpreter.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/execution_lease_recovery_interpreter.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/execution_leases.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/execution_leases.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/failed_run_compensation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/failed_run_compensation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/failed_run_compensation_attempt.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/failed_run_compensation_attempt.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/foundation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/foundation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_activation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_activation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_completion_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_completion_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_deployment_execution.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_deployment_execution.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_deployment_preparation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_deployment_preparation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap_execution.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap_execution.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_overlap_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_projection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_projection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement_execution.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement_execution.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotation_retirement_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotations.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_key_rotations.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/gateway_probes.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/gateway_probes.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/graph_authoring.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/graph_authoring.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/ingress_authorities.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/ingress_authorities.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/ingress_realization.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/ingress_realization.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/lifecycle.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/lifecycle.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/node_control_attempts.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/node_control_attempts.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/node_control_intents.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/node_control_intents.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/node_control_signing_authority.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/node_control_signing_authority.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/planning.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/planning.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/__init__.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/__init__.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/activity_history.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/activity_history.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_data_validation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_data_validation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema.sql",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema.sql.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema_verification.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema_verification.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/delegation_signing_key_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/delegation_signing_key_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/desired_topology_draft_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/desired_topology_draft_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_intent_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_intent_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_attempt_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_outcome_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_outcome_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/execution.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/execution.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_attempt_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_attempt_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/failed_run_compensation_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/gateway_key_rotation_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/gateway_key_rotation_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/gateway_probe_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/gateway_probe_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/graph_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/graph_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/image_pull_authority_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/image_pull_authority_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/ingress_authority_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/ingress_authority_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/node_control_attempt_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/node_control_attempt_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/node_control_signing_authority_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/node_control_signing_authority_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/observed_state.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/observed_state.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/product_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/product_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/revision_history_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/revision_history_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/runtime_authority_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/runtime_authority_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/saved_preparation_source_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/saved_preparation_source_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/schema.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/schema.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/secret_provider_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/secret_provider_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/stores.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/stores.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/temporal.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/temporal.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/unit_of_work.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/unit_of_work.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/products.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/products.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_pages.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_pages.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/__init__.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/__init__.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/_redaction.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/_redaction.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/authority_secrets.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/authority_secrets.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/desired_topology_drafts.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/desired_topology_drafts.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/errors.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/errors.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/gateway_security.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/gateway_security.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/instance.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/instance.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/models.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/models.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/observations.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/observations.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/operations_history.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/operations_history.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/operator_overview.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/operator_overview.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/protocols.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/protocols.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/revision_history.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/revision_history.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/workspace_graph.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/read_services/workspace_graph.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/records.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/records.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/revision_history.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/revision_history.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_authorities.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/runtime_authorities.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_dispatcher_bootstrap.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/runtime_dispatcher_bootstrap.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/saved_deployment_preparation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/saved_deployment_preparation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/secret_providers.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/secret_providers.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/workflows.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/workflows.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/workspaces.py",
+      "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/workspaces.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/test.sh",
+      "companion": "docs/implementation/control-plane-kit-operations/test.sh.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/activity_run_retry_interpreter_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/activity_run_retry_interpreter_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/approved_skips.json",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/approved_skips.json.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/atomic_effect_attempt_fold_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/atomic_effect_attempt_fold_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/draft_catalogue_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/draft_catalogue_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/draft_selection_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/draft_selection_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/effect_attempt_coordinator_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/effect_attempt_coordinator_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/effect_attempt_fold_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/effect_attempt_fold_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/effect_attempt_intent_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/effect_attempt_intent_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/effect_attempt_record_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/effect_attempt_record_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/effect_attempt_start_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/effect_attempt_start_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/effect_outcome_evidence_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/effect_outcome_evidence_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/execution_lease_recovery_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/execution_lease_recovery_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/failed_run_compensation_attempt_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/failed_run_compensation_attempt_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/failed_run_compensation_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/failed_run_compensation_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/gateway_rotation_overlap_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/gateway_rotation_overlap_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/gateway_rotation_retirement_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/gateway_rotation_retirement_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/graph_lineage_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/graph_lineage_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/guarded_observed_effect_fold_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/guarded_observed_effect_fold_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/large_read_history_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/large_read_history_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/postgres_effect_attempt_coordinator_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/postgres_effect_attempt_coordinator_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/postgres_effect_attempt_fold_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/postgres_effect_attempt_fold_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/postgres_effect_attempt_intent_store_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/postgres_effect_attempt_intent_store_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/postgres_effect_attempt_reconciliation_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/postgres_effect_attempt_reconciliation_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/postgres_effect_attempt_start_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/postgres_effect_attempt_start_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/postgres_effect_attempt_store_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/postgres_effect_attempt_store_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/postgres_effect_outcome_store_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/postgres_effect_outcome_store_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/postgres_guarded_observed_effect_fold_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/postgres_guarded_observed_effect_fold_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/revision_history_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/revision_history_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/runtime_effect_reconciliation_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/runtime_effect_reconciliation_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/saved_preparation_fixture.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/saved_preparation_fixture.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_activity_identity.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_activity_identity.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_activity_run_retry_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_activity_run_retry_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_activity_run_retry_interpreter_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_activity_run_retry_interpreter_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_activity_run_retry_result.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_activity_run_retry_result.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_approvals.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_approvals.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_architecture_testing_dependency.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_architecture_testing_dependency.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_atomic_effect_attempt_fold_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_atomic_effect_attempt_fold_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_authoritative_run_identity.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_authoritative_run_identity.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_authority_secret_read_projection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_authority_secret_read_projection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_cpk_server_adapters.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_cpk_server_adapters.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_current_graph_advancement.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_current_graph_advancement.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_current_metadata_read_pages.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_current_metadata_read_pages.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_current_schema_installation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_current_schema_installation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_delegation_key_generation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_delegation_key_generation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_delegation_signing_keys.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_delegation_signing_keys.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_deployment_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_deployment_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_deployment_program_interpreter.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_deployment_program_interpreter.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_deployment_program_preparation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_deployment_program_preparation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_deployment_program_projections.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_deployment_program_projections.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_deployment_transitions.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_deployment_transitions.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_desired_topology_drafts.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_draft_catalogue_adapters.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_draft_catalogue_adapters.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_draft_selection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_draft_selection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_draft_selection_adapters.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_draft_selection_adapters.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_coordinator_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_coordinator_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_evidence_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_evidence_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_fold_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_fold_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_fold_interpreter_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_fold_interpreter_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_intent_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_intent_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_reconciliation_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_reconciliation_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_reconciliation_interpreter_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_reconciliation_interpreter_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_record_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_record_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_start_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_start_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_attempt_start_interpreter_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_attempt_start_interpreter_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_outcome_evidence_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_outcome_evidence_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_effect_outcome_record_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_effect_outcome_record_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_admission.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_admission.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_coordinator.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_coordinator.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_lease_authority.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_authority.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_lease_fence.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_fence.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_lease_recovery_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_recovery_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_lease_recovery_read_projection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_recovery_read_projection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_lease_recovery_result.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_recovery_result.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_lease_recovery_retry_totality.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_recovery_retry_totality.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_lease_recovery_support_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_lease_recovery_support_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_execution_writer_fence.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_execution_writer_fence.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_failed_run_compensation_command_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_failed_run_compensation_command_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_activation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_activation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_approvals.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_approvals.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_completion_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_completion_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_deployment_fencing.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_deployment_fencing.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_deployment_lock_order.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_deployment_lock_order.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_generation_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_generation_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_admission.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_admission.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_execution.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_execution.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_projection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_projection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_program_acceptance.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_program_acceptance.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_retirement_execution.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_retirement_execution.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotation_retirement_program.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotation_retirement_program.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_key_rotations.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_key_rotations.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_probe_read_pages.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_probe_read_pages.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_probes.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_probes.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_gateway_security_read_projection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_gateway_security_read_projection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_graph_authoring.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_graph_authoring.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_guarded_observed_effect_fold_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_guarded_observed_effect_fold_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_ingress_authorities.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_ingress_authorities.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_ingress_realization.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_ingress_realization.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_large_read_collection_pages.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_large_read_collection_pages.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_large_read_route_parity.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_large_read_route_parity.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_native_temporal_ordering.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_native_temporal_ordering.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_node_control_attempts.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_node_control_attempts.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_node_control_intents.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_node_control_intents.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_node_control_signing_authority.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_node_control_signing_authority.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_observation_read_projection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_observation_read_projection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_operations_history_read_projection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_operations_history_read_projection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_operations_table_atlas.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_operations_table_atlas.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_package_boundary.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_package_boundary.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_package_gate.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_package_gate.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_planning_commands.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_planning_commands.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_planning_transition_replay.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_planning_transition_replay.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_activity_run_retry_concurrency.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_activity_run_retry_concurrency.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_activity_run_retry_eligibility_rollback.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_activity_run_retry_eligibility_rollback.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_activity_run_retry_first_replay.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_activity_run_retry_first_replay.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_activity_run_retry_store_boundaries.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_activity_run_retry_store_boundaries.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_atomic_effect_attempt_fold.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_atomic_effect_attempt_fold.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_budget_lifecycle.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_budget_lifecycle.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_compensation_isolation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_compensation_isolation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_concurrency.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_concurrency.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_crash_rollback.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_crash_rollback.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_first_replay.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_coordinator_first_replay.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_fold_authority_errors.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_fold_authority_errors.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_fold_concurrency.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_fold_concurrency.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_fold_first_replay.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_fold_first_replay.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_fold_rollback.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_fold_rollback.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_intent_schema.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_intent_schema.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_intent_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_intent_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_intent_store_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_intent_store_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_authority_grants.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_authority_grants.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_concurrency.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_concurrency.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_first_replay.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_first_replay.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_observer_fold.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_observer_fold.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_rollback.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_reconciliation_rollback.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_schema.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_schema.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_start_concurrency.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_start_concurrency.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_start_eligibility_rollback.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_start_eligibility_rollback.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_start_first_replay.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_start_first_replay.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_start_intent.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_start_intent.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_attempt_store_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_attempt_store_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_outcome_schema.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_outcome_schema.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_outcome_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_outcome_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_effect_outcome_store_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_outcome_store_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_codec.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_codec.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_concurrency.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_concurrency.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_eligibility_errors.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_eligibility_errors.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_first_replay.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_first_replay.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_scoped_run.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_scoped_run.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_execution_lease_recovery_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_failed_run_compensation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_failed_run_compensation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_failed_run_compensation_attempt.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_failed_run_compensation_attempt.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_guarded_observed_effect_fold_authority.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_guarded_observed_effect_fold_authority.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_guarded_observed_effect_fold_concurrency.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_guarded_observed_effect_fold_concurrency.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_guarded_observed_effect_fold_first_replay.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_guarded_observed_effect_fold_first_replay.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_guarded_observed_effect_fold_rollback.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_guarded_observed_effect_fold_rollback.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_node_control_signing_authority.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_node_control_signing_authority.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_ordinal_read_pages.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_ordinal_read_pages.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_read_cardinality.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_read_cardinality.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_schema.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_schema.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_postgres_temporal_read_pages.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_temporal_read_pages.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_query_path_indexes.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_query_path_indexes.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_read_pages.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_read_pages.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_read_services.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_read_services.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_read_services_documentation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_read_services_documentation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_read_services_package.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_read_services_package.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_realized_graph_projection_store.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_realized_graph_projection_store.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_registered_products.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_registered_products.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_revision_history.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_revision_history_adapters.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history_adapters.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_revision_history_advancement.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history_advancement.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_revision_history_pages.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history_pages.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_revision_history_values.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_revision_history_values.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_run_identity_schema.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_run_identity_schema.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_run_lifecycle.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_run_lifecycle.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_run_provenance_authority_identity.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_run_provenance_authority_identity.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_runtime_authorities.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_runtime_authorities.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_runtime_dispatcher_bootstrap.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_runtime_dispatcher_bootstrap.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_runtime_effect_translation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_runtime_effect_translation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_runtime_interpreter_dispatcher.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_runtime_interpreter_dispatcher.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_saved_preparation.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_saved_preparation.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_saved_preparation_adapters.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_saved_preparation_adapters.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_saved_preparation_sources.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_saved_preparation_sources.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_saved_preparation_values.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_saved_preparation_values.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_scaffold.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_scaffold.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_secret_providers.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_secret_providers.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_session_command_serialization_contract.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_session_command_serialization_contract.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_session_serialization_primitives.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_session_serialization_primitives.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_unit_of_work.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_unit_of_work.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_workflows.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_workflows.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_workspace_graph_read_projection.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_workspace_graph_read_projection.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    },
+    {
+      "source": "control-plane-kit-operations/tests/test_workspace_graph_stores.py",
+      "companion": "docs/implementation/control-plane-kit-operations/tests/test_workspace_graph_stores.py.md",
+      "status": "reviewed",
+      "exclusion_reason": null
+    }
+  ]
+}

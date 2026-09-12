@@ -1,0 +1,12 @@
+Source: [control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start_interpreter.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start_interpreter.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+EffectAttemptStartService records or observes one exact attempt in a service-owned unit-of-work scope; the supplied stores themselves do not commit. Despite “interpreter” in the filename, this owner performs durable admission, not Docker/provider execution.
+
+Fresh start validates the command, execution scope, request/run linkage, current fence, latest run, planned operation and journal-derived readiness. Core [effect-attempt values](../../../../../control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py) and schedule/journal functions own the pure transition laws. The service translates their result into Operations records and checks intent coordinates against locked durable truth.
+
+The original start event, [intent record](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_intent_evidence.py) and attempt are inserted in the same transaction, with exact acknowledgements required before commit. Store failure must not leave a start event without its intent/attempt. The caller may dispatch only through the separate approved execution path after durable admission; no external effect belongs inside this scope.
+
+Existing-attempt replay requires current request/fence authority and exact transition/intent/original-event agreement. It reads the full retained intent rather than trusting a fingerprint alone, returns ExistingAttempt and does not allocate another event. The replay branch does not repeat the fresh-start clock/readiness path: do not describe it as a new dispatch permission or silently strengthen its semantics in documentation.
+
+[test_postgres_effect_attempt_start_intent.py](../../../../../control-plane-kit-operations/tests/test_postgres_effect_attempt_start_intent.py) is the persistence integration owner for fresh intent matching, exact replay, acknowledgements and concurrent attempts. [effect_attempt_start.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_start.py) owns the command/result contract. Compensation eligibility exists in the source; its presence does not establish an autonomous compensation product requirement.

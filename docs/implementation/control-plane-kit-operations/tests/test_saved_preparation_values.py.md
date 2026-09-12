@@ -1,0 +1,8 @@
+Source: [control-plane-kit-operations/tests/test_saved_preparation_values.py](../../../../control-plane-kit-operations/tests/test_saved_preparation_values.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+One method exercises the existing preparation value extended by an exact saved draft/revision input. It constructs the real value and rejects eight selected malformed pairs: empty/overlong/control-containing draft identity and boolean, zero, negative, string or overflowing revision. Two replacement-command cases reject absent selected desired lineage and overflowing desired generation. It preserves the supplied saved value and checks selected title/comment/actor canaries are absent from command repr plus descriptor.
+
+The fixture principal is a locally constructed AuthenticatedPrincipal used to produce a command context, not credential verification. This unittest class does not inherit the imported catalogue database fixture; it needs no database setup itself. The canary checks cover these representations and values, not arbitrary object/log redaction or every constructor input. No graph algebra, durable admission, HTTP/MCP or provider behavior is exercised here.
+
+Full 34-line owner read with actual SavedDesiredTopologyRevision/PrepareDeploymentProgram constructors and principal helper. The [admission helper](../src/control_plane_kit_operations/saved_deployment_preparation.py.md) and separate association/adapter tests own later behavior. No tests were run; execution still belongs to the established Docker-backed Operations suite, not a new host-local path.

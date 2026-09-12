@@ -1,0 +1,8 @@
+Source: [control-plane-kit-operations/tests/test_effect_attempt_intent_contract.py](../../../../control-plane-kit-operations/tests/test_effect_attempt_intent_contract.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+This file distinguishes the private durable preimage from a public descriptor or executable effect. Its Core controls show what the selected projection retains (including protected references/addresses) and drops (generated event identity, transient grants and resolved values). Operations target tests then exercise [the record and private codec](../../../../control-plane-kit-operations/src/control_plane_kit_operations/effect_attempt_intent_evidence.py): exact immutable values, cross-join rejection, canonical bounded bytes and safe expected errors.
+
+The forged-sequence control matters: a value can hash like a lawful intent yet fail exact reconstruction. Do not replace record admission with fingerprint comparison. Forward/compensation event phase and operation polarity are separately tested; generated event identity is not part of intent identity.
+
+Shared fixtures build lawful and hostile candidates; their literal URLs, references and coordinates are test specimens, never material to copy into operational evidence. Existing source-surface policies are structural witnesses at this owner, not a general recipe for server tests. Passing here does not prove database persistence, effect dispatch, grant authorization or provider outcome; use the adjacent Postgres and start-service owners for the next boundary.

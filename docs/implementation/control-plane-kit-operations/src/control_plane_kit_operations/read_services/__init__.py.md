@@ -1,0 +1,8 @@
+Source: [control-plane-kit-operations/src/control_plane_kit_operations/read_services/__init__.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/read_services/__init__.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+This is the read-services public import facade, not a projection implementation. It re-exports the canonical error, shared detail/overview values, workspace/graph/control-surface values, observation helpers and `InstanceReadService`. It neither creates stores nor calls a provider. Imports load their owning modules; an export alone is not authentication, snapshot consistency, redaction or execution authority.
+
+The concrete [instance service](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/read_services/instance.py) composes separate workspace, history, observation, authority/security, draft and revision projections. [Internal store protocols](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/read_services/protocols.py) are intentionally not exported here. Follow the defining module for behavior rather than copying it into the facade. When adding an export, coordinate the actual Operations root facade and consumer, not an assumed identical export list.
+
+[test_read_services_package.py](../../../../../../control-plane-kit-operations/tests/test_read_services_package.py) checks a selected public-identity map and package/import topology; its map is not exhaustive of this file's exports. Full facade read, selected defining owners and actual package test checked; no runtime validation or whole-family audit is claimed.
