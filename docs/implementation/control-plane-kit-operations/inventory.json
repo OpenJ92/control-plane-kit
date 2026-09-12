@@ -1817,7 +1817,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_scaffold.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_scaffold.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
