@@ -1559,7 +1559,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_postgres_effect_outcome_schema.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_postgres_effect_outcome_schema.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
