@@ -7,6 +7,8 @@ from dataclasses import replace
 from control_plane_kit_core.algebra import (
     BlockSockets,
     BlockSpec,
+    DeploymentTopology,
+    DockerRuntime,
     ProviderSocket,
     RequirementSocket,
 )
@@ -48,9 +50,11 @@ from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
     ProductDescriptorCodec,
+    ProductInstanceConfiguration,
     ProductReference,
     ProductRuntimeContract,
     ProviderRuntimePort,
+    instantiate_product,
 )
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDelivery,
@@ -67,10 +71,14 @@ from control_plane_kit_core.runtime_effect_observation import (
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.secrets import (
     SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretFilePathBinding,
     SecretReference,
     SecretUseIntent,
 )
-from control_plane_kit_core.topology import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit_core.topology import (
+    DeploymentGraph, Edge, Node, RuntimeRecord, compile_topology,
+)
 from control_plane_kit_core.types import (
     BlockFamily,
     Protocol,
@@ -561,6 +569,57 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 self.assertEqual(request.products[0].runtime_authority_deliveries,
                                  (admitted.delivery,))
 
+    def test_compiled_product_deliveries_preserve_selected_references_once(self) -> None:
+        base = _registered_product().descriptor_document.product
+        declared = (
+            SecretFileDelivery(
+                "/run/secrets/service/token",
+                SecretReference("secret://defaults/service/token"),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                path_binding=SecretFilePathBinding("SERVICE_TOKEN_FILE"),
+            ),
+            SecretFileDelivery(
+                "/run/secrets/service/password",
+                SecretReference("secret://defaults/service/password"),
+                SecretUseIntent.POSTGRES_PASSWORD,
+                path_binding=SecretFilePathBinding("SERVICE_PASSWORD_FILE"),
+            ),
+        )
+        product = replace(base, runtime_contract=replace(
+            base.runtime_contract, secret_deliveries=declared,
+        ))
+        document = ProductDescriptorCodec().encode_document(product)
+        registered = RegisteredProduct.from_document(
+            workspace_id="workspace-a", descriptor_document=document,
+            source=InlineDescriptorSource(), imported_by="operator-a",
+            imported_at="2026-07-22T09:00:00Z",
+        )
+        for configured_references in (False, True):
+            with self.subTest(configured_references=configured_references):
+                configuration = ProductInstanceConfiguration.from_contract(
+                    product.runtime_contract,
+                )
+                if configured_references:
+                    configuration = replace(configuration, secret_deliveries=tuple(
+                        replace(delivery, reference=SecretReference(
+                            "secret://workspace-a/service/" + delivery.target_path.rsplit("/", 1)[1],
+                        ))
+                        for delivery in reversed(configuration.secret_deliveries)
+                    ))
+                block = instantiate_product(product, "api", configuration)
+                graph = compile_topology(DeploymentTopology(
+                    "selected-deliveries", DockerRuntime(runtime_id="docker", children=(block,)),
+                ))
+
+                request = runtime_effect_request_for_context(_context(
+                    desired_graph=graph, registered_products=(registered,),
+                ))
+
+                self.assertEqual(
+                    request.products[0].product.runtime_contract.secret_deliveries,
+                    configuration.secret_deliveries,
+                )
+
     def test_context_translates_only_compiled_socket_bound_secret_deliveries(
         self,
     ) -> None:
@@ -705,6 +764,26 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             (active_secret.secret_ref.reference_id,),
         )
         self.assertNotIn("tunnel-token-value", repr(request.descriptor()).lower())
+
+    def test_explicit_compiled_tunnel_token_needs_no_generated_material(self) -> None:
+        delivery = SecretEnvironmentDelivery(
+            "TUNNEL_TOKEN", SecretReference("secret://workspace-a/selected/tunnel"),
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+        )
+        context = _context(
+            activity=PlannedActivity(
+                ActivityId("start-cloudflared"), StartNode(NodeTarget("cloudflared")),
+            ),
+            desired_graph=_public_ingress_graph(connector_deliveries=(delivery,)),
+            registered_products=(_registered_product(name="cloudflared-connector"),),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(
+            request.products[0].product.runtime_contract.secret_deliveries,
+            (delivery,),
+        )
 
     def test_gateway_node_receives_graph_derived_target_map_environment(self) -> None:
         graph = _gateway_graph()
