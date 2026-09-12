@@ -30,11 +30,13 @@ from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration,
     WorkloadNodeControlSurfaceDeclarationCodec,
     WorkloadNodeControlSurfaceDeclarationIdentity,
+    WorkloadNodeControlSurfaceDeclarationProfile,
 )
 
 
 MAX_NODE_CONTROL_SURFACE_CAPABILITIES_RESULT_BYTES = 16_902
 MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES = 4_811
+MAX_NODE_CONTROL_SURFACE_STATUS_V2_RESULT_BYTES = 4_820
 
 _CAPABILITIES_KEYS = frozenset(
     {
@@ -59,12 +61,14 @@ _STATUS_KEYS = frozenset(
         "registry_coverage",
     }
 )
+_STATUS_V2_KEYS = (_STATUS_KEYS - {"registry_coverage"}) | {"variable_registry_coverage"}
 
 
 class NodeControlSurfaceReadResultProfile(StrEnum):
     """Versioned identity for capability and status result variants."""
 
     V1 = "workload-node-control-surface-read-result.v1"
+    V2 = "workload-node-control-surface-read-result.v2"
 
 
 class NodeControlSurfaceRegistryCoverage(StrEnum):
@@ -96,7 +100,7 @@ class NodeControlSurfaceCapabilitiesResult:
 
     @property
     def profile(self) -> NodeControlSurfaceReadResultProfile:
-        return NodeControlSurfaceReadResultProfile.V1
+        return _result_profile(self.declaration)
 
     @property
     def canonicalization(self) -> NodeControlCanonicalization:
@@ -161,13 +165,13 @@ class NodeControlSurfaceStatusResult:
         )
         _bounded_canonical_bytes(
             self.descriptor(),
-            MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES,
+            _status_maximum(self.declaration),
             "surface-read status result",
         )
 
     @property
     def profile(self) -> NodeControlSurfaceReadResultProfile:
-        return NodeControlSurfaceReadResultProfile.V1
+        return _result_profile(self.declaration)
 
     @property
     def canonicalization(self) -> NodeControlCanonicalization:
@@ -209,13 +213,13 @@ class NodeControlSurfaceStatusResult:
             "installed_variable_names": [
                 name.value for name in self.installed_variable_names
             ],
-            "registry_coverage": self.registry_coverage.value,
+            _coverage_key(self.declaration): self.registry_coverage.value,
         }
 
     def canonical_bytes(self) -> bytes:
         return _bounded_canonical_bytes(
             self.descriptor(),
-            MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES,
+            _status_maximum(self.declaration),
             "surface-read status result",
         )
 
@@ -291,7 +295,7 @@ class NodeControlSurfaceReadResultCodec:
         else:
             _require_exact_keys(
                 mapping,
-                _STATUS_KEYS,
+                _STATUS_V2_KEYS if self._declaration.surface.health_reads else _STATUS_KEYS,
                 "surface-read status result",
             )
         self._validate_common_claims(mapping)
@@ -343,7 +347,7 @@ class NodeControlSurfaceReadResultCodec:
             )
             coverage = _enum(
                 NodeControlSurfaceRegistryCoverage,
-                mapping.get("registry_coverage"),
+                mapping.get(_coverage_key(self._declaration)),
                 "surface-read result registry coverage",
             )
             expected_coverage = _derive_registry_coverage(
@@ -372,7 +376,7 @@ class NodeControlSurfaceReadResultCodec:
     def _global_maximum(self) -> int:
         if self._request.kind is NodeControlSurfaceReadKind.CAPABILITIES:
             return MAX_NODE_CONTROL_SURFACE_CAPABILITIES_RESULT_BYTES
-        return MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES
+        return _status_maximum(self._declaration)
 
     def _validate_result_context(
         self,
@@ -397,9 +401,9 @@ class NodeControlSurfaceReadResultCodec:
             mapping.get("profile"),
             "surface-read result profile",
         )
-        if profile is not NodeControlSurfaceReadResultProfile.V1:
+        if profile is not _result_profile(self._declaration):
             raise NodeControlSurfaceReadContractError(
-                "surface-read result profile is unknown"
+                "surface-read result profile does not match declaration"
             )
         canonicalization = _enum(
             NodeControlCanonicalization,
@@ -437,6 +441,26 @@ class NodeControlSurfaceReadResultCodec:
             raise NodeControlSurfaceReadContractError(
                 "surface-read result declaration does not match expected declaration"
             )
+
+
+def _result_profile(
+    declaration: WorkloadNodeControlSurfaceDeclaration,
+) -> NodeControlSurfaceReadResultProfile:
+    if declaration.profile is WorkloadNodeControlSurfaceDeclarationProfile.V2:
+        return NodeControlSurfaceReadResultProfile.V2
+    return NodeControlSurfaceReadResultProfile.V1
+
+
+def _coverage_key(declaration: WorkloadNodeControlSurfaceDeclaration) -> str:
+    if declaration.profile is WorkloadNodeControlSurfaceDeclarationProfile.V2:
+        return "variable_registry_coverage"
+    return "registry_coverage"
+
+
+def _status_maximum(declaration: WorkloadNodeControlSurfaceDeclaration) -> int:
+    if declaration.profile is WorkloadNodeControlSurfaceDeclarationProfile.V2:
+        return MAX_NODE_CONTROL_SURFACE_STATUS_V2_RESULT_BYTES
+    return MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES
 
 
 def _validate_context(
@@ -582,6 +606,7 @@ def _enum(enum_type, value: object, name: str):
 __all__ = [
     "MAX_NODE_CONTROL_SURFACE_CAPABILITIES_RESULT_BYTES",
     "MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES",
+    "MAX_NODE_CONTROL_SURFACE_STATUS_V2_RESULT_BYTES",
     "NodeControlSurfaceCapabilitiesResult",
     "NodeControlSurfaceReadResult",
     "NodeControlSurfaceReadResultCodec",
