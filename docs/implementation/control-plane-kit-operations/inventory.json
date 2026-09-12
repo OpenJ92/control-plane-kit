@@ -1691,7 +1691,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_read_services.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_read_services.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
