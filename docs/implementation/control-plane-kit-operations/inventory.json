@@ -1679,7 +1679,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_query_path_indexes.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_query_path_indexes.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
