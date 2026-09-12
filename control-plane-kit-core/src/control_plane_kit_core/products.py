@@ -587,6 +587,12 @@ class ProductRuntimeContract:
             raise ProductRuntimeContractError(
                 "node-controllable capability and control surfaces must agree"
             )
+        if any(surface.health_reads for surface in control_surfaces) and (
+            CapabilityName.HEALTH_CHECKABLE not in capabilities
+        ):
+            raise ProductRuntimeContractError(
+                "declared health reads require health-checkable capability"
+            )
         for socket_name in surface_sockets:
             try:
                 provider = self.sockets.provider(socket_name)

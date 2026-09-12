@@ -175,6 +175,10 @@ class BlockSpec:
             raise ValueError(
                 "node-controllable capability and control surfaces must agree"
             )
+        if any(surface.health_reads for surface in surfaces) and (
+            CapabilityName.HEALTH_CHECKABLE not in self.capabilities
+        ):
+            raise ValueError("declared health reads require health-checkable capability")
         if not isinstance(self.verification, VerificationContract):
             raise TypeError("block verification must be VerificationContract")
         object.__setattr__(self, "control_surfaces", surfaces)

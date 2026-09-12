@@ -37,6 +37,7 @@ class ControlRouteScope(StrEnum):
     READ_NODE_CONTROL_SURFACE = "node-control-surface:read"
     READ_NODE_CONTROL = "node-control:read"
     APPLY_NODE_CONTROL = "node-control:apply"
+    READ_NODE_HEALTH = "node-health:read"
 
 
 class ControlRouteSetName(StrEnum):
@@ -54,6 +55,7 @@ class ControlRouteSetName(StrEnum):
     LOADS = "loads"
     DISCOVERY = "discovery"
     NODE_CONTROL = "node-control"
+    NODE_HEALTH = "node-health"
 
 
 @dataclass(frozen=True)
@@ -390,6 +392,20 @@ NODE_CONTROL_ROUTES = ControlRouteSet(
     ),
 )
 
+NODE_HEALTH_ROUTES = ControlRouteSet(
+    name=ControlRouteSetName.NODE_HEALTH,
+    routes=(
+        ControlRoute(
+            name="health-read",
+            method=ControlRouteMethod.GET,
+            path=control_path("health/{health_kind}", prefix=WORKLOAD_CONTROL_PREFIX),
+            scope=ControlRouteScope.READ_NODE_HEALTH,
+            description="Read one explicitly declared workload health observation.",
+        ),
+    ),
+)
+
+
 CONTROL_ROUTE_SETS = (
     COMMON_STATUS_ROUTES,
     LOG_ROUTES,
@@ -403,6 +419,7 @@ CONTROL_ROUTE_SETS = (
     LOAD_ROUTES,
     DISCOVERY_ROUTES,
     NODE_CONTROL_ROUTES,
+    NODE_HEALTH_ROUTES,
 )
 
 
