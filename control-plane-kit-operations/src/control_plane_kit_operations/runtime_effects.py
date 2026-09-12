@@ -364,7 +364,6 @@ def _product_material_for_node(
                 context=context,
                 graph=graph,
                 node=node,
-                descriptor_deliveries=runtime_contract.secret_deliveries,
             ),
         ),
     )
@@ -375,9 +374,10 @@ def _secret_deliveries_for_node(
     context: ActivityRealizationContext | _CoordinatorContext,
     graph: DeploymentGraph,
     node: Node,
-    descriptor_deliveries: tuple[SecretDelivery, ...],
 ) -> tuple[SecretDelivery, ...]:
-    deliveries = tuple(descriptor_deliveries) + tuple(node.secret_deliveries)
+    # The compiled node already owns configured references for descriptor slots
+    # and active socket deliveries. Descriptor defaults are not extra material.
+    deliveries = tuple(node.secret_deliveries)
     if _has_tunnel_token_delivery(deliveries):
         return tuple(sorted(deliveries, key=secret_delivery_sort_key))
     ingress = _connector_ingress_for_node(graph, node.node_id)
