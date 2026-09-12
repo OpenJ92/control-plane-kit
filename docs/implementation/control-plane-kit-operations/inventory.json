@@ -203,7 +203,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_outcome_evidence.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/effect_outcome_evidence.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
