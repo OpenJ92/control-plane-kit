@@ -725,7 +725,7 @@
     {
       "source": "control-plane-kit-operations/tests/approved_skips.json",
       "companion": "docs/implementation/control-plane-kit-operations/tests/approved_skips.json.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
