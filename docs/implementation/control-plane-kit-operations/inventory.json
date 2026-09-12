@@ -995,7 +995,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_deployment_program_interpreter.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_deployment_program_interpreter.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
