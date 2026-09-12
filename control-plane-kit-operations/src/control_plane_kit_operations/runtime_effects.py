@@ -335,7 +335,7 @@ def _products_for_context(
             node_id=node_id,
             runtime_id=runtime_id,
             reference=product.reference,
-            product=_product_material_for_node(context, graph, product, node),
+            product=_product_material_for_node(context, graph, product, node, operation),
             public_environment=public_environment,
             socket_environment=node.socket_environment,
             runtime_authority_deliveries=node.runtime_authority_deliveries,
@@ -352,21 +352,32 @@ def _product_material_for_node(
     graph: DeploymentGraph,
     product: RegisteredProduct,
     node: Node,
+    operation: object,
 ):
     descriptor_product = product.descriptor_document.product
     runtime_contract = descriptor_product.runtime_contract
+    deliveries = _secret_deliveries_for_node(context=context, graph=graph, node=node)
+    if isinstance(operation, (StartNode, ReconcileNode)):
+        selected_keys = tuple(_secret_delivery_contract_key(value) for value in deliveries)
+        for declared in runtime_contract.secret_deliveries:
+            if selected_keys.count(_secret_delivery_contract_key(declared)) != 1:
+                raise InvalidOperationCommand(
+                    "runtime effect secret delivery contract is not satisfied"
+                )
     return replace(
         descriptor_product,
         runtime_contract=replace(
             runtime_contract,
             verification=node.block_spec.verification,
-            secret_deliveries=_secret_deliveries_for_node(
-                context=context,
-                graph=graph,
-                node=node,
-            ),
+            secret_deliveries=deliveries,
         ),
     )
+
+
+def _secret_delivery_contract_key(value: SecretDelivery) -> tuple[str, str, str, str, str]:
+    # References are selected per instance; every other field defines the slot.
+    kind, target, _reference, intent, policy, binding = secret_delivery_sort_key(value)
+    return kind, target, intent, policy, binding
 
 
 def _secret_deliveries_for_node(
