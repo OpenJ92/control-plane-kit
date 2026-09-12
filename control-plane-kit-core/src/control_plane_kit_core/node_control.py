@@ -144,6 +144,7 @@ class NodeControlGraphReferenceRole(StrEnum):
 
     WORKSPACE = "workspace"
     GRAPH_REVISION = "graph-revision"
+    RUNTIME = "runtime"
     NODE = "node"
     PROVIDER_SOCKET = "provider-socket"
     VARIABLE = "variable"

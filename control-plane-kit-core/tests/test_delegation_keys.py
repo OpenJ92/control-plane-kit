@@ -51,6 +51,7 @@ class DelegationPublicKeyTests(unittest.TestCase):
                 "gateway-probe",
                 "workload-node-control",
                 "workload-node-control-surface-read",
+                "workload-node-health-read",
                 "gateway-node-control-transit",
             ),
         )
