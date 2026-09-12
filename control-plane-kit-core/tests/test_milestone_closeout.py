@@ -28,6 +28,8 @@ EXPECTED_MODULES = {
     "node_control_surface_read_results",
     "node_control_surface_reads",
     "node_control_transit",
+    "node_health_reads",
+    "node_health_read_results",
     "operations.__init__",
     "operations.commands",
     "operations.compensation",

@@ -15,3 +15,8 @@ HEALTH_CHECKABLE does not select this route, and the method accepts no endpoint,
 URL, credential or callback. products/algebra enforce capabilities and graph
 validation proves HTTP provider existence. These values perform no I/O.
 The new declaration tests and existing variable/surface tests own those laws.
+
+Core #1826 adds the RUNTIME graph-reference role for an independent nominal
+health-request runtime binding. NodeControlTarget and all existing descriptor
+fields stay unchanged. A syntactically valid reference is not proof of graph
+membership; Operations and trusted workload composition own that fact.

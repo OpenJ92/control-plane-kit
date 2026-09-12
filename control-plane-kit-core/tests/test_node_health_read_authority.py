@@ -130,7 +130,7 @@ class NodeHealthReadAuthorityTests(HealthReadFixtures, unittest.TestCase):
         command = core.DelegatedWorkloadNodeControlGrant(
             issuer="cpk-server", key_id="command-key-1", audience="workload:router:control",
             target=command_request.target, variable_name=command_request.variable_name,
-            operation=command_request.operation, command_codec=None,
+            operation=command_request.operation, command_codec=command_request.command_codec,
             request_id=command_request.request_id, idempotency_key=command_request.idempotency_key,
             request_digest=command_request.canonical_digest(), issued_at=100, not_before=100,
             expires_at=200, jti="command-grant-1")
@@ -144,6 +144,7 @@ class NodeHealthReadAuthorityTests(HealthReadFixtures, unittest.TestCase):
             expected_audience="workload:router:control", now=150).is_accepted)
         self.assertFalse(core.verify_workload_node_control_grant(
             health, command_request, expected_issuer="cpk-server", expected_audience="workload:router:control", now=150).is_accepted)
+        self.assertFalse(transit_fixture.verify(health).is_accepted)
         # Each old codec also refuses the new envelope, before any outer interpreter.
         for codec in (core.DelegatedWorkloadNodeControlSurfaceReadGrantCodec(), core.DelegatedGatewayNodeControlTransitGrantCodec()):
             with self.assertRaises(ValueError):
