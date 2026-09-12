@@ -16,6 +16,7 @@ from control_plane_kit_core.topology.changes import (
     ConfigurationArtifactsValue,
     DelegationVerifierProjectionValue,
     SecretDeliveriesValue,
+    RuntimeAuthorityDeliveriesValue,
     EnvironmentBindingsValue,
     FieldSubject,
     GraphDiff,
@@ -268,6 +269,12 @@ def _diff_nodes(
                     SecretDeliveriesValue(after.secret_deliveries),
                 )
             )
+        if before.runtime_authority_deliveries != after.runtime_authority_deliveries:
+            changes.append(ModifiedChange(
+                FieldSubject(subject, StructuralField.RUNTIME_AUTHORITY_DELIVERIES),
+                RuntimeAuthorityDeliveriesValue(before.runtime_authority_deliveries),
+                RuntimeAuthorityDeliveriesValue(after.runtime_authority_deliveries),
+            ))
         if before.delegation_verifier_projection != after.delegation_verifier_projection:
             changes.append(
                 ModifiedChange(

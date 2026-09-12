@@ -211,59 +211,63 @@ class OperationCommandService:
         raise InvalidOperationCommand("unsupported operation command")
 
     def _start(self, command: StartOperationSession) -> OperationCommandResult:
-        fingerprint = _fingerprint(command)
         with self._unit_of_work_factory() as unit_of_work:
-            try:
-                unit_of_work.stores.workspaces.get(command.workspace_id)
-            except KeyError as error:
-                raise OperationWorkspaceNotFound("workspace was not found") from error
-            unit_of_work.stores.activity_history.lock_session_idempotency(
-                command.workspace_id,
-                command.idempotency_key.value,
-            )
-            existing = unit_of_work.stores.activity_history.session_for_idempotency(
-                command.workspace_id,
-                command.idempotency_key.value,
-            )
-            if existing is not None:
-                if existing.intent_fingerprint != fingerprint:
-                    raise OperationIdempotencyConflict(
-                        "idempotency key was reused with different intent"
-                    )
-                action = _require_idempotent_action(
-                    unit_of_work,
-                    existing.session_id,
-                    command.idempotency_key.value,
-                    fingerprint,
-                )
-                unit_of_work.commit()
-                return OperationCommandResult(existing, action, replayed=True)
-            session = OperationSessionRecord(
-                session_id=self._id_factory(),
-                workspace_id=command.workspace_id,
-                actor_id=command.actor_id,
-                title=command.title,
-                status=OperationSessionStatus.OPEN,
-                created_at=self._clock(),
-                metadata=command.metadata,
-                idempotency_key=command.idempotency_key.value,
-                intent_fingerprint=fingerprint,
-            )
-            action = OperationActionRecord(
-                action_id=self._id_factory(),
-                session_id=session.session_id,
-                ordinal=1,
-                action_type=OperatorCommandKind.START_OPERATION_SESSION,
-                actor_id=command.actor_id,
-                payload={"workspace_id": command.workspace_id},
-                created_at=session.created_at,
-                idempotency_key=command.idempotency_key.value,
-                intent_fingerprint=fingerprint,
-            )
-            unit_of_work.stores.activity_history.add_session(session)
-            unit_of_work.stores.activity_history.add_action(action)
+            result = self.start_in_unit_of_work(unit_of_work, command)
             unit_of_work.commit()
-            return OperationCommandResult(session, action)
+            return result
+
+    def start_in_unit_of_work(self, unit_of_work, command: StartOperationSession) -> OperationCommandResult:
+        """Start/replay using the caller's transaction; never commit it here."""
+        fingerprint = _fingerprint(command)
+        try:
+            unit_of_work.stores.workspaces.get(command.workspace_id)
+        except KeyError as error:
+            raise OperationWorkspaceNotFound("workspace was not found") from error
+        unit_of_work.stores.activity_history.lock_session_idempotency(
+            command.workspace_id,
+            command.idempotency_key.value,
+        )
+        existing = unit_of_work.stores.activity_history.session_for_idempotency(
+            command.workspace_id,
+            command.idempotency_key.value,
+        )
+        if existing is not None:
+            if existing.intent_fingerprint != fingerprint:
+                raise OperationIdempotencyConflict(
+                    "idempotency key was reused with different intent"
+                )
+            action = _require_idempotent_action(
+                unit_of_work,
+                existing.session_id,
+                command.idempotency_key.value,
+                fingerprint,
+            )
+            return OperationCommandResult(existing, action, replayed=True)
+        session = OperationSessionRecord(
+            session_id=self._id_factory(),
+            workspace_id=command.workspace_id,
+            actor_id=command.actor_id,
+            title=command.title,
+            status=OperationSessionStatus.OPEN,
+            created_at=self._clock(),
+            metadata=command.metadata,
+            idempotency_key=command.idempotency_key.value,
+            intent_fingerprint=fingerprint,
+        )
+        action = OperationActionRecord(
+            action_id=self._id_factory(),
+            session_id=session.session_id,
+            ordinal=1,
+            action_type=OperatorCommandKind.START_OPERATION_SESSION,
+            actor_id=command.actor_id,
+            payload={"workspace_id": command.workspace_id},
+            created_at=session.created_at,
+            idempotency_key=command.idempotency_key.value,
+            intent_fingerprint=fingerprint,
+        )
+        unit_of_work.stores.activity_history.add_session(session)
+        unit_of_work.stores.activity_history.add_action(action)
+        return OperationCommandResult(session, action)
 
     def _terminal(
         self,

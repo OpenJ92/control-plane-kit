@@ -12,13 +12,15 @@ from control_plane_kit_core.topology import (
     GraphDescriptorCodec,
 )
 from control_plane_kit_operations.read_pages import (
+    ReadCursor,
     ReadPage,
     ReadPageRequest,
 )
 
 from .authority_secrets import _AuthoritySecretReadProjection
 from .gateway_security import _GatewaySecurityReadProjection
-from .models import FocusedDetailReadModel
+from .models import FocusedDetailReadModel, OperatorOverviewReadModel
+from .operator_overview import _OperatorOverviewReadProjection
 from .observations import (
     ObservationFreshnessPolicy,
     _ObservationReadProjection,
@@ -47,6 +49,13 @@ from .workspace_graph import (
 )
 
 
+from .desired_topology_drafts import _DesiredTopologyDraftReadProjection
+from control_plane_kit_operations.desired_topology_drafts import DesiredTopologyDraftStore
+from .protocols import SavedPreparationSourceStore
+from control_plane_kit_operations.revision_history import RevisionHistoryStore
+from .revision_history import _RevisionHistoryReadProjection
+
+
 class InstanceReadService:
     """Compose canonical operations stores into read-only instance views."""
 
@@ -65,6 +74,9 @@ class InstanceReadService:
         secret_reference_store: SecretReferenceStore | None = None,
         gateway_probe_store: GatewayProbeStore | None = None,
         delegation_signing_key_store: DelegationSigningKeyStore | None = None,
+        desired_topology_draft_store: DesiredTopologyDraftStore | None = None,
+        saved_preparation_source_store: SavedPreparationSourceStore | None = None,
+        revision_history_store: RevisionHistoryStore | None = None,
         graph_codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
         clock=lambda: datetime.now(timezone.utc),
         observation_freshness: ObservationFreshnessPolicy = ObservationFreshnessPolicy(),
@@ -73,6 +85,15 @@ class InstanceReadService:
             workspace_store,
             graph_topology_store,
             graph_codec=graph_codec,
+        )
+        self._desired_topology_drafts = _DesiredTopologyDraftReadProjection(
+            self._workspace_graph.require_workspace, graph_topology_store, desired_topology_draft_store,
+            revision_history_store,
+        )
+        self._revision_history = _RevisionHistoryReadProjection(self._workspace_graph.require_workspace, revision_history_store)
+        self._operator_overview = _OperatorOverviewReadProjection(
+            workspace_store, graph_topology_store, activity_history_store, execution_store,
+            desired_topology_draft_store, saved_preparation_source_store,
         )
         self._operations_history = _OperationsHistoryReadProjection(
             self._workspace_graph.require_workspace,
@@ -101,8 +122,22 @@ class InstanceReadService:
             delegation_signing_key_store=delegation_signing_key_store,
         )
 
+    def desired_topology_drafts(self, request: ReadPageRequest):
+        return self._desired_topology_drafts.page(request)
+
+    def desired_topology_draft_revision(self, workspace_id: str, draft_id: str, revision: int):
+        return self._desired_topology_drafts.detail(workspace_id, draft_id, revision)
+
+    def desired_topology_draft_revision_history(self, request: ReadPageRequest):
+        return self._revision_history.page(request)
+
     def workspace(self, workspace_id: str) -> WorkspaceReadModel:
         return self._workspace_graph.workspace(workspace_id)
+
+    def operator_overview(
+        self, workspace_id: str, *, limit: int = 50, after: ReadCursor | None = None,
+    ) -> OperatorOverviewReadModel:
+        return self._operator_overview.read(workspace_id, limit=limit, after=after)
 
     def current_graph(self, workspace_id: str) -> GraphPointerReadModel:
         return self._workspace_graph.current_graph(workspace_id)

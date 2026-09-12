@@ -119,6 +119,11 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         ("control_plane_kit_core.operations.lifecycle", "ExecutionRequestStatus", None),
         ("control_plane_kit_core.policies", "PolicyScope", None),
         (
+            "control_plane_kit_core.runtime_authority",
+            "RemoteDockerTlsConnectionAdmission",
+            None,
+        ),
+        (
             "control_plane_kit_core.runtime_effect_observation",
             "RuntimeEffectObservationRequest",
             None,
@@ -227,6 +232,11 @@ EXACT_INTERPRETER_IMPORTS = tuple(
         ),
         (
             "control_plane_kit_operations.runtime_authorities",
+            "RemoteDockerTlsAuthority",
+            None,
+        ),
+        (
+            "control_plane_kit_operations.runtime_authorities",
             "RuntimeAuthorityNotFound",
             None,
         ),
@@ -290,6 +300,7 @@ EXACT_INTERPRETER_CALLS = tuple(
         "_require_current_claim",
         "_require_historical_lineage",
         "_run_for_request_for_update",
+        "control_plane_kit_core.runtime_authority.RemoteDockerTlsConnectionAdmission",
         "control_plane_kit_core.runtime_effect_observation.RuntimeEffectObservationRequest",
         "control_plane_kit_core.runtime_effect_observation.runtime_effect_request_for_intent",
         "control_plane_kit_operations.effect_attempt_fold.ExistingFold",
@@ -316,6 +327,7 @@ EXACT_INTERPRETER_CALLS = tuple(
         "control_plane_kit_operations.secret_providers.SecretUseAuthorizationService",
         "control_plane_kit_operations.secret_providers.secret_use_correlation_for",
         "control_plane_kit_operations.workflows.InvalidOperationCommand",
+        "isinstance",
         "self._fold_service.execute_observed",
         "self._observer.observe",
         "self._secret_use_authorizer.authorize_resolution",

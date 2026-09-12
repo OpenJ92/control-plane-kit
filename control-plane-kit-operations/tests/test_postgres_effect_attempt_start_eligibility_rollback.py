@@ -414,7 +414,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 current = self.persisted_started()
                 command = self.start_command()
                 if target == "fingerprint":
-                    foreign_intent = replace(command.intent, products=())
+                    foreign_intent = replace(command.intent, products=(), authority_deliveries=())
                     command = self.start_command(
                         intent=foreign_intent,
                         transition=self.transition(intent=foreign_intent),

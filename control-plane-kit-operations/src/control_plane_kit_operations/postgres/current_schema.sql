@@ -10,6 +10,8 @@ CREATE TABLE cpk_activity_events (
     CONSTRAINT cpk_activity_events_shape_check CHECK (((((event_type = ANY (ARRAY['step_started'::text, 'step_succeeded'::text, 'step_failed'::text, 'step_unsupported'::text, 'step_uncertain'::text, 'step_uncertainty_resolved_succeeded'::text, 'step_uncertainty_resolved_failed'::text, 'step_uncertainty_abandoned'::text, 'step_compensation_started'::text, 'step_compensation_succeeded'::text, 'step_compensation_failed'::text, 'step_compensation_unsupported'::text, 'step_compensation_uncertain'::text, 'step_compensation_uncertainty_resolved_succeeded'::text, 'step_compensation_uncertainty_resolved_failed'::text, 'step_compensation_uncertainty_abandoned'::text])) AND (NULLIF((payload ->> 'activity_id'::text), ''::text) IS NOT NULL)) OR ((event_type = ANY (ARRAY['request_admitted'::text, 'request_claimed'::text, 'request_claim_renewed'::text, 'request_claim_taken_over'::text, 'request_claim_abandoned'::text, 'run_opened'::text, 'run_started'::text, 'run_paused'::text, 'run_resumed'::text, 'recovery_decision_recorded'::text, 'run_compensation_started'::text, 'run_compensation_succeeded'::text, 'run_compensation_failed'::text, 'run_uncompensated_failure_accepted'::text, 'run_succeeded'::text, 'run_failed'::text, 'run_cancelled'::text, 'current_graph_advanced'::text])) AND ((payload ->> 'activity_id'::text) IS NULL))) AND (((event_type = 'recovery_decision_recorded'::text) AND (payload ? 'recovery'::text) AND (jsonb_typeof((payload -> 'recovery'::text)) = 'object'::text)) OR ((event_type <> 'recovery_decision_recorded'::text) AND ((NOT (payload ? 'recovery'::text)) OR ((payload -> 'recovery'::text) = 'null'::jsonb))))))
 );
 
+CREATE INDEX cpk_activity_events_current_graph_advancement ON cpk_activity_events USING btree (run_id, event_id) WHERE (event_type = 'current_graph_advanced'::text);
+
 CREATE TABLE cpk_activity_plans (
     plan_id text NOT NULL,
     session_id text NOT NULL,
@@ -567,8 +569,10 @@ CREATE TABLE cpk_operation_actions (
     idempotency_key text,
     intent_fingerprint text,
     CONSTRAINT cpk_operation_actions_ordinal_check CHECK ((ordinal > 0)),
-    CONSTRAINT cpk_operation_actions_type_check CHECK ((action_type = ANY (ARRAY['create-workspace'::text, 'import-product-descriptor'::text, 'register-image-pull-authority'::text, 'register-runtime-authority'::text, 'revoke-runtime-authority'::text, 'register-runtime-authority-delivery'::text, 'revoke-runtime-authority-delivery'::text, 'register-ingress-authority'::text, 'revoke-ingress-authority'::text, 'register-secret-provider'::text, 'revoke-secret-provider'::text, 'register-secret-reference'::text, 'revoke-secret-reference'::text, 'register-delegation-key'::text, 'activate-delegation-key'::text, 'retire-delegation-key'::text, 'revoke-delegation-key'::text, 'start-operation-session'::text, 'close-operation-session'::text, 'cancel-operation-session'::text, 'record-operation-action'::text, 'set-desired-graph'::text, 'publish-desired-realized-projection'::text, 'request-activity-plan'::text, 'request-approval'::text, 'decide-approval'::text, 'request-gateway-probe'::text, 'admit-execution'::text, 'claim-run'::text, 'start-run'::text, 'pause-run'::text, 'resume-run'::text, 'complete-run'::text, 'fail-run'::text, 'begin-compensation'::text, 'complete-compensation'::text, 'fail-compensation'::text, 'cancel-run'::text, 'record-recovery-decision'::text, 'advance-current-graph'::text])))
+    CONSTRAINT cpk_operation_actions_type_check CHECK ((action_type = ANY (ARRAY['create-workspace'::text, 'import-product-descriptor'::text, 'register-image-pull-authority'::text, 'register-runtime-authority'::text, 'revoke-runtime-authority'::text, 'register-runtime-authority-delivery'::text, 'revoke-runtime-authority-delivery'::text, 'register-ingress-authority'::text, 'revoke-ingress-authority'::text, 'register-secret-provider'::text, 'revoke-secret-provider'::text, 'register-secret-reference'::text, 'revoke-secret-reference'::text, 'register-delegation-key'::text, 'activate-delegation-key'::text, 'retire-delegation-key'::text, 'revoke-delegation-key'::text, 'start-operation-session'::text, 'close-operation-session'::text, 'cancel-operation-session'::text, 'record-operation-action'::text, 'set-desired-graph'::text, 'create-desired-topology-draft'::text, 'revise-desired-topology-draft'::text, 'select-desired-topology-draft'::text, 'delete-desired-topology-draft'::text, 'publish-desired-realized-projection'::text, 'request-activity-plan'::text, 'request-approval'::text, 'decide-approval'::text, 'request-gateway-probe'::text, 'admit-execution'::text, 'claim-run'::text, 'start-run'::text, 'pause-run'::text, 'resume-run'::text, 'complete-run'::text, 'fail-run'::text, 'begin-compensation'::text, 'complete-compensation'::text, 'fail-compensation'::text, 'cancel-run'::text, 'record-recovery-decision'::text, 'advance-current-graph'::text])))
 );
+
+CREATE INDEX cpk_operation_actions_current_graph_advancement ON cpk_operation_actions USING btree (session_id, (payload ->> 'run_id'::text), action_id) WHERE (action_type = 'advance-current-graph'::text);
 
 CREATE TABLE cpk_operation_sessions (
     session_id text NOT NULL,
@@ -779,7 +783,7 @@ CREATE TABLE cpk_secret_use_authorizations (
     CONSTRAINT cpk_secret_use_authorizations_effect_check CHECK (((effect_id IS NULL) OR (effect_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_fingerprint_check CHECK ((intent_fingerprint ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_secret_use_authorizations_id_check CHECK ((authorization_id ~ '^suse_[0-9a-f]{64}$'::text)),
-    CONSTRAINT cpk_secret_use_authorizations_intent_check CHECK ((use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text, 'gateway.node-control-transit-signing-key'::text, 'workload.node-control-signing-key'::text]))),
+    CONSTRAINT cpk_secret_use_authorizations_intent_check CHECK ((use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text, 'gateway.node-control-transit-signing-key'::text, 'workload.node-control-signing-key'::text, 'secrets.custody-root-key'::text, 'secrets.provider-credentials-document'::text]))),
     CONSTRAINT cpk_secret_use_authorizations_operation_check CHECK (((operation_id IS NULL) OR (operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_probe_check CHECK (((probe_id IS NULL) OR (probe_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_reference_check CHECK ((secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
@@ -1042,6 +1046,9 @@ ALTER TABLE ONLY cpk_secret_use_authorizations
 
 ALTER TABLE ONLY cpk_workspaces
     ADD CONSTRAINT cpk_workspaces_pkey PRIMARY KEY (workspace_id);
+
+CREATE INDEX cpk_activity_plans_base_graph ON cpk_activity_plans USING btree (base_graph_id);
+CREATE INDEX cpk_activity_plans_desired_graph ON cpk_activity_plans USING btree (desired_graph_id);
 
 CREATE INDEX cpk_activity_plans_session_timeline ON cpk_activity_plans USING btree (session_id, created_at, plan_id);
 
@@ -1345,3 +1352,48 @@ ALTER TABLE ONLY cpk_workspaces
 
 ALTER TABLE ONLY cpk_workspaces
     ADD CONSTRAINT cpk_workspaces_desired_realized_projection_fk FOREIGN KEY (desired_realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+
+CREATE TABLE cpk_desired_topology_drafts (
+    workspace_id text NOT NULL,
+    draft_id text NOT NULL,
+    title text NOT NULL,
+    head_revision bigint NOT NULL,
+    created_by text NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    deleted_by text,
+    deleted_at timestamp with time zone
+);
+
+CREATE TABLE cpk_desired_topology_draft_revisions (
+    workspace_id text NOT NULL,
+    draft_id text NOT NULL,
+    revision bigint NOT NULL,
+    graph_id text NOT NULL,
+    created_by text NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ONLY cpk_graph_versions ADD CONSTRAINT cpk_graph_versions_workspace_graph_key UNIQUE (workspace_id, graph_id);
+ALTER TABLE ONLY cpk_desired_topology_drafts ADD CONSTRAINT cpk_desired_topology_drafts_pkey PRIMARY KEY (workspace_id, draft_id);
+ALTER TABLE ONLY cpk_desired_topology_drafts ADD CONSTRAINT cpk_desired_topology_drafts_tombstone_check CHECK (((deleted_by IS NULL) = (deleted_at IS NULL)));
+ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired_topology_draft_revisions_pkey PRIMARY KEY (workspace_id, draft_id, revision);
+ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired_topology_draft_revisions_graph_key UNIQUE (workspace_id, graph_id);
+ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired_topology_draft_revisions_revision_check CHECK ((revision > 0));
+ALTER TABLE ONLY cpk_desired_topology_drafts ADD CONSTRAINT cpk_desired_topology_drafts_head_check CHECK ((head_revision > 0));
+ALTER TABLE ONLY cpk_desired_topology_drafts ADD CONSTRAINT cpk_desired_topology_drafts_title_check CHECK (((char_length(title) >= 1) AND (char_length(title) <= 512) AND (btrim(title) <> ''::text)));
+ALTER TABLE ONLY cpk_desired_topology_drafts ADD CONSTRAINT cpk_desired_topology_drafts_workspace_fkey FOREIGN KEY (workspace_id) REFERENCES cpk_workspaces(workspace_id);
+ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired_topology_draft_revisions_graph_fkey FOREIGN KEY (workspace_id, graph_id) REFERENCES cpk_graph_versions(workspace_id, graph_id);
+ALTER TABLE ONLY cpk_desired_topology_drafts ADD CONSTRAINT cpk_desired_topology_drafts_head_fkey FOREIGN KEY (workspace_id, draft_id, head_revision) REFERENCES cpk_desired_topology_draft_revisions(workspace_id, draft_id, revision) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired_topology_draft_revisions_draft_fkey FOREIGN KEY (workspace_id, draft_id) REFERENCES cpk_desired_topology_drafts(workspace_id, draft_id);
+CREATE INDEX cpk_desired_topology_drafts_chronology ON cpk_desired_topology_drafts USING btree (workspace_id, created_at, draft_id);
+
+CREATE TABLE cpk_saved_preparation_sources (
+    session_id text NOT NULL,
+    workspace_id text NOT NULL,
+    draft_id text NOT NULL,
+    revision bigint NOT NULL,
+    CONSTRAINT cpk_saved_preparation_sources_pkey PRIMARY KEY (session_id),
+    CONSTRAINT cpk_saved_preparation_sources_session_fkey FOREIGN KEY (session_id, workspace_id) REFERENCES cpk_operation_sessions(session_id, workspace_id),
+    CONSTRAINT cpk_saved_preparation_sources_revision_fkey FOREIGN KEY (workspace_id, draft_id, revision) REFERENCES cpk_desired_topology_draft_revisions(workspace_id, draft_id, revision)
+);
+CREATE INDEX cpk_saved_preparation_sources_revision ON cpk_saved_preparation_sources (workspace_id, draft_id, revision, session_id);

@@ -26,6 +26,8 @@ ReadPageRequest = getattr(operations, "ReadPageRequest", None)
 RunReadScope = getattr(operations, "RunReadScope", None)
 SessionReadScope = getattr(operations, "SessionReadScope", None)
 TemporalReadCursor = getattr(operations, "TemporalReadCursor", None)
+DraftReadScope = getattr(operations, "DraftReadScope", None)
+RevisionReadScope = getattr(operations, "RevisionReadScope", None)
 WorkspaceReadScope = getattr(operations, "WorkspaceReadScope", None)
 read_collection_spec = getattr(operations, "read_collection_spec", None)
 read_cursor_from_mapping = getattr(operations, "read_cursor_from_mapping", None)
@@ -211,7 +213,12 @@ class ReadPageContractTests(unittest.TestCase):
 
     def test_literal_collection_table_is_source_pinned(self) -> None:
         self.require_contract()
+        self.assertIsNotNone(RevisionReadScope, "missing revision history scope")
         rows = (
+            ("DESIRED_TOPOLOGY_DRAFT_REVISION_PREPARATIONS", "desired-topology-draft-revision-preparations", "read.desired-topology-draft-revision-preparations", RevisionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
+            ("DESIRED_TOPOLOGY_DRAFT_REVISION_ATTEMPTS", "desired-topology-draft-revision-attempts", "read.desired-topology-draft-revision-attempts", RevisionReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "run_id")),
+            ("DESIRED_TOPOLOGY_DRAFTS", "desired-topology-drafts", "read.desired-topology-drafts", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "draft_id")),
+            ("DESIRED_TOPOLOGY_DRAFT_REVISIONS", "desired-topology-draft-revisions", "read.desired-topology-draft-revisions", DraftReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("revision", "graph_id")),
             ("ACTIVITY_SESSIONS", "activity-sessions", "read.activity", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
             ("OPEN_SESSIONS", "open-sessions", "read.sessions", WorkspaceReadScope, TemporalReadCursor, ReadOrder.ASCENDING, ("created_at", "session_id")),
             ("SESSION_ACTIONS", "session-actions", "read.session-actions", SessionReadScope, OrdinalReadCursor, ReadOrder.ASCENDING, ("ordinal", "action_id")),
@@ -229,11 +236,11 @@ class ReadPageContractTests(unittest.TestCase):
             ("DELEGATION_SIGNING_KEYS", "delegation-signing-keys", "read.delegation-keys", WorkspaceReadScope, DelegationKeyReadCursor, ReadOrder.ASCENDING, ("purpose", "issuer", "key_id")),
             ("GATEWAY_PROBES", "gateway-probes", "read.gateway-probe-timeline", WorkspaceReadScope, EpochReadCursor, ReadOrder.DESCENDING, ("issued_at", "probe_id")),
         )
-        self.assertEqual(len(READ_COLLECTION_SPECS), 16)
-        self.assertEqual(len(ReadCollection), 16)
+        self.assertEqual(len(READ_COLLECTION_SPECS), 20)
+        self.assertEqual(len(ReadCollection), 20)
         self.assertEqual(
             len({spec.route_id for spec in READ_COLLECTION_SPECS}),
-            16,
+            20,
         )
         for name, wire, route, scope, cursor, order, position in rows:
             collection = getattr(ReadCollection, name)

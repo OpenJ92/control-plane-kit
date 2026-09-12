@@ -91,6 +91,7 @@ from .deployment_program import (
     DeploymentProgramReference,
     InvalidDeploymentProgramContract,
     PrepareDeploymentProgram,
+    SavedDesiredTopologyRevision,
     ProgressDeploymentProgram,
 )
 from .deployment_program_interpreter import (
@@ -570,6 +571,8 @@ from .execution_lease_recovery_interpreter import (
     ExecutionLeaseRecoveryCommandService,
 )
 from .read_pages import (
+    DraftReadScope,
+    RevisionReadScope,
     READ_COLLECTION_SPECS,
     DelegationKeyReadCursor,
     EpochReadCursor,
@@ -649,6 +652,8 @@ __all__ = [
     "RunReadScope",
     "SessionReadScope",
     "TemporalReadCursor",
+    "DraftReadScope",
+    "RevisionReadScope",
     "WorkspaceReadScope",
     "read_collection_spec",
     "read_cursor_from_mapping",
@@ -663,6 +668,7 @@ __all__ = [
     "DeploymentProgramReference",
     "InvalidDeploymentProgramContract",
     "PrepareDeploymentProgram",
+    "SavedDesiredTopologyRevision",
     "ProgressDeploymentProgram",
     "DeploymentProgram",
     "DeploymentProgramAuthorizationDenied",

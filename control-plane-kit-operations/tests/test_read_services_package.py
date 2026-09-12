@@ -13,13 +13,16 @@ _EXPECTED_MODULES = {
     "__init__",
     "_redaction",
     "authority_secrets",
+    "desired_topology_drafts",
     "errors",
     "gateway_security",
     "instance",
     "models",
     "observations",
     "operations_history",
+    "operator_overview",
     "protocols",
+    "revision_history",
     "workspace_graph",
 }
 

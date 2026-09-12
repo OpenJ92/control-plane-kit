@@ -374,7 +374,7 @@ class PostgresEffectAttemptStartIntentTests(
         incongruent = EffectAttemptIntentRecord(
             current.state.identity,
             current.original_start_event,
-            self.intent(products=()),
+            self.intent(products=(), process_delivery=False),
         )
         cases = (
             ("missing", KeyError("missing-intent-canary"), None),
@@ -546,6 +546,7 @@ class PostgresEffectAttemptStartIntentTests(
         foreign = replace(
             self.start_command().intent,
             products=(),
+            authority_deliveries=(),
         )
         foreign_transition = self.transition(intent=foreign)
         with self.assertRaises(EffectAttemptStartConflict) as caught:

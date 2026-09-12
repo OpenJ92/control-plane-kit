@@ -28,6 +28,7 @@ EXPECTED_EXPORTS = (
     "DeploymentProgramReference",
     "InvalidDeploymentProgramContract",
     "PrepareDeploymentProgram",
+    "SavedDesiredTopologyRevision",
     "ProgressDeploymentProgram",
 )
 EXPECTED_INTERPRETER_EXPORTS = (

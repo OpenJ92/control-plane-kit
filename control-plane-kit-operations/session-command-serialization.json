@@ -46,10 +46,10 @@
     {
       "command": "start-operation-session",
       "service": "OperationCommandService._start",
-      "writer": "workflows.py:OperationCommandService._start",
+      "writer": "workflows.py:OperationCommandService.start_in_unit_of_work",
       "source": "workflows.py",
       "roles": ["command-identity", "action-ordinal"],
-      "session_rule": "creates the session row; its workspace-scoped start identity lock is the pre-row exception"
+      "session_rule": "creates the session row; its workspace-scoped start identity lock is the pre-row exception; saved preparation holds this key then workspace and draft before invoking the non-committing writer; ordinary start and saved admission own their commits; saved admission inserts its relational source in the same UoW before commit"
     },
     {
       "command": "close-operation-session",
@@ -74,6 +74,38 @@
       "source": "workflows.py",
       "roles": ["command-identity", "session-lifecycle", "action-ordinal"],
       "session_rule": "requires OPEN after lock"
+    },
+    {
+      "command": "create-desired-topology-draft",
+      "service": "DesiredTopologyDraftCommandService.execute",
+      "writer": "desired_topology_drafts.py:DesiredTopologyDraftCommandService.execute",
+      "source": "desired_topology_drafts.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize revision CAS"
+    },
+    {
+      "command": "revise-desired-topology-draft",
+      "service": "DesiredTopologyDraftCommandService.execute",
+      "writer": "desired_topology_drafts.py:DesiredTopologyDraftCommandService.execute",
+      "source": "desired_topology_drafts.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize revision CAS"
+    },
+    {
+      "command": "select-desired-topology-draft",
+      "service": "DesiredTopologyDraftCommandService.execute",
+      "writer": "desired_topology_drafts.py:_execute_reference_command",
+      "source": "desired_topology_drafts.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize exact desired tuple check/update and unused-reference tombstone against planning"
+    },
+    {
+      "command": "delete-desired-topology-draft",
+      "service": "DesiredTopologyDraftCommandService.execute",
+      "writer": "desired_topology_drafts.py:_execute_reference_command",
+      "source": "desired_topology_drafts.py",
+      "roles": ["command-identity", "session-lifecycle", "workspace-graph", "dependent-truth", "action-ordinal"],
+      "session_rule": "requires OPEN for first publication; exact replay validates immutable evidence before session/head admission; workspace then draft row serialize exact desired tuple check/update and unused-reference tombstone against planning"
     },
     {
       "command": "set-desired-graph",

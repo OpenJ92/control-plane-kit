@@ -25,12 +25,19 @@ from control_plane_kit_core.runtime_authority import (
 )
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_operations.records import GraphVersionRecord
+from control_plane_kit_operations.desired_topology_drafts import (
+    DesiredTopologyDraftRecord,
+    DesiredTopologyDraftRevisionRecord,
+)
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
 )
 from control_plane_kit_operations.postgres import PostgresStoreBundle, install_schema
 from control_plane_kit_operations.read_pages import (
     DelegationKeyReadCursor,
+    DraftReadScope,
     EpochReadCursor,
     IdentityReadCursor,
     OrdinalReadCursor,
@@ -86,11 +93,20 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
             connection.close()
 
-    def test_all_sixteen_collections_cross_two_maximum_pages_exactly(self) -> None:
+    def test_legacy_eighteen_collections_cross_two_maximum_pages_exactly(self) -> None:
         with self._seeded() as (connection, handles):
+            self._seed_catalogue(connection, handles.activity_workspace_id)
             cases = self._cases(connection, handles)
-            self.assertEqual(len(cases), 16)
-            self.assertEqual({case.collection for case in cases}, set(ReadCollection))
+            self.assertEqual(len(cases), 18)
+            # The two max10 revision collections have their 201-row traversal
+            # in test_revision_history_pages, using the preparation owner fixture.
+            revision = {getattr(ReadCollection, "DESIRED_TOPOLOGY_DRAFT_REVISION_" + suffix, None)
+                        for suffix in ("PREPARATIONS", "ATTEMPTS")}
+            self.assertNotIn(None, revision, "missing revision history collections")
+            legacy = {case.collection for case in cases}
+            self.assertFalse(legacy & revision)
+            self.assertEqual(legacy | revision, set(ReadCollection))
+            self.assertEqual(len(ReadCollection), 20)
 
             for case in cases:
                 with self.subTest(collection=case.collection.value):
@@ -1070,6 +1086,40 @@ class LargeReadCollectionPageTests(unittest.TestCase):
         return values
 
     @staticmethod
+    def _seed_catalogue(connection, workspace_id: str) -> None:
+        created_at = "2026-08-12T12:00:00Z"
+        stores = PostgresStoreBundle(connection)
+        with connection.transaction():
+            stores.workspaces.get_for_update(workspace_id)
+            for index in range(1, _COUNT + 1):
+                draft_id = f"catalogue-{index:04d}"
+                graph_id = ("catalogue-revision-0001" if index == 1
+                            else f"catalogue-initial-{index:04d}")
+                stores.graphs.save(GraphVersionRecord.from_graph(
+                    graph_id=graph_id, workspace_id=workspace_id,
+                    version=stores.graphs.next_version_for_workspace(workspace_id),
+                    graph=DeploymentGraph("Catalogue page fixture"),
+                    created_by="operator", created_at=created_at,
+                ))
+                stores.desired_topology_drafts.create(DesiredTopologyDraftRecord(
+                    workspace_id, draft_id, f"Design {index}", 1, "operator", created_at,
+                ))
+                stores.desired_topology_drafts.append(DesiredTopologyDraftRevisionRecord(
+                    workspace_id, draft_id, 1, graph_id, "operator", created_at,
+                ), expected_head_revision=None)
+            for revision in range(2, _COUNT + 1):
+                graph_id = f"catalogue-revision-{revision:04d}"
+                stores.graphs.save(GraphVersionRecord.from_graph(
+                    graph_id=graph_id, workspace_id=workspace_id,
+                    version=stores.graphs.next_version_for_workspace(workspace_id),
+                    graph=DeploymentGraph("Catalogue history fixture"),
+                    created_by="operator", created_at=created_at,
+                ))
+                stores.desired_topology_drafts.append(DesiredTopologyDraftRevisionRecord(
+                    workspace_id, "catalogue-0001", revision, graph_id, "operator", created_at,
+                ), expected_head_revision=revision - 1)
+
+    @staticmethod
     def _cases(connection, handles: LargeReadHistoryHandles) -> tuple[_CollectionCase, ...]:
         stores = PostgresStoreBundle(connection)
 
@@ -1113,6 +1163,14 @@ class LargeReadCollectionPageTests(unittest.TestCase):
             )
 
         cases = [
+            temporal(ReadCollection.DESIRED_TOPOLOGY_DRAFTS,
+                     WorkspaceReadScope(handles.activity_workspace_id),
+                     stores.desired_topology_drafts.page, "catalogue",
+                     lambda item: item.draft_id),
+            ordinal(ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
+                    DraftReadScope(handles.activity_workspace_id, "catalogue-0001"),
+                    stores.desired_topology_drafts.page, "catalogue-revision",
+                    lambda item: item.graph_id),
             temporal(ReadCollection.ACTIVITY_SESSIONS,
                      WorkspaceReadScope(handles.activity_workspace_id),
                      stores.activity_history.session_page, "activity-session",

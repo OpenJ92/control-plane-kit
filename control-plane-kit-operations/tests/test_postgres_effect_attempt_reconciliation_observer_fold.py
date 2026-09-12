@@ -4,6 +4,10 @@ from dataclasses import replace
 import unittest
 
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.runtime_authority import (
+    RemoteDockerTlsConnectionAdmission,
+    RuntimeEffectContractError,
+)
 from control_plane_kit_core.runtime_effect_observation import (
     RuntimeEffectObservationRequest,
 )
@@ -145,6 +149,15 @@ class PostgresEffectAttemptReconciliationObserverFoldTests(
                     )
                 )
                 self.assertEqual(observed_authority, authority)
+                self.assertEqual(
+                    getattr(request, "connection_admission", None),
+                    RemoteDockerTlsConnectionAdmission(
+                        authority.authority_ref,
+                        authority.authority.ca_certificate,
+                        authority.authority.client_certificate,
+                        authority.authority.client_key,
+                    ),
+                )
                 self.assertEqual(len(recording_fold.calls), 1)
                 guarded = recording_fold.calls[0]
                 self.assertEqual(guarded.intent_record, record)
@@ -162,6 +175,50 @@ class PostgresEffectAttemptReconciliationObserverFoldTests(
                 self.assertEqual(ledger.entries, 1 + len(uses))
                 self.assertEqual(ledger.entries, ledger.exits)
                 self.assertEqual(self.non_advancement_snapshot(), before_non_advancement)
+
+    def test_process_empty_remote_observation_uses_registered_connection_and_folds_once(self) -> None:
+        story = self.observed_story()
+        current, intent, record, authority = self.seed_reconciliation_source(
+            story, remote=True, process_delivery=False,
+        )
+        self.assertEqual(intent.authority_deliveries, ())
+        self.assertTrue(all(not product.runtime_authority_deliveries for product in intent.products))
+        uses = self.required_secret_uses(current, intent, authority)
+        self.admit_secret_uses(uses)
+        ledger = UnitOfWorkLedger(self.unit_of_work)
+        observer = self.observer_for(story, current, intent, ledger=ledger)
+        event_id = "reconciled-provider-only"
+        recording_fold = _RecordingFold(self.fold_service_with_id_factory(
+            Sequence(*self.fold_ids_for_story(event_id, story))
+        ))
+        try:
+            result = self.reconciliation_service(
+                observer, ledger=ledger, fold_service=recording_fold,
+            ).execute(self.reconciliation_command(
+                current,
+                scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE),
+            ))
+        except RuntimeEffectContractError as error:
+            raise AssertionError("provider-only observation must admit its registered connection") from error
+        self.assertIsInstance(result, NewlyFolded)
+        self.assertEqual(len(observer.calls), 1)
+        request, observed_authority = observer.calls[0]
+        self.assertEqual(observed_authority, authority)
+        self.assertEqual(request.intent, intent)
+        self.assertEqual(request.request_fingerprint, record.request_fingerprint)
+        self.assertEqual(getattr(request, "connection_admission", None), RemoteDockerTlsConnectionAdmission(
+            authority.authority_ref, authority.authority.ca_certificate,
+            authority.authority.client_certificate, authority.authority.client_key,
+        ))
+        self.assertEqual(
+            tuple((grant.reference, grant.intent) for grant in request.runtime_request.secret_resolution_grants),
+            uses,
+        )
+        self.assertEqual(len(recording_fold.calls), 1)
+        self.assertEqual(recording_fold.calls[0].intent_record, record)
+        self.assertEqual(ledger.active, 0)
+        self.assertEqual(ledger.entries, ledger.exits)
+        self.assertEqual(ledger.entries, 1 + len(uses))
 
     def test_observer_effect_and_fingerprint_must_match_before_fold(self) -> None:
         story = self.observed_story()

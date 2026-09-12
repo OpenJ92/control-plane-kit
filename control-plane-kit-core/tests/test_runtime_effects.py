@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib
 import unittest
 
@@ -333,7 +334,7 @@ class RuntimeEffectContractTests(unittest.TestCase):
             operation=StartNode(NodeTarget("api")),
             authority_ref=RuntimeAuthorityReference("local-docker"),
             authority_deliveries=(delivery,),
-            products=(_product_material(),),
+            products=(replace(_product_material(), runtime_authority_deliveries=(delivery,)),),
         )
 
         descriptor = request.descriptor()

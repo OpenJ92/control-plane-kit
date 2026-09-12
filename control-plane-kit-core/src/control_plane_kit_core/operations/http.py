@@ -319,6 +319,36 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "GraphReadResponse",
             ),
             (
+                "read.desired-topology-drafts",
+                "/workspaces/{workspace_id}/desired-topology-drafts",
+                "DesiredTopologyDraftsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revisions",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions",
+                "DesiredTopologyDraftRevisionsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}",
+                "DesiredTopologyDraftRevisionReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision-preparations",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/preparations",
+                "DesiredTopologyDraftRevisionPreparationsReadResponse",
+            ),
+            (
+                "read.desired-topology-draft-revision-attempts",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions/{revision}/attempts",
+                "DesiredTopologyDraftRevisionAttemptsReadResponse",
+            ),
+            (
+                "read.operator-overview",
+                "/workspaces/{workspace_id}/overview",
+                "OperatorOverviewReadResponse",
+            ),
+            (
                 "read.operator-graph",
                 "/workspaces/{workspace_id}/operator-graph",
                 "OperatorGraphReadResponse",
@@ -683,6 +713,42 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "OperationCommandResult",
             ),
             (
+                "command.desired-topology-draft.create",
+                "/workspaces/{workspace_id}/desired-topology-drafts",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "CreateDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftResult",
+            ),
+            (
+                "command.desired-topology-draft.revise",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/revisions",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "ReviseDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftResult",
+            ),
+            (
+                "command.desired-topology-draft.select",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/select",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "SelectDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftSelectionResult",
+            ),
+            (
+                "command.desired-topology-draft.delete",
+                "/workspaces/{workspace_id}/desired-topology-drafts/{draft_id}/delete",
+                ControlPlaneServiceRole.PLANNING,
+                HttpAuthScope.PLAN_WRITE,
+                HttpOperationSafety.COMMAND,
+                "DeleteDesiredTopologyDraftRequest",
+                "DesiredTopologyDraftDeletionResult",
+            ),
+            (
                 "command.desired-graph.set",
                 "/workspaces/{workspace_id}/graphs/desired",
                 ControlPlaneServiceRole.PLANNING,
@@ -797,7 +863,10 @@ def _read_route(
         service_role=ControlPlaneServiceRole.READS,
         auth_scope=HttpAuthScope.READ,
         safety=HttpOperationSafety.READ_ONLY,
-        response_schema=HttpSchemaRef(response_schema),
+        response_schema=HttpSchemaRef(response_schema, max_bytes=1048576 if route_id in {
+            "read.desired-topology-draft-revision-preparations",
+            "read.desired-topology-draft-revision-attempts",
+        } else 65536),
     )
 
 

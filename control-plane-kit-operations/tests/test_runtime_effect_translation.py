@@ -7,6 +7,8 @@ from dataclasses import replace
 from control_plane_kit_core.algebra import (
     BlockSockets,
     BlockSpec,
+    DeploymentTopology,
+    DockerRuntime,
     ProviderSocket,
     RequirementSocket,
 )
@@ -24,7 +26,11 @@ from control_plane_kit_core.planning import (
     ActivityPlan,
     NodeTarget,
     PlannedActivity,
+    ReconcileNode,
+    RemoveNodeResource,
     StartNode,
+    StartRuntime,
+    StopNode,
     StopRuntime,
     RuntimeTarget,
 )
@@ -44,13 +50,16 @@ from control_plane_kit_core.products import (
     ContainerServerProduct,
     OciImageReference,
     ProductDescriptorCodec,
+    ProductInstanceConfiguration,
     ProductReference,
     ProductRuntimeContract,
     ProviderRuntimePort,
+    instantiate_product,
 )
 from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityAccessDelivery,
     RuntimeAuthorityAccessDeliveryKind,
+    RuntimeAuthorityDeliverySecretReference,
     RuntimeAuthorityReference,
 )
 from control_plane_kit_core.runtime_effect_observation import (
@@ -61,11 +70,16 @@ from control_plane_kit_core.runtime_effect_observation import (
 )
 from control_plane_kit_core.runtime_effects import ImagePullAuthority
 from control_plane_kit_core.secrets import (
+    SecretDelivery,
     SecretEnvironmentDelivery,
+    SecretFileDelivery,
+    SecretFilePathBinding,
     SecretReference,
     SecretUseIntent,
 )
-from control_plane_kit_core.topology import DeploymentGraph, Edge, Node, RuntimeRecord
+from control_plane_kit_core.topology import (
+    DeploymentGraph, Edge, Node, RuntimeRecord, compile_topology,
+)
 from control_plane_kit_core.types import (
     BlockFamily,
     Protocol,
@@ -114,6 +128,7 @@ from control_plane_kit_operations.runtime_effects import (
 )
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthorityDelivery,
+    RegisteredRuntimeAuthorityDeliveryStatus,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
@@ -421,7 +436,7 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
         self.assertNotIn("tcp://", repr(request.descriptor()))
 
-    def test_context_carries_matching_authority_delivery_without_socket_material(self) -> None:
+    def test_registration_alone_does_not_deliver_process_authority(self) -> None:
         delivery = RegisteredRuntimeAuthorityDelivery.from_delivery(
             workspace_id="workspace-a",
             delivery=RuntimeAuthorityAccessDelivery(
@@ -440,12 +455,247 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         request = runtime_effect_request_for_context(context)
 
         self.assertEqual(request.authority_ref, RuntimeAuthorityReference("local-docker"))
-        self.assertEqual(
-            tuple(value.delivery_kind for value in request.authority_deliveries),
-            (RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,),
-        )
+        self.assertEqual(request.authority_deliveries, ())
         self.assertNotIn("/var/run/docker.sock", repr(request.descriptor()))
         self.assertNotIn("unix://", repr(request.descriptor()))
+
+    def test_only_declared_recipient_receives_exact_admitted_material(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _authority_recipient_graph(admitted.delivery)
+        for operation_type in (StartNode, ReconcileNode):
+            for node_id in ("controller", "database", "custody"):
+                with self.subTest(operation=operation_type, node=node_id):
+                    context = _context(
+                        desired_graph=graph,
+                        activity=PlannedActivity(ActivityId("selected-node"),
+                                                 operation_type(NodeTarget(node_id))),
+                        runtime_authority_deliveries=(admitted,),
+                    )
+                    request = runtime_effect_request_for_context(context)
+                    expected = (admitted.delivery,) if node_id == "controller" else ()
+                    self.assertEqual(request.authority_deliveries, expected)
+                    self.assertEqual(request.products[0].node_id, node_id)
+                    self.assertEqual(request.products[0].runtime_authority_deliveries, expected)
+                    self.assertNotIn("/var/run/docker.sock", repr(request.descriptor()))
+
+    def test_requested_delivery_requires_exact_active_workspace_admission(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _authority_recipient_graph(admitted.delivery)
+        different_kind = replace(
+            admitted.delivery,
+            delivery_kind=RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
+            secret_references=(RuntimeAuthorityDeliverySecretReference(
+                "client-key", SecretReference("secret://example/client/key")),),
+        )
+        cases = {
+            "missing": (),
+            "revoked": (replace(admitted, status=RegisteredRuntimeAuthorityDeliveryStatus.REVOKED),),
+            "foreign workspace": (replace(admitted, workspace_id="workspace-other"),),
+            "different material": (_admitted_node_delivery(different_kind),),
+            "different authority": (_admitted_node_delivery(replace(
+                admitted.delivery, authority_ref=RuntimeAuthorityReference("other-docker"))),),
+        }
+        for label, admissions in cases.items():
+            with self.subTest(case=label):
+                with self.assertRaises(InvalidOperationCommand):
+                    context = _context(
+                        desired_graph=graph,
+                        activity=PlannedActivity(ActivityId("start-controller"),
+                                                 StartNode(NodeTarget("controller"))),
+                        runtime_authority_deliveries=admissions,
+                    )
+                    runtime_effect_request_for_context(context)
+
+    def test_admission_for_reference_does_not_authorize_different_secret_reference(self) -> None:
+        delivery = RuntimeAuthorityAccessDelivery(
+            RuntimeAuthorityReference("local-docker"),
+            RuntimeAuthorityAccessDeliveryKind.REMOTE_DOCKER_TLS_SECRET_FILES,
+            (RuntimeAuthorityDeliverySecretReference(
+                "client-key", SecretReference("secret://example/client/one")),),
+        )
+        changed = replace(delivery, secret_references=(RuntimeAuthorityDeliverySecretReference(
+            "client-key", SecretReference("secret://example/client/two")),))
+        context = _context(
+            desired_graph=_authority_recipient_graph(changed),
+            activity=PlannedActivity(ActivityId("start-controller"),
+                                     StartNode(NodeTarget("controller"))),
+            runtime_authority_deliveries=(_admitted_node_delivery(delivery),),
+        )
+        with self.assertRaises(InvalidOperationCommand) as raised:
+            runtime_effect_request_for_context(context)
+        self.assertNotIn("secret://", str(raised.exception))
+
+    def test_declared_delivery_must_match_enclosing_runtime_authority(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _authority_recipient_graph(admitted.delivery)
+        for authority_ref in (None, RuntimeAuthorityReference("other-docker")):
+            with self.subTest(authority=authority_ref):
+                changed = replace(graph, runtimes={"docker": replace(
+                    graph.runtimes["docker"], authority_ref=authority_ref)})
+                context = _context(
+                    desired_graph=changed,
+                    activity=PlannedActivity(ActivityId("start-controller"),
+                                             StartNode(NodeTarget("controller"))),
+                    runtime_authority_deliveries=(admitted,),
+                )
+                with self.assertRaises(InvalidOperationCommand):
+                    runtime_effect_request_for_context(context)
+
+    def test_runtime_only_activity_selects_no_process_delivery(self) -> None:
+        admitted = _admitted_node_delivery()
+        context = _context(
+            desired_graph=_authority_recipient_graph(admitted.delivery),
+            activity=PlannedActivity(ActivityId("start-runtime"),
+                                     StartRuntime(RuntimeTarget("docker"))),
+            runtime_authority_deliveries=(admitted,),
+        )
+        request = runtime_effect_request_for_context(context)
+        self.assertEqual(request.authority_ref, admitted.authority_ref)
+        self.assertEqual(request.authority_deliveries, ())
+        self.assertEqual(request.products, ())
+
+    def test_teardown_retains_declared_material_without_delivery_admission(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _authority_recipient_graph(admitted.delivery)
+        for operation_type in (StopNode, RemoveNodeResource):
+            with self.subTest(operation=operation_type):
+                context = _context(
+                    base_graph=graph,
+                    activity=PlannedActivity(ActivityId("remove-controller"),
+                                             operation_type(NodeTarget("controller"))),
+                )
+                request = runtime_effect_request_for_context(context)
+                self.assertEqual(request.authority_ref, admitted.authority_ref)
+                self.assertEqual(request.authority_deliveries, ())
+                self.assertEqual(request.products[0].runtime_authority_deliveries,
+                                 (admitted.delivery,))
+
+    def test_compiled_product_deliveries_preserve_selected_references_once(self) -> None:
+        base = _registered_product().descriptor_document.product
+        declared = (
+            SecretFileDelivery(
+                "/run/secrets/service/token",
+                SecretReference("secret://defaults/service/token"),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                path_binding=SecretFilePathBinding("SERVICE_TOKEN_FILE"),
+            ),
+            SecretFileDelivery(
+                "/run/secrets/service/password",
+                SecretReference("secret://defaults/service/password"),
+                SecretUseIntent.POSTGRES_PASSWORD,
+                path_binding=SecretFilePathBinding("SERVICE_PASSWORD_FILE"),
+            ),
+        )
+        product = replace(base, runtime_contract=replace(
+            base.runtime_contract, secret_deliveries=declared,
+        ))
+        document = ProductDescriptorCodec().encode_document(product)
+        registered = RegisteredProduct.from_document(
+            workspace_id="workspace-a", descriptor_document=document,
+            source=InlineDescriptorSource(), imported_by="operator-a",
+            imported_at="2026-07-22T09:00:00Z",
+        )
+        for configured_references in (False, True):
+            with self.subTest(configured_references=configured_references):
+                configuration = ProductInstanceConfiguration.from_contract(
+                    product.runtime_contract,
+                )
+                if configured_references:
+                    configuration = replace(configuration, secret_deliveries=tuple(
+                        replace(delivery, reference=SecretReference(
+                            "secret://workspace-a/service/" + delivery.target_path.rsplit("/", 1)[1],
+                        ))
+                        for delivery in reversed(configuration.secret_deliveries)
+                    ))
+                block = instantiate_product(product, "api", configuration)
+                graph = compile_topology(DeploymentTopology(
+                    "selected-deliveries", DockerRuntime(runtime_id="docker", children=(block,)),
+                ))
+
+                request = runtime_effect_request_for_context(_context(
+                    desired_graph=graph, registered_products=(registered,),
+                ))
+
+                self.assertEqual(
+                    request.products[0].product.runtime_contract.secret_deliveries,
+                    configuration.secret_deliveries,
+                )
+
+    def test_required_secret_slots_reject_missing_or_mismatched_selection(self) -> None:
+        declared = _secret_contract_context(selected_deliveries=()).registered_products[
+            0
+        ].descriptor_document.product.runtime_contract.secret_deliveries
+        first, second = declared
+        candidates = (
+            ("empty", ()),
+            ("partial", (first,)),
+            ("wrong-target", (replace(first, target_path="/run/secrets/other"), second)),
+            ("wrong-intent", (replace(first, intent=SecretUseIntent.OCI_PULL_CREDENTIAL), second)),
+            ("wrong-binding", (replace(first, path_binding=None), second)),
+            ("wrong-kind", (SecretEnvironmentDelivery(
+                "OTHER_TOKEN", first.reference, first.intent,
+            ), second)),
+        )
+        for operation_type in (StartNode, ReconcileNode):
+            for label, selected in candidates:
+                with self.subTest(operation=operation_type, selection=label):
+                    context = _secret_contract_context(
+                        selected_deliveries=selected,
+                        operation=operation_type(NodeTarget("api")),
+                    )
+                    with self.assertRaises(InvalidOperationCommand) as raised:
+                        runtime_effect_request_for_context(context)
+                    self.assertEqual(str(raised.exception),
+                                     "runtime effect secret delivery contract is not satisfied")
+                    self.assertIsNone(raised.exception.__cause__)
+                    self.assertIsNone(raised.exception.__context__)
+
+    def test_required_secret_slot_rejects_multiple_selected_references(self) -> None:
+        declared = (SecretFileDelivery(
+            "/run/secrets/token", SecretReference("secret://defaults/token"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+        ),)
+        selected = declared + (replace(
+            declared[0], reference=SecretReference("secret://workspace-a/token"),
+        ),)
+        for operation_type in (StartNode, ReconcileNode):
+            with self.subTest(operation=operation_type):
+                context = _secret_contract_context(
+                    selected_deliveries=selected, declared_deliveries=declared,
+                    operation=operation_type(NodeTarget("api")),
+                )
+                with self.assertRaises(InvalidOperationCommand):
+                    runtime_effect_request_for_context(context)
+
+    def test_required_secret_slots_allow_additional_selected_material(self) -> None:
+        declared = _secret_contract_context(selected_deliveries=()).registered_products[
+            0
+        ].descriptor_document.product.runtime_contract.secret_deliveries
+        extra = SecretEnvironmentDelivery(
+            "SOCKET_PASSWORD", SecretReference("secret://workspace-a/socket/password"),
+            SecretUseIntent.POSTGRES_PASSWORD,
+        )
+        selected = tuple(replace(
+            value, reference=SecretReference("secret://workspace-a/" + str(index)),
+        ) for index, value in enumerate(declared)) + (extra,)
+        context = _secret_contract_context(selected_deliveries=selected)
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(request.products[0].product.runtime_contract.secret_deliveries,
+                         (extra,) + selected[:-1])
+
+    def test_teardown_does_not_require_fresh_secret_slot_admission(self) -> None:
+        for operation_type in (StopNode, RemoveNodeResource):
+            with self.subTest(operation=operation_type):
+                context = _secret_contract_context(
+                    selected_deliveries=(),
+                    operation=operation_type(NodeTarget("api")),
+                )
+                request = runtime_effect_request_for_context(context)
+                self.assertEqual(
+                    request.products[0].product.runtime_contract.secret_deliveries, (),
+                )
 
     def test_context_translates_only_compiled_socket_bound_secret_deliveries(
         self,
@@ -591,6 +841,66 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             (active_secret.secret_ref.reference_id,),
         )
         self.assertNotIn("tunnel-token-value", repr(request.descriptor()).lower())
+
+    def test_explicit_compiled_tunnel_token_needs_no_generated_material(self) -> None:
+        delivery = SecretEnvironmentDelivery(
+            "TUNNEL_TOKEN", SecretReference("secret://workspace-a/selected/tunnel"),
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+        )
+        context = _context(
+            activity=PlannedActivity(
+                ActivityId("start-cloudflared"), StartNode(NodeTarget("cloudflared")),
+            ),
+            desired_graph=_public_ingress_graph(connector_deliveries=(delivery,)),
+            registered_products=(_registered_product(name="cloudflared-connector"),),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(
+            request.products[0].product.runtime_contract.secret_deliveries,
+            (delivery,),
+        )
+
+    def test_generated_ingress_material_satisfies_declared_secret_slot(self) -> None:
+        declared = SecretEnvironmentDelivery(
+            "TUNNEL_TOKEN", SecretReference("secret://defaults/tunnel"),
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+        )
+        base = _registered_product(name="cloudflared-connector").descriptor_document.product
+        product = replace(base, runtime_contract=replace(
+            base.runtime_contract, secret_deliveries=(declared,),
+        ))
+        registered = RegisteredProduct.from_document(
+            workspace_id="workspace-a",
+            descriptor_document=ProductDescriptorCodec().encode_document(product),
+            source=InlineDescriptorSource(), imported_by="operator-a",
+            imported_at="2026-07-22T09:00:00Z",
+        )
+        graph = _public_ingress_graph()
+        graph = replace(graph, nodes={**graph.nodes, "cloudflared": replace(
+            graph.node("cloudflared"), metadata={
+                "product_identity": registered.reference.identity.key,
+                "product_descriptor_digest": registered.reference.descriptor_sha256.value,
+            },
+        )})
+        generated = _generated_ingress_secret()
+        context = _context(
+            activity=PlannedActivity(
+                ActivityId("start-cloudflared"), StartNode(NodeTarget("cloudflared")),
+            ),
+            desired_graph=graph, registered_products=(registered,),
+            ingress_authorities=(_registered_ingress_authority(),),
+            ingress_resources=(_cloudflare_resource(),),
+            generated_ingress_secrets=(generated,),
+        )
+
+        request = runtime_effect_request_for_context(context)
+
+        self.assertEqual(
+            request.products[0].product.runtime_contract.secret_deliveries,
+            (replace(declared, reference=generated.secret_ref),),
+        )
 
     def test_gateway_node_receives_graph_derived_target_map_environment(self) -> None:
         graph = _gateway_graph()
@@ -739,10 +1049,56 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         self.assertNotIn("CPK_GATEWAY_TARGETS_JSON", environment)
 
 
+def _secret_contract_context(
+    *,
+    selected_deliveries: tuple[SecretDelivery, ...],
+    declared_deliveries: tuple[SecretDelivery, ...] | None = None,
+    operation: object | None = None,
+) -> ActivityRealizationContext:
+    if declared_deliveries is None:
+        declared_deliveries = (
+            SecretFileDelivery(
+                "/run/secrets/password", SecretReference("secret://defaults/password"),
+                SecretUseIntent.POSTGRES_PASSWORD,
+                path_binding=SecretFilePathBinding("PASSWORD_FILE"),
+            ),
+            SecretFileDelivery(
+                "/run/secrets/token", SecretReference("secret://defaults/token"),
+                SecretUseIntent.APPLICATION_CONTROL_TOKEN,
+                path_binding=SecretFilePathBinding("TOKEN_FILE"),
+            ),
+        )
+    base = _registered_product().descriptor_document.product
+    product = replace(base, runtime_contract=replace(
+        base.runtime_contract, secret_deliveries=declared_deliveries,
+    ))
+    registered = RegisteredProduct.from_document(
+        workspace_id="workspace-a",
+        descriptor_document=ProductDescriptorCodec().encode_document(product),
+        source=InlineDescriptorSource(), imported_by="operator-a",
+        imported_at="2026-07-22T09:00:00Z",
+    )
+    graph = _graph()
+    graph = replace(graph, nodes={"api": replace(
+        graph.node("api"), secret_deliveries=selected_deliveries,
+        metadata={
+            "product_identity": registered.reference.identity.key,
+            "product_descriptor_digest": registered.reference.descriptor_sha256.value,
+        },
+    )})
+    return _context(
+        base_graph=graph, desired_graph=graph, registered_products=(registered,),
+        activity=PlannedActivity(
+            ActivityId("activity-a"), operation or StartNode(NodeTarget("api")),
+        ),
+    )
+
+
 def _context(
     *,
     run_id: str = "run-a",
     activity: PlannedActivity | None = None,
+    base_graph: DeploymentGraph | None = None,
     desired_graph: DeploymentGraph | None = None,
     pull_authorities: tuple[RegisteredImagePullAuthority, ...] = (),
     runtime_authority_deliveries: tuple[RegisteredRuntimeAuthorityDelivery, ...] = (),
@@ -790,7 +1146,7 @@ def _context(
                 graph_id="graph-base",
                 workspace_id="workspace-a",
                 version=1,
-                graph=graph,
+                graph=graph if base_graph is None else base_graph,
                 created_by="operator-a",
                 created_at="2026-07-22T09:00:00Z",
             )
@@ -858,6 +1214,29 @@ def _pinned_context() -> _CoordinatorContext:
         authority=realization.authority,
         fence=realization.fence,
     )
+
+
+def _admitted_node_delivery(delivery=None) -> RegisteredRuntimeAuthorityDelivery:
+    return RegisteredRuntimeAuthorityDelivery.from_delivery(
+        workspace_id="workspace-a",
+        delivery=delivery or RuntimeAuthorityAccessDelivery(
+            RuntimeAuthorityReference("local-docker"),
+            RuntimeAuthorityAccessDeliveryKind.LOCAL_DOCKER_SOCKET_MOUNT,
+        ),
+        admitted_by="operator-a",
+        admitted_at="2026-07-22T10:03:00Z",
+    )
+
+
+def _authority_recipient_graph(delivery) -> DeploymentGraph:
+    original = _graph(authority_ref=delivery.authority_ref)
+    nodes = {
+        name: replace(original.node("api"), node_id=name, block_spec=BlockSpec(name),
+                      runtime_authority_deliveries=(delivery,) if name == "controller" else ())
+        for name in ("controller", "database", "custody")
+    }
+    return replace(original, nodes=nodes, runtimes={"docker": replace(
+        original.runtimes["docker"], children=tuple(nodes))})
 
 
 def _graph(

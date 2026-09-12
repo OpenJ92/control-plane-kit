@@ -27,7 +27,7 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_fingerprint,
     runtime_effect_intent_for_request,
 )
-from control_plane_kit_core.runtime_effects import RuntimeEffectResult
+from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
 from control_plane_kit_operations.coordinator import (
     ActivityExecutionAdapter,
     ActivityExecutionDispatcher,
@@ -77,6 +77,9 @@ from tests.effect_attempt_coordinator_fixture import (
     RecordingStartService,
 )
 from tests.test_runtime_interpreter_dispatcher import context_for
+from tests.test_runtime_effect_translation import (
+    _admitted_node_delivery, _context, _graph, _secret_contract_context,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -374,12 +377,17 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
     ("control_plane_kit_operations.products", "RegisteredImagePullAuthority", None),
     ("control_plane_kit_operations.products", "RegisteredProduct", None),
     ("control_plane_kit_operations.runtime_authorities", "RegisteredRuntimeAuthority", None),
+    ("control_plane_kit_operations.runtime_authorities", "RemoteDockerTlsAuthority", None),
     (
         "control_plane_kit_operations.runtime_authorities",
-        "RegisteredRuntimeAuthorityDelivery",
+        "RuntimeAuthorityRegistrationError",
         None,
     ),
-    ("control_plane_kit_operations.runtime_authorities", "RemoteDockerTlsAuthority", None),
+    (
+        "control_plane_kit_operations.runtime_authorities",
+        "_admitted_runtime_authority_deliveries",
+        None,
+    ),
     ("control_plane_kit_operations.workflows", "InvalidOperationCommand", None),
     ("dataclasses", "replace", None),
     ("json", None, None),
@@ -593,6 +601,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("_runtime_id_for_context", 1),
     ("_runtime_kind_for_context", 1),
     ("_secret_deliveries_for_node", 1),
+    ("_secret_delivery_contract_key", 2),
     ("_with_source_edges", 1),
     ("any", 2),
     ("authority.authority.permits", 1),
@@ -622,13 +631,19 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("control_plane_kit_core.runtime_effects.GatewayTargetId", 1),
     ("control_plane_kit_core.runtime_effects.GatewayTargetMap", 1),
     ("control_plane_kit_core.runtime_effects.RuntimeProductMaterial", 1),
+    ("control_plane_kit_core.secrets.secret_delivery_sort_key", 1),
     ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 2),
     (
         "control_plane_kit_operations.ingress_authorities."
         "cloudflare_tunnel_token_delivery_plan",
         1,
     ),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 30),
+    (
+        "control_plane_kit_operations.runtime_authorities."
+        "_admitted_runtime_authority_deliveries",
+        1,
+    ),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 32),
     ("dataclasses.replace", 2),
     ("gateway_node.provider_socket", 1),
     ("gateway_target_map_for_node", 1),
@@ -637,16 +652,17 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("graph_id.strip", 2),
     ("hasattr", 2),
     ("int", 1),
-    ("isinstance", 14),
+    ("isinstance", 16),
     ("json.dumps", 1),
     ("len", 7),
     ("metadata.get", 2),
     ("postgres_target.get", 3),
+    ("selected_keys.count", 1),
     ("set", 1),
-    ("sorted", 7),
+    ("sorted", 6),
     ("source_edges.setdefault", 1),
     ("targets.values", 1),
-    ("tuple", 17),
+    ("tuple", 16),
     ("type", 2),
     ("uses.add", 3),
     ("uses.update", 1),
@@ -934,6 +950,70 @@ class EffectAttemptCoordinatorContractTests(
             self.assertIsNone(error.__cause__)
             self.assertIsNone(error.__context__)
 
+    def test_withdrawn_delivery_admission_blocks_before_new_attempt_or_effect(self) -> None:
+        admitted = _admitted_node_delivery()
+        graph = _graph(authority_ref=admitted.authority_ref)
+        desired = replace(graph, nodes={"api": replace(
+            graph.node("api"), runtime_authority_deliveries=(admitted.delivery,))})
+        start = RecordingStartService(EffectAttemptStartDenied())
+        fold = RecordingFoldService()
+        reconcile = RecordingReconciliationService()
+        adapter = RecordingCoordinatorAdapter()
+        coordinator = self.db_free_coordinator(
+            start_service=start, fold_service=fold,
+            reconciliation_service=reconcile, adapter=adapter,
+        )
+        # A pinned approved graph still requests delivery; the fresh active
+        # admission snapshot no longer contains it. No provider effect is legal.
+        coordinator.pinned_context = replace(
+            coordinator.pinned_context,
+            desired_graph=_context(desired_graph=desired).desired_graph,
+            runtime_authority_deliveries=(),
+        )
+        with self.assertRaises((InvalidOperationCommand, ExecutionCoordinatorDenied)) as raised:
+            coordinator.execute(self.coordinator_command())
+        self.assertEqual(start.commands, [])
+        self.assertIsInstance(raised.exception, InvalidOperationCommand)
+        self.assertEqual(fold.commands, [])
+        self.assertEqual(reconcile.commands, [])
+        self.assertEqual(adapter.runtime_calls, [])
+        self.assertEqual(adapter.legacy_contexts, [])
+        self.assertEqual(coordinator.legacy_writes, [])
+
+    def test_missing_secret_slots_block_before_new_attempt_or_effect(self) -> None:
+        empty = _secret_contract_context(selected_deliveries=())
+        declared = empty.registered_products[0].descriptor_document.product.runtime_contract.secret_deliveries
+        for selected in ((), declared[:1]):
+            with self.subTest(selected_count=len(selected)):
+                context = _secret_contract_context(selected_deliveries=selected)
+                start = RecordingStartService(EffectAttemptStartDenied())
+                fold = RecordingFoldService()
+                reconcile = RecordingReconciliationService()
+                adapter = RecordingCoordinatorAdapter()
+                coordinator = self.db_free_coordinator(
+                    start_service=start, fold_service=fold,
+                    reconciliation_service=reconcile, adapter=adapter,
+                )
+                coordinator.pinned_context = replace(
+                    coordinator.pinned_context,
+                    desired_graph=context.desired_graph,
+                    registered_products=context.registered_products,
+                )
+                with self.assertRaises((InvalidOperationCommand, ExecutionCoordinatorDenied)) as raised:
+                    coordinator.execute(self.coordinator_command())
+                self.assertIs(type(raised.exception), InvalidOperationCommand)
+                self.assertEqual(str(raised.exception),
+                                 "runtime effect secret delivery contract is not satisfied")
+                self.assertIsNone(raised.exception.__cause__)
+                self.assertIsNone(raised.exception.__context__)
+                self.assertEqual(start.commands, [])
+                self.assertEqual(fold.commands, [])
+                self.assertEqual(reconcile.commands, [])
+                self.assertEqual(adapter.runtime_calls, [])
+                self.assertEqual(adapter.legacy_contexts, [])
+                self.assertEqual(coordinator.legacy_writes, [])
+                self.assertEqual(coordinator.effect_ledger, [])
+
     def test_live_start_binds_exact_event_request_and_folds_once(self) -> None:
         started = self.newly_started()
         result = RuntimeEffectResult.succeeded(
@@ -1082,25 +1162,41 @@ class EffectAttemptCoordinatorContractTests(
 
     def test_adapter_fault_and_wrong_arm_become_one_direct_uncertain_fold(self) -> None:
         started = self.newly_started()
-        cases = (
-            ("raised", RuntimeError("provider-secret-canary")),
-            ("wrong-arm", ActivityExecutionOutcome.succeeded()),
+        inner_result = RuntimeEffectResult.uncertain(
+            started.attempt.original_start_event.event_id,
+            RuntimeEffectFailure(
+                "runtime.provider-result-unknown",
+                "runtime provider result could not be admitted",
+                details={"boundary": "interpreter", "reason": "exception"},
+            ),
         )
-        for label, adapter_value in cases:
+        cases = (
+            ("raised", RuntimeError("provider-secret-canary"), "adapter", "exception"),
+            ("wrong-arm", ActivityExecutionOutcome.succeeded(), "adapter", "invalid-result-type"),
+            ("wrong-effect-id", RuntimeEffectResult.succeeded("other-effect"), "adapter", "effect-id-mismatch"),
+            ("inner-uncertainty", inner_result, "interpreter", "exception"),
+        )
+        for label, adapter_value, boundary, reason in cases:
             with self.subTest(case=label):
+                start = RecordingStartService(started)
+                adapter = RecordingCoordinatorAdapter(adapter_value)
+                reconciliation = RecordingReconciliationService()
                 fold = RecordingFoldService(
                     lambda command: self.fold_result_for(command, started)
                 )
                 coordinator = self.db_free_coordinator(
-                    start_service=RecordingStartService(started),
+                    start_service=start,
                     fold_service=fold,
-                    reconciliation_service=RecordingReconciliationService(),
-                    adapter=RecordingCoordinatorAdapter(adapter_value),
+                    reconciliation_service=reconciliation,
+                    adapter=adapter,
                 )
 
                 outcome = coordinator.execute(self.coordinator_command())
 
                 self.assertEqual(outcome.effects_attempted, 1)
+                self.assertEqual(len(start.commands), 1)
+                self.assertEqual(len(adapter.runtime_calls), 1)
+                self.assertEqual(reconciliation.commands, [])
                 self.assertEqual(len(fold.commands), 1)
                 result = fold.commands[0].outcome.result
                 self.assertIs(type(result), RuntimeEffectResult)
@@ -1112,6 +1208,9 @@ class EffectAttemptCoordinatorContractTests(
                 self.assertIsNotNone(result.failure)
                 assert result.failure is not None
                 self.assertEqual(result.failure.code, "runtime.provider-result-unknown")
+                self.assertEqual(result.failure.details, {"boundary": boundary, "reason": reason})
+                if label == "inner-uncertainty":
+                    self.assertEqual(result, inner_result)
                 self.assertNotIn("provider-secret-canary", repr(result))
                 self.assertEqual(coordinator.legacy_writes, [])
                 self.assertEqual(coordinator.effect_ledger, [])

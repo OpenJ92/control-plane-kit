@@ -31,7 +31,13 @@ from control_plane_kit_operations.postgres import (
     PostgresUnitOfWork,
     install_schema,
 )
+from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_operations.records import GraphVersionRecord
+from control_plane_kit_operations.desired_topology_drafts import (
+    DesiredTopologyDraftRecord, DesiredTopologyDraftRevisionRecord,
+)
 from control_plane_kit_operations.read_pages import (
+    DraftReadScope,
     READ_COLLECTION_SPECS,
     PlanReadScope,
     ReadCollection,
@@ -44,6 +50,7 @@ from control_plane_kit_operations.read_pages import (
 from control_plane_kit_operations.read_services import InstanceReadService
 
 
+_CATALOGUE_DRAFT_ID = "catalogue-0001"
 _LIMIT = 100
 _CLOCK = datetime(2026, 8, 12, 12, tzinfo=timezone.utc)
 _HOSTILE_CURSOR = {"api_token": "do-not-disclose"}
@@ -71,6 +78,23 @@ class _RouteRequest:
 
 def _route_cases() -> tuple[_RouteCase, ...]:
     return (
+        _RouteCase(
+            "read.desired-topology-drafts",
+            ReadCollection.DESIRED_TOPOLOGY_DRAFTS,
+            "desired_topology_drafts",
+            lambda h: WorkspaceReadScope(h.activity_workspace_id),
+            lambda h: {"workspace_id": h.activity_workspace_id},
+            lambda h: {"workspace_id": h.activity_workspace_id},
+        ),
+        _RouteCase(
+            "read.desired-topology-draft-revisions",
+            ReadCollection.DESIRED_TOPOLOGY_DRAFT_REVISIONS,
+            "desired_topology_drafts",
+            lambda h: DraftReadScope(h.activity_workspace_id, _CATALOGUE_DRAFT_ID),
+            lambda h: {"workspace_id": h.activity_workspace_id, "draft_id": _CATALOGUE_DRAFT_ID},
+            lambda h: {"workspace_id": h.activity_workspace_id, "draft_id": _CATALOGUE_DRAFT_ID},
+        ),
+
         _RouteCase(
             "read.activity",
             ReadCollection.ACTIVITY_SESSIONS,
@@ -266,6 +290,7 @@ class LargeReadRouteParityTests(unittest.TestCase):
                 connection.execute(f'SET search_path TO "{schema}"')
                 return connection
 
+            _seed_catalogue_pages(connect, handles.activity_workspace_id)
             yield connect, handles
         finally:
             administration.execute("SET search_path TO public")
@@ -275,14 +300,23 @@ class LargeReadRouteParityTests(unittest.TestCase):
     def test_literal_route_inventory_matches_public_collection_specs(self) -> None:
         cases = _route_cases()
 
-        self.assertEqual(len(cases), 16)
-        self.assertEqual(len({case.route_id for case in cases}), 16)
-        self.assertEqual(len({case.collection for case in cases}), 16)
-        self.assertEqual(len({case.direct_method for case in cases}), 16)
+        self.assertEqual(len(cases), 18)
+        self.assertEqual(len({case.route_id for case in cases}), 18)
+        self.assertEqual(len({case.collection for case in cases}), 18)
+        self.assertEqual(len({case.direct_method for case in cases}), 17)
+        # Revision max10 traversal/parity is owned by test_revision_history_pages.
+        revision = {("read.desired-topology-draft-revision-" + suffix.lower(),
+                     getattr(ReadCollection, "DESIRED_TOPOLOGY_DRAFT_REVISION_" + suffix, None))
+                    for suffix in ("PREPARATIONS", "ATTEMPTS")}
+        self.assertNotIn(None, {collection for _, collection in revision}, "missing revision history collections")
+        legacy = {(case.route_id, case.collection) for case in cases}
+        self.assertFalse(legacy & revision)
         self.assertEqual(
-            {(case.route_id, case.collection) for case in cases},
+            legacy | revision,
             {(spec.route_id, spec.collection) for spec in READ_COLLECTION_SPECS},
         )
+        self.assertEqual(len(READ_COLLECTION_SPECS), 20)
+        self.assertEqual({collection for _, collection in legacy | revision}, set(ReadCollection))
         for case in cases:
             self.assertTrue(callable(getattr(InstanceReadService, case.direct_method)))
 
@@ -474,10 +508,42 @@ class LargeReadRouteParityTests(unittest.TestCase):
         return LargeReadHistoryHandles(**values)
 
 
+def _seed_catalogue_pages(connect, workspace_id: str) -> None:
+    """Add real catalogue rows to the existing disposable large-read fixture."""
+    created_at = "2026-08-12T12:00:00Z"
+    with PostgresUnitOfWork(connect) as uow:
+        uow.stores.workspaces.get_for_update(workspace_id)
+        catalogue = uow.stores.desired_topology_drafts
+        for index in range(1, 202):
+            draft_id = f"catalogue-{index:04d}"
+            graph_id = f"catalogue-initial-{index:04d}"
+            uow.stores.graphs.save(GraphVersionRecord.from_graph(
+                graph_id=graph_id, workspace_id=workspace_id,
+                version=uow.stores.graphs.next_version_for_workspace(workspace_id),
+                graph=DeploymentGraph("Catalogue page fixture"), created_by="operator", created_at=created_at,
+            ))
+            catalogue.create(DesiredTopologyDraftRecord(workspace_id, draft_id,
+                f"Design {index}", 1, "operator", created_at))
+            catalogue.append(DesiredTopologyDraftRevisionRecord(workspace_id, draft_id,
+                1, graph_id, "operator", created_at), expected_head_revision=None)
+        for revision in range(2, 202):
+            graph_id = f"catalogue-history-{revision:04d}"
+            uow.stores.graphs.save(GraphVersionRecord.from_graph(
+                graph_id=graph_id, workspace_id=workspace_id,
+                version=uow.stores.graphs.next_version_for_workspace(workspace_id),
+                graph=DeploymentGraph("Catalogue history fixture"), created_by="operator", created_at=created_at,
+            ))
+            catalogue.append(DesiredTopologyDraftRevisionRecord(workspace_id, _CATALOGUE_DRAFT_ID,
+                revision, graph_id, "operator", created_at), expected_head_revision=revision - 1)
+        uow.commit()
+
+
 def _read_service(stores) -> InstanceReadService:
+
     return InstanceReadService(
         workspace_store=stores.workspaces,
         graph_topology_store=stores.graphs,
+        desired_topology_draft_store=stores.desired_topology_drafts,
         activity_history_store=stores.activity_history,
         execution_store=stores.execution,
         observed_state_store=stores.observed_state,

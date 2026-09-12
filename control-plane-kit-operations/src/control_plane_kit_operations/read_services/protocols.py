@@ -17,15 +17,23 @@ from control_plane_kit_operations.records import (
     ActivityPlanRecord,
     ActivityRunRecord,
     ApprovalRequestRecord,
+    ExecutionCommandReceiptRecord,
     GraphVersionRecord,
     ObservationRecord,
     OperationSessionRecord,
+    SavedPreparationSourceRecord,
     WorkspaceRecord,
 )
+
+
 from control_plane_kit_operations.secret_providers import (
     RegisteredSecretProvider,
     RegisteredSecretReference,
 )
+
+
+class SavedPreparationSourceStore(Protocol):
+    def get(self, workspace_id: str, session_id: str) -> SavedPreparationSourceRecord | None: ...
 
 
 class WorkspaceStore(Protocol):
@@ -37,6 +45,13 @@ class GraphTopologyStore(Protocol):
 
 
 class ActivityHistoryStore(Protocol):
+    def overview_plans(
+        self, workspace_id: str, desired_graph_id: str,
+        desired_realized_projection_id: str, desired_graph_revision: int,
+    ) -> tuple[ActivityPlanRecord, ...]: ...
+    def overview_pending_approvals(
+        self, plan_id: str,
+    ) -> tuple[ApprovalRequestRecord, ...]: ...
     def get_session(self, session_id: str) -> OperationSessionRecord: ...
     def sessions_for_workspace(
         self, workspace_id: str
@@ -59,6 +74,10 @@ class ActivityHistoryStore(Protocol):
 
 
 class ExecutionStore(Protocol):
+    def overview_runs(self, plan_id: str) -> tuple[ActivityRunRecord, ...] | None: ...
+    def overview_receipts(
+        self, run_id: str,
+    ) -> tuple[ExecutionCommandReceiptRecord, ...]: ...
     def get_request(self, request_id: str) -> object: ...
     def get_run(self, run_id: str) -> ActivityRunRecord: ...
     def runs_for_plan(self, plan_id: str) -> tuple[ActivityRunRecord, ...]: ...

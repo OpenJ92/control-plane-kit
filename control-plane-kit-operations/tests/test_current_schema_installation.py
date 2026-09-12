@@ -24,6 +24,8 @@ _EXPECTED_RELATIONS = (
     "cpk_approval_requests",
     "cpk_cloudflare_ingress_resources",
     "cpk_delegation_signing_keys",
+    "cpk_desired_topology_draft_revisions",
+    "cpk_desired_topology_drafts",
     "cpk_effect_attempt_intents",
     "cpk_effect_attempt_outcome_observations",
     "cpk_effect_attempt_outcomes",
@@ -50,6 +52,7 @@ _EXPECTED_RELATIONS = (
     "cpk_registered_products",
     "cpk_runtime_authorities",
     "cpk_runtime_authority_deliveries",
+    "cpk_saved_preparation_sources",
     "cpk_secret_providers",
     "cpk_secret_references",
     "cpk_secret_use_authorizations",
@@ -115,10 +118,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "4a06ccf8c2b8f0358cd8737edb9d84a0ca73e4be3fb19bc41be26eb221e2b7c3"
+    "6dff163cf72add13406d168d8e7389cdada4e6885e345c2534307753c5d24f4c"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "0a999a173207265745f400a84f38810dbe835f4380a2ac419d97350a97aa8256"
+    "e1bc40971ae2299c62305abb572cc2dc610c83ccc10afbd5039aaa7d290fffe6"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -168,7 +171,7 @@ _OLD_INTENT_EXPRESSION = (
     "'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, "
     "'postgres.password'::text]))"
 )
-_INTENT_EXPRESSION = (
+_PRE_SECRETS_INTENT_EXPRESSION = (
     "(use_intent = ANY (ARRAY['application.control-token'::text, "
     "'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, "
     "'docker.local-socket-access-marker'::text, "
@@ -179,6 +182,20 @@ _INTENT_EXPRESSION = (
     "'postgres.password'::text, "
     "'gateway.node-control-transit-signing-key'::text, "
     "'workload.node-control-signing-key'::text]))"
+)
+_INTENT_EXPRESSION = (
+    "(use_intent = ANY (ARRAY['application.control-token'::text, "
+    "'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, "
+    "'docker.local-socket-access-marker'::text, "
+    "'docker.remote-tls.ca-certificate'::text, "
+    "'docker.remote-tls.client-certificate'::text, "
+    "'docker.remote-tls.client-key'::text, "
+    "'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, "
+    "'postgres.password'::text, "
+    "'gateway.node-control-transit-signing-key'::text, "
+    "'workload.node-control-signing-key'::text, "
+    "'secrets.custody-root-key'::text, "
+    "'secrets.provider-credentials-document'::text]))"
 )
 _TARGET_CONSTRAINTS = {
     "cpk_delegation_signing_keys_purpose_check": (
@@ -353,10 +370,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 37)
-        self.assertEqual(len(contract.columns), 489)
-        self.assertEqual(len(contract.constraints), 367)
-        self.assertEqual(len(contract.indexes), 120)
+        self.assertEqual(len(contract.relations), 40)
+        self.assertEqual(len(contract.columns), 507)
+        self.assertEqual(len(contract.constraints), 382)
+        self.assertEqual(len(contract.indexes), 131)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -560,7 +577,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            37,
+            40,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),
@@ -591,13 +608,65 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (37, 489, 367, 120))
+        self.assertEqual(self._catalog_counts(), (40, 507, 382, 131))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
             ).fetchone(),
             (True,),
         )
+
+    def test_current_sql_revision_history_indexes_match_semantic_contract(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract
+        from control_plane_kit_operations.postgres import current_schema_verification
+        from control_plane_kit_operations.postgres import schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        names = (
+            "cpk_activity_events_current_graph_advancement",
+            "cpk_operation_actions_current_graph_advancement",
+        )
+        self.connection.execute(schema._CURRENT_SCHEMA_SQL)
+        # Reuse the verifier's semantic observation, preserving its four bounded
+        # catalog candidate sets; expose only the two issue-owned descriptors.
+        query, separator, _ = (
+            current_schema_verification._CURRENT_SCHEMA_CONTRACT_QUERY.partition(
+                "\nSELECT\n  COALESCE("
+            )
+        )
+        self.assertTrue(separator, "semantic verifier query boundary changed")
+        rows = self.connection.execute(
+            query + "\nSELECT value FROM semantic_indexes "
+            "WHERE index_name = ANY(%s) ORDER BY relname, index_name LIMIT 2",
+            (
+                len(contract.relations) + 1,
+                len(contract.columns) + 1,
+                len(contract.constraints) + 1,
+                len(contract.indexes) + 1,
+                list(names),
+            ),
+        ).fetchall()
+        expected = [
+            json.loads(json.dumps(dataclasses.asdict(index)))
+            for index in contract.indexes
+            if index.name in names
+        ]
+        self.assertEqual(len(expected), 2)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([row[0]["name"] for row in rows], list(names))
+        self.assertEqual([index["name"] for index in expected], list(names))
+        observed_by_name = {row[0]["name"]: row[0] for row in rows}
+        expected_by_name = {index["name"]: index for index in expected}
+        self.assertEqual(set(observed_by_name), set(names))
+        self.assertEqual(set(expected_by_name), set(names))
+        for name in names:
+            observed_index = observed_by_name[name]
+            expected_index = expected_by_name[name]
+            self.assertEqual(set(observed_index), set(expected_index))
+            for field in sorted(expected_index):
+                with self.subTest(index=name, field=field):
+                    self.assertEqual(observed_index[field], expected_index[field])
+        postgres.install_schema(self.connection)
 
     def test_fresh_schema_persists_new_authority_purpose_and_intents(self) -> None:
         postgres.install_schema(self.connection)
@@ -701,6 +770,31 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
                     [("workspace-a", "Workspace A", "created")],
                 )
                 self._assert_calls_are_read_only(recorder.calls)
+
+    def test_pre_secrets_intent_constraint_is_reset_required_without_repair(self) -> None:
+        postgres.install_schema(self.connection)
+        self._seed_authority_vocabulary_rows()
+        self.connection.execute(
+            "ALTER TABLE cpk_secret_use_authorizations "
+            "DROP CONSTRAINT cpk_secret_use_authorizations_intent_check"
+        )
+        self.connection.execute(
+            "ALTER TABLE cpk_secret_use_authorizations "
+            "ADD CONSTRAINT cpk_secret_use_authorizations_intent_check "
+            f"CHECK ({_PRE_SECRETS_INTENT_EXPRESSION})"
+        )
+        before_constraints = self._constraint_snapshot()
+        before_objects = self._object_identities()
+        before_rows = self._authority_rows()
+        recorder = _RecordingConnection(self.connection)
+
+        error = _captured_install_error(recorder)
+
+        self._assert_install_error(error, "operations schema reset is required")
+        self.assertEqual(self._constraint_snapshot(), before_constraints)
+        self.assertEqual(self._object_identities(), before_objects)
+        self.assertEqual(self._authority_rows(), before_rows)
+        self._assert_calls_are_read_only(recorder.calls)
 
     def test_current_reinstall_is_query_only_and_identity_stable(self) -> None:
         postgres.install_schema(self.connection)
@@ -919,7 +1013,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (37, 489, 367, 120))
+        self.assertEqual(self._catalog_counts(), (40, 507, 382, 131))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

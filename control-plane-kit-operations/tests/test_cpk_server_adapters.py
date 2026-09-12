@@ -928,6 +928,58 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 403)
         self.assertFalse(store_accessed)
 
+    def test_operator_overview_authorizes_before_query_and_matches_http_mcp(self) -> None:
+        store_accessed = False
+
+        def forbidden_unit_of_work():
+            nonlocal store_accessed
+            store_accessed = True
+            raise AssertionError("authorization must precede overview store access")
+
+        denied_service = CpkServerReadService(forbidden_unit_of_work)
+        with self.assertRaises(CpkServerApplicationError) as raised:
+            denied_service.handle(
+                RouteRequest(
+                    surface="http",
+                    route_id="read.operator-overview",
+                    service_role=ControlPlaneServiceRole.READS,
+                    path_parameters={"workspace_id": "workspace-a"},
+                    payload={},
+                    principal=operator_principal(
+                        workspace_ids=("workspace-b",),
+                        scopes=(PolicyScope.INSTANCE_WORKSPACE_READ,),
+                    ),
+                )
+            )
+        self.assertEqual(raised.exception.status, 403)
+        self.assertFalse(store_accessed)
+
+        self.seed_run_event()
+        service = CpkServerReadService(self.unit_of_work)
+
+        http = service.handle(
+            RouteRequest(
+                surface="http",
+                route_id="read.operator-overview",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={"workspace_id": "workspace-a"},
+                payload={},
+            )
+        )
+        mcp = service.handle(
+            RouteRequest(
+                surface="mcp",
+                route_id="read.operator-overview",
+                service_role=ControlPlaneServiceRole.READS,
+                path_parameters={},
+                payload={"workspace_id": "workspace-a"},
+            )
+        )
+        self.assertEqual(http, mcp)
+        self.assertEqual(http["workspace_id"], "workspace-a")
+        self.assertEqual(http["kind"], "operator-overview")
+        self.assertNotIn("do-not-disclose", repr(http))
+
     def test_workspace_denial_is_bounded_before_command_service_access(self) -> None:
         recording = RecordingService()
         service = CpkServerApprovalService(recording)

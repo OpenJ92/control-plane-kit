@@ -64,6 +64,16 @@ that schema only when CPK's owned namespace is object-free. An already-current
 namespace is verified without mutation. Any other owned state fails with a
 bounded reset-required error; CPK does not infer or execute a repair.
 
+The current secret-use authorization constraint includes Core's existing
+`secrets.custody-root-key` and `secrets.provider-credentials-document` intents.
+Namespaces created with the earlier narrower constraint are noncurrent even
+when their rows would satisfy the new constraint. Installing newer code over
+those databases does not upgrade them: verification reports reset-required
+without changing their schema or records. A new deployment needs a fresh owned
+namespace; preserve valued data before any separately authorized reset or
+export/reset/import procedure. Retained uncertain runs must not be replayed as
+part of this schema change.
+
 This is deliberately package-local. It creates and verifies CPK's durable
 operations tables; it does not inspect, reset, or modify application schemas
 deployed by CPK.
@@ -105,6 +115,23 @@ ExecutionCoordinator
 Operations defines the dispatcher protocols and application sequencing. The
 Python Docker SDK and Cloudflare client remain in
 `control-plane-kit-interpreters`.
+
+When an interpreter or its enclosing adapter raises an exception, returns the
+wrong result type, or returns a mismatched effect identity, Operations preserves
+an uncertain result with code `runtime.provider-result-unknown`. Its retained
+failure details contain only fixed categories, for example:
+
+```json
+{"boundary": "adapter", "reason": "exception"}
+```
+
+`boundary` is `interpreter` or `adapter`; `reason` is `exception`,
+`invalid-result-type`, or `effect-id-mismatch`. A valid inner result passes
+through the adapter unchanged. No exception text, class name, trace, or rejected
+result representation is retained. These details belong to the exact durable
+outcome; normalized public summaries may omit them. They identify a boundary,
+not a root cause or evidence that an effect is safe to retry. Historical
+outcomes are unchanged.
 
 ## Registrations And Authorities
 

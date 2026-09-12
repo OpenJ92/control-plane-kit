@@ -746,6 +746,67 @@ class SecretProviderStoreTests(unittest.TestCase):
         )
         self.assertNotIn("resolved-value", repr(grant.descriptor()).lower())
 
+    def test_secrets_service_intents_commit_and_roundtrip_resolution_grants(self) -> None:
+        intents = (
+            SecretUseIntent.SECRETS_CUSTODY_ROOT_KEY,
+            SecretUseIntent.SECRETS_PROVIDER_CREDENTIALS_DOCUMENT,
+        )
+        provider = self.service().register_provider(
+            replace(self.provider_command(), allowed_intents=intents)
+        )
+        for index, intent in enumerate(intents):
+            with self.subTest(intent=intent):
+                reference = self.service().register_reference(
+                    self.reference_command(
+                        provider.registration_id,
+                        reference=SecretReference(
+                            f"secret://workspace-secrets/workspace-a/secrets/{index}"
+                        ),
+                        intents=(intent,),
+                    )
+                )
+                command = replace(
+                    self.authorize_command(
+                        reference.reference,
+                        intent=intent,
+                        correlation_id=f"secrets-use-{index}",
+                    ),
+                    actor_subject="worker-a",
+                )
+
+                grant = self.authorization_service().authorize_resolution(command)
+
+                self.assertIsInstance(grant, SecretResolutionGrant)
+                self.assertTrue(grant.permits(reference.reference, intent))
+                self.assertEqual(grant.effect_id, command.effect_id)
+                self.assertEqual(grant.provider_registration_id, provider.registration_id)
+                with self.unit_of_work() as unit_of_work:
+                    stored = unit_of_work.stores.secret_use_authorizations.get(
+                        command.workspace_id, grant.authorization_id
+                    )
+                self.assertEqual(stored.intent, intent)
+                self.assertEqual(stored.reference, reference.reference)
+                self.assertEqual(stored.reference_registration_id, reference.registration_id)
+                self.assertEqual(stored.correlation_id, command.correlation_id)
+                self.assertEqual(stored.actor_subject, "worker-a")
+                self.assertEqual(
+                    self.authorization_service().authorize_resolution(command), grant
+                )
+                self.assertEqual(
+                    self.connection.execute(
+                        "SELECT count(*) FROM cpk_secret_use_authorizations "
+                        "WHERE workspace_id=%s AND correlation_id=%s",
+                        (command.workspace_id, command.correlation_id),
+                    ).fetchone(),
+                    (1,),
+                )
+                with self.assertRaises(psycopg.errors.CheckViolation):
+                    self.connection.execute(
+                        "UPDATE cpk_secret_use_authorizations SET use_intent=%s "
+                        "WHERE authorization_id=%s",
+                        ("secrets.unsupported-intent", grant.authorization_id),
+                    )
+
     def test_use_permission_is_independent_and_conflicting_replay_fails(self) -> None:
         _, reference = self.admit_reference()
         service = self.authorization_service()

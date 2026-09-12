@@ -871,7 +871,9 @@ def _validate_hostname_pattern(pattern: str, *, zone_name: str) -> None:
         raise IngressAuthorityRegistrationError(
             "allowed hostname pattern must be lowercase"
         )
-    if lowered.count("*") != 1:
+    if "*" not in lowered:
+        _validate_hostname(lowered)
+    elif lowered.count("*") != 1:
         raise IngressAuthorityRegistrationError(
             "allowed hostname pattern requires exactly one wildcard"
         )

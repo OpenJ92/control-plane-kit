@@ -9892,6 +9892,7 @@
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_authority",
         "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_core.secrets",
         "control_plane_kit_operations.effect_attempt_fold",
@@ -10273,6 +10274,303 @@
       "protecting_tests": [
         "tests/test_package_structure.py",
         "tests/test_recovery_planning.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.desired_topology_drafts",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/desired_topology_drafts.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.desired_topology_drafts",
+      "role": "durable-control-plane-operation",
+      "motivation": "Owns saved desired-topology catalogue truth and bounded projections including exact desired selection and unused tombstone without execution.",
+      "internal_dependencies": [
+        "control_plane_kit_core.identity",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations._temporal",
+        "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.products",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "semantic_roles": [
+        "durable-control-plane-operation"
+      ],
+      "canonical_public_exports": [
+        "CreateDesiredTopologyDraft",
+        "ReviseDesiredTopologyDraft",
+        "SelectDesiredTopologyDraft",
+        "DeleteDesiredTopologyDraft",
+        "DesiredTopologyDraftSelectionResult",
+        "DesiredTopologyDraftDeletionResult",
+        "DesiredTopologyDraftCommandService",
+        "DesiredTopologyDraftResult",
+        "DesiredTopologyDraftRecord",
+        "DesiredTopologyDraftRevisionRecord",
+        "DesiredTopologyDraftStore",
+        "DesiredTopologyDraftError",
+        "DesiredTopologyDraftConflict"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.cpk_server"
+      ],
+      "migration_prerequisites": [
+
+      ],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
+        "control-plane-kit-operations/tests/test_draft_catalogue_adapters.py",
+        "control-plane-kit-operations/tests/test_draft_selection.py",
+        "control-plane-kit-operations/tests/test_draft_selection_adapters.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.desired_topology_draft_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/desired_topology_draft_store.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.postgres.desired_topology_draft_store",
+      "role": "durable-store",
+      "motivation": "Owns saved desired-topology catalogue truth and bounded projections without selecting or executing graphs.",
+      "internal_dependencies": [
+        "control_plane_kit_operations.desired_topology_drafts",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.postgres.temporal"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "semantic_roles": [
+        "durable-store"
+      ],
+      "canonical_public_exports": [
+        "PostgresDesiredTopologyDraftStore"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.cpk_server"
+      ],
+      "migration_prerequisites": [
+
+      ],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
+        "control-plane-kit-operations/tests/test_draft_catalogue_adapters.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.saved_preparation_source_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/saved_preparation_source_store.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.postgres.saved_preparation_source_store",
+      "role": "durable-store",
+      "motivation": "Owns relational saved preparation sources and bounded retained source integrity under caller transactions.",
+      "internal_dependencies": [
+        "control_plane_kit_operations.desired_topology_drafts",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.saved_deployment_preparation",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.postgres.temporal"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "durable-store"
+      ],
+      "canonical_public_exports": [
+        "PostgresSavedPreparationSourceStore"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.current_data_validation"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_saved_preparation_sources.py",
+        "control-plane-kit-operations/tests/test_saved_preparation_adapters.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.read_services.desired_topology_drafts",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/desired_topology_drafts.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.read_services.desired_topology_drafts",
+      "role": "read-projection",
+      "motivation": "Owns saved desired-topology catalogue truth and bounded projections without selecting or executing graphs.",
+      "internal_dependencies": [
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.desired_topology_drafts",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.read_services.errors",
+        "control_plane_kit_operations.read_services.models",
+        "control_plane_kit_operations.read_services.workspace_graph"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "semantic_roles": [
+        "read-projection"
+      ],
+      "canonical_public_exports": [
+
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.cpk_server"
+      ],
+      "migration_prerequisites": [
+
+      ],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_desired_topology_drafts.py",
+        "control-plane-kit-operations/tests/test_draft_catalogue_adapters.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.saved_deployment_preparation",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/saved_deployment_preparation.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.saved_deployment_preparation",
+      "role": "durable-control-plane-operation",
+      "motivation": "Admits an exact saved revision and immutable preparation evidence through the existing session transaction before planning; no graph publication or effects.",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.deployment_program",
+        "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.products",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "optional_external_dependencies": [
+
+      ],
+      "semantic_roles": [
+        "durable-control-plane-operation"
+      ],
+      "canonical_public_exports": [
+        "SavedDeploymentPreparationService",
+        "SavedPreparationError",
+        "saved_preparation_metadata",
+        "saved_preparation_session_metadata"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.deployment_program_interpreter",
+        "control_plane_kit_operations.cpk_server",
+        "control_plane_kit_operations.postgres.saved_preparation_source_store",
+        "control_plane_kit_operations.read_services.operator_overview"
+      ],
+      "migration_prerequisites": [
+
+      ],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_saved_preparation.py",
+        "control-plane-kit-operations/tests/test_saved_preparation_adapters.py",
+        "control-plane-kit-operations/tests/test_saved_preparation_values.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.revision_history",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/revision_history.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.revision_history",
+      "role": "read-projection",
+      "motivation": "Pure saved provenance and historical advancement attribution; no current fencing or external effects.",
+      "internal_dependencies": [
+        "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.saved_deployment_preparation",
+        "control_plane_kit_operations.workflows"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "read-projection"
+      ],
+      "canonical_public_exports": [
+        "RevisionHistoryStore"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.revision_history_store",
+        "control_plane_kit_operations.read_services.revision_history",
+        "control_plane_kit_operations.read_services.instance"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_revision_history.py",
+        "control-plane-kit-operations/tests/test_revision_history_pages.py",
+        "control-plane-kit-operations/tests/test_revision_history_advancement.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.revision_history_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/revision_history_store.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.postgres.revision_history_store",
+      "role": "durable-store",
+      "motivation": "One bounded set-based revision history query per page over caller-owned durable truth.",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_operations.desired_topology_drafts",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.revision_history",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.temporal"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "durable-store"
+      ],
+      "canonical_public_exports": [
+        "PostgresRevisionHistoryStore"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.stores"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_revision_history.py",
+        "control-plane-kit-operations/tests/test_revision_history_pages.py",
+        "control-plane-kit-operations/tests/test_revision_history_advancement.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.read_services.revision_history",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/revision_history.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.read_services.revision_history",
+      "role": "read-projection",
+      "motivation": "Compose the revision history owner through the read service boundary and bounded missing-parent errors.",
+      "internal_dependencies": [
+        "control_plane_kit_operations.revision_history",
+        "control_plane_kit_operations.read_services.errors"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "read-projection"
+      ],
+      "canonical_public_exports": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations.read_services.instance",
+        "control_plane_kit_operations.read_services.desired_topology_drafts"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_revision_history.py",
+        "control-plane-kit-operations/tests/test_revision_history_pages.py",
+        "control-plane-kit-operations/tests/test_revision_history_advancement.py"
       ]
     }
   ],

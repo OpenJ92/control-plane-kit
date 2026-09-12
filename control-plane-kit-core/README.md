@@ -28,6 +28,20 @@ execution belongs to `control-plane-kit-operations`; concrete effects belong to
 `control-plane-kit-interpreters`; process and OCI packaging belong to
 `control-plane-kit-servers`.
 
+An instance can explicitly request process authority through
+`ProductInstanceConfiguration.runtime_authority_deliveries`. The tuple defaults
+to empty and compiles into the same named node; sibling nodes sharing its runtime
+receive no declaration. It uses `RuntimeAuthorityAccessDelivery` references, never
+credentials or host socket paths. This instance setting does not alter the
+reusable `ProductRuntimeContract`.
+
+Adding or removing a declaration changes the graph and creates a node
+reconciliation plan. Empty declarations retain the existing canonical graph
+format. Runtime product material carries the declaration into intent commitments.
+Core #1793 supplies this language; Operations #1794 owns atomic recipient matching
+and active workspace admission. This Core slice alone does not correct existing
+runtime delivery, authorize replay of historical effects, or migrate stored graphs.
+
 ## Language Families
 
 ### Topology And Products

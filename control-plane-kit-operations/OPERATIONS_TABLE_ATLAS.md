@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=4a06ccf8c2b8f0358cd8737edb9d84a0ca73e4be3fb19bc41be26eb221e2b7c3 relations=37 columns=489 constraints=367 indexes=120 foreign-keys=81 -->
+<!-- current-schema-contract: sha256=6dff163cf72add13406d168d8e7389cdada4e6885e345c2534307753c5d24f4c relations=40 columns=507 constraints=382 indexes=131 foreign-keys=87 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -28,11 +28,12 @@ repair, data conversion, or inference from an older layout.
 ## Dependency Shape
 
 <!-- multi-table-scc: cpk_graph_versions,cpk_realized_graph_projections,cpk_workspaces -->
+<!-- draft-catalogue-scc: cpk_desired_topology_draft_revisions,cpk_desired_topology_drafts -->
 <!-- self-reference: cpk_activity_runs,cpk_effect_attempts,cpk_secret_providers,cpk_secret_references -->
 <!-- outcome-aggregate: cpk_effect_attempt_outcomes,cpk_effect_attempt_outcome_observations -->
 <!-- future-impact: 1553,1554,1555,1556,1243,1244 -->
 
-The only multi-table strongly connected component is the workspace lineage
+The first multi-table strongly connected component is the workspace lineage
 aggregate. A graph version belongs to a workspace; a realized projection pins
 its source graph and workspace; and the workspace selects current and desired
 projections while pinning both their source graph and workspace. This is an
@@ -45,6 +46,13 @@ heads, restore authored graphs, restore realized projections, then select the
 current and desired heads. Physical deletion reverses that order or clears the
 heads first. The public stores do not expose a general physical workspace
 delete operation.
+
+The second component is the saved draft/head aggregate. Each revision references
+its owning draft, while the draft head references an exact local revision through
+a deferred composite foreign key. Insert draft and revisions together, then verify
+the final head at commit. Saved graphs must already exist in the same workspace.
+This cycle preserves draft identity and history without selecting desired truth.
+There is no public physical deletion or automatic restore procedure.
 
 Self-references express retry ancestry for activity runs, immediate retry
 ancestry for effect attempts, and supersession chains for provider and
@@ -79,7 +87,7 @@ foreign key and the accepted lineage cycle:
    then root and descendant `cpk_secret_references`.
 4. Set each workspace's paired current/desired graph and projection heads and
    desired revision after every selected projection exists.
-5. Restore session actions and plans; gateway probe attempts; rotation
+5. Restore draft heads and all retained draft revisions in one transaction after their saved graphs, allowing the deferred head reference to resolve at commit. Restore session actions and plans; gateway probe attempts; rotation
    transitions and revocations; and approval requests.
 6. Restore approval decisions, then execution requests.
 7. Restore root activity runs before retry descendants, then execution-command
@@ -272,6 +280,10 @@ cpk_approval_requests -->|cpk_approval_requests_rotation_fk| cpk_gateway_key_rot
 cpk_approval_requests -->|cpk_approval_requests_session_id_fkey| cpk_operation_sessions
 cpk_cloudflare_ingress_resources -->|cpk_cloudflare_ingress_resources_workspace_id_fkey| cpk_workspaces
 cpk_delegation_signing_keys -->|cpk_delegation_signing_keys_workspace_id_fkey| cpk_workspaces
+cpk_desired_topology_draft_revisions -->|cpk_desired_topology_draft_revisions_draft_fkey| cpk_desired_topology_drafts
+cpk_desired_topology_draft_revisions -->|cpk_desired_topology_draft_revisions_graph_fkey| cpk_graph_versions
+cpk_desired_topology_drafts -->|cpk_desired_topology_drafts_head_fkey| cpk_desired_topology_draft_revisions
+cpk_desired_topology_drafts -->|cpk_desired_topology_drafts_workspace_fkey| cpk_workspaces
 cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_original_event_fk| cpk_activity_events
 cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_request_workspace_fk| cpk_execution_requests
 cpk_effect_attempt_intents -->|cpk_effect_attempt_intents_run_request_fk| cpk_activity_runs
@@ -329,6 +341,8 @@ cpk_realized_graph_projections -->|cpk_realized_graph_projections_workspace_id_f
 cpk_registered_products -->|cpk_registered_products_workspace_id_fkey| cpk_workspaces
 cpk_runtime_authorities -->|cpk_runtime_authorities_workspace_id_fkey| cpk_workspaces
 cpk_runtime_authority_deliveries -->|cpk_runtime_authority_deliveries_workspace_id_fkey| cpk_workspaces
+cpk_saved_preparation_sources -->|cpk_saved_preparation_sources_revision_fkey| cpk_desired_topology_draft_revisions
+cpk_saved_preparation_sources -->|cpk_saved_preparation_sources_session_fkey| cpk_operation_sessions
 cpk_secret_providers -->|cpk_secret_providers_supersedes_fk| cpk_secret_providers
 cpk_secret_providers -->|cpk_secret_providers_workspace_id_fkey| cpk_workspaces
 cpk_secret_references -->|cpk_secret_references_provider_fk| cpk_secret_providers
@@ -364,6 +378,10 @@ order is semantically significant for every composite identity.
 | `cpk_approval_requests_session_id_fkey` | `cpk_approval_requests` | `session_id` | `cpk_operation_sessions` | `session_id` | Every approval request belongs to an operation session. |
 | `cpk_cloudflare_ingress_resources_workspace_id_fkey` | `cpk_cloudflare_ingress_resources` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Observed ingress resources are owned by a workspace. |
 | `cpk_delegation_signing_keys_workspace_id_fkey` | `cpk_delegation_signing_keys` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Delegation signing-key registrations are workspace scoped. |
+| `cpk_desired_topology_draft_revisions_draft_fkey` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id` | `cpk_desired_topology_drafts` | `workspace_id, draft_id` | Every immutable revision belongs to the exact workspace-scoped draft. |
+| `cpk_desired_topology_draft_revisions_graph_fkey` | `cpk_desired_topology_draft_revisions` | `workspace_id, graph_id` | `cpk_graph_versions` | `workspace_id, graph_id` | Saved graph evidence belongs to the same workspace as its revision. |
+| `cpk_desired_topology_drafts_head_fkey` | `cpk_desired_topology_drafts` | `workspace_id, draft_id, head_revision` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id, revision` | The deferred head reference must resolve to one local immutable revision at commit. |
+| `cpk_desired_topology_drafts_workspace_fkey` | `cpk_desired_topology_drafts` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Named draft identity belongs to one durable workspace. |
 | `cpk_effect_attempt_intents_original_event_fk` | `cpk_effect_attempt_intents` | `original_event_id, original_event_run_id, original_event_ordinal` | `cpk_activity_events` | `event_id, run_id, ordinal` | Start intent evidence names the exact immutable event that begins the attempt. |
 | `cpk_effect_attempt_intents_request_workspace_fk` | `cpk_effect_attempt_intents` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Intent evidence derives workspace ownership from its execution request. |
 | `cpk_effect_attempt_intents_run_request_fk` | `cpk_effect_attempt_intents` | `run_id, request_id` | `cpk_activity_runs` | `run_id, request_id` | Intent evidence and activity run name the same execution request. |
@@ -421,6 +439,8 @@ order is semantically significant for every composite identity.
 | `cpk_registered_products_workspace_id_fkey` | `cpk_registered_products` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Product descriptor registrations are workspace scoped. |
 | `cpk_runtime_authorities_workspace_id_fkey` | `cpk_runtime_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime authority registrations are workspace scoped. |
 | `cpk_runtime_authority_deliveries_workspace_id_fkey` | `cpk_runtime_authority_deliveries` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Runtime authority delivery records are workspace scoped. |
+| `cpk_saved_preparation_sources_revision_fkey` | `cpk_saved_preparation_sources` | `workspace_id, draft_id, revision` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id, revision` | Saved admission names one immutable same-workspace revision. |
+| `cpk_saved_preparation_sources_session_fkey` | `cpk_saved_preparation_sources` | `session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | Source and preparation session belong to the same workspace. |
 | `cpk_secret_providers_supersedes_fk` | `cpk_secret_providers` | `supersedes_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | A provider replacement can supersede only a same-workspace registration. |
 | `cpk_secret_providers_workspace_id_fkey` | `cpk_secret_providers` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Secret-provider registrations are workspace scoped. |
 | `cpk_secret_references_provider_fk` | `cpk_secret_references` | `provider_registration_id, workspace_id` | `cpk_secret_providers` | `registration_id, workspace_id` | A secret reference names a provider in the same workspace. |
@@ -443,7 +463,7 @@ order is semantically significant for every composite identity.
 - **Outgoing foreign keys:** `run_id` requires the owning `cpk_activity_runs` row.
 - **Inbound dependents:** Effect-attempt rows bind exact original and latest event triples. Generated ingress-secret records may also cite event identifiers as provenance without a database foreign key.
 - **Writers and transactions:** `PostgresExecutionStore.add_event` performs one direct insert in the caller's run transaction; it does not compare an existing event for replay equivalence.
-- **Readers and projections:** Activity-history queries read events by run and ordinal for operator-facing execution narratives.
+- **Readers and projections:** Activity-history queries read events by run and ordinal for operator-facing execution narratives. Revision history probes at most two advancement events through the partial `(run_id, event_id)` index restricted to `current_graph_advanced`, then validates a correlated historical action/event pair.
 - **Mutation, locks, retries, and idempotency:** Inserts are append-only; duplicate `event_id` or `(run_id, ordinal)` is rejected by PostgreSQL, while command/workflow idempotency is owned outside this row.
 - **Lifecycle, retention, deletion, and restore:** Restore runs before events and preserve ordinal order; restrictive ownership prevents deleting a run with events.
 - **JSON boundary:** `_activity_event` requires an object and reconstructs `ActivityEventRecord`, `BoundedEvidence`, and optional `FailureEvidence` directly from `payload`.
@@ -451,6 +471,12 @@ order is semantically significant for every composite identity.
 - **Future impact:** Node-control dispatch in #1555 and #1556 may add event kinds, but must preserve ordered secret-free history.
 
 ### `cpk_activity_plans`
+
+`cpk_activity_plans_base_graph` and `cpk_activity_plans_desired_graph` are separate
+leading graph indexes for unused-draft retention proofs. Each EXISTS arm targets
+one index, including cancelled and superseded plans. No plan status permits
+deleting its retained draft history.
+
 - **Durable meaning and owner:** `PostgresActivityHistoryStore` owns the inspectable plan connecting operator intent to exact base and desired graph realizations.
 - **Identity and cardinality:** `plan_id` is primary and `(plan_id, session_id)` is the composite identity consumed by execution requests.
 - **Outgoing foreign keys:** The session must exist, and both base and desired `(projection_id, graph_id)` pairs must name projections of the stated authored graphs.
@@ -528,7 +554,34 @@ order is semantically significant for every composite identity.
 - **Sensitive material:** `public_key_pem` and its fingerprint are public material; `private_key_reference` is a sensitive locator, never a private key or signing result.
 - **Future impact:** #1553 and #1554 add transit authority language but must preserve exact purpose separation and defer private-key resolution to immediate I/O.
 
+### `cpk_desired_topology_draft_revisions`
+- **Durable meaning and owner:** `PostgresDesiredTopologyDraftStore` owns append-only saved topology revisions; Core owns the referenced graph language.
+- **Identity and cardinality:** `(workspace_id, draft_id, revision)` is primary; `(workspace_id, graph_id)` is unique so a saved graph has one revision identity.
+- **Outgoing foreign keys:** Composite draft and graph references preserve workspace and immutable graph identity.
+- **Inbound dependents:** A draft head references its exact revision through a deferred composite foreign key.
+- **Writers and transactions:** Catalogue create/revise append a graph version, revision, head and operation action on one caller-owned unit of work.
+- **Readers and projections:** Exact revision reads apply graph redaction; history uses revision/graph identity keysets with at most 100 exposed rows.
+- **Mutation, locks, retries, and idempotency:** Store publication is insert-only; command-key, session, workspace and draft locks precede CAS and action allocation. Replay verifies immutable revision and graph evidence before current-state admission.
+- **Lifecycle, retention, deletion, and restore:** Retain prior revisions. Restore saved graphs first, then draft and revisions together with the head FK deferred until commit; no graph/runtime cleanup is authorized.
+- **JSON boundary:** No graph blob is duplicated here; `graph_id` references the existing graph descriptor and codec boundary.
+- **Sensitive material:** Bounded graph coordinates are history evidence; exact graph reads use existing redaction and never resolve secret references.
+- **Future impact:** #1764 prepares the exact selected revision; selection does not change its immutable graph identity.
+
+### `cpk_desired_topology_drafts`
+- **Durable meaning and owner:** `PostgresDesiredTopologyDraftStore` owns named workspace design alternatives and their head/retirement evidence.
+- **Identity and cardinality:** `(workspace_id, draft_id)` is primary; head revision is positive and title is bounded. A workspace may retain multiple independent drafts.
+- **Outgoing foreign keys:** Workspace ownership and deferred `(workspace_id, draft_id, head_revision)` revision identity are explicit relational proofs.
+- **Inbound dependents:** Immutable revision rows reference this draft through their composite tenant key.
+- **Writers and transactions:** Create/revise save intent in one unit of work with graph/revision/action evidence; neither operation changes current/desired pointers or plans.
+- **Readers and projections:** Draft summaries use the `(workspace_id, created_at, draft_id)` chronology index and bounded independent cursors. Overview exposes only exact selected/head coordinates through the unique workspace/graph revision mapping.
+- **Mutation, locks, retries, and idempotency:** Revision requires expected-head CAS after session/workspace/draft locks. Selection holds the workspace row lock, checks the exact desired graph/projection/generation tuple, then updates and increments generation even for the same graph; it reuses the immutable identity projection. Delete uses separate indexed EXISTS checks for any revision referenced by workspace current/desired truth or any plan status. Planning holds the same workspace lock through commit. Exact replay validates retained evidence before current-state admission; changed intent conflicts.
+- **Lifecycle, retention, deletion, and restore:** Creation starts live at revision one. Paired retirement actor/time fields are written only for unused drafts at an exact expected head; tombstones and revision reads remain visible. Restore head and revisions atomically with saved graphs already present.
+- **JSON boundary:** No JSON payload; graph intent remains in immutable graph versions. Create/revise actions retain four coordinates; select actions add projection/generation, and delete actions retain exact head/actor/time evidence.
+- **Sensitive material:** Title is operator-authored bounded text and must not hold credentials; action payloads omit title and graph bodies.
+- **Future impact:** #1764 owns saved preparation from the exact selected revision. Schema changes require an explicit reset boundary, never an inferred in-place migration.
+
 ### `cpk_effect_attempt_intents`
+
 - **Durable meaning and owner:** `EffectAttemptIntentStore` owns one immutable protected runtime-effect intent for the exact original start event of an effect attempt.
 - **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary through `cpk_effect_attempt_intents_pkey`; `cpk_effect_attempt_intents_original_event_key` makes the original event triple independently unique, and `cpk_effect_attempt_intents_commitment_key` commits attempt identity, request fingerprint, and original event identity.
 - **Outgoing foreign keys:** Composite run/request and request/workspace references derive ownership, while the original event triple names the immutable start event.
@@ -794,7 +847,7 @@ order is semantically significant for every composite identity.
 - **Outgoing foreign keys:** `session_id` must name the owning operation session.
 - **Inbound dependents:** No current relation references actions; some provenance fields elsewhere retain action identifiers without database coupling.
 - **Writers and transactions:** Actions append with session state in the caller's activity-history transaction.
-- **Readers and projections:** Activity timelines read actions by session and ordinal, decoding their typed payloads.
+- **Readers and projections:** Activity timelines read actions by session and ordinal, decoding their typed payloads. Revision history probes at most two advancement actions through the partial `(session_id, payload->>'run_id', action_id)` index restricted to `advance-current-graph`; current mutable worker claims do not determine historical receipt validity.
 - **Mutation, locks, retries, and idempotency:** Append-only ordering and idempotency fingerprints distinguish same intent from a conflicting action.
 - **Lifecycle, retention, deletion, and restore:** Restore sessions before actions and preserve ordinal order; action history is not rewritten after closure.
 - **JSON boundary:** `payload` is the canonical action-specific document.
@@ -865,6 +918,19 @@ order is semantically significant for every composite identity.
 - **JSON boundary:** `delivery`, `secret_references`, and `metadata` are strict bounded documents.
 - **Sensitive material:** Secret references are sensitive locators only; resolved values, credentials, and delivery-time private material are never persisted.
 - **Future impact:** #1556 must resolve signing material immediately at the effect boundary rather than borrowing runtime delivery storage.
+
+### `cpk_saved_preparation_sources`
+- **Durable meaning and owner:** `PostgresSavedPreparationSourceStore` owns the explicit immutable saved input of a preparation session, not deployment success.
+- **Identity and cardinality:** Session primary key; many sessions may reference one `(workspace_id, draft_id, revision)`; reverse index follows that tuple then session ID.
+- **Outgoing foreign keys:** Immediate NO ACTION composite references to same-workspace session and immutable revision. No redundant graph ID.
+- **Inbound dependents:** None; plans and runs retain their existing session/plan relationships.
+- **Writers and transactions:** Saved admission inserts source after the session/start action and before their shared UoW commit. No independent commit or upsert.
+- **Readers and projections:** Tenant-scoped get supports replay and existing saved overview; current-data verification checks source/immutable commitment congruence.
+- **Mutation, locks, retries, and idempotency:** Session-key -> workspace -> draft precedes fresh admission. Replay requires the original source and never repairs missing evidence. No update/delete methods.
+- **Lifecycle, retention, deletion, and restore:** Retain source through head/selection/session changes. Fresh exact-schema installation only; older retained installations stay pinned, with no reset, transfer, import or backfill release.
+- **JSON boundary:** Source has no JSON. Shared saved metadata/fingerprint validator checks the immutable session commitment and revision-derived graph. Install-time candidate traversal uses batches64 and SQL byte caps under existing schema transaction/SHARE locks; memory is bounded, total work and lock duration are not.
+- **Sensitive material:** Only bounded identifiers and revision ordinal; no graph body, credentials or provider output. Errors omit malformed retained values.
+- **Future impact:** #1773 may consume this fact for bounded history; it must distinguish saved input from target graph association and accepted advancement. No per-HTTP global scan or repair engine. Complete erased saved evidence plus missing source is inherently indistinguishable.
 
 ### `cpk_secret_providers`
 - **Durable meaning and owner:** `SecretProviderStore` owns workspace-scoped provider registrations, allowed use policy, status, and supersession lineage.

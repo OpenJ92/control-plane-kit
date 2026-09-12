@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
-from control_plane_kit_core.planning import ActivityPlan, compile_activity_plan
+from control_plane_kit_core.planning import ActivityPlan, ReconcileNode, StartNode, compile_activity_plan
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
@@ -37,6 +37,10 @@ from control_plane_kit_operations.records import (
     OperationActionRecord,
     OperationSessionStatus,
     OperationsRecordError,
+)
+from control_plane_kit_operations.runtime_authorities import (
+    RuntimeAuthorityRegistrationError,
+    _admitted_runtime_authority_deliveries,
 )
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
@@ -556,6 +560,10 @@ class ActivityPlanningCommandService:
                 desired_projection_id=expected_desired_projection_id,
                 graph_codec=self._graph_codec,
             )
+            _require_fresh_plan_delivery_admission(
+                unit_of_work, plan, transition.desired.graph,
+                workspace_id=command.workspace_id,
+            )
             created_at = self._clock()
             plan_record = ActivityPlanRecord(
                 plan_id=self._id_factory(),
@@ -773,6 +781,36 @@ def _planning_transition(
     transition = Deploy(current, desired)
     plan = compile_activity_plan(transition.diff)
     return transition, plan
+
+
+def _require_fresh_plan_delivery_admission(
+    unit_of_work: Any,
+    plan: ActivityPlan,
+    desired: DeploymentGraph,
+    *,
+    workspace_id: str,
+) -> None:
+    """Check current admission only before recording a newly requested plan."""
+    admissions = None
+    denied = False
+    try:
+        for activity in plan.activities:
+            if not isinstance(activity.operation, (StartNode, ReconcileNode)):
+                continue
+            node = desired.nodes[activity.operation.target.node_id]
+            if not node.runtime_authority_deliveries:
+                continue
+            if admissions is None:
+                admissions = unit_of_work.stores.runtime_authority_deliveries.list_active(workspace_id)
+            _admitted_runtime_authority_deliveries(
+                node.runtime_authority_deliveries, admissions,
+                workspace_id=workspace_id,
+                authority_ref=desired.runtimes[node.runtime_id].authority_ref,
+            )
+    except (KeyError, RuntimeAuthorityRegistrationError):
+        denied = True
+    if denied:
+        raise ActivityPlanningGraphStateConflict("planned process authority is not admitted")
 
 
 def _projection_record(

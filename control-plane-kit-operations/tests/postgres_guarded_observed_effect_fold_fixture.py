@@ -8,6 +8,7 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_intent_fingerprint,
 )
 from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.effect_attempt_fold import (
     GuardedObservedEffectFold,
 )
@@ -85,7 +86,10 @@ class PostgresGuardedObservedEffectFoldFixture(
             activity_id=current.state.identity.activity_id,
         )
         if authority_ref is False:
-            intent = replace(intent, authority_ref=None, authority_deliveries=())
+            intent = replace(
+                intent, authority_ref=None, authority_deliveries=(),
+                products=tuple(replace(product, runtime_authority_deliveries=()) for product in intent.products),
+            )
         return intent
 
     def intent_record(self, current, *, intent=None):
@@ -99,17 +103,12 @@ class PostgresGuardedObservedEffectFoldFixture(
     def register_runtime_authority(self, intent, *, remote=False):
         if intent.authority_ref is None:
             return None
-        references = {
-            reference.label: reference.reference
-            for delivery in intent.authority_deliveries
-            for reference in delivery.secret_references
-        }
         authority = (
             RemoteDockerTlsAuthority(
                 endpoint="tcp://mac-mini.local:2376",
-                ca_certificate=references["ca-cert"],
-                client_certificate=references["client-cert"],
-                client_key=references["client-key"],
+                ca_certificate=SecretReference("secret://local/workspace-a/docker/ca-cert"),
+                client_certificate=SecretReference("secret://local/workspace-a/docker/client-cert"),
+                client_key=SecretReference("secret://local/workspace-a/docker/client-key"),
             )
             if remote
             else LocalDockerSocketAuthority()
@@ -163,7 +162,7 @@ class PostgresGuardedObservedEffectFoldFixture(
             runtime_authority,
         )
 
-    def seed_guarded_source(self, story=None, *, authority_ref=True):
+    def seed_guarded_source(self, story=None, *, authority_ref=True, process_delivery=True):
         story = story or self.observed_story()
         self._fold_compensation = story.compensation
         self._fold_outcome_story = story
@@ -178,6 +177,14 @@ class PostgresGuardedObservedEffectFoldFixture(
             original_time="2030-01-01T00:00:00Z",
         )
         intent = self.persisted_intent(current, authority_ref=authority_ref)
+        if not process_delivery:
+            intent = replace(
+                intent, authority_deliveries=(),
+                products=tuple(
+                    replace(product, runtime_authority_deliveries=())
+                    for product in intent.products
+                ),
+            )
         state = replace(
             current.state,
             request_fingerprint=runtime_effect_intent_fingerprint(intent),

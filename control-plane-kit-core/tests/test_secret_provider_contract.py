@@ -40,6 +40,8 @@ class SecretProviderContractTests(unittest.TestCase):
                 "postgres.password",
                 "gateway.node-control-transit-signing-key",
                 "workload.node-control-signing-key",
+                "secrets.custody-root-key",
+                "secrets.provider-credentials-document",
             ),
         )
         with self.assertRaises(ValueError):
@@ -100,6 +102,29 @@ class SecretProviderContractTests(unittest.TestCase):
         )
         self.assertNotIn("secret_value", descriptor)
         self.assertNotIn("plaintext", repr(descriptor).lower())
+
+        purposes = (
+            "secrets.custody-root-key",
+            "secrets.provider-credentials-document",
+        )
+        for purpose_value in purposes:
+            with self.subTest(purpose=purpose_value):
+                self.assertIn(purpose_value, {intent.value for intent in SecretUseIntent})
+                purpose = SecretUseIntent(purpose_value)
+                bootstrap_grant = replace(grant, intent=purpose)
+                self.assertTrue(bootstrap_grant.permits(reference, purpose))
+                self.assertFalse(bootstrap_grant.permits(
+                    SecretReference("secret://provider-a/postgres/other"), purpose))
+                self.assertFalse(bootstrap_grant.permits(
+                    reference, SecretUseIntent.APPLICATION_CONTROL_TOKEN))
+                for other_value in purposes:
+                    if other_value != purpose_value:
+                        self.assertIn(other_value, {intent.value for intent in SecretUseIntent})
+                        self.assertFalse(bootstrap_grant.permits(
+                            reference, SecretUseIntent(other_value)))
+                self.assertEqual(bootstrap_grant.descriptor(), {
+                    **descriptor, "intent": purpose_value,
+                })
 
     def test_generated_secret_custody_is_reference_only_and_exact(self) -> None:
         reference = SecretReference(

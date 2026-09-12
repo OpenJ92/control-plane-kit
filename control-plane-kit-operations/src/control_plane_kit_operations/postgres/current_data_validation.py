@@ -34,6 +34,8 @@ WITH referenced(graph_id) AS (
   SELECT base_graph_id FROM cpk_activity_plans
   UNION
   SELECT desired_graph_id FROM cpk_activity_plans
+  UNION
+  SELECT graph_id FROM cpk_desired_topology_draft_revisions
 )
 SELECT octet_length(graph.graph_id) BETWEEN 1 AND %s,
        CASE WHEN octet_length(graph.graph_id) BETWEEN 1 AND %s
@@ -246,10 +248,14 @@ def validate_current_rows(connection: _Connection) -> None:
         from control_plane_kit_operations.postgres.effect_outcome_store import (
             _validate_current_rows as validate_effect_outcome_rows,
         )
+        from control_plane_kit_operations.postgres.saved_preparation_source_store import (
+            _validate_current_rows as validate_saved_preparation_sources,
+        )
 
         validate_effect_attempt_rows(connection)
         _validate_effect_attempt_intent_rows(connection)
         validate_effect_outcome_rows(connection)
+        validate_saved_preparation_sources(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()

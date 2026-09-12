@@ -1,6 +1,46 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.revision_history_store"
+selector = "PostgresRevisionHistoryStore.page"
+category = "public-paged"
+sql = "exact workspace/draft/revision membership; temporal keyset; LIMIT limit plus one, at most eleven candidates; bounded source and receipt evidence"
+consumer_kind = "production"
+consumer = "InstanceReadService revision preparation and attempt history pages"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.overview_plans"
+category = "fixed-cardinality"
+sql = "workspace open-session and exact desired-lineage filters; LIMIT two eligible plans"
+consumer_kind = "production"
+consumer = "operator-overview projection validates unique current workflow and base lineage"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore.overview_pending_approvals"
+category = "fixed-cardinality"
+sql = "plan filter and no recorded decision; LIMIT two pending approvals"
+consumer_kind = "production"
+consumer = "operator-overview projection reports pending approval or ambiguity"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.overview_runs"
+category = "fixed-cardinality"
+sql = "plan filter; bounded 101-row sentinel CTE; return at most 100 records or unavailable"
+consumer_kind = "production"
+consumer = "operator-overview projection validates bounded current retry lineage"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.execution"
+selector = "PostgresExecutionStore.overview_receipts"
+category = "fixed-cardinality"
+sql = "selected-run filter; unresolved admissions or latest completions; LIMIT two candidates"
+consumer_kind = "production"
+consumer = "operator-overview projection preserves uncertain or uniquely latest command truth"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.activity_history"
 selector = "PostgresActivityHistoryStore.sessions_for_workspace"
 category = "internal-complete"
@@ -443,3 +483,37 @@ category = "exact-verifier"
 sql = "identity keyset batches bounded by fixed batch size; each ordered membership LIMIT observation_count plus one"
 consumer_kind = "production"
 consumer = "current schema admission validates every immutable direct outcome membership"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.desired_topology_draft_store"
+selector = "PostgresDesiredTopologyDraftStore.page"
+occurrence = 1
+category = "public-paged"
+sql = "workspace filter; created_at/draft_id ascending keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService desired_topology_drafts draft summaries"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.desired_topology_draft_store"
+selector = "PostgresDesiredTopologyDraftStore.page"
+occurrence = 2
+category = "public-paged"
+sql = "workspace/draft filter; revision/graph_id ascending keyset; LIMIT limit plus one"
+consumer_kind = "production"
+consumer = "InstanceReadService desired_topology_drafts revision summaries"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.desired_topology_draft_store"
+selector = "PostgresDesiredTopologyDraftStore.revisions_for_graph"
+category = "fixed-cardinality"
+sql = "workspace and unique graph key filter; LIMIT two proves zero/one mapping or unavailable"
+consumer_kind = "production"
+consumer = "operator-overview resolves exact selected draft and rereads catalogue anchors"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.saved_preparation_source_store"
+selector = "_validate_current_rows"
+category = "exact-verifier"
+sql = "saved-key or source-owner session candidates; session_id ascending keyset; LIMIT 64 and SQL byte caps before decode; complete traversal, not bounded total work"
+consumer_kind = "production"
+consumer = "current schema verification checks bidirectional saved source and immutable session commitment integrity"

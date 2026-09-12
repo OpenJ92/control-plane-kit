@@ -32,11 +32,24 @@ class DeploymentProgramReference:
 
 
 @dataclass(frozen=True, slots=True)
+class SavedDesiredTopologyRevision:
+    """An exact immutable catalogue input, without selection authority."""
+
+    draft_id: str
+    revision: int
+
+    def __post_init__(self) -> None:
+        _bounded_identity(self.draft_id, "draft_id")
+        if type(self.revision) is not int or not 1 <= self.revision <= 9223372036854775807:
+            raise InvalidDeploymentProgramContract("revision must be a bounded positive integer")
+
+
+@dataclass(frozen=True, slots=True)
 class PrepareDeploymentProgram:
     """Bounded desired intent for effect-free deployment preparation."""
 
     context: TrustedCommandContext = field(repr=False)
-    desired: DeploymentGraph = field(repr=False)
+    desired: DeploymentGraph | SavedDesiredTopologyRevision = field(repr=False)
     expected_current: GraphProjectionLineage
     expected_desired: GraphProjectionLineage | None
     expected_desired_graph_revision: int
@@ -46,9 +59,9 @@ class PrepareDeploymentProgram:
 
     def __post_init__(self) -> None:
         _context(self.context)
-        if type(self.desired) is not DeploymentGraph:
+        if type(self.desired) not in (DeploymentGraph, SavedDesiredTopologyRevision):
             raise InvalidDeploymentProgramContract(
-                "desired must be DeploymentGraph"
+                "desired must be DeploymentGraph or SavedDesiredTopologyRevision"
             )
         _lineage(self.expected_current, "expected_current")
         if self.expected_desired is not None:
@@ -66,6 +79,12 @@ class PrepareDeploymentProgram:
             raise InvalidDeploymentProgramContract(
                 "present expected_desired requires a positive revision"
             )
+        if type(self.desired) is SavedDesiredTopologyRevision:
+            if self.expected_desired is None or revision > 9223372036854775807:
+                raise InvalidDeploymentProgramContract("saved preparation requires bounded selected lineage")
+            for lineage in (self.expected_current, self.expected_desired):
+                _bounded_identity(lineage.authored_graph_id, "authored_graph_id")
+                _bounded_identity(lineage.realized_projection_id, "realized_projection_id")
         _bounded_content(self.title, "title")
         _idempotency_key(self.idempotency_key)
         if self.approval_comment is not None:
@@ -202,5 +221,6 @@ __all__ = [
     "DeploymentProgramReference",
     "InvalidDeploymentProgramContract",
     "PrepareDeploymentProgram",
+    "SavedDesiredTopologyRevision",
     "ProgressDeploymentProgram",
 ]

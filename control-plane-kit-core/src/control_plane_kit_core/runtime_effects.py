@@ -20,7 +20,9 @@ from control_plane_kit_core.environment import (
 )
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.run_identity import RunId
-from control_plane_kit_core.planning import ActivityId, ActivityOperation, ReviewChange
+from control_plane_kit_core.planning import (
+    ActivityId, ActivityOperation, ReconcileNode, ReviewChange, StartNode,
+)
 from control_plane_kit_core.planning.codec import (
     ActivityPlanDescriptorError,
     activity_operation_descriptor,
@@ -42,6 +44,7 @@ from control_plane_kit_core.runtime_authority import (
     RuntimeAuthorityReference,
     RuntimeAuthorityReferenceCodec,
     RuntimeEffectContractError,
+    normalize_runtime_authority_deliveries,
 )
 from control_plane_kit_core.secrets import (
     CredentialReference,
@@ -211,8 +214,11 @@ class RuntimeProductMaterial:
     public_environment: tuple[PublicStaticEnvironmentBinding, ...] = ()
     socket_environment: tuple[SocketDerivedEnvironmentBinding, ...] = ()
     pull_authority: ImagePullAuthority | None = None
+    runtime_authority_deliveries: tuple[RuntimeAuthorityAccessDelivery, ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "runtime_authority_deliveries",
+                           normalize_runtime_authority_deliveries(self.runtime_authority_deliveries))
         _required_text(self.node_id, "node_id")
         _required_text(self.runtime_id, "runtime_id")
         if not isinstance(self.reference, ProductReference):
@@ -261,6 +267,9 @@ class RuntimeProductMaterial:
         return {
             "node_id": self.node_id,
             "runtime_id": self.runtime_id,
+            **({"runtime_authority_deliveries": [value.descriptor()
+                 for value in self.runtime_authority_deliveries]}
+               if self.runtime_authority_deliveries else {}),
             "reference": ProductReferenceCodec().encode(self.reference),
             "product": ContainerServerProductCodec().encode(self.product),
             "public_environment": [
@@ -276,7 +285,13 @@ class RuntimeProductMaterial:
 
     @classmethod
     def from_descriptor(cls, value: Mapping[str, object]) -> "RuntimeProductMaterial":
-        _require_keys(value, _PRODUCT_MATERIAL_KEYS, "runtime product material")
+        expected_keys = _PRODUCT_MATERIAL_KEYS | (
+            {"runtime_authority_deliveries"} if "runtime_authority_deliveries" in value else set()
+        )
+        _require_keys(value, expected_keys, "runtime product material")
+        deliveries = value.get("runtime_authority_deliveries", [])
+        if not isinstance(deliveries, list):
+            raise RuntimeEffectContractError("process deliveries must be a list")
         return cls(
             node_id=_text(value, "node_id"),
             runtime_id=_text(value, "runtime_id"),
@@ -295,6 +310,9 @@ class RuntimeProductMaterial:
                 "runtime product material",
             ),
             pull_authority=_pull_authority(value.get("pull_authority")),
+            runtime_authority_deliveries=tuple(
+                RuntimeAuthorityAccessDeliveryCodec().decode(delivery) for delivery in deliveries
+            ),
         )
 
 
@@ -588,6 +606,9 @@ class RuntimeEffectRequest:
         if len(set(node_ids)) != len(node_ids):
             raise RuntimeEffectContractError("runtime product node ids must be unique")
         object.__setattr__(self, "products", products)
+        _validate_runtime_authority_recipient(
+            self.operation, self.authority_ref, self.authority_deliveries, products
+        )
 
     def descriptor(self) -> dict[str, object]:
         return {
@@ -605,6 +626,27 @@ class RuntimeEffectRequest:
             "operation": activity_operation_descriptor(self.operation),
             "products": [value.descriptor() for value in self.products],
         }
+
+
+def _validate_runtime_authority_recipient(
+    operation: object,
+    authority_ref: RuntimeAuthorityReference | None,
+    deliveries: tuple[RuntimeAuthorityAccessDelivery, ...],
+    products: tuple[RuntimeProductMaterial, ...],
+) -> None:
+    """Bind selected process access to exactly one declared recipient."""
+    if not isinstance(operation, (StartNode, ReconcileNode)):
+        if deliveries:
+            raise RuntimeEffectContractError("operation cannot deliver process authority")
+        return
+    if not deliveries and not any(product.runtime_authority_deliveries for product in products):
+        return
+    if len(products) != 1 or products[0].node_id != operation.target.node_id:
+        raise RuntimeEffectContractError("process authority requires exact target material")
+    if deliveries != products[0].runtime_authority_deliveries:
+        raise RuntimeEffectContractError("process authority must match target declaration")
+    if authority_ref is None or any(delivery.authority_ref != authority_ref for delivery in deliveries):
+        raise RuntimeEffectContractError("process authority must match runtime authority")
 
 
 @dataclass(frozen=True)

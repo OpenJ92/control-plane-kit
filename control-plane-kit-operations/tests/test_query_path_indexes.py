@@ -39,6 +39,17 @@ from control_plane_kit_operations.read_pages import (
 
 
 _EXPECTED_QUERY_PATH_INDEXES = {
+    "cpk_activity_plans_base_graph": (
+        "cpk_activity_plans", ("base_graph_id",), None,
+    ),
+    "cpk_activity_plans_desired_graph": (
+        "cpk_activity_plans", ("desired_graph_id",), None,
+    ),
+    "cpk_desired_topology_drafts_chronology": (
+        "cpk_desired_topology_drafts",
+        ("workspace_id", "created_at", "draft_id"),
+        None,
+    ),
     "cpk_operation_sessions_workspace_timeline": (
         "cpk_operation_sessions",
         ("workspace_id", "created_at", "session_id"),
@@ -82,7 +93,7 @@ class QueryPathIndexContractTests(unittest.TestCase):
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         indexes = {value.name: value for value in contract.indexes}
 
-        self.assertEqual(len(contract.indexes), 120)
+        self.assertEqual(len(contract.indexes), 131)
         for name, (relation, keys, predicate) in _EXPECTED_QUERY_PATH_INDEXES.items():
             with self.subTest(index=name):
                 value = indexes[name]
