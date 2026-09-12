@@ -1367,7 +1367,7 @@
     {
       "source": "control-plane-kit-operations/tests/test_package_gate.py",
       "companion": "docs/implementation/control-plane-kit-operations/tests/test_package_gate.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
