@@ -437,7 +437,7 @@
     {
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_outcome_store.py",
       "companion": "docs/implementation/control-plane-kit-operations/src/control_plane_kit_operations/postgres/effect_outcome_store.py.md",
-      "status": "pending",
+      "status": "reviewed",
       "exclusion_reason": null
     },
     {
