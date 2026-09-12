@@ -754,3 +754,31 @@ __all__ += [
     "NodeHealthReadResult",
     "NodeHealthReadResultCodec",
 ]
+
+from control_plane_kit_core.node_health_transit import (
+    MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_AUDIENCE_BYTES,
+    MAX_DELEGATED_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_BYTES,
+    MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_LIFETIME_SECONDS,
+    GatewayNodeHealthReadTransitContractError,
+    DelegatedGatewayNodeHealthReadTransitGrantProfile,
+    GatewayNodeHealthReadTransitGrantDigest,
+    DelegatedGatewayNodeHealthReadTransitGrant,
+    DelegatedGatewayNodeHealthReadTransitGrantCodec,
+    GatewayNodeHealthReadTransitGrantVerificationCode,
+    GatewayNodeHealthReadTransitGrantVerificationResult,
+    verify_gateway_node_health_read_transit_grant,
+)
+
+__all__ += [
+    "MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_AUDIENCE_BYTES",
+    "MAX_DELEGATED_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_BYTES",
+    "MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_LIFETIME_SECONDS",
+    "GatewayNodeHealthReadTransitContractError",
+    "DelegatedGatewayNodeHealthReadTransitGrantProfile",
+    "GatewayNodeHealthReadTransitGrantDigest",
+    "DelegatedGatewayNodeHealthReadTransitGrant",
+    "DelegatedGatewayNodeHealthReadTransitGrantCodec",
+    "GatewayNodeHealthReadTransitGrantVerificationCode",
+    "GatewayNodeHealthReadTransitGrantVerificationResult",
+    "verify_gateway_node_health_read_transit_grant",
+]

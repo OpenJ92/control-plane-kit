@@ -53,6 +53,7 @@ class DelegationPublicKeyTests(unittest.TestCase):
                 "workload-node-control-surface-read",
                 "workload-node-health-read",
                 "gateway-node-control-transit",
+                "gateway-node-health-read-transit",
             ),
         )
         self.assertEqual(
