@@ -30,6 +30,7 @@ EXPECTED_MODULES = {
     "node_control_transit",
     "node_health_reads",
     "node_health_read_results",
+    "node_health_transit",
     "operations.__init__",
     "operations.commands",
     "operations.compensation",
