@@ -103,8 +103,7 @@ class GatewayTransitDeclarationCodec:
     def decode(self, value: object) -> GatewayTransitDeclaration:
         if not isinstance(value, Mapping) or set(value) != {"provider_socket_name", "protocol"}:
             raise RuntimeManagementError("gateway transit declaration fields are invalid")
-        try:
-            protocol = GatewayTransitProtocol(value["protocol"])
-        except (TypeError, ValueError):
-            raise RuntimeManagementError("gateway transit protocol is unsupported") from None
-        return GatewayTransitDeclaration(value["provider_socket_name"], protocol)
+        raw_protocol = value["protocol"]
+        if not isinstance(raw_protocol, str) or raw_protocol != GatewayTransitProtocol.NODE_HEALTH_READ_V1.value:
+            raise RuntimeManagementError("gateway transit protocol is unsupported")
+        return GatewayTransitDeclaration(value["provider_socket_name"], GatewayTransitProtocol.NODE_HEALTH_READ_V1)

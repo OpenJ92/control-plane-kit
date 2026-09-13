@@ -311,6 +311,16 @@ class RuntimeManagementTests(unittest.TestCase):
         self.assertNotIn("private-key", str(caught.exception) + repr(caught.exception))
         self.assertIsNone(caught.exception.__context__)
 
+    def test_unknown_transit_profile_error_has_no_candidate_exception_context(self):
+        with self.assertRaises(ValueError) as caught:
+            self.api("GatewayTransitDeclarationCodec")().decode({
+                "provider_socket_name": "control", "protocol": "PRIVATE-PROFILE-" * 1000,
+            })
+        self.assertLess(len(str(caught.exception)), 200)
+        self.assertNotIn("PRIVATE-PROFILE", str(caught.exception) + repr(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+
     def test_equal_and_name_only_management_graphs_remain_no_activity(self):
         graph = self.graph()
         for desired in (graph, replace(graph, name="renamed")):
