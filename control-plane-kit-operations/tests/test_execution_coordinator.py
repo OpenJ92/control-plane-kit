@@ -945,7 +945,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 with self.unit_of_work() as uow:
                     execution = uow.stores.execution
                     execution.compare_and_set_run_status("run-a", expected=ActivityRunStatus.RUNNING, replacement=run_status,
-                        settled_at=None if run_status is ActivityRunStatus.PAUSED else "2026-07-22T13:00:30Z")
+                        settled_at="2026-07-22T13:00:30Z" if run_status is ActivityRunStatus.SUCCEEDED else None)
                     event_kind = {ActivityRunStatus.SUCCEEDED: ActivityEventKind.RUN_SUCCEEDED, ActivityRunStatus.FAILED: ActivityEventKind.RUN_FAILED, ActivityRunStatus.PAUSED: ActivityEventKind.RUN_PAUSED}[run_status]
                     execution.add_event(ActivityEventRecord("historical-run-state", "run-a", execution.next_event_ordinal("run-a"), event_kind, "2026-07-22T13:00:30Z"))
                     uow.commit()
@@ -981,6 +981,22 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 self.assertEqual(adapter.calls, [])
                 with self.unit_of_work() as uow:
                     self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_equal_sdk_graphs_do_not_exempt_a_nonempty_supplied_plan(self):
+        self._install_sdk_pair(equal=True)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        result = coordinator.execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(coordinator.execute(self.command()), result)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
 
     def test_completed_replay_does_not_repeat_effect(self) -> None:
         with self.unit_of_work() as unit_of_work:
