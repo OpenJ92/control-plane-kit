@@ -613,7 +613,7 @@ class ProductRuntimeContract:
                 transit_provider = self.sockets.provider(self.gateway_transit.provider_socket_name)
             except KeyError:
                 raise ProductRuntimeContractError("gateway transit requires a declared provider") from None
-            if transit_provider.protocol is not Protocol.HTTP:
+            if transit_provider.protocol != Protocol.HTTP:
                 raise ProductRuntimeContractError("gateway transit provider must use HTTP")
         if not isinstance(self.verification, VerificationContract):
             raise ProductRuntimeContractError(

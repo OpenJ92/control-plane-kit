@@ -21,7 +21,7 @@ from control_plane_kit_core.public_ingress import (
 from control_plane_kit_core.topology import (
     DeploymentGraph, GraphDescriptorCodec, compile_topology, diff_graphs, validate_graph,
 )
-from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.types import ApplicationProtocol, Protocol, Transport
 from control_plane_kit_core.topology.codec import GenericBlockSpecCodec
 from control_plane_kit_core.topology.changes import FieldSubject, ModifiedChange, StructuralField
 from control_plane_kit_core.topology.validation import RuntimeSubject
@@ -211,6 +211,30 @@ class RuntimeManagementTests(unittest.TestCase):
             ProductRuntimeContract(sockets=BlockSockets(providers=(ProviderSocket("data", Protocol.POSTGRES),)),
                 provider_ports=(ProviderRuntimePort("data", 5432),), gateway_transit=declaration)
 
+    def test_transit_accepts_value_equivalent_authored_http_protocol(self):
+        protocol = Protocol(Transport.TCP, ApplicationProtocol.HTTP)
+        self.assertEqual(protocol, Protocol.HTTP)
+        self.assertIsNot(protocol, Protocol.HTTP)
+        contract = replace(self.contract(gateway=True), sockets=BlockSockets(providers=(ProviderSocket("control", protocol),)))
+        gateway = self.block("gateway", contract)
+        compiled = compile_topology(DeploymentTopology("gateway", DockerRuntime(runtime_id="runtime", children=(gateway,))))
+        graph = self.graph()
+        graph = replace(graph, nodes={**graph.nodes, "gateway": compiled.node("gateway")})
+        self.assertTrue(validate_graph(graph).valid)
+        codec = GraphDescriptorCodec()
+        self.assertEqual(self.select(graph), self.select(codec.decode(codec.encode(graph))))
+
+    def test_invalid_graph_selector_error_does_not_echo_graph_label(self):
+        graph = replace(self.graph(), name="PRIVATE-LABEL-" * 1000, public_ingresses=())
+        invalid = validate_graph(graph)
+        self.assertFalse(invalid.valid)
+        with self.assertRaises(ValueError) as caught:
+            self.api("management_ingress_for_health_read")(invalid, "workload", "control", NodeHealthReadKind.LIVENESS)
+        self.assertLess(len(str(caught.exception)), 200)
+        self.assertNotIn("PRIVATE-LABEL", str(caught.exception) + repr(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
+
     def test_nested_management_and_transit_codecs_reject_unknown_fields(self):
         codec = GraphDescriptorCodec()
         descriptor = codec.encode(self.graph())
@@ -255,10 +279,37 @@ class RuntimeManagementTests(unittest.TestCase):
 
     def test_management_references_are_bounded_canonical_identifiers(self):
         management = self.api("RuntimeManagement")
-        for invalid in ("", " gateway", "gateway\n", "x" * 4096):
+        for invalid in ("", " gateway", "gateway\n", "x" * 4096, "private-key", "cf_tunnel", "eyjexample"):
             for gateway, ingress in ((invalid, "management"), ("gateway", invalid)):
                 with self.subTest(gateway=gateway[:20], ingress=ingress[:20]), self.assertRaises(ValueError):
                     management(gateway, ingress)
+
+    def test_transit_socket_retains_ingress_secret_reference_rejection(self):
+        declaration = self.api("GatewayTransitDeclaration")
+        protocol = self.api("GatewayTransitProtocol").NODE_HEALTH_READ_V1
+        for socket in ("private-key", "eyjexample"):
+            with self.subTest(socket=socket), self.assertRaises(ValueError) as caught:
+                declaration(socket, protocol)
+            self.assertNotIn(socket, str(caught.exception))
+            self.assertIsNone(caught.exception.__context__)
+
+    def test_direct_nested_codecs_reject_existing_secret_marker_canaries(self):
+        management_codec = self.api("RuntimeManagementCodec")()
+        for field in ("gateway_node_id", "management_ingress_id"):
+            for canary in ("cf_tunnel_do_not_store", "begin-private-key"):
+                descriptor = {"gateway_node_id": "gateway", "management_ingress_id": "management"}
+                descriptor[field] = canary
+                with self.subTest(field=field, canary=canary), self.assertRaises(ValueError) as caught:
+                    management_codec.decode(descriptor)
+                self.assertNotIn(canary, str(caught.exception) + repr(caught.exception))
+                self.assertIsNone(caught.exception.__context__)
+        with self.assertRaises(ValueError) as caught:
+            self.api("GatewayTransitDeclarationCodec")().decode({
+                "provider_socket_name": "private-key",
+                "protocol": "gateway-node-health-read-transit.v1",
+            })
+        self.assertNotIn("private-key", str(caught.exception) + repr(caught.exception))
+        self.assertIsNone(caught.exception.__context__)
 
     def test_equal_and_name_only_management_graphs_remain_no_activity(self):
         graph = self.graph()

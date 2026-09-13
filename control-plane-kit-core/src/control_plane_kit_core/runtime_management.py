@@ -8,7 +8,11 @@ contracts. Advertising it neither supplies authority nor implements transport.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-import re
+from control_plane_kit_core.public_ingress import (
+    PublicIngressContractError,
+    _validate_reference,
+    _validate_socket,
+)
 
 __all__ = [
     "GatewayTransitDeclaration", "GatewayTransitDeclarationCodec", "GatewayTransitProtocol",
@@ -16,18 +20,21 @@ __all__ = [
 ]
 
 
-_REFERENCE = re.compile(r"[a-z][a-z0-9._-]{0,127}\Z")
-_SOCKET = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
-
-
 class RuntimeManagementError(ValueError):
     """A bounded management declaration or selection failure."""
 
 
 def _reference(value: object, *, socket: bool = False) -> None:
-    pattern = _SOCKET if socket else _REFERENCE
-    if not isinstance(value, str) or pattern.fullmatch(value) is None:
-        raise RuntimeManagementError("management reference must be a bounded canonical identifier")
+    invalid = False
+    try:
+        if socket:
+            _validate_socket(value)
+        else:
+            _validate_reference(value, "management reference")
+    except PublicIngressContractError:
+        invalid = True
+    if invalid:
+        raise RuntimeManagementError("management reference is invalid")
 
 
 @dataclass(frozen=True)

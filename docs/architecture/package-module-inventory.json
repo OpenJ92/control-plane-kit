@@ -4350,7 +4350,7 @@
         "RuntimeManagementError"
       ],
       "destination": "control_plane_kit_core.runtime_management",
-      "internal_dependencies": [],
+      "internal_dependencies": ["control_plane_kit_core.public_ingress"],
       "known_package_consumers": [
         "control_plane_kit_core",
         "control_plane_kit_core.algebra",

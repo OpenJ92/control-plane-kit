@@ -22,3 +22,6 @@ Absent declarations remain omitted, retaining legacy descriptors. This is
 authored product material, not proof that a registered interpreter implements
 transit. The coupled Operations refusal must remain until that proof and
 transport are admitted by the downstream issues.
+
+Transit HTTP compatibility uses Protocol value equality: separately constructed
+equivalent Python protocol values have the same meaning as decoded values.

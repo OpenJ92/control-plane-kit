@@ -8,3 +8,7 @@ selected NamedPublicIngress through the canonical relationship resolver. Another
 socket's health kind does not satisfy the request. Readiness never downgrades to
 liveness, and a non-health operation is rejected. No endpoint registry, node,
 route, permission, credential or transport is created.
+
+Invalid ValidatedGraph inputs receive a fixed categorical management error;
+the selector does not expose the graph's arbitrary display label through the
+general GraphValidationError message. The target test uses a long canary label.

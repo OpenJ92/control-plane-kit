@@ -61,6 +61,7 @@ EXPECTED_MODULES = {
     "runtime_authority",
     "runtime_effect_observation",
     "runtime_effects",
+    "runtime_management",
     "secrets",
     "topology.__init__",
     "topology.changes",

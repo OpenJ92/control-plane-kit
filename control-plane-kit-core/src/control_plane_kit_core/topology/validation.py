@@ -195,7 +195,9 @@ def management_ingress_for_health_read(
         raise RuntimeManagementError("management transit supports declared health reads only")
     if not isinstance(node_id, str) or not isinstance(provider_socket_name, str):
         raise RuntimeManagementError("health target references must be text")
-    topology = graph.require_valid()
+    if not graph.valid:
+        raise RuntimeManagementError("health management selection requires a valid graph")
+    topology = graph.graph
     node = topology.nodes.get(node_id)
     if node is None:
         raise RuntimeManagementError("health read workload is missing")

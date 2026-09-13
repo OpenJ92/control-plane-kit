@@ -450,7 +450,7 @@ class GraphDescriptorCodec:
                     provider = node.provider_socket(transit.provider_socket_name)
                 except KeyError:
                     raise InvalidGraphReference("gateway transit provider is missing") from None
-                if provider.protocol is not Protocol.HTTP:
+                if provider.protocol != Protocol.HTTP:
                     raise InvalidGraphReference("gateway transit provider must use HTTP")
             for name, endpoint in node.endpoints.items():
                 provider = node.provider_socket(name)
@@ -544,7 +544,7 @@ def _management_ingress(graph: DeploymentGraph, runtime_id: str) -> NamedPublicI
         provider = gateway.provider_socket(transit.provider_socket_name)
     except KeyError:
         raise InvalidGraphReference("gateway transit provider is missing") from None
-    if provider.protocol is not Protocol.HTTP:
+    if provider.protocol != Protocol.HTTP:
         raise InvalidGraphReference("gateway transit provider must use HTTP")
     return ingress
 
