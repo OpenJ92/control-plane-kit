@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import replace
-from tests.runtime_management_fixtures import sdk_health_graph
+from tests.runtime_management_fixtures import management_graph, sdk_health_graph
 
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -241,6 +241,18 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 context = _context(base_graph=base, desired_graph=desired)
                 with self.assertRaises(InvalidOperationCommand):
                     runtime_effect_request_for_context(context)
+
+    def test_direct_plain_activity_checks_management_and_transit_on_both_sides(self):
+        original = _graph().node("api")
+        sdk = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        legacy = replace(sdk, nodes={"api": replace(sdk.node("api"), block_spec=BlockSpec("api"))})
+        for selected in (True, False):
+            graph = management_graph(self, selected=selected, metadata=original.metadata)
+            for base, desired in ((graph, legacy), (legacy, graph), (graph, graph)):
+                with self.subTest(selected=selected, equal=base is desired, in_base=base is graph):
+                    context = _context(base_graph=base, desired_graph=desired)
+                    with self.assertRaises(InvalidOperationCommand):
+                        runtime_effect_request_for_context(context)
 
     def test_post_start_request_binds_only_exact_original_event_identity(self) -> None:
         projection = getattr(

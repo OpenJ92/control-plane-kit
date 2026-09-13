@@ -2,7 +2,7 @@ from dataclasses import replace
 import unittest
 
 import control_plane_kit_core as core
-from control_plane_kit_core.algebra import BlockSockets, DeploymentTopology, DockerRuntime, ProviderSocket
+from control_plane_kit_core.algebra import BlockSockets, BlockSpec, DeploymentTopology, DockerRuntime, ProviderSocket
 from control_plane_kit_core.capabilities import CapabilityName
 from control_plane_kit_core.node_control import (
     NodeControlGraphReference, NodeControlGraphReferenceRole, NodeControlOperation,
@@ -22,6 +22,11 @@ from control_plane_kit_core.topology import (
     DeploymentGraph, GraphDescriptorCodec, compile_topology, diff_graphs, validate_graph,
 )
 from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.topology.codec import GenericBlockSpecCodec
+from control_plane_kit_core.topology.changes import FieldSubject, ModifiedChange, StructuralField
+from control_plane_kit_core.topology.validation import RuntimeSubject
+import control_plane_kit_core.topology.changes as changes
+from control_plane_kit_core.lifecycle import OWNED_EPHEMERAL
 
 
 class RuntimeManagementTests(unittest.TestCase):
@@ -125,6 +130,15 @@ class RuntimeManagementTests(unittest.TestCase):
         self.assertNotIn("gateway_transit", descriptor["nodes"]["gateway"]["block_spec"])
         self.assertEqual(codec.encode(codec.decode(descriptor)), descriptor)
         self.assertTrue(validate_graph(graph).valid)
+        self.assertEqual(descriptor["runtimes"]["runtime"], {
+            "kind": "docker", "children": ["gateway", "connector", "workload"],
+            "authority_ref": None, "metadata": {"network_name": "control-plane-kit-network"},
+            "lifecycle": OWNED_EPHEMERAL.descriptor(),
+        })
+        self.assertEqual(GenericBlockSpecCodec().encode(BlockSpec("plain")), {
+            "variant": "block", "role_id": "plain", "display_name": None,
+            "health_path": None, "capabilities": [], "verification": {"checks": []}, "metadata": {},
+        })
 
     def test_missing_selection_rejects_health_request_without_invalidating_legacy_graph(self):
         graph = self.graph(management=False, transit=False)
@@ -163,13 +177,58 @@ class RuntimeManagementTests(unittest.TestCase):
             replace(graph, public_ingresses=()),
             replace(graph, runtimes={"runtime": replace(runtime, management=self.api("RuntimeManagement")("missing", "management"))}),
             replace(graph, public_ingresses=(replace(graph.public_ingresses[0], target=PublicIngressTarget("workload", "control")),)),
-            replace(graph, nodes={**graph.nodes, "connector": replace(graph.node("connector"), runtime_id="other")}, runtimes={**graph.runtimes, "other": replace(runtime, runtime_id="other", children=("connector",), management=None)}),
         )
         for index, candidate in enumerate(variants):
             with self.subTest(case=index):
                 self.assertFalse(validate_graph(candidate).valid)
                 with self.assertRaises(ValueError):
                     GraphDescriptorCodec().encode(candidate)
+
+    def test_management_cannot_select_an_otherwise_valid_path_in_another_runtime(self):
+        graph = self.graph()
+        runtime = graph.runtimes["runtime"]
+        candidate = replace(graph,
+            nodes={**graph.nodes, **{name: replace(graph.node(name), runtime_id="other") for name in ("gateway", "connector")}},
+            runtimes={"runtime": replace(runtime, children=("workload",)), "other": replace(runtime, runtime_id="other", children=("gateway", "connector"), management=None)},
+        )
+        unbound = replace(candidate, runtimes={**candidate.runtimes, "runtime": replace(candidate.runtimes["runtime"], management=None)})
+        self.assertTrue(validate_graph(unbound).valid)
+        self.assertFalse(validate_graph(candidate).valid)
+
+    def test_management_ingress_must_target_exact_transit_socket(self):
+        graph = self.graph()
+        gateway = self.block("gateway", self.contract(gateway=True, health=True, two_sockets=True))
+        expanded = compile_topology(DeploymentTopology("gateway", DockerRuntime(runtime_id="runtime", children=(gateway,))))
+        candidate = replace(graph, nodes={**graph.nodes, "gateway": expanded.node("gateway")},
+            public_ingresses=(replace(graph.public_ingresses[0], target=PublicIngressTarget("gateway", "other")),))
+        unbound = replace(candidate, runtimes={"runtime": replace(candidate.runtimes["runtime"], management=None)})
+        self.assertTrue(validate_graph(unbound).valid)
+        self.assertFalse(validate_graph(candidate).valid)
+
+    def test_transit_role_requires_http_even_without_sdk_control_surface(self):
+        declaration = self.api("GatewayTransitDeclaration")("data", self.api("GatewayTransitProtocol").NODE_HEALTH_READ_V1)
+        with self.assertRaises(ValueError):
+            ProductRuntimeContract(sockets=BlockSockets(providers=(ProviderSocket("data", Protocol.POSTGRES),)),
+                provider_ports=(ProviderRuntimePort("data", 5432),), gateway_transit=declaration)
+
+    def test_nested_management_and_transit_codecs_reject_unknown_fields(self):
+        codec = GraphDescriptorCodec()
+        descriptor = codec.encode(self.graph())
+        descriptor["runtimes"]["runtime"]["management"]["extra"] = "ignored"
+        with self.assertRaises(ValueError):
+            codec.decode(descriptor)
+        contract_codec = ProductRuntimeContractCodec()
+        contract = contract_codec.encode(self.contract(gateway=True))
+        contract["gateway_transit"]["extra"] = "ignored"
+        with self.assertRaises(ValueError):
+            contract_codec.decode(contract)
+
+    def assert_management_diff(self, diff, before, after):
+        value_type = getattr(changes, "RuntimeManagementValue", None)
+        self.assertIsNotNone(value_type, "typed management diff value is missing")
+        field = getattr(StructuralField, "RUNTIME_MANAGEMENT", None)
+        self.assertIsNotNone(field, "typed management diff field is missing")
+        self.assertEqual(diff.changes, (ModifiedChange(FieldSubject(RuntimeSubject("runtime"), field), value_type(before), value_type(after)),))
 
     def test_runtime_management_change_is_reviewed_not_physical_runtime_reconciliation(self):
         graph = self.graph()
@@ -179,7 +238,7 @@ class RuntimeManagementTests(unittest.TestCase):
         desired = replace(current, runtimes={"runtime": replace(runtime, management=self.api("RuntimeManagement")("gateway", "alternate"))})
         diff = diff_graphs(validate_graph(current), validate_graph(desired))
         self.assertFalse(diff.empty)
-        self.assertIn("runtime-management", str(diff.descriptor()))
+        self.assert_management_diff(diff, runtime.management, desired.runtimes["runtime"].management)
         plan = compile_activity_plan(diff)
         self.assertTrue(any(isinstance(value.operation, ReviewChange) for value in plan.activities))
         self.assertFalse(any(isinstance(value.operation, (ReconcileRuntime, StartRuntime, StopRuntime)) for value in plan.activities))
@@ -189,7 +248,7 @@ class RuntimeManagementTests(unittest.TestCase):
         unbound = replace(managed, runtimes={"runtime": replace(managed.runtimes["runtime"], management=None)})
         for current, desired in ((unbound, managed), (managed, unbound)):
             diff = diff_graphs(validate_graph(current), validate_graph(desired))
-            self.assertIn("runtime-management", str(diff.descriptor()))
+            self.assert_management_diff(diff, current.runtimes["runtime"].management, desired.runtimes["runtime"].management)
             plan = compile_activity_plan(diff)
             self.assertTrue(plan.activities)
             self.assertTrue(all(isinstance(value.operation, ReviewChange) for value in plan.activities))

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
 from dataclasses import fields, replace
 import os
 from pathlib import Path
@@ -14,13 +16,16 @@ from control_plane_kit_core.planning import (
     ActivityPlan,
     DEFAULT_ACTIVITY_PLAN_CODEC,
     planning_scenarios,
+    compile_activity_plan,
 )
+from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
     GraphDescriptorCodec,
     compile_topology,
     validate_graph,
+    diff_graphs,
 )
 from control_plane_kit_operations import planning as planning_module
 from control_plane_kit_operations.deployment_transitions import (
@@ -42,6 +47,7 @@ from control_plane_kit_operations.planning import (
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import (
+    ActivityPlanRecord, ActivityPlanStatus, OperationActionRecord,
     GraphVersionRecord,
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
@@ -53,7 +59,7 @@ from control_plane_kit_operations.workflows import (
     OperationCommandService,
     StartOperationSession,
 )
-from tests.runtime_management_fixtures import sdk_health_graph
+from tests.runtime_management_fixtures import management_graph, sdk_health_graph
 
 
 class Sequence:
@@ -324,6 +330,64 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         before = self._durable_counts()
         with self.assertRaises(InvalidOperationCommand):
             self.planning_service("plan-a", "action-plan").execute(command)
+        self.assertEqual(self._durable_counts(), before)
+
+    def test_explicit_management_or_transit_in_either_snapshot_denies_plain_work(self):
+        for selected in (True, False):
+            graph = management_graph(self, selected=selected)
+            for current, desired in ((DeploymentGraph("empty"), graph), (graph, DeploymentGraph("empty"))):
+                with self.subTest(selected=selected, removing=not desired.nodes):
+                    self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                    command = self.prepare(current, desired)
+                    before = self._durable_counts()
+                    with self.assertRaises(InvalidOperationCommand):
+                        self.planning_service("plan-a", "action-plan").execute(command)
+                    self.assertEqual(self._durable_counts(), before)
+
+    def test_equal_and_name_only_explicit_management_are_real_no_ops(self):
+        graph = management_graph(self)
+        for desired in (graph, replace(graph, name="renamed")):
+            with self.subTest(name=desired.name):
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                _, result = self.plan(graph, desired)
+                self.assertEqual(result.plan_record.plan.activities, ())
+
+    def test_nonempty_historical_sdk_plan_replays_without_new_admission(self):
+        current, desired = DeploymentGraph("empty"), sdk_health_graph()
+        command = self.prepare(current, desired)
+        plan = compile_activity_plan(diff_graphs(validate_graph(current), validate_graph(desired)))
+        self.assertTrue(plan.activities)
+        record = ActivityPlanRecord(
+            "historical-plan", "session-a", command.expected_current_graph_id,
+            command.expected_desired_graph_id, ActivityPlanStatus.PLANNED,
+            "2026-08-14T10:02:00Z", plan,
+            base_realized_projection_id=command.expected_current_realized_projection_id,
+            desired_realized_projection_id=command.expected_desired_realized_projection_id,
+            desired_graph_revision=command.expected_desired_graph_revision,
+        )
+        payload = {
+            "workspace_id": "workspace-a", "plan_id": record.plan_id,
+            "base_graph_id": record.base_graph_id, "desired_graph_id": record.desired_graph_id,
+            "base_realized_projection_id": record.base_realized_projection_id,
+            "desired_realized_projection_id": record.desired_realized_projection_id,
+            "desired_graph_revision": record.desired_graph_revision,
+            "ready_for_execution": plan.ready_for_execution, "activity_count": len(plan.activities),
+        }
+        with self.unit_of_work() as uow:
+            uow.stores.activity_history.add_plan(record)
+            uow.stores.activity_history.add_action(OperationActionRecord(
+                "historical-plan-action", "session-a", uow.stores.activity_history.next_action_ordinal("session-a"),
+                OperatorCommandKind.REQUEST_ACTIVITY_PLAN, "operator-a", payload, "2026-08-14T10:02:00Z",
+                idempotency_key=command.idempotency_key.value,
+                intent_fingerprint=hashlib.sha256(json.dumps(command.descriptor(), sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            ))
+            uow.commit()
+        before = self._durable_counts()
+        replay = self.planning_service().execute(command)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.plan_record, record)
+        self.assertEqual(replay.transition.current.graph, current)
+        self.assertEqual(replay.transition.desired.graph, desired)
         self.assertEqual(self._durable_counts(), before)
 
     def test_result_retains_exact_transition_without_descriptor_or_repr_material(
