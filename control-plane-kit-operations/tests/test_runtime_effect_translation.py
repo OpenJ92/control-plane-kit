@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import replace
+from tests.runtime_management_fixtures import sdk_health_graph
 
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -223,6 +224,23 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 self.assertIsNone(caught.__cause__)
                 self.assertIsNone(caught.__context__)
                 self.assertEqual(dispatch, [])
+
+    def test_direct_sdk_activity_cannot_borrow_equal_graph_no_op_exemption(self):
+        original = _graph().node("api")
+        graph = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        context = _context(base_graph=graph, desired_graph=graph)
+        with self.assertRaises(InvalidOperationCommand):
+            runtime_effect_request_for_context(context)
+
+    def test_direct_sdk_activity_checks_both_pinned_graphs_before_intent(self):
+        original = _graph().node("api")
+        sdk = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        legacy = replace(sdk, nodes={"api": replace(sdk.node("api"), block_spec=BlockSpec("api"))})
+        for base, desired in ((sdk, legacy), (legacy, sdk)):
+            with self.subTest(sdk_in_base=base is sdk):
+                context = _context(base_graph=base, desired_graph=desired)
+                with self.assertRaises(InvalidOperationCommand):
+                    runtime_effect_request_for_context(context)
 
     def test_post_start_request_binds_only_exact_original_event_identity(self) -> None:
         projection = getattr(

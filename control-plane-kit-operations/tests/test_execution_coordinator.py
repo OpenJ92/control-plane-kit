@@ -10,6 +10,8 @@ import unittest
 from unittest import mock
 
 import psycopg
+from psycopg.types.json import Jsonb
+from tests.runtime_management_fixtures import sdk_health_graph
 
 from control_plane_kit_core.operations import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
@@ -35,9 +37,12 @@ from control_plane_kit_core.planning import (
     ActivityDependency,
     ActivityId,
     ActivityPlan,
+    AddSocketConnection,
     NodeTarget,
     PlannedActivity,
     StartNode,
+    SocketConnectionTarget,
+    DEFAULT_ACTIVITY_PLAN_CODEC,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import (
@@ -47,6 +52,7 @@ from control_plane_kit_core.public_ingress import (
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec
 from control_plane_kit_core.topology import (
+    DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
     Node,
     RuntimeRecord,
@@ -817,6 +823,108 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             self.assertIn(evidence_canary, repr(direct_outcome_descriptor))
             self.assertNotIn("overflow-", repr(event_payloads))
             self.assertNotIn("overflow-", repr(direct_outcome_descriptor))
+
+    def _install_sdk_pair(self, *, equal=False, empty_plan=False):
+        with self.unit_of_work() as uow:
+            record = uow.stores.graphs.get("graph-desired")
+        original = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor).node("api")
+        desired = sdk_health_graph(metadata=original.metadata)
+        base = desired if equal else DeploymentGraph("empty")
+        for graph_id, graph in (("graph-current", base), ("graph-desired", desired)):
+            descriptor = Jsonb(DEFAULT_GRAPH_CODEC.encode(graph))
+            self.connection.execute(
+                "UPDATE cpk_graph_versions SET graph_descriptor = %s WHERE graph_id = %s",
+                (descriptor, graph_id),
+            )
+            with self.unit_of_work() as uow:
+                original_projection = uow.stores.realized_graphs.identity_for_authored("workspace-a", graph_id)
+                projection = type(original_projection).identity_for_authored(authored_record=uow.stores.graphs.get(graph_id))
+            self.connection.execute(
+                "UPDATE cpk_realized_graph_projections SET graph_descriptor = %s, projection_digest = %s WHERE source_authored_graph_id = %s",
+                (descriptor, projection.projection_digest, graph_id),
+            )
+        if empty_plan:
+            self.connection.execute(
+                "UPDATE cpk_activity_plans SET payload = %s WHERE plan_id = 'plan-a'",
+                (Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(ActivityPlan(()))),),
+            )
+
+    def test_sdk_missing_path_returns_completed_unsupported_receipt_without_effects(self):
+        self._install_sdk_pair()
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        with mock.patch.object(EffectAttemptStartService, "execute", side_effect=AssertionError("unsupported graph reached attempt admission")):
+            first = coordinator.execute(self.command())
+        self.assertIs(first.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(first.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(first.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        replay = coordinator.execute(self.command())
+        self.assertEqual(replay, first)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_forged_empty_plan_cannot_complete_nonempty_sdk_transition(self):
+        self._install_sdk_pair(empty_plan=True)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        result = coordinator.execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(coordinator.execute(self.command()), result)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_sdk_transition_denies_before_legacy_socket_step_dispatch(self):
+        self._install_sdk_pair()
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        self.connection.execute(
+            "UPDATE cpk_activity_plans SET payload = %s WHERE plan_id = 'plan-a'",
+            (Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(plan)),),
+        )
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        result = self.coordinator(adapter).execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_sdk_refusal_receipt_completion_fault_preserves_real_uncertainty(self):
+        self._install_sdk_pair()
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with mock.patch.object(PostgresExecutionStore, "complete_command_receipt", side_effect=RuntimeError("receipt-write-failed")):
+            with self.assertRaises(RuntimeError):
+                coordinator.execute(self.command())
+        replay = coordinator.execute(self.command())
+        self.assertIs(replay.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(replay.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+
+    def test_verified_equal_sdk_graph_pair_may_complete_without_runtime_activity(self):
+        self._install_sdk_pair(equal=True, empty_plan=True)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        result = self.coordinator(adapter).execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        with self.unit_of_work() as uow:
+            events = uow.stores.execution.events_for_run("run-a")
+        self.assertFalse(any(event.kind is ActivityEventKind.STEP_STARTED for event in events))
 
     def test_completed_replay_does_not_repeat_effect(self) -> None:
         with self.unit_of_work() as unit_of_work:

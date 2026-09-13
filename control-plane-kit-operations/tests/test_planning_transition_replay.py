@@ -53,6 +53,7 @@ from control_plane_kit_operations.workflows import (
     OperationCommandService,
     StartOperationSession,
 )
+from tests.runtime_management_fixtures import sdk_health_graph
 
 
 class Sequence:
@@ -295,6 +296,35 @@ class PlanningTransitionReplayTests(unittest.TestCase):
             idempotency_key=IdempotencyKey("plan"),
         )
         return command
+
+    def test_new_sdk_health_intent_without_management_denies_before_plan_persistence(self):
+        command = self.prepare(DeploymentGraph("empty"), sdk_health_graph())
+        before = self._durable_counts()
+        with self.assertRaises(InvalidOperationCommand):
+            self.planning_service("plan-a", "action-plan").execute(command)
+        self.assertEqual(self._durable_counts(), before)
+
+    def test_absent_management_sdk_graph_no_op_and_historical_replay_remain_valid(self):
+        graph = sdk_health_graph()
+        command, first = self.plan(graph, graph)
+        self.assertEqual(first.plan_record.plan.activities, ())
+        before = self._durable_counts()
+        replay = self.planning_service().execute(command)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.plan_record, first.plan_record)
+        self.assertEqual(replay.transition, first.transition)
+        self.assertEqual(self._durable_counts(), before)
+
+    def test_retained_sdk_surface_environment_change_cannot_use_diff_only_fallback(self):
+        from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+
+        current = sdk_health_graph()
+        desired = sdk_health_graph(public_environment=(PublicStaticEnvironmentBinding("LABEL", "changed"),))
+        command = self.prepare(current, desired)
+        before = self._durable_counts()
+        with self.assertRaises(InvalidOperationCommand):
+            self.planning_service("plan-a", "action-plan").execute(command)
+        self.assertEqual(self._durable_counts(), before)
 
     def test_result_retains_exact_transition_without_descriptor_or_repr_material(
         self,
