@@ -11,3 +11,10 @@ Socket existence/protocol validation remains in graph validation. Serializers
 delegate surface encoding to its owner, so health-only and mixed declarations
 survive graph round trips and participate in structural diff without a consumer
 edge. These operations perform no runtime or data mutation.
+
+RuntimeContext (including DockerRuntime and ExternalRuntime) carries optional
+RuntimeManagement selecting existing gateway/ingress identities. The field is
+keyword-only to preserve positional authoring constructors. Compilation copies
+it into RuntimeRecord without creating children or ingress values. BlockSpec
+carries optional GatewayTransitDeclaration separately from its own SDK surfaces.
+Selection and advertisement do not supply credentials, permissions or transport.

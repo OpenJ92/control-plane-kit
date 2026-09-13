@@ -14,6 +14,7 @@ import re
 from control_plane_kit_core.algebra import BlockSockets, ProviderSocket, RequirementSocket
 from control_plane_kit_core.algebra import ApplicationBlock, BlockSpec, RuntimeContext
 from control_plane_kit_core.capabilities import CapabilityName
+from control_plane_kit_core.runtime_management import GatewayTransitDeclaration, GatewayTransitDeclarationCodec
 from control_plane_kit_core.configuration import ConfigurationArtifact
 from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
@@ -463,6 +464,7 @@ class ProductRuntimeContract:
     verification: VerificationContract = field(default_factory=VerificationContract)
     lifecycle: ResourceLifecycle = field(default_factory=ResourceLifecycle.owned_ephemeral)
     control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...] = ()
+    gateway_transit: GatewayTransitDeclaration | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         sockets = self.sockets
@@ -604,6 +606,15 @@ class ProductRuntimeContract:
                 raise ProductRuntimeContractError(
                     "control surface provider socket must use HTTP"
                 )
+        if self.gateway_transit is not None:
+            if not isinstance(self.gateway_transit, GatewayTransitDeclaration):
+                raise ProductRuntimeContractError("gateway transit must be a typed declaration")
+            try:
+                transit_provider = self.sockets.provider(self.gateway_transit.provider_socket_name)
+            except KeyError:
+                raise ProductRuntimeContractError("gateway transit requires a declared provider") from None
+            if transit_provider.protocol is not Protocol.HTTP:
+                raise ProductRuntimeContractError("gateway transit provider must use HTTP")
         if not isinstance(self.verification, VerificationContract):
             raise ProductRuntimeContractError(
                 "verification must be VerificationContract"
@@ -647,6 +658,8 @@ class ProductRuntimeContract:
                 WorkloadNodeControlSurfaceDescriptorCodec().encode(surface)
                 for surface in self.control_surfaces
             ]
+        if self.gateway_transit is not None:
+            descriptor["gateway_transit"] = self.gateway_transit.descriptor()
         return descriptor
 
 
@@ -666,6 +679,8 @@ class ProductRuntimeContractCodec:
                 if "control_surfaces" in mapping
                 else _PRODUCT_CONTRACT_DESCRIPTOR_KEYS
             )
+            if "gateway_transit" in mapping:
+                expected_keys = expected_keys | {"gateway_transit"}
             _require_product_keys(mapping, expected_keys, "product runtime contract")
             raw_control_surfaces = (
                 _product_list(mapping, "control_surfaces")
@@ -681,6 +696,8 @@ class ProductRuntimeContractCodec:
                     "product runtime contract declares too many control surfaces"
                 )
             return ProductRuntimeContract(
+                gateway_transit=GatewayTransitDeclarationCodec().decode(mapping["gateway_transit"])
+                if "gateway_transit" in mapping else None,
                 sockets=_sockets_from_descriptor(mapping["sockets"]),
                 provider_ports=tuple(
                     _provider_runtime_port_from_descriptor(value)
@@ -1486,6 +1503,7 @@ def _instantiate_document(
             display_name=product.display_name,
             capabilities=product.runtime_contract.capabilities,
             control_surfaces=product.runtime_contract.control_surfaces,
+            gateway_transit=product.runtime_contract.gateway_transit,
             verification=product.runtime_contract.verification,
         ),
         implementation=OciContainerProductImplementation(document, configuration),

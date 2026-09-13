@@ -15,6 +15,7 @@ from control_plane_kit_core.node_control import (
 )
 from control_plane_kit_core.public_ingress import NamedPublicIngress
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+from control_plane_kit_core.runtime_management import GatewayTransitDeclaration, RuntimeManagement
 from control_plane_kit_core.secrets import (
     SecretDelivery,
     SecretEnvironmentDelivery,
@@ -144,8 +145,11 @@ class BlockSpec:
     verification: VerificationContract = field(default_factory=VerificationContract)
     metadata: dict[str, str] = field(default_factory=dict)
     control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...] = ()
+    gateway_transit: GatewayTransitDeclaration | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
+        if self.gateway_transit is not None and not isinstance(self.gateway_transit, GatewayTransitDeclaration):
+            raise TypeError("block gateway transit must be a typed declaration")
         if not isinstance(self.control_surfaces, tuple):
             raise TypeError(
                 "block control surfaces must be WorkloadNodeControlSurfaceDescriptor values"
@@ -257,6 +261,11 @@ class RuntimeContext:
     children: tuple[DeploymentExpr, ...] = ()
     metadata: dict[str, str] = field(default_factory=dict)
     lifecycle: ResourceLifecycle = OWNED_EPHEMERAL
+    management: RuntimeManagement | None = field(default=None, kw_only=True)
+
+    def __post_init__(self) -> None:
+        if self.management is not None and not isinstance(self.management, RuntimeManagement):
+            raise TypeError("runtime management must be a typed selection")
 
 
 @dataclass(frozen=True)

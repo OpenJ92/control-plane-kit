@@ -14,3 +14,8 @@ node_health_read_results. No SDK, persistence or provider import is introduced.
 Core #1827 exports the pure node_health_transit grant/profile/digest/codecs,
 verification result/predicate and derived bounds. It reuses the existing health
 request language and adds no effects, provider imports or new health result.
+
+Core #1832 reexports the pure management selection/transit values and their
+strict codecs, the typed management diff value, and the health path selector.
+Each export is its owner-defined identity. Selection adds no runtime authority,
+provider client or deployment effect.

@@ -13,7 +13,11 @@ from control_plane_kit_core.topology.codec import (
     DEFAULT_GRAPH_CODEC,
     GraphDescriptorCodec,
     GraphDescriptorError,
+    _management_ingress,
 )
+from control_plane_kit_core.node_control import NodeHealthReadKind
+from control_plane_kit_core.public_ingress import NamedPublicIngress
+from control_plane_kit_core.runtime_management import RuntimeManagementError
 from control_plane_kit_core.types import Protocol
 from control_plane_kit_core.verification import expected_protocols
 
@@ -176,6 +180,30 @@ class GraphValidationError(ValueError):
     def __init__(self, result: ValidatedGraph) -> None:
         self.result = result
         super().__init__(f"graph {result.graph.name!r} has {len(result.errors)} validation errors")
+
+
+def management_ingress_for_health_read(
+    graph: ValidatedGraph,
+    node_id: str,
+    provider_socket_name: str,
+    kind: NodeHealthReadKind,
+) -> NamedPublicIngress:
+    """Select an existing management ingress for one exact declared health read."""
+    if not isinstance(graph, ValidatedGraph):
+        raise TypeError("health management selection requires a ValidatedGraph")
+    if not isinstance(kind, NodeHealthReadKind):
+        raise RuntimeManagementError("management transit supports declared health reads only")
+    if not isinstance(node_id, str) or not isinstance(provider_socket_name, str):
+        raise RuntimeManagementError("health target references must be text")
+    topology = graph.require_valid()
+    node = topology.nodes.get(node_id)
+    if node is None:
+        raise RuntimeManagementError("health read workload is missing")
+    surface = next((value for value in node.block_spec.control_surfaces
+                    if value.provider_socket_name.value == provider_socket_name), None)
+    if surface is None or kind not in surface.health_reads:
+        raise RuntimeManagementError("health kind is not declared on the selected workload socket")
+    return _management_ingress(topology, node.runtime_id)
 
 
 @dataclass(frozen=True)

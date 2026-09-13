@@ -4342,6 +4342,37 @@
     },
     {
       "canonical_public_exports": [
+        "GatewayTransitDeclaration",
+        "GatewayTransitDeclarationCodec",
+        "GatewayTransitProtocol",
+        "RuntimeManagement",
+        "RuntimeManagementCodec",
+        "RuntimeManagementError"
+      ],
+      "destination": "control_plane_kit_core.runtime_management",
+      "internal_dependencies": [],
+      "known_package_consumers": [
+        "control_plane_kit_core",
+        "control_plane_kit_core.algebra",
+        "control_plane_kit_core.products",
+        "control_plane_kit_core.topology.changes",
+        "control_plane_kit_core.topology.codec",
+        "control_plane_kit_core.topology.graph",
+        "control_plane_kit_core.topology.validation"
+      ],
+      "migration_prerequisites": ["#1832"],
+      "module": "control_plane_kit_core.runtime_management",
+      "motivation": "Own bounded graph-visible management references and the exact health-only transit advertisement without authority or effects.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_runtime_management.py"],
+      "role": "pure-contract",
+      "semantic_roles": ["values", "validation", "codecs"],
+      "source": "control_plane_kit_core/runtime_management.py"
+    },
+    {
+      "canonical_public_exports": [
         "ActivityId",
         "ActivityDependency",
         "NodeTarget",
