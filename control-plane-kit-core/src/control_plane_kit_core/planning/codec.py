@@ -43,6 +43,10 @@ from control_plane_kit_core.planning.activity_plan import (
     WaitForHealthy,
 )
 from control_plane_kit_core.topology.changes import DiffSubject, FieldSubject, StructuralField
+from control_plane_kit_core.planning.management_observations import (
+    ManagementObservationError, ObserveManagementBootstrap, ObserveNodeHealth,
+    _observation_from_descriptor,
+)
 from control_plane_kit_core.topology.validation import (
     EdgeSubject,
     GraphSubject,
@@ -116,7 +120,7 @@ class ActivityPlanDescriptorCodec:
                     "activity plan descriptor does not round-trip through the typed codec"
                 )
             return plan
-        except ActivityPlanDescriptorError:
+        except (ActivityPlanDescriptorError, ManagementObservationError):
             raise
         except (TypeError, ValueError) as error:
             raise MalformedActivityPlanDescriptor(
@@ -219,6 +223,9 @@ class ActivityPlanDescriptorCodec:
                 )
 
     def _encode_operation(self, operation: object) -> dict[str, object]:
+        if type(operation) in (ObserveManagementBootstrap, ObserveNodeHealth):
+            operation.__post_init__()
+            return operation.descriptor()
         match operation:
             case StartNode(target=target):
                 return _targeted("start-node", target)
@@ -260,6 +267,8 @@ class ActivityPlanDescriptorCodec:
                 raise MalformedActivityPlanDescriptor("unknown typed activity operation")
 
     def _decode_operation(self, descriptor: Mapping[str, object]) -> object:
+        if descriptor.get("kind") in ("observe-management-bootstrap", "observe-node-health"):
+            return _observation_from_descriptor(descriptor)
         kind = _text(descriptor, "kind")
         target = _mapping(descriptor.get("target"), "operation.target")
         match kind:
