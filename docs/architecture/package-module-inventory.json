@@ -9634,12 +9634,17 @@
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py"
     },
     {
-      "canonical_public_exports": [],
+      "canonical_public_exports": [
+        "runtime_management_planning_is_unsupported",
+        "runtime_management_execution_is_unsupported"
+      ],
       "destination": "control_plane_kit_operations.runtime_management_admission",
       "internal_dependencies": [
         "control_plane_kit_core.planning",
         "control_plane_kit_core.topology",
+        "control_plane_kit_operations.deployment_transitions",
         "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.plan_derivation",
         "control_plane_kit_operations.products"
       ],
       "known_package_consumers": [
@@ -9649,12 +9654,13 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.runtime_management_admission",
-      "motivation": "Refuses unsupported management execution over both pinned graphs, with a compiler-proven congruent no-op exception for planning only.",
+      "motivation": "Separates fresh management planning completeness from execution refusal over both pinned graphs, preserving canonical no-op exceptions without granting effects.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
         "tests/test_execution_coordinator.py",
+        "tests/test_management_planning_admission.py",
         "tests/test_planning_transition_replay.py",
         "tests/test_runtime_effect_translation.py"
       ],
@@ -10695,6 +10701,7 @@
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.planning",
         "control_plane_kit_operations.admission",
+        "control_plane_kit_operations.runtime_management_admission",
         "control_plane_kit_operations.postgres.activity_history"
       ],
       "migration_prerequisites": [],

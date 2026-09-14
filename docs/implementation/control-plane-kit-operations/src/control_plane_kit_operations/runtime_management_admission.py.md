@@ -1,7 +1,27 @@
 Source: [runtime_management_admission.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_admission.py).
 Maintain this companion alongside its source.
 
-This pure Operations policy examines both complete pinned graphs for an explicit
+The fresh planning predicate accepts a validated deployment transition, with no
+supplied plan, profile, or ready flag. It first parses every node in both snapshots
+using graph_authoring's authoritative per-node extractor. A second pure call to
+the shared graph-pair derivation proves canonical emptiness; this preserves the
+existing no-op exception without trusting a supplied plan or execution policy.
+
+For nonempty plans, each node's `(gateway_transit, control_surfaces)` must exactly
+equal the same projection of every matched identity-plus-digest registered
+contract. Each node declaring either surface needs management selected in its
+own runtime on that same graph side. Core already validates the complete gateway,
+connector, ingress, socket and runtime relation. Unrelated catalog entries do not
+taint a graph, and an unrelated extra provider socket does not trigger a broader
+product audit. One faithful sibling or selected runtime cannot cover another.
+
+Complete selected pairs may yield ready or review-blocked Core plans. An
+unselected-to-selected SDK repair still fails the current-side law. Selected
+variable declarations may explain review work but grant no variable effects.
+Real compiler cycles propagate `InvalidActivityPlan` from this pure policy; the
+fresh public service owns its fixed error mapping. Planning performs no I/O.
+
+The execution predicate examines both complete pinned graphs for an explicit
 runtime management selection, a gateway transit declaration, or SDK control
 surfaces. Each is sufficient to withhold executable management interpretation
 until the accepted transport exists. It does not infer support from a node name,
@@ -36,5 +56,5 @@ The policy performs no I/O and persists no facts. It introduces no credential,
 address, grant, network exposure, or destructive effect. The three consumer
 test groups cover both graph directions, transit-only and SDK material,
 equal/name-only no-ops, forged emptiness and direct activity rejection.
-Product-contract congruence and transport support remain downstream work;
+General product-contract congruence and transport support remain downstream work;
 declarations and these tests do not prove live execution.

@@ -2,15 +2,26 @@ Source: [planning.py](../../../../../control-plane-kit-operations/src/control_pl
 Maintain this companion alongside its source.
 
 The planning command validates pinned base and desired projections and explicitly
-selects the structural-v1 profile inside the caller-owned unit of work. Fresh commands
-then apply the shared runtime-management refusal policy before secret-delivery
+selects the management-graph-pair-v1 profile inside the caller-owned unit of work.
+Fresh commands then apply the separate runtime-management planning policy before secret-delivery
 admission, plan persistence, or action persistence. Unsupported material raises
 a fixed `InvalidOperationCommand`; rollback leaves no new plan/action rows.
 The policy receives the workspace's active product registrations and checks
-only references selected by either pinned graph, so omitted authored declarations
-cannot conceal implementation declarations. Malformed product references are
-refused independently of catalog contents.
+each node's exact normalized reference against its matched registered management
+projection (transit and complete SDK surfaces). Nonempty plans require a management
+selection in that node's runtime on the same side. Omitted or changed declarations
+cannot hide behind a faithful sibling. Malformed product references are refused
+independently of catalog contents, before the canonical-empty exception.
 Equal or name-only managed graph pairs retain their compiler-proven empty plan.
+
+Complete selected pairs may persist ready plans or Core's explanatory review
+plans. Missing gateway readiness and selected variable-only material do not gain
+invented observation or variable effects. A real graph-valid dependency cycle
+raises Core's `InvalidActivityPlan`; only the fresh derivation call maps this to
+fixed `ActivityPlanningGraphInvalid("persisted graph pair cannot produce an activity plan")`
+outside the exception context. It creates no plan/action/event/observation rows.
+Unexpected exceptions retain their identity, and historical derivation keeps its
+existing error semantics.
 
 Fresh plan and action records carry the same explicit profile. Profile selection
 is internal service policy, not a command option. Request descriptors and intent
@@ -34,5 +45,6 @@ no-persistence refusal, and exact nonempty historical replay. Recorded graph
 references remain internal durable coordinates; rejection text contains none.
 
 No existing row or uncertain attempt is rewritten. The history store owns the
-strict legacy/envelope representation; fresh managed planning and transport
-adoption remain separate work after #1837.
+strict legacy/envelope representation. Fresh managed planning now exists;
+transport adoption remains separate work. The closed profile's prior reader
+upgrade/downgrade requirements still apply before any rollout.

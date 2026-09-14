@@ -1,4 +1,4 @@
-"""Pure refusal policy until managed runtime execution has an accepted transport."""
+"""Distinct pure policies for management planning and execution admission."""
 
 from control_plane_kit_core.planning import ActivityPlan, compile_activity_plan
 from control_plane_kit_core.topology import (
@@ -8,8 +8,57 @@ from control_plane_kit_core.topology import (
     diff_graphs,
     validate_graph,
 )
-from control_plane_kit_operations.graph_authoring import product_references_in_graph
+from control_plane_kit_operations.deployment_transitions import DeploymentTransition
+from control_plane_kit_operations.graph_authoring import (
+    product_reference_in_node,
+    product_references_in_graph,
+)
+from control_plane_kit_operations.plan_derivation import (
+    PlanDerivationProfile,
+    derive_activity_plan,
+)
 from control_plane_kit_operations.products import RegisteredProduct
+
+
+def runtime_management_planning_is_unsupported(
+    transition: DeploymentTransition,
+    *,
+    registered_products: tuple[RegisteredProduct, ...] = (),
+) -> bool:
+    """Require faithful management declarations and same-side runtime selection.
+
+    Complete selected pairs may produce ready or review-blocked Core plans.
+    Admission here grants no authority to execute those plans.
+    """
+
+    # Normalize every node before considering canonical emptiness, even when the
+    # catalog is empty. Keep candidate-bearing parser errors inside this call.
+    try:
+        selected_nodes = tuple(
+            (graph, node, product_reference_in_node(node))
+            for graph in (transition.current.graph, transition.desired.graph)
+            for node in graph.nodes.values()
+        )
+    except ValueError:
+        return True
+    canonical_plan = derive_activity_plan(
+        transition, profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1,
+    )
+    if not canonical_plan.activities:
+        return False
+    for graph, node, reference in selected_nodes:
+        declared = (node.block_spec.gateway_transit, node.block_spec.control_surfaces)
+        for product in registered_products:
+            if product.reference != reference:
+                continue
+            contract = product.descriptor_document.product.runtime_contract
+            if declared != (contract.gateway_transit, contract.control_surfaces):
+                return True
+        if (declared[0] is not None or declared[1]) and (
+            graph.runtimes[node.runtime_id].management is None
+        ):
+            return True
+    return False
 
 
 def runtime_management_execution_is_unsupported(
