@@ -1081,6 +1081,7 @@ class PlanningTransitionReplayTests(unittest.TestCase):
                 "cpk_realized_graph_projections",
                 "cpk_activity_plans",
                 "cpk_operation_actions",
+                "cpk_activity_events",
             )
         )
 
