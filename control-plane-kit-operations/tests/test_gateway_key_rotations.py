@@ -163,6 +163,11 @@ class GatewayKeyRotationTests(GatewayRotationOverlapFixture, unittest.TestCase):
         postgres.install_schema(self.connection)
 
     def test_old_transit_request_and_approval_survive_query_only_reentry(self) -> None:
+        def remove_fixture():
+            with psycopg.connect(self.database_url, autocommit=True) as connection:
+                connection.execute("DELETE FROM cpk_workspaces WHERE workspace_id = %s", ("workspace-a",))
+
+        self.addCleanup(remove_fixture)
         command = replace(self.request(), purpose=DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT)
         rotation = self.service().request(command)
         self.assertEqual(self.service().request(command), rotation)
