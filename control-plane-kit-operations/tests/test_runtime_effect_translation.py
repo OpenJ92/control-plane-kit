@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import replace
-from tests.runtime_management_fixtures import management_graph, sdk_health_graph
+from tests.runtime_management_fixtures import (
+    management_graph, sdk_health_graph, registered_management_product,
+    omitted_management_graph,
+)
 
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -224,6 +227,37 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 self.assertIsNone(caught.__cause__)
                 self.assertIsNone(caught.__context__)
                 self.assertEqual(dispatch, [])
+
+    def test_direct_omitted_declaration_checks_exact_pinned_products_on_both_sides(self):
+        for transit in (False, True):
+            product = registered_management_product(transit=transit)
+            graph = omitted_management_graph(product)
+            plain = _graph()
+            for base, desired in ((graph, plain), (plain, graph), (graph, graph)):
+                with self.subTest(transit=transit, base=base.name, desired=desired.name):
+                    context = _context(base_graph=base, desired_graph=desired,
+                        registered_products=(_registered_product(), product))
+                    with self.assertRaises(InvalidOperationCommand):
+                        runtime_effect_request_for_context(context)
+
+    def test_direct_unrelated_management_registration_preserves_plain_intent(self):
+        context = _context()
+        expected = runtime_effect_request_for_context(context)
+        context = replace(context, registered_products=context.registered_products + (registered_management_product(),))
+        self.assertEqual(runtime_effect_request_for_context(context), expected)
+
+    def test_direct_same_identity_different_digest_registration_is_not_selected(self):
+        context = _context()
+        expected = runtime_effect_request_for_context(context)
+        managed = registered_management_product()
+        product = replace(managed.descriptor_document.product, identity=context.registered_products[0].reference.identity)
+        other = RegisteredProduct.from_document(
+            workspace_id="workspace-a", descriptor_document=ProductDescriptorCodec().encode_document(product),
+            source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-07-22T09:00:00Z",
+        )
+        self.assertNotEqual(other.reference.descriptor_sha256, context.registered_products[0].reference.descriptor_sha256)
+        context = replace(context, registered_products=context.registered_products + (other,))
+        self.assertEqual(runtime_effect_request_for_context(context), expected)
 
     def test_direct_sdk_activity_cannot_borrow_equal_graph_no_op_exemption(self):
         original = _graph().node("api")

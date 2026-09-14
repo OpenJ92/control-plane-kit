@@ -12,6 +12,46 @@ from control_plane_kit_core.topology import DeploymentGraph, Node, RuntimeRecord
 from control_plane_kit_core.topology.graph import Endpoint, LiteralAddress
 from control_plane_kit_core.types import BlockFamily, Protocol, RuntimeKind
 from control_plane_kit_core.public_ingress import IngressAuthorityReference, NamedPublicIngress, PublicIngressTarget
+from control_plane_kit_core.products import (
+    ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
+    ProductIdentity, ProductRuntimeContract, ProviderRuntimePort,
+)
+from control_plane_kit_operations.products import InlineDescriptorSource, RegisteredProduct
+
+
+def registered_management_product(*, transit=False):
+    sdk = sdk_health_graph().node("api")
+    contract = ProductRuntimeContract(
+        sockets=sdk.sockets,
+        provider_ports=(ProviderRuntimePort("http", 8000),),
+        capabilities=() if transit else sdk.block_spec.capabilities,
+        control_surfaces=() if transit else sdk.block_spec.control_surfaces,
+        gateway_transit=core.GatewayTransitDeclaration(
+            "http", core.GatewayTransitProtocol.NODE_HEALTH_READ_V1,
+        ) if transit else None,
+    )
+    product = ContainerServerProduct(
+        ProductIdentity("test", "managed-contract", 1),
+        OciImageReference("ghcr.io", "test/managed-contract", "sha256:" + "b" * 64),
+        contract,
+    )
+    return RegisteredProduct.from_document(
+        workspace_id="workspace-a",
+        descriptor_document=ProductDescriptorCodec().encode_document(product),
+        source=InlineDescriptorSource(), imported_by="operator-a",
+        imported_at="2026-07-22T09:00:00Z",
+    )
+
+
+def omitted_management_graph(product):
+    """Canonical node omits declarations but pins the registered implementation."""
+    graph = sdk_health_graph(metadata={
+        "product_identity": product.reference.identity.key,
+        "product_descriptor_digest": product.reference.descriptor_sha256.value,
+    })
+    graph = replace(graph, nodes={"api": replace(graph.node("api"), block_spec=BlockSpec("api"))})
+    validate_graph(graph).require_valid()
+    return graph
 
 
 def management_graph(test_case, *, selected=True, metadata=None):

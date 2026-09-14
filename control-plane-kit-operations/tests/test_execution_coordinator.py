@@ -10,7 +10,10 @@ import unittest
 from unittest import mock
 
 import psycopg
-from tests.runtime_management_fixtures import management_graph, sdk_health_graph
+from tests.runtime_management_fixtures import (
+    management_graph, sdk_health_graph, registered_management_product,
+    omitted_management_graph,
+)
 
 from control_plane_kit_core.operations import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
@@ -832,6 +835,68 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         selected_plan = plan if plan is not None else ActivityPlan(()) if empty_plan else single_activity_plan()
         self.reset_execution_request(plan=selected_plan, base_graph=base, desired_graph=desired)
 
+    def test_omitted_declaration_pinned_product_denies_before_legacy_dispatch(self):
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        for transit in (False, True):
+            product = registered_management_product(transit=transit)
+            graph = omitted_management_graph(product)
+            for base, desired in ((DeploymentGraph("empty"), graph), (graph, DeploymentGraph("empty"))):
+                with self.subTest(transit=transit, removing=not desired.nodes):
+                    self.reset_execution_request(plan=plan, base_graph=base, desired_graph=desired,
+                        product_document=product.descriptor_document)
+                    self.claim_and_start()
+                    adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                    coordinator = self.coordinator(adapter)
+                    with self.unit_of_work() as uow:
+                        before = uow.stores.execution.events_for_run("run-a")
+                    result = coordinator.execute(self.command())
+                    self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+                    self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+                    self.assertEqual(result.effects_attempted, 0)
+                    self.assertEqual(adapter.calls, [])
+                    self.assertEqual(coordinator.execute(self.command()), result)
+                    with self.unit_of_work() as uow:
+                        self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_guarded_settled_step_cannot_write_running_run_completion_or_failure(self):
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        for failed in (False, True):
+            with self.subTest(failed=failed):
+                self._install_sdk_pair(plan=plan)
+                self.claim_and_start()
+                with self.unit_of_work() as uow:
+                    execution = uow.stores.execution
+                    execution.add_event(ActivityEventRecord("historical-start", "run-a", execution.next_event_ordinal("run-a"), ActivityEventKind.STEP_STARTED, "2026-07-22T13:00:30Z", activity_id="start-api"))
+                    execution.add_event(ActivityEventRecord("historical-settled", "run-a", execution.next_event_ordinal("run-a"), ActivityEventKind.STEP_FAILED if failed else ActivityEventKind.STEP_SUCCEEDED, "2026-07-22T13:00:31Z", activity_id="start-api",
+                        failure=FailureEvidence(FailureCategory.TERMINAL, "prior-failure", "prior step failed") if failed else None))
+                    uow.commit()
+                adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                coordinator = self.coordinator(adapter)
+                with self.unit_of_work() as uow:
+                    before = uow.stores.execution.events_for_run("run-a")
+                result = coordinator.execute(self.command())
+                self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+                self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+                self.assertEqual(result.effects_attempted, 0)
+                self.assertEqual(adapter.calls, [])
+                self.assertEqual(coordinator.execute(self.command()), result)
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_unrelated_management_registration_does_not_block_plain_execution(self):
+        product = registered_management_product()
+        with self.unit_of_work() as uow:
+            uow.stores.registered_products.register(
+                workspace_id="workspace-a", descriptor_document=product.descriptor_document,
+                source=product.source, imported_by=product.imported_by, imported_at=product.imported_at,
+            )
+            uow.commit()
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        result = self.coordinator(adapter).execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(adapter.calls, ["start-api"])
+
     def test_sdk_missing_path_returns_completed_unsupported_receipt_without_effects(self):
         self._install_sdk_pair()
         self.claim_and_start()
@@ -1596,7 +1661,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             )
         )
 
-    def seed_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None) -> None:
+    def seed_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None) -> None:
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -1608,7 +1673,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
         )
         with self.unit_of_work() as unit_of_work:
-            product_document = ProductDescriptorCodec().encode_document(
+            product_document = product_document or ProductDescriptorCodec().encode_document(
                 ContainerServerProduct(
                     identity=ProductIdentity("control-plane-kit", "hello-server", 1),
                     image=OciImageReference(
@@ -1705,10 +1770,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
         )
 
-    def reset_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None) -> None:
+    def reset_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None) -> None:
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.ids = Sequence()
-        self.seed_execution_request(plan=plan, base_graph=base_graph, desired_graph=desired_graph)
+        self.seed_execution_request(plan=plan, base_graph=base_graph, desired_graph=desired_graph, product_document=product_document)
 
 
 def single_activity_plan() -> ActivityPlan:
