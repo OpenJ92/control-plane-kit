@@ -10676,6 +10676,34 @@
       ]
     },
     {
+      "module": "control_plane_kit_operations.runtime_management_targets",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_targets.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.runtime_management_targets",
+      "role": "pinned-management-health-target-projection",
+      "motivation": "Select the exact plan activity and graph-derived management health references without addresses, external effects or dispatch authority.",
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.public_ingress",
+        "control_plane_kit_core.topology"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": ["projections"],
+      "canonical_public_exports": [
+        "ManagementHealthTargetProjectionError",
+        "ManagementHealthTargetProjection",
+        "project_management_health_target"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_runtime_management_targets.py",
+        "control-plane-kit-operations/tests/test_runtime_effect_translation.py"
+      ]
+    },
+    {
       "module": "control_plane_kit_operations.plan_derivation",
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/plan_derivation.py",
       "owner": "operation",
