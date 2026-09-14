@@ -228,6 +228,8 @@ def compile_graph_activity_plan(current: ValidatedGraph, desired: ValidatedGraph
         if gateway_id in starts:
             gateway_dependencies.add(starts[gateway_id].activity_id)
         local = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.GATEWAY_LOCAL_READY), gateway_dependencies))
+        if connector_activity := starts.get(connector_id):
+            dependencies[connector_activity.activity_id].add(local.activity_id)
         if allocation := allocations.get(ingress.ingress_id):
             # Independent gateway checks are not the bootstrap gate for their
             # own ingress. Preserve those checks separately and review-blocked.

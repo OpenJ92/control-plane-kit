@@ -36,6 +36,9 @@ Initial causal order is gateway start -> local readiness -> ingress allocation
 -> connector start -> connected -> authenticated path -> workload health. Allocation
 and startup introduce later observations, not reverse prerequisites. Retained
 infrastructure receives necessary observations without invented starts/allocation.
+Actual connector start/reconcile also depends directly on local readiness, even
+when its ingress is retained and no allocation supplies that order indirectly.
+Existing allocation/service predecessors and mutation activity IDs are preserved.
 Connector SDK health, if declared, follows its native connection/path barrier.
 Real service dependencies remain; a resulting causal cycle is rejected.
 
