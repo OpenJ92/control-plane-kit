@@ -17,6 +17,32 @@ current issue.
 systems as topology values. It must remain independent from any one application
 or product repository.
 
+## Agent Implementation Companions
+
+Use `docs/implementation/<repository-relative-source-path>.md` as the mirrored
+companion for each covered source file; retain its original suffix before `.md`.
+Read [the convention](docs/implementation/README.md) and the relevant companions
+before design or implementation. Verify their claims against the owner source
+and the contract-bearing imports or dynamic dependencies actually used by the
+change. Read the consumer's selected dependency version/ref, not automatically
+upstream latest. Companions aid navigation; they do not replace source, tests,
+governing decisions or authorization.
+
+Maintain companions in the same change as source: create, move and remove them
+alongside their covered files, and update changed behavior, responsibility,
+preconditions, failure/effect boundaries and dependency assumptions. Every
+companion must begin with its source link and a reminder to update it alongside
+the source. Search for affected consumers when contracts or dependency pins
+change; known reverse links are not exhaustive. Coordinate cross-repository
+updates with the actual adoption PRs.
+
+Review the source diff for companion impact before handoff. If the documented
+meaning is unchanged, record "companion reviewed; no semantic update needed"
+in the existing PR decision log instead of manufacturing a prose or hash-only
+edit. Resolve or explicitly record stale/contradictory claims; never silently
+treat an existing bug as intended law. Keep coverage separate from review depth
+and unresolved defects. This does not require a new report or test programme.
+
 ## Product Boundary
 
 `control-plane-kit` is an AI-assisted infrastructure control plane. It lets a
