@@ -8,8 +8,9 @@ admission, plan persistence, or action persistence. Unsupported material raises
 a fixed `InvalidOperationCommand`; rollback leaves no new plan/action rows.
 The policy receives the workspace's active product registrations and checks
 each node's exact normalized reference against its matched registered management
-projection (transit and complete SDK surfaces). Nonempty plans require a management
-selection in that node's runtime on the same side. Omitted or changed declarations
+projection (transit and complete SDK surfaces). For nonempty plans, nodes carrying
+transit or SDK surfaces require a management selection in their runtime on the
+same side. Omitted or changed declarations
 cannot hide behind a faithful sibling. Malformed product references are refused
 independently of catalog contents, before the canonical-empty exception.
 Equal or name-only managed graph pairs retain their compiler-proven empty plan.
