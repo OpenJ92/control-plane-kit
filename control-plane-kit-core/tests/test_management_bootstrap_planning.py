@@ -69,11 +69,12 @@ def block(name, surfaces=(), *, gateway=False, checks=(), requirements=()):
 
 
 def topology(*, prefix="", workload=True, workload_surfaces=None, checks=(),
-             gateway_surfaces=None, connector_surfaces=(), cycle=False):
+             gateway_surfaces=None, gateway_checks=(), connector_surfaces=(), cycle=False):
     runtime_id = prefix + "runtime"
     gateway_id, connector_id, workload_id = (prefix + value for value in ("gateway", "connector", "workload"))
     gateway = block(gateway_id, (surface(),) if gateway_surfaces is None else gateway_surfaces,
-                    gateway=True, requirements=(RequirementSocket("service", Protocol.HTTP, ("SERVICE_URL",)),) if cycle else ())
+                    gateway=True, checks=gateway_checks,
+                    requirements=(RequirementSocket("service", Protocol.HTTP, ("SERVICE_URL",)),) if cycle else ())
     connector = block(connector_id, connector_surfaces)
     children = [gateway, connector]
     if workload:
@@ -283,9 +284,23 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         consumer_start = self.find(plan, StartNode, node="consumer")
         self.before(plan, verify, consumer_start)
         self.before(plan, sdk, consumer_start)
+        structural = compile_activity_plan(diff_graphs(validate_graph(current), validate_graph(desired)))
+        self.assertEqual(verify.activity_id, self.find(structural, WaitForHealthy, node="workload").activity_id)
         self.review(plan, NodeSubject("workload"), ReviewReason.UNSUPPORTED_CHANGE)
         self.assertEqual(desired.node("workload").block_spec.verification.checks[0].expected_body_sha256, "b" * 64)
         self.assertIsNot(verify.operation, sdk.operation)
+
+    def test_gateway_independent_verification_does_not_gate_its_own_ingress(self):
+        desired = graph(gateway_checks=(HttpCheck("gateway-body", "control", "/", expected_body_sha256="a" * 64),))
+        plan = self.compile(empty(), desired)
+        verify = self.find(plan, WaitForHealthy, node="gateway")
+        local = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
+        allocation = self.find(plan, AllocatePublicIngress)
+        self.before(plan, local, allocation)
+        self.assertNotIn(verify.activity_id, predecessors(plan, allocation))
+        self.review(plan, NodeSubject("gateway"), ReviewReason.UNSUPPORTED_CHANGE)
+        structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
+        self.assertEqual(verify.activity_id, self.find(structural, WaitForHealthy, node="gateway").activity_id)
 
     def test_non_sdk_and_variable_only_nodes_keep_verification_without_invented_sdk_requests(self):
         check = HttpCheck("independent-check", "control", "/")
@@ -374,6 +389,35 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
                         replace(desired, public_ingresses=(replace(desired.public_ingresses[0], hostname="changed.example.invalid"),))):
             with self.assertRaises(error_type):
                 resolver(request, validate_graph(empty()), validate_graph(changed), expected_operation=request)
+
+    def test_self_matching_candidates_still_require_graph_derived_relation_and_health_selection(self):
+        desired = graph()
+        plan = self.compile(empty(), desired)
+        request = self.find(plan, self.api("ObserveNodeHealth"), node="workload").operation
+        resolver = self.api("resolve_management_observation")
+        error_type = self.api("ManagementObservationError")
+        for candidate in (replace(request, target=replace(request.target, relation_digest="f" * 64)),
+                          replace(request, target=replace(request.target, runtime_id="other")),
+                          replace(request, health_kind=NodeHealthReadKind.LIVENESS),
+                          replace(request, provider_socket_name="missing")):
+            with self.subTest(field=activity_operation_descriptor(candidate)), self.assertRaises(error_type) as caught:
+                resolver(candidate, validate_graph(empty()), validate_graph(desired), expected_operation=candidate)
+            self.assertLess(len(str(caught.exception)), 200)
+            self.assertIsNone(caught.exception.__cause__)
+            self.assertIsNone(caught.exception.__context__)
+        # Rebind the ingress to a different, genuinely present connector. Update
+        # the graph pin so rejection must reach the still-stale relation pin.
+        authored = topology()
+        changed = compile_topology(replace(authored,
+            root=replace(authored.root, children=authored.root.children + (block("replacement-connector"),)),
+            public_ingresses=(replace(authored.public_ingresses[0], connector_node_id="replacement-connector"),)))
+        self.assertTrue(validate_graph(changed).valid)
+        digest = hashlib.sha256(b"control-plane-kit.management-graph.v1\0" + rfc8785.dumps(GraphDescriptorCodec().encode(changed))).hexdigest()
+        stale_relation = replace(request, target=replace(request.target, graph_digest=digest))
+        with self.assertRaises(error_type) as caught:
+            resolver(stale_relation, validate_graph(empty()), validate_graph(changed), expected_operation=stale_relation)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
 
     def test_public_outer_and_operation_codecs_refuse_bad_observation_without_candidate_context(self):
         plan = self.compile(empty(), graph())
