@@ -9522,6 +9522,7 @@
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.runtime_authorities",
         "control_plane_kit_operations.runtime_effects",
+        "control_plane_kit_operations.runtime_management_admission",
         "control_plane_kit_operations.secret_providers",
         "control_plane_kit_operations.workflows"
       ],
@@ -9575,6 +9576,7 @@
         "control_plane_kit_operations.ingress_authorities",
         "control_plane_kit_operations.products",
         "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_management_admission",
         "control_plane_kit_operations.workflows"
       ],
       "known_package_consumers": [
@@ -9596,6 +9598,33 @@
         "transformations"
       ],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations.runtime_management_admission",
+      "internal_dependencies": [
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.topology"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.planning",
+        "control_plane_kit_operations.runtime_effects"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.runtime_management_admission",
+      "motivation": "Refuses unsupported management execution over both pinned graphs, with a compiler-proven congruent no-op exception for planning only.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_execution_coordinator.py",
+        "tests/test_planning_transition_replay.py",
+        "tests/test_runtime_effect_translation.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["policies"],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_admission.py"
     },
     {
       "canonical_public_exports": [

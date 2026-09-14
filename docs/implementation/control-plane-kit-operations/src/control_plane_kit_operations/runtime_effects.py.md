@@ -1,6 +1,15 @@
 Source: [control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py).
 Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
 
+Before selecting an operation's material, direct and coordinator intent projection
+now apply the shared runtime-management refusal policy to both pinned graphs.
+Explicit management, gateway transit or SDK surfaces cannot enter executable
+intent until transport support is accepted. Every direct call is an attempted
+activity: equal graphs, an empty canonical plan, or an omitted supplied activity
+provide no no-op exemption here. A fixed `InvalidOperationCommand` contains no
+graph or credential material. Both graph directions and equal-pair direct
+attempts are protected by the runtime-effect translation target tests.
+
 This owner translates pinned Operations realization material into Core runtime-effect values. It does not read a provider, resolve a secret, approve work, dispatch an interpreter or commit a transaction. The public projection requires the exact ActivityRealizationContext type. Its private intent projection also accepts the exact coordinator context and an activity, before an event exists. Core [runtime_effect_observation.py](../../../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py) owns intent/request binding: the public path binds the original start-event ID as effect identity and initially supplies no transient resolution grants. A constructed request is not execution permission or observed success.
 
 Material selection preserves removal meaning. StopNode, RemoveNodeResource, RemoveSocketConnection, StopRuntime and RemoveRuntimeResource use the base graph; other operations use desired graph. Runtime/node lookup, registered product identity plus descriptor digest, graph verification and compiled environment/delivery material determine the request. Product material is for the selected node; runtime-only and socket operations carry no node product. Image-pull authority is selected from permitting registrations, preferring the longest repository match with deterministic ties; it carries a credential reference, not resolved bytes.
