@@ -23,6 +23,7 @@ from control_plane_kit_operations.gateway_key_rotations import (
     AdvanceGatewayKeyRotationDeployment,
     GatewayKeyRotationAuthorizationDenied,
     GatewayKeyRotationConflict,
+    GatewayKeyRotationError,
     GatewayKeyRotationDeploymentCheckpoint,
     GatewayKeyRotationDeploymentPhase,
     GatewayKeyRotationDeploymentStatus,
@@ -50,6 +51,7 @@ from control_plane_kit_operations.records import (
     OperationSessionStatus,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey
+from test_current_schema_installation import _RecordingConnection
 
 
 class GatewayKeyRotationTests(GatewayRotationOverlapFixture, unittest.TestCase):
@@ -159,6 +161,50 @@ class GatewayKeyRotationTests(GatewayRotationOverlapFixture, unittest.TestCase):
         self.assertEqual(stored_subject, approval.request.subject.descriptor())
         self.assertEqual(stored_digest, approval.request.subject.review_digest)
         postgres.install_schema(self.connection)
+
+    def test_old_transit_request_and_approval_survive_query_only_reentry(self) -> None:
+        command = replace(self.request(), purpose=DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT)
+        rotation = self.service().request(command)
+        self.assertEqual(self.service().request(command), rotation)
+        approval = self.request_approval(rotation)
+        subject = approval.request.subject
+        self.assertEqual(subject.descriptor()["purpose"], "gateway-node-control-transit")
+        before = self.connection.execute(
+            "SELECT subject_payload, review_digest FROM cpk_approval_requests WHERE request_id = %s",
+            (approval.request.request_id,),
+        ).fetchone()
+        self.assertEqual(before, (subject.descriptor(), subject.review_digest))
+        recorder = _RecordingConnection(self.connection)
+
+        postgres.install_schema(recorder)
+
+        self.assertEqual(self.service().get(rotation.rotation_id), rotation)
+        self.assertEqual(self.connection.execute(
+            "SELECT subject_payload, review_digest FROM cpk_approval_requests WHERE request_id = %s",
+            (approval.request.request_id,),
+        ).fetchone(), before)
+        for query in recorder.calls:
+            self.assertNotRegex(query.lower(), r"\b(create|alter|drop|truncate|insert|update|delete)\b")
+
+    def test_health_rotation_requests_refuse_before_unit_of_work(self) -> None:
+        calls = []
+
+        def counted_unit_of_work():
+            calls.append("entered")
+            return self.unit_of_work()
+
+        service = GatewayKeyRotationService(counted_unit_of_work, clock=lambda: self.now)
+        for purpose in (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+                        DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT):
+            with self.subTest(purpose=purpose):
+                with self.assertRaisesRegex(GatewayKeyRotationError,
+                                            "^rotation purpose is unsupported$") as raised:
+                    service.request(replace(self.request(), purpose=purpose))
+                self.assertIsNone(raised.exception.__cause__)
+                self.assertIsNone(raised.exception.__context__)
+                self.assertEqual(calls, [])
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_gateway_key_rotations").fetchone(), (0,))
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_approval_requests").fetchone(), (0,))
 
     def test_permissions_and_optimistic_version_are_enforced(self) -> None:
         service = self.service()

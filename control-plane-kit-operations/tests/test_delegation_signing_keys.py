@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timezone
 import os
+import json
 import unittest
 
 import psycopg
@@ -163,6 +164,148 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
                     )
                 )
             )
+
+    def test_health_families_keep_exact_replay_overlap_and_purpose_isolation(self) -> None:
+        service = self.service()
+        active_keys = []
+        for purpose, intent in self.health_pairs():
+            with self.subTest(purpose=purpose):
+                reference = self.admit_health_reference(purpose.value, (intent,))
+                command = replace(self.command(), purpose=purpose,
+                                  private_key_reference=reference)
+                first = service.register(command)
+                self.assertEqual(self.service().register(command), first)
+                activate = replace(self.activate("gateway-a"), purpose=purpose)
+                active = service.activate(activate)
+                self.assertEqual(self.service().activate(activate), active)
+                second = service.register(replace(
+                    self.command(key_id="gateway-b"), purpose=purpose,
+                    private_key_reference=reference,
+                ))
+                active_second = service.activate(replace(
+                    self.activate("gateway-b"), purpose=purpose,
+                ))
+                with self.unit_of_work() as uow:
+                    records = uow.stores.delegation_signing_keys.list_for_verification(
+                        "workspace-a", purpose, "cpk-server",
+                    )
+                    foreign = uow.stores.delegation_signing_keys.list_for_verification(
+                        "workspace-b", purpose, "cpk-server",
+                    )
+                self.assertEqual(records, (
+                    replace(active, status=RegisteredDelegationSigningKeyStatus.VERIFY_ONLY),
+                    active_second,
+                ))
+                self.assertEqual(second.registration_id, active_second.registration_id)
+                self.assertEqual(foreign, ())
+                active_keys.append(active_second)
+        with self.unit_of_work() as uow:
+            for active in active_keys:
+                self.assertEqual(uow.stores.delegation_signing_keys.require_active(
+                    "workspace-a", active.purpose, "cpk-server",
+                ), active)
+
+    def test_health_registration_rejects_wrong_intent_without_records(self) -> None:
+        for purpose, expected in self.health_pairs():
+            for wrong in (
+                SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,
+                SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY,
+                SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY,
+                *(intent for _, intent in self.health_pairs() if intent is not expected),
+            ):
+                with self.subTest(purpose=purpose, wrong=wrong):
+                    reference = self.admit_health_reference(
+                        purpose.value + "/" + wrong.value, (wrong,),
+                    )
+                    with self.assertRaisesRegex(DelegationSigningKeyConflict,
+                                                "not admitted for delegation signing"):
+                        self.service().register(replace(
+                            self.command(), purpose=purpose, private_key_reference=reference,
+                        ))
+                    with self.unit_of_work() as uow:
+                        self.assertEqual(uow.stores.delegation_signing_keys.list_workspace(
+                            "workspace-a",
+                        ), ())
+
+    def test_health_activation_rechecks_reference_before_demoting_active_key(self) -> None:
+        for purpose, intent in self.health_pairs():
+            with self.subTest(purpose=purpose):
+                reference = self.admit_health_reference(purpose.value, (intent,))
+                service = self.service()
+                for key in ("gateway-a", "gateway-b"):
+                    service.register(replace(self.command(key_id=key), purpose=purpose,
+                                             private_key_reference=reference))
+                service.activate(replace(self.activate("gateway-a"), purpose=purpose))
+                with self.unit_of_work() as uow:
+                    before = uow.stores.delegation_signing_keys.list_workspace("workspace-a")
+                for allowed, status in (
+                    ((SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,), "active"),
+                    (tuple(value for _, value in self.health_pairs() if value is not intent), "active"),
+                    ((intent,), "revoked"),
+                ):
+                    with self.subTest(allowed=allowed, status=status):
+                        self.connection.execute(
+                            "UPDATE cpk_secret_references SET allowed_intents = %s, status = %s "
+                            "WHERE workspace_id = 'workspace-a' AND secret_reference = %s",
+                            (json.dumps([value.value for value in allowed]), status,
+                             reference.reference_id),
+                        )
+                        with self.assertRaises(DelegationSigningKeyConflict):
+                            service.activate(replace(self.activate("gateway-b"), purpose=purpose))
+                        with self.unit_of_work() as uow:
+                            self.assertEqual(uow.stores.delegation_signing_keys.list_workspace(
+                                "workspace-a",
+                            ), before)
+
+    def test_health_registration_and_activation_keep_distinct_scopes(self) -> None:
+        for purpose, intent in self.health_pairs():
+            with self.subTest(purpose=purpose):
+                reference = self.admit_health_reference(purpose.value, (intent,))
+                command = replace(self.command(), purpose=purpose, private_key_reference=reference)
+                with self.assertRaises(DelegationSigningKeyAuthorizationDenied):
+                    self.service().register(replace(command, actor_scopes=(PolicyScope.DELEGATION_KEY_USE,)))
+                registered = self.service().register(command)
+                with self.assertRaises(DelegationSigningKeyAuthorizationDenied):
+                    self.service().activate(replace(self.activate("gateway-a"), purpose=purpose,
+                                                   actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,)))
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.delegation_signing_keys.get(
+                        "workspace-a", purpose, "cpk-server", "gateway-a",
+                    ), registered)
+
+    @staticmethod
+    def health_pairs():
+        return (
+            (DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ,
+             SecretUseIntent.WORKLOAD_NODE_HEALTH_READ_SIGNING_KEY),
+            (DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT,
+             SecretUseIntent.GATEWAY_NODE_HEALTH_READ_TRANSIT_SIGNING_KEY),
+        )
+
+    def admit_health_reference(self, suffix, intents):
+        service = SecretProviderRegistrationService(self.unit_of_work)
+        provider = service.register_provider(RegisterSecretProviderCommand(
+            workspace_id="workspace-a", provider_id=SecretProviderId("health-secrets"),
+            provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS,
+            display_name="Health signing references",
+            endpoint_reference=SecretProviderEndpointReference("health-secrets-endpoint"),
+            credential_reference=SecretReference("secret://health-secrets/provider-token"),
+            allowed_reference_prefixes=(SecretReference("secret://health-secrets/keys"),),
+            allowed_intents=(SecretUseIntent.GATEWAY_PROBE_SIGNING_KEY,
+                             SecretUseIntent.WORKLOAD_NODE_CONTROL_SIGNING_KEY,
+                             SecretUseIntent.GATEWAY_NODE_CONTROL_TRANSIT_SIGNING_KEY,
+                             *(intent for _, intent in self.health_pairs())),
+            admitted_by="operator-a", admitted_at="2026-08-01T11:00:00Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+        ))
+        reference = SecretReference("secret://health-secrets/keys/" + suffix)
+        service.register_reference(RegisterSecretReferenceCommand(
+            workspace_id="workspace-a", reference=reference,
+            provider_registration_id=provider.registration_id, allowed_intents=intents,
+            admitted_by="operator-a", admitted_at="2026-08-01T11:05:00Z",
+            actor_scopes=(PolicyScope.SECRET_PROVIDER_REGISTER,),
+        ))
+        return reference
 
     def test_activation_requires_admitted_reference_and_rotates_to_overlap(self) -> None:
         service = self.service()
