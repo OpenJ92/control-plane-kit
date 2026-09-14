@@ -339,7 +339,7 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         from control_plane_kit_core.algebra import BlockSpec
         from control_plane_kit_core.capabilities import CapabilityName
         from control_plane_kit_core.node_control import (
-            ControlPlaneResultCodec, ControlPlaneStateCodec,
+            ControlPlaneCommandCodec, ControlPlaneResultCodec, ControlPlaneStateCodec,
             ControlPlaneVariableDescriptor, ControlPlaneVariableKind,
             ControlPlaneVariableOperationContract, NodeControlGraphReference,
             NodeControlGraphReferenceRole, NodeControlOperation,
@@ -350,7 +350,10 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         variable = ControlPlaneVariableDescriptor(
             NodeControlGraphReference(NodeControlGraphReferenceRole.VARIABLE, "mode"),
             ControlPlaneVariableKind.SCALAR, ControlPlaneStateCodec.SCALAR_V1,
-            (ControlPlaneVariableOperationContract(NodeControlOperation.READ_STATE, None, ControlPlaneResultCodec.STATE_V1),),
+            (
+                ControlPlaneVariableOperationContract(NodeControlOperation.READ_STATE, None, ControlPlaneResultCodec.STATE_V1),
+                ControlPlaneVariableOperationContract(NodeControlOperation.APPLY_COMMAND, ControlPlaneCommandCodec.REPLACE_SCALAR_V1, ControlPlaneResultCodec.TRANSITION_V1),
+            ),
         )
         surface = replace(node.block_spec.control_surfaces[0], variables=(variable,), health_reads=())
         graph = replace(graph, nodes={"api": replace(node, block_spec=BlockSpec(
