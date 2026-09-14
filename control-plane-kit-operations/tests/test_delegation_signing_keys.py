@@ -245,9 +245,12 @@ class DelegationSigningKeyStoreTests(unittest.TestCase):
                 ):
                     with self.subTest(allowed=allowed, status=status):
                         self.connection.execute(
-                            "UPDATE cpk_secret_references SET allowed_intents = %s, status = %s "
+                            "UPDATE cpk_secret_references SET allowed_intents = %s, status = %s, "
+                            "revoked_by = %s, revoked_at = %s "
                             "WHERE workspace_id = 'workspace-a' AND secret_reference = %s",
                             (json.dumps([value.value for value in allowed]), status,
+                             "operator-a" if status == "revoked" else None,
+                             "2026-08-01T12:10:00Z" if status == "revoked" else None,
                              reference.reference_id),
                         )
                         with self.assertRaises(DelegationSigningKeyConflict):
