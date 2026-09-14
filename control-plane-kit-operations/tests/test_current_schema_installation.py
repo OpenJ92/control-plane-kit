@@ -341,6 +341,38 @@ def _captured_install_error(connection) -> BaseException:
 
 
 class CurrentSchemaStaticLawTests(unittest.TestCase):
+    def test_health_contract_fingerprint_pins_exact_constraint_changes(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract, schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        targets = {
+            "cpk_delegation_signing_keys_purpose_check": _SIGNING_PURPOSE_EXPRESSION,
+            "cpk_secret_use_authorizations_intent_check": _INTENT_EXPRESSION,
+        }
+        constraints = tuple(
+            dataclasses.replace(value, check_expression=targets[value.name])
+            if value.name in targets else value
+            for value in contract.constraints
+        )
+        expected_contract = dataclasses.replace(contract, constraints=constraints)
+        payload = json.dumps(
+            {"domain": _CONTRACT_DOMAIN, "format_version": _CONTRACT_FORMAT_VERSION,
+             "contract": dataclasses.asdict(expected_contract)},
+            ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+        ).encode("ascii")
+        expected_sql = schema._CURRENT_SCHEMA_SQL
+        for value in contract.constraints:
+            if value.name in targets:
+                original = f"CONSTRAINT {value.name} CHECK ({value.check_expression})"
+                self.assertEqual(expected_sql.count(original), 1)
+                expected_sql = expected_sql.replace(
+                    original, f"CONSTRAINT {value.name} CHECK ({targets[value.name]})",
+                )
+        self.assertEqual(
+            (_CURRENT_CONTRACT_SHA256, _CURRENT_SCHEMA_SQL_SHA256),
+            (hashlib.sha256(payload).hexdigest(), hashlib.sha256(expected_sql.encode("utf-8")).hexdigest()),
+        )
+
     def test_public_postgres_connection_is_execute_only(self) -> None:
         connection_members = set(postgres.PostgresConnection.__dict__)
 
