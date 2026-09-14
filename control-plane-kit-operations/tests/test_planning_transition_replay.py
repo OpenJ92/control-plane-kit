@@ -963,10 +963,13 @@ class PlanningTransitionReplayTests(unittest.TestCase):
 
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         command, result = self.plan(scenario.current_graph, scenario.desired_graph)
+        module = require_derivation(self)
         self.connection.execute(
             "UPDATE cpk_activity_plans SET payload = %s WHERE plan_id = %s",
             (
-                Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(ActivityPlan(()))),
+                Jsonb(module.encode_stored_activity_plan(
+                    ActivityPlan(()), profile=result.plan_record.derivation_profile,
+                )),
                 result.plan_record.plan_id,
             ),
         )
