@@ -86,6 +86,20 @@ class PlanDerivationTests(unittest.TestCase):
             with self.subTest(profile=profile), self.assertRaises(module.PlanDerivationError):
                 module.derive_activity_plan(transition, profile=profile)
 
+    def test_typed_profiles_and_exact_wire_strings_are_distinct_boundaries(self):
+        module = require_derivation(self)
+        profile = module.PlanDerivationProfile.STRUCTURAL_V1
+        for invalid in ("structural-v1", True, False):
+            with self.subTest(invalid=invalid), self.assertRaises(module.PlanDerivationError):
+                module.encode_stored_activity_plan(ActivityPlan(()), profile=invalid)
+        self.assertFalse(module.planning_derivation_matches_action(profile, {"derivation_profile": profile}))
+        wire = {"schema": "control-plane-kit.operations.activity-plan-record", "version": 1,
+                "derivation_profile": profile, "plan": DEFAULT_ACTIVITY_PLAN_CODEC.encode(ActivityPlan(()))}
+        with self.assertRaises(module.PlanDerivationError) as error:
+            module.decode_stored_activity_plan(wire)
+        self.assertIsNone(error.exception.__cause__)
+        self.assertIsNone(error.exception.__context__)
+
     def test_record_profile_is_nominal_keyword_only_and_absence_is_preserved(self):
         module = require_derivation(self)
         field = next(value for value in fields(ActivityPlanRecord) if value.name == "derivation_profile")

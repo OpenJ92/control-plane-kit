@@ -472,17 +472,22 @@ class PlanningTransitionReplayTests(unittest.TestCase):
 
     def test_malformed_stored_envelope_is_bounded_through_all_readers_and_replay(self):
         module = require_derivation(self)
+        from control_plane_kit_operations import InstanceReadService
         from control_plane_kit_operations.postgres import PostgresStoreBundle
         from control_plane_kit_operations.read_pages import ReadCollection, ReadPageRequest, SessionReadScope
         command, record, _ = self._store_historical_derivation(DeploymentGraph("empty"), DeploymentGraph("desired"), profile=module.PlanDerivationProfile.STRUCTURAL_V1)
         payload = {"schema": "control-plane-kit.operations.activity-plan-record", "version": 1,
                    "derivation_profile": "STORED-PROFILE-CANARY", "plan": DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)}
         self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id=%s", (Jsonb(payload), record.plan_id))
-        store = PostgresStoreBundle(self.connection).activity_history
+        stores = PostgresStoreBundle(self.connection)
+        store = stores.activity_history
+        service = InstanceReadService(workspace_store=stores.workspaces, graph_topology_store=stores.graphs,
+                                      activity_history_store=store, execution_store=stores.execution)
         request = ReadPageRequest(ReadCollection.SESSION_PLANS, SessionReadScope("workspace-a", "session-a"), 10)
         reads = (lambda: store.get_plan(record.plan_id), lambda: store.plans_for_session("session-a"),
                  lambda: store.plan_page(request), lambda: store.overview_plans("workspace-a", record.desired_graph_id,
-                     record.desired_realized_projection_id, record.desired_graph_revision))
+                     record.desired_realized_projection_id, record.desired_graph_revision),
+                 lambda: service.plan_detail("workspace-a", record.plan_id), lambda: service.session_plans(request))
         before = self._durable_counts()
         for read in reads:
             with self.assertRaises(module.PlanDerivationError) as error:
