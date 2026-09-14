@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
 from dataclasses import fields, replace
 import os
 from pathlib import Path
@@ -14,13 +16,16 @@ from control_plane_kit_core.planning import (
     ActivityPlan,
     DEFAULT_ACTIVITY_PLAN_CODEC,
     planning_scenarios,
+    compile_activity_plan,
 )
+from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
     GraphDescriptorCodec,
     compile_topology,
     validate_graph,
+    diff_graphs,
 )
 from control_plane_kit_operations import planning as planning_module
 from control_plane_kit_operations.deployment_transitions import (
@@ -42,6 +47,7 @@ from control_plane_kit_operations.planning import (
 )
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import (
+    ActivityPlanRecord, ActivityPlanStatus, OperationActionRecord,
     GraphVersionRecord,
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
@@ -52,6 +58,10 @@ from control_plane_kit_operations.workflows import (
     InvalidOperationCommand,
     OperationCommandService,
     StartOperationSession,
+)
+from tests.runtime_management_fixtures import (
+    management_graph, sdk_health_graph, registered_management_product,
+    omitted_management_graph,
 )
 
 
@@ -235,10 +245,18 @@ class PlanningTransitionReplayTests(unittest.TestCase):
         self,
         current: DeploymentGraph,
         desired: DeploymentGraph,
+        *,
+        registered_products=(),
     ) -> RequestActivityPlan:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             stores.workspaces.create(WorkspaceRecord("workspace-a", "Workspace A"))
+            for product in registered_products:
+                stores.registered_products.register(
+                    workspace_id="workspace-a", descriptor_document=product.descriptor_document,
+                    source=product.source, imported_by=product.imported_by,
+                    imported_at=product.imported_at,
+                )
             current_record = GraphVersionRecord.from_graph(
                 graph_id="graph-current",
                 workspace_id="workspace-a",
@@ -295,6 +313,152 @@ class PlanningTransitionReplayTests(unittest.TestCase):
             idempotency_key=IdempotencyKey("plan"),
         )
         return command
+
+    def test_omitted_authored_declaration_cannot_hide_pinned_product_during_planning(self):
+        for transit in (False, True):
+            product = registered_management_product(transit=transit)
+            graph = omitted_management_graph(product)
+            for current, desired in ((DeploymentGraph("empty"), graph), (graph, DeploymentGraph("empty"))):
+                with self.subTest(transit=transit, removing=not desired.nodes):
+                    self._reset()
+                    command = self.prepare(current, desired, registered_products=(product,))
+                    before = self._durable_counts()
+                    with self.assertRaises(InvalidOperationCommand):
+                        self.planning_service("plan-a", "action-plan").execute(command)
+                    self.assertEqual(self._durable_counts(), before)
+
+    def test_unrelated_management_registration_does_not_block_plain_planning(self):
+        product = registered_management_product()
+        graph = omitted_management_graph(product)
+        graph = replace(graph, nodes={"api": replace(graph.node("api"), metadata={})})
+        command = self.prepare(DeploymentGraph("empty"), graph, registered_products=(product,))
+        result = self.planning_service("plan-a", "action-plan").execute(command)
+        self.assertTrue(result.plan_record.plan.activities)
+
+    def test_variable_only_sdk_surface_is_conservatively_guarded(self):
+        from control_plane_kit_core.algebra import BlockSpec
+        from control_plane_kit_core.capabilities import CapabilityName
+        from control_plane_kit_core.node_control import (
+            ControlPlaneCommandCodec, ControlPlaneResultCodec, ControlPlaneStateCodec,
+            ControlPlaneVariableDescriptor, ControlPlaneVariableKind,
+            ControlPlaneVariableOperationContract, NodeControlGraphReference,
+            NodeControlGraphReferenceRole, NodeControlOperation,
+        )
+
+        graph = sdk_health_graph()
+        node = graph.node("api")
+        variable = ControlPlaneVariableDescriptor(
+            NodeControlGraphReference(NodeControlGraphReferenceRole.VARIABLE, "mode"),
+            ControlPlaneVariableKind.SCALAR, ControlPlaneStateCodec.SCALAR_V1,
+            (
+                ControlPlaneVariableOperationContract(NodeControlOperation.READ_STATE, None, ControlPlaneResultCodec.STATE_V1),
+                ControlPlaneVariableOperationContract(NodeControlOperation.APPLY_COMMAND, ControlPlaneCommandCodec.REPLACE_SCALAR_V1, ControlPlaneResultCodec.TRANSITION_V1),
+            ),
+        )
+        surface = replace(node.block_spec.control_surfaces[0], variables=(variable,), health_reads=())
+        graph = replace(graph, nodes={"api": replace(node, block_spec=BlockSpec(
+            "api", capabilities=(CapabilityName.NODE_CONTROLLABLE,), control_surfaces=(surface,),
+        ))})
+        validate_graph(graph).require_valid()
+        command = self.prepare(DeploymentGraph("empty"), graph)
+        before = self._durable_counts()
+        with self.assertRaises(InvalidOperationCommand):
+            self.planning_service("plan-a", "action-plan").execute(command)
+        self.assertEqual(self._durable_counts(), before)
+
+    def test_omitted_declaration_pinned_product_equal_pair_remains_no_op(self):
+        product = registered_management_product()
+        graph = omitted_management_graph(product)
+        command = self.prepare(graph, graph, registered_products=(product,))
+        result = self.planning_service("plan-a", "action-plan").execute(command)
+        self.assertEqual(result.plan_record.plan.activities, ())
+
+    def test_new_sdk_health_intent_without_management_denies_before_plan_persistence(self):
+        command = self.prepare(DeploymentGraph("empty"), sdk_health_graph())
+        before = self._durable_counts()
+        with self.assertRaises(InvalidOperationCommand):
+            self.planning_service("plan-a", "action-plan").execute(command)
+        self.assertEqual(self._durable_counts(), before)
+
+    def test_absent_management_sdk_graph_no_op_and_historical_replay_remain_valid(self):
+        graph = sdk_health_graph()
+        command, first = self.plan(graph, graph)
+        self.assertEqual(first.plan_record.plan.activities, ())
+        before = self._durable_counts()
+        replay = self.planning_service().execute(command)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.plan_record, first.plan_record)
+        self.assertEqual(replay.transition, first.transition)
+        self.assertEqual(self._durable_counts(), before)
+
+    def test_retained_sdk_surface_environment_change_cannot_use_diff_only_fallback(self):
+        from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+
+        current = sdk_health_graph()
+        desired = sdk_health_graph(public_environment=(PublicStaticEnvironmentBinding("LABEL", "changed"),))
+        command = self.prepare(current, desired)
+        before = self._durable_counts()
+        with self.assertRaises(InvalidOperationCommand):
+            self.planning_service("plan-a", "action-plan").execute(command)
+        self.assertEqual(self._durable_counts(), before)
+
+    def test_explicit_management_or_transit_in_either_snapshot_denies_plain_work(self):
+        for selected in (True, False):
+            graph = management_graph(self, selected=selected)
+            for current, desired in ((DeploymentGraph("empty"), graph), (graph, DeploymentGraph("empty"))):
+                with self.subTest(selected=selected, removing=not desired.nodes):
+                    self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                    command = self.prepare(current, desired)
+                    before = self._durable_counts()
+                    with self.assertRaises(InvalidOperationCommand):
+                        self.planning_service("plan-a", "action-plan").execute(command)
+                    self.assertEqual(self._durable_counts(), before)
+
+    def test_equal_and_name_only_explicit_management_are_real_no_ops(self):
+        graph = management_graph(self)
+        for desired in (graph, replace(graph, name="renamed")):
+            with self.subTest(name=desired.name):
+                self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+                _, result = self.plan(graph, desired)
+                self.assertEqual(result.plan_record.plan.activities, ())
+
+    def test_nonempty_historical_sdk_plan_replays_without_new_admission(self):
+        current, desired = DeploymentGraph("empty"), sdk_health_graph()
+        command = self.prepare(current, desired)
+        plan = compile_activity_plan(diff_graphs(validate_graph(current), validate_graph(desired)))
+        self.assertTrue(plan.activities)
+        record = ActivityPlanRecord(
+            "historical-plan", "session-a", command.expected_current_graph_id,
+            command.expected_desired_graph_id, ActivityPlanStatus.PLANNED,
+            "2026-08-14T10:02:00Z", plan,
+            base_realized_projection_id=command.expected_current_realized_projection_id,
+            desired_realized_projection_id=command.expected_desired_realized_projection_id,
+            desired_graph_revision=command.expected_desired_graph_revision,
+        )
+        payload = {
+            "workspace_id": "workspace-a", "plan_id": record.plan_id,
+            "base_graph_id": record.base_graph_id, "desired_graph_id": record.desired_graph_id,
+            "base_realized_projection_id": record.base_realized_projection_id,
+            "desired_realized_projection_id": record.desired_realized_projection_id,
+            "desired_graph_revision": record.desired_graph_revision,
+            "ready_for_execution": plan.ready_for_execution, "activity_count": len(plan.activities),
+        }
+        with self.unit_of_work() as uow:
+            uow.stores.activity_history.add_plan(record)
+            uow.stores.activity_history.add_action(OperationActionRecord(
+                "historical-plan-action", "session-a", uow.stores.activity_history.next_action_ordinal("session-a"),
+                OperatorCommandKind.REQUEST_ACTIVITY_PLAN, "operator-a", payload, "2026-08-14T10:02:00Z",
+                idempotency_key=command.idempotency_key.value,
+                intent_fingerprint=hashlib.sha256(json.dumps(command.descriptor(), sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            ))
+            uow.commit()
+        before = self._durable_counts()
+        replay = self.planning_service().execute(command)
+        self.assertTrue(replay.replayed)
+        self.assertEqual(replay.plan_record, record)
+        self.assertEqual(replay.transition.current.graph, current)
+        self.assertEqual(replay.transition.desired.graph, desired)
+        self.assertEqual(self._durable_counts(), before)
 
     def test_result_retains_exact_transition_without_descriptor_or_repr_material(
         self,

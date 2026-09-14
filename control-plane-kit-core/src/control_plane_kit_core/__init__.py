@@ -370,7 +370,26 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_result_fingerprint,
 )
 
+from control_plane_kit_core.runtime_management import (
+    GatewayTransitDeclaration,
+    GatewayTransitDeclarationCodec,
+    GatewayTransitProtocol,
+    RuntimeManagement,
+    RuntimeManagementCodec,
+    RuntimeManagementError,
+)
+from control_plane_kit_core.topology.validation import management_ingress_for_health_read
+from control_plane_kit_core.topology.changes import RuntimeManagementValue
+
 __all__ = [
+    "GatewayTransitDeclaration",
+    "GatewayTransitDeclarationCodec",
+    "GatewayTransitProtocol",
+    "RuntimeManagement",
+    "RuntimeManagementCodec",
+    "RuntimeManagementError",
+    "RuntimeManagementValue",
+    "management_ingress_for_health_read",
     "ActivityPlanApprovalSubject",
     "ActivityHistoryPolicy",
     "ActivityEventContract",

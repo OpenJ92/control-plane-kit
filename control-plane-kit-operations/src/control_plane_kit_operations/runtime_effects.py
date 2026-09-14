@@ -85,6 +85,9 @@ from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityRegistrationError,
     _admitted_runtime_authority_deliveries,
 )
+from control_plane_kit_operations.runtime_management_admission import (
+    runtime_management_execution_is_unsupported,
+)
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 _GATEWAY_TARGETS_ENVIRONMENT = "CPK_GATEWAY_TARGETS_JSON"
@@ -117,6 +120,12 @@ def _runtime_effect_intent_for_context(
         raise InvalidOperationCommand(
             "runtime effect translation requires ActivityRealizationContext"
         )
+    if runtime_management_execution_is_unsupported(
+        DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
+        DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
+        registered_products=context.registered_products,
+    ):
+        raise InvalidOperationCommand("runtime management execution is unsupported")
     operation = activity.operation
     try:
         run_id = RunId(context.run.run_id)

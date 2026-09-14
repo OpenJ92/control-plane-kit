@@ -42,6 +42,9 @@ from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityRegistrationError,
     _admitted_runtime_authority_deliveries,
 )
+from control_plane_kit_operations.runtime_management_admission import (
+    runtime_management_execution_is_unsupported,
+)
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     InvalidOperationCommand,
@@ -560,6 +563,14 @@ class ActivityPlanningCommandService:
                 desired_projection_id=expected_desired_projection_id,
                 graph_codec=self._graph_codec,
             )
+            if runtime_management_execution_is_unsupported(
+                transition.current.graph, transition.desired.graph, plan,
+                codec=self._graph_codec,
+                registered_products=unit_of_work.stores.registered_products.list_active(
+                    command.workspace_id,
+                ),
+            ):
+                raise InvalidOperationCommand("runtime management execution is unsupported")
             _require_fresh_plan_delivery_admission(
                 unit_of_work, plan, transition.desired.graph,
                 workspace_id=command.workspace_id,

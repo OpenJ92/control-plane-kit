@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import replace
+from tests.runtime_management_fixtures import (
+    management_graph, sdk_health_graph, registered_management_product,
+    omitted_management_graph,
+)
 
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -223,6 +227,83 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 self.assertIsNone(caught.__cause__)
                 self.assertIsNone(caught.__context__)
                 self.assertEqual(dispatch, [])
+
+    def test_direct_malformed_product_reference_has_bounded_catalog_independent_error(self):
+        product = registered_management_product()
+        graph = omitted_management_graph(product)
+        node = graph.node("api")
+        graph = replace(graph, nodes={"api": replace(node, metadata={
+            **node.metadata, "product_identity": "test/managed-contract/REFERENCE-CANARY",
+        })})
+        for registrations in ((), (product,)):
+            with self.subTest(registered=bool(registrations)):
+                context = _context(base_graph=graph, desired_graph=graph, registered_products=registrations)
+                with self.assertRaises(InvalidOperationCommand) as captured:
+                    runtime_effect_request_for_context(context)
+                self.assertEqual(str(captured.exception), "runtime management execution is unsupported")
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                self.assertNotIn("REFERENCE-CANARY", repr(captured.exception))
+
+    def test_direct_omitted_declaration_checks_exact_pinned_products_on_both_sides(self):
+        for transit in (False, True):
+            product = registered_management_product(transit=transit)
+            graph = omitted_management_graph(product)
+            plain = _graph()
+            for base, desired in ((graph, plain), (plain, graph), (graph, graph)):
+                with self.subTest(transit=transit, base=base.name, desired=desired.name):
+                    context = _context(base_graph=base, desired_graph=desired,
+                        registered_products=(_registered_product(), product))
+                    with self.assertRaises(InvalidOperationCommand):
+                        runtime_effect_request_for_context(context)
+
+    def test_direct_unrelated_management_registration_preserves_plain_intent(self):
+        context = _context()
+        expected = runtime_effect_request_for_context(context)
+        context = replace(context, registered_products=context.registered_products + (registered_management_product(),))
+        self.assertEqual(runtime_effect_request_for_context(context), expected)
+
+    def test_direct_same_identity_different_digest_registration_is_not_selected(self):
+        context = _context()
+        expected = runtime_effect_request_for_context(context)
+        managed = registered_management_product()
+        product = replace(managed.descriptor_document.product, identity=context.registered_products[0].reference.identity)
+        other = RegisteredProduct.from_document(
+            workspace_id="workspace-a", descriptor_document=ProductDescriptorCodec().encode_document(product),
+            source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-07-22T09:00:00Z",
+        )
+        self.assertNotEqual(other.reference.descriptor_sha256, context.registered_products[0].reference.descriptor_sha256)
+        context = replace(context, registered_products=context.registered_products + (other,))
+        self.assertEqual(runtime_effect_request_for_context(context), expected)
+
+    def test_direct_sdk_activity_cannot_borrow_equal_graph_no_op_exemption(self):
+        original = _graph().node("api")
+        graph = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        context = _context(base_graph=graph, desired_graph=graph)
+        with self.assertRaises(InvalidOperationCommand):
+            runtime_effect_request_for_context(context)
+
+    def test_direct_sdk_activity_checks_both_pinned_graphs_before_intent(self):
+        original = _graph().node("api")
+        sdk = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        legacy = replace(sdk, nodes={"api": replace(sdk.node("api"), block_spec=BlockSpec("api"))})
+        for base, desired in ((sdk, legacy), (legacy, sdk)):
+            with self.subTest(sdk_in_base=base is sdk):
+                context = _context(base_graph=base, desired_graph=desired)
+                with self.assertRaises(InvalidOperationCommand):
+                    runtime_effect_request_for_context(context)
+
+    def test_direct_plain_activity_checks_management_and_transit_on_both_sides(self):
+        original = _graph().node("api")
+        sdk = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        legacy = replace(sdk, nodes={"api": replace(sdk.node("api"), block_spec=BlockSpec("api"))})
+        for selected in (True, False):
+            graph = management_graph(self, selected=selected, metadata=original.metadata)
+            for base, desired in ((graph, legacy), (legacy, graph), (graph, graph)):
+                with self.subTest(selected=selected, equal=base is desired, in_base=base is graph):
+                    context = _context(base_graph=base, desired_graph=desired)
+                    with self.assertRaises(InvalidOperationCommand):
+                        runtime_effect_request_for_context(context)
 
     def test_post_start_request_binds_only_exact_original_event_identity(self) -> None:
         projection = getattr(
