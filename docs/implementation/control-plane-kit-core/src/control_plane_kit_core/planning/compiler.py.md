@@ -5,6 +5,9 @@ Runtime management reference changes use the existing ReviewChange path. They
 are excluded from generic runtime reconciliation because selecting a control
 path is not physical runtime configuration. Reference changes alone cannot
 produce ReconcileRuntime, StartRuntime or StopRuntime. Equal/name-only graph
-pairs retain their existing empty plans. Observation-aware execution planning is
-deferred to #1833; the coupled Operations guard is required before #1832 is
-accepted. There is no new activity variant or runtime effect in this slice.
+pairs retain their existing empty plans. The separate management_compiler now
+adds graph-pair observation planning above this unchanged structural interface.
+It preserves independent verification and actual service dependencies and keeps
+unsupported cutovers review-blocked. The coupled Operations refusal remains
+required until downstream plan/admission/transport support is accepted. The
+structural compiler itself adds no management operation or runtime effect.

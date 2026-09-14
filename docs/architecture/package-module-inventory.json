@@ -4372,6 +4372,38 @@
       "source": "control_plane_kit_core/runtime_management.py"
     },
     {
+      "canonical_public_exports": ["ManagementBootstrapStage", "ManagementObservationError", "ManagementObservationTarget", "NodeHealthObservationTransport", "ObserveManagementBootstrap", "ObserveNodeHealth", "PlanGraphSide"],
+      "destination": "control_plane_kit_core.planning.management_observations",
+      "internal_dependencies": ["control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.node_control", "control_plane_kit_core.runtime_management"],
+      "known_package_consumers": ["control_plane_kit_core", "control_plane_kit_core.planning", "control_plane_kit_core.planning.activity_plan", "control_plane_kit_core.planning.codec", "control_plane_kit_core.planning.management_compiler"],
+      "migration_prerequisites": ["#1833"],
+      "module": "control_plane_kit_core.planning.management_observations",
+      "motivation": "Own closed bounded management observation request values without graph resolution, authority or effects.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_management_bootstrap_planning.py"],
+      "role": "pure-contract",
+      "semantic_roles": ["values", "validation", "codecs"],
+      "source": "control_plane_kit_core/planning/management_observations.py"
+    },
+    {
+      "canonical_public_exports": ["ResolvedManagementBootstrap", "ResolvedNodeHealth", "compile_graph_activity_plan", "resolve_management_observation"],
+      "destination": "control_plane_kit_core.planning.management_compiler",
+      "internal_dependencies": ["control_plane_kit_core.node_control", "control_plane_kit_core.planning.activity_plan", "control_plane_kit_core.planning.codec", "control_plane_kit_core.planning.compiler", "control_plane_kit_core.planning.management_observations", "control_plane_kit_core.public_ingress", "control_plane_kit_core.topology.changes", "control_plane_kit_core.topology.codec", "control_plane_kit_core.topology.diff", "control_plane_kit_core.topology.graph", "control_plane_kit_core.topology.validation"],
+      "known_package_consumers": ["control_plane_kit_core", "control_plane_kit_core.planning"],
+      "migration_prerequisites": ["#1833"],
+      "module": "control_plane_kit_core.planning.management_compiler",
+      "motivation": "Derive observation-aware activity plans from complete graph pairs and resolve exact pinned requests without execution or persistence.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_management_bootstrap_planning.py"],
+      "role": "pure-planning",
+      "semantic_roles": ["transformations", "values", "validation"],
+      "source": "control_plane_kit_core/planning/management_compiler.py"
+    },
+    {
       "canonical_public_exports": [
         "ActivityId",
         "ActivityDependency",
@@ -4411,7 +4443,8 @@
       ],
       "destination": "control_plane_kit.core.planning.activity_plan",
       "internal_dependencies": [
-        "control_plane_kit.core.topology.changes"
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit_core.planning.management_observations"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -4455,6 +4488,7 @@
       "destination": "control_plane_kit.core.planning.codec",
       "internal_dependencies": [
         "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit_core.planning.management_observations",
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.validation"
       ],

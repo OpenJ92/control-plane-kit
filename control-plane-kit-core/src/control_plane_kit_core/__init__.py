@@ -801,3 +801,20 @@ __all__ += [
     "GatewayNodeHealthReadTransitGrantVerificationResult",
     "verify_gateway_node_health_read_transit_grant",
 ]
+
+from control_plane_kit_core.planning.management_observations import (
+    ManagementBootstrapStage, ManagementObservationError, ManagementObservationTarget,
+    NodeHealthObservationTransport, ObserveManagementBootstrap, ObserveNodeHealth,
+    PlanGraphSide,
+)
+from control_plane_kit_core.planning.management_compiler import (
+    ResolvedManagementBootstrap, ResolvedNodeHealth, compile_graph_activity_plan,
+    resolve_management_observation,
+)
+
+__all__ += [
+    "ManagementBootstrapStage", "ManagementObservationError", "ManagementObservationTarget",
+    "NodeHealthObservationTransport", "ObserveManagementBootstrap", "ObserveNodeHealth",
+    "PlanGraphSide", "ResolvedManagementBootstrap", "ResolvedNodeHealth",
+    "compile_graph_activity_plan", "resolve_management_observation",
+]
