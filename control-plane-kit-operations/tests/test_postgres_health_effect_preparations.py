@@ -132,7 +132,9 @@ class PostgresHealthEffectPreparationTests(PostgresHealthEffectPreparationFixtur
 
     def test_expired_revoked_advanced_and_evolved_history_remains_exact(self):
         record = self.persist_health()
-        evolved = self.transition(self.health_attempt, "succeeded", event_id="health-finished", ordinal=4)
+        from tests.postgres_effect_attempt_store_fixture import PostgresEffectAttemptStoreFixture
+        evolved = PostgresEffectAttemptStoreFixture.transition(
+            self, self.health_attempt, "succeeded", event_id="health-finished", ordinal=4)
         with self.unit_of_work() as uow:
             stores = uow.stores
             stores.execution.add_event(evolved.latest_transition_event)

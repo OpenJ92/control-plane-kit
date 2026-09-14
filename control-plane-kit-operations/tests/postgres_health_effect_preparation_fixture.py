@@ -174,7 +174,7 @@ class PostgresHealthEffectPreparationFixture(
         service = SecretProviderRegistrationService(self.unit_of_work)
         intents = tuple(use.intent for use in self.uses.values())
         provider = service.register_provider(RegisterSecretProviderCommand(
-            workspace_id="workspace-a", provider_id=SecretProviderId("other-health-secrets"),
+            workspace_id="workspace-a", provider_id=SecretProviderId("other-health"),
             provider_kind=SecretProviderKind.CONTROL_PLANE_KIT_SECRETS, display_name="Other health references",
             endpoint_reference=SecretProviderEndpointReference("other-health-provider"),
             credential_reference=SecretReference("secret://other-health/provider-token"),
