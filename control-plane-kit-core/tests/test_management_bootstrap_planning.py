@@ -194,6 +194,34 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         legacy = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(unbound)))
         self.assertEqual(self.compile(empty(), unbound), legacy)
 
+    def test_retained_connector_reconfiguration_waits_for_gateway_local_readiness(self):
+        current = graph()
+        for gateway_changes in (False, True):
+            with self.subTest(gateway_changes=gateway_changes):
+                nodes = dict(current.nodes)
+                for node_id in (("connector", "gateway") if gateway_changes else ("connector",)):
+                    nodes[node_id] = replace(nodes[node_id], block_spec=replace(nodes[node_id].block_spec,
+                        metadata={"configuration_revision": "2"}))
+                desired = replace(current, nodes=nodes)
+                plan = self.compile(current, desired)
+                structural = compile_activity_plan(diff_graphs(validate_graph(current), validate_graph(desired)))
+                connector = self.find(plan, ReconcileNode, node="connector")
+                self.assertEqual(connector.activity_id, self.find(structural, ReconcileNode, node="connector").activity_id)
+                bootstrap = self.api("ObserveManagementBootstrap")
+                local = self.find(plan, bootstrap, stage="gateway-local-ready")
+                connected = self.find(plan, bootstrap, stage="connector-connected")
+                path = self.find(plan, bootstrap, stage="authenticated-management-path")
+                self.assertFalse(any(isinstance(value.operation, (StartNode, StartRuntime, AllocatePublicIngress)) for value in plan.activities))
+                if gateway_changes:
+                    gateway = self.find(plan, ReconcileNode, node="gateway")
+                    self.assertEqual(gateway.activity_id, self.find(structural, ReconcileNode, node="gateway").activity_id)
+                    self.before(plan, gateway, local)
+                self.before(plan, local, connector)
+                self.before(plan, connector, connected)
+                self.before(plan, connected, path)
+                self.assertNotIn(connected.activity_id, predecessors(plan, connector))
+                self.assertNotIn(path.activity_id, predecessors(plan, connector))
+
     def test_independent_runtimes_have_no_synthetic_cross_runtime_barrier(self):
         left, right = topology(prefix="left-"), topology(prefix="right-")
         desired = compile_topology(DeploymentTopology("bootstrap", DockerRuntime(runtime_id="outer", children=(left.root, right.root)),
