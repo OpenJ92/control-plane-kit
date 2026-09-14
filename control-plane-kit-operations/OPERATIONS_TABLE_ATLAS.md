@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=913bd05c521c90658d779701418c6ac3dadf2dd332ff6641571f507151da3ba8 relations=40 columns=507 constraints=382 indexes=131 foreign-keys=87 -->
+<!-- current-schema-contract: sha256=2269a6ea69c6c08332b6371f68b3b9431331034fecc76b7c3509d453bab1b3e1 relations=41 columns=525 constraints=410 indexes=135 foreign-keys=95 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -104,7 +104,7 @@ foreign key and the accepted lineage cycle:
    operation/session/run/activity/effect/probe or graph/approval/execution
    provenance they retain, even where only aggregate ownership is enforced by
    foreign key.
-9. Restore `cpk_node_control_attempts` only after its exact graph projection,
+9. Restore `cpk_health_effect_preparations` after its original event, immutable intent, effect attempt, both explicit graph projections, signing-key registrations and secret-use authorizations. Restore `cpk_node_control_attempts` only after its exact graph projection,
    transit and workload signing-key registrations, and transit and workload
    secret-use authorizations exist.
 
@@ -324,6 +324,14 @@ cpk_gateway_probe_attempts -->|cpk_gateway_probe_attempts_current_graph_id_fkey|
 cpk_gateway_probe_attempts -->|cpk_gateway_probe_attempts_workspace_id_fkey| cpk_workspaces
 cpk_generated_ingress_secret_references -->|cpk_generated_ingress_secret_references_workspace_id_fkey| cpk_workspaces
 cpk_graph_versions -->|cpk_graph_versions_workspace_id_fkey| cpk_workspaces
+cpk_health_effect_preparations -->|cpk_health_effect_preparations_attempt_fk| cpk_effect_attempts
+cpk_health_effect_preparations -->|cpk_health_effect_preparations_base_projection_fk| cpk_realized_graph_projections
+cpk_health_effect_preparations -->|cpk_health_effect_preparations_desired_projection_fk| cpk_realized_graph_projections
+cpk_health_effect_preparations -->|cpk_health_effect_preparations_intent_fk| cpk_effect_attempt_intents
+cpk_health_effect_preparations -->|cpk_health_effect_preparations_transit_authorization_fk| cpk_secret_use_authorizations
+cpk_health_effect_preparations -->|cpk_health_effect_preparations_transit_key_fk| cpk_delegation_signing_keys
+cpk_health_effect_preparations -->|cpk_health_effect_preparations_workload_authorization_fk| cpk_secret_use_authorizations
+cpk_health_effect_preparations -->|cpk_health_effect_preparations_workload_key_fk| cpk_delegation_signing_keys
 cpk_image_pull_authorities -->|cpk_image_pull_authorities_workspace_id_fkey| cpk_workspaces
 cpk_ingress_authorities -->|cpk_ingress_authorities_workspace_id_fkey| cpk_workspaces
 cpk_node_control_attempts -->|cpk_node_control_attempts_projection_source_fk| cpk_realized_graph_projections
@@ -422,6 +430,14 @@ order is semantically significant for every composite identity.
 | `cpk_gateway_probe_attempts_workspace_id_fkey` | `cpk_gateway_probe_attempts` | `workspace_id` | `cpk_workspaces` | `workspace_id` | A gateway probe is scoped to one workspace. |
 | `cpk_generated_ingress_secret_references_workspace_id_fkey` | `cpk_generated_ingress_secret_references` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Generated ingress secret references are workspace scoped. |
 | `cpk_graph_versions_workspace_id_fkey` | `cpk_graph_versions` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every authored graph belongs to one workspace. |
+| `cpk_health_effect_preparations_attempt_fk` | `cpk_health_effect_preparations` | `run_id, activity_id, attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
+| `cpk_health_effect_preparations_base_projection_fk` | `cpk_health_effect_preparations` | `base_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
+| `cpk_health_effect_preparations_desired_projection_fk` | `cpk_health_effect_preparations` | `desired_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
+| `cpk_health_effect_preparations_intent_fk` | `cpk_health_effect_preparations` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | `cpk_effect_attempt_intents` | `run_id, activity_id, attempt, request_fingerprint, original_event_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
+| `cpk_health_effect_preparations_transit_authorization_fk` | `cpk_health_effect_preparations` | `transit_authorization_id, workspace_id` | `cpk_secret_use_authorizations` | `authorization_id, workspace_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
+| `cpk_health_effect_preparations_transit_key_fk` | `cpk_health_effect_preparations` | `transit_key_registration_id, workspace_id` | `cpk_delegation_signing_keys` | `registration_id, workspace_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
+| `cpk_health_effect_preparations_workload_authorization_fk` | `cpk_health_effect_preparations` | `workload_authorization_id, workspace_id` | `cpk_secret_use_authorizations` | `authorization_id, workspace_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
+| `cpk_health_effect_preparations_workload_key_fk` | `cpk_health_effect_preparations` | `workload_key_registration_id, workspace_id` | `cpk_delegation_signing_keys` | `registration_id, workspace_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
 | `cpk_image_pull_authorities_workspace_id_fkey` | `cpk_image_pull_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Image-pull authority registrations are workspace scoped. |
 | `cpk_ingress_authorities_workspace_id_fkey` | `cpk_ingress_authorities` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Ingress authority registrations are workspace scoped. |
 | `cpk_node_control_attempts_projection_source_fk` | `cpk_node_control_attempts` | `current_realized_projection_id, current_graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The intended command is pinned to the exact accepted graph realized by its projection. |
@@ -545,7 +561,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `DelegationSigningKeyStore` owns workspace-scoped public signing-key registrations and lifecycle state.
 - **Identity and cardinality:** `registration_id` is primary; `(workspace_id, purpose, issuer, key_id)` uniquely identifies one authority key.
 - **Outgoing foreign keys:** `workspace_id` binds the registration to its workspace.
-- **Inbound dependents:** No table foreign key points here; signed grants carry issuer and key identifiers that services resolve through this store.
+- **Inbound dependents:** `cpk_health_effect_preparations` and `cpk_node_control_attempts` retain exact same-workspace signing-key registrations through foreign keys. Signed grants also carry issuer and key identifiers resolved through this store.
 - **Writers and transactions:** Admission, activation, retirement, and revocation use explicit guarded store operations in caller-owned transactions.
 - **Readers and projections:** Grant admission and key-rotation workflows read immutable public key snapshots and lifecycle status.
 - **Mutation, locks, retries, and idempotency:** Lifecycle changes are compare-and-set; registration identity prevents cross-purpose or cross-issuer substitution.
@@ -585,7 +601,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `EffectAttemptIntentStore` owns one immutable protected runtime-effect intent for the exact original start event of an effect attempt.
 - **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary through `cpk_effect_attempt_intents_pkey`; `cpk_effect_attempt_intents_original_event_key` makes the original event triple independently unique, and `cpk_effect_attempt_intents_commitment_key` commits attempt identity, request fingerprint, and original event identity.
 - **Outgoing foreign keys:** Composite run/request and request/workspace references derive ownership, while the original event triple names the immutable start event.
-- **Inbound dependents:** Every `cpk_effect_attempts` row must cite matching intent evidence through the reduced commitment key, making a started attempt without evidence unrepresentable.
+- **Inbound dependents:** `cpk_health_effect_preparations` retains exact historical ownership from this table. Every `cpk_effect_attempts` row must cite matching intent evidence through the reduced commitment key, making a started attempt without evidence unrepresentable.
 - **Writers and transactions:** `EffectAttemptIntentStore.insert` appends on the caller connection after the event and before the attempt; it never commits, rolls back, locks, updates, deletes, or upserts.
 - **Readers and projections:** Exact identity lookup reconstructs the full public intent record; current verification scans primary-key pages of at most eight rows and rejects orphan evidence.
 - **Mutation, locks, retries, and idempotency:** Rows are immutable; primary/event uniqueness exposes races, while exact start replay reads and compares the protected evidence without rewriting it.
@@ -624,7 +640,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `EffectAttemptStore` owns the exact retained Operations representation of one Core effect-attempt state and the activity events that commit its beginning and latest transition.
 - **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary. Original and latest event triples are independently unique, so one event cannot silently commit two attempt roles.
 - **Outgoing foreign keys:** `run_id` names the activity run; the reduced intent-evidence commitment requires exact immutable start evidence; an optional predecessor triple names the immediately prior same-run/activity attempt; original and latest event triples name exact activity events.
-- **Inbound dependents:** Retry descendants may cite a row through the self-reference, and direct outcome evidence may cite its exact attempt identity.
+- **Inbound dependents:** `cpk_health_effect_preparations` retains exact historical ownership from this table. Retry descendants may cite a row through the self-reference, and direct outcome evidence may cite its exact attempt identity.
 - **Writers and transactions:** `insert_absent` and complete-prior `compare_and_set` execute within the caller's transaction after the caller has appended the referenced event; the store never commits or appends events itself.
 - **Readers and projections:** Exact reads and row-locking reads reconstruct typed Core state plus authoritative event records. Current-schema verification scans every row in bounded deterministic primary-key pages.
 - **Mutation, locks, retries, and idempotency:** Identity-targeted insert is first-write-wins. Compare-and-set matches the complete physical prior row with null-safe equality; retry appends a new attempt linked to its immediate predecessor.
@@ -789,6 +805,19 @@ deleting its retained draft history.
 - **Sensitive material:** Graph topology can expose provider sockets and operational structure; codecs enforce public-material rules and exclude credentials and secret values.
 - **Future impact:** #1555 authorizes node-control only against the accepted current graph and selected gateway identity; it must not infer routing from metadata.
 
+### `cpk_health_effect_preparations`
+- **Durable meaning and owner:** `HealthEffectPreparationStore` retains one exact unsigned health request and grant pair bound to its original health step start. It verifies historical evidence without admitting current authority.
+- **Identity and cardinality:** `(run_id, activity_id, attempt)` is primary. Workspace/logical request and each grant family's issuer/JTI pair are independently unique. Unrelated attempts need no preparation.
+- **Outgoing foreign keys:** The exact attempt and original intent commitment, both same-workspace executable projections, both signing-key registrations and both secret-use authorizations must already exist.
+- **Inbound dependents:** None. #1852 will compose this insert into genuine first-start admission; #1846 will consume a fresh retained read before dispatch authority checks.
+- **Writers and transactions:** `insert_absent` validates the closed value before SQL and retained joins before insertion. Only this table changes; one caller-owned unit of work owns commit and rollback.
+- **Readers and projections:** `get` rechecks every copied column, original event and intent, request/run/plan ownership, explicit authored/projection lineage, rederived health graph pins, keys, reference/provider joins and deterministic authorization identities. Current validation scans at most eight rows per keyset page through the same reconstruction.
+- **Mutation, locks, retries, and idempotency:** No update, renewal, deletion, public lock or repair exists. An existing attempt returns `None`; competing new inserts use PostgreSQL uniqueness. Other logical request or grant collisions are bounded conflicts. No external effects occur inside the transaction.
+- **Lifecycle, retention, deletion, and restore:** Expired grants, revoked references and keys, settled attempts and advanced workspace heads preserve readable history. Missing or corrupted retained owners refuse reconstruction. Restore all owners first and remove preparation dependents first under a separately authorized retention policy.
+- **JSON boundary:** A closed versioned envelope is canonical RFC 8785 bytes, bounded to 16,384 bytes before transport and parsing. Copied text columns are CASE-bounded before transfer; every witness must match the decoded value.
+- **Sensitive material:** The protected preimage contains unsigned request/grant material. Records omit payloads from repr and translated errors are fixed and detached. No private key, resolved secret, bearer, signature or provider address is stored or returned by this surface.
+- **Future impact:** #1852 owns current actor/scopes, first-start authority and shared transaction composition. Retained pair congruence does not prove current caller permission; #1846 owns later fresh authority and signing composition.
+
 ### `cpk_image_pull_authorities`
 - **Durable meaning and owner:** `ImagePullAuthorityStore` owns admitted registry/repository authority declarations for workspace image pulls.
 - **Identity and cardinality:** `authority_id` is primary; domain validation governs any stronger semantic uniqueness.
@@ -871,7 +900,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `PostgresRealizedGraphProjectionStore` owns immutable realized representations of authored workspace graphs.
 - **Identity and cardinality:** `projection_id` is primary; workspace/source/kind/key is unique; composite identities pin source graph and workspace.
 - **Outgoing foreign keys:** `(source_authored_graph_id, workspace_id)` must name one authored graph in the same workspace, and `workspace_id` must exist.
-- **Inbound dependents:** Workspaces select current/desired projections through both source and workspace composites; activity plans retain base/desired source composites.
+- **Inbound dependents:** `cpk_health_effect_preparations` retains exact historical ownership from this table. Workspaces select current/desired projections through both source and workspace composites; activity plans retain base/desired source composites.
 - **Writers and transactions:** Projection creation validates source graph, workspace, kind, key, descriptor, and digest before one immutable insert.
 - **Readers and projections:** Workspace graph state, planners, advancement workflows, and current topology queries decode selected projection documents.
 - **Mutation, locks, retries, and idempotency:** Projection rows are immutable; semantic unique identity permits exact replay and rejects digest or descriptor collision.
@@ -962,7 +991,7 @@ deleting its retained draft history.
 - **Durable meaning and owner:** `SecretUseAuthorizationStore` owns committed authorization to use one exact provider/reference pair for one bounded intent.
 - **Identity and cardinality:** `authorization_id` is primary; workspace correlation is unique; `(authorization_id, workspace_id)` preserves exact audit identity.
 - **Outgoing foreign keys:** Workspace, provider registration, and secret-reference registration must exist and agree on workspace.
-- **Inbound dependents:** No current relation references authorizations; effects consume the committed record by service contract.
+- **Inbound dependents:** `cpk_health_effect_preparations` and `cpk_node_control_attempts` retain exact same-workspace authorizations through foreign keys. Effects consume committed authorization records by service contract.
 - **Writers and transactions:** Authorization commits in its own authorization unit of work before resolution or external I/O; optional operation/session/run/activity/effect/probe columns retain correlation provenance without an atomic owning-intent insert, and optional `run_id` has a direct locale-stable canonical ASCII check.
 - **Readers and projections:** Secret policy, effect execution, and audit projections read intent, references, actor, correlation, and operation provenance.
 - **Mutation, locks, retries, and idempotency:** Authorizations are immutable; workspace correlation and intent fingerprint distinguish replay from conflicting secret use.
