@@ -563,6 +563,13 @@ class GatewayKeyRotationService:
         if not isinstance(command, RequestGatewayKeyRotation):
             raise TypeError("command must be RequestGatewayKeyRotation")
         _scope(command.actor_scopes)
+        if type(command.purpose) is not DelegationKeyPurpose or command.purpose not in (
+            DelegationKeyPurpose.GATEWAY_PROBE,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL,
+            DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ,
+            DelegationKeyPurpose.GATEWAY_NODE_CONTROL_TRANSIT,
+        ):
+            raise GatewayKeyRotationError("rotation purpose is unsupported")
         validate_canonical_utc_timestamp(command.requested_at)
         candidate = _candidate(command)
         with self._unit_of_work_factory() as uow:

@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=6dff163cf72add13406d168d8e7389cdada4e6885e345c2534307753c5d24f4c relations=40 columns=507 constraints=382 indexes=131 foreign-keys=87 -->
+<!-- current-schema-contract: sha256=913bd05c521c90658d779701418c6ac3dadf2dd332ff6641571f507151da3ba8 relations=40 columns=507 constraints=382 indexes=131 foreign-keys=87 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -552,7 +552,7 @@ deleting its retained draft history.
 - **Lifecycle, retention, deletion, and restore:** Retired and revoked registrations remain for audit and verification; restore workspaces before registrations.
 - **JSON boundary:** None; public key material and references use bounded typed text columns.
 - **Sensitive material:** `public_key_pem` and its fingerprint are public material; `private_key_reference` is a sensitive locator, never a private key or signing result.
-- **Future impact:** #1553 and #1554 add transit authority language but must preserve exact purpose separation and defer private-key resolution to immediate I/O.
+- **Future impact:** #1842 admits both health purposes with exact reference intents; health generation and deployment rotation remain refused. #1846 must preserve purpose separation and reload immediate-use authority before private-key resolution.
 
 ### `cpk_desired_topology_draft_revisions`
 - **Durable meaning and owner:** `PostgresDesiredTopologyDraftStore` owns append-only saved topology revisions; Core owns the referenced graph language.
@@ -969,7 +969,7 @@ deleting its retained draft history.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, provider, and reference first; authorizations remain durable even after referenced registrations are revoked.
 - **JSON boundary:** None; all authority facts are normalized scalar identities and digests.
 - **Sensitive material:** Provider and secret references are sensitive; the row contains no resolved value, private key, compact token, signature, or provider response.
-- **Future impact:** #1553 defines exact signing-use intents; #1556 commits both signing-use authorizations with command intent; later effect work resolves only after commit.
+- **Future impact:** #1553 defines exact signing-use intents; #1556 commits both signing-use authorizations with command intent; later effect work resolves only after commit. #1842 adds the two health signing-use intents to fresh stores. #1845 owns atomic approved-attempt preparation and #1846 owns authority reload.
 
 ### `cpk_workspaces`
 - **Durable meaning and owner:** `PostgresWorkspaceStore` owns workspace identity, lifecycle, metadata, and the atomic current/desired graph-lineage heads.
