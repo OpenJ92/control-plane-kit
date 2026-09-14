@@ -6,6 +6,7 @@ import json
 from dataclasses import replace
 from typing import Mapping
 
+from control_plane_kit_core.configuration import ConfigurationArtifact
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning.activity_plan import (
@@ -373,14 +374,31 @@ def _product_material_for_node(
                 raise InvalidOperationCommand(
                     "runtime effect secret delivery contract is not satisfied"
                 )
+        if _configuration_artifact_contract_keys(
+            node.configuration_artifacts
+        ) != _configuration_artifact_contract_keys(runtime_contract.configuration_artifacts):
+            raise InvalidOperationCommand(
+                "runtime effect configuration artifact contract is not satisfied"
+            )
     return replace(
         descriptor_product,
         runtime_contract=replace(
             runtime_contract,
             verification=node.block_spec.verification,
+            configuration_artifacts=node.configuration_artifacts,
             secret_deliveries=deliveries,
         ),
     )
+
+
+def _configuration_artifact_contract_keys(
+    artifacts: tuple[ConfigurationArtifact, ...],
+) -> tuple[tuple[str, str, str, str], ...]:
+    # Payload and both digests are selected per instance; these fields define slots.
+    return tuple(sorted(
+        (value.artifact_id, value.target_path, value.media_type.value, value.file_mode.value)
+        for value in artifacts
+    ))
 
 
 def _secret_delivery_contract_key(value: SecretDelivery) -> tuple[str, str, str, str, str]:

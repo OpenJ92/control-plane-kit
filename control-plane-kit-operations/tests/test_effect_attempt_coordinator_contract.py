@@ -150,6 +150,7 @@ COORDINATOR_DEPENDENCIES = {
     "control_plane_kit_operations.workflows",
 }
 RUNTIME_EFFECTS_DEPENDENCIES = {
+    "control_plane_kit_core.configuration",
     "control_plane_kit_core.environment",
     "control_plane_kit_core.operations",
     "control_plane_kit_core.planning.activity_plan",
@@ -316,6 +317,7 @@ EXACT_COORDINATOR_IMPORTS = _exact_imports(
 
 EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
     ("__future__", "annotations", None),
+    ("control_plane_kit_core.configuration", "ConfigurationArtifact", None),
     ("control_plane_kit_core.environment", "PublicStaticEnvironmentBinding", None),
     ("control_plane_kit_core.operations", "RunId", None),
     ("control_plane_kit_core.planning.activity_plan", "AddSocketConnection", None),
@@ -586,6 +588,7 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
 
 EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     (None, 1),
+    ("_configuration_artifact_contract_keys", 2),
     ("_connector_ingress_for_node", 1),
     ("_descriptor_digest", 1),
     ("_gateway_process_target_map_descriptor", 1),
@@ -652,7 +655,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
         1,
     ),
     ("control_plane_kit_operations.runtime_management_admission.runtime_management_execution_is_unsupported", 1),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 33),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 34),
     ("dataclasses.replace", 2),
     ("gateway_node.provider_socket", 1),
     ("gateway_target_map_for_node", 1),
@@ -668,10 +671,10 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("postgres_target.get", 3),
     ("selected_keys.count", 1),
     ("set", 1),
-    ("sorted", 6),
+    ("sorted", 7),
     ("source_edges.setdefault", 1),
     ("targets.values", 1),
-    ("tuple", 16),
+    ("tuple", 17),
     ("type", 2),
     ("uses.add", 3),
     ("uses.update", 1),
