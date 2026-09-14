@@ -189,7 +189,7 @@ SELECT NOT EXISTS (
         AND (rotations.old_key_id COLLATE "C") !~ '[^A-Za-z0-9._:-]'
         AND (rotations.purpose COLLATE "C") IN (
           'gateway-probe', 'workload-node-control',
-          'workload-node-control-surface-read'
+          'workload-node-control-surface-read', 'gateway-node-control-transit'
         )
         AND rotations.maximum_grant_lifetime_seconds BETWEEN 1 AND 300
         AND rotations.clock_skew_seconds BETWEEN 0 AND 60
