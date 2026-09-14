@@ -730,6 +730,7 @@ class PlanningTransitionReplayTests(unittest.TestCase):
                 "action_id": result.action.action_id,
                 "action_ordinal": result.action.ordinal,
                 "replayed": False,
+                "derivation_profile": "structural-v1",
             },
         )
 
