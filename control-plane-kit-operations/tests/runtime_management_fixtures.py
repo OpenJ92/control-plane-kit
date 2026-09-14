@@ -80,6 +80,21 @@ def management_graph(test_case, *, selected=True, metadata=None):
     return graph
 
 
+def bootstrap_management_graph(test_case):
+    """Explicit topology with gateway readiness and one SDK workload."""
+    graph = management_graph(test_case)
+    sdk = sdk_health_graph().node("api")
+    gateway = graph.node("gateway")
+    readiness = replace(sdk.block_spec.control_surfaces[0], health_reads=(NodeHealthReadKind.READINESS,))
+    gateway = replace(gateway, block_spec=replace(
+        gateway.block_spec, capabilities=sdk.block_spec.capabilities,
+        control_surfaces=(readiness,),
+    ))
+    graph = replace(graph, nodes={**graph.nodes, "api": sdk, "gateway": gateway})
+    validate_graph(graph).require_valid()
+    return graph
+
+
 def sdk_health_graph(*, metadata=None, public_environment=()):
     surface = WorkloadNodeControlSurfaceDescriptor(
         NodeControlGraphReference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, "http"),
