@@ -268,7 +268,7 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.assertEqual(resolved.gateway_node.node_id, "gateway")
 
     def test_mixed_sdk_and_verification_keeps_both_obligations_and_refuses_private_fallback(self):
-        check = HttpCheck("expected-body", "control", "/", expected_body_sha256="a" * 64)
+        check = HttpCheck(check_id="expected-body", provider_socket="control", path="/", expected_body_sha256="a" * 64)
         current = graph(checks=(check,))
         desired_topology = topology(checks=(replace(check, expected_body_sha256="b" * 64),))
         consumer = block("consumer", (surface(),), requirements=(RequirementSocket("upstream", Protocol.HTTP, ("UPSTREAM_URL",)),))
@@ -291,7 +291,7 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.assertIsNot(verify.operation, sdk.operation)
 
     def test_gateway_independent_verification_does_not_gate_its_own_ingress(self):
-        desired = graph(gateway_checks=(HttpCheck("gateway-body", "control", "/", expected_body_sha256="a" * 64),))
+        desired = graph(gateway_checks=(HttpCheck(check_id="gateway-body", provider_socket="control", path="/", expected_body_sha256="a" * 64),))
         plan = self.compile(empty(), desired)
         verify = self.find(plan, WaitForHealthy, node="gateway")
         local = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
@@ -303,7 +303,7 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.assertEqual(verify.activity_id, self.find(structural, WaitForHealthy, node="gateway").activity_id)
 
     def test_non_sdk_and_variable_only_nodes_keep_verification_without_invented_sdk_requests(self):
-        check = HttpCheck("independent-check", "control", "/")
+        check = HttpCheck(check_id="independent-check", provider_socket="control", path="/")
         for surfaces in ((), (surface(kinds=(), variable=True),)):
             with self.subTest(variable=bool(surfaces)):
                 desired = graph(workload_surfaces=surfaces, checks=(check,))
