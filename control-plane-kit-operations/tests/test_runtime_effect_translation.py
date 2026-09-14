@@ -6,6 +6,7 @@ from dataclasses import replace
 from tests.runtime_management_fixtures import (
     management_graph, sdk_health_graph, registered_management_product,
     omitted_management_graph,
+    bootstrap_management_graph,
 )
 
 from control_plane_kit_core.algebra import (
@@ -282,6 +283,27 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         context = _context(base_graph=graph, desired_graph=graph)
         with self.assertRaises(InvalidOperationCommand):
             runtime_effect_request_for_context(context)
+
+    def test_ready_graph_pair_observation_cannot_authorize_direct_transport(self):
+        from control_plane_kit_core.planning import ObserveNodeHealth, compile_graph_activity_plan
+        from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+
+        current = DeploymentGraph("empty")
+        desired = bootstrap_management_graph(self)
+        plan = compile_graph_activity_plan(validate_graph(current), validate_graph(desired))
+        self.assertTrue(plan.ready_for_execution)
+        activity = next(value for value in plan.activities if isinstance(value.operation, ObserveNodeHealth))
+        context = _context(base_graph=current, desired_graph=desired, registered_products=())
+        context = replace(context, activity=activity,
+            plan_record=replace(context.plan_record, plan=plan,
+                derivation_profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1),
+            intent_event=replace(context.intent_event, activity_id=activity.activity_id.value))
+        with self.assertRaises(InvalidOperationCommand) as error:
+            runtime_effect_request_for_context(context)
+        self.assertEqual(str(error.exception), "runtime management execution is unsupported")
+        self.assertIsNone(error.exception.__cause__)
+        self.assertIsNone(error.exception.__context__)
 
     def test_direct_sdk_activity_checks_both_pinned_graphs_before_intent(self):
         original = _graph().node("api")

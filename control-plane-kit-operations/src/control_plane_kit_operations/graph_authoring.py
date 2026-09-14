@@ -10,7 +10,7 @@ from control_plane_kit_core.products import (
     ProductIdentity,
     ProductReference,
 )
-from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_core.topology import DeploymentGraph, Node
 from control_plane_kit_operations.products import (
     ProductRegistrationError,
     ProductRegistrationNotFound,
@@ -191,6 +191,23 @@ def set_desired_graph_in_unit_of_work(
     )
 
 
+def product_reference_in_node(node: Node) -> ProductReference | None:
+    """Extract one node's normalized, pinned product reference when present."""
+
+    identity_value = node.metadata.get("product_identity")
+    digest_value = node.metadata.get("product_descriptor_digest")
+    if identity_value is None and digest_value is None:
+        return None
+    if not isinstance(identity_value, str) or not isinstance(digest_value, str):
+        raise GraphAuthoringError(
+            f"node {node.node_id!r} has malformed product reference metadata"
+        )
+    return ProductReference(
+        identity=_product_identity_from_key(identity_value),
+        descriptor_sha256=ProductDescriptorDigest(digest_value),
+    )
+
+
 def product_references_in_graph(graph: DeploymentGraph) -> tuple[ProductReference, ...]:
     """Extract pinned product references from product-instantiated graph nodes."""
 
@@ -198,20 +215,9 @@ def product_references_in_graph(graph: DeploymentGraph) -> tuple[ProductReferenc
         raise GraphAuthoringError("product references require DeploymentGraph")
     references: set[ProductReference] = set()
     for node in graph.nodes.values():
-        identity_value = node.metadata.get("product_identity")
-        digest_value = node.metadata.get("product_descriptor_digest")
-        if identity_value is None and digest_value is None:
-            continue
-        if not isinstance(identity_value, str) or not isinstance(digest_value, str):
-            raise GraphAuthoringError(
-                f"node {node.node_id!r} has malformed product reference metadata"
-            )
-        references.add(
-            ProductReference(
-                identity=_product_identity_from_key(identity_value),
-                descriptor_sha256=ProductDescriptorDigest(digest_value),
-            )
-        )
+        reference = product_reference_in_node(node)
+        if reference is not None:
+            references.add(reference)
     return tuple(sorted(references))
 
 

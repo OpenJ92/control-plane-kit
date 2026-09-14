@@ -118,3 +118,53 @@ def sdk_health_graph(*, metadata=None, public_environment=()):
     )
     validate_graph(graph).require_valid()
     return graph
+
+
+def sdk_variable_graph(*, health_reads=()):
+    from control_plane_kit_core.node_control import (
+        ControlPlaneCommandCodec, ControlPlaneResultCodec, ControlPlaneStateCodec,
+        ControlPlaneVariableDescriptor, ControlPlaneVariableKind,
+        ControlPlaneVariableOperationContract, NodeControlOperation,
+    )
+
+    graph = sdk_health_graph()
+    node = graph.node("api")
+    variable = ControlPlaneVariableDescriptor(
+        NodeControlGraphReference(NodeControlGraphReferenceRole.VARIABLE, "mode"),
+        ControlPlaneVariableKind.SCALAR, ControlPlaneStateCodec.SCALAR_V1,
+        (
+            ControlPlaneVariableOperationContract(NodeControlOperation.READ_STATE, None, ControlPlaneResultCodec.STATE_V1),
+            ControlPlaneVariableOperationContract(NodeControlOperation.APPLY_COMMAND, ControlPlaneCommandCodec.REPLACE_SCALAR_V1, ControlPlaneResultCodec.TRANSITION_V1),
+        ),
+    )
+    surface = replace(node.block_spec.control_surfaces[0], variables=(variable,), health_reads=health_reads)
+    capabilities = (CapabilityName.NODE_CONTROLLABLE,)
+    if health_reads:
+        capabilities += (CapabilityName.HEALTH_CHECKABLE,)
+    node = replace(node, block_spec=BlockSpec("api", capabilities=capabilities, control_surfaces=(surface,)))
+    graph = replace(graph, nodes={"api": node})
+    validate_graph(graph).require_valid()
+    return graph
+
+
+def cyclic_bootstrap_graph(test_case):
+    """A real gateway service requirement closes the bootstrap dependency cycle."""
+    from control_plane_kit_core.algebra import RequirementSocket
+    from control_plane_kit_core.environment import SocketDerivedEnvironmentBinding
+    from control_plane_kit_core.topology.graph import Edge
+    from control_plane_kit_core.types import SocketBinding
+
+    graph = bootstrap_management_graph(test_case)
+    edge_id = "gateway-needs-api"
+    address = graph.node("api").endpoint("http").url
+    gateway = graph.node("gateway")
+    gateway = replace(
+        gateway,
+        sockets=replace(gateway.sockets, requirements=(RequirementSocket("service", Protocol.HTTP, ("SERVICE_URL",)),)),
+        socket_environment=(SocketDerivedEnvironmentBinding("SERVICE_URL", address, edge_id),),
+    )
+    edge = Edge(edge_id, "api", "http", "gateway", "service", Protocol.HTTP,
+                SocketBinding.ENVIRONMENT, {"SERVICE_URL": address})
+    graph = replace(graph, nodes={**graph.nodes, "gateway": gateway}, edges={edge_id: edge})
+    validate_graph(graph).require_valid()
+    return graph

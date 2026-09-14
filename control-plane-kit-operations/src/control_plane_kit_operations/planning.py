@@ -8,7 +8,12 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
-from control_plane_kit_core.planning import ActivityPlan, ReconcileNode, StartNode
+from control_plane_kit_core.planning import (
+    ActivityPlan,
+    InvalidActivityPlan,
+    ReconcileNode,
+    StartNode,
+)
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
@@ -43,7 +48,7 @@ from control_plane_kit_operations.runtime_authorities import (
     _admitted_runtime_authority_deliveries,
 )
 from control_plane_kit_operations.runtime_management_admission import (
-    runtime_management_execution_is_unsupported,
+    runtime_management_planning_is_unsupported,
 )
 from control_plane_kit_operations.plan_derivation import (
     PlanDerivationError,
@@ -570,25 +575,32 @@ class ActivityPlanningCommandService:
                     "workspace graph pointers changed"
                 )
             # This is service policy, not caller intent or execution authority.
-            profile = PlanDerivationProfile.STRUCTURAL_V1
-            transition, plan = _planning_transition(
-                unit_of_work,
-                workspace_id=command.workspace_id,
-                base_graph_id=command.expected_current_graph_id,
-                desired_graph_id=command.expected_desired_graph_id,
-                base_projection_id=expected_current_projection_id,
-                desired_projection_id=expected_desired_projection_id,
-                graph_codec=self._graph_codec,
-                profile=profile,
-            )
-            if runtime_management_execution_is_unsupported(
-                transition.current.graph, transition.desired.graph, plan,
-                codec=self._graph_codec,
+            profile = PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
+            invalid_plan = False
+            try:
+                transition, plan = _planning_transition(
+                    unit_of_work,
+                    workspace_id=command.workspace_id,
+                    base_graph_id=command.expected_current_graph_id,
+                    desired_graph_id=command.expected_desired_graph_id,
+                    base_projection_id=expected_current_projection_id,
+                    desired_projection_id=expected_desired_projection_id,
+                    graph_codec=self._graph_codec,
+                    profile=profile,
+                )
+            except InvalidActivityPlan:
+                invalid_plan = True
+            if invalid_plan:
+                raise ActivityPlanningGraphInvalid(
+                    "persisted graph pair cannot produce an activity plan"
+                )
+            if runtime_management_planning_is_unsupported(
+                transition,
                 registered_products=unit_of_work.stores.registered_products.list_active(
                     command.workspace_id,
                 ),
             ):
-                raise InvalidOperationCommand("runtime management execution is unsupported")
+                raise InvalidOperationCommand("runtime management planning is unsupported")
             _require_fresh_plan_delivery_admission(
                 unit_of_work, plan, transition.desired.graph,
                 workspace_id=command.workspace_id,
