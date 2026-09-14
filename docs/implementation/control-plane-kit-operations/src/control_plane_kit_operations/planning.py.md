@@ -1,8 +1,8 @@
 Source: [planning.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/planning.py).
 Maintain this companion alongside its source.
 
-The planning command validates pinned base and desired projections and derives
-the Core structural plan inside the caller-owned unit of work. Fresh commands
+The planning command validates pinned base and desired projections and explicitly
+selects the structural-v1 profile inside the caller-owned unit of work. Fresh commands
 then apply the shared runtime-management refusal policy before secret-delivery
 admission, plan persistence, or action persistence. Unsupported material raises
 a fixed `InvalidOperationCommand`; rollback leaves no new plan/action rows.
@@ -12,10 +12,27 @@ cannot conceal implementation declarations. Malformed product references are
 refused independently of catalog contents.
 Equal or name-only managed graph pairs retain their compiler-proven empty plan.
 
-Historical `_activity_plan_replay` reproduces its recorded pair and plan without
-applying new-command admission. This preserves old truthful history while the
+Fresh plan and action records carry the same explicit profile. Profile selection
+is internal service policy, not a command option. Request descriptors and intent
+fingerprints remain unchanged so retries can still reach their original history.
+
+Historical `_activity_plan_replay` verifies exact record/action profile presence
+before decoding the pinned pair and selecting its declared derivation. Both
+absent means legacy structural interpretation; null, unknown or unequal markers
+fail even on equal-output plans. Stored explicit graph-pair profiles use Core's
+graph-pair compiler, independently of current fresh policy. Result congruence
+uses the same dispatcher and binding. Malformed stored envelope errors become
+fixed replay conflicts without parser cause/context; unrelated failures retain
+their existing semantics. Result descriptors expose only explicit profiles.
+
+Replay reproduces its recorded pair and plan without applying new-command
+admission or allocating plan/action/event records. This preserves old truthful history while the
 execution coordinator separately refuses unsupported new effects. The policy
 does not add schema, provider access, transaction commits, or approval powers.
 `test_planning_transition_replay.py` protects the graph pair boundary, no-op,
 no-persistence refusal, and exact nonempty historical replay. Recorded graph
 references remain internal durable coordinates; rejection text contains none.
+
+No existing row or uncertain attempt is rewritten. The history store owns the
+strict legacy/envelope representation; fresh managed planning and transport
+adoption remain separate work after #1837.
