@@ -13,6 +13,7 @@ import psycopg
 from tests.runtime_management_fixtures import (
     management_graph, sdk_health_graph, registered_management_product,
     omitted_management_graph,
+    bootstrap_management_graph,
 )
 
 from control_plane_kit_core.operations import EffectResultKind
@@ -953,6 +954,35 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
 
+    def test_ready_graph_pair_plan_remains_unsupported_before_effect_attempts(self):
+        from control_plane_kit_core.planning import compile_graph_activity_plan
+        from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+
+        current = DeploymentGraph("empty")
+        desired = bootstrap_management_graph(self)
+        plan = compile_graph_activity_plan(validate_graph(current), validate_graph(desired))
+        self.assertTrue(plan.ready_for_execution)
+        self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
+            derivation_profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        attempts_before = self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0]
+        observations_before = self.connection.execute("SELECT count(*) FROM cpk_observations").fetchone()[0]
+        first = coordinator.execute(self.command())
+        self.assertIs(first.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(first.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(first.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(coordinator.execute(self.command()), first)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], attempts_before)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_observations").fetchone()[0], observations_before)
+
     def test_forged_empty_plan_cannot_complete_nonempty_sdk_transition(self):
         self._install_sdk_pair(empty_plan=True)
         self.claim_and_start()
@@ -1699,7 +1729,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             )
         )
 
-    def seed_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None) -> None:
+    def seed_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None, derivation_profile=None) -> None:
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -1780,6 +1810,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     desired_realized_projection_id=(
                         desired_projection.projection_id
                     ),
+                    derivation_profile=derivation_profile,
                 )
             )
             unit_of_work.commit()
@@ -1808,10 +1839,11 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
         )
 
-    def reset_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None) -> None:
+    def reset_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None, derivation_profile=None) -> None:
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.ids = Sequence()
-        self.seed_execution_request(plan=plan, base_graph=base_graph, desired_graph=desired_graph, product_document=product_document)
+        self.seed_execution_request(plan=plan, base_graph=base_graph, desired_graph=desired_graph,
+            product_document=product_document, derivation_profile=derivation_profile)
 
 
 def single_activity_plan() -> ActivityPlan:
