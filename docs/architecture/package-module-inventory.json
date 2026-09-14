@@ -10668,6 +10668,42 @@
         "control-plane-kit-operations/tests/test_revision_history_pages.py",
         "control-plane-kit-operations/tests/test_revision_history_advancement.py"
       ]
+    },
+    {
+      "module": "control_plane_kit_operations.plan_derivation",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/plan_derivation.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.plan_derivation",
+      "role": "durable-plan-derivation-contract",
+      "motivation": "Preserve declared compiler semantics and strict stored-plan provenance without rewriting historical plans or granting execution authority.",
+      "internal_dependencies": [
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.planning.codec",
+        "control_plane_kit_operations.deployment_transitions"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": ["transformations"],
+      "canonical_public_exports": [
+        "PlanDerivationProfile",
+        "PlanDerivationError",
+        "derive_activity_plan",
+        "encode_stored_activity_plan",
+        "decode_stored_activity_plan",
+        "planning_derivation_matches_action"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.planning",
+        "control_plane_kit_operations.admission",
+        "control_plane_kit_operations.postgres.activity_history"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_plan_derivation.py",
+        "control-plane-kit-operations/tests/test_planning_transition_replay.py",
+        "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_admission.py"
+      ]
     }
   ],
   "owner_vocabulary": [

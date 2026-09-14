@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from control_plane_kit_core.operations.commands import OperatorCommandKind
-from control_plane_kit_core.planning import ActivityPlan, ReconcileNode, StartNode, compile_activity_plan
+from control_plane_kit_core.planning import ActivityPlan, ReconcileNode, StartNode
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
@@ -44,6 +44,12 @@ from control_plane_kit_operations.runtime_authorities import (
 )
 from control_plane_kit_operations.runtime_management_admission import (
     runtime_management_execution_is_unsupported,
+)
+from control_plane_kit_operations.plan_derivation import (
+    PlanDerivationError,
+    PlanDerivationProfile,
+    derive_activity_plan,
+    planning_derivation_matches_action,
 )
 from control_plane_kit_operations.workflows import (
     IdempotencyKey,
@@ -335,13 +341,19 @@ class ActivityPlanningResult:
             raise InvalidOperationCommand(
                 "action evidence must reference a bounded workspace"
             )
-        if compile_activity_plan(self.transition.diff) != self.plan_record.plan:
+        if not planning_derivation_matches_action(
+            self.plan_record.derivation_profile, evidence,
+        ):
+            raise InvalidOperationCommand("plan and action derivation evidence must match")
+        if derive_activity_plan(
+            self.transition, profile=self.plan_record.derivation_profile,
+        ) != self.plan_record.plan:
             raise InvalidOperationCommand(
                 "deployment transition must compile to the persisted plan"
             )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        descriptor = {
             "plan_id": self.plan_record.plan_id,
             "session_id": self.plan_record.session_id,
             "base_graph_id": self.plan_record.base_graph_id,
@@ -359,6 +371,9 @@ class ActivityPlanningResult:
             "action_ordinal": self.action.ordinal,
             "replayed": self.replayed,
         }
+        if self.plan_record.derivation_profile is not None:
+            descriptor["derivation_profile"] = self.plan_record.derivation_profile.value
+        return descriptor
 
 
 class DesiredGraphCommandService:
@@ -554,6 +569,8 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningGraphStateConflict(
                     "workspace graph pointers changed"
                 )
+            # This is service policy, not caller intent or execution authority.
+            profile = PlanDerivationProfile.STRUCTURAL_V1
             transition, plan = _planning_transition(
                 unit_of_work,
                 workspace_id=command.workspace_id,
@@ -562,6 +579,7 @@ class ActivityPlanningCommandService:
                 base_projection_id=expected_current_projection_id,
                 desired_projection_id=expected_desired_projection_id,
                 graph_codec=self._graph_codec,
+                profile=profile,
             )
             if runtime_management_execution_is_unsupported(
                 transition.current.graph, transition.desired.graph, plan,
@@ -587,6 +605,7 @@ class ActivityPlanningCommandService:
                 base_realized_projection_id=expected_current_projection_id,
                 desired_realized_projection_id=expected_desired_projection_id,
                 desired_graph_revision=expected_desired_revision,
+                derivation_profile=profile,
             )
             unit_of_work.stores.activity_history.add_plan(plan_record)
             action = OperationActionRecord(
@@ -611,6 +630,7 @@ class ActivityPlanningCommandService:
                     "desired_graph_revision": plan_record.desired_graph_revision,
                     "ready_for_execution": plan.ready_for_execution,
                     "activity_count": len(plan.activities),
+                    "derivation_profile": profile.value,
                 },
                 created_at=created_at,
                 idempotency_key=command.idempotency_key.value,
@@ -692,12 +712,17 @@ def _activity_plan_replay(
             "planning replay evidence is incongruent"
         )
     missing_plan = False
+    malformed_plan = False
     try:
         plan_record = unit_of_work.stores.activity_history.get_plan(plan_id)
     except KeyError:
         missing_plan = True
+    except PlanDerivationError:
+        malformed_plan = True
     if missing_plan:
         raise ActivityPlanningGraphStateConflict("planning replay truth is missing")
+    if malformed_plan:
+        raise ActivityPlanningGraphStateConflict("persisted plan evidence is invalid")
     if not _planning_evidence_matches(action, plan_record):
         raise ActivityPlanningGraphStateConflict(
             "planning replay evidence is incongruent"
@@ -731,6 +756,7 @@ def _activity_plan_replay(
         base_projection_id=plan_record.base_realized_projection_id,
         desired_projection_id=plan_record.desired_realized_projection_id,
         graph_codec=graph_codec,
+        profile=plan_record.derivation_profile,
     )
     if replayed_plan != plan_record.plan:
         raise ActivityPlanningGraphStateConflict(
@@ -753,6 +779,7 @@ def _planning_transition(
     base_projection_id: str,
     desired_projection_id: str,
     graph_codec: GraphDescriptorCodec,
+    profile: PlanDerivationProfile | None = None,
 ) -> tuple[DeploymentTransition, ActivityPlan]:
     malformed = False
     try:
@@ -790,7 +817,7 @@ def _planning_transition(
     if invalid:
         raise ActivityPlanningGraphInvalid("persisted graph pair is invalid")
     transition = Deploy(current, desired)
-    plan = compile_activity_plan(transition.diff)
+    plan = derive_activity_plan(transition, profile=profile)
     return transition, plan
 
 
@@ -866,6 +893,7 @@ def _planning_evidence_matches(
         and evidence.get("desired_graph_revision")
         == plan_record.desired_graph_revision
         and _bounded_text(evidence.get("workspace_id"))
+        and planning_derivation_matches_action(plan_record.derivation_profile, evidence)
     )
 
 

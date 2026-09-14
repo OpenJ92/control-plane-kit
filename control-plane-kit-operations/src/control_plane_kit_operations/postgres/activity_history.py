@@ -14,7 +14,10 @@ from control_plane_kit_core.approval_subjects import (
 )
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import LifecycleOperationKind
-from control_plane_kit_core.planning import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit_operations.plan_derivation import (
+    decode_stored_activity_plan,
+    encode_stored_activity_plan,
+)
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres.schema import PostgresConnection
@@ -400,7 +403,7 @@ class PostgresActivityHistoryStore:
                 record.desired_graph_revision,
                 record.status.value,
                 encode_postgres_timestamp(record.created_at),
-                Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)),
+                Jsonb(encode_stored_activity_plan(record.plan, profile=record.derivation_profile)),
             ),
         ).fetchone()
         if inserted is None:
@@ -816,6 +819,7 @@ def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
 
 
 def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
+    plan, profile = decode_stored_activity_plan(row[9])
     return ActivityPlanRecord(
         plan_id=row[0],
         session_id=row[1],
@@ -826,7 +830,8 @@ def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
         desired_graph_revision=row[6],
         status=ActivityPlanStatus(row[7]),
         created_at=decode_postgres_timestamp(row[8]),
-        plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[9]),
+        plan=plan,
+        derivation_profile=profile,
     )
 
 
