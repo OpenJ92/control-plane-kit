@@ -606,3 +606,71 @@ class PostgresHealthEffectPreparationTests(PostgresHealthEffectPreparationFixtur
         self.assertEqual(self.health_intent.intent.operation.target.relation_digest, "f" * 64)
         with self.assertRaises(self.api().HealthEffectPreparationError):
             self.health_store().insert_absent(record)
+
+    def test_owner_read_adapter_faults_preserve_exact_exception_after_preparation_lookup(self):
+        from control_plane_kit_operations.secret_providers import SecretProviderRegistrationError
+        record = self.persist_health()
+        for phase in ("execute", "fetchone"):
+            for error_type in (TypeError, ValueError, KeyError, SecretProviderRegistrationError):
+                failure = error_type("unrelated-owner-adapter-defect")
+                class FailingCursor:
+                    def fetchone(self):
+                        raise failure
+                class FailingOwnerConnection:
+                    def execute(inner, query, parameters=()):
+                        if "FROM cpk_effect_attempt_intents" in str(query):
+                            if phase == "execute":
+                                raise failure
+                            return FailingCursor()
+                        return self.connection.execute(query, parameters)
+                for action in ("get", "insert_absent"):
+                    with self.subTest(phase=phase, error=error_type.__name__, action=action):
+                        store = self.health_store(FailingOwnerConnection())
+                        argument = record.identity if action == "get" else record
+                        with self.assertRaises(error_type) as caught:
+                            getattr(store, action)(argument)
+                        self.assertIs(caught.exception, failure)
+
+    def test_swapped_valid_public_key_pair_cannot_rebind_retained_registration_ids(self):
+        record = self.persist_health()
+        with self.unit_of_work() as uow:
+            for family, other in (("transit", "workload"), ("workload", "transit")):
+                replacement = self.keys[other].public_key
+                uow.stores.connection.execute(
+                    "UPDATE cpk_delegation_signing_keys SET public_key_pem=%s, public_fingerprint_sha256=%s WHERE registration_id=%s",
+                    (replacement.public_key_pem, replacement.fingerprint_sha256, self.keys[family].registration_id))
+            retained = [uow.stores.delegation_signing_keys.get("workspace-a", key.purpose,
+                key.issuer, key.key_id) for key in self.keys.values()]
+            self.assertNotEqual(retained[0].public_key.fingerprint_sha256, retained[1].public_key.fingerprint_sha256)
+            self.assertEqual({key.registration_id for key in retained}, {key.registration_id for key in self.keys.values()})
+            with self.assertRaises(self.api().HealthEffectPreparationCorrupt) as caught:
+                self.health_store(uow.stores.connection).get(record.identity)
+            self.assert_safe(caught.exception)
+        self.assertEqual(self.health_store().get(record.identity), record)
+
+    def test_current_scan_cannot_hide_oversized_seek_key_before_a_full_lawful_page(self):
+        self.persist_health()
+        for _ in range(8):
+            record = self.seed_retry_health_values()
+            with self.unit_of_work() as uow:
+                self.health_store(uow.stores.connection).insert_absent(record)
+                uow.commit()
+        validator = self.api(STORE_MODULE)._validate_current_rows
+        with self.unit_of_work() as uow:
+            connection = uow.stores.connection
+            constraints = connection.execute(
+                "SELECT conname FROM pg_constraint WHERE conrelid=%s::regclass AND contype IN ('c','f') AND pg_get_constraintdef(oid) LIKE '%%run_id%%'",
+                (RELATION,)).fetchall()
+            self.assertEqual(len(constraints), 3)  # identity check and two attempt/intent FKs
+            for (name,) in constraints:
+                connection.execute(psycopg.sql.SQL("ALTER TABLE {} DROP CONSTRAINT {}").format(
+                    psycopg.sql.Identifier(RELATION), psycopg.sql.Identifier(name)))
+            corrupt_key = "a" * 2049
+            self.assertLess(corrupt_key, "run-a")
+            connection.execute(f"UPDATE {RELATION} SET run_id=%s WHERE attempt=9", (corrupt_key,))
+            recording = RecordingConnection(connection)
+            with self.assertRaises(self.api().HealthEffectPreparationError) as caught:
+                validator(recording)
+            self.assert_safe(caught.exception, corrupt_key)
+            self.assertTrue(all(size <= 8 for size in recording.health_batch_sizes))
+            self.assertFalse(any(size > 2048 for size in recording.text_lengths))

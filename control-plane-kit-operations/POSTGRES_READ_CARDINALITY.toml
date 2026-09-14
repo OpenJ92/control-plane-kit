@@ -1,6 +1,14 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.health_effect_preparation_store"
+selector = "_validate_current_rows"
+category = "exact-verifier"
+sql = "at most 8 structured attempt keyset rows per page; CASE-bounded text and canonical preimage; retained owner reconstruction until exact exhaustion"
+consumer_kind = "production"
+consumer = "current-backend admission verifies every immutable health preparation without current authority or repair"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.revision_history_store"
 selector = "PostgresRevisionHistoryStore.page"
 category = "public-paged"

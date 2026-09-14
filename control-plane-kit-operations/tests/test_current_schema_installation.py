@@ -42,6 +42,7 @@ _EXPECTED_RELATIONS = (
     "cpk_gateway_probe_attempts",
     "cpk_generated_ingress_secret_references",
     "cpk_graph_versions",
+    "cpk_health_effect_preparations",
     "cpk_image_pull_authorities",
     "cpk_ingress_authorities",
     "cpk_node_control_attempts",
@@ -118,10 +119,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "913bd05c521c90658d779701418c6ac3dadf2dd332ff6641571f507151da3ba8"
+    "2269a6ea69c6c08332b6371f68b3b9431331034fecc76b7c3509d453bab1b3e1"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "0b9bf7e9a8351c00a160953573863454604efd2f4a84b36cad8e5d2336f9bf08"
+    "57a0629b31df6eff0ba23afb3e22426f1946a34a2cd8db553282db397918bbb2"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -414,10 +415,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 40)
-        self.assertEqual(len(contract.columns), 507)
-        self.assertEqual(len(contract.constraints), 382)
-        self.assertEqual(len(contract.indexes), 131)
+        self.assertEqual(len(contract.relations), 41)
+        self.assertEqual(len(contract.columns), 525)
+        self.assertEqual(len(contract.constraints), 410)
+        self.assertEqual(len(contract.indexes), 135)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),

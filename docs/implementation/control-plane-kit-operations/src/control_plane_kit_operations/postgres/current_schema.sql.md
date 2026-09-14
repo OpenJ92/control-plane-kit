@@ -1,20 +1,29 @@
 Source: [current_schema.sql](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema.sql).
 Maintain this companion alongside its source.
 
-Fresh stores admit `workload-node-health-read` and
-`gateway-node-health-read-transit` in signing-key rows, and their exact
-`workload.node-health-read-signing-key` and
-`gateway.node-health-read-transit-signing-key` use intents in authorization rows.
-Old literals retain their order. Rotation purpose storage is unchanged.
+The current fresh schema includes `cpk_health_effect_preparations`, an immutable
+leaf with eighteen columns: structured attempt identity, workspace/logical request,
+original fingerprint/event commitment, two projection identities, four family
+registration identities, both issuer/JTI pairs and the protected canonical preimage.
+Checks bound identities and transport; primary and three independent unique keys
+arbitrate retries and logical request/grant collisions. Eight restrictive foreign
+keys retain the exact attempt, original intent, two workspace projections, two
+workspace key registrations and two workspace use authorizations. No reverse
+preparation requirement changes unrelated attempt ownership.
 
-The SQL and frozen semantic mirror change only those two constraint expressions.
-`test_current_schema_installation.py` checks exact vocabulary, actual health row
-persistence, query-only reentry, refusal of each pre-health constraint with data
-intact, and continued unknown/health-rotation rejection. Existing installer
-transaction, concurrent installation, rollback and drift laws still govern.
+All owners must exist before insertion. The caller owns the transaction and can
+roll back the insertion with the surrounding first-start evidence. There is no
+new lifecycle column, mutable deadline, actor duplicate or private material.
+Historical reference/key revocation and grant expiry remain readable evidence.
+Current active authority is owned by subsequent admission/dispatch composition.
 
-Installation executes only in an object-free namespace. Retained incompatible
-stores are never reset, migrated or backfilled by this program. The bounded
-reset-required diagnostic does not authorize a reset. A future live deployment
-must prove a fresh target or supply its separately reviewed retained-store plan.
-Persistence alone does not authorize generation, signing or runtime execution.
+The existing two health signing purposes and use intents remain admitted;
+rotation storage keeps its prior vocabulary. The frozen semantic mirror and
+fixed metadata tests change together. The ordinary native suite compares this
+SQL's actual PostgreSQL catalog to the literal and exercises concurrent inserts,
+restart, corruption, bounded reads and query-only current reentry.
+
+Installation executes only in an object-free namespace. Incompatible retained
+stores are refused intact, never reset, migrated or backfilled. The reset-required
+diagnostic does not authorize a reset. No live database/provider mutation is part
+of this source slice.

@@ -10046,6 +10046,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.health_effect_preparation_store",
         "control_plane_kit_operations.postgres.stores"
       ],
       "migration_prerequisites": [],
@@ -10078,6 +10079,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.health_effect_preparation_store",
         "control_plane_kit_operations.postgres.stores"
       ],
       "migration_prerequisites": [],
@@ -10690,13 +10692,17 @@
         "control_plane_kit_core.topology"
       ],
       "optional_external_dependencies": [],
-      "semantic_roles": ["projections"],
+      "semantic_roles": [
+        "projections"
+      ],
       "canonical_public_exports": [
         "ManagementHealthTargetProjectionError",
         "ManagementHealthTargetProjection",
         "project_management_health_target"
       ],
-      "known_package_consumers": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.health_effect_preparation_store"
+      ],
       "migration_prerequisites": [],
       "movement": "remain",
       "protecting_tests": [
@@ -10740,6 +10746,89 @@
         "control-plane-kit-operations/tests/test_planning_transition_replay.py",
         "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_admission.py"
       ]
+    },
+    {
+      "canonical_public_exports": [
+        "HealthEffectPreparationRecord",
+        "HealthEffectPreparationCodec",
+        "HealthEffectPreparationError",
+        "HealthEffectPreparationConflict",
+        "HealthEffectPreparationCorrupt",
+        "health_effect_attempt_wire_id"
+      ],
+      "destination": "control_plane_kit_operations.health_effect_preparations",
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_health_reads",
+        "control_plane_kit_core.node_health_transit",
+        "control_plane_kit_core.operations"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.health_effect_preparation_store"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.health_effect_preparations",
+      "motivation": "Owns closed canonical unsigned health evidence and full-attempt wire correlation without current authority.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_health_effect_preparations.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/health_effect_preparations.py"
+    },
+    {
+      "canonical_public_exports": [
+        "HealthEffectPreparationStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.health_effect_preparation_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.delegation_signing_keys",
+        "control_plane_kit_operations.health_effect_preparations",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.delegation_signing_key_store",
+        "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+        "control_plane_kit_operations.postgres.effect_attempt_store",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.secret_provider_store",
+        "control_plane_kit_operations.runtime_management_targets",
+        "control_plane_kit_operations.secret_providers"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.current_data_validation"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.health_effect_preparation_store",
+      "motivation": "Owns immutable caller-transactional health preparation persistence, retained owner joins and bounded historical reconstruction.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_health_effect_preparations.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/health_effect_preparation_store.py"
     }
   ],
   "owner_vocabulary": [

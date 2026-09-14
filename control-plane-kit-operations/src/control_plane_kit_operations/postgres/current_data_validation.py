@@ -252,10 +252,15 @@ def validate_current_rows(connection: _Connection) -> None:
             _validate_current_rows as validate_saved_preparation_sources,
         )
 
+        from control_plane_kit_operations.postgres.health_effect_preparation_store import (
+            _validate_current_rows as validate_health_preparations,
+        )
+
         validate_effect_attempt_rows(connection)
         _validate_effect_attempt_intent_rows(connection)
         validate_effect_outcome_rows(connection)
         validate_saved_preparation_sources(connection)
+        validate_health_preparations(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()
