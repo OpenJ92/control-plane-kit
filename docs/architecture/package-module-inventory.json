@@ -9593,6 +9593,7 @@
       ],
       "destination": "control_plane_kit_operations.runtime_effects",
       "internal_dependencies": [
+        "control_plane_kit_core.configuration",
         "control_plane_kit_core.environment",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.planning.activity_plan",

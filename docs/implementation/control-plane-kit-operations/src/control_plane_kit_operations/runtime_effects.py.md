@@ -28,6 +28,42 @@ Raw authored graphs can carry registered product metadata without the required s
 
 `required_secret_uses_for_runtime_effect` deduplicates and sorts reference/intent pairs from secret environment/files, pull credentials, PostgreSQL verification passwords, and a selected remote Docker authority's three TLS references. It issues no grants. The RuntimeInterpreterDispatcher in [coordinator.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py) consumes these pairs, requests correlated authorizations and checks returned grants before calling an interpreter. Reconciliation consumes the same enumeration in its separate observation path. Keep enumeration, authorization and secret resolution separate.
 
+Configuration material also comes from the selected graph node, including exact
+content, content digest and source digest. The registered descriptor retains its
+immutable defaults and reference; it is not a fallback payload channel. A private
+Operations projection compares sorted slot tuples `(artifact_id, target_path,
+media_type, file_mode)` for StartNode/ReconcileNode. Missing, extra or reassigned
+slots raise fixed `InvalidOperationCommand` text without candidate interpolation
+or exception chaining. Content and both digests may differ from the defaults.
+The returned runtime contract retains all selected values; Core's existing
+constructor canonicalizes artifact order. This does not validate unrelated
+product environment, secret or runtime contracts.
+
+The operation policy is explicit: StartNode/ReconcileNode select desired
+artifacts and require exact slots; StopNode/RemoveNodeResource select base
+artifacts without new deployment-slot admission; WaitForHealthy selects desired
+artifacts without new configuration-install admission. Cleanup and observation
+material is not proof of congruence, installed bytes or permission to mount new
+configuration. Existing Core runtime-contract invariants still apply.
+
+Both pinned graph descriptors are decoded before this join, and the selected
+graph is decoded by the existing material selector. Core therefore continues
+to own structural artifact validity, content bounds and digest checks. Malformed
+artifacts retain their earlier Core decode exception type and chains; the new
+fixed Operations error covers otherwise-valid deployment slot mismatches only.
+There is no redundant artifact parser or general decoder-hardening promise.
+
+The configuration regression tests use actual product instantiation and public
+effect-request projection, comparing full artifact descriptors across two
+selections of one unchanged registered product, all five operation/graph sides,
+deployment slot failures and explicit cleanup/observation exceptions. Existing
+Core malformed decoding and graph-derived routing remain independent laws.
+This changes future effect material only: it does not rewrite stored intents or
+fingerprints, reconcile uncertain attempts or authorize silent redispatch.
+Interpreter #149 owns actual mounted/delivered-byte evidence under its separate
+authority. No file access, network/provider call, secret resolution, schema,
+transaction, retry or operational event is introduced by this projection.
+
 Gateway helpers derive routing material from graph and registered ports. Target collection walks all sorted edges whose provider shares the gateway's runtime, not only edges attached to the gateway; targets deduplicate provider/socket and retain contributing edge IDs. HTTP/Postgres are supported. PostgreSQL entries may identify a password environment variable, never its resolved value. CPK_GATEWAY_TARGETS_JSON is replaced only when the selected node already declares that public environment binding. Private control endpoints use the registered control port; named public endpoints require one graph-declared HTTPS ingress. Despite RuntimeEndpointObservation's name, these functions do not probe DNS, HTTP, health or provider state.
 
 The request and intermediate values contain private addresses and secret references. Selected descriptor/test redaction is not a blanket promise that every object, exception chain or arbitrary environment string is safe to publish. Existing chained lookup/parse errors remain source behavior. [test_runtime_effect_translation.py](../../../../../control-plane-kit-operations/tests/test_runtime_effect_translation.py) covers translation, authority delivery, graph selection and generated token/routing material; it does not establish live realization. Read the actual Core contracts when changing this bridge instead of duplicating their algebra here.
