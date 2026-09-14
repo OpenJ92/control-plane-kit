@@ -3,12 +3,12 @@
 from dataclasses import replace
 import unittest
 
-from control_plane_kit_core.algebra import BlockSpec
+from control_plane_kit_core.algebra import BlockSpec, ProviderSocket
 from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.planning import InvalidActivityPlan, ReviewChange, compile_graph_activity_plan
 from control_plane_kit_core.products import ProductDescriptorDigest, ProductIdentity, ProductReference
 from control_plane_kit_core.topology import DeploymentGraph, RuntimeRecord, validate_graph
-from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.types import Protocol, RuntimeKind
 from control_plane_kit_operations import graph_authoring, runtime_management_admission
 from control_plane_kit_operations.deployment_transitions import Deploy
 from tests.runtime_management_fixtures import (
@@ -44,7 +44,8 @@ class ManagementPlanningAdmissionTests(unittest.TestCase):
         self.assertIsNotNone(parser, "per-node authoritative product reference extraction is missing")
         product = registered_management_product()
         graph = self.pin(bootstrap_management_graph(self), product, alias=True)
-        sibling = replace(graph.node("api"), node_id="sibling", metadata={
+        sibling = replace(graph.node("api"), node_id="sibling",
+            block_spec=replace(graph.node("api").block_spec, role_id="sibling"), metadata={
             "product_identity": product.reference.identity.key,
             "product_descriptor_digest": product.reference.descriptor_sha256.value,
         })
@@ -52,7 +53,8 @@ class ManagementPlanningAdmissionTests(unittest.TestCase):
         graph = replace(graph, nodes={**graph.nodes, "sibling": sibling},
                         runtimes={"docker": replace(runtime, children=runtime.children + ("sibling",))})
         other_reference = ProductReference(ProductIdentity("aaa", "second", 2), ProductDescriptorDigest("c" * 64))
-        other = replace(sibling, node_id="another", metadata={
+        other = replace(sibling, node_id="another",
+            block_spec=replace(sibling.block_spec, role_id="another"), metadata={
             "product_identity": "aaa/second/02", "product_descriptor_digest": "c" * 64,
         })
         runtime = graph.runtimes["docker"]
@@ -107,7 +109,9 @@ class ManagementPlanningAdmissionTests(unittest.TestCase):
     def test_one_selected_runtime_cannot_cover_an_unselected_sdk_runtime(self):
         policy = require_planning_policy(self)
         graph = bootstrap_management_graph(self)
-        other = replace(sdk_health_graph().node("api"), node_id="other-api", runtime_id="other")
+        sdk = sdk_health_graph().node("api")
+        other = replace(sdk, node_id="other-api", runtime_id="other",
+                        block_spec=replace(sdk.block_spec, role_id="other-api"))
         graph = replace(graph, nodes={**graph.nodes, other.node_id: other}, runtimes={
             **graph.runtimes, "other": RuntimeRecord("other", RuntimeKind.DOCKER, (other.node_id,)),
         })
@@ -183,6 +187,25 @@ class ManagementPlanningAdmissionTests(unittest.TestCase):
         })})
         for desired in (graph, other_pin):
             self.assertFalse(policy(self.transition(DeploymentGraph("empty"), desired), registered_products=(product,)))
+
+    def test_changed_nonempty_transit_socket_is_not_the_selected_product_projection(self):
+        policy = require_planning_policy(self)
+        product = registered_management_product(transit=True)
+        contract = product.descriptor_document.product.runtime_contract
+        graph = self.pin(management_graph(self), product)
+        node = graph.node("api")
+        node = replace(node,
+            sockets=replace(node.sockets, providers=node.sockets.providers + (ProviderSocket("alternate", Protocol.HTTP),)),
+            endpoints={**node.endpoints, "alternate": node.endpoint("http")},
+            block_spec=replace(node.block_spec, gateway_transit=contract.gateway_transit))
+        faithful = replace(graph, nodes={**graph.nodes, "api": node})
+        changed = replace(faithful, nodes={**faithful.nodes, "api": replace(node,
+            block_spec=replace(node.block_spec, gateway_transit=replace(
+                contract.gateway_transit, provider_socket_name="alternate")))})
+        for current, desired in ((DeploymentGraph("empty"), faithful), (faithful, DeploymentGraph("empty"))):
+            self.assertFalse(policy(self.transition(current, desired), registered_products=(product,)))
+        for current, desired in ((DeploymentGraph("empty"), changed), (changed, DeploymentGraph("empty"))):
+            self.assertTrue(policy(self.transition(current, desired), registered_products=(product,)))
 
     def test_malformed_reference_precedes_empty_exception_but_valid_omission_preserves_it(self):
         policy = require_planning_policy(self)
