@@ -1,0 +1,14 @@
+Source: [control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py](../../../../../../control-plane-kit-core/src/control_plane_kit_core/operations/__init__.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+# Operational contract import surface
+
+This facade gathers Core-owned operational values, enums, errors and pure transformations. Its name does not make it the durable Operations implementation. Service composition, process/handoff, command/adapter, persistence/transaction and lifecycle contracts are descriptions that downstream owners interpret and enforce. Importing an HTTP route contract does not register a route; importing a store contract does not create storage or commit a transaction.
+
+The surface includes execution and recovery contract sets, fold_effect_attempt, failed-run compensation evidence/program values and RunId. These are more than a list of deployment nodes, but this file itself merely imports them and declares __all__. It does not run the fold or canonical factories, schedule a worker, discover a provider, recover an interrupted mutation or authorize compensation.
+
+Read [services](services.py.md), [transactions](transactions.py.md), [persistence](persistence.py.md) and [process](process.py.md) for their independently reviewed meanings and constructor limits. Other definitions remain with their source owners, including [recovery](../../../../../../control-plane-kit-core/src/control_plane_kit_core/operations/recovery.py) and [compensation](../../../../../../control-plane-kit-core/src/control_plane_kit_core/operations/compensation.py). The outer [Core facade](../__init__.py.md) explicitly selects a subset; it does not star-import this list. In particular, RunId and FAILED_RUN_COMPENSATION_SCHEMA/VERSION have this operations entrance without matching explicit root exports.
+
+Keep imports and __all__ aligned with the defining owners and actual consumers. __all__ governs star imports, not authorization or immutability. These imports are eager, so a change to an imported owner can affect this entrance even when its own list is unchanged. A list of internal imports is not a complete dependency or side-effect proof.
+
+Full 303-line facade read with the full root facade. Selected import/fixture portions of [deployment-program tests](../../../../../../control-plane-kit-core/tests/test_deployment_program_boundary.py) and [compensation tests](../../../../../../control-plane-kit-core/tests/test_failed_run_compensation_contract.py) demonstrate actual consumers; their behavior belongs to the relevant owners, not this export list. The full package-boundary test was also read. No new whole-owner review of every re-exported module, dynamic import validation or executable test run is claimed.

@@ -1,0 +1,14 @@
+Source: [control-plane-kit-core/src/control_plane_kit_core/__init__.py](../../../../../control-plane-kit-core/src/control_plane_kit_core/__init__.py).
+Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
+
+# Core public import surface
+
+This module binds version text and eagerly re-exports selected names from Core's own language owners. It defines no alternative constructors, validators, codecs or interpreter dispatch. Its surface is broader than initial topology authoring: it includes operational contract values, effect requests and observations, recovery/compensation evidence, node-control languages, generic product descriptions and delegation declarations.
+
+The [operations facade](operations/__init__.py.md) groups pure contracts for durable consumers; it is not the separate control_plane_kit_operations package. Generic product values come from [products.py](../../../../../control-plane-kit-core/src/control_plane_kit_core/products.py), rather than importing a package-owned server catalogue or starting an OCI container. The [request/observation relation](runtime_effect_observation.py.md) and [gateway delegation language](gateway_delegation.py.md) remain owned by their defining modules. Re-exporting a request or verification result supplies neither provider access nor permission to act.
+
+This is a selected convenience surface, not the union of every Core module's public names. For example, RunId and the failed-run compensation schema/version constants appear in operations.__all__ but are not explicitly re-exported here. Topology and planning authoring APIs retain their own entrances. The locally bound __version__ is omitted from __all__. That list controls star-import selection; it is not an access-control mechanism or a complete inventory of attributes Python may bind while importing submodules.
+
+Maintain each explicit import and __all__ entry together with the defining owner and real consumers. Ordinary imports load the selected owners eagerly, so an owner import failure can prevent even an unrelated root import. The file's direct imports all name control_plane_kit_core; that observation alone does not prove transitive effect isolation, optional-dependency independence or compatibility for every exported name.
+
+Full 706-line facade read, with the full operations facade and selected actual test import sites. The full [package-boundary test](../../../../../control-plane-kit-core/tests/test_package_boundary.py) checks metadata, a finite static import blacklist and selected forbidden product vocabulary. It does not dynamically import every export or prove arbitrary transitive purity. Previously reviewed owner companions retain their own review-depth limits; this facade review does not extend them into a full audit of all imported implementations. No executable validation was performed.
