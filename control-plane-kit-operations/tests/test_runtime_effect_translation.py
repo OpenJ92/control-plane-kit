@@ -228,6 +228,23 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 self.assertIsNone(caught.__context__)
                 self.assertEqual(dispatch, [])
 
+    def test_direct_malformed_product_reference_has_bounded_catalog_independent_error(self):
+        product = registered_management_product()
+        graph = omitted_management_graph(product)
+        node = graph.node("api")
+        graph = replace(graph, nodes={"api": replace(node, metadata={
+            **node.metadata, "product_identity": "test/managed-contract/REFERENCE-CANARY",
+        })})
+        for registrations in ((), (product,)):
+            with self.subTest(registered=bool(registrations)):
+                context = _context(base_graph=graph, desired_graph=graph, registered_products=registrations)
+                with self.assertRaises(InvalidOperationCommand) as captured:
+                    runtime_effect_request_for_context(context)
+                self.assertEqual(str(captured.exception), "runtime management execution is unsupported")
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                self.assertNotIn("REFERENCE-CANARY", repr(captured.exception))
+
     def test_direct_omitted_declaration_checks_exact_pinned_products_on_both_sides(self):
         for transit in (False, True):
             product = registered_management_product(transit=transit)

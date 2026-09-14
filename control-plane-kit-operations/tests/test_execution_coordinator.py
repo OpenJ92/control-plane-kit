@@ -835,6 +835,44 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         selected_plan = plan if plan is not None else ActivityPlan(()) if empty_plan else single_activity_plan()
         self.reset_execution_request(plan=selected_plan, base_graph=base, desired_graph=desired)
 
+    def test_malformed_product_reference_refusal_is_independent_of_unrelated_registration(self):
+        product = registered_management_product()
+        graph = omitted_management_graph(product)
+        node = graph.node("api")
+        graph = replace(graph, nodes={"api": replace(node, metadata={
+            **node.metadata, "product_identity": "test/managed-contract/REFERENCE-CANARY",
+        })})
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        cases = (
+            (False, plan, DeploymentGraph("empty")),
+            (True, plan, DeploymentGraph("empty")),
+            (False, ActivityPlan(()), graph),
+        )
+        for include_unrelated, supplied_plan, base in cases:
+            with self.subTest(include_unrelated=include_unrelated, empty_plan=not supplied_plan.activities):
+                self.reset_execution_request(plan=supplied_plan, base_graph=base, desired_graph=graph)
+                if include_unrelated:
+                    with self.unit_of_work() as uow:
+                        uow.stores.registered_products.register(
+                            workspace_id="workspace-a", descriptor_document=product.descriptor_document,
+                            source=product.source, imported_by=product.imported_by, imported_at=product.imported_at,
+                        )
+                        uow.commit()
+                self.claim_and_start()
+                adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                coordinator = self.coordinator(adapter)
+                with self.unit_of_work() as uow:
+                    before = uow.stores.execution.events_for_run("run-a")
+                result = coordinator.execute(self.command())
+                self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+                self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+                self.assertEqual(result.effects_attempted, 0)
+                self.assertEqual(adapter.calls, [])
+                self.assertEqual(coordinator.execute(self.command()), result)
+                self.assertNotIn("REFERENCE-CANARY", repr(result))
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
     def test_omitted_declaration_pinned_product_denies_before_legacy_dispatch(self):
         plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
         for transit in (False, True):
