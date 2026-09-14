@@ -566,6 +566,9 @@ class ActivityPlanningCommandService:
             if runtime_management_execution_is_unsupported(
                 transition.current.graph, transition.desired.graph, plan,
                 codec=self._graph_codec,
+                registered_products=unit_of_work.stores.registered_products.list_active(
+                    command.workspace_id,
+                ),
             ):
                 raise InvalidOperationCommand("runtime management execution is unsupported")
             _require_fresh_plan_delivery_admission(

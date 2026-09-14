@@ -123,6 +123,7 @@ def _runtime_effect_intent_for_context(
     if runtime_management_execution_is_unsupported(
         DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
         DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
+        registered_products=context.registered_products,
     ):
         raise InvalidOperationCommand("runtime management execution is unsupported")
     operation = activity.operation

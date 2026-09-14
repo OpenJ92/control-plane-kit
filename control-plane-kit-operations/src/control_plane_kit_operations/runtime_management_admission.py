@@ -8,6 +8,8 @@ from control_plane_kit_core.topology import (
     diff_graphs,
     validate_graph,
 )
+from control_plane_kit_operations.graph_authoring import product_references_in_graph
+from control_plane_kit_operations.products import RegisteredProduct
 
 
 def runtime_management_execution_is_unsupported(
@@ -16,6 +18,7 @@ def runtime_management_execution_is_unsupported(
     plan: ActivityPlan | None = None,
     *,
     codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
+    registered_products: tuple[RegisteredProduct, ...] = (),
 ) -> bool:
     """Check both snapshots; only a proven, congruent empty plan is exempt.
 
@@ -23,7 +26,25 @@ def runtime_management_execution_is_unsupported(
     attempt never inherits the planning no-op exception.
     """
 
-    if not any(_has_management_material(graph) for graph in (current, desired)):
+    # Parse independently of catalog contents. A malformed selected reference
+    # cannot acquire a no-op exemption or leak its parser error into a receipt.
+    try:
+        references = set(product_references_in_graph(current)) | set(
+            product_references_in_graph(desired)
+        )
+    except ValueError:
+        return True
+    registered_management = any(
+        product.reference in references
+        and (
+            product.descriptor_document.product.runtime_contract.gateway_transit is not None
+            or product.descriptor_document.product.runtime_contract.control_surfaces
+        )
+        for product in registered_products
+    )
+    if not registered_management and not any(
+        _has_management_material(graph) for graph in (current, desired)
+    ):
         return False
     if plan is None or plan.activities:
         return True

@@ -6,6 +6,10 @@ the Core structural plan inside the caller-owned unit of work. Fresh commands
 then apply the shared runtime-management refusal policy before secret-delivery
 admission, plan persistence, or action persistence. Unsupported material raises
 a fixed `InvalidOperationCommand`; rollback leaves no new plan/action rows.
+The policy receives the workspace's active product registrations and checks
+only references selected by either pinned graph, so omitted authored declarations
+cannot conceal implementation declarations. Malformed product references are
+refused independently of catalog contents.
 Equal or name-only managed graph pairs retain their compiler-proven empty plan.
 
 Historical `_activity_plan_replay` reproduces its recorded pair and plan without

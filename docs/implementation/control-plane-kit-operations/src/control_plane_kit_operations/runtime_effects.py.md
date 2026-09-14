@@ -9,6 +9,12 @@ activity: equal graphs, an empty canonical plan, or an omitted supplied activity
 provide no no-op exemption here. A fixed `InvalidOperationCommand` contains no
 graph or credential material. Both graph directions and equal-pair direct
 attempts are protected by the runtime-effect translation target tests.
+The policy also consumes the exact supplied registered products selected by
+either graph's identity/digest references. Their SDK/transit declarations remain
+guarded when omitted from authored BlockSpec material. It adds no status filter
+different from this translator's selection and ignores unrelated registrations.
+Malformed reference parsing yields the same fixed bounded refusal regardless
+of catalog contents; there is no empty-plan exemption for malformed material.
 
 This owner translates pinned Operations realization material into Core runtime-effect values. It does not read a provider, resolve a secret, approve work, dispatch an interpreter or commit a transaction. The public projection requires the exact ActivityRealizationContext type. Its private intent projection also accepts the exact coordinator context and an activity, before an event exists. Core [runtime_effect_observation.py](../../../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py) owns intent/request binding: the public path binds the original start-event ID as effect identity and initially supplies no transient resolution grants. A constructed request is not execution permission or observed success.
 

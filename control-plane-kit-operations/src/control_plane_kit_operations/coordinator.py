@@ -1261,6 +1261,7 @@ class ExecutionCoordinator:
             DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
             DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
             context.plan,
+            registered_products=context.registered_products,
         ):
             return None
         if context.projection.uncertain:

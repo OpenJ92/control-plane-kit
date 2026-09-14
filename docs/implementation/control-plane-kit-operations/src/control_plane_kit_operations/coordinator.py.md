@@ -6,6 +6,11 @@ services, and existing lifecycle services. `_classify_current` is effectful: a
 finished schedule can write run completion or failure. Runtime-management
 admission therefore runs before classification at both context-load sites,
 before legacy `STEP_STARTED`, intent construction, or attempt admission.
+The policy receives the existing context's product registrations and checks
+both graph reference sets by exact identity and digest. Omitted authored fields
+cannot hide the selected implementation's declarations; unrelated registrations
+cannot trigger refusal. Malformed reference refusal is bounded and does not
+strand the command receipt or permit a forged no-op completion.
 
 For guarded RUNNING material, prior uncertain or in-flight activity returns its
 existing classification without redispatch. Authoritative terminal/paused states

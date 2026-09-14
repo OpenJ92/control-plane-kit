@@ -9604,7 +9604,9 @@
       "destination": "control_plane_kit_operations.runtime_management_admission",
       "internal_dependencies": [
         "control_plane_kit_core.planning",
-        "control_plane_kit_core.topology"
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.products"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.coordinator",
