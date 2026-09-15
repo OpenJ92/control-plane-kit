@@ -701,22 +701,16 @@ def authorized_secret_use_for(
     """Build deterministic evidence from current admitted operational truth."""
 
     _require_command(command, AuthorizeSecretUse)
-    semantics = {
-        "workspace_id": command.workspace_id,
-        "reference_registration_id": reference.registration_id,
-        "provider_registration_id": provider.registration_id,
-        "reference_id": command.reference.reference_id,
-        "intent": command.intent.value,
-        "actor_subject": command.actor_subject,
-        "correlation_id": command.correlation_id,
-        "operation_id": command.operation_id,
-        "session_id": command.session_id,
-        "run_id": command.run_id,
-        "activity_id": command.activity_id,
-        "effect_id": command.effect_id,
-        "probe_id": command.probe_id,
-    }
-    fingerprint = _digest(semantics)
+    fingerprint = _secret_use_fingerprint_for(
+        workspace_id=command.workspace_id,
+        reference_registration_id=reference.registration_id,
+        provider_registration_id=provider.registration_id,
+        reference=command.reference, intent=command.intent,
+        actor_subject=command.actor_subject, correlation_id=command.correlation_id,
+        operation_id=command.operation_id, session_id=command.session_id,
+        run_id=command.run_id, activity_id=command.activity_id,
+        effect_id=command.effect_id, probe_id=command.probe_id,
+    )
     return AuthorizedSecretUse(
         authorization_id=f"suse_{fingerprint}",
         workspace_id=command.workspace_id,
@@ -735,6 +729,40 @@ def authorized_secret_use_for(
         effect_id=command.effect_id,
         probe_id=command.probe_id,
     )
+
+
+def _secret_use_fingerprint_for(
+    *,
+    workspace_id: str,
+    reference_registration_id: str,
+    provider_registration_id: str,
+    reference: SecretReference,
+    intent: SecretUseIntent,
+    actor_subject: str,
+    correlation_id: str,
+    operation_id: str | None = None,
+    session_id: str | None = None,
+    run_id: str | None = None,
+    activity_id: str | None = None,
+    effect_id: str | None = None,
+    probe_id: str | None = None,
+) -> str:
+    """The existing identity recipe, shared only by validated pure callers."""
+    return _digest({
+        "workspace_id": workspace_id,
+        "reference_registration_id": reference_registration_id,
+        "provider_registration_id": provider_registration_id,
+        "reference_id": reference.reference_id,
+        "intent": intent.value,
+        "actor_subject": actor_subject,
+        "correlation_id": correlation_id,
+        "operation_id": operation_id,
+        "session_id": session_id,
+        "run_id": run_id,
+        "activity_id": activity_id,
+        "effect_id": effect_id,
+        "probe_id": probe_id,
+    })
 
 
 def secret_resolution_grant_for(

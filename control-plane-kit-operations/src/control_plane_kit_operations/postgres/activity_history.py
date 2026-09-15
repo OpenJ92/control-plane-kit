@@ -464,13 +464,22 @@ class PostgresActivityHistoryStore:
         return tuple(_approval_request_record(row) for row in rows)
 
     def get_plan(self, plan_id: str) -> ActivityPlanRecord:
+        return self._get_plan(plan_id, for_share=False)
+
+    def get_plan_for_share(self, plan_id: str) -> ActivityPlanRecord:
+        """Retain a plan's current status and payload through the caller's UoW."""
+        return self._get_plan(plan_id, for_share=True)
+
+    def _get_plan(self, plan_id: str, *, for_share: bool) -> ActivityPlanRecord:
+        lock = "FOR SHARE" if for_share else ""
         row = self._connection.execute(
-            """
+            f"""
             SELECT plan_id, session_id, base_graph_id, desired_graph_id,
                    base_realized_projection_id, desired_realized_projection_id,
                    desired_graph_revision, status, created_at, payload
             FROM cpk_activity_plans
             WHERE plan_id = %s
+            {lock}
             """,
             (plan_id,),
         ).fetchone()

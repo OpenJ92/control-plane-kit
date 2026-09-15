@@ -4318,7 +4318,9 @@
         "control_plane_kit_core.runtime_effects",
         "control_plane_kit_core.secrets"
       ],
-      "known_package_consumers": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations.health_signing_authority"
+      ],
       "migration_prerequisites": [
         "#1693"
       ],
@@ -9682,7 +9684,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
-        "control_plane_kit_operations.health_effect_attempt_start"
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempts",
@@ -9757,7 +9760,8 @@
         "control_plane_kit_operations.records"
       ],
       "known_package_consumers": [
-        "control_plane_kit_operations"
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_intent_evidence",
@@ -9804,7 +9808,8 @@
         "control_plane_kit_operations",
         "control_plane_kit_operations.effect_attempt_start_interpreter",
         "control_plane_kit_operations._health_effect_attempt_start",
-        "control_plane_kit_operations.health_effect_attempt_start"
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_start",
@@ -10712,7 +10717,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
-        "control_plane_kit_operations._health_effect_attempt_start"
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "movement": "remain",
@@ -10777,7 +10783,8 @@
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
         "control_plane_kit_operations._health_effect_attempt_start",
-        "control_plane_kit_operations.health_effect_attempt_start"
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.health_effect_preparations",
@@ -10862,7 +10869,8 @@
       "known_package_consumers": [
         "control_plane_kit_operations",
         "control_plane_kit_operations._health_effect_attempt_start",
-        "control_plane_kit_operations.effect_attempt_start_interpreter"
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.health_effect_attempt_start",
@@ -10907,7 +10915,8 @@
         "control_plane_kit_operations.secret_providers"
       ],
       "known_package_consumers": [
-        "control_plane_kit_operations.effect_attempt_start_interpreter"
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations._health_effect_attempt_start",
@@ -10928,6 +10937,68 @@
         "transformations"
       ],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_health_effect_attempt_start.py"
+    },
+    {
+      "canonical_public_exports": [
+        "GatewayNodeHealthReadTransitSigningAuthority",
+        "HealthSigningAuthorityError",
+        "HealthSigningAuthorityPair",
+        "HealthSigningAuthorityReloadService",
+        "HealthSigningAuthorityUnavailable",
+        "ReloadHealthSigningAuthority",
+        "WorkloadNodeHealthReadSigningAuthority"
+      ],
+      "destination": "control_plane_kit_operations.health_signing_authority",
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.identity",
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.node_health_reads",
+        "control_plane_kit_core.node_health_transit",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations._temporal",
+        "control_plane_kit_operations.delegation_signing_keys",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_effect_preparations",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.node_control_signing_authority",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_management_targets",
+        "control_plane_kit_operations.secret_providers"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.health_signing_authority",
+      "motivation": "Owns the query-only current eligibility check and protected reference pair for a retained approved first health attempt.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_health_signing_authority.py",
+        "tests/test_postgres_health_signing_authority.py",
+        "tests/test_postgres_health_signing_transactions.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "interpreter"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/health_signing_authority.py"
     }
   ],
   "owner_vocabulary": [
