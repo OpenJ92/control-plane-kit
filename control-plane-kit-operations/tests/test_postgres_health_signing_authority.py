@@ -12,6 +12,7 @@ from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.activity_history import PostgresActivityHistoryStore
 from control_plane_kit_operations.postgres.delegation_signing_key_store import DelegationSigningKeyStore
 from control_plane_kit_operations.postgres.health_effect_preparation_store import HealthEffectPreparationStore
+from control_plane_kit_operations.secret_providers import secret_use_correlation_for
 from tests.health_effect_preparation_fixture import forged_copy, pair_for_request
 from tests.health_effect_start_fixture import trusted_health_context
 from tests.health_signing_authority_fixture import PostgresHealthSigningAuthorityFixture, timestamp
@@ -231,6 +232,24 @@ class PostgresHealthSigningAuthorityTests(PostgresHealthSigningAuthorityFixture,
                 with self.assertRaises(self.reload_api.HealthSigningAuthorityError) as caught:
                     constructor(key, grant)
                 self.assert_safe(caught.exception, "secret://", "BEGIN PUBLIC KEY")
+        for field, value in (("actor_subject", "coherent-foreign-actor"), ("session_id", "coherent-foreign-session")):
+            changed = {}
+            for name in ("transit", "workload"):
+                family = getattr(pair, name)
+                resolution = replace(family.resolution_grant, **{field: value})
+                semantics = {key: getattr(resolution, key) for key in (
+                    "workspace_id", "reference", "intent", "actor_subject", "operation_id",
+                    "session_id", "run_id", "activity_id", "effect_id", "probe_id")}
+                resolution = replace(resolution, correlation_id=secret_use_correlation_for(**semantics))
+                self.assertNotEqual(resolution.correlation_id, family.resolution_grant.correlation_id)
+                self.assertEqual(resolution.authorization_id, family.resolution_grant.authorization_id)
+                self.assertEqual(resolution.intent_fingerprint, family.resolution_grant.intent_fingerprint)
+                changed[name] = type(family)(family.public_key, resolution)
+            # Shared context and freshly coherent correlations cannot relabel
+            # the semantics identified by both retained authorization digests.
+            with self.assertRaises(self.reload_api.HealthSigningAuthorityError) as caught:
+                replace(pair, **changed)
+            self.assert_safe(caught.exception, value, "secret://")
         for field, candidate in (("transit", pair.workload), ("workload", pair.transit),
                 ("transit", forged_copy(pair.transit, subclass=True)),
                 ("workload", forged_copy(pair.workload, resolution_grant=replace(pair.workload.resolution_grant, actor_subject="foreign-actor"))),
