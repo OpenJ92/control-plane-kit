@@ -14,7 +14,8 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations.delegation_signing_keys import (
-    DelegationSigningKeyRegistrationService, RegisterDelegationSigningKeyCommand,
+    ActivateDelegationSigningKeyCommand, DelegationSigningKeyRegistrationService,
+    RegisterDelegationSigningKeyCommand,
 )
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.health_effect_preparations import health_effect_attempt_wire_id
@@ -124,6 +125,10 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
                 public_key=DelegationPublicKey(key_id="health-" + family, algorithm=DelegationKeyAlgorithm.ED25519,
                     public_key_pem=pem), private_key_reference=reference, admitted_by="operator-a",
                 admitted_at="2026-08-01T11:06:00Z", actor_scopes=(PolicyScope.DELEGATION_KEY_REGISTER,)))
+            self.keys[family] = key_service.activate(ActivateDelegationSigningKeyCommand(
+                workspace_id="workspace-a", purpose=purpose, issuer="cpk-server",
+                key_id=self.keys[family].key_id, activated_by="operator-a",
+                activated_at="2026-08-01T11:07:00Z", actor_scopes=(PolicyScope.DELEGATION_KEY_ACTIVATE,)))
 
     def start_health_command(self, *, context=None, start=None):
         return self.health_command(start=self.start_value if start is None else start,

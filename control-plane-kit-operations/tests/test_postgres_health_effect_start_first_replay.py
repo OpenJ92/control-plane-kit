@@ -19,6 +19,7 @@ from tests.postgres_health_effect_start_fixture import PostgresHealthEffectStart
 
 class PostgresHealthEffectStartFirstReplayTests(PostgresHealthEffectStartFixture, unittest.TestCase):
     def test_ungated_fixture_retains_real_approved_ready_plan_without_partial_evidence(self):
+        from control_plane_kit_operations.delegation_signing_keys import RegisteredDelegationSigningKeyStatus
         from control_plane_kit_core.planning import derive_schedule, project_activity_journal
         from control_plane_kit_core.policies import ApprovalPolicy
         from control_plane_kit_operations.activity_journal import activity_journal_events
@@ -36,6 +37,10 @@ class PostgresHealthEffectStartFirstReplayTests(PostgresHealthEffectStartFixture
                 (requirement.required_scope, requirement.max_risk, requirement.destructive))
             self.assertEqual(decision.decision_id, request.approval_decision_id)
             self.assertEqual(self.start_value.intent.operation, self.health_activity.operation)
+            for key in self.keys.values():
+                self.assertIs(key.status, RegisteredDelegationSigningKeyStatus.ACTIVE)
+                self.assertEqual(uow.stores.delegation_signing_keys.require_unambiguous_active(
+                    "workspace-a", key.purpose), key)
         self.assertEqual(self.health_counts(), (0, 0, 0, 0))
         self.assertNotEqual(self.keys["transit"].private_key_reference, self.keys["workload"].private_key_reference)
 
