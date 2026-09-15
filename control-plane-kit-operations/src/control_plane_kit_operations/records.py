@@ -41,6 +41,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 
 
 class OperationsRecordError(ValueError):
@@ -567,6 +568,7 @@ class ActivityPlanRecord:
     base_realized_projection_id: str | None = None
     desired_realized_projection_id: str | None = None
     desired_graph_revision: int = 0
+    derivation_profile: PlanDerivationProfile | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _validate_text(self.plan_id, "plan_id")
@@ -578,6 +580,11 @@ class ActivityPlanRecord:
         _validate_text(self.created_at, "created_at")
         if not isinstance(self.plan, ActivityPlan):
             raise OperationsRecordError("activity plan record requires ActivityPlan")
+        if (
+            self.derivation_profile is not None
+            and type(self.derivation_profile) is not PlanDerivationProfile
+        ):
+            raise OperationsRecordError("activity plan derivation profile must be closed")
         _validate_optional_text(
             self.base_realized_projection_id,
             "base_realized_projection_id",

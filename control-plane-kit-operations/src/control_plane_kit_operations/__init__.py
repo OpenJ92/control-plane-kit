@@ -528,6 +528,19 @@ from .effect_attempt_start import (
     StartEffectAttempt,
 )
 from .effect_attempt_start_interpreter import EffectAttemptStartService
+from .health_effect_attempt_start import (
+    HealthEffectAttemptStartResult,
+    StartHealthEffectAttempt,
+)
+from .health_signing_authority import (
+    GatewayNodeHealthReadTransitSigningAuthority,
+    HealthSigningAuthorityError,
+    HealthSigningAuthorityPair,
+    HealthSigningAuthorityReloadService,
+    HealthSigningAuthorityUnavailable,
+    ReloadHealthSigningAuthority,
+    WorkloadNodeHealthReadSigningAuthority,
+)
 from .effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -1107,6 +1120,15 @@ __all__ = [
     "StartOperationSession",
     "StartActivityRun",
     "StartEffectAttempt",
+    "StartHealthEffectAttempt",
+    "HealthEffectAttemptStartResult",
+    "GatewayNodeHealthReadTransitSigningAuthority",
+    "HealthSigningAuthorityError",
+    "HealthSigningAuthorityPair",
+    "HealthSigningAuthorityReloadService",
+    "HealthSigningAuthorityUnavailable",
+    "ReloadHealthSigningAuthority",
+    "WorkloadNodeHealthReadSigningAuthority",
     "FoldEffectAttempt",
     "GuardedObservedEffectFold",
     "TakeOverExpiredExecutionClaim",

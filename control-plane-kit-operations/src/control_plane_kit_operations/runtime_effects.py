@@ -6,6 +6,7 @@ import json
 from dataclasses import replace
 from typing import Mapping
 
+from control_plane_kit_core.configuration import ConfigurationArtifact
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning.activity_plan import (
@@ -85,6 +86,9 @@ from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityRegistrationError,
     _admitted_runtime_authority_deliveries,
 )
+from control_plane_kit_operations.runtime_management_admission import (
+    runtime_management_execution_is_unsupported,
+)
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 _GATEWAY_TARGETS_ENVIRONMENT = "CPK_GATEWAY_TARGETS_JSON"
@@ -117,6 +121,12 @@ def _runtime_effect_intent_for_context(
         raise InvalidOperationCommand(
             "runtime effect translation requires ActivityRealizationContext"
         )
+    if runtime_management_execution_is_unsupported(
+        DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
+        DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
+        registered_products=context.registered_products,
+    ):
+        raise InvalidOperationCommand("runtime management execution is unsupported")
     operation = activity.operation
     try:
         run_id = RunId(context.run.run_id)
@@ -364,14 +374,31 @@ def _product_material_for_node(
                 raise InvalidOperationCommand(
                     "runtime effect secret delivery contract is not satisfied"
                 )
+        if _configuration_artifact_contract_keys(
+            node.configuration_artifacts
+        ) != _configuration_artifact_contract_keys(runtime_contract.configuration_artifacts):
+            raise InvalidOperationCommand(
+                "runtime effect configuration artifact contract is not satisfied"
+            )
     return replace(
         descriptor_product,
         runtime_contract=replace(
             runtime_contract,
             verification=node.block_spec.verification,
+            configuration_artifacts=node.configuration_artifacts,
             secret_deliveries=deliveries,
         ),
     )
+
+
+def _configuration_artifact_contract_keys(
+    artifacts: tuple[ConfigurationArtifact, ...],
+) -> tuple[tuple[str, str, str, str], ...]:
+    # Payload and both digests are selected per instance; these fields define slots.
+    return tuple(sorted(
+        (value.artifact_id, value.target_path, value.media_type.value, value.file_mode.value)
+        for value in artifacts
+    ))
 
 
 def _secret_delivery_contract_key(value: SecretDelivery) -> tuple[str, str, str, str, str]:

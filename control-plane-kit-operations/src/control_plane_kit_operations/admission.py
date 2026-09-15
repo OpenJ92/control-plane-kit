@@ -20,12 +20,12 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.planning import (
     ActivityId,
+    ManagementObservationError,
     PlannedActivity,
     ReconcileNode,
     RiskLevel,
     StartNode,
     SwitchSocketConnection,
-    compile_activity_plan,
 )
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.topology import (
@@ -33,7 +33,6 @@ from control_plane_kit_core.topology import (
     DeploymentGraph,
     GraphDescriptorError,
     GraphValidationError,
-    diff_graphs,
     validate_graph,
 )
 from control_plane_kit_core.types import Protocol, SocketBinding
@@ -69,6 +68,8 @@ from control_plane_kit_operations.workflows import (
     IdempotencyKey,
     InvalidOperationCommand,
 )
+from control_plane_kit_operations.deployment_transitions import Deploy
+from control_plane_kit_operations.plan_derivation import PlanDerivationError, derive_activity_plan
 
 
 class ExecutionAdmissionError(RuntimeError):
@@ -566,18 +567,23 @@ def _require_gateway_rotation_child_authorization(
         plan=plan,
         phase=phase,
     )
+    derivation_invalid = False
     try:
         validated_current = validate_graph(current)
         validated_current.require_valid()
         validated_desired = validate_graph(desired)
         validated_desired.require_valid()
-        canonical_plan = compile_activity_plan(
-            diff_graphs(validated_current, validated_desired)
+        canonical_plan = derive_activity_plan(
+            Deploy(validated_current, validated_desired), profile=plan.derivation_profile,
         )
     except GraphValidationError as error:
         raise ExecutionAdmissionConflict(
             "rotation child graph cannot enter canonical planning"
         ) from error
+    except (PlanDerivationError, ManagementObservationError):
+        derivation_invalid = True
+    if derivation_invalid:
+        raise ExecutionAdmissionConflict("rotation child plan derivation is invalid")
     if plan.plan != canonical_plan:
         raise ExecutionAdmissionConflict(
             "rotation child plan differs from canonical realized projection diff"

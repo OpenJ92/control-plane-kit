@@ -214,6 +214,8 @@ EXACT_INTERPRETER_DEPENDENCIES = {
     "control_plane_kit_operations.effect_attempts",
     "control_plane_kit_operations.records",
     "control_plane_kit_operations.workflows",
+    "control_plane_kit_operations.health_effect_attempt_start",
+    "control_plane_kit_operations._health_effect_attempt_start",
 }
 
 

@@ -10,6 +10,9 @@ from control_plane_kit_core._activity_identity import (
     _is_canonical_activity_identity,
 )
 from control_plane_kit_core.topology.changes import DiffSubject
+from control_plane_kit_core.planning.management_observations import (
+    ObserveManagementBootstrap, ObserveNodeHealth,
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -188,6 +191,8 @@ ActivityOperation: TypeAlias = (
     | RemoveRuntimeResource
     | DestroyDataResource
     | ReviewChange
+    | ObserveManagementBootstrap
+    | ObserveNodeHealth
 )
 
 
@@ -344,6 +349,9 @@ class ActivityPlan:
 
 
 def _require_typed_operation(operation: object) -> None:
+    if type(operation) in (ObserveManagementBootstrap, ObserveNodeHealth):
+        operation.__post_init__()
+        return
     match operation:
         case StartNode(target=NodeTarget()):
             return
@@ -425,7 +433,7 @@ def compensation_for_operation(operation: ActivityOperation) -> CompensationSpec
                 ReconcileRuntime(target),
                 CompensationMaterialSource.BASE_GRAPH,
             )
-        case WaitForHealthy() | ReviewChange():
+        case WaitForHealthy() | ReviewChange() | ObserveManagementBootstrap() | ObserveNodeHealth():
             return NoCompensationRequired()
         case RemoveNodeResource() | RemoveRuntimeResource():
             return NonCompensatable(NonCompensatableReason.RESOURCE_REMOVAL)

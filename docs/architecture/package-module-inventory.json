@@ -4318,7 +4318,9 @@
         "control_plane_kit_core.runtime_effects",
         "control_plane_kit_core.secrets"
       ],
-      "known_package_consumers": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations.health_signing_authority"
+      ],
       "migration_prerequisites": [
         "#1693"
       ],
@@ -4339,6 +4341,69 @@
         "validation"
       ],
       "source": "control_plane_kit_core/runtime_effect_observation.py"
+    },
+    {
+      "canonical_public_exports": [
+        "GatewayTransitDeclaration",
+        "GatewayTransitDeclarationCodec",
+        "GatewayTransitProtocol",
+        "RuntimeManagement",
+        "RuntimeManagementCodec",
+        "RuntimeManagementError"
+      ],
+      "destination": "control_plane_kit_core.runtime_management",
+      "internal_dependencies": ["control_plane_kit_core.public_ingress"],
+      "known_package_consumers": [
+        "control_plane_kit_core",
+        "control_plane_kit_core.algebra",
+        "control_plane_kit_core.products",
+        "control_plane_kit_core.topology.changes",
+        "control_plane_kit_core.topology.codec",
+        "control_plane_kit_core.topology.graph",
+        "control_plane_kit_core.topology.validation"
+      ],
+      "migration_prerequisites": ["#1832"],
+      "module": "control_plane_kit_core.runtime_management",
+      "motivation": "Own bounded graph-visible management references and the exact health-only transit advertisement without authority or effects.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_runtime_management.py"],
+      "role": "pure-contract",
+      "semantic_roles": ["values", "validation", "codecs"],
+      "source": "control_plane_kit_core/runtime_management.py"
+    },
+    {
+      "canonical_public_exports": ["ManagementBootstrapStage", "ManagementObservationError", "ManagementObservationTarget", "NodeHealthObservationTransport", "ObserveManagementBootstrap", "ObserveNodeHealth", "PlanGraphSide"],
+      "destination": "control_plane_kit_core.planning.management_observations",
+      "internal_dependencies": ["control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.node_control", "control_plane_kit_core.runtime_management"],
+      "known_package_consumers": ["control_plane_kit_core", "control_plane_kit_core.planning", "control_plane_kit_core.planning.activity_plan", "control_plane_kit_core.planning.codec", "control_plane_kit_core.planning.management_compiler"],
+      "migration_prerequisites": ["#1833"],
+      "module": "control_plane_kit_core.planning.management_observations",
+      "motivation": "Own closed bounded management observation request values without graph resolution, authority or effects.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_management_bootstrap_planning.py"],
+      "role": "pure-contract",
+      "semantic_roles": ["values", "validation", "codecs"],
+      "source": "control_plane_kit_core/planning/management_observations.py"
+    },
+    {
+      "canonical_public_exports": ["ResolvedManagementBootstrap", "ResolvedNodeHealth", "compile_graph_activity_plan", "resolve_management_observation"],
+      "destination": "control_plane_kit_core.planning.management_compiler",
+      "internal_dependencies": ["control_plane_kit_core.node_control", "control_plane_kit_core.planning.activity_plan", "control_plane_kit_core.planning.codec", "control_plane_kit_core.planning.compiler", "control_plane_kit_core.planning.management_observations", "control_plane_kit_core.public_ingress", "control_plane_kit_core.topology.changes", "control_plane_kit_core.topology.codec", "control_plane_kit_core.topology.diff", "control_plane_kit_core.topology.graph", "control_plane_kit_core.topology.validation"],
+      "known_package_consumers": ["control_plane_kit_core", "control_plane_kit_core.planning"],
+      "migration_prerequisites": ["#1833"],
+      "module": "control_plane_kit_core.planning.management_compiler",
+      "motivation": "Derive observation-aware activity plans from complete graph pairs and resolve exact pinned requests without execution or persistence.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_management_bootstrap_planning.py"],
+      "role": "pure-planning",
+      "semantic_roles": ["transformations", "values", "validation"],
+      "source": "control_plane_kit_core/planning/management_compiler.py"
     },
     {
       "canonical_public_exports": [
@@ -4380,7 +4445,8 @@
       ],
       "destination": "control_plane_kit.core.planning.activity_plan",
       "internal_dependencies": [
-        "control_plane_kit.core.topology.changes"
+        "control_plane_kit.core.topology.changes",
+        "control_plane_kit_core.planning.management_observations"
       ],
       "known_package_consumers": [
         "control_plane_kit",
@@ -4424,6 +4490,7 @@
       "destination": "control_plane_kit.core.planning.codec",
       "internal_dependencies": [
         "control_plane_kit.core.planning.activity_plan",
+        "control_plane_kit_core.planning.management_observations",
         "control_plane_kit.core.topology.changes",
         "control_plane_kit.core.topology.validation"
       ],
@@ -9491,6 +9558,7 @@
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.runtime_authorities",
         "control_plane_kit_operations.runtime_effects",
+        "control_plane_kit_operations.runtime_management_admission",
         "control_plane_kit_operations.secret_providers",
         "control_plane_kit_operations.workflows"
       ],
@@ -9527,6 +9595,7 @@
       ],
       "destination": "control_plane_kit_operations.runtime_effects",
       "internal_dependencies": [
+        "control_plane_kit_core.configuration",
         "control_plane_kit_core.environment",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.planning.activity_plan",
@@ -9544,6 +9613,7 @@
         "control_plane_kit_operations.ingress_authorities",
         "control_plane_kit_operations.products",
         "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_management_admission",
         "control_plane_kit_operations.workflows"
       ],
       "known_package_consumers": [
@@ -9568,6 +9638,41 @@
     },
     {
       "canonical_public_exports": [
+        "runtime_management_planning_is_unsupported",
+        "runtime_management_execution_is_unsupported"
+      ],
+      "destination": "control_plane_kit_operations.runtime_management_admission",
+      "internal_dependencies": [
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.deployment_transitions",
+        "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.plan_derivation",
+        "control_plane_kit_operations.products"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.planning",
+        "control_plane_kit_operations.runtime_effects"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.runtime_management_admission",
+      "motivation": "Separates fresh management planning completeness from execution refusal over both pinned graphs, preserving canonical no-op exceptions without granting effects.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_execution_coordinator.py",
+        "tests/test_management_planning_admission.py",
+        "tests/test_planning_transition_replay.py",
+        "tests/test_runtime_effect_translation.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["policies"],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_admission.py"
+    },
+    {
+      "canonical_public_exports": [
         "EffectAttemptEventEvidence",
         "EffectAttemptRecord",
         "effect_attempt_state_fingerprint"
@@ -9578,7 +9683,9 @@
         "control_plane_kit_operations.records"
       ],
       "known_package_consumers": [
-        "control_plane_kit_operations"
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempts",
@@ -9653,7 +9760,8 @@
         "control_plane_kit_operations.records"
       ],
       "known_package_consumers": [
-        "control_plane_kit_operations"
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_intent_evidence",
@@ -9698,7 +9806,10 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
-        "control_plane_kit_operations.effect_attempt_start_interpreter"
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_start",
@@ -9731,7 +9842,9 @@
         "control_plane_kit_operations.effect_attempt_start",
         "control_plane_kit_operations.effect_attempts",
         "control_plane_kit_operations.records",
-        "control_plane_kit_operations.workflows"
+        "control_plane_kit_operations.workflows",
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.health_effect_attempt_start"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations"
@@ -9744,7 +9857,12 @@
       "owner": "operation",
       "protecting_tests": [
         "tests/test_effect_attempt_start_interpreter_contract.py",
-        "tests/test_postgres_effect_attempt_start_intent.py"
+        "tests/test_postgres_effect_attempt_start_intent.py",
+        "tests/test_health_effect_attempt_start_contract.py",
+        "tests/test_postgres_health_effect_start_first_replay.py",
+        "tests/test_postgres_health_effect_start_eligibility.py",
+        "tests/test_postgres_health_effect_start_rollback.py",
+        "tests/test_postgres_health_effect_start_concurrency.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -9943,6 +10061,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.health_effect_preparation_store",
         "control_plane_kit_operations.postgres.stores"
       ],
       "migration_prerequisites": [],
@@ -9975,6 +10094,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
+        "control_plane_kit_operations.postgres.health_effect_preparation_store",
         "control_plane_kit_operations.postgres.stores"
       ],
       "migration_prerequisites": [],
@@ -10572,6 +10692,313 @@
         "control-plane-kit-operations/tests/test_revision_history_pages.py",
         "control-plane-kit-operations/tests/test_revision_history_advancement.py"
       ]
+    },
+    {
+      "module": "control_plane_kit_operations.runtime_management_targets",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/runtime_management_targets.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.runtime_management_targets",
+      "role": "pinned-management-health-target-projection",
+      "motivation": "Select the exact plan activity and graph-derived management health references without addresses, external effects or dispatch authority.",
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.public_ingress",
+        "control_plane_kit_core.topology"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": [
+        "projections"
+      ],
+      "canonical_public_exports": [
+        "ManagementHealthTargetProjectionError",
+        "ManagementHealthTargetProjection",
+        "project_management_health_target"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.health_effect_preparation_store",
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_runtime_management_targets.py",
+        "control-plane-kit-operations/tests/test_runtime_effect_translation.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.plan_derivation",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/plan_derivation.py",
+      "owner": "operation",
+      "destination": "control_plane_kit_operations.plan_derivation",
+      "role": "durable-plan-derivation-contract",
+      "motivation": "Preserve declared compiler semantics and strict stored-plan provenance without rewriting historical plans or granting execution authority.",
+      "internal_dependencies": [
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.planning.codec",
+        "control_plane_kit_operations.deployment_transitions"
+      ],
+      "optional_external_dependencies": [],
+      "semantic_roles": ["transformations"],
+      "canonical_public_exports": [
+        "PlanDerivationProfile",
+        "PlanDerivationError",
+        "derive_activity_plan",
+        "encode_stored_activity_plan",
+        "decode_stored_activity_plan",
+        "planning_derivation_matches_action"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.planning",
+        "control_plane_kit_operations.admission",
+        "control_plane_kit_operations.runtime_management_admission",
+        "control_plane_kit_operations.postgres.activity_history"
+      ],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "protecting_tests": [
+        "control-plane-kit-operations/tests/test_plan_derivation.py",
+        "control-plane-kit-operations/tests/test_planning_transition_replay.py",
+        "control-plane-kit-operations/tests/test_gateway_key_rotation_overlap_admission.py"
+      ]
+    },
+    {
+      "canonical_public_exports": [
+        "HealthEffectPreparationRecord",
+        "HealthEffectPreparationCodec",
+        "HealthEffectPreparationError",
+        "HealthEffectPreparationConflict",
+        "HealthEffectPreparationCorrupt",
+        "health_effect_attempt_wire_id"
+      ],
+      "destination": "control_plane_kit_operations.health_effect_preparations",
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_health_reads",
+        "control_plane_kit_core.node_health_transit",
+        "control_plane_kit_core.operations"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.health_effect_preparation_store",
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.health_effect_preparations",
+      "motivation": "Owns closed canonical unsigned health evidence and full-attempt wire correlation without current authority.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_health_effect_preparations.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/health_effect_preparations.py"
+    },
+    {
+      "canonical_public_exports": [
+        "HealthEffectPreparationStore"
+      ],
+      "destination": "control_plane_kit_operations.postgres.health_effect_preparation_store",
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.delegation_signing_keys",
+        "control_plane_kit_operations.health_effect_preparations",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.delegation_signing_key_store",
+        "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+        "control_plane_kit_operations.postgres.effect_attempt_store",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.secret_provider_store",
+        "control_plane_kit_operations.runtime_management_targets",
+        "control_plane_kit_operations.secret_providers"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.current_data_validation"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.health_effect_preparation_store",
+      "motivation": "Owns immutable caller-transactional health preparation persistence, retained owner joins and bounded historical reconstruction.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_health_effect_preparations.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "persistence",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/health_effect_preparation_store.py"
+    },
+    {
+      "canonical_public_exports": [
+        "StartHealthEffectAttempt",
+        "HealthEffectAttemptStartResult"
+      ],
+      "destination": "control_plane_kit_operations.health_effect_attempt_start",
+      "internal_dependencies": [
+        "control_plane_kit_core.identity",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.health_effect_preparations",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.workflows"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.health_signing_authority"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.health_effect_attempt_start",
+      "motivation": "Owns the closed trusted health entrance and unsigned start-or-observation result.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_health_effect_attempt_start_contract.py",
+        "tests/test_postgres_health_effect_start_first_replay.py",
+        "tests/test_postgres_health_effect_start_eligibility.py",
+        "tests/test_postgres_health_effect_start_rollback.py",
+        "tests/test_postgres_health_effect_start_concurrency.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/health_effect_attempt_start.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations._health_effect_attempt_start",
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.node_health_reads",
+        "control_plane_kit_core.node_health_transit",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.delegation_signing_keys",
+        "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_effect_preparations",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_management_targets",
+        "control_plane_kit_operations.secret_providers"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.health_signing_authority"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations._health_effect_attempt_start",
+      "motivation": "Owns reference-only current health admission and retained replay support inside the existing first-start transaction, without commit or dispatch.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_health_effect_attempt_start_contract.py",
+        "tests/test_postgres_health_effect_start_first_replay.py",
+        "tests/test_postgres_health_effect_start_eligibility.py",
+        "tests/test_postgres_health_effect_start_rollback.py",
+        "tests/test_postgres_health_effect_start_concurrency.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_health_effect_attempt_start.py"
+    },
+    {
+      "canonical_public_exports": [
+        "GatewayNodeHealthReadTransitSigningAuthority",
+        "HealthSigningAuthorityError",
+        "HealthSigningAuthorityPair",
+        "HealthSigningAuthorityReloadService",
+        "HealthSigningAuthorityUnavailable",
+        "ReloadHealthSigningAuthority",
+        "WorkloadNodeHealthReadSigningAuthority"
+      ],
+      "destination": "control_plane_kit_operations.health_signing_authority",
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.identity",
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.node_health_reads",
+        "control_plane_kit_core.node_health_transit",
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effect_observation",
+        "control_plane_kit_core.secrets",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations._temporal",
+        "control_plane_kit_operations.delegation_signing_keys",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.effect_attempt_start",
+        "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_effect_preparations",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.node_control_signing_authority",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_management_targets",
+        "control_plane_kit_operations.secret_providers"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.health_signing_authority",
+      "motivation": "Owns the query-only current eligibility check and protected reference pair for a retained approved first health attempt.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_health_signing_authority.py",
+        "tests/test_postgres_health_signing_authority.py",
+        "tests/test_postgres_health_signing_transactions.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "interpreter"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/health_signing_authority.py"
     }
   ],
   "owner_vocabulary": [

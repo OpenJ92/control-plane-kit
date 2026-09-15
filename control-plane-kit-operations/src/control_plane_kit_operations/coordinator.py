@@ -48,6 +48,7 @@ from control_plane_kit_core.secrets import (
     SecretResolutionGrant,
 )
 from control_plane_kit_core.types import RuntimeKind
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.activity_journal import activity_journal_events
 from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldConflict,
@@ -105,6 +106,9 @@ from control_plane_kit_operations.products import (
 from control_plane_kit_operations.runtime_authorities import (
     RegisteredRuntimeAuthority,
     RegisteredRuntimeAuthorityDelivery,
+)
+from control_plane_kit_operations.runtime_management_admission import (
+    runtime_management_execution_is_unsupported,
 )
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse,
@@ -922,6 +926,9 @@ class ExecutionCoordinator:
         current: ExecutionCoordinatorResult | None = None
         for _ in range(command.max_effects):
             context = self._load_context(command)
+            guarded = self._guard_runtime_management(context, attempted)
+            if guarded is not None:
+                return guarded
             current = self._classify_current(context, attempted)
             if current.status not in (
                 CoordinatorStatus.PROGRESSED,
@@ -1227,6 +1234,9 @@ class ExecutionCoordinator:
             if selected_conflict is not None:
                 raise ExecutionCoordinatorConflict(selected_conflict)
         context = self._load_context(command)
+        guarded = self._guard_runtime_management(context, attempted)
+        if guarded is not None:
+            return guarded
         current = self._classify_current(context, attempted)
         return ExecutionCoordinatorResult(
             current.run,
@@ -1235,6 +1245,37 @@ class ExecutionCoordinator:
             else current.status,
             attempted,
             current.activity_id,
+        )
+
+    def _guard_runtime_management(
+        self,
+        context: "_CoordinatorContext",
+        effects_attempted: int,
+    ) -> ExecutionCoordinatorResult | None:
+        # Existing authoritative lifecycle states retain their classification.
+        # The ordinary classifier can write completion/failure for RUNNING, so
+        # unsupported material must be intercepted before calling it.
+        if context.run.status is not ActivityRunStatus.RUNNING:
+            return None
+        if not runtime_management_execution_is_unsupported(
+            DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
+            DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
+            context.plan,
+            registered_products=context.registered_products,
+        ):
+            return None
+        if context.projection.uncertain:
+            return ExecutionCoordinatorResult(
+                context.run, CoordinatorStatus.UNCERTAIN, effects_attempted,
+                activity_id=context.projection.uncertain[0].activity_id,
+            )
+        if context.schedule.running:
+            return ExecutionCoordinatorResult(
+                context.run, CoordinatorStatus.IN_FLIGHT, effects_attempted,
+                activity_id=context.schedule.running[0].activity_id.value,
+            )
+        return ExecutionCoordinatorResult(
+            context.run, CoordinatorStatus.UNSUPPORTED, effects_attempted,
         )
 
     def _classify_current(

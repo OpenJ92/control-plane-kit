@@ -13,6 +13,7 @@ from control_plane_kit_core.secrets import (
 from control_plane_kit_operations.node_control_attempts import (
     NodeControlIntendedAttempt,
 )
+from control_plane_kit_operations.health_effect_preparations import HealthEffectPreparationRecord
 from control_plane_kit_operations.node_control_signing_authority import (
     _LockedSigningFamily,
     _LockedSigningTruth,
@@ -46,6 +47,18 @@ class _NodeControlSigningAuthorityStore:
             raise _NodeControlSigningAuthorityStoreError(
                 "node-control signing authority attempt is malformed"
             )
+        return self._get_for_share(attempt.workspace_id,
+            attempt.transit_authorization_id, attempt.workload_authorization_id)
+
+    def get_health_for_share(self, preparation: HealthEffectPreparationRecord) -> _LockedSigningTruth:
+        """Read the two exact retained health chains without widening the old API."""
+        if type(preparation) is not HealthEffectPreparationRecord:
+            raise _NodeControlSigningAuthorityStoreError("health signing authority preparation is malformed")
+        return self._get_for_share(preparation.workspace_id,
+            preparation.transit_authorization_id, preparation.workload_authorization_id)
+
+    def _get_for_share(self, workspace_id: str, transit_authorization_id: str,
+            workload_authorization_id: str) -> _LockedSigningTruth:
         row = self._connection.execute(
             """
             SELECT
@@ -163,9 +176,9 @@ class _NodeControlSigningAuthorityStore:
                          workload_auth, workload_ref, workload_provider
             """,
             (
-                attempt.workload_authorization_id,
-                attempt.transit_authorization_id,
-                attempt.workspace_id,
+                workload_authorization_id,
+                transit_authorization_id,
+                workspace_id,
             ),
         ).fetchone()
         if row is None:

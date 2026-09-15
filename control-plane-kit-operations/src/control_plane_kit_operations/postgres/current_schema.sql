@@ -313,7 +313,7 @@ CREATE TABLE cpk_delegation_signing_keys (
     CONSTRAINT cpk_delegation_signing_keys_issuer_check CHECK ((issuer ~ '^[a-z][a-z0-9._-]{0,127}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_key_id_check CHECK ((key_id ~ '^[a-z][a-z0-9._-]{0,127}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_private_reference_check CHECK ((private_key_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
-    CONSTRAINT cpk_delegation_signing_keys_purpose_check CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text, 'gateway-node-control-transit'::text]))),
+    CONSTRAINT cpk_delegation_signing_keys_purpose_check CHECK ((purpose = ANY (ARRAY['gateway-probe'::text, 'workload-node-control'::text, 'workload-node-control-surface-read'::text, 'gateway-node-control-transit'::text, 'workload-node-health-read'::text, 'gateway-node-health-read-transit'::text]))),
     CONSTRAINT cpk_delegation_signing_keys_registration_check CHECK ((registration_id ~ '^dkey_[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_delegation_signing_keys_retirement_evidence_check CHECK (((retired_by IS NULL) = (retired_at IS NULL))),
     CONSTRAINT cpk_delegation_signing_keys_revocation_evidence_check CHECK (((revoked_by IS NULL) = (revoked_at IS NULL))),
@@ -783,7 +783,7 @@ CREATE TABLE cpk_secret_use_authorizations (
     CONSTRAINT cpk_secret_use_authorizations_effect_check CHECK (((effect_id IS NULL) OR (effect_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_fingerprint_check CHECK ((intent_fingerprint ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_secret_use_authorizations_id_check CHECK ((authorization_id ~ '^suse_[0-9a-f]{64}$'::text)),
-    CONSTRAINT cpk_secret_use_authorizations_intent_check CHECK ((use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text, 'gateway.node-control-transit-signing-key'::text, 'workload.node-control-signing-key'::text, 'secrets.custody-root-key'::text, 'secrets.provider-credentials-document'::text]))),
+    CONSTRAINT cpk_secret_use_authorizations_intent_check CHECK ((use_intent = ANY (ARRAY['application.control-token'::text, 'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, 'docker.local-socket-access-marker'::text, 'docker.remote-tls.ca-certificate'::text, 'docker.remote-tls.client-certificate'::text, 'docker.remote-tls.client-key'::text, 'gateway.probe-signing-key'::text, 'oci.pull-credential'::text, 'postgres.password'::text, 'gateway.node-control-transit-signing-key'::text, 'workload.node-control-signing-key'::text, 'secrets.custody-root-key'::text, 'secrets.provider-credentials-document'::text, 'workload.node-health-read-signing-key'::text, 'gateway.node-health-read-transit-signing-key'::text]))),
     CONSTRAINT cpk_secret_use_authorizations_operation_check CHECK (((operation_id IS NULL) OR (operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_probe_check CHECK (((probe_id IS NULL) OR (probe_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
     CONSTRAINT cpk_secret_use_authorizations_reference_check CHECK ((secret_reference ~ '^secret://[a-z][a-z0-9-]{0,62}/[A-Za-z0-9._/-]+$'::text)),
@@ -1397,3 +1397,76 @@ CREATE TABLE cpk_saved_preparation_sources (
     CONSTRAINT cpk_saved_preparation_sources_revision_fkey FOREIGN KEY (workspace_id, draft_id, revision) REFERENCES cpk_desired_topology_draft_revisions(workspace_id, draft_id, revision)
 );
 CREATE INDEX cpk_saved_preparation_sources_revision ON cpk_saved_preparation_sources (workspace_id, draft_id, revision, session_id);
+
+CREATE TABLE cpk_health_effect_preparations (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    workspace_id text NOT NULL,
+    logical_request_id text NOT NULL,
+    request_fingerprint text NOT NULL,
+    original_event_id text NOT NULL,
+    base_realized_projection_id text NOT NULL,
+    desired_realized_projection_id text NOT NULL,
+    transit_key_registration_id text NOT NULL,
+    workload_key_registration_id text NOT NULL,
+    transit_authorization_id text NOT NULL,
+    workload_authorization_id text NOT NULL,
+    transit_issuer text NOT NULL,
+    transit_jti text NOT NULL,
+    workload_issuer text NOT NULL,
+    workload_jti text NOT NULL,
+    preimage bytea NOT NULL,
+    CONSTRAINT cpk_health_effect_preparations_identity_check CHECK (((attempt > 0) AND ((run_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text) AND ((activity_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'::text))),
+    CONSTRAINT cpk_health_effect_preparations_fingerprint_check CHECK ((request_fingerprint ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_preimage_check CHECK (((octet_length(preimage) >= 1) AND (octet_length(preimage) <= 16384))),
+    CONSTRAINT cpk_health_effect_preparations_workspace_id_check CHECK (((char_length(workspace_id) >= 1) AND (char_length(workspace_id) <= 512) AND (workspace_id !~ '[[:cntrl:]]'::text))),
+    CONSTRAINT cpk_health_effect_preparations_original_event_id_check CHECK (((char_length(original_event_id) >= 1) AND (char_length(original_event_id) <= 512) AND (original_event_id !~ '[[:cntrl:]]'::text))),
+    CONSTRAINT cpk_health_effect_preparations_base_projection_check CHECK (((char_length(base_realized_projection_id) >= 1) AND (char_length(base_realized_projection_id) <= 512) AND (base_realized_projection_id !~ '[[:cntrl:]]'::text))),
+    CONSTRAINT cpk_health_effect_preparations_desired_projection_check CHECK (((char_length(desired_realized_projection_id) >= 1) AND (char_length(desired_realized_projection_id) <= 512) AND (desired_realized_projection_id !~ '[[:cntrl:]]'::text))),
+    CONSTRAINT cpk_health_effect_preparations_logical_request_id_check CHECK (((logical_request_id COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_transit_issuer_check CHECK (((transit_issuer COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_transit_jti_check CHECK (((transit_jti COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_workload_issuer_check CHECK (((workload_issuer COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_workload_jti_check CHECK (((workload_jti COLLATE "C") ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_transit_key_check CHECK ((transit_key_registration_id ~ '^dkey_[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_transit_authorization_id_check CHECK ((transit_authorization_id ~ '^suse_[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_workload_key_check CHECK ((workload_key_registration_id ~ '^dkey_[0-9a-f]{64}$'::text)),
+    CONSTRAINT cpk_health_effect_preparations_workload_authorization_id_check CHECK ((workload_authorization_id ~ '^suse_[0-9a-f]{64}$'::text))
+);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_pkey PRIMARY KEY (run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_request_key UNIQUE (workspace_id, logical_request_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_transit_jti_key UNIQUE (transit_issuer, transit_jti);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_workload_jti_key UNIQUE (workload_issuer, workload_jti);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_attempt_fk FOREIGN KEY (run_id, activity_id, attempt) REFERENCES cpk_effect_attempts(run_id, activity_id, attempt);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_intent_fk FOREIGN KEY (run_id, activity_id, attempt, request_fingerprint, original_event_id) REFERENCES cpk_effect_attempt_intents(run_id, activity_id, attempt, request_fingerprint, original_event_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_base_projection_fk FOREIGN KEY (base_realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_desired_projection_fk FOREIGN KEY (desired_realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_transit_key_fk FOREIGN KEY (transit_key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys(registration_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_transit_authorization_fk FOREIGN KEY (transit_authorization_id, workspace_id) REFERENCES cpk_secret_use_authorizations(authorization_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_workload_key_fk FOREIGN KEY (workload_key_registration_id, workspace_id) REFERENCES cpk_delegation_signing_keys(registration_id, workspace_id);
+
+ALTER TABLE ONLY cpk_health_effect_preparations
+    ADD CONSTRAINT cpk_health_effect_preparations_workload_authorization_fk FOREIGN KEY (workload_authorization_id, workspace_id) REFERENCES cpk_secret_use_authorizations(authorization_id, workspace_id);

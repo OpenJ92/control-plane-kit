@@ -1,6 +1,21 @@
 Source: [control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/runtime_effects.py).
 Maintain this document alongside its source file. When the source or relevant imported contracts change, verify and update this companion in the same change.
 
+Before selecting an operation's material, direct and coordinator intent projection
+now apply the shared runtime-management refusal policy to both pinned graphs.
+Explicit management, gateway transit or SDK surfaces cannot enter executable
+intent until transport support is accepted. Every direct call is an attempted
+activity: equal graphs, an empty canonical plan, or an omitted supplied activity
+provide no no-op exemption here. A fixed `InvalidOperationCommand` contains no
+graph or credential material. Both graph directions and equal-pair direct
+attempts are protected by the runtime-effect translation target tests.
+The policy also consumes the exact supplied registered products selected by
+either graph's identity/digest references. Their SDK/transit declarations remain
+guarded when omitted from authored BlockSpec material. It adds no status filter
+different from this translator's selection and ignores unrelated registrations.
+Malformed reference parsing yields the same fixed bounded refusal regardless
+of catalog contents; there is no empty-plan exemption for malformed material.
+
 This owner translates pinned Operations realization material into Core runtime-effect values. It does not read a provider, resolve a secret, approve work, dispatch an interpreter or commit a transaction. The public projection requires the exact ActivityRealizationContext type. Its private intent projection also accepts the exact coordinator context and an activity, before an event exists. Core [runtime_effect_observation.py](../../../../../control-plane-kit-core/src/control_plane_kit_core/runtime_effect_observation.py) owns intent/request binding: the public path binds the original start-event ID as effect identity and initially supplies no transient resolution grants. A constructed request is not execution permission or observed success.
 
 Material selection preserves removal meaning. StopNode, RemoveNodeResource, RemoveSocketConnection, StopRuntime and RemoveRuntimeResource use the base graph; other operations use desired graph. Runtime/node lookup, registered product identity plus descriptor digest, graph verification and compiled environment/delivery material determine the request. Product material is for the selected node; runtime-only and socket operations carry no node product. Image-pull authority is selected from permitting registrations, preferring the longest repository match with deterministic ties; it carries a credential reference, not resolved bytes.
@@ -12,6 +27,42 @@ Secret delivery selects the compiled node tuple exactly once. Core product insta
 Raw authored graphs can carry registered product metadata without the required selected deliveries; Core instantiation is not the only admission path. For StartNode/ReconcileNode, this owner therefore checks the assembled selected/generated material before constructing runtime product material. Each unconditional descriptor contract slot must occur exactly once. The slot projection consumes public Core `secret_delivery_sort_key` and excludes only reference; kind, target, intent, file policy and path binding remain part of the contract. Other node/socket deliveries are allowed, and existing authoritative ingress generation can satisfy a declared slot. This is required-slot coverage, not global target uniqueness or a broad graph validator. Missing, partial, mismatched or repeated required slots raise a fixed redacted InvalidOperationCommand before executable intent, StartEffectAttempt or interpreter I/O. No descriptor fallback, provider result or historical attempt is invented. Teardown is exempt from this fresh admission check.
 
 `required_secret_uses_for_runtime_effect` deduplicates and sorts reference/intent pairs from secret environment/files, pull credentials, PostgreSQL verification passwords, and a selected remote Docker authority's three TLS references. It issues no grants. The RuntimeInterpreterDispatcher in [coordinator.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/coordinator.py) consumes these pairs, requests correlated authorizations and checks returned grants before calling an interpreter. Reconciliation consumes the same enumeration in its separate observation path. Keep enumeration, authorization and secret resolution separate.
+
+Configuration material also comes from the selected graph node, including exact
+content, content digest and source digest. The registered descriptor retains its
+immutable defaults and reference; it is not a fallback payload channel. A private
+Operations projection compares sorted slot tuples `(artifact_id, target_path,
+media_type, file_mode)` for StartNode/ReconcileNode. Missing, extra or reassigned
+slots raise fixed `InvalidOperationCommand` text without candidate interpolation
+or exception chaining. Content and both digests may differ from the defaults.
+The returned runtime contract retains all selected values; Core's existing
+constructor canonicalizes artifact order. This does not validate unrelated
+product environment, secret or runtime contracts.
+
+The operation policy is explicit: StartNode/ReconcileNode select desired
+artifacts and require exact slots; StopNode/RemoveNodeResource select base
+artifacts without new deployment-slot admission; WaitForHealthy selects desired
+artifacts without new configuration-install admission. Cleanup and observation
+material is not proof of congruence, installed bytes or permission to mount new
+configuration. Existing Core runtime-contract invariants still apply.
+
+Both pinned graph descriptors are decoded before this join, and the selected
+graph is decoded by the existing material selector. Core therefore continues
+to own structural artifact validity, content bounds and digest checks. Malformed
+artifacts retain their earlier Core decode exception type and chains; the new
+fixed Operations error covers otherwise-valid deployment slot mismatches only.
+There is no redundant artifact parser or general decoder-hardening promise.
+
+The configuration regression tests use actual product instantiation and public
+effect-request projection, comparing full artifact descriptors across two
+selections of one unchanged registered product, all five operation/graph sides,
+deployment slot failures and explicit cleanup/observation exceptions. Existing
+Core malformed decoding and graph-derived routing remain independent laws.
+This changes future effect material only: it does not rewrite stored intents or
+fingerprints, reconcile uncertain attempts or authorize silent redispatch.
+Interpreter #149 owns actual mounted/delivered-byte evidence under its separate
+authority. No file access, network/provider call, secret resolution, schema,
+transaction, retry or operational event is introduced by this projection.
 
 Gateway helpers derive routing material from graph and registered ports. Target collection walks all sorted edges whose provider shares the gateway's runtime, not only edges attached to the gateway; targets deduplicate provider/socket and retain contributing edge IDs. HTTP/Postgres are supported. PostgreSQL entries may identify a password environment variable, never its resolved value. CPK_GATEWAY_TARGETS_JSON is replaced only when the selected node already declares that public environment binding. Private control endpoints use the registered control port; named public endpoints require one graph-declared HTTPS ingress. Despite RuntimeEndpointObservation's name, these functions do not probe DNS, HTTP, health or provider state.
 
