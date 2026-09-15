@@ -47,8 +47,11 @@ new authorization. Secret resolution is not performed.
 
 The public family constructors enforce exact nominal public-key/reference
 values and their distinct health intents. Pair construction checks the original
-preparation codec, family/key/use IDs, fingerprint-to-authorization identity,
-correlation, shared actor/session and execution context. Actual provider
+preparation codec, family/key/use IDs, the complete existing secret-use
+fingerprint, correlation, shared actor/session and execution context. The same
+private fingerprint owner is used by the existing authorization producer and
+this pure pair check. Coordinated changes to both actors or sessions and both
+correlations cannot preserve fingerprints for the old semantics. Actual provider
 capability provenance and current actor/session remain the service's locked
 owner responsibility. Constructors alone do not establish current authority.
 All new public values hide their fields from repr and add no public serializer;

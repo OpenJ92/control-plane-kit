@@ -51,7 +51,8 @@ from control_plane_kit_operations.runtime_management_targets import project_mana
 from control_plane_kit_operations.secret_providers import (
     AuthorizedSecretUse, AuthorizeSecretUse, RegisteredSecretProvider,
     RegisteredSecretProviderStatus, RegisteredSecretReference, RegisteredSecretReferenceStatus,
-    _validate_reference_admission, authorized_secret_use_for, secret_resolution_grant_for,
+    _secret_use_fingerprint_for, _validate_reference_admission,
+    authorized_secret_use_for, secret_resolution_grant_for,
     secret_use_correlation_for,
 )
 
@@ -203,6 +204,16 @@ def _valid_pair(pair: object) -> bool:
             resolution, public = family.resolution_grant, family.public_key
             if not _valid_family(public, resolution, intent):
                 return False
+            fingerprint = _secret_use_fingerprint_for(
+                workspace_id=resolution.workspace_id,
+                reference_registration_id=resolution.reference_registration_id,
+                provider_registration_id=resolution.provider_registration_id,
+                reference=resolution.reference, intent=resolution.intent,
+                actor_subject=resolution.actor_subject, correlation_id=resolution.correlation_id,
+                operation_id=resolution.operation_id, session_id=resolution.session_id,
+                run_id=resolution.run_id, activity_id=resolution.activity_id,
+                effect_id=resolution.effect_id, probe_id=resolution.probe_id,
+            )
             if (public.key_id != grant.key_id
                     or delegation_signing_key_registration_id_for(workspace_id=preparation.workspace_id,
                         purpose=purpose, issuer=grant.issuer, public_key=public,
@@ -210,6 +221,7 @@ def _valid_pair(pair: object) -> bool:
                         != getattr(preparation, name + "_key_registration_id")
                     or resolution.authorization_id != getattr(preparation, name + "_authorization_id")
                     or resolution.authorization_id != "suse_" + resolution.intent_fingerprint
+                    or resolution.intent_fingerprint != fingerprint
                     or resolution.workspace_id != preparation.workspace_id
                     or resolution.operation_id != health_effect_attempt_wire_id(preparation.identity)
                     or resolution.run_id != preparation.identity.run_id.value
