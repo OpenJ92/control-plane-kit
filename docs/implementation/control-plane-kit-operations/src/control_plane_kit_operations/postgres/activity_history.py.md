@@ -17,3 +17,10 @@ and action profile in one transaction under its existing idempotency lock. Repla
 does not rewrite payloads, allocate records or backfill absent profiles. Old
 readers cannot read newly profiled envelopes; do not downgrade them onto such
 history or strip markers as an operational workaround.
+
+`get_plan_for_share` is an additive bounded read for current health authority
+reload. It shares the original query/decoder with `get_plan`, adding only the
+constant `FOR SHARE` lock through the caller's transaction. It introduces no
+plan mutation or new approval policy. Missing/decoder/driver exceptions retain
+their existing identity. The ordinary getter and list/projection behavior are
+preserved.
