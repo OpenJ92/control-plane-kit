@@ -528,6 +528,10 @@ from .effect_attempt_start import (
     StartEffectAttempt,
 )
 from .effect_attempt_start_interpreter import EffectAttemptStartService
+from .health_effect_attempt_start import (
+    HealthEffectAttemptStartResult,
+    StartHealthEffectAttempt,
+)
 from .effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -1107,6 +1111,8 @@ __all__ = [
     "StartOperationSession",
     "StartActivityRun",
     "StartEffectAttempt",
+    "StartHealthEffectAttempt",
+    "HealthEffectAttemptStartResult",
     "FoldEffectAttempt",
     "GuardedObservedEffectFold",
     "TakeOverExpiredExecutionClaim",
