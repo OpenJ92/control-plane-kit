@@ -65,11 +65,18 @@ class PostgresHealthEffectStartEligibilityTests(PostgresHealthEffectStartFixture
                     if replacement == "opposite":
                         name = "health-desired" if column.startswith("base") else "health-base"
                         value = self.projections[name].projection_id
-                    self.connection.execute("UPDATE cpk_activity_plans SET " + column + "=%s", (value,))
+                    # SQL enforces non-null and projection/source FKs. Exercise
+                    # the service's typed owner-read boundary without violating
+                    # those independent database laws during fixture setup.
+                    with self.unit_of_work() as uow:
+                        retained = uow.stores.activity_history.get_plan("plan-a")
+                    candidate = replace(retained, **{column: value})
                     before = self.health_snapshot()
                     ids = Sequence("must-not-allocate")
-                    with self.assertRaises((EffectAttemptStartError, HealthEffectPreparationError)):
-                        self.execute_health(ids=ids)
+                    with mock.patch.object(PostgresActivityHistoryStore, "get_plan", return_value=candidate) as read_plan:
+                        with self.assertRaises((EffectAttemptStartError, HealthEffectPreparationError)):
+                            self.execute_health(ids=ids)
+                    read_plan.assert_called_once_with("plan-a")
                     self.assertEqual(ids.calls, [])
                     self.assertEqual(self.health_snapshot(), before)
 
@@ -121,13 +128,14 @@ class PostgresHealthEffectStartEligibilityTests(PostgresHealthEffectStartFixture
                     self.assertEqual(self.health_snapshot(), before)
 
     def test_each_reference_and_provider_must_still_admit_its_exact_intent(self):
+        from psycopg.types.json import Jsonb
         self.health_start_api()
         for family in ("transit", "workload"):
             with self.subTest(family=family):
                 self.reset_health()
                 other_intent = self.family_intents[1 if family == "transit" else 0]
                 self.connection.execute("UPDATE cpk_secret_references SET allowed_intents=%s WHERE registration_id=%s",
-                    ([other_intent.value], self.references[family].registration_id))
+                    (Jsonb([other_intent.value]), self.references[family].registration_id))
                 before = self.health_snapshot()
                 with self.assertRaises((EffectAttemptStartError, SecretProviderRegistrationError)):
                     self.execute_health()
@@ -144,9 +152,9 @@ class PostgresHealthEffectStartEligibilityTests(PostgresHealthEffectStartFixture
         epoch = 1_893_456_000  # 2030-01-01T00:00:00Z
         cases = (
             ("2030-01-01T00:00:00Z", "2030-01-01T00:10:00Z", (epoch, epoch + 300)),
-            ("2030-01-01T00:00:00.5Z", "2030-01-01T00:10:00Z", (epoch + 1, epoch + 300)),
-            ("2030-01-01T00:00:00.5Z", "2030-01-01T00:00:03.9Z", (epoch + 1, epoch + 3)),
-            ("2030-01-01T00:00:00.5Z", "2030-01-01T00:00:01.9Z", None),
+            ("2030-01-01T00:00:00.500000Z", "2030-01-01T00:10:00Z", (epoch + 1, epoch + 300)),
+            ("2030-01-01T00:00:00.500000Z", "2030-01-01T00:00:03.900000Z", (epoch + 1, epoch + 3)),
+            ("2030-01-01T00:00:00.500000Z", "2030-01-01T00:00:01.900000Z", None),
             ("2030-01-01T00:00:00Z", "2030-01-01T00:00:00Z", None),
         )
         for observed, expiry, expected in cases:

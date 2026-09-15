@@ -23,6 +23,7 @@ from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, 
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.delegation_signing_key_store import DelegationSigningKeyStore
 from control_plane_kit_operations.postgres.secret_provider_store import SecretProviderStore, SecretReferenceStore, SecretUseAuthorizationStore
+from control_plane_kit_operations.postgres.temporal import encode_postgres_timestamp
 from control_plane_kit_operations.records import ActivityEventKind, ActivityEventRecord, GraphVersionRecord, RealizedGraphProjectionRecord
 from control_plane_kit_operations.secret_providers import (
     SecretProviderKind, SecretProviderRegistrationService,
@@ -171,6 +172,10 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
 
     @contextmanager
     def observed_time(self, observed_at, *, expires_at="2030-01-01T00:10:00Z"):
+        # The injected observation must inhabit the real owner's timestamp
+        # language; do not bypass canonical persistence with a shorter spelling.
+        encode_postgres_timestamp(observed_at)
+        encode_postgres_timestamp(expires_at)
         self.connection.execute("UPDATE cpk_execution_requests SET claimed_at='2026-08-15T03:59:00Z', lease_expires_at=%s WHERE request_id='request-a'", (expires_at,))
         original = PostgresExecutionStore.observe_request_lease_for_update
         calls = []
