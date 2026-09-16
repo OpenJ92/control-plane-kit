@@ -187,6 +187,18 @@ class PostgresHealthReceiverTrustTests(PostgresHealthEffectStartFixture, unittes
         self.assertEqual(generic, ExistingAttempt(result.start.attempt))
         self.assertEqual(ids.calls, [])
         self.assertEqual(self.health_snapshot(), before)
+        # Historical observation must work without any configured decoder, too.
+        # A populated registry with an unused decoder does not prove this law.
+        uninjected_ids = Sequence("must-not-allocate")
+        uninjected = EffectAttemptStartService(self.unit_of_work, id_factory=uninjected_ids)
+        with self.forbid_fresh_health():
+            retained = uninjected.execute_health(self.start_health_command())
+            observed = uninjected.execute(self.start_value)
+        self.assertEqual(retained.start, ExistingAttempt(result.start.attempt))
+        self.assertEqual(retained.preparation, result.preparation)
+        self.assertEqual(observed, ExistingAttempt(result.start.attempt))
+        self.assertEqual(uninjected_ids.calls, [])
+        self.assertEqual(self.health_snapshot(), before)
 
     def test_contract_refusal_is_bounded_but_unexpected_decoder_and_owner_errors_keep_identity(self):
         registry, decoder = self.registry()

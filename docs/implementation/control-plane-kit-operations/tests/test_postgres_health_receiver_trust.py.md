@@ -13,6 +13,9 @@ mismatches; missing/unsupported bindings and reassigned slots; exact original
 base-side pins on repeated reload; missing reload support with both replay
 entrances still observation-only; bounded contract refusal versus unexpected
 decoder/store error identity; and reload coverage refusal without history repair.
+Both replay entrances also run with the registry argument omitted, independently
+of the populated-registry decoder trap. This protects historical observation
+when no receiver decoder is configured, rather than merely proving no decode.
 
 Refusal checks observe zero ID allocations and unchanged durable owner facts.
 Successful starts, preparations, reloads and replay use actual existing services;
