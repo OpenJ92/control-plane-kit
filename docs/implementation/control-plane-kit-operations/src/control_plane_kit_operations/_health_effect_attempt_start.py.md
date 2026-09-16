@@ -13,6 +13,12 @@ equal graph content. Active key selection uses the two dedicated health purposes
 under their existing shared locks. Registration identity, public material and
 private references must agree, and the two families must be distinct.
 
+The shared receiver-coverage check then selects each exact registered product
+and declared artifact slot from the approved graph side. Trusted decoders read
+the actual selected bytes; each receiver must cover its active signer's full
+public identity and configured context. Missing composition refuses before
+correlation locks, time, IDs or writes. Historical replay never decodes trust.
+
 Both actor-bound deterministic correlations are locked and required absent
 before either authorization. The worker fence is not secret-use authority.
 Only the existing database lease observation supplies time: integer ceiling for

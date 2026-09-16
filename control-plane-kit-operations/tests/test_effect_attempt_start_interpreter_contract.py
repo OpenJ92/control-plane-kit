@@ -257,7 +257,7 @@ class EffectAttemptStartInterpreterContractTests(
         signature = inspect.signature(EffectAttemptStartService)
         self.assertEqual(
             tuple(signature.parameters),
-            ("unit_of_work_factory", "id_factory"),
+            ("unit_of_work_factory", "id_factory", "health_receiver_decoders"),
         )
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptStartService.execute).parameters),

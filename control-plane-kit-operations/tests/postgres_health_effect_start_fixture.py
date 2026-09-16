@@ -19,6 +19,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
 )
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.health_effect_preparations import health_effect_attempt_wire_id
+from control_plane_kit_operations import health_receiver_trust
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, encode_stored_activity_plan
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.delegation_signing_key_store import DelegationSigningKeyStore
@@ -34,12 +35,23 @@ from tests.execution_lease_recovery_fixture import Sequence
 from tests.health_effect_start_fixture import HealthEffectStartValues, trusted_health_context
 from tests.postgres_effect_attempt_start_fixture import PostgresEffectAttemptStartFixture
 from tests.test_delegation_signing_keys import PUBLIC_KEY_A, PUBLIC_KEY_B
+from tests.health_receiver_trust_fixture import bindings, ByteDecoder, context as receiver_context, register_products
 
 
 class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAttemptStartFixture):
     def setUp(self):
         PostgresEffectAttemptStartFixture.setUp(self)
         self.seed_ready_health()
+
+    def health_context(self, **options):
+        world, documents, selected = receiver_context(self, **options)
+        self.receiver_documents, self.receiver_artifacts = documents, selected
+        self.receiver_products = register_products(self, documents)
+        return world
+
+    def health_receiver_decoders(self):
+        return health_receiver_trust.HealthReceiverDecoders(bindings(health_receiver_trust,
+            self.receiver_documents, ByteDecoder(health_receiver_trust)))
 
     def seed_ready_health(self, **context_options):
         self.health_plan, self.health_activity, current, desired, _ = self.health_context(**context_options)
@@ -137,7 +149,8 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
 
     def health_service(self, *, ids=None, unit_of_work=None):
         ids = ids if ids is not None else Sequence("health-original", "health-request", "health-transit-jti", "health-workload-jti")
-        return EffectAttemptStartService(unit_of_work or self.unit_of_work, id_factory=ids), ids
+        return EffectAttemptStartService(unit_of_work or self.unit_of_work, id_factory=ids,
+            health_receiver_decoders=self.health_receiver_decoders()), ids
 
     def execute_health(self, *, command=None, ids=None, unit_of_work=None):
         command = self.start_health_command() if command is None else command

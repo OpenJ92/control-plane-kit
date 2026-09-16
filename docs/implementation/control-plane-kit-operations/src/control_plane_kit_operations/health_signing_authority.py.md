@@ -13,7 +13,8 @@ command = ReloadHealthSigningAuthority(
     authority=execution_worker,
     fence=current_lease_fence,
 )
-pair = HealthSigningAuthorityReloadService(uow_factory).execute(command)
+pair = HealthSigningAuthorityReloadService(uow_factory,
+    health_receiver_decoders=trusted_decoders).execute(command)
 # pair.preparation is the original unsigned value; the two families carry
 # public verification keys and protected resolution references, not key bytes.
 ```
@@ -30,6 +31,14 @@ graph side. Accepted management projection derives the expected target,
 runtime, V2 declaration, health kind and gateway from the approved plan. Equal
 graph content cannot select a different authored side. Current workspace
 lineage is not substituted for these preconvergence pins.
+
+The shared receiver-coverage check rereads exact registered descriptor provenance
+and selected configuration bytes from those original pins. Trusted product
+decoders must still support the recorded profile and both receivers must cover
+the retained active signer identities and configured context. Empty composition
+refuses reload; it remains valid for ordinary first-start history replay, which
+never decodes current receiver trust. This check adds no product-revocation
+policy, schema, time observation or protected-material resolution.
 
 Currentness is owner-local: first-start admits attempt1, while the only inverse
 attempt creator locks and requires a SUCCEEDED source. Reload requires the
