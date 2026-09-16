@@ -11,7 +11,11 @@ workload target, attempt or validity interval merely because admission knows one
 Both values require exact nominal Core identities and reconstructed nested
 values. Key sets contain one through sixteen Ed25519 public keys with distinct
 IDs and material. Full key reconstruction checks algorithm, normalized PEM and
-fingerprint. Additional valid keys permit receiver overlap during rotation;
+fingerprint. Each key scalar must be exact `str`: Core preserves a key-ID string
+subclass, so reconstruction alone cannot exclude mutable subclass attributes.
+The focused both-family regression was committed before this review correction
+as `86cc2729`; it is post-red strengthening without earlier execution credit.
+Additional valid keys permit receiver overlap during rotation;
 the operation separately selects its one active signer. Repr omits configured
 material and there is no new result serializer.
 

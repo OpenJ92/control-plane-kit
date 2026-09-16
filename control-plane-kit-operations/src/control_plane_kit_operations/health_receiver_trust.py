@@ -51,6 +51,8 @@ def _public_keys(keys: object) -> None:
     _require(type(keys) is tuple and 1 <= len(keys) <= 16)
     for key in keys:
         _require(type(key) is DelegationPublicKey and key.algorithm is DelegationKeyAlgorithm.ED25519)
+        _require(type(key.key_id) is str and type(key.public_key_pem) is str
+                 and type(key.fingerprint_sha256) is str)
         _require(_same(key, replace(key)))
     _require(len({key.key_id for key in keys}) == len(keys)
              and len({key.fingerprint_sha256 for key in keys}) == len(keys))
