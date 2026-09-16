@@ -164,6 +164,7 @@ class HealthEffectAttemptStartContractTests(HealthEffectStartValues, EffectAttem
             "control_plane_kit_operations.effect_attempts",
             "control_plane_kit_operations.health_effect_preparations",
             "control_plane_kit_operations.health_effect_attempt_start",
+            "control_plane_kit_operations._health_receiver_trust",
             "control_plane_kit_operations.execution_leases",
             "control_plane_kit_operations.lifecycle",
             "control_plane_kit_operations.records",
