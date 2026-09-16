@@ -43,9 +43,15 @@ class HealthReceiverTrustTests(unittest.TestCase):
                 self.assertNotIn(canary, repr(value))
 
     def test_family_role_issuer_and_public_identity_are_nominal_not_equality_only(self):
+        class KeyIdText(str):
+            pass
+
         for family in ("transit", "workload"):
             value = self.decoded(family)
             key = value.public_keys[0]
+            ordinary = replace(value, public_keys=(replace(key, key_id="ordinary-key"),))
+            self.assertIs(type(ordinary.public_keys[0].key_id), str)
+            self.assertEqual(ordinary.public_keys[0].key_id, "ordinary-key")
             for change in (
                 dict(purpose=value.purpose.value),
                 dict(purpose=DelegationKeyPurpose.GATEWAY_PROBE),
@@ -53,6 +59,7 @@ class HealthReceiverTrustTests(unittest.TestCase):
                 dict(audience="wrong-audience"),
                 dict(issuer="https://example.invalid"), dict(issuer="sk-synthetic"),
                 dict(public_keys=[key]),
+                dict(public_keys=(replace(key, key_id=KeyIdText(key.key_id)),)),
                 dict(public_keys=(forged_copy(key, algorithm="ed25519"),)),
                 dict(public_keys=(forged_copy(key, fingerprint_sha256="0" * 64),)),
             ):

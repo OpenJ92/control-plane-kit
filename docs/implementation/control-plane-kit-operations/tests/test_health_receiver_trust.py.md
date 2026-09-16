@@ -14,3 +14,9 @@ wrong roles/purposes and forged key fingerprints remain independent negatives.
 The designed interface is recorded on1857comment5698011241, with both design
 passes at5698038968. No application implementation or executable validation
 exists at this target checkpoint.
+
+Review strengthening after causal red: the existing nominal method now rejects
+a `str` subclass key ID through both family constructors and explicitly accepts
+an ordinary exact-string key ID. Its refusal helper retains fixed diagnostics
+and empty cause/context assertions. This regression precedes the source scalar
+guard correction and was not executed in the earlier missing-contract red.
