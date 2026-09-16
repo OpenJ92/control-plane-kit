@@ -216,6 +216,7 @@ EXACT_INTERPRETER_DEPENDENCIES = {
     "control_plane_kit_operations.workflows",
     "control_plane_kit_operations.health_effect_attempt_start",
     "control_plane_kit_operations._health_effect_attempt_start",
+    "control_plane_kit_operations.health_receiver_trust",
 }
 
 
@@ -257,7 +258,7 @@ class EffectAttemptStartInterpreterContractTests(
         signature = inspect.signature(EffectAttemptStartService)
         self.assertEqual(
             tuple(signature.parameters),
-            ("unit_of_work_factory", "id_factory"),
+            ("unit_of_work_factory", "id_factory", "health_receiver_decoders"),
         )
         self.assertEqual(
             tuple(inspect.signature(EffectAttemptStartService.execute).parameters),

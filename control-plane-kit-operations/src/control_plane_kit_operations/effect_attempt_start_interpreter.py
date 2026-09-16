@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Callable
 
 from control_plane_kit_core.operations import (
@@ -49,6 +50,7 @@ from control_plane_kit_operations.workflows import InvalidOperationCommand
 from control_plane_kit_operations.health_effect_attempt_start import (
     HealthEffectAttemptStartResult, StartHealthEffectAttempt, _valid_health_command,
 )
+from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders, HealthReceiverTrustError
 from control_plane_kit_operations._health_effect_attempt_start import (
     admit_health_start, build_health_start, health_interval, health_replay,
     retain_health_start,
@@ -71,9 +73,13 @@ class EffectAttemptStartService:
         unit_of_work_factory: Callable[[], Any],
         *,
         id_factory: Callable[[], str],
+        health_receiver_decoders: HealthReceiverDecoders = HealthReceiverDecoders(()),
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._id_factory = id_factory
+        if type(health_receiver_decoders) is not HealthReceiverDecoders:
+            raise HealthReceiverTrustError("health receiver trust is unavailable")
+        self._health_receiver_decoders = replace(health_receiver_decoders)
 
     def execute(
         self,
@@ -163,7 +169,8 @@ class EffectAttemptStartService:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
             admission = None
             if health is not None:
-                admission = admit_health_start(stores, health, request, plan, event_kind)
+                admission = admit_health_start(stores, health, request, plan, event_kind,
+                    self._health_receiver_decoders)
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)

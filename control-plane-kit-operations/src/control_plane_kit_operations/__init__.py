@@ -541,6 +541,15 @@ from .health_signing_authority import (
     ReloadHealthSigningAuthority,
     WorkloadNodeHealthReadSigningAuthority,
 )
+from .health_receiver_trust import (
+    GatewayHealthReceiverTrust,
+    HealthReceiverDecoder,
+    HealthReceiverDecoderBinding,
+    HealthReceiverDecoders,
+    HealthReceiverSelection,
+    HealthReceiverTrustError,
+    WorkloadHealthReceiverTrust,
+)
 from .effect_attempt_fold import (
     EffectAttemptFoldConflict,
     EffectAttemptFoldDenied,
@@ -1129,6 +1138,13 @@ __all__ = [
     "HealthSigningAuthorityUnavailable",
     "ReloadHealthSigningAuthority",
     "WorkloadNodeHealthReadSigningAuthority",
+    "GatewayHealthReceiverTrust",
+    "HealthReceiverDecoder",
+    "HealthReceiverDecoderBinding",
+    "HealthReceiverDecoders",
+    "HealthReceiverSelection",
+    "HealthReceiverTrustError",
+    "WorkloadHealthReceiverTrust",
     "FoldEffectAttempt",
     "GuardedObservedEffectFold",
     "TakeOverExpiredExecutionClaim",

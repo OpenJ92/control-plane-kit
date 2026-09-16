@@ -2,7 +2,9 @@ Source: [effect_attempt_start_interpreter.py](../../../../../control-plane-kit-o
 Maintain this companion alongside its source.
 
 `EffectAttemptStartService` owns one first-start transaction. The existing
-constructor and `execute(StartEffectAttempt)` remain unchanged. The additive
+`execute(StartEffectAttempt)` entrance remains unchanged. The constructor now
+accepts the keyword-only trusted `health_receiver_decoders` composition, whose
+empty default refuses fresh health authority while preserving replay. The additive
 `execute_health(StartHealthEffectAttempt)` requires node-control read/execute,
 delegation-key use and secret-provider use in the trusted context, independently
 of worker `execution:operate` and the exact lease fence.
@@ -14,7 +16,8 @@ scheduling, phase and source checks. There is no nested execution call or generi
 callback/transaction extension. Nonhealth behavior preserves the old law suite.
 
 An absent generic health start refuses before clock/IDs/writes. Dedicated fresh
-health admission checks approval, graph pair, active key pair and both absent
+health admission checks approval, graph pair, active key pair, selected receiver
+trust coverage and both absent
 correlations before the existing database observation. The original event ID is
 allocated first, followed by logical health request and both JTIs. The write
 order is event → protected intent → attempt → transit use → workload use →

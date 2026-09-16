@@ -74,7 +74,8 @@ class PostgresHealthSigningAuthorityFixture(PostgresHealthEffectStartFixture):
         return self.reload_api.ReloadHealthSigningAuthority(**(values | changes))
 
     def reload(self, command=None, *, unit_of_work=None):
-        service = self.reload_api.HealthSigningAuthorityReloadService(unit_of_work or self.unit_of_work)
+        service = self.reload_api.HealthSigningAuthorityReloadService(unit_of_work or self.unit_of_work,
+            health_receiver_decoders=self.health_receiver_decoders())
         return service.execute(self.reload_command() if command is None else command)
 
     def assert_history_unchanged(self, before):

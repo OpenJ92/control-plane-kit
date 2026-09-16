@@ -33,6 +33,7 @@ from control_plane_kit_operations.delegation_signing_keys import (
     RegisteredDelegationSigningKey, RegisteredDelegationSigningKeyStatus,
     delegation_signing_key_registration_id_for,
 )
+from control_plane_kit_operations._health_receiver_trust import require_health_receiver_coverage
 from control_plane_kit_operations.effect_attempt_start import (
     EffectAttemptStartConflict, EffectAttemptStartDenied,
 )
@@ -112,7 +113,7 @@ def health_replay(stores: Any, attempt: Any, command: StartHealthEffectAttempt |
 
 
 def admit_health_start(stores: Any, command: StartHealthEffectAttempt,
-        request: Any, plan: Any, event_kind: ActivityEventKind) -> _HealthAdmission:
+        request: Any, plan: Any, event_kind: ActivityEventKind, receiver_decoders) -> _HealthAdmission:
     workspace = request.identity.workspace_id
     if (workspace != command.context.workspace_id
             or event_kind is not ActivityEventKind.STEP_STARTED
@@ -178,6 +179,10 @@ def admit_health_start(stores: Any, command: StartHealthEffectAttempt,
             or keys[0].public_key.fingerprint_sha256 == keys[1].public_key.fingerprint_sha256
             or keys[0].private_key_reference == keys[1].private_key_reference):
         raise EffectAttemptStartDenied(_DENIED)
+
+    require_health_receiver_coverage(stores, receiver_decoders, plan=plan, graphs=graphs,
+        selected=selected, workspace=workspace, keys=keys,
+        refuse=lambda: EffectAttemptStartDenied(_DENIED))
 
     use_fields = None
     try:

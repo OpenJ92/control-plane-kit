@@ -37,7 +37,8 @@ class HealthSigningAuthorityContractTests(HealthEffectStartValues, unittest.Test
             self.assertEqual(tuple(field.name for field in fields(value)), names)
         for name in ("HealthSigningAuthorityError", "HealthSigningAuthorityUnavailable", "HealthSigningAuthorityReloadService"):
             self.assertIs(getattr(operations, name), getattr(api, name))
-        self.assertEqual(tuple(inspect.signature(api.HealthSigningAuthorityReloadService).parameters), ("unit_of_work_factory",))
+        self.assertEqual(tuple(inspect.signature(api.HealthSigningAuthorityReloadService).parameters),
+            ("unit_of_work_factory", "health_receiver_decoders"))
         command = self.command(api)
         self.assertFalse(hasattr(command, "__dict__"))
         with self.assertRaises(FrozenInstanceError):

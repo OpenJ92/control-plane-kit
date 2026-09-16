@@ -38,7 +38,8 @@ class HealthEffectAttemptStartContractTests(HealthEffectStartValues, EffectAttem
         self.assertEqual(command.context, context)
         with self.assertRaises(FrozenInstanceError):
             command.context = context
-        self.assertEqual(tuple(inspect.signature(EffectAttemptStartService).parameters), ("unit_of_work_factory", "id_factory"))
+        self.assertEqual(tuple(inspect.signature(EffectAttemptStartService).parameters),
+            ("unit_of_work_factory", "id_factory", "health_receiver_decoders"))
         self.assertEqual(tuple(inspect.signature(EffectAttemptStartService.execute_health).parameters), ("self", "command"))
         self.assertEqual(tuple(inspect.signature(EffectAttemptStartService.execute).parameters), ("self", "command"))
 
@@ -163,6 +164,7 @@ class HealthEffectAttemptStartContractTests(HealthEffectStartValues, EffectAttem
             "control_plane_kit_operations.effect_attempts",
             "control_plane_kit_operations.health_effect_preparations",
             "control_plane_kit_operations.health_effect_attempt_start",
+            "control_plane_kit_operations._health_receiver_trust",
             "control_plane_kit_operations.execution_leases",
             "control_plane_kit_operations.lifecycle",
             "control_plane_kit_operations.records",

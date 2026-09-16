@@ -29,6 +29,7 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations._health_effect_attempt_start import _valid_key, _valid_value
+from control_plane_kit_operations._health_receiver_trust import require_health_receiver_coverage
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
 from control_plane_kit_operations.delegation_signing_keys import delegation_signing_key_registration_id_for
 from control_plane_kit_operations.effect_attempt_start import _bounded_command_text
@@ -36,6 +37,7 @@ from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAt
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.health_effect_attempt_start import _valid_context
+from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders, HealthReceiverTrustError
 from control_plane_kit_operations.health_effect_preparations import (
     HealthEffectPreparationCodec, HealthEffectPreparationRecord, _same_nominal_tree,
     health_effect_attempt_wire_id,
@@ -259,8 +261,12 @@ def _record(value: Any, expected: type):
 class HealthSigningAuthorityReloadService:
     """Check a saved first health attempt at one locked database observation."""
 
-    def __init__(self, unit_of_work_factory: Callable[[], Any]) -> None:
+    def __init__(self, unit_of_work_factory: Callable[[], Any], *,
+            health_receiver_decoders: HealthReceiverDecoders = HealthReceiverDecoders(())) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        if type(health_receiver_decoders) is not HealthReceiverDecoders:
+            raise HealthReceiverTrustError("health receiver trust is unavailable")
+        self._health_receiver_decoders = replace(health_receiver_decoders)
 
     def execute(self, command: ReloadHealthSigningAuthority) -> HealthSigningAuthorityPair:
         if not _valid_command(command):
@@ -308,7 +314,7 @@ class HealthSigningAuthorityReloadService:
                 and (plan.base_realized_projection_id, plan.desired_realized_projection_id)
                     == (preparation.base_realized_projection_id, preparation.desired_realized_projection_id))
             _approval(stores, request, plan)
-            selected, target, runtime, declaration, gateway = _target(stores, plan, intent, preparation)
+            selected, target, runtime, declaration, gateway, graphs = _target(stores, plan, intent, preparation)
             keys = []
             for name, purpose, _ in _FAMILIES:
                 key = stores.delegation_signing_keys.require_unambiguous_active(preparation.workspace_id, purpose)
@@ -320,6 +326,9 @@ class HealthSigningAuthorityReloadService:
             _require(keys[0].registration_id != keys[1].registration_id
                 and keys[0].public_key.fingerprint_sha256 != keys[1].public_key.fingerprint_sha256
                 and keys[0].private_key_reference != keys[1].private_key_reference)
+            require_health_receiver_coverage(stores, self._health_receiver_decoders, plan=plan, graphs=graphs,
+                selected=selected, workspace=preparation.workspace_id, keys=keys,
+                refuse=lambda: HealthSigningAuthorityUnavailable(_UNAVAILABLE))
             truth = stores.node_control_signing_authority.get_health_for_share(preparation)
             _require(type(truth) is _LockedSigningTruth)
             resolutions = tuple(_resolution(preparation, key, getattr(truth, name), intent_kind,
@@ -400,7 +409,7 @@ def _target(stores, plan, intent, preparation):
     _require(preparation.request.target == target and preparation.request.runtime_id == runtime
         and preparation.request.kind is operation.health_kind and preparation.request.declaration_identity == declaration.identity()
         and preparation.transit_grant.gateway_node_id == gateway)
-    return selected, target, runtime, declaration, gateway
+    return selected, target, runtime, declaration, gateway, tuple(graphs)
 
 
 def _resolution(preparation, key, family, intent, actor, session, requested_at, authorization_id):

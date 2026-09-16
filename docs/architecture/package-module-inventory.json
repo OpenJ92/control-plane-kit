@@ -9835,16 +9835,17 @@
       "internal_dependencies": [
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.lifecycle",
-        "control_plane_kit_core.policies",
         "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations._health_effect_attempt_start",
         "control_plane_kit_operations.activity_journal",
         "control_plane_kit_operations.effect_attempt_intent_evidence",
         "control_plane_kit_operations.effect_attempt_start",
         "control_plane_kit_operations.effect_attempts",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_receiver_trust",
         "control_plane_kit_operations.records",
-        "control_plane_kit_operations.workflows",
-        "control_plane_kit_operations._health_effect_attempt_start",
-        "control_plane_kit_operations.health_effect_attempt_start"
+        "control_plane_kit_operations.workflows"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations"
@@ -9862,7 +9863,8 @@
         "tests/test_postgres_health_effect_start_first_replay.py",
         "tests/test_postgres_health_effect_start_eligibility.py",
         "tests/test_postgres_health_effect_start_rollback.py",
-        "tests/test_postgres_health_effect_start_concurrency.py"
+        "tests/test_postgres_health_effect_start_concurrency.py",
+        "tests/test_postgres_health_receiver_trust.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -10906,6 +10908,7 @@
         "control_plane_kit_core.policies",
         "control_plane_kit_core.secrets",
         "control_plane_kit_core.topology",
+        "control_plane_kit_operations._health_receiver_trust",
         "control_plane_kit_operations.delegation_signing_keys",
         "control_plane_kit_operations.effect_attempt_start",
         "control_plane_kit_operations.health_effect_attempt_start",
@@ -10929,7 +10932,8 @@
         "tests/test_postgres_health_effect_start_first_replay.py",
         "tests/test_postgres_health_effect_start_eligibility.py",
         "tests/test_postgres_health_effect_start_rollback.py",
-        "tests/test_postgres_health_effect_start_concurrency.py"
+        "tests/test_postgres_health_effect_start_concurrency.py",
+        "tests/test_postgres_health_receiver_trust.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -10965,6 +10969,7 @@
         "control_plane_kit_core.secrets",
         "control_plane_kit_core.topology",
         "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations._health_receiver_trust",
         "control_plane_kit_operations._temporal",
         "control_plane_kit_operations.delegation_signing_keys",
         "control_plane_kit_operations.effect_attempt_intent_evidence",
@@ -10973,6 +10978,7 @@
         "control_plane_kit_operations.execution_leases",
         "control_plane_kit_operations.health_effect_attempt_start",
         "control_plane_kit_operations.health_effect_preparations",
+        "control_plane_kit_operations.health_receiver_trust",
         "control_plane_kit_operations.lifecycle",
         "control_plane_kit_operations.node_control_signing_authority",
         "control_plane_kit_operations.records",
@@ -10991,7 +10997,8 @@
       "protecting_tests": [
         "tests/test_health_signing_authority.py",
         "tests/test_postgres_health_signing_authority.py",
-        "tests/test_postgres_health_signing_transactions.py"
+        "tests/test_postgres_health_signing_transactions.py",
+        "tests/test_postgres_health_receiver_trust.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -10999,6 +11006,80 @@
         "interpreter"
       ],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/health_signing_authority.py"
+    },
+    {
+      "canonical_public_exports": [
+        "GatewayHealthReceiverTrust",
+        "HealthReceiverDecoder",
+        "HealthReceiverDecoderBinding",
+        "HealthReceiverDecoders",
+        "HealthReceiverSelection",
+        "HealthReceiverTrustError",
+        "WorkloadHealthReceiverTrust"
+      ],
+      "destination": "control_plane_kit_operations.health_receiver_trust",
+      "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire",
+        "control_plane_kit_core.configuration",
+        "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.products"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations",
+        "control_plane_kit_operations._health_receiver_trust",
+        "control_plane_kit_operations.effect_attempt_start_interpreter",
+        "control_plane_kit_operations.health_signing_authority"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.health_receiver_trust",
+      "motivation": "Owns closed configured receiver facts, exact pinned selection and trusted effect-free decoder composition.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_health_receiver_trust.py",
+        "tests/test_postgres_health_receiver_trust.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/health_receiver_trust.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations._health_receiver_trust",
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.products",
+        "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.health_receiver_trust",
+        "control_plane_kit_operations.products"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations._health_receiver_trust",
+      "motivation": "Shares exact pinned artifact selection and configured public-key coverage between first health admission and authority reload.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_health_receiver_trust.py",
+        "tests/test_postgres_health_receiver_trust.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_health_receiver_trust.py"
     }
   ],
   "owner_vocabulary": [
