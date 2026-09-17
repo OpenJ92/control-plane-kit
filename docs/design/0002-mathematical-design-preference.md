@@ -23,6 +23,13 @@ core design.
 
 ## Core Questions
 
+For changes to an existing system, first follow the source-reading requirement
+in `AGENTS.md`. Trace the selected code's actual objects and transformations,
+with source anchors, before proposing new ones. Show the current computation
+separately from the intended change and name the smallest missing connection.
+The mathematical description must explain the code that exists, not substitute
+for reading it.
+
 When a change affects architecture, ask:
 
 ```text
@@ -255,4 +262,3 @@ Mathematical design note
 This section is optional for trivial PRs. It is expected when a PR changes
 public algebra, graph shape, descriptors, contracts, interpreters, validators,
 or activity planning.
-

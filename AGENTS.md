@@ -136,6 +136,25 @@ release from an idle task.
 
 ## Proportional Implementation And Review
 
+Before proposing an interface, implementation, or issue split, read the source
+actually selected by the consuming application: its entrypoint, relevant imports,
+dependency coordinates, and architecture companions. After inspecting governing
+tests (and law cards where required), trace a representative computation through
+input, validation and transformations, authority decisions, effects, and returned
+results or durable history. Cite a few concrete file/function locations and the
+source versions they describe. For pure code, describe values and transformations;
+do not invent effect boundaries that are not present.
+
+Show existing behavior separately from proposed behavior. Distinguish selected
+code, newer merged but unselected code, and independently verified published or
+live behavior; a merge, pin, or fixture is not runtime-adoption evidence. Identify
+the last working boundary, the smallest missing connection, and any precise
+unknown before adding abstractions or dependencies. Reuse existing owners and
+preserve governing laws. Summarize this trace plainly in the existing issue or PR
+dry run so the user can follow it. Keep it proportional: this is source reading
+within the existing design step, not a new gate, document hierarchy, or permission
+to execute effects. Refresh affected parts when selected versions change.
+
 Start from the current public contract, relevant source, and the smallest
 ownership-local behavioral proof. Use law cards, frozen parity translation, and
 focused target-red evidence only when an issue is explicitly migration/parity
