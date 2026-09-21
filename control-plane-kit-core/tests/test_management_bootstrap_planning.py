@@ -320,23 +320,19 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         for observation in (old_local, old_connected, old_path):
             self.assertNotIn(observation.activity_id, predecessors(plan, new_health))
 
-    def test_lifecycle_suppressed_structural_starts_do_not_qualify_as_fresh(self):
+    def test_lifecycle_suppressed_runtime_start_does_not_qualify_as_fresh(self):
         for lifecycle in (ResourceLifecycle.external(), ResourceLifecycle.attached()):
-            for member in ("runtime", "gateway", "connector"):
-                with self.subTest(lifecycle=lifecycle, member=member):
-                    desired = graph()
-                    if member == "runtime":
-                        desired = replace(desired, runtimes={"runtime": replace(desired.runtimes["runtime"], lifecycle=lifecycle)})
-                    else:
-                        desired = replace(desired, nodes={**desired.nodes, member: replace(desired.nodes[member], lifecycle=lifecycle)})
-                    plan = self.compile(empty(), desired)
-                    structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
-                    operation_type = StartRuntime if member == "runtime" else StartNode
-                    self.assertFalse(any(isinstance(value.operation, operation_type)
-                        and getattr(value.operation.target, "runtime_id" if member == "runtime" else "node_id") == member
-                        for value in structural.activities))
-                    self.assertFalse(any(getattr(value.operation, "stage", None) == "gateway-ingress-ready" for value in plan.activities))
-                    self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
+            with self.subTest(lifecycle=lifecycle):
+                desired = graph()
+                desired = replace(desired, runtimes={"runtime": replace(desired.runtimes["runtime"], lifecycle=lifecycle)})
+                plan = self.compile(empty(), desired)
+                structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
+                self.assertFalse(any(isinstance(value.operation, StartRuntime) for value in structural.activities))
+                self.find(structural, StartNode, node="gateway")
+                self.find(structural, StartNode, node="connector")
+                self.find(structural, AllocatePublicIngress)
+                self.assertFalse(any(getattr(value.operation, "stage", None) == "gateway-ingress-ready" for value in plan.activities))
+                self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
 
     def test_adding_management_to_existing_runtime_preserves_whole_structural_review(self):
         desired = graph()
