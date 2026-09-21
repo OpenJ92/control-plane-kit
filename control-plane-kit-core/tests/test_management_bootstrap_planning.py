@@ -205,8 +205,9 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
                 self.assertEqual(updated.operation, original_activity.operation)
                 for dependency in original_activity.dependencies:
                     predecessor = next(value for value in structural.activities if value.activity_id == dependency.predecessor)
-                    if not isinstance(predecessor.operation, WaitForHealthy):
-                        self.before(plan, predecessor, updated)
+                    if isinstance(original_activity.operation, AllocatePublicIngress) and predecessor.operation == WaitForHealthy(NodeTarget("gateway")):
+                        continue  # Only the selected ingress's old gateway gate is replaced by startup.
+                    self.before(plan, predecessor, updated)
 
     def test_retained_infrastructure_observes_without_restarting_or_reallocating(self):
         plan = self.compile(graph(workload=False), graph())
@@ -275,6 +276,27 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         compiler = self.api("compile_graph_activity_plan")
         with self.assertRaises(InvalidActivityPlan):
             compiler(validate_graph(empty()), validate_graph(desired))
+
+    def test_fresh_bootstrap_preserves_authored_noncyclic_service_prerequisite(self):
+        authored = topology()
+        gateway, connector, workload = authored.root.children
+        gateway = replace(gateway, sockets=replace(gateway.sockets,
+            requirements=(RequirementSocket("upstream", Protocol.HTTP, ("UPSTREAM_URL",)),)))
+        service = block("upstream", checks=(HttpCheck(check_id="upstream-health", provider_socket="control", path="/"),))
+        service_runtime = DockerRuntime(runtime_id="upstream-runtime", children=(service,))
+        connection = SocketConnection("upstream", "control", "gateway", "upstream", edge_id="gateway.upstream")
+        desired = compile_topology(DeploymentTopology("bootstrap", DockerRuntime(runtime_id="outer",
+            children=(service_runtime, replace(authored.root, children=(gateway, connector, workload)), connection)),
+            public_ingresses=authored.public_ingresses))
+        plan = self.compile(empty(), desired)
+        structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
+        wait = self.find(structural, WaitForHealthy, node="upstream")
+        preserved = self.find(plan, WaitForHealthy, node="upstream")
+        self.assertEqual(preserved, wait)
+        ready, _, _ = self.fresh_order(plan)
+        for target in (self.find(plan, StartNode, node="gateway"), self.find(plan, AllocatePublicIngress), ready):
+            self.before(plan, preserved, target)
+        self.assertTrue(plan.ready_for_execution)
 
     def test_mixed_retained_and_fresh_runtime_uses_each_own_bootstrap_order(self):
         retained = topology(prefix="old-", workload=False)
