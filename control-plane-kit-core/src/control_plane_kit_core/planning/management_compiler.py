@@ -10,7 +10,7 @@ from control_plane_kit_core.node_control import NodeHealthReadKind, WorkloadNode
 from control_plane_kit_core.planning.activity_plan import (
     ActivityDependency, ActivityId, ActivityPlan, AllocatePublicIngress,
     ChangeTarget, PlannedActivity, ReconcileNode, ReviewChange, ReviewReason,
-    RiskLevel, StartNode, WaitForHealthy,
+    RiskLevel, StartNode, StartRuntime, WaitForHealthy,
 )
 from control_plane_kit_core.planning.codec import activity_operation_descriptor
 from control_plane_kit_core.planning.compiler import compile_activity_plan
@@ -172,6 +172,9 @@ def compile_graph_activity_plan(current: ValidatedGraph, desired: ValidatedGraph
     waits = {value.operation.target.node_id: value for value in structural.activities if isinstance(value.operation, WaitForHealthy)}
     starts = {value.operation.target.node_id: value for value in structural.activities if isinstance(value.operation, (StartNode, ReconcileNode))}
     allocations = {value.operation.target.ingress_id: value for value in structural.activities if isinstance(value.operation, AllocatePublicIngress)}
+    runtime_starts = {value.operation.target.runtime_id for value in structural.activities if type(value.operation) is StartRuntime}
+    node_starts = {value.operation.target.node_id for value in structural.activities if type(value.operation) is StartNode}
+    current_ingresses = {value.ingress_id for value in current.graph.public_ingresses}
 
     def add(activity):
         activities[activity.activity_id] = activity
@@ -187,6 +190,13 @@ def compile_graph_activity_plan(current: ValidatedGraph, desired: ValidatedGraph
         gateway_id = runtime.management.gateway_node_id
         ingress = next(value for value in graph.public_ingresses if value.ingress_id == runtime.management.management_ingress_id)
         connector_id = ingress.connector_node_id
+        # Freshness is a graph-pair/structural-plan property, never a caller mode
+        # or inferred execution result. Reconcile cannot substitute for creation.
+        fresh = (runtime_id not in current.graph.runtimes
+                 and gateway_id not in current.graph.nodes and connector_id not in current.graph.nodes
+                 and ingress.ingress_id not in current_ingresses
+                 and runtime_id in runtime_starts and gateway_id in node_starts and connector_id in node_starts
+                 and ingress.ingress_id in allocations)
         owned_waits = {key: value for key, value in waits.items() if key in graph.nodes and graph.nodes[key].runtime_id == runtime_id}
         sdk = {}
         for node_id, wait in owned_waits.items():
@@ -227,34 +237,45 @@ def compile_graph_activity_plan(current: ValidatedGraph, desired: ValidatedGraph
         gateway_dependencies = dependencies[gateway_wait.activity_id].copy() if gateway_wait else set()
         if gateway_id in starts:
             gateway_dependencies.add(starts[gateway_id].activity_id)
-        local = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.GATEWAY_LOCAL_READY), gateway_dependencies))
-        if connector_activity := starts.get(connector_id):
-            dependencies[connector_activity.activity_id].add(local.activity_id)
-        if allocation := allocations.get(ingress.ingress_id):
-            # Independent gateway checks are not the bootstrap gate for their
-            # own ingress. Preserve those checks separately and review-blocked.
+        connected = path = None
+        if fresh:
+            allocation = allocations[ingress.ingress_id]
             if gateway_wait:
                 dependencies[allocation.activity_id].discard(gateway_wait.activity_id)
-            dependencies[allocation.activity_id].add(local.activity_id)
-        connected = path = None
-        if path_needed:
-            connection_dependencies = {local.activity_id}
-            if connector_id in starts:
-                connection_dependencies.add(starts[connector_id].activity_id)
-            if ingress.ingress_id in allocations:
-                connection_dependencies.add(allocations[ingress.ingress_id].activity_id)
+            dependencies[allocation.activity_id].add(starts[gateway_id].activity_id)
+            dependencies[starts[connector_id].activity_id].add(allocation.activity_id)
+            connection_dependencies = {starts[connector_id].activity_id, allocation.activity_id}
             connected = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.CONNECTOR_CONNECTED), connection_dependencies))
-            path = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH), (connected.activity_id,)))
+            path = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH), connection_dependencies))
+            readiness = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.GATEWAY_INGRESS_READY),
+                gateway_dependencies | {path.activity_id}))
+        else:
+            readiness = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.GATEWAY_LOCAL_READY), gateway_dependencies))
+            if connector_activity := starts.get(connector_id):
+                dependencies[connector_activity.activity_id].add(readiness.activity_id)
+            if allocation := allocations.get(ingress.ingress_id):
+                # Independent checks remain separate, review-blocked obligations.
+                if gateway_wait:
+                    dependencies[allocation.activity_id].discard(gateway_wait.activity_id)
+                dependencies[allocation.activity_id].add(readiness.activity_id)
+            if path_needed:
+                connection_dependencies = {readiness.activity_id}
+                if connector_id in starts:
+                    connection_dependencies.add(starts[connector_id].activity_id)
+                if ingress.ingress_id in allocations:
+                    connection_dependencies.add(allocations[ingress.ingress_id].activity_id)
+                connected = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.CONNECTOR_CONNECTED), connection_dependencies))
+                path = add(_observation_activity(ObserveManagementBootstrap(target, ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH), (connected.activity_id,)))
         for node_id, wait in owned_waits.items():
             node = graph.nodes[node_id]
             replacement = None
             if node_id == gateway_id:
-                replacement = local
+                replacement = readiness
             elif node_id in sdk:
                 selected = sdk[node_id]
                 replacement = add(_observation_activity(ObserveNodeHealth(target, node_id,
                     selected.provider_socket_name.value, _health_kind(selected)),
-                    dependencies[wait.activity_id] | {path.activity_id}))
+                    dependencies[wait.activity_id] | ({readiness.activity_id, connected.activity_id} if fresh else {path.activity_id})))
             elif node_id == connector_id and not any(value.health_reads for value in node.block_spec.control_surfaces):
                 replacement = connected
             if _independent_verification(node):

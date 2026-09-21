@@ -20,6 +20,7 @@ class PlanGraphSide(StrEnum):
 
 class ManagementBootstrapStage(StrEnum):
     GATEWAY_LOCAL_READY = "gateway-local-ready"
+    GATEWAY_INGRESS_READY = "gateway-ingress-ready"
     CONNECTOR_CONNECTED = "connector-connected"
     AUTHENTICATED_MANAGEMENT_PATH = "authenticated-management-path"
 
