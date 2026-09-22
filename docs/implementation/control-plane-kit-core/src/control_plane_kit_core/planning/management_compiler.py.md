@@ -32,15 +32,32 @@ readiness independently requires exactly one own readiness-capable socket; its
 transit socket is not implicitly its own SDK socket. A liveness-only gateway is
 a valid declaration but cannot fulfill this bootstrap obligation.
 
-Initial causal order is gateway start -> local readiness -> ingress allocation
--> connector start -> connected -> authenticated path -> workload health. Allocation
-and startup introduce later observations, not reverse prerequisites. Retained
-infrastructure receives necessary observations without invented starts/allocation.
-Actual connector start/reconcile also depends directly on local readiness, even
-when its ingress is retained and no allocation supplies that order indirectly.
-Existing allocation/service predecessors and mutation activity IDs are preserved.
-Connector SDK health, if declared, follows its native connection/path barrier.
-Real service dependencies remain; a resulting causal cycle is rejected.
+Fresh creation requires the runtime, gateway, connector and ingress identities to
+be absent in the current graph, plus actual structural StartRuntime, exact
+StartNode operations for both nodes, and AllocatePublicIngress. Reconcile does not
+substitute for StartNode. Classification is per runtime, before dependency rewrites;
+the current graph need not be empty. Existing validation/readiness selection and
+whole-plan management-retarget review still apply.
+
+Fresh order is gateway start -> ingress allocation -> connector start, then two
+branches: authenticated path -> gateway-ingress-ready, and connector-connected.
+Every selected SDK health request joins both branches, including connector SDK
+health. No synthetic connected/path/readiness edge is introduced. Only the chosen
+allocation's old gateway wait predecessor is removed; gateway startup replaces it.
+Other structural service prerequisites, gateway wait prerequisites and mutation
+IDs survive. Real dependencies may constrain the branches; cycles are rejected.
+
+Retained/reconcile paths keep gateway-local-ready -> connected -> authenticated
+path -> SDK health. Actual connector start/reconcile and allocation still wait for
+local readiness there. No starts or allocations are invented. Complete replacement
+can qualify on its desired side while preserving old teardown. Previously admitted
+plans decode unchanged without recompilation.
+
+Runtime lifecycle suppression is executable coverage for non-fresh classification.
+New non-owned gateway/connector combinations can fail earlier in the existing
+structural compiler (#1865); this issue does not claim they reach managed fallback.
+Exact node-start eligibility remains required, with isolated lifecycle regression
+coverage owed by that separate structural fix.
 
 Independent verification and legacy health_path intent are preserved. SDK success
 cannot discharge SQL/HTTP/body checks. Those requirements retain their original
@@ -68,8 +85,8 @@ review refusal. Bounded/categorical errors retain no candidate cause/context.
 
 Teardown retains base connector-stop -> ingress-removal -> gateway-stop semantics;
 new checks use desired material. No observations are invented solely for teardown.
-Operations #1834 owns canonical plan reproduction/admission/history. #1821 and
-Interpreters #149 own transport and exact approved attempt/target/result binding;
-Servers #188 owns connection evidence and #190 composition. Core planning cannot
+Operations #1860 owns bootstrap admission/signing/history; Interpreters #148 owns
+bootstrap transport/execution and legacy-helper retirement. Interpreters #149 owns
+paired signing, Servers #188 connection evidence and #181 composition. Core planning cannot
 establish successful stage observations or freshness. The existing Operations
 unsupported-execution guard remains intact.

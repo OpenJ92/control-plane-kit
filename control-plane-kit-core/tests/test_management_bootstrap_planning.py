@@ -11,6 +11,7 @@ from control_plane_kit_core.algebra import (
     ProviderSocket, RequirementSocket, SocketConnection,
 )
 from control_plane_kit_core.capabilities import CapabilityName
+from control_plane_kit_core.lifecycle import ResourceLifecycle
 from control_plane_kit_core.node_control import (
     NodeControlGraphReference, NodeControlGraphReferenceRole, NodeHealthReadKind,
     WorkloadNodeControlSurfaceDescriptor,
@@ -149,6 +150,34 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
     def before(self, plan, first, second):
         self.assertIn(first.activity_id, predecessors(plan, second))
 
+    def fresh_order(self, plan, *, prefix=""):
+        bootstrap = self.api("ObserveManagementBootstrap")
+        runtime = prefix + "runtime"
+        ready = self.find(plan, bootstrap, runtime=runtime, stage="gateway-ingress-ready")
+        connected = self.find(plan, bootstrap, runtime=runtime, stage="connector-connected")
+        path = self.find(plan, bootstrap, runtime=runtime, stage="authenticated-management-path")
+        gateway = self.find(plan, StartNode, node=prefix + "gateway")
+        connector = self.find(plan, StartNode, node=prefix + "connector")
+        allocation = next(value for value in plan.activities if isinstance(value.operation, AllocatePublicIngress)
+                          and value.operation.target.ingress_id == prefix + "management")
+        for first, second in ((gateway, allocation), (allocation, connector),
+                              (connector, path), (connector, connected), (path, ready)):
+            self.before(plan, first, second)
+            self.assertNotIn(second.activity_id, predecessors(plan, first))
+        for first, second in ((connected, path), (connected, ready)):
+            self.assertNotIn(first.activity_id, predecessors(plan, second))
+            self.assertNotIn(second.activity_id, predecessors(plan, first))
+        requests = [value for value in plan.activities if isinstance(value.operation, bootstrap)
+                    and value.operation.target.runtime_id == runtime]
+        self.assertEqual({value.operation.stage.value for value in requests},
+                         {"gateway-ingress-ready", "connector-connected", "authenticated-management-path"})
+        self.assertEqual(len({value.activity_id for value in requests}), 3)
+        for health in (value for value in plan.activities if isinstance(value.operation, self.api("ObserveNodeHealth"))
+                       and value.operation.target.runtime_id == runtime):
+            self.before(plan, ready, health)
+            self.before(plan, connected, health)
+        return ready, connected, path
+
     def review(self, plan, subject, reason):
         matching = [value for value in plan.activities if isinstance(value.operation, ReviewChange)
                     and value.operation.target.subject == subject and value.operation.reason is reason]
@@ -163,20 +192,22 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         desired = graph()
         original = GraphDescriptorCodec().encode(desired)
         plan = self.compile(empty(), desired)
-        bootstrap = self.api("ObserveManagementBootstrap")
-        local = self.find(plan, bootstrap, stage="gateway-local-ready")
-        connected = self.find(plan, bootstrap, stage="connector-connected")
-        path = self.find(plan, bootstrap, stage="authenticated-management-path")
-        health = self.find(plan, self.api("ObserveNodeHealth"), node="workload")
-        sequence = (self.find(plan, StartNode, node="gateway"), local,
-                    self.find(plan, AllocatePublicIngress), self.find(plan, StartNode, node="connector"), connected, path, health)
-        for first, second in zip(sequence, sequence[1:]):
-            self.before(plan, first, second)
-            self.assertNotIn(second.activity_id, predecessors(plan, first))
+        _, _, path = self.fresh_order(plan)
         self.assertNotIn(path.activity_id, predecessors(plan, self.find(plan, StartNode, node="workload")))
         self.assertEqual(GraphDescriptorCodec().encode(desired), original)
         self.assertEqual(desired.edges, {})
         self.assertTrue(plan.ready_for_execution)
+        self.assertEqual(self.compile(empty(), desired), plan)
+        structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
+        for original_activity in structural.activities:
+            if isinstance(original_activity.operation, (StartNode, StartRuntime, AllocatePublicIngress)):
+                updated = next(value for value in plan.activities if value.activity_id == original_activity.activity_id)
+                self.assertEqual(updated.operation, original_activity.operation)
+                for dependency in original_activity.dependencies:
+                    predecessor = next(value for value in structural.activities if value.activity_id == dependency.predecessor)
+                    if isinstance(original_activity.operation, AllocatePublicIngress) and predecessor.operation == WaitForHealthy(NodeTarget("gateway")):
+                        continue  # Only the selected ingress's old gateway gate is replaced by startup.
+                    self.before(plan, predecessor, updated)
 
     def test_retained_infrastructure_observes_without_restarting_or_reallocating(self):
         plan = self.compile(graph(workload=False), graph())
@@ -185,6 +216,11 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         health = self.find(plan, self.api("ObserveNodeHealth"), node="workload")
         path = self.find(plan, self.api("ObserveManagementBootstrap"), stage="authenticated-management-path")
         self.before(plan, path, health)
+        local = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
+        connected = self.find(plan, self.api("ObserveManagementBootstrap"), stage="connector-connected")
+        self.before(plan, local, connected)
+        self.before(plan, connected, path)
+        self.assertFalse(any(getattr(value.operation, "stage", None) == "gateway-ingress-ready" for value in plan.activities))
 
     def test_equal_name_only_and_unmanaged_pairs_preserve_exact_legacy_plans(self):
         managed = graph(gateway_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS,)),))
@@ -241,6 +277,75 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         with self.assertRaises(InvalidActivityPlan):
             compiler(validate_graph(empty()), validate_graph(desired))
 
+    def test_fresh_bootstrap_preserves_authored_noncyclic_service_prerequisite(self):
+        authored = topology()
+        gateway, connector, workload = authored.root.children
+        gateway = replace(gateway, sockets=replace(gateway.sockets,
+            requirements=(RequirementSocket("upstream", Protocol.HTTP, ("UPSTREAM_URL",)),)))
+        service = block("upstream", checks=(HttpCheck(check_id="upstream-health", provider_socket="control", path="/"),))
+        service_runtime = DockerRuntime(runtime_id="upstream-runtime", children=(service,))
+        connection = SocketConnection("upstream", "control", "gateway", "upstream", edge_id="gateway.upstream")
+        desired = compile_topology(DeploymentTopology("bootstrap", DockerRuntime(runtime_id="outer",
+            children=(service_runtime, replace(authored.root, children=(gateway, connector, workload)), connection)),
+            public_ingresses=authored.public_ingresses))
+        plan = self.compile(empty(), desired)
+        structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
+        wait = self.find(structural, WaitForHealthy, node="upstream")
+        preserved = self.find(plan, WaitForHealthy, node="upstream")
+        self.assertEqual(preserved, wait)
+        ready, _, _ = self.fresh_order(plan)
+        for target in (self.find(plan, StartNode, node="gateway"), self.find(plan, AllocatePublicIngress), ready):
+            self.before(plan, preserved, target)
+        self.assertTrue(plan.ready_for_execution)
+
+    def test_mixed_retained_and_fresh_runtime_uses_each_own_bootstrap_order(self):
+        retained = topology(prefix="old-", workload=False)
+        old, new = topology(prefix="old-"), topology(prefix="new-")
+        current = compile_topology(DeploymentTopology("bootstrap", DockerRuntime(runtime_id="outer", children=(retained.root,)),
+            public_ingresses=retained.public_ingresses))
+        desired = compile_topology(DeploymentTopology("bootstrap", DockerRuntime(runtime_id="outer", children=(old.root, new.root)),
+            public_ingresses=old.public_ingresses + new.public_ingresses))
+        plan = self.compile(current, desired)
+        ready, connected, path = self.fresh_order(plan, prefix="new-")
+        bootstrap = self.api("ObserveManagementBootstrap")
+        old_local = self.find(plan, bootstrap, runtime="old-runtime", stage="gateway-local-ready")
+        old_connected = self.find(plan, bootstrap, runtime="old-runtime", stage="connector-connected")
+        old_path = self.find(plan, bootstrap, runtime="old-runtime", stage="authenticated-management-path")
+        self.before(plan, old_local, old_connected)
+        self.before(plan, old_connected, old_path)
+        old_health = self.find(plan, self.api("ObserveNodeHealth"), node="old-workload")
+        new_health = self.find(plan, self.api("ObserveNodeHealth"), node="new-workload")
+        for observation in (ready, connected, path):
+            self.assertNotIn(observation.activity_id, predecessors(plan, old_health))
+        for observation in (old_local, old_connected, old_path):
+            self.assertNotIn(observation.activity_id, predecessors(plan, new_health))
+
+    def test_lifecycle_suppressed_runtime_start_does_not_qualify_as_fresh(self):
+        for lifecycle in (ResourceLifecycle.external(), ResourceLifecycle.attached()):
+            with self.subTest(lifecycle=lifecycle):
+                desired = graph()
+                desired = replace(desired, runtimes={"runtime": replace(desired.runtimes["runtime"], lifecycle=lifecycle)})
+                plan = self.compile(empty(), desired)
+                structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
+                self.assertFalse(any(isinstance(value.operation, StartRuntime) for value in structural.activities))
+                self.find(structural, StartNode, node="gateway")
+                self.find(structural, StartNode, node="connector")
+                self.find(structural, AllocatePublicIngress)
+                self.assertFalse(any(getattr(value.operation, "stage", None) == "gateway-ingress-ready" for value in plan.activities))
+                self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
+
+    def test_adding_management_to_existing_runtime_preserves_whole_structural_review(self):
+        desired = graph()
+        current = replace(desired, runtimes={"runtime": replace(desired.runtimes["runtime"], management=None)})
+        fresh = topology(prefix="new-")
+        # The existing whole-plan retarget guard also covers mixed additions.
+        for right in (desired, replace(desired, runtimes={**desired.runtimes, **compile_topology(fresh).runtimes},
+                      nodes={**desired.nodes, **compile_topology(fresh).nodes},
+                      public_ingresses=desired.public_ingresses + fresh.public_ingresses)):
+            plan = self.compile(current, right)
+            structural = compile_activity_plan(diff_graphs(validate_graph(current), validate_graph(right)))
+            self.assertEqual(plan, structural)
+
     def test_complete_replacement_keeps_old_teardown_and_desired_checks(self):
         current, desired = graph(prefix="old-"), graph(prefix="new-")
         plan = self.compile(current, desired)
@@ -255,6 +360,7 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
                 self.assertEqual(value.operation.target.runtime_id, "new-runtime")
                 self.assertEqual(value.operation.target.graph_side.value, "desired-graph")
         self.assertEqual(removal.operation.target.ingress_id, "old-management")
+        self.fresh_order(plan, prefix="new-")
 
     def test_retained_management_retarget_preserves_structural_review_without_restart(self):
         current = graph()
@@ -289,7 +395,7 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
             self.review(self.compile(empty(), desired), NodeSubject("gateway"), reason)
         current, desired = empty(), graph()
         plan = self.compile(current, desired)
-        request = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready").operation
+        request = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-ingress-ready").operation
         resolved = self.api("resolve_management_observation")(request, validate_graph(current), validate_graph(desired), expected_operation=request)
         self.assertEqual(resolved.gateway_readiness_socket, "control")
         self.assertEqual(resolved.ingress.target.provider_socket, "transit")
@@ -322,9 +428,10 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         desired = graph(gateway_checks=(HttpCheck(check_id="gateway-body", provider_socket="control", path="/", expected_body_sha256="a" * 64),))
         plan = self.compile(empty(), desired)
         verify = self.find(plan, WaitForHealthy, node="gateway")
-        local = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
+        ready = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-ingress-ready")
         allocation = self.find(plan, AllocatePublicIngress)
-        self.before(plan, local, allocation)
+        self.before(plan, allocation, ready)
+        self.before(plan, ready, verify)
         self.assertNotIn(verify.activity_id, predecessors(plan, allocation))
         self.review(plan, NodeSubject("gateway"), ReviewReason.UNSUPPORTED_CHANGE)
         structural = compile_activity_plan(diff_graphs(validate_graph(empty()), validate_graph(desired)))
@@ -351,13 +458,18 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         health = self.find(plan, self.api("ObserveNodeHealth"), node="connector")
         connected = self.find(plan, self.api("ObserveManagementBootstrap"), stage="connector-connected")
         path = self.find(plan, self.api("ObserveManagementBootstrap"), stage="authenticated-management-path")
-        self.before(plan, connected, path)
+        ready = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-ingress-ready")
+        self.before(plan, connected, health)
+        self.before(plan, ready, health)
+        self.assertNotIn(connected.activity_id, predecessors(plan, path))
+        self.assertNotIn(path.activity_id, predecessors(plan, connected))
         self.before(plan, path, health)
         self.assertNotIn(health.activity_id, predecessors(plan, connected))
 
     def test_request_wire_hashes_and_compensation_commit_exact_graph_relation_and_stage(self):
         desired = graph()
-        plan = self.compile(empty(), desired)
+        current = graph(workload=False)
+        plan = self.compile(current, desired)
         request_activity = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready")
         request = request_activity.operation
         expected_graph = hashlib.sha256(b"control-plane-kit.management-graph.v1\0" + rfc8785.dumps(GraphDescriptorCodec().encode(desired))).hexdigest()
@@ -374,7 +486,7 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         codec = ActivityPlanDescriptorCodec()
         self.assertEqual(codec.decode(codec.encode(plan)), plan)
         self.assertEqual(codec.encode(plan)["version"], 1)
-        self.assertEqual(self.compile(empty(), desired), plan)
+        self.assertEqual(self.compile(current, desired), plan)
 
     def test_stage_side_kind_and_transport_are_exact_semantic_identity_not_freshness(self):
         desired = graph(workload_surfaces=(surface(kinds=(NodeHealthReadKind.LIVENESS, NodeHealthReadKind.READINESS)),))
@@ -397,14 +509,60 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.assertEqual(resolved.workload_node.node_id, "workload")
         self.assertEqual(resolved.workload_surface.provider_socket_name.value, "control")
 
+    def test_ingress_ready_has_distinct_wire_identity_and_bounded_codec_refusals(self):
+        stage_type = self.api("ManagementBootstrapStage")
+        stage = getattr(stage_type, "GATEWAY_INGRESS_READY", None)
+        self.assertIsNotNone(stage, "#1863 ingress-ready stage is missing")
+        self.assertEqual(stage.value, "gateway-ingress-ready")
+        plan = self.compile(empty(), graph())
+        activity = self.find(plan, self.api("ObserveManagementBootstrap"), stage=stage.value)
+        request = activity.operation
+        wire = activity_operation_descriptor(request)
+        self.assertEqual(wire["stage"], "gateway-ingress-ready")
+        self.assertEqual(activity_operation_from_descriptor(wire), request)
+        identity = lambda value: "observe:" + hashlib.sha256(
+            b"control-plane-kit.management-activity.v1\0" + rfc8785.dumps(activity_operation_descriptor(value))).hexdigest()
+        self.assertEqual(activity.activity_id.value, identity(request))
+        operations = [replace(request, stage=value) for value in stage_type]
+        self.assertEqual(len(set(operations)), 4)
+        self.assertEqual(len({identity(value) for value in operations}), 4)
+        codec = ActivityPlanDescriptorCodec()
+        self.assertEqual(codec.decode(codec.encode(plan)), plan)
+        for changes in ({"stage": "unknown"}, {"extra": "PRIVATE-CANDIDATE" * 1000}):
+            malformed = {**wire, **changes}
+            envelope = codec.encode(plan)
+            next(value for value in envelope["activities"] if value["activity_id"] == activity.activity_id.value)["operation"] = malformed
+            for decode, candidate in ((activity_operation_from_descriptor, malformed), (codec.decode, envelope)):
+                with self.assertRaises(ValueError) as caught:
+                    decode(candidate)
+                self.assertLess(len(str(caught.exception)), 200)
+                self.assertNotIn("PRIVATE-CANDIDATE", str(caught.exception))
+                self.assertIsNone(caught.exception.__cause__)
+                self.assertIsNone(caught.exception.__context__)
+
+    def test_admitted_local_bootstrap_plan_roundtrips_without_recompilation(self):
+        target = {"kind": "management", "runtime_id": "runtime", "graph_side": "desired-graph",
+                  "graph_digest": "a" * 64, "relation_digest": "b" * 64}
+        wire = {"schema": "control-plane-kit.activity-plan", "version": 1, "activities": [
+            {"activity_id": "admitted-local", "operation": {"kind": "observe-management-bootstrap", "target": target, "stage": "gateway-local-ready"},
+             "dependencies": [], "risk": "low", "impact": "non-destructive", "compensation": {"kind": "not-required"}},
+            {"activity_id": "admitted-connected", "operation": {"kind": "observe-management-bootstrap", "target": target, "stage": "connector-connected"},
+             "dependencies": ["admitted-local"], "risk": "low", "impact": "non-destructive", "compensation": {"kind": "not-required"}}]}
+        codec = ActivityPlanDescriptorCodec()
+        admitted = codec.decode(wire)
+        self.assertEqual(codec.encode(admitted), wire)
+        self.assertEqual(codec.dumps(admitted), json.dumps(wire, sort_keys=True, separators=(",", ":")))
+        self.assertEqual(admitted.activities[0].operation.stage.value, "gateway-local-ready")
+
     def test_resolver_rejects_rebound_connector_socket_relation_runtime_or_graph(self):
         desired = graph()
         plan = self.compile(empty(), desired)
-        request = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-local-ready").operation
+        request = self.find(plan, self.api("ObserveManagementBootstrap"), stage="gateway-ingress-ready").operation
         resolver = self.api("resolve_management_observation")
         error_type = self.api("ManagementObservationError")
         target = request.target
         for candidate in (replace(request, target=replace(target, runtime_id="other")),
+                          replace(request, target=replace(target, graph_side=self.api("PlanGraphSide").BASE_GRAPH)),
                           replace(request, target=replace(target, relation_digest="f" * 64)),
                           replace(request, target=replace(target, graph_digest="f" * 64)),
                           replace(request, stage=self.api("ManagementBootstrapStage").CONNECTOR_CONNECTED)):
@@ -417,6 +575,10 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
                         replace(desired, public_ingresses=(replace(desired.public_ingresses[0], hostname="changed.example.invalid"),))):
             with self.assertRaises(error_type):
                 resolver(request, validate_graph(empty()), validate_graph(changed), expected_operation=request)
+        for candidate in (replace(request, target=replace(target, relation_digest="f" * 64)),
+                          replace(request, target=replace(target, graph_digest="f" * 64))):
+            with self.assertRaises(error_type):
+                resolver(candidate, validate_graph(empty()), validate_graph(desired), expected_operation=candidate)
 
     def test_self_matching_candidates_still_require_graph_derived_relation_and_health_selection(self):
         desired = graph()
