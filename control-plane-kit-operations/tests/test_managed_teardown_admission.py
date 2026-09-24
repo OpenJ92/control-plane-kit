@@ -82,9 +82,12 @@ class ManagedTeardownAdmissionTests(unittest.TestCase):
             for kind in (StopNode, RemoveNodeResource):
                 activity = next(value for value in selected.activities if isinstance(value.operation, kind)
                                 and value.operation.target.node_id == "connector")
-                context = _context(activity=activity, base_graph=base, desired_graph=desired,
+                # The older helper creates a singleton plan. Restore the actual
+                # dependent activity together with its complete pinned plan.
+                context = _context(activity=replace(activity, dependencies=()), base_graph=base, desired_graph=desired,
                     registered_products=products, ingress_resources=(removed,))
-                context = replace(context, plan_record=replace(context.plan_record, plan=selected, derivation_profile=PROFILE))
+                context = replace(context, activity=activity,
+                    plan_record=replace(context.plan_record, plan=selected, derivation_profile=PROFILE))
                 request = runtime_effect_request_for_context(context)
                 self.assertEqual(request.products[0].product.runtime_contract.secret_deliveries, slots)
                 self.assertEqual(request.products[0].product.runtime_contract.configuration_artifacts, configuration)

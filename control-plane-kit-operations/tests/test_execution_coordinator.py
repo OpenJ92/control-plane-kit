@@ -1083,8 +1083,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual({request.activity_id for request in runtime.calls},
                          {activity.activity_id for activity in plan.activities if not isinstance(activity.operation, RemovePublicIngress)})
         with self.unit_of_work() as uow:
-            self.assertIs(uow.stores.ingress_resources.get_cloudflare("workspace-a", "management").status, OwnedIngressResourceStatus.REMOVED)
             removed_resources = uow.stores.ingress_resources.list_cloudflare("workspace-a")
+            self.assertEqual(len(removed_resources), 1)
+            self.assertEqual(removed_resources[0].ingress_id, "management")
+            self.assertIs(removed_resources[0].status, OwnedIngressResourceStatus.REMOVED)
             before = uow.stores.execution.events_for_run("run-a")
             self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-current")
         # Re-project original connector cleanup against actual persisted REMOVED
