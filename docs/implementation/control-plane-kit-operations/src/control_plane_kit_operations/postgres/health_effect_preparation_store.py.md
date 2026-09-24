@@ -5,9 +5,28 @@ Maintain this companion alongside its source.
 `insert_absent(record)` on the supplied connection. Self-contained codec admission
 precedes SQL; retained owner checks precede insertion. It never commits, updates,
 renews, deletes, signs, resolves a secret or calls a provider. The caller can roll
-back the whole insertion. PostgreSQL arbitrates concurrent inserts: the attempt
-primary-key collision returns None, while other uniqueness conflicts raise the
-fixed conflict category. Unexpected driver failures propagate.
+back the whole insertion. Insert-time owner validation uses the existing
+EffectAttemptStore.get_for_update on the attempt row. That caller-transaction
+lock serializes competing inserts for the same attempt before PostgreSQL checks
+the independent unique indexes. A later attempt-primary-key collision returns
+None; distinct-attempt request or issuer/JTI uniqueness conflicts still raise the
+fixed conflict category. Unexpected driver failures propagate. There is no
+catch-all uniqueness suppression, retry, commit or schema change.
+
+Production first start already owns request/run and inserts the event, intent
+and attempt in this same UoW before retaining the preparation. Locking its own
+attempt preserves that ordering. Subsequent retained request/run/key/use reads
+are nonlocking; this store takes no reversed request/run row lock. Replay reads,
+normal reconstruction and schema reentry leave the private lock choice false.
+Direct store callers must supply the transaction that owns insertion and its
+lock lifetime, as for all other store mutations.
+
+The existing real two-connection/barrier test observed a UniqueViolation mapped
+to Conflict on target-only teardown checkpoint d5a2896. The exact unique index
+was not retained in its bounded evidence. The independent-index race explanation
+is an inference; the violated same-attempt record/None law is observed evidence.
+#1868 repairs that law while retaining the distinct-attempt request and both
+issuer/JTI conflict tests, immutable readback, caller rollback and provenance.
 
 Reconstruction verifies every relational witness against the canonical preimage.
 Both reads and inserts reload the original intent and typed attempt, admitted
