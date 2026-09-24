@@ -65,7 +65,8 @@ class HealthEffectPreparationStore:
 
     def insert_absent(self, record: HealthEffectPreparationRecord) -> HealthEffectPreparationRecord | None:
         preimage = HealthEffectPreparationCodec().encode_canonical_bytes(record)
-        _require_owners(self._connection, record, HealthEffectPreparationError)
+        _require_owners(self._connection, record, HealthEffectPreparationError,
+            lock_attempt=True)
         failure = None
         inserted = None
         try:
@@ -168,11 +169,11 @@ def _load_owner(connection, owner, method, *args):
         raise _OwnerMismatch
 
 
-def _require_owners(connection, record, error_type):
+def _require_owners(connection, record, error_type, *, lock_attempt=False):
     valid = False
     adapter_failure = None
     try:
-        _check_owners(connection, record)
+        _check_owners(connection, record, lock_attempt=lock_attempt)
         valid = True
     except _OwnerAdapterFailure as error:
         adapter_failure = error.failure
@@ -185,9 +186,13 @@ def _require_owners(connection, record, error_type):
         raise error_type(_CORRUPT if error_type is HealthEffectPreparationCorrupt else _INPUT)
 
 
-def _check_owners(connection, record):
+def _check_owners(connection, record, *, lock_attempt=False):
     evidence = _load_owner(connection, EffectAttemptIntentStore, "get", record.identity)
-    attempt = _load_owner(connection, EffectAttemptStore, "get", record.identity)
+    # Serialize inserts for this immutable owner before independent unique
+    # indexes compete. The caller retains the lock through commit/rollback;
+    # reconstruction and schema checks never request it.
+    attempt = _load_owner(connection, EffectAttemptStore,
+        "get_for_update" if lock_attempt else "get", record.identity)
     intent, source = evidence.intent, evidence.intent.source
     if (evidence.identity != record.identity or evidence.request_fingerprint != record.request_fingerprint
             or evidence.original_start_event.event_id != record.original_event_id
