@@ -23,16 +23,30 @@ fresh public service owns its fixed error mapping. Planning performs no I/O.
 
 The execution predicate examines both complete pinned graphs for an explicit
 runtime management selection, a gateway transit declaration, or SDK control
-surfaces. Each is sufficient to withhold executable management interpretation
-until the accepted transport exists. It does not infer support from a node name,
+surfaces. Fresh and retained/mixed management execution stays guarded until
+the accepted transport exists. It does not infer support from a node name,
 metadata flag, changed node, supplied plan, or product registration. Ordinary
 legacy verification without this material retains existing behavior.
 
-`runtime_management_execution_is_unsupported(current, desired, plan)` permits
-only a congruent no-op: the supplied plan has no activities, both graphs validate,
+The no-op exception permits only a congruent no-op: the supplied plan has no activities, both graphs validate,
 and Core's diff/compiler also produces no activities. An invalid graph or forged
 empty plan cannot qualify. Supplying no plan means direct activity translation
-and never receives this exception, even for equal graphs. This owner imports
+and never receives this exception, even for equal graphs.
+
+Nonempty managed execution requires the actual recorded
+`PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1`, an existing `TeardownDeployment`
+from validated graph values, and full equality with its ready canonical derived
+plan. Teardown's empty desired boundary includes delegation authorities as well
+as nodes, edges, runtimes and ingress. Equality preserves targets, dependencies,
+risk and retention decisions without another operation allowlist. The existing
+planning predicate additionally enforces same-side management selection and
+catalog declaration fidelity. Legacy/absent profiles and string lookalikes do
+not acquire support. Callers still own full activity membership and permission;
+this exception grants neither. The pure and real PostgreSQL teardown targets
+prove support, direct-membership refusal, real approval/custody and uncertainty
+behavior; they do not prove live resource deletion.
+
+This owner imports
 Core and Operations' existing pure product-reference/registration values;
 callers retain transaction, authorization, and history ownership.
 

@@ -27,3 +27,15 @@ does not reset, retry, reconcile, or delete historical effects. Existing actor,
 lease, authorization, and transaction boundaries remain the owning services.
 `test_execution_coordinator.py` covers these refusal/history/receipt laws with
 event equality, zero adapter calls and forbidden attempt admission.
+
+The coordinator also passes the actual stored derivation profile to the shared
+policy. A complete canonical managed-current to empty-desired teardown can then
+use the existing structural effect paths. Support is independent of the existing
+saved destructive approval, runtime/ingress authority admission and worker fence.
+The real ingress adapter additionally requires secret-provider custody authority.
+Runtime attempts/folds and ingress STEP/resource history remain distinct owners;
+uncertain ingress removal stops progress and replay never redispatches it.
+Effects stay outside transactions. Successful execution does not itself advance
+current graph: the separate advancement service still checks complete successful
+history. The PostgreSQL target composes these actual services with recording
+provider boundaries and verifies current remains unchanged before advancement.

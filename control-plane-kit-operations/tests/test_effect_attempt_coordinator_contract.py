@@ -664,7 +664,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("graph_id.strip", 2),
     ("hasattr", 2),
     ("int", 1),
-    ("isinstance", 16),
+    ("isinstance", 17),
     ("json.dumps", 1),
     ("len", 7),
     ("metadata.get", 2),

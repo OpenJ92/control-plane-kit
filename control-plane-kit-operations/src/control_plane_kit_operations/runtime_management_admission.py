@@ -8,7 +8,11 @@ from control_plane_kit_core.topology import (
     diff_graphs,
     validate_graph,
 )
-from control_plane_kit_operations.deployment_transitions import DeploymentTransition
+from control_plane_kit_operations.deployment_transitions import (
+    Deploy,
+    DeploymentTransition,
+    TeardownDeployment,
+)
 from control_plane_kit_operations.graph_authoring import (
     product_reference_in_node,
     product_references_in_graph,
@@ -68,11 +72,12 @@ def runtime_management_execution_is_unsupported(
     *,
     codec: GraphDescriptorCodec = DEFAULT_GRAPH_CODEC,
     registered_products: tuple[RegisteredProduct, ...] = (),
+    derivation_profile: PlanDerivationProfile | None = None,
 ) -> bool:
-    """Check both snapshots; only a proven, congruent empty plan is exempt.
+    """Support proven no-ops and complete, recorded-profile managed teardown.
 
-    Omitting ``plan`` means an activity is being attempted directly. Such an
-    attempt never inherits the planning no-op exception.
+    Shape support grants no execution authority. A direct activity must belong
+    to the supplied pinned plan; callers with no such plan receive no exception.
     """
 
     # Parse independently of catalog contents. A malformed selected reference
@@ -95,12 +100,26 @@ def runtime_management_execution_is_unsupported(
         _has_management_material(graph) for graph in (current, desired)
     ):
         return False
-    if plan is None or plan.activities:
+    if plan is None:
         return True
     validated_current = validate_graph(current, codec=codec)
     validated_desired = validate_graph(desired, codec=codec)
     if not validated_current.valid or not validated_desired.valid:
         return True
+    if plan.activities:
+        if derivation_profile is not PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1:
+            return True
+        transition = Deploy(validated_current, validated_desired)
+        if type(transition) is not TeardownDeployment:
+            return True
+        canonical_plan = derive_activity_plan(transition, profile=derivation_profile)
+        return (
+            not canonical_plan.ready_for_execution
+            or plan != canonical_plan
+            or runtime_management_planning_is_unsupported(
+                transition, registered_products=registered_products,
+            )
+        )
     canonical_plan = compile_activity_plan(
         diff_graphs(validated_current, validated_desired)
     )

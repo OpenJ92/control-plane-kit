@@ -124,7 +124,10 @@ def _runtime_effect_intent_for_context(
     if runtime_management_execution_is_unsupported(
         DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
         DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
+        context.plan_record.plan
+        if activity in context.plan_record.plan.activities else None,
         registered_products=context.registered_products,
+        derivation_profile=context.plan_record.derivation_profile,
     ):
         raise InvalidOperationCommand("runtime management execution is unsupported")
     operation = activity.operation
@@ -366,7 +369,12 @@ def _product_material_for_node(
 ):
     descriptor_product = product.descriptor_document.product
     runtime_contract = descriptor_product.runtime_contract
-    deliveries = _secret_deliveries_for_node(context=context, graph=graph, node=node)
+    # Cleanup retains historical references; it never synthesizes fresh token
+    # delivery from an ingress that may already have been removed.
+    deliveries = (
+        node.secret_deliveries if isinstance(operation, (StopNode, RemoveNodeResource))
+        else _secret_deliveries_for_node(context=context, graph=graph, node=node)
+    )
     if isinstance(operation, (StartNode, ReconcileNode)):
         selected_keys = tuple(_secret_delivery_contract_key(value) for value in deliveries)
         for declared in runtime_contract.secret_deliveries:
