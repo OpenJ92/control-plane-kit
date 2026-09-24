@@ -5,6 +5,9 @@ import unittest
 from control_plane_kit_core.planning import ActivityPlan, NodeTarget, StopNode, StartNode, RemoveNodeResource, RiskLevel
 from control_plane_kit_core.topology import validate_graph
 from control_plane_kit_core.lifecycle import ResourcePersistence
+from control_plane_kit_core.algebra import BlockSpec
+from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationMediaType
+from control_plane_kit_core.secrets import SecretEnvironmentDelivery, SecretReference, SecretUseIntent
 from control_plane_kit_operations.deployment_transitions import Deploy
 from control_plane_kit_operations.plan_derivation import derive_activity_plan
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
@@ -32,9 +35,11 @@ class ManagedTeardownAdmissionTests(unittest.TestCase):
         self.assertTrue(refused(target=replace(desired, runtimes=current.runtimes)))
         self.assertTrue(refused(base=desired, target=current))
         node = current.node("api")
-        for changed in (replace(node, metadata={"product_identity": "private-invalid"}),
-                replace(node, block_spec=replace(node.block_spec, control_surfaces=()))):
-            self.assertTrue(refused(base=replace(current, nodes={**current.nodes, "api": changed})))
+        malformed = replace(current, nodes={**current.nodes, "api": replace(node, metadata={"product_identity": "private-invalid"})})
+        self.assertTrue(refused(base=malformed))
+        omitted = replace(current, nodes={**current.nodes, "api": replace(node, block_spec=BlockSpec("api"))})
+        omitted_plan = derive_activity_plan(Deploy(validate_graph(omitted), validate_graph(desired)), profile=PROFILE)
+        self.assertTrue(refused(base=omitted, candidate=omitted_plan))
 
         retained = replace(current, nodes={**current.nodes, "api": replace(node,
             lifecycle=replace(node.lifecycle, compute=ResourcePersistence.RETAINED))})
@@ -66,13 +71,21 @@ class ManagedTeardownAdmissionTests(unittest.TestCase):
         current, desired, plan, products = managed_teardown(self)
         removed = replace(_cloudflare_resource(), ingress_id="management",
             status=OwnedIngressResourceStatus.REMOVED, removed_at="2026-07-28T08:05:00Z", removed_by_run_id="run-remove")
-        for kind in (StopNode, RemoveNodeResource):
-            activity = next(value for value in plan.activities if isinstance(value.operation, kind)
-                            and value.operation.target.node_id == "connector")
-            context = _context(activity=activity, base_graph=current, desired_graph=desired,
-                registered_products=products, ingress_resources=(removed,))
-            context = replace(context, plan_record=replace(context.plan_record, plan=plan, derivation_profile=PROFILE))
-            request = runtime_effect_request_for_context(context)
-            self.assertEqual(request.products[0].product.runtime_contract.secret_deliveries,
-                             current.node("connector").secret_deliveries)
-            self.assertEqual(request.products[0].node_id, "connector")
+        historical = SecretEnvironmentDelivery("AUDIT_TOKEN", SecretReference("secret://workspace-a/original"),
+            SecretUseIntent.APPLICATION_CONTROL_TOKEN)
+        configuration = (ConfigurationArtifact("audit", "/etc/cpk/audit.json",
+            ConfigurationMediaType.JSON, '{"audit":true}'),)
+        for slots in ((), (historical,)):
+            base = replace(current, nodes={**current.nodes, "connector": replace(current.node("connector"),
+                secret_deliveries=slots, configuration_artifacts=configuration)})
+            selected = derive_activity_plan(Deploy(validate_graph(base), validate_graph(desired)), profile=PROFILE)
+            for kind in (StopNode, RemoveNodeResource):
+                activity = next(value for value in selected.activities if isinstance(value.operation, kind)
+                                and value.operation.target.node_id == "connector")
+                context = _context(activity=activity, base_graph=base, desired_graph=desired,
+                    registered_products=products, ingress_resources=(removed,))
+                context = replace(context, plan_record=replace(context.plan_record, plan=selected, derivation_profile=PROFILE))
+                request = runtime_effect_request_for_context(context)
+                self.assertEqual(request.products[0].product.runtime_contract.secret_deliveries, slots)
+                self.assertEqual(request.products[0].product.runtime_contract.configuration_artifacts, configuration)
+                self.assertEqual(request.products[0].node_id, "connector")

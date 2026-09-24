@@ -1071,8 +1071,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         with self.assertRaises(CurrentGraphAdvancementIncomplete):
             advancement.execute(advance)
         with self.assertRaises(ExecutionCoordinatorDenied):
-            coordinator.execute(self.command(generation=2))
-        command = self.command(max_effects=len(plan.activities))
+            coordinator.execute(self.command(generation=2,
+                scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE)))
+        command = self.command(max_effects=len(plan.activities),
+            scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
         result = coordinator.execute(command)
         self.assertIs(result.status, CoordinatorStatus.COMPLETED)
         self.assertIs(result.run.status, ActivityRunStatus.SUCCEEDED)
@@ -1116,7 +1118,8 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             interpreters={IngressAuthorityProviderKind.CLOUDFLARE: provider},
             secret_use_authorizer=RecordingSecretUseAuthorizer(), clock=lambda: "2026-07-28T09:00:00Z"))
         coordinator = self.coordinator(adapter)
-        command = self.command(max_effects=len(plan.activities))
+        command = self.command(max_effects=len(plan.activities),
+            scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
         result = coordinator.execute(command)
         self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
         calls = tuple(runtime.calls)
@@ -1130,6 +1133,27 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             events = uow.stores.execution.events_for_run("run-a")
             self.assertTrue(any(event.kind is ActivityEventKind.STEP_UNCERTAIN for event in events))
             self.assertFalse(any(event.kind is ActivityEventKind.RUN_SUCCEEDED for event in events))
+
+    def test_managed_teardown_missing_custody_scope_cannot_remove_ingress(self):
+        from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
+        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+        from control_plane_kit_operations.ingress_authorities import OwnedIngressResourceStatus
+        from tests.test_ingress_realization import RecordingIngressInterpreter, RecordingSecretUseAuthorizer
+
+        plan, _ = self.prepare_managed_teardown()
+        provider = RecordingIngressInterpreter(self.tracker)
+        runtime = RecordingAdapter(self.tracker, *[ActivityExecutionOutcome.succeeded() for _ in plan.activities])
+        coordinator = self.coordinator(ActivityExecutionDispatcher(runtime, IngressRealizationAdapter(self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: provider},
+            secret_use_authorizer=RecordingSecretUseAuthorizer(), clock=lambda: "2026-07-28T09:00:00Z")))
+        result = coordinator.execute(self.command(max_effects=len(plan.activities)))
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertGreater(result.effects_attempted, 0)
+        self.assertEqual(provider.teardown_resources, [])
+        with self.unit_of_work() as uow:
+            self.assertIs(uow.stores.ingress_resources.get_cloudflare("workspace-a", "management").status, OwnedIngressResourceStatus.ACTIVE)
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-current")
+            self.assertTrue(any(event.kind is ActivityEventKind.STEP_UNSUPPORTED for event in uow.stores.execution.events_for_run("run-a")))
 
     def test_forged_empty_plan_cannot_complete_nonempty_sdk_transition(self):
         self._install_sdk_pair(empty_plan=True)
