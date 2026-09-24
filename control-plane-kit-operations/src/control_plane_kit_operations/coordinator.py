@@ -1262,6 +1262,7 @@ class ExecutionCoordinator:
             DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
             context.plan,
             registered_products=context.registered_products,
+            derivation_profile=context.plan_record.derivation_profile,
         ):
             return None
         if context.projection.uncertain:
