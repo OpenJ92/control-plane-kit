@@ -983,6 +983,154 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], attempts_before)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_observations").fetchone()[0], observations_before)
 
+    def prepare_managed_teardown(self):
+        from tests.managed_teardown_fixture import PROFILE, managed_teardown, seed_owned_ingress
+        from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval, DecideApproval, ApprovalAuthorizationDenied
+        from control_plane_kit_operations.admission import ExecutionAdmissionCommandService, RequestPlanExecution, ExecutionAdmissionDenied
+        from control_plane_kit_operations.records import ApprovalDecisionKind
+        from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+
+        current, desired, plan, products = managed_teardown(self)
+        self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
+            product_document=products[0].descriptor_document, derivation_profile=PROFILE)
+        # Replace predecessor fixture's synthetic low-risk approval/request with
+        # the real approval and request services for this destructive plan.
+        for table in ("cpk_execution_requests", "cpk_approval_decisions", "cpk_approval_requests"):
+            self.connection.execute("DELETE FROM " + table)
+        with self.unit_of_work() as uow:
+            stores = uow.stores
+            stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            workspace = stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
+            for product in products[1:]:
+                stores.registered_products.register(workspace_id="workspace-a", descriptor_document=product.descriptor_document,
+                    source=product.source, imported_by=product.imported_by, imported_at=product.imported_at)
+            stores.runtime_authorities.register(workspace_id="workspace-a", authority_ref=current.runtimes["docker"].authority_ref,
+                runtime_kind=RuntimeKind.DOCKER, authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a", admitted_at="2026-07-22T12:00:00Z")
+            seed_owned_ingress(stores, current)
+            uow.commit()
+        self.connection.execute("UPDATE cpk_activity_plans SET desired_graph_revision=%s WHERE plan_id='plan-a'",
+                                (workspace.desired_graph_revision,))
+        approvals = ApprovalCommandService(self.unit_of_work, clock=lambda: "2026-07-22T12:03:00Z",
+            id_factory=Sequence("approval-request-a", "approval-action", "approval-decision-a", "decision-action"))
+        approval = approvals.execute(RequestApproval("session-a", "plan-a", "operator-a",
+            (PolicyScope.PLAN_REQUEST,), IdempotencyKey("managed-approval"))).request
+        self.assertTrue(approval.destructive)
+        self.assertIs(approval.required_scope, PolicyScope.PLAN_APPROVE_DESTRUCTIVE)
+        decision = DecideApproval("session-a", approval.request_id, "manager-a", (PolicyScope.PLAN_APPROVE,),
+            ApprovalDecisionKind.APPROVED, IdempotencyKey("managed-decision"))
+        with self.assertRaises(ApprovalAuthorizationDenied):
+            approvals.execute(decision)
+        approvals.execute(replace(decision, actor_scopes=(PolicyScope.PLAN_APPROVE_DESTRUCTIVE,)))
+        admission = ExecutionAdmissionCommandService(self.unit_of_work, clock=lambda: "2026-07-22T12:04:00Z",
+            id_factory=Sequence("request-a", "execution-action"))
+        command = RequestPlanExecution("workspace-a", "session-a", "plan-a", approval.request_id,
+            "operator-a", (PolicyScope.PLAN_EXECUTE,), IdempotencyKey("managed-request"))
+        with self.assertRaises(ExecutionAdmissionDenied):
+            admission.execute(command)
+        admission.execute(replace(command, actor_scopes=(PolicyScope.PLAN_EXECUTE,
+            PolicyScope.RUNTIME_AUTHORITY_USE, PolicyScope.INGRESS_AUTHORITY_USE)))
+        self.claim_and_start()
+        return plan, workspace
+
+    def test_managed_teardown_completes_owned_ingress_and_runtime_history_before_advancement(self):
+        from control_plane_kit_core.planning import RemoveNodeResource, RemovePublicIngress
+        from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher, RuntimeInterpreterDispatcher
+        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+        from control_plane_kit_operations.ingress_authorities import OwnedIngressResourceStatus
+        from control_plane_kit_operations.advancement import AdvanceCurrentGraph, CurrentGraphAdvancementCommandService, CurrentGraphAdvancementIncomplete
+        from tests.test_ingress_realization import RecordingIngressInterpreter, RecordingSecretUseAuthorizer
+
+        plan, workspace = self.prepare_managed_teardown()
+        test = self
+        class Runtime:
+            def __init__(self): self.calls = []
+            def execute(self, request): raise AssertionError("missing runtime authority")
+            def execute_with_authority(self, request, authority):
+                test.assertEqual(test.tracker.active, 0)
+                test.assertEqual(authority.authority_ref, request.authority_ref)
+                self.calls.append(request)
+                return RuntimeEffectResult.succeeded(request.effect_id)
+        runtime = Runtime()
+        provider = RecordingIngressInterpreter(self.tracker)
+        contexts = []
+        class RecordingDispatcher(ActivityExecutionDispatcher):
+            def execute_runtime(self, context, request):
+                contexts.append(context)
+                return super().execute_runtime(context, request)
+        adapter = RecordingDispatcher(RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: runtime}),
+            IngressRealizationAdapter(self.unit_of_work,
+                interpreters={IngressAuthorityProviderKind.CLOUDFLARE: provider},
+                secret_use_authorizer=RecordingSecretUseAuthorizer(), clock=lambda: "2026-07-28T09:00:00Z"))
+        coordinator = self.coordinator(adapter)
+        advance = AdvanceCurrentGraph("workspace-a", "run-a", "plan-a", "graph-current",
+            workspace.current_realized_projection_id, "graph-desired", workspace.desired_realized_projection_id,
+            workspace.desired_graph_revision, self.authority(), ExecutionLeaseFence("worker-a", 1), IdempotencyKey("advance-managed"))
+        advancement = CurrentGraphAdvancementCommandService(self.unit_of_work,
+            clock=lambda: "2026-07-28T09:01:00Z", id_factory=self.ids)
+        with self.assertRaises(CurrentGraphAdvancementIncomplete):
+            advancement.execute(advance)
+        with self.assertRaises(ExecutionCoordinatorDenied):
+            coordinator.execute(self.command(generation=2))
+        command = self.command(max_effects=len(plan.activities))
+        result = coordinator.execute(command)
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertIs(result.run.status, ActivityRunStatus.SUCCEEDED)
+        self.assertEqual(provider.teardown_active_counts, [0])
+        self.assertEqual(len(provider.teardown_resources), 1)
+        self.assertEqual({request.activity_id for request in runtime.calls},
+                         {activity.activity_id for activity in plan.activities if not isinstance(activity.operation, RemovePublicIngress)})
+        with self.unit_of_work() as uow:
+            self.assertIs(uow.stores.ingress_resources.get_cloudflare("workspace-a", "management").status, OwnedIngressResourceStatus.REMOVED)
+            removed_resources = uow.stores.ingress_resources.list_cloudflare("workspace-a")
+            before = uow.stores.execution.events_for_run("run-a")
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-current")
+        # Re-project original connector cleanup against actual persisted REMOVED
+        # ingress evidence. This is pure lowering, not a second provider call.
+        from control_plane_kit_operations.runtime_effects import runtime_effect_request_for_context
+        connector = next(context for context in contexts
+            if isinstance(context.activity.operation, RemoveNodeResource)
+            and context.activity.operation.target.node_id == "connector")
+        cleanup = runtime_effect_request_for_context(replace(connector, ingress_resources=removed_resources,
+            generated_ingress_secrets=()))
+        self.assertEqual(cleanup.products[0].product.runtime_contract.secret_deliveries, ())
+        self.assertEqual(coordinator.execute(command), result)
+        self.assertEqual(len(provider.teardown_resources), 1)
+        self.assertEqual(len(runtime.calls), len(plan.activities) - 1)
+        advancement.execute(advance)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-desired")
+            self.assertTrue(any(event.kind is ActivityEventKind.RUN_SUCCEEDED for event in before))
+
+    def test_managed_ingress_removal_uncertainty_preserves_current_and_never_redispatches(self):
+        from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
+        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+        from control_plane_kit_operations.ingress_authorities import OwnedIngressResourceStatus
+        from tests.test_ingress_realization import RecordingIngressInterpreter, RecordingSecretUseAuthorizer
+
+        plan, _ = self.prepare_managed_teardown()
+        provider = RecordingIngressInterpreter(self.tracker)
+        provider.fail_teardown = True
+        runtime = RecordingAdapter(self.tracker, *[ActivityExecutionOutcome.succeeded() for _ in plan.activities])
+        adapter = ActivityExecutionDispatcher(runtime, IngressRealizationAdapter(self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: provider},
+            secret_use_authorizer=RecordingSecretUseAuthorizer(), clock=lambda: "2026-07-28T09:00:00Z"))
+        coordinator = self.coordinator(adapter)
+        command = self.command(max_effects=len(plan.activities))
+        result = coordinator.execute(command)
+        self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+        calls = tuple(runtime.calls)
+        self.assertEqual(coordinator.execute(command), result)
+        self.assertIs(coordinator.execute(replace(command, idempotency_key=IdempotencyKey("observe-held"))).status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(tuple(runtime.calls), calls)
+        self.assertEqual(provider.teardown_active_counts, [0])
+        with self.unit_of_work() as uow:
+            self.assertIs(uow.stores.ingress_resources.get_cloudflare("workspace-a", "management").status, OwnedIngressResourceStatus.UNCERTAIN)
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-current")
+            events = uow.stores.execution.events_for_run("run-a")
+            self.assertTrue(any(event.kind is ActivityEventKind.STEP_UNCERTAIN for event in events))
+            self.assertFalse(any(event.kind is ActivityEventKind.RUN_SUCCEEDED for event in events))
+
     def test_forged_empty_plan_cannot_complete_nonempty_sdk_transition(self):
         self._install_sdk_pair(empty_plan=True)
         self.claim_and_start()
