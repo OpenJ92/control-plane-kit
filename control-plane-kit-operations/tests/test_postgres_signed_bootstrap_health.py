@@ -288,7 +288,7 @@ class PostgresSignedBootstrapHealthTests(PostgresHealthEffectStartFixture, unitt
                 with self.unit_of_work() as uow:
                     self.assertEqual(uow.stores.health_effect_preparations.get(preparation.identity), preparation)
 
-    def test_native_connector_has_no_signed_target_command_or_reload_preparation(self):
+    def test_native_connector_has_no_signed_target_command_and_missing_attempt_cannot_reload(self):
         self.reset_health(stage=STAGES[0])
         native = next(item for item in self.health_plan.activities
             if type(item.operation) is ObserveManagementBootstrap
@@ -308,8 +308,11 @@ class PostgresSignedBootstrapHealthTests(PostgresHealthEffectStartFixture, unitt
         with self.observed_time("2030-01-01T00:00:00Z"):
             # Time setup changes the lease, independently of signing refusal.
             reload_before = self.health_snapshot()
-            with self.assertRaises(HealthSigningAuthorityUnavailable):
+            # This identity has never started: preserve the actual missing-owner
+            # exception. This is not evidence about an existing native attempt.
+            with self.assertRaises(KeyError) as caught:
                 self.reload_service(registry).execute(command)
+            self.assertEqual(caught.exception.args, ("effect attempt was not found",))
         self.assertEqual(decoder.calls, [])
         self.assertEqual(self.health_counts(), (0, 0, 0, 0))
         self.assertEqual(self.health_snapshot(), reload_before)

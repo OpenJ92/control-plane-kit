@@ -122,7 +122,7 @@ _CURRENT_CONTRACT_SHA256 = (
     "2269a6ea69c6c08332b6371f68b3b9431331034fecc76b7c3509d453bab1b3e1"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "57a0629b31df6eff0ba23afb3e22426f1946a34a2cd8db553282db397918bbb2"
+    "b941829f70ea100af1665916e3da94ba55f1f40a8f80f50f014cf09875d27ab8"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -416,8 +416,8 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         self.assertEqual(len(contract.relations), 41)
-        self.assertEqual(len(contract.columns), 525)
-        self.assertEqual(len(contract.constraints), 410)
+        self.assertEqual(len(contract.columns), 526)
+        self.assertEqual(len(contract.constraints), 411)
         self.assertEqual(len(contract.indexes), 135)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
@@ -464,6 +464,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 "receipt_status",
                 "completed_at",
                 "result",
+                "managed_intent",
             ),
         )
         columns = {value.name: value for value in receipt_columns}
@@ -483,6 +484,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                     "cpk_execution_command_receipts_idempotency_key_check",
                     "cpk_execution_command_receipts_initial_run_check",
                     "cpk_execution_command_receipts_intent_fingerprint_check",
+                    "cpk_execution_command_receipts_managed_intent_check",
                     "cpk_execution_command_receipts_max_effects_check",
                     "cpk_execution_command_receipts_pkey",
                     "cpk_execution_command_receipts_result_check",

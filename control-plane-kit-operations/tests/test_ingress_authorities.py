@@ -13,7 +13,7 @@ from control_plane_kit_core.public_ingress import (
 )
 from control_plane_kit_core.secrets import (
     SecretCustodyReceipt, SecretReference, SecretFileDelivery, SecretFileMode,
-    SecretFilePathBinding, SecretUseIntent,
+    SecretFilePathBinding, SecretUseIntent, SecretEnvironmentDelivery, SecretReferenceEnvironmentDelivery,
 )
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareIngressTeardownActionKind,
@@ -66,6 +66,22 @@ class IngressAuthorityValueTests(unittest.TestCase):
             SecretFilePathBinding("TUNNEL_TOKEN_FILE"),
         ))
         self.assertEqual(require_cloudflared_tunnel_token_delivery((plan.secret_delivery,)), plan.secret_delivery)
+
+    def test_configured_token_file_refuses_ambiguous_or_misdirected_reserved_slots(self):
+        reference = SecretReference("secret://cloudflare/openj92/tunnel")
+        valid = SecretFileDelivery("/run/secrets/cloudflare-tunnel-token", reference,
+            SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN, path_binding=SecretFilePathBinding("TUNNEL_TOKEN_FILE"))
+        wrong = (
+            SecretEnvironmentDelivery("TUNNEL_TOKEN", reference, SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN),
+            SecretReferenceEnvironmentDelivery("TUNNEL_TOKEN_FILE", reference),
+            replace(valid, target_path="/run/secrets/wrong"),
+            replace(valid, intent=SecretUseIntent.APPLICATION_CONTROL_TOKEN),
+            replace(valid, path_binding=None),
+        )
+        for value in wrong:
+            for deliveries in ((value,), (valid, value)):
+                with self.subTest(deliveries=deliveries), self.assertRaises(IngressAuthorityRegistrationError):
+                    require_cloudflared_tunnel_token_delivery(deliveries)
 
     def test_exact_hostname_authority_roundtrips_and_matches_only_its_host(self) -> None:
         authority = replace(self.cloudflare_authority(),

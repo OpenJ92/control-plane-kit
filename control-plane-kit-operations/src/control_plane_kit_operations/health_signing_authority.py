@@ -20,7 +20,7 @@ from control_plane_kit_core.node_health_reads import verify_workload_node_health
 from control_plane_kit_core.node_health_transit import verify_gateway_node_health_read_transit_grant
 from control_plane_kit_core.operations import EffectAttemptFence, EffectAttemptIdentity, EffectAttemptStatus, RunId
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind, ActivityRunStatus, ExecutionRequestStatus
-from control_plane_kit_core.planning import ActivityId, ObserveNodeHealth, PlanGraphSide
+from control_plane_kit_core.planning import ActivityId, PlanGraphSide
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
 from control_plane_kit_core.identity import TrustedCommandContext
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
@@ -49,7 +49,7 @@ from control_plane_kit_operations.records import (
     ApprovalDecisionRecord, ApprovalRequestRecord, ClaimIdentity, ExecutionRequestRecord,
     GraphVersionRecord, RealizedGraphProjectionRecord,
 )
-from control_plane_kit_operations.runtime_management_targets import project_management_health_target
+from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation, project_management_health_target
 from control_plane_kit_operations.secret_providers import (
     AuthorizedSecretUse, AuthorizeSecretUse, RegisteredSecretProvider,
     RegisteredSecretProviderStatus, RegisteredSecretReference, RegisteredSecretReferenceStatus,
@@ -303,7 +303,7 @@ class HealthSigningAuthorityReloadService:
                 and preparation.original_event_id == attempt.original_start_event.event_id
                 and preparation.request_fingerprint == evidence.request_fingerprint == attempt.state.request_fingerprint
                 and preparation.request_fingerprint == runtime_effect_intent_fingerprint(intent)
-                and type(intent.operation) is ObserveNodeHealth
+                and is_signed_management_health_operation(intent.operation)
                 and source.request_id == command.request_id and source.run_id == command.identity.run_id
                 and source.workspace_id == command.context.workspace_id
                 and source.plan_id == request.identity.plan_id and intent.activity_id.value == command.identity.activity_id)
@@ -341,12 +341,12 @@ class HealthSigningAuthorityReloadService:
                 expected_issuer=keys[0].issuer, expected_key_id=keys[0].key_id,
                 expected_attempt_id=health_effect_attempt_wire_id(command.identity), expected_gateway_node_id=gateway,
                 expected_target=target, expected_runtime_id=runtime, expected_declaration=declaration,
-                expected_kind=selected.operation.health_kind, now=now)
+                expected_kind=selected.target_health_kind, now=now)
             _require(transit.is_accepted)
             workload = verify_workload_node_health_read_grant(preparation.workload_grant, preparation.request,
                 expected_issuer=keys[1].issuer, expected_key_id=keys[1].key_id,
                 expected_target=target, expected_runtime_id=runtime, expected_declaration=declaration,
-                expected_kind=selected.operation.health_kind, expected_audience=workload_node_control_audience(target), now=now)
+                expected_kind=selected.target_health_kind, expected_audience=workload_node_control_audience(target), now=now)
             _require(workload.is_accepted)
             result = HealthSigningAuthorityPair(preparation,
                 GatewayNodeHealthReadTransitSigningAuthority(keys[0].public_key, resolutions[0]),

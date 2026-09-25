@@ -47,6 +47,7 @@ from control_plane_kit_operations.records import (
     ExecutionRequestIdentity,
     ExecutionRequestRecord,
     FailureEvidence,
+    ManagedExecutionCommandIntent,
     OperationsRecordError,
     RetryIdentity,
     canonical_positive_decimal,
@@ -139,9 +140,9 @@ class PostgresExecutionStore:
             INSERT INTO cpk_execution_command_receipts
               (run_id, idempotency_key, intent_fingerprint, worker_id,
                authority_scopes, claim_generation, max_effects, admitted_at,
-               initial_run, receipt_status, completed_at, result)
+               initial_run, receipt_status, completed_at, result, managed_intent)
             VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s::jsonb,
-                    %s, %s, %s::jsonb)
+                    %s, %s, %s::jsonb, %s::jsonb)
             """,
             (
                 record.run_id,
@@ -156,6 +157,7 @@ class PostgresExecutionStore:
                 record.status.value,
                 _encode_optional_timestamp(record.completed_at),
                 None if record.result is None else _json(_result_descriptor(record.result)),
+                None if record.managed_intent is None else _json(record.managed_intent.descriptor()),
             ),
         )
         return record
@@ -174,7 +176,7 @@ class PostgresExecutionStore:
             f"""
             SELECT run_id, idempotency_key, intent_fingerprint, worker_id,
                    authority_scopes, claim_generation, max_effects, admitted_at,
-                   initial_run, receipt_status, completed_at, result
+                   initial_run, receipt_status, completed_at, result, managed_intent
             FROM cpk_execution_command_receipts
             WHERE run_id = %s AND idempotency_key = %s
             {lock}
@@ -209,7 +211,7 @@ class PostgresExecutionStore:
               AND result IS NULL
             RETURNING run_id, idempotency_key, intent_fingerprint, worker_id,
                       authority_scopes, claim_generation, max_effects, admitted_at,
-                      initial_run, receipt_status, completed_at, result
+                      initial_run, receipt_status, completed_at, result, managed_intent
             """,
             (
                 encode_postgres_timestamp(completed_at),
@@ -619,7 +621,7 @@ class PostgresExecutionStore:
             """
             SELECT run_id, idempotency_key, intent_fingerprint, worker_id,
                    authority_scopes, claim_generation, max_effects, admitted_at,
-                   initial_run, receipt_status, completed_at, result
+                   initial_run, receipt_status, completed_at, result, managed_intent
             FROM cpk_execution_command_receipts AS receipt
             WHERE receipt.run_id = %s
               AND (
@@ -981,6 +983,7 @@ def _command_receipt(row: tuple[Any, ...]) -> ExecutionCommandReceiptRecord:
             status=ExecutionCommandReceiptStatus(row[9]),
             completed_at=_decode_optional_timestamp(row[10]),
             result=None if row[11] is None else _result_from_descriptor(row[11]),
+            managed_intent=None if row[12] is None else ManagedExecutionCommandIntent.from_descriptor(row[12]),
         )
     except (TypeError, ValueError):
         raise OperationsRecordError(

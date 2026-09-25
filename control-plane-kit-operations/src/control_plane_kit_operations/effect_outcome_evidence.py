@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 import hashlib
+import re
 
 import rfc8785
 
@@ -62,6 +64,7 @@ from control_plane_kit_operations.records import (
     OperationsRecordError,
     ProbeKind,
     ProbeOutcome,
+    _validate_text,
 )
 
 
@@ -70,6 +73,7 @@ class EffectOutcomeProfile(StrEnum):
 
     EXECUTION_RESULT = "execution-result"
     PROVIDER_OBSERVATION = "provider-observation"
+    NATIVE_CONNECTION = "native-connection"
 
 
 class _OutcomeError(StrEnum):
@@ -554,6 +558,173 @@ class ObservedEffectOutcome(_EffectOutcomeValue):
         return self._descriptor
 
 
+class NativeConnectionOutcome(StrEnum):
+    """A completed correlated read; selector refusal is a different result."""
+
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    UNKNOWN = "unknown"
+
+
+def _native_timestamp_ns(value: object) -> int:
+    # Preserve the reader's nanoseconds. datetime's microsecond conversion must
+    # not round a sample across the ten-second acceptance boundary.
+    if type(value) is not str:
+        raise OperationsRecordError("native sample timestamp is invalid")
+    matched = re.fullmatch(
+        r"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+        r"(?:\.([0-9]{1,9}))?(Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value)
+    if matched is None:
+        raise OperationsRecordError("native sample timestamp is invalid")
+    local, fraction, offset = matched.groups()
+    parsed = datetime.fromisoformat(local)
+    offset_seconds = 0 if offset == "Z" else (int(offset[1:3]) * 60 + int(offset[4:])) * 60
+    if offset[0] == "-":
+        offset_seconds = -offset_seconds
+    return ((parsed.toordinal() * 86400 + parsed.hour * 3600 + parsed.minute * 60 + parsed.second)
+        * 1_000_000_000 + int((fraction or "").ljust(9, "0")) - offset_seconds * 1_000_000_000)
+
+
+@dataclass(frozen=True)
+class NativeConnectionObservation:
+    """Bounded original passive evidence with no provider body or token."""
+
+    outcome: NativeConnectionOutcome
+    effect_id: str
+    activity_id: str
+    container_id: str | None = None
+    sample_start: str | None = None
+    sample_end: str | None = None
+    ready_connections: int | None = None
+    connector_id: str | None = None
+
+    def __post_init__(self):
+        if type(self.outcome) is not NativeConnectionOutcome:
+            raise OperationsRecordError("native observation disposition is invalid")
+        for value, bound in ((self.effect_id, 512), (self.activity_id, 200)):
+            _validate_text(value, "native observation correlation")
+            if (type(value) is not str or len(value) > bound
+                    or any(0xD800 <= ord(character) <= 0xDFFF for character in value)):
+                raise OperationsRecordError("native observation correlation is invalid")
+        if self.container_id is not None and (type(self.container_id) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", self.container_id) is None):
+            raise OperationsRecordError("native observation container identity is invalid")
+        if self.connector_id is not None and (type(self.connector_id) is not str
+                or re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", self.connector_id) is None
+                or self.connector_id == "00000000-0000-0000-0000-000000000000"):
+            raise OperationsRecordError("native observation connector identity is invalid")
+        if self.ready_connections is not None and (type(self.ready_connections) is not int
+                or not 0 <= self.ready_connections <= 2**64 - 1):
+            raise OperationsRecordError("native observation ready count is invalid")
+        samples = (self.container_id, self.sample_start, self.sample_end)
+        if any(value is not None for value in samples):
+            if any(value is None for value in samples):
+                raise OperationsRecordError("native observation sample is incomplete")
+            if _native_timestamp_ns(self.sample_start) > _native_timestamp_ns(self.sample_end):
+                raise OperationsRecordError("native observation sample order is invalid")
+        if self.outcome is NativeConnectionOutcome.CONNECTED and (
+                self.sample_end is None or self.connector_id is None
+                or self.ready_connections is None or self.ready_connections < 1):
+            raise OperationsRecordError("connected native observation is incomplete")
+        if self.outcome is NativeConnectionOutcome.DISCONNECTED and (
+                self.sample_end is None or self.ready_connections != 0 or self.connector_id is None):
+            raise OperationsRecordError("disconnected native observation is contradictory")
+        if self.outcome is NativeConnectionOutcome.UNKNOWN and (
+                self.ready_connections is not None or self.connector_id is not None):
+            raise OperationsRecordError("unknown native observation is contradictory")
+
+    def descriptor(self):
+        return {"effect_id": self.effect_id, "activity_id": self.activity_id,
+            "container_id": self.container_id, "sample_start": self.sample_start, "sample_end": self.sample_end,
+            # Reader-v1 uses uint64; JCS numeric values cannot preserve its full
+            # domain. Keep the actual value typed and fingerprint exact decimal.
+            "ready_connections": None if self.ready_connections is None else str(self.ready_connections),
+            "connector_id": self.connector_id, "outcome": self.outcome.value}
+
+
+def _native_acceptance_reason(observation, accepted_at):
+    if type(observation) is not NativeConnectionObservation:
+        raise OperationsRecordError("native observation must be typed")
+    observation.__post_init__()
+    accepted = _native_timestamp_ns(accepted_at)
+    if observation.sample_end is not None:
+        age = accepted - _native_timestamp_ns(observation.sample_end)
+        if age < 0:
+            raise OperationsRecordError("native sample is in the acceptance future")
+        if age > 10_000_000_000:
+            return "stale-at-acceptance"
+    return observation.outcome.value
+
+
+@dataclass(frozen=True)
+class NativeConnectionEffectOutcome(_EffectOutcomeValue):
+    """Original sample and the immutable decision made at database acceptance."""
+
+    identity: EffectAttemptIdentity
+    request_fingerprint: str
+    observation: NativeConnectionObservation = field(repr=False)
+    accepted_at: str
+    acceptance_reason: str
+
+    def __post_init__(self):
+        if not self._admitted:
+            _OutcomeError.EVIDENCE.raised
+
+    @classmethod
+    def from_observation(cls, *, identity, request_fingerprint, observation, accepted_at):
+        return cls(identity, request_fingerprint, observation, accepted_at,
+            _native_acceptance_reason(observation, accepted_at))
+
+    @property
+    def _admitted(self):
+        try:
+            if (type(self) is not NativeConnectionEffectOutcome or type(self.identity) is not EffectAttemptIdentity
+                    or type(self.observation) is not NativeConnectionObservation
+                    or type(self.acceptance_reason) is not str):
+                return False
+            self.identity.__post_init__()
+            return (type(self.request_fingerprint) is str
+                and re.fullmatch(r"[0-9a-f]{64}", self.request_fingerprint) is not None
+                and self.observation.activity_id == self.identity.activity_id
+                and self.acceptance_reason == _native_acceptance_reason(self.observation, self.accepted_at))
+        except (ValueError, TypeError, AttributeError, OverflowError):
+            return False
+
+    @property
+    def profile(self):
+        return EffectOutcomeProfile.NATIVE_CONNECTION
+
+    @property
+    def outcome_fingerprint(self):
+        return hashlib.sha256(b"control-plane-kit.native-connection-acceptance.v1\0"
+            + rfc8785.dumps(self.acceptance_descriptor())).hexdigest()
+
+    def acceptance_descriptor(self):
+        return {"observation": self.observation.descriptor(), "accepted_at": self.accepted_at,
+            "acceptance_reason": self.acceptance_reason}
+
+    @property
+    def endpoint_observations(self):
+        return ()
+
+    @property
+    def status(self):
+        return EffectAttemptStatus.SUCCEEDED if self.acceptance_reason == "connected" else EffectAttemptStatus.NOT_READY
+
+    @property
+    def transition_kind(self):
+        return EffectAttemptTransitionKind.SUCCEEDED if self.acceptance_reason == "connected" else EffectAttemptTransitionKind.NOT_READY
+
+    @property
+    def failure_row(self):
+        return None
+
+    def descriptor(self):
+        return self._descriptor | {"accepted_at": self.accepted_at, "acceptance_reason": self.acceptance_reason}
+
+
+# Native persistence and fold admission are added with their owner laws; a
+# constructed value alone cannot enter the existing generic outcome services.
 EffectAttemptOutcome = ExecutionEffectOutcome | ObservedEffectOutcome
 
 
@@ -1106,6 +1277,9 @@ __all__ = (
     "EffectAttemptOutcomeRecord",
     "EffectOutcomeProfile",
     "ExecutionEffectOutcome",
+    "NativeConnectionEffectOutcome",
+    "NativeConnectionObservation",
+    "NativeConnectionOutcome",
     "ObservedEffectOutcome",
     "effect_outcome_failure",
     "effect_outcome_observation_records",

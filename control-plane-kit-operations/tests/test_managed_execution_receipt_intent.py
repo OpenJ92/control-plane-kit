@@ -77,3 +77,15 @@ class ManagedExecutionReceiptIntentTests(unittest.TestCase):
         foreign = EffectAttemptIdentity(RunId("foreign-run"), "connection", 1)
         with self.assertRaises(ValueError):
             self.fingerprint(self.intent(predecessor=foreign))
+
+    def test_retained_descriptor_is_closed_and_successor_cannot_be_relabelled(self):
+        original = self.intent(predecessor=EffectAttemptIdentity(RunId("run-a"), "connection", 1))
+        decoder = type(original).from_descriptor
+        self.assertEqual(decoder(original.descriptor()), original)
+        for changes in (
+            {"extra": "not-admitted"}, {"kind": "execute-managed"},
+            {"successor": replace(original.successor, attempt=3).descriptor()},
+            {"actor_scopes": list(reversed(original.descriptor()["actor_scopes"]))},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                decoder(original.descriptor() | changes)

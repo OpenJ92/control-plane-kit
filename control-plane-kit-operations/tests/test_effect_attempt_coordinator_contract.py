@@ -107,6 +107,7 @@ COORDINATOR_EXPORTS = {
     "ActivityRealizationContext",
     "CoordinatorStatus",
     "ExecuteActivityRun",
+    "ExecuteManagedActivityRun",
     "ExecutionCoordinator",
     "ExecutionCoordinatorConflict",
     "ExecutionCoordinatorDenied",
@@ -117,6 +118,7 @@ COORDINATOR_EXPORTS = {
     "RuntimeInterpreterDispatcher",
 }
 COORDINATOR_DEPENDENCIES = {
+    "control_plane_kit_core.identity",
     "control_plane_kit_core.operations",
     "control_plane_kit_core.operations.execution",
     "control_plane_kit_core.operations.lifecycle",
@@ -182,6 +184,7 @@ def _exact_imports(*rows: tuple[str, str | None, str | None]):
 
 EXACT_COORDINATOR_IMPORTS = _exact_imports(
     ("__future__", "annotations", None),
+    ("control_plane_kit_core.identity", "TrustedCommandContext", None),
     ("control_plane_kit_core.operations", "EffectAttemptIdentity", None),
     ("control_plane_kit_core.operations", "EffectAttemptTransition", None),
     ("control_plane_kit_core.operations", "EffectAttemptTransitionKind", None),
@@ -380,6 +383,8 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
         "cloudflare_tunnel_token_delivery_plan",
         None,
     ),
+    ("control_plane_kit_operations.ingress_authorities", "_uses_cloudflared_token_slot", None),
+    ("control_plane_kit_operations.ingress_authorities", "require_cloudflared_tunnel_token_delivery", None),
     ("control_plane_kit_operations.products", "RegisteredImagePullAuthority", None),
     ("control_plane_kit_operations.products", "RegisteredProduct", None),
     ("control_plane_kit_operations.runtime_authorities", "RegisteredRuntimeAuthority", None),
@@ -649,6 +654,8 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
         "cloudflare_tunnel_token_delivery_plan",
         1,
     ),
+    ("control_plane_kit_operations.ingress_authorities._uses_cloudflared_token_slot", 1),
+    ("control_plane_kit_operations.ingress_authorities.require_cloudflared_tunnel_token_delivery", 1),
     (
         "control_plane_kit_operations.runtime_authorities."
         "_admitted_runtime_authority_deliveries",
@@ -664,7 +671,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("graph_id.strip", 2),
     ("hasattr", 2),
     ("int", 1),
-    ("isinstance", 17),
+    ("isinstance", 16),
     ("json.dumps", 1),
     ("len", 7),
     ("metadata.get", 2),

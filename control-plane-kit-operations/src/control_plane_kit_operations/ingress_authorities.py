@@ -534,7 +534,7 @@ def require_cloudflared_tunnel_token_delivery(
     matches = tuple(
         delivery
         for delivery in deliveries
-        if getattr(delivery, "intent", None) is SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN
+        if _uses_cloudflared_token_slot(delivery)
     )
     if len(matches) != 1:
         raise IngressAuthorityRegistrationError(
@@ -542,6 +542,15 @@ def require_cloudflared_tunnel_token_delivery(
         )
     _validate_tunnel_token_delivery(matches[0])
     return matches[0]
+
+
+def _uses_cloudflared_token_slot(delivery: SecretDelivery) -> bool:
+    return (getattr(delivery, "intent", None) is SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN
+        or getattr(delivery, "environment_name", None) in ("TUNNEL_TOKEN", "TUNNEL_TOKEN_FILE")
+        or (type(delivery) is SecretFileDelivery and (
+            delivery.target_path == "/run/secrets/cloudflare-tunnel-token"
+            or (delivery.path_binding is not None
+                and delivery.path_binding.environment_name in ("TUNNEL_TOKEN", "TUNNEL_TOKEN_FILE")))))
 
 
 def _validate_ingress_resource_against_authority(

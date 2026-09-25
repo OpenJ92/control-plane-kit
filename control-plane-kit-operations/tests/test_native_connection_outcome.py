@@ -87,3 +87,52 @@ class NativeConnectionOutcomeTests(unittest.TestCase):
         ):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 self.accept(replace(observation, **changes), "2030-01-01T00:00:05Z")
+
+    def test_reader_offsets_are_preserved_and_invalid_offset_components_refuse(self):
+        for start, end in (("2030-01-01T01:00:00+01:00", "2030-01-01T01:00:01+01:00"),
+                ("2029-12-31T23:00:00-01:00", "2029-12-31T23:00:01-01:00")):
+            observation = replace(self.observation(), sample_start=start, sample_end=end)
+            accepted = self.accept(observation, "2030-01-01T00:00:11Z")
+            self.assertEqual(accepted.status.value, "succeeded")
+            self.assertEqual(accepted.observation.sample_end, end)
+        with self.assertRaises(ValueError):
+            self.accept(replace(self.observation(), sample_end="2030-01-01T00:00:01+00:60"),
+                "2030-01-01T00:00:11Z")
+
+    def test_uint64_reader_count_has_exact_decimal_fingerprint_material(self):
+        maximum = 2**64 - 1
+        observation = replace(self.observation(), ready_connections=maximum)
+        accepted = self.accept(observation, "2030-01-01T00:00:02Z")
+        self.assertEqual(accepted.observation.ready_connections, maximum)
+        self.assertEqual(accepted.acceptance_descriptor()["observation"]["ready_connections"], str(maximum))
+        self.assertNotEqual(accepted.outcome_fingerprint,
+            self.accept(replace(observation, ready_connections=maximum - 1),
+                accepted.accepted_at).outcome_fingerprint)
+        for invalid in (True, -1, 2**64):
+            with self.subTest(value=invalid), self.assertRaises(ValueError):
+                replace(observation, ready_connections=invalid)
+
+    def test_unknown_and_disconnected_are_closed_reader_variants(self):
+        observation_type, kind, _ = self.api()
+        empty = observation_type(outcome=kind.UNKNOWN, effect_id="native-start-1", activity_id="connection")
+        sampled = replace(self.observation(), outcome=kind.UNKNOWN, ready_connections=None, connector_id=None)
+        for valid in (empty, sampled):
+            self.assertEqual(self.accept(valid, "2030-01-01T00:00:02Z").acceptance_reason, "unknown")
+        for value, changes in (
+            (empty, {"outcome": kind.DISCONNECTED}),
+            (sampled, {"ready_connections": 0}), (sampled, {"ready_connections": 1}),
+            (sampled, {"connector_id": "11111111-1111-4111-8111-111111111111"}),
+            (self.observation("disconnected"), {"connector_id": None}),
+            (self.observation("disconnected"), {"ready_connections": None}),
+            (self.observation(), {"connector_id": "00000000-0000-0000-0000-000000000000"}),
+        ):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                replace(value, **changes)
+
+    def test_lawful_event_text_is_preserved_without_an_ascii_identifier_restriction(self):
+        event_id = "native event é / 1"
+        accepted = self.accept(replace(self.observation(), effect_id=event_id), "2030-01-01T00:00:02Z")
+        self.assertEqual(accepted.effect_id, event_id)
+        for invalid in ("bad\x00event", "bad\nevent", "bad\ud800event", "x" * 513):
+            with self.subTest(event_id=repr(invalid)), self.assertRaises(ValueError):
+                replace(self.observation(), effect_id=invalid)
