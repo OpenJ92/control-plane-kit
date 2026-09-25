@@ -201,6 +201,7 @@ from control_plane_kit_core.node_control import (
     NodeControlFailed,
     NodeControlGraphReference,
     NodeControlGraphReferenceRole,
+    NodeHealthReadKind,
     NodeControlOperation,
     NodeControlPayload,
     NodeControlReadStateSucceeded,
@@ -246,6 +247,7 @@ from control_plane_kit_core.node_control_surface_reads import (
 from control_plane_kit_core.node_control_surface_read_results import (
     MAX_NODE_CONTROL_SURFACE_CAPABILITIES_RESULT_BYTES,
     MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES,
+    MAX_NODE_CONTROL_SURFACE_STATUS_V2_RESULT_BYTES,
     NodeControlSurfaceCapabilitiesResult,
     NodeControlSurfaceReadResult,
     NodeControlSurfaceReadResultCodec,
@@ -368,7 +370,26 @@ from control_plane_kit_core.runtime_effect_observation import (
     runtime_effect_result_fingerprint,
 )
 
+from control_plane_kit_core.runtime_management import (
+    GatewayTransitDeclaration,
+    GatewayTransitDeclarationCodec,
+    GatewayTransitProtocol,
+    RuntimeManagement,
+    RuntimeManagementCodec,
+    RuntimeManagementError,
+)
+from control_plane_kit_core.topology.validation import management_ingress_for_health_read
+from control_plane_kit_core.topology.changes import RuntimeManagementValue
+
 __all__ = [
+    "GatewayTransitDeclaration",
+    "GatewayTransitDeclarationCodec",
+    "GatewayTransitProtocol",
+    "RuntimeManagement",
+    "RuntimeManagementCodec",
+    "RuntimeManagementError",
+    "RuntimeManagementValue",
+    "management_ingress_for_health_read",
     "ActivityPlanApprovalSubject",
     "ActivityHistoryPolicy",
     "ActivityEventContract",
@@ -512,6 +533,7 @@ __all__ = [
     "MAX_NODE_CONTROL_SURFACE_DECLARATION_BYTES",
     "MAX_NODE_CONTROL_SURFACE_READ_REQUEST_BYTES",
     "MAX_NODE_CONTROL_SURFACE_STATUS_RESULT_BYTES",
+    "MAX_NODE_CONTROL_SURFACE_STATUS_V2_RESULT_BYTES",
     "MAX_WORKLOAD_NODE_CONTROL_SURFACE_READ_GRANT_LIFETIME_SECONDS",
     "NodeControlCanonicalization",
     "NodeControlCommandRequest",
@@ -522,6 +544,7 @@ __all__ = [
     "NodeControlFailed",
     "NodeControlGraphReference",
     "NodeControlGraphReferenceRole",
+    "NodeHealthReadKind",
     "NodeControlOperation",
     "NodeControlPayload",
     "NodeControlReadStateSucceeded",
@@ -703,4 +726,95 @@ __all__ = [
     "GatewayNodeControlTransitGrantVerificationCode",
     "GatewayNodeControlTransitGrantVerificationResult",
     "verify_gateway_node_control_transit_grant",
+]
+
+from control_plane_kit_core.node_health_reads import (
+    MAX_NODE_HEALTH_READ_REQUEST_BYTES,
+    MAX_DELEGATED_WORKLOAD_NODE_HEALTH_READ_GRANT_BYTES,
+    MAX_WORKLOAD_NODE_HEALTH_READ_GRANT_LIFETIME_SECONDS,
+    NodeHealthReadContractError,
+    NodeHealthReadRequestProfile,
+    NodeHealthReadRequestDigest,
+    NodeHealthReadRequest,
+    NodeHealthReadRequestCodec,
+    DelegatedWorkloadNodeHealthReadGrantProfile,
+    DelegatedWorkloadNodeHealthReadGrant,
+    DelegatedWorkloadNodeHealthReadGrantCodec,
+    WorkloadNodeHealthReadGrantVerificationCode,
+    WorkloadNodeHealthReadGrantVerificationResult,
+    verify_workload_node_health_read_grant,
+)
+from control_plane_kit_core.node_health_read_results import (
+    MAX_NODE_HEALTH_READ_RESULT_BYTES,
+    NodeHealthReadResultProfile,
+    NodeHealthReadOutcome,
+    NodeHealthReadResult,
+    NodeHealthReadResultCodec,
+)
+
+__all__ += [
+    "MAX_NODE_HEALTH_READ_REQUEST_BYTES",
+    "MAX_DELEGATED_WORKLOAD_NODE_HEALTH_READ_GRANT_BYTES",
+    "MAX_WORKLOAD_NODE_HEALTH_READ_GRANT_LIFETIME_SECONDS",
+    "NodeHealthReadContractError",
+    "NodeHealthReadRequestProfile",
+    "NodeHealthReadRequestDigest",
+    "NodeHealthReadRequest",
+    "NodeHealthReadRequestCodec",
+    "DelegatedWorkloadNodeHealthReadGrantProfile",
+    "DelegatedWorkloadNodeHealthReadGrant",
+    "DelegatedWorkloadNodeHealthReadGrantCodec",
+    "WorkloadNodeHealthReadGrantVerificationCode",
+    "WorkloadNodeHealthReadGrantVerificationResult",
+    "verify_workload_node_health_read_grant",
+    "MAX_NODE_HEALTH_READ_RESULT_BYTES",
+    "NodeHealthReadResultProfile",
+    "NodeHealthReadOutcome",
+    "NodeHealthReadResult",
+    "NodeHealthReadResultCodec",
+]
+
+from control_plane_kit_core.node_health_transit import (
+    MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_AUDIENCE_BYTES,
+    MAX_DELEGATED_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_BYTES,
+    MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_LIFETIME_SECONDS,
+    GatewayNodeHealthReadTransitContractError,
+    DelegatedGatewayNodeHealthReadTransitGrantProfile,
+    GatewayNodeHealthReadTransitGrantDigest,
+    DelegatedGatewayNodeHealthReadTransitGrant,
+    DelegatedGatewayNodeHealthReadTransitGrantCodec,
+    GatewayNodeHealthReadTransitGrantVerificationCode,
+    GatewayNodeHealthReadTransitGrantVerificationResult,
+    verify_gateway_node_health_read_transit_grant,
+)
+
+__all__ += [
+    "MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_AUDIENCE_BYTES",
+    "MAX_DELEGATED_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_BYTES",
+    "MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_LIFETIME_SECONDS",
+    "GatewayNodeHealthReadTransitContractError",
+    "DelegatedGatewayNodeHealthReadTransitGrantProfile",
+    "GatewayNodeHealthReadTransitGrantDigest",
+    "DelegatedGatewayNodeHealthReadTransitGrant",
+    "DelegatedGatewayNodeHealthReadTransitGrantCodec",
+    "GatewayNodeHealthReadTransitGrantVerificationCode",
+    "GatewayNodeHealthReadTransitGrantVerificationResult",
+    "verify_gateway_node_health_read_transit_grant",
+]
+
+from control_plane_kit_core.planning.management_observations import (
+    ManagementBootstrapStage, ManagementObservationError, ManagementObservationTarget,
+    NodeHealthObservationTransport, ObserveManagementBootstrap, ObserveNodeHealth,
+    PlanGraphSide,
+)
+from control_plane_kit_core.planning.management_compiler import (
+    ResolvedManagementBootstrap, ResolvedNodeHealth, compile_graph_activity_plan,
+    resolve_management_observation,
+)
+
+__all__ += [
+    "ManagementBootstrapStage", "ManagementObservationError", "ManagementObservationTarget",
+    "NodeHealthObservationTransport", "ObserveManagementBootstrap", "ObserveNodeHealth",
+    "PlanGraphSide", "ResolvedManagementBootstrap", "ResolvedNodeHealth",
+    "compile_graph_activity_plan", "resolve_management_observation",
 ]

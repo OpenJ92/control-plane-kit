@@ -42,6 +42,7 @@ _EXPECTED_RELATIONS = (
     "cpk_gateway_probe_attempts",
     "cpk_generated_ingress_secret_references",
     "cpk_graph_versions",
+    "cpk_health_effect_preparations",
     "cpk_image_pull_authorities",
     "cpk_ingress_authorities",
     "cpk_node_control_attempts",
@@ -118,10 +119,10 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "6dff163cf72add13406d168d8e7389cdada4e6885e345c2534307753c5d24f4c"
+    "e5163641402d1f3bdcf3b7e7da877db8107096c870cb0fbe30fd0e9ff57b578e"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
-    "e1bc40971ae2299c62305abb572cc2dc610c83ccc10afbd5039aaa7d290fffe6"
+    "fc9d0b9b592925f75dad3b1f250f24d78148457d2ade6c59fc9beff8c3d79a2c"
 )
 _CONTRACT_DOMAIN = "control-plane-kit.operations.postgres.current-schema"
 _CONTRACT_FORMAT_VERSION = 1
@@ -142,6 +143,14 @@ _PURPOSE_EXPRESSION = (
     "'workload-node-control'::text, "
     "'workload-node-control-surface-read'::text, "
     "'gateway-node-control-transit'::text]))"
+)
+_SIGNING_PURPOSE_EXPRESSION = (
+    "(purpose = ANY (ARRAY['gateway-probe'::text, "
+    "'workload-node-control'::text, "
+    "'workload-node-control-surface-read'::text, "
+    "'gateway-node-control-transit'::text, "
+    "'workload-node-health-read'::text, "
+    "'gateway-node-health-read-transit'::text]))"
 )
 _INTENT_VALUES = (
     "application.control-token",
@@ -183,7 +192,7 @@ _PRE_SECRETS_INTENT_EXPRESSION = (
     "'gateway.node-control-transit-signing-key'::text, "
     "'workload.node-control-signing-key'::text]))"
 )
-_INTENT_EXPRESSION = (
+_PRE_HEALTH_INTENT_EXPRESSION = (
     "(use_intent = ANY (ARRAY['application.control-token'::text, "
     "'cloudflare.api-token'::text, 'cloudflare.tunnel-token'::text, "
     "'docker.local-socket-access-marker'::text, "
@@ -197,11 +206,15 @@ _INTENT_EXPRESSION = (
     "'secrets.custody-root-key'::text, "
     "'secrets.provider-credentials-document'::text]))"
 )
+_INTENT_EXPRESSION = _PRE_HEALTH_INTENT_EXPRESSION[:-3] + (
+    ", 'workload.node-health-read-signing-key'::text, "
+    "'gateway.node-health-read-transit-signing-key'::text]))"
+)
 _TARGET_CONSTRAINTS = {
     "cpk_delegation_signing_keys_purpose_check": (
         "cpk_delegation_signing_keys",
         "purpose",
-        _PURPOSE_EXPRESSION,
+        _SIGNING_PURPOSE_EXPRESSION,
         _OLD_PURPOSE_EXPRESSION,
     ),
     "cpk_gateway_key_rotations_purpose_check": (
@@ -329,6 +342,38 @@ def _captured_install_error(connection) -> BaseException:
 
 
 class CurrentSchemaStaticLawTests(unittest.TestCase):
+    def test_health_contract_fingerprint_pins_exact_constraint_changes(self) -> None:
+        from control_plane_kit_operations.postgres import current_schema_contract, schema
+
+        contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
+        targets = {
+            "cpk_delegation_signing_keys_purpose_check": _SIGNING_PURPOSE_EXPRESSION,
+            "cpk_secret_use_authorizations_intent_check": _INTENT_EXPRESSION,
+        }
+        constraints = tuple(
+            dataclasses.replace(value, check_expression=targets[value.name])
+            if value.name in targets else value
+            for value in contract.constraints
+        )
+        expected_contract = dataclasses.replace(contract, constraints=constraints)
+        payload = json.dumps(
+            {"domain": _CONTRACT_DOMAIN, "format_version": _CONTRACT_FORMAT_VERSION,
+             "contract": dataclasses.asdict(expected_contract)},
+            ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+        ).encode("ascii")
+        expected_sql = schema._CURRENT_SCHEMA_SQL
+        for value in contract.constraints:
+            if value.name in targets:
+                original = f"CONSTRAINT {value.name} CHECK ({value.check_expression})"
+                self.assertEqual(expected_sql.count(original), 1)
+                expected_sql = expected_sql.replace(
+                    original, f"CONSTRAINT {value.name} CHECK ({targets[value.name]})",
+                )
+        self.assertEqual(
+            (_CURRENT_CONTRACT_SHA256, _CURRENT_SCHEMA_SQL_SHA256),
+            (hashlib.sha256(payload).hexdigest(), hashlib.sha256(expected_sql.encode("utf-8")).hexdigest()),
+        )
+
     def test_public_postgres_connection_is_execute_only(self) -> None:
         connection_members = set(postgres.PostgresConnection.__dict__)
 
@@ -370,10 +415,10 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
         from control_plane_kit_operations.postgres import current_schema_contract
 
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
-        self.assertEqual(len(contract.relations), 40)
-        self.assertEqual(len(contract.columns), 507)
-        self.assertEqual(len(contract.constraints), 382)
-        self.assertEqual(len(contract.indexes), 131)
+        self.assertEqual(len(contract.relations), 41)
+        self.assertEqual(len(contract.columns), 526)
+        self.assertEqual(len(contract.constraints), 411)
+        self.assertEqual(len(contract.indexes), 135)
         self.assertFalse(hasattr(contract, "history"))
         self.assertEqual(
             tuple(relation.name for relation in contract.relations),
@@ -419,6 +464,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 "receipt_status",
                 "completed_at",
                 "result",
+                "managed_intent",
             ),
         )
         columns = {value.name: value for value in receipt_columns}
@@ -438,6 +484,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                     "cpk_execution_command_receipts_idempotency_key_check",
                     "cpk_execution_command_receipts_initial_run_check",
                     "cpk_execution_command_receipts_intent_fingerprint_check",
+                    "cpk_execution_command_receipts_managed_intent_check",
                     "cpk_execution_command_receipts_max_effects_check",
                     "cpk_execution_command_receipts_pkey",
                     "cpk_execution_command_receipts_result_check",
@@ -577,7 +624,7 @@ class CurrentSchemaStaticLawTests(unittest.TestCase):
                 )
         self.assertEqual(
             sum(statement.lower().startswith("create table ") for statement in statements),
-            40,
+            41,
         )
         self.assertEqual(
             hashlib.sha256(sql.encode("utf-8")).hexdigest(),
@@ -608,7 +655,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (40, 507, 382, 131))
+        self.assertEqual(self._catalog_counts(), (41, 526, 411, 135))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -695,6 +742,79 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
             ),
             tuple(sorted(_NEW_INTENTS)),
         )
+
+    def test_fresh_health_rows_survive_exact_query_only_reentry(self) -> None:
+        postgres.install_schema(self.connection)
+        self._seed_authority_vocabulary_rows()
+        for index, (purpose, intent) in enumerate((
+            ("workload-node-health-read", "workload.node-health-read-signing-key"),
+            ("gateway-node-health-read-transit", "gateway.node-health-read-transit-signing-key"),
+        ), start=40):
+            self.connection.execute(
+                "INSERT INTO cpk_delegation_signing_keys "
+                "SELECT %s, workspace_id, %s, issuer, %s, algorithm, public_key_pem, "
+                "public_fingerprint_sha256, private_key_reference, admitted_by, admitted_at, "
+                "status, activated_by, activated_at, retired_by, retired_at, revoked_by, revoked_at "
+                "FROM cpk_delegation_signing_keys WHERE key_id = 'key-a'",
+                (f"dkey_{index:064x}", purpose, f"health-key-{index}"),
+            )
+            self.connection.execute(
+                "INSERT INTO cpk_secret_use_authorizations "
+                "(authorization_id, workspace_id, reference_registration_id, "
+                "provider_registration_id, secret_reference, use_intent, actor_subject, "
+                "correlation_id, requested_at, intent_fingerprint) "
+                "VALUES (%s, 'workspace-a', 'reference-registration-a', "
+                "'provider-registration-a', 'secret://provider-a/signing/key', %s, "
+                "'operator-a', %s, '2026-08-11T00:00:00Z', %s)",
+                (f"suse_{index:064x}", intent, f"health-use-{index}", f"{index:064x}"),
+            )
+        before_objects, before_rows = self._object_identities(), self._authority_rows()
+        self.assertEqual(self.connection.execute(
+            "SELECT purpose FROM cpk_delegation_signing_keys WHERE key_id LIKE 'health-key-%' ORDER BY purpose"
+        ).fetchall(), [("gateway-node-health-read-transit",), ("workload-node-health-read",)])
+        recorder = _RecordingConnection(self.connection)
+        postgres.install_schema(recorder)
+        self.assertEqual(self._object_identities(), before_objects)
+        self.assertEqual(self._authority_rows(), before_rows)
+        self._assert_calls_are_read_only(recorder.calls)
+
+    def test_pre_health_constraints_refuse_without_repair_or_row_loss(self) -> None:
+        for name, expression in (
+            ("cpk_delegation_signing_keys_purpose_check", _PURPOSE_EXPRESSION),
+            ("cpk_secret_use_authorizations_intent_check", _PRE_HEALTH_INTENT_EXPRESSION),
+        ):
+            with self.subTest(constraint=name):
+                self._reset_owned_schema()
+                postgres.install_schema(self.connection)
+                self._seed_authority_vocabulary_rows()
+                relation = _TARGET_CONSTRAINTS[name][0]
+                self.connection.execute(f"ALTER TABLE {relation} DROP CONSTRAINT {name}")
+                self.connection.execute(f"ALTER TABLE {relation} ADD CONSTRAINT {name} CHECK ({expression})")
+                before_objects, before_rows = self._object_identities(), self._authority_rows()
+                before_constraints = self._constraint_snapshot()
+                recorder = _RecordingConnection(self.connection)
+                error = _captured_install_error(recorder)
+                self._assert_install_error(error, "operations schema reset is required")
+                self.assertEqual(self._object_identities(), before_objects)
+                self.assertEqual(self._authority_rows(), before_rows)
+                self.assertEqual(self._constraint_snapshot(), before_constraints)
+                self._assert_calls_are_read_only(recorder.calls)
+
+    def test_health_storage_does_not_broaden_rotation_or_unknown_vocabulary(self) -> None:
+        postgres.install_schema(self.connection)
+        self._seed_authority_vocabulary_rows()
+        for relation, column, value, constraint in (
+            ("cpk_delegation_signing_keys", "purpose", "unknown-health-purpose", "cpk_delegation_signing_keys_purpose_check"),
+            ("cpk_secret_use_authorizations", "use_intent", "unknown-health-intent", "cpk_secret_use_authorizations_intent_check"),
+            ("cpk_gateway_key_rotations", "purpose", "workload-node-health-read", "cpk_gateway_key_rotations_purpose_check"),
+            ("cpk_gateway_key_rotations", "purpose", "gateway-node-health-read-transit", "cpk_gateway_key_rotations_purpose_check"),
+        ):
+            with self.subTest(relation=relation, value=value):
+                before = self._authority_rows()
+                with self.assertRaises(psycopg.errors.CheckViolation) as raised:
+                    self.connection.execute(f"UPDATE {relation} SET {column} = %s", (value,))
+                self.assertEqual(raised.exception.diag.constraint_name, constraint)
+                self.assertEqual(self._authority_rows(), before)
 
     def test_authority_rows_and_approval_identity_survive_current_reentry(
         self,
@@ -1013,7 +1133,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (40, 507, 382, 131))
+        self.assertEqual(self._catalog_counts(), (41, 526, 411, 135))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

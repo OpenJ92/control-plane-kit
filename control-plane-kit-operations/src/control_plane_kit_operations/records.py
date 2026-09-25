@@ -16,6 +16,9 @@ from control_plane_kit_core.approval_subjects import (
     ApprovalSubject,
     GatewayKeyRotationApprovalSubject,
 )
+from control_plane_kit_core.identity import (
+    AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind, TrustedCommandContext, WorkspaceGrant,
+)
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
@@ -41,6 +44,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 
 
 class OperationsRecordError(ValueError):
@@ -567,6 +571,7 @@ class ActivityPlanRecord:
     base_realized_projection_id: str | None = None
     desired_realized_projection_id: str | None = None
     desired_graph_revision: int = 0
+    derivation_profile: PlanDerivationProfile | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _validate_text(self.plan_id, "plan_id")
@@ -578,6 +583,11 @@ class ActivityPlanRecord:
         _validate_text(self.created_at, "created_at")
         if not isinstance(self.plan, ActivityPlan):
             raise OperationsRecordError("activity plan record requires ActivityPlan")
+        if (
+            self.derivation_profile is not None
+            and type(self.derivation_profile) is not PlanDerivationProfile
+        ):
+            raise OperationsRecordError("activity plan derivation profile must be closed")
         _validate_optional_text(
             self.base_realized_projection_id,
             "base_realized_projection_id",
@@ -1006,6 +1016,87 @@ class ExecutionCommandResultRecord:
         _validate_optional_activity_id(self.activity_id)
 
 
+@dataclass(frozen=True)
+class ManagedExecutionCommandIntent:
+    """Historical caller provenance and explicit read lineage, never a grant."""
+
+    actor: PrincipalIdentity
+    workspace_id: str
+    actor_scopes: tuple[PolicyScope, ...]
+    predecessor: EffectAttemptIdentity | None = None
+
+    def __post_init__(self) -> None:
+        if (type(self.actor) is not PrincipalIdentity or type(self.actor.kind) is not PrincipalKind
+                or type(self.actor.issuer) is not str or type(self.actor.subject_id) is not str
+                or type(self.workspace_id) is not str or type(self.actor_scopes) is not tuple
+                or any(type(scope) is not PolicyScope for scope in self.actor_scopes)):
+            raise OperationsRecordError("managed command provenance is invalid")
+        self.actor.__post_init__()
+        for name, value in (("issuer", self.actor.issuer), ("actor", self.actor.subject_id),
+                ("workspace", self.workspace_id)):
+            _validate_text(value, name)
+        object.__setattr__(self, "actor_scopes", tuple(sorted(set(self.actor_scopes), key=lambda scope: scope.value)))
+        if self.predecessor is not None:
+            if type(self.predecessor) is not EffectAttemptIdentity:
+                raise OperationsRecordError("managed command predecessor is invalid")
+            self.predecessor.__post_init__()
+            if self.predecessor.attempt >= 2_147_483_647:
+                raise OperationsRecordError("managed command successor is outside its bound")
+        if len(json.dumps(self.descriptor(), ensure_ascii=True).encode("ascii")) > 8192:
+            raise OperationsRecordError("managed command provenance is outside its bound")
+
+    @property
+    def kind(self) -> str:
+        return "execute-managed" if self.predecessor is None else "reobserve-connector"
+
+    @property
+    def successor(self) -> EffectAttemptIdentity | None:
+        prior = self.predecessor
+        return None if prior is None else EffectAttemptIdentity(prior.run_id, prior.activity_id, prior.attempt + 1)
+
+    @classmethod
+    def from_context(cls, context: TrustedCommandContext, *, predecessor=None):
+        if (type(context) is not TrustedCommandContext or type(context.principal) is not AuthenticatedPrincipal
+                or type(context.principal.identity) is not PrincipalIdentity
+                or type(context.principal.workspace_grants) is not tuple
+                or type(context.granted_scopes) is not tuple
+                or any(type(scope) is not PolicyScope for scope in context.granted_scopes)
+                or any(type(grant) is not WorkspaceGrant or type(grant.scopes) is not tuple
+                    or any(type(scope) is not PolicyScope for scope in grant.scopes)
+                    for grant in context.principal.workspace_grants)):
+            raise OperationsRecordError("managed command requires authenticated context")
+        # Re-derive the selected workspace grant; payload fields cannot become
+        # caller authority. Retention below does not extend that authority.
+        principal = AuthenticatedPrincipal(context.principal.identity,
+            tuple(WorkspaceGrant(grant.workspace_id, grant.scopes) for grant in context.principal.workspace_grants))
+        rebuilt = TrustedCommandContext(principal, context.workspace_id, context.granted_scopes)
+        if rebuilt != context:
+            raise OperationsRecordError("managed command context is incongruent")
+        return cls(principal.identity, context.workspace_id, context.granted_scopes, predecessor)
+
+    def descriptor(self) -> dict[str, object]:
+        return {"kind": self.kind, "actor": self.actor.descriptor(), "workspace_id": self.workspace_id,
+            "actor_scopes": [scope.value for scope in self.actor_scopes],
+            "predecessor": None if self.predecessor is None else self.predecessor.descriptor(),
+            "successor": None if self.successor is None else self.successor.descriptor()}
+
+    @classmethod
+    def from_descriptor(cls, value: object):
+        invalid = "managed command provenance descriptor is invalid"
+        if type(value) is not dict or set(value) != {"kind", "actor", "workspace_id", "actor_scopes", "predecessor", "successor"}:
+            raise OperationsRecordError(invalid)
+        actor = value["actor"]
+        if (type(actor) is not dict or set(actor) != {"issuer", "subject_id", "kind"}
+                or type(value["actor_scopes"]) is not list):
+            raise OperationsRecordError(invalid)
+        result = cls(PrincipalIdentity(actor["issuer"], actor["subject_id"], PrincipalKind(actor["kind"])),
+            value["workspace_id"], tuple(PolicyScope(scope) for scope in value["actor_scopes"]),
+            None if value["predecessor"] is None else EffectAttemptIdentity.from_descriptor(value["predecessor"]))
+        if result.descriptor() != value:
+            raise OperationsRecordError(invalid)
+        return result
+
+
 def execution_command_intent_fingerprint(
     *,
     run_id: str,
@@ -1013,6 +1104,7 @@ def execution_command_intent_fingerprint(
     authority_scopes: tuple[PolicyScope, ...],
     claim_generation: int,
     max_effects: int,
+    managed_intent: ManagedExecutionCommandIntent | None = None,
 ) -> str:
     """Fingerprint the complete canonical intent retained by a command receipt."""
 
@@ -1040,6 +1132,15 @@ def execution_command_intent_fingerprint(
         "claim_generation": claim_generation,
         "max_effects": max_effects_text,
     }
+    if managed_intent is not None:
+        if type(managed_intent) is not ManagedExecutionCommandIntent:
+            raise OperationsRecordError("managed command intent must be typed")
+        managed_intent.__post_init__()
+        prior = managed_intent.predecessor
+        if prior is not None and (prior.run_id.value != run_id or max_effects != 1):
+            raise OperationsRecordError("managed command predecessor or bound is incongruent")
+        descriptor.update(domain="control-plane-kit.operations.managed-execution-command.v1",
+            command=managed_intent.kind, managed_intent=managed_intent.descriptor())
     payload = json.dumps(
         descriptor,
         ensure_ascii=True,
@@ -1105,6 +1206,7 @@ class ExecutionCommandReceiptRecord:
     status: ExecutionCommandReceiptStatus = ExecutionCommandReceiptStatus.INCOMPLETE
     completed_at: str | None = None
     result: ExecutionCommandResultRecord | None = None
+    managed_intent: ManagedExecutionCommandIntent | None = None
 
     def __post_init__(self) -> None:
         _validate_run_id(self.run_id, "run_id")
@@ -1132,6 +1234,7 @@ class ExecutionCommandReceiptRecord:
             authority_scopes=scopes,
             claim_generation=self.claim_generation,
             max_effects=self.max_effects,
+            managed_intent=self.managed_intent,
         )
         if self.intent_fingerprint != expected_fingerprint:
             raise OperationsRecordError("execution command fingerprint is invalid")

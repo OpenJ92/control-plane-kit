@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import replace
+from tests.runtime_management_fixtures import (
+    management_graph, sdk_health_graph, registered_management_product,
+    omitted_management_graph,
+    bootstrap_management_graph,
+)
 
 from control_plane_kit_core.algebra import (
     BlockSockets,
@@ -16,6 +21,10 @@ from control_plane_kit_core.environment import (
     PublicStaticEnvironmentBinding,
     SocketDerivedEnvironmentBinding,
 )
+from control_plane_kit_core.configuration import (
+    ConfigurationArtifact, ConfigurationFileMode, ConfigurationMediaType,
+)
+from control_plane_kit_core.topology.codec import MalformedGraphDescriptor
 from control_plane_kit_core.operations.lifecycle import (
     ActivityEventKind,
     ActivityRunStatus,
@@ -33,6 +42,7 @@ from control_plane_kit_core.planning import (
     StopNode,
     StopRuntime,
     RuntimeTarget,
+    WaitForHealthy,
 )
 from control_plane_kit_core.planning.saga import (
     derive_schedule,
@@ -223,6 +233,104 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 self.assertIsNone(caught.__cause__)
                 self.assertIsNone(caught.__context__)
                 self.assertEqual(dispatch, [])
+
+    def test_direct_malformed_product_reference_has_bounded_catalog_independent_error(self):
+        product = registered_management_product()
+        graph = omitted_management_graph(product)
+        node = graph.node("api")
+        graph = replace(graph, nodes={"api": replace(node, metadata={
+            **node.metadata, "product_identity": "test/managed-contract/REFERENCE-CANARY",
+        })})
+        for registrations in ((), (product,)):
+            with self.subTest(registered=bool(registrations)):
+                context = _context(base_graph=graph, desired_graph=graph, registered_products=registrations)
+                with self.assertRaises(InvalidOperationCommand) as captured:
+                    runtime_effect_request_for_context(context)
+                self.assertEqual(str(captured.exception), "runtime management execution is unsupported")
+                self.assertIsNone(captured.exception.__cause__)
+                self.assertIsNone(captured.exception.__context__)
+                self.assertNotIn("REFERENCE-CANARY", repr(captured.exception))
+
+    def test_direct_omitted_declaration_checks_exact_pinned_products_on_both_sides(self):
+        for transit in (False, True):
+            product = registered_management_product(transit=transit)
+            graph = omitted_management_graph(product)
+            plain = _graph()
+            for base, desired in ((graph, plain), (plain, graph), (graph, graph)):
+                with self.subTest(transit=transit, base=base.name, desired=desired.name):
+                    context = _context(base_graph=base, desired_graph=desired,
+                        registered_products=(_registered_product(), product))
+                    with self.assertRaises(InvalidOperationCommand):
+                        runtime_effect_request_for_context(context)
+
+    def test_direct_unrelated_management_registration_preserves_plain_intent(self):
+        context = _context()
+        expected = runtime_effect_request_for_context(context)
+        context = replace(context, registered_products=context.registered_products + (registered_management_product(),))
+        self.assertEqual(runtime_effect_request_for_context(context), expected)
+
+    def test_direct_same_identity_different_digest_registration_is_not_selected(self):
+        context = _context()
+        expected = runtime_effect_request_for_context(context)
+        managed = registered_management_product()
+        product = replace(managed.descriptor_document.product, identity=context.registered_products[0].reference.identity)
+        other = RegisteredProduct.from_document(
+            workspace_id="workspace-a", descriptor_document=ProductDescriptorCodec().encode_document(product),
+            source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-07-22T09:00:00Z",
+        )
+        self.assertNotEqual(other.reference.descriptor_sha256, context.registered_products[0].reference.descriptor_sha256)
+        context = replace(context, registered_products=context.registered_products + (other,))
+        self.assertEqual(runtime_effect_request_for_context(context), expected)
+
+    def test_direct_sdk_activity_cannot_borrow_equal_graph_no_op_exemption(self):
+        original = _graph().node("api")
+        graph = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        context = _context(base_graph=graph, desired_graph=graph)
+        with self.assertRaises(InvalidOperationCommand):
+            runtime_effect_request_for_context(context)
+
+    def test_ready_graph_pair_observation_cannot_authorize_direct_transport(self):
+        from control_plane_kit_core.planning import ObserveNodeHealth, compile_graph_activity_plan
+        from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+
+        current = DeploymentGraph("empty")
+        desired = bootstrap_management_graph(self)
+        plan = compile_graph_activity_plan(validate_graph(current), validate_graph(desired))
+        self.assertTrue(plan.ready_for_execution)
+        activity = next(value for value in plan.activities if isinstance(value.operation, ObserveNodeHealth))
+        context = _context(base_graph=current, desired_graph=desired, registered_products=())
+        context = replace(context, activity=activity,
+            plan_record=replace(context.plan_record, plan=plan,
+                derivation_profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1),
+            intent_event=replace(context.intent_event, activity_id=activity.activity_id.value))
+        with self.assertRaises(InvalidOperationCommand) as error:
+            runtime_effect_request_for_context(context)
+        self.assertEqual(str(error.exception), "runtime management execution is unsupported")
+        self.assertIsNone(error.exception.__cause__)
+        self.assertIsNone(error.exception.__context__)
+
+    def test_direct_sdk_activity_checks_both_pinned_graphs_before_intent(self):
+        original = _graph().node("api")
+        sdk = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        legacy = replace(sdk, nodes={"api": replace(sdk.node("api"), block_spec=BlockSpec("api"))})
+        for base, desired in ((sdk, legacy), (legacy, sdk)):
+            with self.subTest(sdk_in_base=base is sdk):
+                context = _context(base_graph=base, desired_graph=desired)
+                with self.assertRaises(InvalidOperationCommand):
+                    runtime_effect_request_for_context(context)
+
+    def test_direct_plain_activity_checks_management_and_transit_on_both_sides(self):
+        original = _graph().node("api")
+        sdk = sdk_health_graph(metadata=original.metadata, public_environment=original.public_environment)
+        legacy = replace(sdk, nodes={"api": replace(sdk.node("api"), block_spec=BlockSpec("api"))})
+        for selected in (True, False):
+            graph = management_graph(self, selected=selected, metadata=original.metadata)
+            for base, desired in ((graph, legacy), (legacy, graph), (graph, graph)):
+                with self.subTest(selected=selected, equal=base is desired, in_base=base is graph):
+                    context = _context(base_graph=base, desired_graph=desired)
+                    with self.assertRaises(InvalidOperationCommand):
+                        runtime_effect_request_for_context(context)
 
     def test_post_start_request_binds_only_exact_original_event_identity(self) -> None:
         projection = getattr(
@@ -570,6 +678,106 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
                 self.assertEqual(request.products[0].runtime_authority_deliveries,
                                  (admitted.delivery,))
 
+    def test_compiled_configuration_preserves_selected_content_and_provenance(self) -> None:
+        registered = _configuration_product()
+        declared = _artifact_descriptors(registered.descriptor_document.product.runtime_contract.configuration_artifacts)
+        for selection in (None, "first-selection", "second-selection"):
+            with self.subTest(selection=selection):
+                graph = _configuration_graph(registered, selection=selection)
+                # Ordering is not slot identity; Core material normalizes order.
+                node = graph.node("api")
+                graph = replace(graph, nodes={"api": replace(node,
+                    configuration_artifacts=tuple(reversed(node.configuration_artifacts)))})
+                request = runtime_effect_request_for_context(_context(
+                    desired_graph=graph, registered_products=(registered,),
+                ))
+                actual = request.products[0].product.runtime_contract.configuration_artifacts
+                self.assertEqual(_artifact_descriptors(actual), _artifact_descriptors(node.configuration_artifacts))
+                if selection is not None:
+                    self.assertTrue(all(value.source_digest == "b" * 64 for value in actual))
+                    self.assertNotEqual(_artifact_descriptors(actual), declared)
+        self.assertEqual(_artifact_descriptors(
+            registered.descriptor_document.product.runtime_contract.configuration_artifacts), declared)
+
+    def test_configuration_material_uses_each_operations_pinned_graph_side(self) -> None:
+        registered = _configuration_product()
+        current = _configuration_graph(registered, selection="base-selection")
+        desired = _configuration_graph(registered, selection="desired-selection")
+        for operation_type, selected in (
+            (StartNode, desired), (ReconcileNode, desired), (WaitForHealthy, desired),
+            (StopNode, current), (RemoveNodeResource, current),
+        ):
+            with self.subTest(operation=operation_type.__name__):
+                request = runtime_effect_request_for_context(_context(
+                    activity=PlannedActivity(ActivityId("configuration-side"), operation_type(NodeTarget("api"))),
+                    base_graph=current, desired_graph=desired, registered_products=(registered,),
+                ))
+                self.assertEqual(_artifact_descriptors(request.products[0].product.runtime_contract.configuration_artifacts),
+                    _artifact_descriptors(selected.node("api").configuration_artifacts))
+                self.assertEqual(request.operation, operation_type(NodeTarget("api")))
+
+    def test_deploy_configuration_slots_reject_missing_extra_or_reassigned_selection(self) -> None:
+        registered = _configuration_product()
+        graph = _configuration_graph(registered, selection="selected")
+        first, second = graph.node("api").configuration_artifacts
+        candidates = (
+            ("missing-all", ()),
+            ("missing-one", (first,)),
+            ("extra", (first, second, replace(first, artifact_id="extra", target_path="/etc/cpk/extra.json"))),
+            ("identity", (replace(first, artifact_id="renamed"), second)),
+            ("path", (replace(first, target_path="/etc/cpk/other.json"), second)),
+            ("media", (replace(first, media_type=ConfigurationMediaType.TEXT), second)),
+            ("mode", (replace(first, file_mode=(ConfigurationFileMode.READ_ONLY
+                if first.file_mode is ConfigurationFileMode.OWNER_READ_ONLY else ConfigurationFileMode.OWNER_READ_ONLY)), second)),
+        )
+        plain = _registered_product()
+        empty_graph = _configuration_graph(plain)
+        cases = [(label, registered, replace(graph, nodes={"api": replace(graph.node("api"), configuration_artifacts=values)}))
+            for label, values in candidates]
+        cases.append(("empty-contract-extra", plain, replace(empty_graph, nodes={"api": replace(
+            empty_graph.node("api"), configuration_artifacts=(first,))})))
+        for operation_type in (StartNode, ReconcileNode):
+            for label, product, selected in cases:
+                with self.subTest(operation=operation_type.__name__, mismatch=label):
+                    context = _context(
+                        activity=PlannedActivity(ActivityId("configuration-slots"), operation_type(NodeTarget("api"))),
+                        desired_graph=selected, registered_products=(product,),
+                    )
+                    with self.assertRaises(InvalidOperationCommand) as caught:
+                        runtime_effect_request_for_context(context)
+                    self.assertEqual(str(caught.exception), "runtime effect configuration artifact contract is not satisfied")
+                    self.assertIsNone(caught.exception.__cause__)
+                    self.assertIsNone(caught.exception.__context__)
+
+    def test_observation_and_cleanup_preserve_material_without_new_deploy_slot_admission(self) -> None:
+        registered = _configuration_product()
+        complete = _configuration_graph(registered, selection="complete")
+        missing = replace(complete, nodes={"api": replace(complete.node("api"), configuration_artifacts=())})
+        for operation_type in (WaitForHealthy, StopNode, RemoveNodeResource):
+            with self.subTest(operation=operation_type.__name__):
+                context = _context(
+                    activity=PlannedActivity(ActivityId("configuration-retained"), operation_type(NodeTarget("api"))),
+                    base_graph=complete if operation_type is WaitForHealthy else missing,
+                    desired_graph=missing if operation_type is WaitForHealthy else complete,
+                    registered_products=(registered,),
+                )
+                request = runtime_effect_request_for_context(context)
+                self.assertEqual(request.products[0].product.runtime_contract.configuration_artifacts, ())
+                self.assertEqual(request.operation, operation_type(NodeTarget("api")))
+
+    def test_malformed_configuration_keeps_existing_core_snapshot_decode_boundary(self) -> None:
+        registered = _configuration_product()
+        graph = _configuration_graph(registered, selection="selected")
+        for side in ("base_graph", "desired_graph"):
+            with self.subTest(side=side):
+                context = _context(base_graph=graph, desired_graph=graph, registered_products=(registered,))
+                # Deliberate isolated record corruption, after valid construction.
+                # Both snapshot decodes precede Operations' new slot admission.
+                descriptor = getattr(context, side).graph_descriptor
+                descriptor["nodes"]["api"]["configuration_artifacts"][0]["content_digest"] = "0" * 64
+                with self.assertRaisesRegex(MalformedGraphDescriptor, "configuration artifact digest"):
+                    runtime_effect_request_for_context(context)
+
     def test_compiled_product_deliveries_preserve_selected_references_once(self) -> None:
         base = _registered_product().descriptor_document.product
         declared = (
@@ -835,17 +1043,18 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             tuple(
                 delivery.reference.reference_id
                 for delivery in deliveries
-                if isinstance(delivery, SecretEnvironmentDelivery)
-                and delivery.environment_name == "TUNNEL_TOKEN"
+                if isinstance(delivery, SecretFileDelivery)
+                and delivery.target_path == "/run/secrets/cloudflare-tunnel-token"
             ),
             (active_secret.secret_ref.reference_id,),
         )
         self.assertNotIn("tunnel-token-value", repr(request.descriptor()).lower())
 
     def test_explicit_compiled_tunnel_token_needs_no_generated_material(self) -> None:
-        delivery = SecretEnvironmentDelivery(
-            "TUNNEL_TOKEN", SecretReference("secret://workspace-a/selected/tunnel"),
+        delivery = SecretFileDelivery(
+            "/run/secrets/cloudflare-tunnel-token", SecretReference("secret://workspace-a/selected/tunnel"),
             SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            path_binding=SecretFilePathBinding("TUNNEL_TOKEN_FILE"),
         )
         context = _context(
             activity=PlannedActivity(
@@ -855,7 +1064,10 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             registered_products=(_registered_product(name="cloudflared-connector"),),
         )
 
-        request = runtime_effect_request_for_context(context)
+        try:
+            request = runtime_effect_request_for_context(context)
+        except InvalidOperationCommand:
+            self.fail("protected compiled token-file delivery was not recognized")
 
         self.assertEqual(
             request.products[0].product.runtime_contract.secret_deliveries,
@@ -863,9 +1075,10 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
 
     def test_generated_ingress_material_satisfies_declared_secret_slot(self) -> None:
-        declared = SecretEnvironmentDelivery(
-            "TUNNEL_TOKEN", SecretReference("secret://defaults/tunnel"),
+        declared = SecretFileDelivery(
+            "/run/secrets/cloudflare-tunnel-token", SecretReference("secret://defaults/tunnel"),
             SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            path_binding=SecretFilePathBinding("TUNNEL_TOKEN_FILE"),
         )
         base = _registered_product(name="cloudflared-connector").descriptor_document.product
         product = replace(base, runtime_contract=replace(
@@ -1288,7 +1501,7 @@ def _graph(
 def _public_ingress_graph(
     *,
     public_ingresses: tuple[NamedPublicIngress, ...] | None = None,
-    connector_deliveries: tuple[SecretEnvironmentDelivery, ...] = (),
+    connector_deliveries: tuple[SecretDelivery, ...] = (),
     ingress_lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
 ) -> DeploymentGraph:
     gateway = Node(
@@ -1480,6 +1693,36 @@ def _gateway_graph(
             )
         },
     )
+
+
+def _artifact_descriptors(values):
+    return tuple(value.descriptor() for value in sorted(values))
+
+
+def _configuration_product() -> RegisteredProduct:
+    base = _registered_product().descriptor_document.product
+    artifacts = (
+        ConfigurationArtifact("settings", "/etc/cpk/settings.json", ConfigurationMediaType.JSON, '{"selection":"default-settings"}'),
+        ConfigurationArtifact("limits", "/etc/cpk/limits.json", ConfigurationMediaType.JSON, '{"selection":"default-limits"}',
+            file_mode=ConfigurationFileMode.OWNER_READ_ONLY),
+    )
+    product = replace(base, runtime_contract=replace(base.runtime_contract, configuration_artifacts=artifacts))
+    return RegisteredProduct.from_document(
+        workspace_id="workspace-a", descriptor_document=ProductDescriptorCodec().encode_document(product),
+        source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-07-22T09:00:00Z",
+    )
+
+
+def _configuration_graph(registered, *, selection=None):
+    product = registered.descriptor_document.product
+    configuration = ProductInstanceConfiguration.from_contract(product.runtime_contract)
+    if selection is not None:
+        configuration = replace(configuration, configuration_artifacts=tuple(
+            replace(artifact, content=json.dumps({"selection": selection, "artifact": artifact.artifact_id}), source_digest="b" * 64)
+            for artifact in configuration.configuration_artifacts
+        ))
+    block = instantiate_product(product, "api", configuration)
+    return compile_topology(DeploymentTopology("selected-configuration", DockerRuntime(runtime_id="docker", children=(block,))))
 
 
 def _registered_product(

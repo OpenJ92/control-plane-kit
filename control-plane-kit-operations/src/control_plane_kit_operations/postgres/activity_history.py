@@ -14,7 +14,10 @@ from control_plane_kit_core.approval_subjects import (
 )
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import LifecycleOperationKind
-from control_plane_kit_core.planning import DEFAULT_ACTIVITY_PLAN_CODEC
+from control_plane_kit_operations.plan_derivation import (
+    decode_stored_activity_plan,
+    encode_stored_activity_plan,
+)
 from control_plane_kit_core.planning import RiskLevel
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.postgres.schema import PostgresConnection
@@ -400,7 +403,7 @@ class PostgresActivityHistoryStore:
                 record.desired_graph_revision,
                 record.status.value,
                 encode_postgres_timestamp(record.created_at),
-                Jsonb(DEFAULT_ACTIVITY_PLAN_CODEC.encode(record.plan)),
+                Jsonb(encode_stored_activity_plan(record.plan, profile=record.derivation_profile)),
             ),
         ).fetchone()
         if inserted is None:
@@ -461,13 +464,22 @@ class PostgresActivityHistoryStore:
         return tuple(_approval_request_record(row) for row in rows)
 
     def get_plan(self, plan_id: str) -> ActivityPlanRecord:
+        return self._get_plan(plan_id, for_share=False)
+
+    def get_plan_for_share(self, plan_id: str) -> ActivityPlanRecord:
+        """Retain a plan's current status and payload through the caller's UoW."""
+        return self._get_plan(plan_id, for_share=True)
+
+    def _get_plan(self, plan_id: str, *, for_share: bool) -> ActivityPlanRecord:
+        lock = "FOR SHARE" if for_share else ""
         row = self._connection.execute(
-            """
+            f"""
             SELECT plan_id, session_id, base_graph_id, desired_graph_id,
                    base_realized_projection_id, desired_realized_projection_id,
                    desired_graph_revision, status, created_at, payload
             FROM cpk_activity_plans
             WHERE plan_id = %s
+            {lock}
             """,
             (plan_id,),
         ).fetchone()
@@ -816,6 +828,7 @@ def _action_record(row: tuple[Any, ...]) -> OperationActionRecord:
 
 
 def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
+    plan, profile = decode_stored_activity_plan(row[9])
     return ActivityPlanRecord(
         plan_id=row[0],
         session_id=row[1],
@@ -826,7 +839,8 @@ def _plan_record(row: tuple[Any, ...]) -> ActivityPlanRecord:
         desired_graph_revision=row[6],
         status=ActivityPlanStatus(row[7]),
         created_at=decode_postgres_timestamp(row[8]),
-        plan=DEFAULT_ACTIVITY_PLAN_CODEC.decode(row[9]),
+        plan=plan,
+        derivation_profile=profile,
     )
 
 

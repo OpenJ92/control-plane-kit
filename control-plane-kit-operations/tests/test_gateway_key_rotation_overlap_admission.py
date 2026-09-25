@@ -89,6 +89,68 @@ class GatewayKeyRotationOverlapAdmissionTests(
             id_factory=Sequence(*ids),
         )
 
+    def test_rotation_reproduces_declared_graph_pair_profile_with_distinct_publication_evidence(self):
+        from psycopg.types.json import Jsonb
+        from control_plane_kit_core import RuntimeManagement
+        from control_plane_kit_core.planning import compile_activity_plan, compile_graph_activity_plan
+        from control_plane_kit_core.public_ingress import PublicIngressTarget
+        from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, diff_graphs, validate_graph
+        from control_plane_kit_operations.records import RealizedGraphProjectionRecord
+        from tests.runtime_management_fixtures import bootstrap_management_graph
+        from tests.test_plan_derivation import require_derivation
+        module = require_derivation(self)
+        material = bootstrap_management_graph(self)
+
+        def managed(graph):
+            gateway = graph.node("gateway-a")
+            reference = material.node("gateway")
+            gateway = replace(gateway, block_spec=replace(gateway.block_spec,
+                capabilities=reference.block_spec.capabilities,
+                gateway_transit=reference.block_spec.gateway_transit,
+                control_surfaces=reference.block_spec.control_surfaces),
+                sockets=reference.sockets, endpoints=reference.endpoints)
+            nodes = {**graph.nodes, "gateway-a": gateway, "connector": material.node("connector")}
+            graph = replace(graph, nodes=nodes,
+                runtimes={"docker": replace(graph.runtimes["docker"], children=tuple(nodes),
+                    management=RuntimeManagement("gateway-a", "management"))},
+                public_ingresses=(replace(material.public_ingresses[0], target=PublicIngressTarget("gateway-a", "http")),))
+            validate_graph(graph).require_valid()
+            return graph
+
+        # A coherent stored historical fixture changes all related graph values;
+        # the real rotation publication and approval records remain independent.
+        with self.unit_of_work() as uow:
+            authored = uow.stores.graphs.get("graph-a")
+            base = uow.stores.realized_graphs.get("projection-a")
+            desired = uow.stores.realized_graphs.get(self.overlap_projection_id)
+        self.connection.execute("UPDATE cpk_graph_versions SET graph_descriptor=%s WHERE graph_id=%s",
+            (Jsonb(DEFAULT_GRAPH_CODEC.encode(managed(DEFAULT_GRAPH_CODEC.decode(authored.graph_descriptor)))), "graph-a"))
+        for record in (base, desired):
+            rebuilt = RealizedGraphProjectionRecord.from_graph(
+                projection_id=record.projection_id, workspace_id=record.workspace_id,
+                source_authored_graph_id=record.source_authored_graph_id,
+                projection_kind=record.projection_kind, projection_key=record.projection_key,
+                graph=managed(DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor)),
+                created_by=record.created_by, created_at=record.created_at,
+            )
+            self.connection.execute("UPDATE cpk_realized_graph_projections SET graph_descriptor=%s, projection_digest=%s WHERE projection_id=%s",
+                (Jsonb(rebuilt.graph_descriptor), rebuilt.projection_digest, rebuilt.projection_id))
+        current_graph = validate_graph(managed(DEFAULT_GRAPH_CODEC.decode(base.graph_descriptor)))
+        desired_graph = validate_graph(managed(DEFAULT_GRAPH_CODEC.decode(desired.graph_descriptor)))
+        canonical = compile_graph_activity_plan(current_graph, desired_graph)
+        structural = compile_activity_plan(diff_graphs(current_graph, desired_graph))
+        self.assertNotEqual(canonical, structural)
+        self.assertTrue(canonical.ready_for_execution)
+        profile = module.PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
+        self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id=%s",
+            (Jsonb(module.encode_stored_activity_plan(canonical, profile=profile)), self.plan.plan_id))
+        self.connection.execute("UPDATE cpk_operation_actions SET payload=payload || %s WHERE action_id=%s",
+            (Jsonb({"derivation_profile": profile.value}), "overlap-plan-action"))
+        result = self.service("profiled-execution", "profiled-admission-action").execute(
+            self.command(scopes=(PolicyScope.PLAN_EXECUTE, PolicyScope.INGRESS_AUTHORITY_USE)))
+        self.assertEqual(result.request.identity.plan_id, self.plan.plan_id)
+        self.assertFalse(result.replayed)
+
     def test_exact_rotation_approval_admits_only_the_overlap_child_plan(self) -> None:
         result = self.service("execution-a", "action-admit").execute(self.command())
 

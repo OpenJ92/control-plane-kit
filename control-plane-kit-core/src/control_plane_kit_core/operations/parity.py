@@ -1359,6 +1359,15 @@ _OPERATOR_COMMANDS = (
         ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
     ),
     (
+        "deployment.reobserve-connector",
+        "command.deployment.reobserve-connector",
+        "reobserve_connector_connection",
+        ControlPlaneServiceRole.EXECUTION,
+        "ReobserveConnectorConnectionRequest",
+        "ExecutionRunResponse",
+        ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+    ),
+    (
         "graph.advance-current",
         "command.graph.advance-current",
         "advance_current_graph",

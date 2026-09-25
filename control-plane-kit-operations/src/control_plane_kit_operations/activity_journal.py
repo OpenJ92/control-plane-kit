@@ -8,10 +8,13 @@ from control_plane_kit_core.planning.saga import (
     ActivityJournalEventKind,
 )
 from control_plane_kit_operations.records import ActivityEventRecord
+from control_plane_kit_operations.effect_attempts import EffectAttemptEventEvidence
 
 
 EVENT_KIND_TO_JOURNAL_KIND = {
     ActivityEventKind.STEP_STARTED: ActivityJournalEventKind.STEP_STARTED,
+    ActivityEventKind.STEP_OBSERVATION_NOT_READY: ActivityJournalEventKind.STEP_OBSERVATION_NOT_READY,
+    ActivityEventKind.STEP_OBSERVATION_RESTARTED: ActivityJournalEventKind.STEP_OBSERVATION_RESTARTED,
     ActivityEventKind.STEP_SUCCEEDED: ActivityJournalEventKind.STEP_SUCCEEDED,
     ActivityEventKind.STEP_FAILED: ActivityJournalEventKind.STEP_FAILED,
     ActivityEventKind.STEP_UNSUPPORTED: ActivityJournalEventKind.STEP_UNSUPPORTED,
@@ -65,6 +68,13 @@ def activity_journal_events(
         kind = EVENT_KIND_TO_JOURNAL_KIND.get(event.kind)
         if kind is None:
             continue
+        evidence = event.evidence.descriptor()
+        attempt = None
+        if "effect_attempt" in evidence:
+            commitment = evidence["effect_attempt"]
+            if type(commitment) is not dict or set(commitment) != {"attempt", "state_fingerprint"}:
+                raise ValueError("activity attempt commitment is invalid")
+            attempt = EffectAttemptEventEvidence(**commitment).attempt
         journal.append(
             ActivityJournalEvent(
                 event_id=event.event_id,
@@ -72,6 +82,7 @@ def activity_journal_events(
                 ordinal=event.ordinal,
                 kind=kind,
                 activity_id=event.activity_id,
+                attempt=attempt,
             )
         )
     return tuple(journal)

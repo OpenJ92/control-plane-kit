@@ -10,6 +10,11 @@ import unittest
 from unittest import mock
 
 import psycopg
+from tests.runtime_management_fixtures import (
+    management_graph, sdk_health_graph, registered_management_product,
+    omitted_management_graph,
+    bootstrap_management_graph,
+)
 
 from control_plane_kit_core.operations import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
@@ -35,9 +40,12 @@ from control_plane_kit_core.planning import (
     ActivityDependency,
     ActivityId,
     ActivityPlan,
+    AddSocketConnection,
     NodeTarget,
     PlannedActivity,
     StartNode,
+    StopNode,
+    SocketConnectionTarget,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.public_ingress import (
@@ -47,6 +55,7 @@ from control_plane_kit_core.public_ingress import (
 from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_core.algebra import BlockSockets, BlockSpec
 from control_plane_kit_core.topology import (
+    DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
     Node,
     RuntimeRecord,
@@ -818,6 +827,521 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             self.assertNotIn("overflow-", repr(event_payloads))
             self.assertNotIn("overflow-", repr(direct_outcome_descriptor))
 
+    def _install_sdk_pair(self, *, equal=False, empty_plan=False, plan=None):
+        with self.unit_of_work() as uow:
+            record = uow.stores.graphs.get("graph-desired")
+        original = DEFAULT_GRAPH_CODEC.decode(record.graph_descriptor).node("api")
+        desired = sdk_health_graph(metadata=original.metadata)
+        base = desired if equal else DeploymentGraph("empty")
+        selected_plan = plan if plan is not None else ActivityPlan(()) if empty_plan else single_activity_plan()
+        self.reset_execution_request(plan=selected_plan, base_graph=base, desired_graph=desired)
+
+    def test_malformed_product_reference_refusal_is_independent_of_unrelated_registration(self):
+        product = registered_management_product()
+        graph = omitted_management_graph(product)
+        node = graph.node("api")
+        graph = replace(graph, nodes={"api": replace(node, metadata={
+            **node.metadata, "product_identity": "test/managed-contract/REFERENCE-CANARY",
+        })})
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        cases = (
+            (False, plan, DeploymentGraph("empty")),
+            (True, plan, DeploymentGraph("empty")),
+            (False, ActivityPlan(()), graph),
+        )
+        for include_unrelated, supplied_plan, base in cases:
+            with self.subTest(include_unrelated=include_unrelated, empty_plan=not supplied_plan.activities):
+                self.reset_execution_request(plan=supplied_plan, base_graph=base, desired_graph=graph)
+                if include_unrelated:
+                    with self.unit_of_work() as uow:
+                        uow.stores.registered_products.register(
+                            workspace_id="workspace-a", descriptor_document=product.descriptor_document,
+                            source=product.source, imported_by=product.imported_by, imported_at=product.imported_at,
+                        )
+                        uow.commit()
+                self.claim_and_start()
+                adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                coordinator = self.coordinator(adapter)
+                with self.unit_of_work() as uow:
+                    before = uow.stores.execution.events_for_run("run-a")
+                result = coordinator.execute(self.command())
+                self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+                self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+                self.assertEqual(result.effects_attempted, 0)
+                self.assertEqual(adapter.calls, [])
+                self.assertEqual(coordinator.execute(self.command()), result)
+                self.assertNotIn("REFERENCE-CANARY", repr(result))
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_omitted_declaration_pinned_product_denies_before_legacy_dispatch(self):
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        for transit in (False, True):
+            product = registered_management_product(transit=transit)
+            graph = omitted_management_graph(product)
+            for base, desired in ((DeploymentGraph("empty"), graph), (graph, DeploymentGraph("empty"))):
+                with self.subTest(transit=transit, removing=not desired.nodes):
+                    self.reset_execution_request(plan=plan, base_graph=base, desired_graph=desired,
+                        product_document=product.descriptor_document)
+                    self.claim_and_start()
+                    adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                    coordinator = self.coordinator(adapter)
+                    with self.unit_of_work() as uow:
+                        before = uow.stores.execution.events_for_run("run-a")
+                    result = coordinator.execute(self.command())
+                    self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+                    self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+                    self.assertEqual(result.effects_attempted, 0)
+                    self.assertEqual(adapter.calls, [])
+                    self.assertEqual(coordinator.execute(self.command()), result)
+                    with self.unit_of_work() as uow:
+                        self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_guarded_settled_step_cannot_write_running_run_completion_or_failure(self):
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        for failed in (False, True):
+            with self.subTest(failed=failed):
+                self._install_sdk_pair(plan=plan)
+                self.claim_and_start()
+                with self.unit_of_work() as uow:
+                    execution = uow.stores.execution
+                    execution.add_event(ActivityEventRecord("historical-start", "run-a", execution.next_event_ordinal("run-a"), ActivityEventKind.STEP_STARTED, "2026-07-22T13:00:30Z", activity_id="start-api"))
+                    execution.add_event(ActivityEventRecord("historical-settled", "run-a", execution.next_event_ordinal("run-a"), ActivityEventKind.STEP_FAILED if failed else ActivityEventKind.STEP_SUCCEEDED, "2026-07-22T13:00:31Z", activity_id="start-api",
+                        failure=FailureEvidence(FailureCategory.TERMINAL, "prior-failure", "prior step failed") if failed else None))
+                    uow.commit()
+                adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                coordinator = self.coordinator(adapter)
+                with self.unit_of_work() as uow:
+                    before = uow.stores.execution.events_for_run("run-a")
+                result = coordinator.execute(self.command())
+                self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+                self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+                self.assertEqual(result.effects_attempted, 0)
+                self.assertEqual(adapter.calls, [])
+                self.assertEqual(coordinator.execute(self.command()), result)
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_unrelated_management_registration_does_not_block_plain_execution(self):
+        product = registered_management_product()
+        with self.unit_of_work() as uow:
+            uow.stores.registered_products.register(
+                workspace_id="workspace-a", descriptor_document=product.descriptor_document,
+                source=product.source, imported_by=product.imported_by, imported_at=product.imported_at,
+            )
+            uow.commit()
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        result = self.coordinator(adapter).execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(adapter.calls, ["start-api"])
+
+    def test_sdk_missing_path_returns_completed_unsupported_receipt_without_effects(self):
+        self._install_sdk_pair()
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        with mock.patch.object(EffectAttemptStartService, "execute", side_effect=AssertionError("unsupported graph reached attempt admission")):
+            first = coordinator.execute(self.command())
+        self.assertIs(first.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(first.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(first.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        replay = coordinator.execute(self.command())
+        self.assertEqual(replay, first)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_ready_graph_pair_plan_remains_unsupported_before_effect_attempts(self):
+        from control_plane_kit_core.planning import compile_graph_activity_plan
+        from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
+
+        current = DeploymentGraph("empty")
+        desired = bootstrap_management_graph(self)
+        plan = compile_graph_activity_plan(validate_graph(current), validate_graph(desired))
+        self.assertTrue(plan.ready_for_execution)
+        self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
+            derivation_profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        attempts_before = self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0]
+        observations_before = self.connection.execute("SELECT count(*) FROM cpk_observations").fetchone()[0]
+        first = coordinator.execute(self.command())
+        self.assertIs(first.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(first.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(first.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(coordinator.execute(self.command()), first)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], attempts_before)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_observations").fetchone()[0], observations_before)
+
+    def test_canonical_fresh_shape_cannot_bypass_synchronous_managed_execution_guard(self):
+        from tests.managed_teardown_fixture import PROFILE, managed_teardown
+        from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_operations.deployment_transitions import Deploy
+        from control_plane_kit_operations.plan_derivation import derive_activity_plan
+        from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
+        from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+
+        desired, current, _, products = managed_teardown(self)
+        plan = derive_activity_plan(Deploy(validate_graph(current), validate_graph(desired)), profile=PROFILE)
+        self.assertFalse(runtime_management_execution_is_unsupported(current, desired, plan,
+            registered_products=products, derivation_profile=PROFILE))
+        self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
+            product_document=products[0].descriptor_document, derivation_profile=PROFILE)
+        with self.unit_of_work() as uow:
+            for product in products[1:]:
+                uow.stores.registered_products.register(workspace_id="workspace-a",
+                    descriptor_document=product.descriptor_document, source=product.source,
+                    imported_by=product.imported_by, imported_at=product.imported_at)
+            uow.stores.runtime_authorities.register(workspace_id="workspace-a",
+                authority_ref=desired.runtimes["docker"].authority_ref, runtime_kind=RuntimeKind.DOCKER,
+                authority=LocalDockerSocketAuthority(), admitted_by="operator-a", admitted_at="2026-07-22T12:00:00Z")
+            uow.commit()
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        result = coordinator.execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(coordinator.execute(self.command()), result)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], 0)
+
+    def prepare_managed_teardown(self):
+        from tests.managed_teardown_fixture import PROFILE, managed_teardown, seed_owned_ingress
+        from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval, DecideApproval, ApprovalAuthorizationDenied
+        from control_plane_kit_operations.admission import ExecutionAdmissionCommandService, RequestPlanExecution, ExecutionAdmissionDenied
+        from control_plane_kit_operations.records import ApprovalDecisionKind
+        from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+
+        current, desired, plan, products = managed_teardown(self)
+        self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
+            product_document=products[0].descriptor_document, derivation_profile=PROFILE)
+        # Replace predecessor fixture's synthetic low-risk approval/request with
+        # the real approval and request services for this destructive plan.
+        for table in ("cpk_execution_requests", "cpk_approval_decisions", "cpk_approval_requests"):
+            self.connection.execute("DELETE FROM " + table)
+        with self.unit_of_work() as uow:
+            stores = uow.stores
+            stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            workspace = stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
+            for product in products[1:]:
+                stores.registered_products.register(workspace_id="workspace-a", descriptor_document=product.descriptor_document,
+                    source=product.source, imported_by=product.imported_by, imported_at=product.imported_at)
+            stores.runtime_authorities.register(workspace_id="workspace-a", authority_ref=current.runtimes["docker"].authority_ref,
+                runtime_kind=RuntimeKind.DOCKER, authority=LocalDockerSocketAuthority(),
+                admitted_by="operator-a", admitted_at="2026-07-22T12:00:00Z")
+            seed_owned_ingress(stores, current)
+            uow.commit()
+        self.connection.execute("UPDATE cpk_activity_plans SET desired_graph_revision=%s WHERE plan_id='plan-a'",
+                                (workspace.desired_graph_revision,))
+        approvals = ApprovalCommandService(self.unit_of_work, clock=lambda: "2026-07-22T12:03:00Z",
+            id_factory=Sequence("approval-request-a", "approval-action", "approval-decision-a", "decision-action"))
+        approval = approvals.execute(RequestApproval("session-a", "plan-a", "operator-a",
+            (PolicyScope.PLAN_REQUEST,), IdempotencyKey("managed-approval"))).request
+        self.assertTrue(approval.destructive)
+        self.assertIs(approval.required_scope, PolicyScope.PLAN_APPROVE_DESTRUCTIVE)
+        decision = DecideApproval("session-a", approval.request_id, "manager-a", (PolicyScope.PLAN_APPROVE,),
+            ApprovalDecisionKind.APPROVED, IdempotencyKey("managed-decision"))
+        with self.assertRaises(ApprovalAuthorizationDenied):
+            approvals.execute(decision)
+        approvals.execute(replace(decision, actor_scopes=(PolicyScope.PLAN_APPROVE_DESTRUCTIVE,)))
+        admission = ExecutionAdmissionCommandService(self.unit_of_work, clock=lambda: "2026-07-22T12:04:00Z",
+            id_factory=Sequence("request-a", "execution-action"))
+        command = RequestPlanExecution("workspace-a", "session-a", "plan-a", approval.request_id,
+            "operator-a", (PolicyScope.PLAN_EXECUTE,), IdempotencyKey("managed-request"))
+        with self.assertRaises(ExecutionAdmissionDenied):
+            admission.execute(command)
+        admission.execute(replace(command, actor_scopes=(PolicyScope.PLAN_EXECUTE,
+            PolicyScope.RUNTIME_AUTHORITY_USE, PolicyScope.INGRESS_AUTHORITY_USE)))
+        self.claim_and_start()
+        return plan, workspace
+
+    def test_managed_teardown_completes_owned_ingress_and_runtime_history_before_advancement(self):
+        from control_plane_kit_core.planning import RemoveNodeResource, RemovePublicIngress
+        from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher, RuntimeInterpreterDispatcher
+        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+        from control_plane_kit_operations.ingress_authorities import OwnedIngressResourceStatus
+        from control_plane_kit_operations.advancement import AdvanceCurrentGraph, CurrentGraphAdvancementCommandService, CurrentGraphAdvancementIncomplete
+        from tests.test_ingress_realization import RecordingIngressInterpreter, RecordingSecretUseAuthorizer
+
+        plan, workspace = self.prepare_managed_teardown()
+        test = self
+        class Runtime:
+            def __init__(self): self.calls = []
+            def execute(self, request): raise AssertionError("missing runtime authority")
+            def execute_with_authority(self, request, authority):
+                test.assertEqual(test.tracker.active, 0)
+                test.assertEqual(authority.authority_ref, request.authority_ref)
+                self.calls.append(request)
+                return RuntimeEffectResult.succeeded(request.effect_id)
+        runtime = Runtime()
+        provider = RecordingIngressInterpreter(self.tracker)
+        contexts = []
+        class RecordingDispatcher(ActivityExecutionDispatcher):
+            def execute_runtime(self, context, request):
+                contexts.append(context)
+                return super().execute_runtime(context, request)
+        adapter = RecordingDispatcher(RuntimeInterpreterDispatcher({RuntimeKind.DOCKER: runtime}),
+            IngressRealizationAdapter(self.unit_of_work,
+                interpreters={IngressAuthorityProviderKind.CLOUDFLARE: provider},
+                secret_use_authorizer=RecordingSecretUseAuthorizer(), clock=lambda: "2026-07-28T09:00:00Z"))
+        coordinator = self.coordinator(adapter)
+        advance = AdvanceCurrentGraph("workspace-a", "run-a", "plan-a", "graph-current",
+            workspace.current_realized_projection_id, "graph-desired", workspace.desired_realized_projection_id,
+            workspace.desired_graph_revision, self.authority(), ExecutionLeaseFence("worker-a", 1), IdempotencyKey("advance-managed"))
+        advancement = CurrentGraphAdvancementCommandService(self.unit_of_work,
+            clock=lambda: "2026-07-28T09:01:00Z", id_factory=self.ids)
+        with self.assertRaises(CurrentGraphAdvancementIncomplete):
+            advancement.execute(advance)
+        with self.assertRaises(ExecutionCoordinatorDenied):
+            coordinator.execute(self.command(generation=2,
+                scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE)))
+        command = self.command(max_effects=len(plan.activities),
+            scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
+        result = coordinator.execute(command)
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertIs(result.run.status, ActivityRunStatus.SUCCEEDED)
+        self.assertEqual(provider.teardown_active_counts, [0])
+        self.assertEqual(len(provider.teardown_resources), 1)
+        self.assertEqual({request.activity_id for request in runtime.calls},
+                         {activity.activity_id for activity in plan.activities if not isinstance(activity.operation, RemovePublicIngress)})
+        with self.unit_of_work() as uow:
+            removed_resources = uow.stores.ingress_resources.list_cloudflare("workspace-a")
+            self.assertEqual(len(removed_resources), 1)
+            self.assertEqual(removed_resources[0].ingress_id, "management")
+            self.assertIs(removed_resources[0].status, OwnedIngressResourceStatus.REMOVED)
+            before = uow.stores.execution.events_for_run("run-a")
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-current")
+        # Re-project original connector cleanup against actual persisted REMOVED
+        # ingress evidence. This is pure lowering, not a second provider call.
+        from control_plane_kit_operations.runtime_effects import runtime_effect_request_for_context
+        connector = next(context for context in contexts
+            if isinstance(context.activity.operation, RemoveNodeResource)
+            and context.activity.operation.target.node_id == "connector")
+        cleanup = runtime_effect_request_for_context(replace(connector, ingress_resources=removed_resources,
+            generated_ingress_secrets=()))
+        self.assertEqual(cleanup.products[0].product.runtime_contract.secret_deliveries, ())
+        self.assertEqual(coordinator.execute(command), result)
+        self.assertEqual(len(provider.teardown_resources), 1)
+        self.assertEqual(len(runtime.calls), len(plan.activities) - 1)
+        advancement.execute(advance)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-desired")
+            self.assertTrue(any(event.kind is ActivityEventKind.RUN_SUCCEEDED for event in before))
+
+    def test_managed_ingress_removal_uncertainty_preserves_current_and_never_redispatches(self):
+        from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
+        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+        from control_plane_kit_operations.ingress_authorities import OwnedIngressResourceStatus
+        from tests.test_ingress_realization import RecordingIngressInterpreter, RecordingSecretUseAuthorizer
+
+        plan, _ = self.prepare_managed_teardown()
+        provider = RecordingIngressInterpreter(self.tracker)
+        provider.fail_teardown = True
+        runtime = RecordingAdapter(self.tracker, *[ActivityExecutionOutcome.succeeded() for _ in plan.activities])
+        adapter = ActivityExecutionDispatcher(runtime, IngressRealizationAdapter(self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: provider},
+            secret_use_authorizer=RecordingSecretUseAuthorizer(), clock=lambda: "2026-07-28T09:00:00Z"))
+        coordinator = self.coordinator(adapter)
+        command = self.command(max_effects=len(plan.activities),
+            scopes=(PolicyScope.EXECUTION_OPERATE, PolicyScope.SECRET_PROVIDER_USE))
+        result = coordinator.execute(command)
+        self.assertIs(result.status, CoordinatorStatus.UNCERTAIN)
+        calls = tuple(runtime.calls)
+        self.assertEqual(coordinator.execute(command), result)
+        self.assertIs(coordinator.execute(replace(command, idempotency_key=IdempotencyKey("observe-held"))).status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(tuple(runtime.calls), calls)
+        self.assertEqual(provider.teardown_active_counts, [0])
+        with self.unit_of_work() as uow:
+            self.assertIs(uow.stores.ingress_resources.get_cloudflare("workspace-a", "management").status, OwnedIngressResourceStatus.UNCERTAIN)
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-current")
+            events = uow.stores.execution.events_for_run("run-a")
+            self.assertTrue(any(event.kind is ActivityEventKind.STEP_UNCERTAIN for event in events))
+            self.assertFalse(any(event.kind is ActivityEventKind.RUN_SUCCEEDED for event in events))
+
+    def test_managed_teardown_missing_custody_scope_cannot_remove_ingress(self):
+        from control_plane_kit_operations.coordinator import ActivityExecutionDispatcher
+        from control_plane_kit_operations.ingress_realization import IngressRealizationAdapter
+        from control_plane_kit_operations.ingress_authorities import OwnedIngressResourceStatus
+        from tests.test_ingress_realization import RecordingIngressInterpreter, RecordingSecretUseAuthorizer
+
+        plan, _ = self.prepare_managed_teardown()
+        provider = RecordingIngressInterpreter(self.tracker)
+        runtime = RecordingAdapter(self.tracker, *[ActivityExecutionOutcome.succeeded() for _ in plan.activities])
+        coordinator = self.coordinator(ActivityExecutionDispatcher(runtime, IngressRealizationAdapter(self.unit_of_work,
+            interpreters={IngressAuthorityProviderKind.CLOUDFLARE: provider},
+            secret_use_authorizer=RecordingSecretUseAuthorizer(), clock=lambda: "2026-07-28T09:00:00Z")))
+        result = coordinator.execute(self.command(max_effects=len(plan.activities)))
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertGreater(result.effects_attempted, 0)
+        self.assertEqual(provider.teardown_resources, [])
+        with self.unit_of_work() as uow:
+            self.assertIs(uow.stores.ingress_resources.get_cloudflare("workspace-a", "management").status, OwnedIngressResourceStatus.ACTIVE)
+            self.assertEqual(uow.stores.workspaces.get("workspace-a").current_graph_id, "graph-current")
+            self.assertTrue(any(event.kind is ActivityEventKind.STEP_UNSUPPORTED for event in uow.stores.execution.events_for_run("run-a")))
+
+    def test_forged_empty_plan_cannot_complete_nonempty_sdk_transition(self):
+        self._install_sdk_pair(empty_plan=True)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        result = coordinator.execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(coordinator.execute(self.command()), result)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_sdk_transition_denies_before_legacy_socket_step_dispatch(self):
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        self._install_sdk_pair(plan=plan)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        result = self.coordinator(adapter).execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_sdk_refusal_receipt_completion_fault_preserves_real_uncertainty(self):
+        self._install_sdk_pair()
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with mock.patch.object(PostgresExecutionStore, "complete_command_receipt", side_effect=RuntimeError("receipt-write-failed")):
+            with self.assertRaises(RuntimeError):
+                coordinator.execute(self.command())
+        replay = coordinator.execute(self.command())
+        self.assertIs(replay.status, CoordinatorStatus.UNCERTAIN)
+        self.assertEqual(replay.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+
+    def test_verified_equal_sdk_graph_pair_may_complete_without_runtime_activity(self):
+        self._install_sdk_pair(equal=True, empty_plan=True)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        result = self.coordinator(adapter).execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        with self.unit_of_work() as uow:
+            events = uow.stores.execution.events_for_run("run-a")
+        self.assertFalse(any(event.kind is ActivityEventKind.STEP_STARTED for event in events))
+
+    def test_explicit_management_and_transit_guard_plain_work_in_both_snapshots(self):
+        with self.unit_of_work() as uow:
+            original = DEFAULT_GRAPH_CODEC.decode(uow.stores.graphs.get("graph-desired").graph_descriptor).node("api")
+        for selected in (True, False):
+            graph = management_graph(self, selected=selected, metadata=original.metadata)
+            for base, desired in ((DeploymentGraph("empty"), graph), (graph, DeploymentGraph("empty"))):
+                with self.subTest(selected=selected, removing=not desired.nodes):
+                    operation = StartNode(NodeTarget("api")) if desired.nodes else StopNode(NodeTarget("api"))
+                    plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), operation),))
+                    self.reset_execution_request(plan=plan, base_graph=base, desired_graph=desired)
+                    self.claim_and_start()
+                    adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                    with self.unit_of_work() as uow:
+                        before = uow.stores.execution.events_for_run("run-a")
+                    with mock.patch.object(EffectAttemptStartService, "execute", side_effect=AssertionError("unsupported graph reached attempt admission")):
+                        result = self.coordinator(adapter).execute(self.command())
+                    self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+                    self.assertEqual(result.effects_attempted, 0)
+                    self.assertEqual(adapter.calls, [])
+                    with self.unit_of_work() as uow:
+                        self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_equal_explicit_management_pair_completes_without_effect(self):
+        graph = management_graph(self)
+        self.reset_execution_request(plan=ActivityPlan(()), base_graph=graph, desired_graph=graph)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        result = self.coordinator(adapter).execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.COMPLETED)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+
+    def test_guarded_authoritative_terminal_and_paused_runs_preserve_state(self):
+        for run_status, expected in ((ActivityRunStatus.SUCCEEDED, CoordinatorStatus.COMPLETED), (ActivityRunStatus.FAILED, CoordinatorStatus.FAILED), (ActivityRunStatus.PAUSED, CoordinatorStatus.BLOCKED)):
+            with self.subTest(status=run_status):
+                self._install_sdk_pair()
+                self.claim_and_start()
+                with self.unit_of_work() as uow:
+                    execution = uow.stores.execution
+                    execution.compare_and_set_run_status("run-a", expected=ActivityRunStatus.RUNNING, replacement=run_status,
+                        settled_at="2026-07-22T13:00:30Z" if run_status is ActivityRunStatus.SUCCEEDED else None)
+                    event_kind = {ActivityRunStatus.SUCCEEDED: ActivityEventKind.RUN_SUCCEEDED, ActivityRunStatus.FAILED: ActivityEventKind.RUN_FAILED, ActivityRunStatus.PAUSED: ActivityEventKind.RUN_PAUSED}[run_status]
+                    execution.add_event(ActivityEventRecord("historical-run-state", "run-a", execution.next_event_ordinal("run-a"), event_kind, "2026-07-22T13:00:30Z"))
+                    uow.commit()
+                adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                with self.unit_of_work() as uow:
+                    before = uow.stores.execution.events_for_run("run-a")
+                result = self.coordinator(adapter).execute(self.command())
+                self.assertIs(result.status, expected)
+                self.assertIs(result.run.status, run_status)
+                self.assertEqual(result.effects_attempted, 0)
+                self.assertEqual(adapter.calls, [])
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_guarded_authoritative_legacy_inflight_and_uncertain_steps_preserve_state(self):
+        plan = ActivityPlan((PlannedActivity(ActivityId("start-api"), AddSocketConnection(SocketConnectionTarget("api-upstream"))),))
+        for uncertain in (False, True):
+            with self.subTest(uncertain=uncertain):
+                self._install_sdk_pair(plan=plan)
+                self.claim_and_start()
+                with self.unit_of_work() as uow:
+                    execution = uow.stores.execution
+                    execution.add_event(ActivityEventRecord("historical-start", "run-a", execution.next_event_ordinal("run-a"), ActivityEventKind.STEP_STARTED, "2026-07-22T13:00:30Z", activity_id="start-api"))
+                    if uncertain:
+                        execution.add_event(ActivityEventRecord("historical-uncertain", "run-a", execution.next_event_ordinal("run-a"), ActivityEventKind.STEP_UNCERTAIN, "2026-07-22T13:00:31Z", activity_id="start-api", failure=FailureEvidence(FailureCategory.UNCERTAIN, "lost-response", "prior effect outcome unknown")))
+                    uow.commit()
+                adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+                with self.unit_of_work() as uow:
+                    before = uow.stores.execution.events_for_run("run-a")
+                result = self.coordinator(adapter).execute(self.command())
+                self.assertIs(result.status, CoordinatorStatus.UNCERTAIN if uncertain else CoordinatorStatus.IN_FLIGHT)
+                self.assertEqual(result.effects_attempted, 0)
+                self.assertEqual(adapter.calls, [])
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
+    def test_equal_sdk_graphs_do_not_exempt_a_nonempty_supplied_plan(self):
+        self._install_sdk_pair(equal=True)
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        result = coordinator.execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertIs(result.run.status, ActivityRunStatus.RUNNING)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(coordinator.execute(self.command()), result)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+
     def test_completed_replay_does_not_repeat_effect(self) -> None:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
@@ -1416,7 +1940,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             )
         )
 
-    def seed_execution_request(self, *, plan: ActivityPlan) -> None:
+    def seed_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None, derivation_profile=None) -> None:
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -1428,7 +1952,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
         )
         with self.unit_of_work() as unit_of_work:
-            product_document = ProductDescriptorCodec().encode_document(
+            product_document = product_document or ProductDescriptorCodec().encode_document(
                 ContainerServerProduct(
                     identity=ProductIdentity("control-plane-kit", "hello-server", 1),
                     image=OciImageReference(
@@ -1448,7 +1972,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     graph_id="graph-current",
                     workspace_id="workspace-a",
                     version=1,
-                    graph=_realized_graph("current", plan, product_reference),
+                    graph=_realized_graph("current", plan, product_reference) if base_graph is None else base_graph,
                     created_by="operator-a",
                     created_at="2026-07-22T12:00:00Z",
                 )
@@ -1458,7 +1982,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     graph_id="graph-desired",
                     workspace_id="workspace-a",
                     version=2,
-                    graph=_realized_graph("desired", plan, product_reference),
+                    graph=_realized_graph("desired", plan, product_reference) if desired_graph is None else desired_graph,
                     created_by="operator-a",
                     created_at="2026-07-22T12:00:30Z",
                 )
@@ -1497,6 +2021,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                     desired_realized_projection_id=(
                         desired_projection.projection_id
                     ),
+                    derivation_profile=derivation_profile,
                 )
             )
             unit_of_work.commit()
@@ -1525,10 +2050,11 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             """
         )
 
-    def reset_execution_request(self, *, plan: ActivityPlan) -> None:
+    def reset_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None, derivation_profile=None) -> None:
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.ids = Sequence()
-        self.seed_execution_request(plan=plan)
+        self.seed_execution_request(plan=plan, base_graph=base_graph, desired_graph=desired_graph,
+            product_document=product_document, derivation_profile=derivation_profile)
 
 
 def single_activity_plan() -> ActivityPlan:

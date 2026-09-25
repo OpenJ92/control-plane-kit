@@ -10,6 +10,7 @@ from control_plane_kit_operations.postgres.activity_history import (
 from control_plane_kit_operations.postgres.desired_topology_draft_store import PostgresDesiredTopologyDraftStore
 from control_plane_kit_operations.postgres.saved_preparation_source_store import PostgresSavedPreparationSourceStore
 from control_plane_kit_operations.postgres.revision_history_store import PostgresRevisionHistoryStore
+from control_plane_kit_operations.postgres.health_effect_preparation_store import HealthEffectPreparationStore
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
 from control_plane_kit_operations.postgres.effect_attempt_store import (
     EffectAttemptStore,
@@ -97,6 +98,7 @@ class PostgresStoreBundle:
     activity_history: PostgresActivityHistoryStore = field(init=False)
     execution: PostgresExecutionStore = field(init=False)
     effect_attempt_intents: EffectAttemptIntentStore = field(init=False)
+    health_effect_preparations: HealthEffectPreparationStore = field(init=False)
     effect_attempts: EffectAttemptStore = field(init=False)
     effect_outcomes: EffectAttemptOutcomeStore = field(init=False)
     failed_run_compensations: FailedRunCompensationStore = field(init=False)
@@ -113,6 +115,7 @@ class PostgresStoreBundle:
     gateway_key_rotations: GatewayKeyRotationStore = field(init=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "health_effect_preparations", HealthEffectPreparationStore(self.connection))
         object.__setattr__(self, "desired_topology_drafts", PostgresDesiredTopologyDraftStore(self.connection))
         object.__setattr__(self, "saved_preparation_sources", PostgresSavedPreparationSourceStore(self.connection))
         object.__setattr__(self, "revision_history", PostgresRevisionHistoryStore(self.connection))

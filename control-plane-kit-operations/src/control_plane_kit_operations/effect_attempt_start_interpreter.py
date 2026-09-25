@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Callable
 
 from control_plane_kit_core.operations import (
@@ -21,6 +22,7 @@ from control_plane_kit_core.planning import (
     project_activity_journal,
 )
 from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation
 from control_plane_kit_operations.effect_attempt_start import (
     EffectAttemptStartConflict,
     EffectAttemptStartDenied,
@@ -45,6 +47,14 @@ from control_plane_kit_operations.records import (
     OperationsRecordError,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
+from control_plane_kit_operations.health_effect_attempt_start import (
+    HealthEffectAttemptStartResult, StartHealthEffectAttempt, _valid_health_command,
+)
+from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders, HealthReceiverTrustError
+from control_plane_kit_operations._health_effect_attempt_start import (
+    admit_health_start, build_health_start, health_interval, health_replay,
+    retain_health_start,
+)
 
 
 _AUTHORITY_ERROR = "effect attempt start authority is invalid"
@@ -63,14 +73,37 @@ class EffectAttemptStartService:
         unit_of_work_factory: Callable[[], Any],
         *,
         id_factory: Callable[[], str],
+        health_receiver_decoders: HealthReceiverDecoders = HealthReceiverDecoders(()),
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._id_factory = id_factory
+        if type(health_receiver_decoders) is not HealthReceiverDecoders:
+            raise HealthReceiverTrustError("health receiver trust is unavailable")
+        self._health_receiver_decoders = replace(health_receiver_decoders)
 
     def execute(
         self,
         command: StartEffectAttempt,
     ) -> EffectAttemptStartResult:
+        return self._execute(command, None)
+
+    def execute_health(
+        self,
+        command: StartHealthEffectAttempt,
+    ) -> HealthEffectAttemptStartResult:
+        if not _valid_health_command(command):
+            raise InvalidOperationCommand("health effect start command is invalid")
+        required = (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE,
+            PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
+        if any(scope not in command.context.granted_scopes for scope in required):
+            raise EffectAttemptStartDenied("health effect start scope is missing")
+        return self._execute(command.start, command)
+
+    def _execute(
+        self,
+        command: StartEffectAttempt,
+        health: StartHealthEffectAttempt | None,
+    ) -> EffectAttemptStartResult | HealthEffectAttemptStartResult:
         if not _valid_start_command(command):
             raise InvalidOperationCommand(
                 "effect attempt start command is invalid"
@@ -90,15 +123,23 @@ class EffectAttemptStartService:
                 command.transition.identity.run_id.value,
             )
             _require_request_run(command, request, run)
+            if health is not None and health.context.workspace_id != request.identity.workspace_id:
+                raise EffectAttemptStartDenied(_AUTHORITY_ERROR)
             attempt = _attempt_for_update(stores, command.transition.identity)
             _require_current_authority(command, request)
             if attempt is not None:
                 _require_replay(command, fence, request, run, attempt)
                 _require_intent_replay(stores, command, attempt)
                 result = ExistingAttempt(attempt)
+                if is_signed_management_health_operation(command.intent.operation):
+                    preparation = health_replay(stores, attempt, health)
+                    if health is not None:
+                        result = HealthEffectAttemptStartResult(result, preparation)
                 unit_of_work.commit()
                 return result
 
+            if is_signed_management_health_operation(command.intent.operation) and health is None:
+                raise EffectAttemptStartDenied("health effect start requires trusted admission")
             latest_run = _latest_run_for_update(stores, command.request_id)
             plan = _plan(stores, request.identity.plan_id)
             events = _events_for_run(stores, run.run_id)
@@ -126,11 +167,16 @@ class EffectAttemptStartService:
                 or command.intent.operation != expected_operation
             ):
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            admission = None
+            if health is not None:
+                admission = admit_health_start(stores, health, request, plan, event_kind,
+                    self._health_receiver_decoders)
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
             if observation.expired:
                 raise EffectAttemptStartDenied(_AUTHORITY_ERROR)
+            interval = health_interval(observation) if health is not None else None
             event_ordinal = stores.execution.next_event_ordinal(run.run_id)
             result = self._plan_result(
                 command,
@@ -139,6 +185,10 @@ class EffectAttemptStartService:
                 observed_at=observation.observed_at,
                 event_ordinal=event_ordinal,
             )
+            health_write = None
+            if health is not None:
+                health_write = build_health_start(admission, health, result, interval,
+                    self._id_factory(), self._id_factory(), self._id_factory())
             event = result.attempt.original_start_event
             intent_record = EffectAttemptIntentRecord(
                 result.attempt.state.identity,
@@ -157,6 +207,8 @@ class EffectAttemptStartService:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             if stores.effect_attempts.insert_absent(result.attempt) != result.attempt:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+            if health_write is not None:
+                result = retain_health_start(unit_of_work, health_write, result)
             unit_of_work.commit()
             return result
 
