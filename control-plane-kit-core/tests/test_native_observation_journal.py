@@ -70,6 +70,7 @@ class NativeObservationJournalTests(unittest.TestCase):
         self.assertEqual(projection.state.step(SagaStepId("connection")).status.value, "waiting")
         self.assertFalse(schedule.successful)
         self.assertEqual((schedule.ready, schedule.running), ((), ()))
+        self.assertFalse(schedule.terminal)
         self.assertIn("connection", tuple(value.activity_id.value for value in schedule.waiting)
             + tuple(value.activity.activity_id.value for value in schedule.blocked))
 
