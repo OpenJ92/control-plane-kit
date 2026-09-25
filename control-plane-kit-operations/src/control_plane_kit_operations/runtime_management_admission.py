@@ -1,6 +1,13 @@
 """Distinct pure policies for management planning and execution admission."""
 
-from control_plane_kit_core.planning import ActivityPlan, compile_activity_plan
+from control_plane_kit_core.lifecycle import ResourceOwnership
+from control_plane_kit_core.planning import (
+    ActivityPlan,
+    ManagementBootstrapStage,
+    ObserveManagementBootstrap,
+    StartRuntime,
+    compile_activity_plan,
+)
 from control_plane_kit_core.topology import (
     DEFAULT_GRAPH_CODEC,
     DeploymentGraph,
@@ -11,6 +18,7 @@ from control_plane_kit_core.topology import (
 from control_plane_kit_operations.deployment_transitions import (
     Deploy,
     DeploymentTransition,
+    InitialDeployment,
     TeardownDeployment,
 )
 from control_plane_kit_operations.graph_authoring import (
@@ -74,7 +82,7 @@ def runtime_management_execution_is_unsupported(
     registered_products: tuple[RegisteredProduct, ...] = (),
     derivation_profile: PlanDerivationProfile | None = None,
 ) -> bool:
-    """Support proven no-ops and complete, recorded-profile managed teardown.
+    """Support no-ops and exact recorded-profile fresh-owned or teardown shapes.
 
     Shape support grants no execution authority. A direct activity must belong
     to the supplied pinned plan; callers with no such plan receive no exception.
@@ -110,12 +118,16 @@ def runtime_management_execution_is_unsupported(
         if derivation_profile is not PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1:
             return True
         transition = Deploy(validated_current, validated_desired)
-        if type(transition) is not TeardownDeployment:
+        if type(transition) not in (InitialDeployment, TeardownDeployment):
             return True
         canonical_plan = derive_activity_plan(transition, profile=derivation_profile)
         return (
             not canonical_plan.ready_for_execution
             or plan != canonical_plan
+            or (
+                type(transition) is InitialDeployment
+                and not _fresh_owned_shape(desired, canonical_plan)
+            )
             or runtime_management_planning_is_unsupported(
                 transition, registered_products=registered_products,
             )
@@ -124,6 +136,39 @@ def runtime_management_execution_is_unsupported(
         diff_graphs(validated_current, validated_desired)
     )
     return bool(canonical_plan.activities)
+
+
+def _fresh_owned_shape(desired: DeploymentGraph, plan: ActivityPlan) -> bool:
+    # InitialDeployment alone includes attached/external runtimes. Every managed
+    # relation must have the compiler's owned-start/ingress-bootstrap branch.
+    if any(
+        value.lifecycle.ownership is not ResourceOwnership.OWNED
+        for value in (*desired.runtimes.values(), *desired.nodes.values())
+    ):
+        return False
+    starts = {
+        value.operation.target.runtime_id for value in plan.activities
+        if type(value.operation) is StartRuntime
+    }
+    managed = {
+        runtime_id for runtime_id, runtime in desired.runtimes.items()
+        if runtime.management is not None
+    }
+    if not managed or not managed <= starts:
+        return False
+    expected = {
+        ManagementBootstrapStage.CONNECTOR_CONNECTED,
+        ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+        ManagementBootstrapStage.GATEWAY_INGRESS_READY,
+    }
+    return all(
+        {
+            value.operation.stage for value in plan.activities
+            if type(value.operation) is ObserveManagementBootstrap
+            and value.operation.target.runtime_id == runtime_id
+        } == expected
+        for runtime_id in managed
+    )
 
 
 def _has_management_material(graph: DeploymentGraph) -> bool:

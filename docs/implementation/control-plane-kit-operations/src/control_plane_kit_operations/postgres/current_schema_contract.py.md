@@ -2,7 +2,7 @@ Source: [current_schema_contract.py](../../../../../../control-plane-kit-operati
 Maintain this companion alongside its source.
 
 The frozen semantic contract mirrors the complete fresh SQL, including the
-health preparation leaf: 41 relations, 525 columns, 410 constraints, 135 indexes
+health preparation leaf: 41 relations, 526 columns, 411 constraints, 135 indexes
 and 95 foreign keys. The added table has eighteen columns, sixteen checks, four
 primary/unique constraints and eight restrictive owner foreign keys. Existing
 health signing vocabulary and rotation restrictions remain unchanged.

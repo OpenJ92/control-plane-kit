@@ -274,8 +274,8 @@ EXACT_IMPORT_SURFACE = (
         "ProbeOutcome",
         None,
     ),
-    architecture_testing.ImportSurfaceEntry("dataclasses", "dataclass", None),
     architecture_testing.ImportSurfaceEntry("control_plane_kit_operations.records", "_validate_text", None),
+    architecture_testing.ImportSurfaceEntry("dataclasses", "dataclass", None),
     architecture_testing.ImportSurfaceEntry("dataclasses", "field", None),
     architecture_testing.ImportSurfaceEntry("datetime", "datetime", None),
     architecture_testing.ImportSurfaceEntry("enum", "StrEnum", None),
@@ -420,6 +420,12 @@ NATIVE_VALUE_CALL_SURFACE = (
         "self.observation.descriptor", "str", *("type",) * 12,
     )),
 )
+
+# Canonicalize the explicitly enumerated expected occurrences; never derive an
+# expectation from the source being checked. Multiplicity remains significant.
+MANAGED_CALL_SURFACE = tuple(sorted(EXACT_CALL_SURFACE + NATIVE_VALUE_CALL_SURFACE,
+    key=lambda target: (0, "") if type(target) is architecture_testing.UnresolvedCallTarget
+    else (1, target.qualified_name)))
 
 
 def inventory_path() -> Path:
@@ -1938,12 +1944,12 @@ class EffectOutcomeEvidenceContractTest(
                     architecture_testing.RuleId("exact"),
                     OUTCOME_SOURCE_PATH,
                     MODULE_NAME,
-                    EXACT_CALL_SURFACE + NATIVE_VALUE_CALL_SURFACE,
+                    MANAGED_CALL_SURFACE,
                     "effect outcome lexical call surface differs",
                 ),
             ),
         )
-        self.assertEqual(findings, ())
+        self.assertEqual(findings, (), msg=repr(tuple(call.target for call in facts.calls)))
 
         inventory = json.loads(inventory_path().read_text())
         row = next(

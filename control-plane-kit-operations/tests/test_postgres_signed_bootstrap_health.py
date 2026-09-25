@@ -17,6 +17,7 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations.effect_attempt_start import (
     EffectAttemptStartDenied, EffectAttemptStartError, ExistingAttempt, NewlyStarted,
 )
+from control_plane_kit_operations.delegation_signing_keys import DelegationSigningKeyNotFound
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.health_effect_preparations import (
     HealthEffectPreparationError, health_effect_attempt_wire_id,
@@ -282,7 +283,9 @@ class PostgresSignedBootstrapHealthTests(PostgresHealthEffectStartFixture, unitt
                     (self.keys["workload"].registration_id,))
                 with self.observed_time(timestamp(grant.not_before)):
                     before = self.health_snapshot()
-                    with self.assertRaises(HealthSigningAuthorityUnavailable):
+                    # Preserve the current-key owner's exact denial, as the
+                    # original workload reload law requires.
+                    with self.assertRaises(DelegationSigningKeyNotFound):
                         self.reload_service(registry).execute(self.reload_command(preparation))
                 self.assertEqual(self.health_snapshot(), before)
                 with self.unit_of_work() as uow:

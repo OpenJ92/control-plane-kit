@@ -9645,6 +9645,7 @@
       ],
       "destination": "control_plane_kit_operations.runtime_management_admission",
       "internal_dependencies": [
+        "control_plane_kit_core.lifecycle",
         "control_plane_kit_core.planning",
         "control_plane_kit_core.topology",
         "control_plane_kit_operations.deployment_transitions",

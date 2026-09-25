@@ -119,7 +119,7 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "2269a6ea69c6c08332b6371f68b3b9431331034fecc76b7c3509d453bab1b3e1"
+    "28a00eb7138afbde32d2d5dc4145eea1d3191144b22b03bc6673516def382195"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
     "b941829f70ea100af1665916e3da94ba55f1f40a8f80f50f014cf09875d27ab8"
@@ -655,7 +655,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         postgres.install_schema(self.connection)
 
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (41, 525, 410, 135))
+        self.assertEqual(self._catalog_counts(), (41, 526, 411, 135))
         self.assertEqual(
             self.connection.execute(
                 "SELECT to_regclass('cpk_schema_migrations') IS NULL"
@@ -1133,7 +1133,7 @@ class CurrentSchemaInstallationTests(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         self.assertEqual(failures, [])
         self.assertEqual(self._relations(), _EXPECTED_RELATIONS)
-        self.assertEqual(self._catalog_counts(), (41, 525, 410, 135))
+        self.assertEqual(self._catalog_counts(), (41, 526, 411, 135))
 
     def test_relation_lock_timeout_is_generic_and_retryable_after_release(self) -> None:
         postgres.install_schema(self.connection)

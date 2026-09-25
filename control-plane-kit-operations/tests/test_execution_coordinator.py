@@ -983,6 +983,43 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], attempts_before)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_observations").fetchone()[0], observations_before)
 
+    def test_canonical_fresh_shape_cannot_bypass_synchronous_managed_execution_guard(self):
+        from tests.managed_teardown_fixture import PROFILE, managed_teardown
+        from control_plane_kit_core.topology import validate_graph
+        from control_plane_kit_operations.deployment_transitions import Deploy
+        from control_plane_kit_operations.plan_derivation import derive_activity_plan
+        from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
+        from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+
+        desired, current, _, products = managed_teardown(self)
+        plan = derive_activity_plan(Deploy(validate_graph(current), validate_graph(desired)), profile=PROFILE)
+        self.assertFalse(runtime_management_execution_is_unsupported(current, desired, plan,
+            registered_products=products, derivation_profile=PROFILE))
+        self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
+            product_document=products[0].descriptor_document, derivation_profile=PROFILE)
+        with self.unit_of_work() as uow:
+            for product in products[1:]:
+                uow.stores.registered_products.register(workspace_id="workspace-a",
+                    descriptor_document=product.descriptor_document, source=product.source,
+                    imported_by=product.imported_by, imported_at=product.imported_at)
+            uow.stores.runtime_authorities.register(workspace_id="workspace-a",
+                authority_ref=desired.runtimes["docker"].authority_ref, runtime_kind=RuntimeKind.DOCKER,
+                authority=LocalDockerSocketAuthority(), admitted_by="operator-a", admitted_at="2026-07-22T12:00:00Z")
+            uow.commit()
+        self.claim_and_start()
+        adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
+        coordinator = self.coordinator(adapter)
+        with self.unit_of_work() as uow:
+            before = uow.stores.execution.events_for_run("run-a")
+        result = coordinator.execute(self.command())
+        self.assertIs(result.status, CoordinatorStatus.UNSUPPORTED)
+        self.assertEqual(result.effects_attempted, 0)
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(coordinator.execute(self.command()), result)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.execution.events_for_run("run-a"), before)
+        self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], 0)
+
     def prepare_managed_teardown(self):
         from tests.managed_teardown_fixture import PROFILE, managed_teardown, seed_owned_ingress
         from control_plane_kit_operations.approvals import ApprovalCommandService, RequestApproval, DecideApproval, ApprovalAuthorizationDenied

@@ -217,6 +217,7 @@ EXACT_INTERPRETER_DEPENDENCIES = {
     "control_plane_kit_operations.health_effect_attempt_start",
     "control_plane_kit_operations._health_effect_attempt_start",
     "control_plane_kit_operations.health_receiver_trust",
+    "control_plane_kit_operations.runtime_management_targets",
 }
 
 

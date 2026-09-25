@@ -23,7 +23,9 @@ class NativeActivityEventProjectionTests(unittest.TestCase):
         for name, number in (("STEP_OBSERVATION_NOT_READY", 1), ("STEP_OBSERVATION_RESTARTED", 2)):
             kind = getattr(ActivityEventKind, name, None)
             self.assertIsNotNone(kind, "durable observation event kind is missing")
-            projected, = activity_journal_events((self.event(kind, number),))
+            values = activity_journal_events((self.event(kind, number),))
+            self.assertEqual(len(values), 1, "durable observation event was dropped")
+            projected, = values
             self.assertEqual((projected.kind.value, projected.attempt), (kind.value, number))
             for invalid in (None, True, 0, 2_147_483_648):
                 with self.subTest(name=name, invalid=invalid), self.assertRaises(ValueError):

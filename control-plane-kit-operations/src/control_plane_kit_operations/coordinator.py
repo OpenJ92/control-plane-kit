@@ -24,6 +24,8 @@ from control_plane_kit_core.planning import (
     ActivityPlan,
     AddSocketConnection,
     AllocatePublicIngress,
+    ObserveManagementBootstrap,
+    ObserveNodeHealth,
     PlannedActivity,
     RemovePublicIngress,
     RemoveSocketConnection,
@@ -1265,13 +1267,19 @@ class ExecutionCoordinator:
         self,
         context: "_CoordinatorContext",
         effects_attempted: int,
+        *,
+        managed_execution: bool = False,
     ) -> ExecutionCoordinatorResult | None:
         # Existing authoritative lifecycle states retain their classification.
         # The ordinary classifier can write completion/failure for RUNNING, so
         # unsupported material must be intercepted before calling it.
         if context.run.status is not ActivityRunStatus.RUNNING:
             return None
-        if not runtime_management_execution_is_unsupported(
+        has_health = any(
+            type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth)
+            for activity in context.plan.activities
+        )
+        if (managed_execution or not has_health) and not runtime_management_execution_is_unsupported(
             DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
             DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
             context.plan,
