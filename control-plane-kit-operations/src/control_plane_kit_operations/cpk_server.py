@@ -55,7 +55,7 @@ from control_plane_kit_operations.approvals import (
     DecideApproval,
     RequestApproval,
 )
-from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecutionCoordinator
+from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecuteManagedActivityRun, ExecutionCoordinator
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.ingress_authorities import (
     CloudflareZoneIngressAuthority,
@@ -437,6 +437,13 @@ class CpkServerOperationsApplication:
                 f"unknown service role {request.service_role.value!r}",
             ) from error
         return service.handle(request)
+
+    async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.service_role is ControlPlaneServiceRole.EXECUTION:
+            service = self.services[request.service_role]
+            if isinstance(service, CpkServerExecutionService):
+                return await service.handle_async(request)
+        return self.handle(request)
 
 
 class CpkServerReadService:
@@ -1347,6 +1354,21 @@ class CpkServerExecutionService:
     ) -> None:
         self._service = service
         self._lifecycle = lifecycle
+
+    async def handle_async(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id != "command.deployment.execute":
+            return self.handle(request)
+        context = _trusted_context(request)
+        payload = _arguments(request)
+        command = ExecuteActivityRun(
+            run_id=_path_or_payload(payload, "run_id", "run_id"),
+            authority=_worker_authority(context),
+            fence=ExecutionLeaseFence(context.actor_id, _claim_generation(payload)),
+            idempotency_key=IdempotencyKey(_text(payload, "idempotency_key")),
+            max_effects=_positive_int(payload, "max_effects", default=1),
+        )
+        result = await self._service.execute_managed(ExecuteManagedActivityRun(command, context))
+        return result.descriptor()
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
         context = _trusted_context(request)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Mapping, Protocol
 
+from control_plane_kit_core.identity import TrustedCommandContext
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
     EffectAttemptTransition,
@@ -173,6 +174,19 @@ class ExecuteActivityRun:
             raise InvalidOperationCommand("idempotency_key must be IdempotencyKey")
         if type(self.max_effects) is not int or self.max_effects < 1:
             raise InvalidOperationCommand("max_effects must be a positive integer")
+
+
+@dataclass(frozen=True)
+class ExecuteManagedActivityRun:
+    """Awaited execution carries the authenticated caller separately from its fence."""
+
+    execution: ExecuteActivityRun
+    context: TrustedCommandContext
+
+    def __post_init__(self) -> None:
+        if type(self.execution) is not ExecuteActivityRun or type(self.context) is not TrustedCommandContext:
+            raise InvalidOperationCommand("managed execution command is invalid")
+        self.execution.__post_init__()
 
 
 @dataclass(frozen=True)

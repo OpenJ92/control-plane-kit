@@ -143,8 +143,11 @@ class RuntimeManagementTargetTests(unittest.TestCase):
         self.assertEqual(result.gateway_transit_provider_socket_name, "transit-health")
         self.assertEqual(result.ingress, desired.graph.public_ingresses[0])
         self.assertEqual(result.ingress.connector_node_id, "connector")
-        self.assertEqual(result.workload_surface, desired.graph.node("api").block_spec.control_surfaces[0])
-        self.assertEqual(result.workload_surface.provider_socket_name.value, "sdk-health")
+        self.assertEqual(result.target_surface, desired.graph.node("api").block_spec.control_surfaces[0])
+        self.assertEqual(result.target_surface.provider_socket_name.value, "sdk-health")
+        self.assertEqual(result.target_node_id, "api")
+        self.assertEqual(result.target_provider_socket_name, "sdk-health")
+        self.assertIs(result.target_health_kind, NodeHealthReadKind.READINESS)
         self.assertIs(result.operation.health_kind, NodeHealthReadKind.READINESS)
         with self.assertRaises(FrozenInstanceError):
             result.gateway_node_id = "peer"

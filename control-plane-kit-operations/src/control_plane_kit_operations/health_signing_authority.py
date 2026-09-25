@@ -401,13 +401,13 @@ def _target(stores, plan, intent, preparation):
         return NodeControlGraphReference(role, value)
     target = NodeControlTarget(reference(NodeControlGraphReferenceRole.WORKSPACE, preparation.workspace_id),
         reference(NodeControlGraphReferenceRole.GRAPH_REVISION, authored),
-        reference(NodeControlGraphReferenceRole.NODE, operation.node_id),
-        reference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, operation.provider_socket_name))
+        reference(NodeControlGraphReferenceRole.NODE, selected.target_node_id),
+        reference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, selected.target_provider_socket_name))
     runtime = reference(NodeControlGraphReferenceRole.RUNTIME, operation.target.runtime_id)
     gateway = reference(NodeControlGraphReferenceRole.NODE, selected.gateway_node_id)
-    declaration = WorkloadNodeControlSurfaceDeclaration(selected.workload_surface, WorkloadNodeControlSurfaceDeclarationProfile.V2)
+    declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface, WorkloadNodeControlSurfaceDeclarationProfile.V2)
     _require(preparation.request.target == target and preparation.request.runtime_id == runtime
-        and preparation.request.kind is operation.health_kind and preparation.request.declaration_identity == declaration.identity()
+        and preparation.request.kind is selected.target_health_kind and preparation.request.declaration_identity == declaration.identity()
         and preparation.transit_grant.gateway_node_id == gateway)
     return selected, target, runtime, declaration, gateway, tuple(graphs)
 

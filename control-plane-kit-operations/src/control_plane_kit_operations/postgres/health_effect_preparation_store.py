@@ -227,12 +227,12 @@ def _check_owners(connection, record, *, lock_attempt=False):
     operation = selected.operation
     authored = source.base_graph_id if operation.target.graph_side is PlanGraphSide.BASE_GRAPH else source.desired_graph_id
     target = record.request.target
-    declaration = WorkloadNodeControlSurfaceDeclaration(selected.workload_surface,
+    declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface,
         WorkloadNodeControlSurfaceDeclarationProfile.V2).identity()
     if ((target.graph_revision.value, target.node_id.value, target.provider_socket_name.value,
             record.request.runtime_id.value, record.request.kind, record.request.declaration_identity)
-            != (authored, operation.node_id, operation.provider_socket_name,
-                operation.target.runtime_id, operation.health_kind, declaration)
+            != (authored, selected.target_node_id, selected.target_provider_socket_name,
+                operation.target.runtime_id, selected.target_health_kind, declaration)
             or record.transit_grant.gateway_node_id.value != selected.gateway_node_id):
         raise _OwnerMismatch
     keys, uses = [], []
