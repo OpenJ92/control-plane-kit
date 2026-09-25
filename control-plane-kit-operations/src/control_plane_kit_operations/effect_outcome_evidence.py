@@ -723,9 +723,8 @@ class NativeConnectionEffectOutcome(_EffectOutcomeValue):
         return self._descriptor | {"accepted_at": self.accepted_at, "acceptance_reason": self.acceptance_reason}
 
 
-# Native persistence and fold admission are added with their owner laws; a
-# constructed value alone cannot enter the existing generic outcome services.
-EffectAttemptOutcome = ExecutionEffectOutcome | ObservedEffectOutcome
+# Native record representation does not widen generic mutation-fold admission.
+EffectAttemptOutcome = ExecutionEffectOutcome | ObservedEffectOutcome | NativeConnectionEffectOutcome
 
 
 @dataclass(frozen=True)
@@ -743,7 +742,7 @@ class EffectAttemptOutcomeRecord:
             and self.workspace_id
             and not self.workspace_id[512:]
             and self.outcome.__class__
-            in (ExecutionEffectOutcome, ObservedEffectOutcome)
+            in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
             and self.outcome._admitted
             and self.endpoint_observations.__class__ is tuple
         )
@@ -778,10 +777,17 @@ class EffectAttemptOutcomeRecord:
         if valid:
             start_kind = original.kind.value
             compensation = start_kind == "step_compensation_started"
-            valid = start_kind in ("step_started", "step_compensation_started")
+            native = self.outcome.__class__ is NativeConnectionEffectOutcome
+            if native:
+                expected_start = "step_started" if state.identity.attempt == 1 else "step_observation_restarted"
+                valid = start_kind == expected_start and self.outcome.accepted_at == latest.occurred_at
+            else:
+                valid = start_kind in ("step_started", "step_compensation_started")
             expected_latest_kind = (
                 "step_compensation_" if compensation else "step_"
             ) + self.outcome.status.value
+            if native and self.outcome.status is EffectAttemptStatus.NOT_READY:
+                expected_latest_kind = "step_observation_not_ready"
             valid = valid and latest.kind.value == expected_latest_kind
 
         if valid:
@@ -911,7 +917,7 @@ def effect_outcome_transition(
     outcome: EffectAttemptOutcome,
 ) -> EffectAttemptTransition:
     if (
-        outcome.__class__ not in (ExecutionEffectOutcome, ObservedEffectOutcome)
+        outcome.__class__ not in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
         or not outcome._admitted
     ):
         _OutcomeError.EVIDENCE.raised
@@ -926,7 +932,7 @@ def effect_outcome_failure(
     outcome: EffectAttemptOutcome,
 ) -> FailureEvidence | None:
     if (
-        outcome.__class__ not in (ExecutionEffectOutcome, ObservedEffectOutcome)
+        outcome.__class__ not in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
         or not outcome._admitted
     ):
         _OutcomeError.EVIDENCE.raised
@@ -950,7 +956,7 @@ def effect_outcome_observation_records(
     intent_record: EffectAttemptIntentRecord | None = None,
 ) -> tuple[ObservationRecord, ...]:
     valid = (
-        outcome.__class__ in (ExecutionEffectOutcome, ObservedEffectOutcome)
+        outcome.__class__ in (ExecutionEffectOutcome, ObservedEffectOutcome, NativeConnectionEffectOutcome)
         and outcome._admitted
         and workspace_id.__class__ is str
         and workspace_id

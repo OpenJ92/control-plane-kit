@@ -198,6 +198,7 @@ class PostgresNativeConnectionFoldTests(PostgresHealthEffectStartFixture, unitte
             before = self.native_snapshot()
             for changes in (
                 {"observation": replace(command.observation, effect_id="foreign-start")},
+                {"observation": replace(command.observation, sample_end="2030-01-01T00:00:03Z")},
                 {"context": trusted_health_context(workspace="foreign-workspace")},
                 {"context": trusted_health_context(scopes=())},
                 {"fence": replace(command.fence, generation=command.fence.generation + 1)},
