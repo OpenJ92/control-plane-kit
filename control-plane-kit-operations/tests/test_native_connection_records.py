@@ -89,4 +89,3 @@ class NativeConnectionRecordTests(unittest.TestCase):
         foreign = replace(outcome, observation=replace(outcome.observation, effect_id="other-start"))
         with self.assertRaises(OperationsRecordError):
             EffectAttemptOutcomeRecord("workspace-a", foreign, attempt, ())
-

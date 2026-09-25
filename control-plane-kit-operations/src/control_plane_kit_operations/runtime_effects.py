@@ -12,6 +12,8 @@ from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning.activity_plan import (
     AddSocketConnection,
     NodeTarget,
+    ObserveManagementBootstrap,
+    ObserveNodeHealth,
     ReconcileNode,
     RemoveNodeResource,
     RemoveRuntimeResource,
@@ -105,6 +107,8 @@ def runtime_effect_request_for_context(
         raise InvalidOperationCommand(
             "runtime effect translation requires ActivityRealizationContext"
         )
+    if type(context.activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth):
+        raise InvalidOperationCommand("runtime management execution is unsupported")
     intent = _runtime_effect_intent_for_context(context, context.activity)
     return runtime_effect_request_for_intent(
         intent,

@@ -327,6 +327,8 @@ EXACT_RUNTIME_EFFECTS_IMPORTS = _exact_imports(
     ("control_plane_kit_core.operations", "RunId", None),
     ("control_plane_kit_core.planning.activity_plan", "AddSocketConnection", None),
     ("control_plane_kit_core.planning.activity_plan", "NodeTarget", None),
+    ("control_plane_kit_core.planning.activity_plan", "ObserveManagementBootstrap", None),
+    ("control_plane_kit_core.planning.activity_plan", "ObserveNodeHealth", None),
     ("control_plane_kit_core.planning.activity_plan", "ReconcileNode", None),
     ("control_plane_kit_core.planning.activity_plan", "RemoveNodeResource", None),
     ("control_plane_kit_core.planning.activity_plan", "RemoveRuntimeResource", None),
@@ -652,12 +654,12 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("control_plane_kit_core.runtime_effects.RuntimeProductMaterial", 1),
     ("control_plane_kit_core.secrets.secret_delivery_sort_key", 1),
     ("control_plane_kit_core.topology.DEFAULT_GRAPH_CODEC.decode", 4),
+    ("control_plane_kit_operations.ingress_authorities._uses_cloudflared_token_slot", 1),
     (
         "control_plane_kit_operations.ingress_authorities."
         "cloudflare_tunnel_token_delivery_plan",
         1,
     ),
-    ("control_plane_kit_operations.ingress_authorities._uses_cloudflared_token_slot", 1),
     ("control_plane_kit_operations.ingress_authorities.require_cloudflared_tunnel_token_delivery", 1),
     (
         "control_plane_kit_operations.runtime_authorities."
@@ -665,7 +667,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
         1,
     ),
     ("control_plane_kit_operations.runtime_management_admission.runtime_management_execution_is_unsupported", 1),
-    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 34),
+    ("control_plane_kit_operations.workflows.InvalidOperationCommand", 35),
     ("dataclasses.replace", 2),
     ("gateway_node.provider_socket", 1),
     ("gateway_target_map_for_node", 1),
@@ -685,7 +687,7 @@ EXACT_RUNTIME_EFFECTS_CALLS = _exact_calls(
     ("source_edges.setdefault", 1),
     ("targets.values", 1),
     ("tuple", 17),
-    ("type", 2),
+    ("type", 3),
     ("uses.add", 3),
     ("uses.update", 1),
     ("value.split", 1),
