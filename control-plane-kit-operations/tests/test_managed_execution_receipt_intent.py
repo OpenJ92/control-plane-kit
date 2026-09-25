@@ -72,3 +72,8 @@ class ManagedExecutionReceiptIntentTests(unittest.TestCase):
         predecessor = EffectAttemptIdentity(RunId("run-a"), "connection", 2_147_483_647)
         with self.assertRaises(ValueError):
             self.intent(predecessor=predecessor)
+
+    def test_command_run_cannot_borrow_another_runs_predecessor(self):
+        foreign = EffectAttemptIdentity(RunId("foreign-run"), "connection", 1)
+        with self.assertRaises(ValueError):
+            self.fingerprint(self.intent(predecessor=foreign))
