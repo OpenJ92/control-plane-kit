@@ -1,11 +1,13 @@
 Source: [current_schema_contract.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema_contract.py).
 Maintain this companion alongside its source.
 
-The frozen semantic contract mirrors the complete fresh SQL, including the
-health preparation leaf: 41 relations, 525 columns, 410 constraints, 135 indexes
-and 95 foreign keys. The added table has eighteen columns, sixteen checks, four
+The frozen semantic contract mirrors the complete fresh SQL, including health
+preparations and managed command receipt provenance: 41 relations, 526 columns,
+411 constraints, 135 indexes and 95 foreign keys. The health table has eighteen columns, sixteen checks, four
 primary/unique constraints and eight restrictive owner foreign keys. Existing
 health signing vocabulary and rotation restrictions remain unchanged.
+The optional receipt `managed_intent` adds one bounded JSON column and check;
+legacy null receipts retain their existing fingerprint and decoding contract.
 
 The fixed fingerprint is SHA-256 over ASCII compact sorted-key JSON of the
 literal's dataclass fields under the existing domain and format-version envelope.

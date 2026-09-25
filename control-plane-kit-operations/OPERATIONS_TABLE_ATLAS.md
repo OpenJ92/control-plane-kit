@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=2269a6ea69c6c08332b6371f68b3b9431331034fecc76b7c3509d453bab1b3e1 relations=41 columns=525 constraints=410 indexes=135 foreign-keys=95 -->
+<!-- current-schema-contract: sha256=e5163641402d1f3bdcf3b7e7da877db8107096c870cb0fbe30fd0e9ff57b578e relations=41 columns=526 constraints=411 indexes=135 foreign-keys=95 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -651,14 +651,14 @@ deleting its retained draft history.
 
 ### `cpk_execution_command_receipts`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns admission and exact completed replay truth for one `ExecutionCoordinator` command.
-- **Identity and cardinality:** `(run_id, idempotency_key)` is primary. The canonical intent fingerprint binds worker, the complete normalized `PolicyScope` set, claim generation, and the positive decimal effect bound without retaining the key inside the fingerprint.
+- **Identity and cardinality:** `(run_id, idempotency_key)` is primary. The canonical intent fingerprint binds worker, the complete normalized `PolicyScope` set, claim generation, and the positive decimal effect bound without retaining the key inside the fingerprint. Optional managed intent adds a separate fingerprint domain binding command kind, authenticated actor identity and workspace scopes, and exact predecessor/successor coordinates for an explicit next read. Retained identity is provenance, not current execution authority.
 - **Outgoing foreign keys:** `run_id` must name the activity run the command was admitted to advance.
 - **Inbound dependents:** No table depends on a receipt; public command replay reads it through the coordinator.
 - **Writers and transactions:** Admission locks the command key, validates request/run authority in the established request-before-run order, and inserts `incomplete` before progress. Completion compare-and-sets that row to `completed` in a later transaction after execution returns normally.
 - **Readers and projections:** A completed replay returns the exact stored bounded result. An incomplete replay uses a fresh locked current-run read and returns uncertainty without progress or effect dispatch; the initial run snapshot is correlation evidence only.
 - **Mutation, locks, retries, and idempotency:** State is one-way `incomplete` to `completed`; changed intent conflicts, and neither escaped execution nor completion-persistence failure authorizes redispatch.
 - **Lifecycle, retention, deletion, and restore:** Restore runs before receipts. Restrictive run ownership retains receipts with their operational history; there is no public reset or delete path.
-- **JSON boundary:** Normalized scopes, initial run correlation, and the exact completed result are closed typed documents validated at the store boundary. Reconstruction recomputes the intent fingerprint and rejects effect-count, run-lineage, or completion-time drift. Join and command identity remain relational.
+- **JSON boundary:** Normalized scopes, initial run correlation, optional bounded `managed_intent`, and the exact completed result are closed typed documents validated at the store boundary. Reconstruction recomputes the intent fingerprint and rejects actor, scope, predecessor/successor, effect-count, run-lineage, or completion-time drift. Null managed intent preserves legacy receipt decoding and its original fingerprint domain. Join and command identity remain relational.
 - **Sensitive material:** Receipts contain bounded operational coordinates only, never provider payloads, exception text, credentials, tokens, or secret values.
 - **Future impact:** A future command family needs a distinct domain-separated fingerprint and explicit result codec rather than widening this receipt implicitly.
 

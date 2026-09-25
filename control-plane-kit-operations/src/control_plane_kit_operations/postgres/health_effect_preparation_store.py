@@ -9,7 +9,7 @@ from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
 )
 from control_plane_kit_core.operations import ActivityEventKind, EffectAttemptIdentity
-from control_plane_kit_core.planning import ActivityId, ObserveNodeHealth, PlanGraphSide
+from control_plane_kit_core.planning import ActivityId, PlanGraphSide
 from control_plane_kit_core.secrets import health_signing_intent_for
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError, validate_graph
 from control_plane_kit_operations.health_effect_preparations import (
@@ -18,7 +18,7 @@ from control_plane_kit_operations.health_effect_preparations import (
 )
 from control_plane_kit_operations.delegation_signing_keys import delegation_signing_key_registration_id_for
 from control_plane_kit_operations.runtime_management_targets import (
-    ManagementHealthTargetProjectionError, project_management_health_target,
+    ManagementHealthTargetProjectionError, is_signed_management_health_operation, project_management_health_target,
 )
 from control_plane_kit_operations.secret_providers import (
     AuthorizeSecretUse, SecretProviderRegistrationError, authorized_secret_use_for, secret_use_correlation_for,
@@ -201,7 +201,7 @@ def _check_owners(connection, record, *, lock_attempt=False):
             or attempt.state.request_fingerprint != record.request_fingerprint
             or source.workspace_id != record.workspace_id or source.run_id != record.identity.run_id
             or intent.activity_id.value != record.identity.activity_id
-            or type(intent.operation) is not ObserveNodeHealth):
+            or not is_signed_management_health_operation(intent.operation)):
         raise _OwnerMismatch
     request = _load_owner(connection, PostgresExecutionStore, "get_request", source.request_id)
     run = _load_owner(connection, PostgresExecutionStore, "get_run", source.run_id.value)
@@ -227,12 +227,12 @@ def _check_owners(connection, record, *, lock_attempt=False):
     operation = selected.operation
     authored = source.base_graph_id if operation.target.graph_side is PlanGraphSide.BASE_GRAPH else source.desired_graph_id
     target = record.request.target
-    declaration = WorkloadNodeControlSurfaceDeclaration(selected.workload_surface,
+    declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface,
         WorkloadNodeControlSurfaceDeclarationProfile.V2).identity()
     if ((target.graph_revision.value, target.node_id.value, target.provider_socket_name.value,
             record.request.runtime_id.value, record.request.kind, record.request.declaration_identity)
-            != (authored, operation.node_id, operation.provider_socket_name,
-                operation.target.runtime_id, operation.health_kind, declaration)
+            != (authored, selected.target_node_id, selected.target_provider_socket_name,
+                operation.target.runtime_id, selected.target_health_kind, declaration)
             or record.transit_grant.gateway_node_id.value != selected.gateway_node_id):
         raise _OwnerMismatch
     keys, uses = [], []

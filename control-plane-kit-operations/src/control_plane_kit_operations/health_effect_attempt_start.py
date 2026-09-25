@@ -8,7 +8,6 @@ from control_plane_kit_core.identity import (
     AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind,
     TrustedCommandContext, WorkspaceGrant,
 )
-from control_plane_kit_core.planning import ObserveNodeHealth
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_operations.effect_attempt_start import (
     ExistingAttempt, NewlyStarted, StartEffectAttempt, _valid_start_command,
@@ -18,6 +17,7 @@ from control_plane_kit_operations.health_effect_preparations import (
     HealthEffectPreparationCodec, HealthEffectPreparationRecord,
 )
 from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 
 
@@ -67,7 +67,7 @@ def _valid_health_command(command: object) -> bool:
         return False
     try:
         return (_valid_start_command(command.start)
-            and type(command.start.intent.operation) is ObserveNodeHealth
+            and is_signed_management_health_operation(command.start.intent.operation)
             and _valid_context(command.context)
             and command.context.workspace_id == command.start.intent.source.workspace_id
             and re.fullmatch(r"[a-z][a-z0-9._-]{0,127}", command.context.actor_id) is not None)

@@ -39,3 +39,51 @@ Effects stay outside transactions. Successful execution does not itself advance
 current graph: the separate advancement service still checks complete successful
 history. The PostgreSQL target composes these actual services with recording
 provider boundaries and verifies current remains unchanged before advancement.
+
+Fresh managed deployment has a separate awaited entrance,
+`execute_managed(ExecuteManagedActivityRun(execution, trusted_context))`.
+The authenticated context is retained separately from the worker fence in the
+command receipt. Complete health-port selection and the canonical fresh-owned
+graph-pair policy precede creation. A private generator shares the existing
+mutation engine between synchronous and awaited execution; only health reads
+yield to the awaited driver. The synchronous entrance continues to refuse fresh
+managed health plans.
+
+The native connection obligation completes each passive read separately.
+CONNECTED succeeds only when fresh at database acceptance; DISCONNECTED,
+UNKNOWN and stale samples retain their original evidence and leave the step
+waiting without failure or compensation. Refused or interrupted reads remain
+UNSUPPORTED or UNCERTAIN; they are not completed UNKNOWN observations.
+Independent signed PATH/readiness work can progress while native-dependent
+work waits.
+
+`reobserve(ReobserveConnectorConnection(execution, trusted_context, predecessor))`
+is the sole n+1 entrance. It requires the current completed NOT_READY predecessor
+and excludes competing in-flight, failed or uncertain work. The receipt,
+successor start event, immutable intent and attempt commit together under the
+request lock, before exactly one external read. Distinct keys cannot consume
+the same predecessor; an incomplete same-key receipt never dispatches again.
+The realization context admits the observation-restart event only for the
+native connection operation; mutation realization still rejects that event.
+Replay precedes the latest-predecessor check and returns the retained result,
+even after later reads have completed.
+
+Original signed preparations are never extended or recreated. The driver can
+await the remaining fraction of their first integral second, then reload current
+authority before dispatch. Acceptance reuses the same signing-authority owner
+inside the fold transaction to recheck original grants, current keys/references,
+approval and lease. Native entry and acceptance compare the selected runtime
+registration, and classify samples using database time after authority locking.
+Cancellation inside a read retains uncertainty when current authority permits,
+then propagates cancellation; interrupted admission remains an incomplete receipt.
+No transaction spans a wait, signing, SDK call or network read.
+
+The managed application targets exercise these paths through the actual
+authenticated Operations application, PostgreSQL owners and recording effect
+ports. They are source-composition evidence only; concrete server transport,
+provider execution and the live grandparent capstone have separate owners.
+Core declares `command.deployment.reobserve-connector` as an authenticated POST
+command at `/workspaces/{workspace_id}/runs/{run_id}/reobserve-connector`, with
+the `reobserve_connector_connection` MCP parity identity, required idempotency
+and current approval. These are pure protocol values. Servers181 still owns
+transport registration and the bounded request schema implementation.

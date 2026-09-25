@@ -140,8 +140,8 @@ class RunIdentitySchemaStaticTests(unittest.TestCase):
     def test_contract_has_exact_owned_object_counts(self) -> None:
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         self.assertEqual(len(contract.relations), 41)
-        self.assertEqual(len(contract.columns), 525)
-        self.assertEqual(len(contract.constraints), 410)
+        self.assertEqual(len(contract.columns), 526)
+        self.assertEqual(len(contract.constraints), 411)
         self.assertEqual(len(contract.indexes), 135)
 
     def test_contract_has_six_exact_direct_checks(self) -> None:

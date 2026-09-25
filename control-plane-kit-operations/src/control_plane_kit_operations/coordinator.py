@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import asyncio
+from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Protocol
 
+from control_plane_kit_core.identity import TrustedCommandContext
 from control_plane_kit_core.operations import (
+    EffectAttemptFence,
     EffectAttemptIdentity,
+    EffectAttemptStatus,
     EffectAttemptTransition,
     EffectAttemptTransitionKind,
     RunId,
+    fold_effect_attempt,
 )
 from control_plane_kit_core.operations.execution import EffectResultKind
 from control_plane_kit_core.operations.lifecycle import (
@@ -23,6 +29,9 @@ from control_plane_kit_core.planning import (
     ActivityPlan,
     AddSocketConnection,
     AllocatePublicIngress,
+    ManagementBootstrapStage,
+    ObserveManagementBootstrap,
+    ObserveNodeHealth,
     PlannedActivity,
     RemovePublicIngress,
     RemoveSocketConnection,
@@ -31,6 +40,8 @@ from control_plane_kit_core.planning import (
 from control_plane_kit_core.planning.saga import (
     ExecutionSchedule,
     SagaJournalProjection,
+    SagaStepId,
+    SagaStepStatus,
     derive_schedule,
     project_activity_journal,
 )
@@ -57,10 +68,14 @@ from control_plane_kit_operations.effect_attempt_fold import (
     EffectAttemptFoldResult,
     ExistingFold,
     FoldEffectAttempt,
+    FoldNativeConnectionObservation,
+    GuardedHealthEffectFold,
     NewlyFolded,
 )
 from control_plane_kit_operations.effect_attempt_fold_interpreter import (
     EffectAttemptFoldService,
+    _require_native_plan,
+    _require_managed_plan,
 )
 from control_plane_kit_operations.effect_attempt_reconciliation import (
     EffectAttemptReconciliationConflict,
@@ -80,12 +95,25 @@ from control_plane_kit_operations.effect_attempt_start import (
 from control_plane_kit_operations.effect_attempt_start_interpreter import (
     EffectAttemptStartService,
 )
-from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
+from control_plane_kit_operations.effect_attempts import (
+    EffectAttemptRecord, EffectAttemptEventEvidence, effect_attempt_state_fingerprint,
+)
+from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
 from control_plane_kit_operations.effect_outcome_evidence import (
     ExecutionEffectOutcome,
+    NativeConnectionObservation,
+    NativeConnectionEffectOutcome,
+    NativeConnectionRefused,
+    NativeConnectionReadFailure,
     effect_outcome_failure,
     effect_outcome_transition,
 )
+from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome, NodeHealthReadResult
+from control_plane_kit_operations.health_effect_attempt_start import StartHealthEffectAttempt
+from control_plane_kit_operations.health_signing_authority import (
+    HealthSigningAuthorityPair, HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
+)
+from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
     CompleteActivityRun,
@@ -127,6 +155,7 @@ from control_plane_kit_operations.records import (
     ExecutionCommandResultRecord,
     ExecutionRequestRecord,
     FailureEvidence,
+    ManagedExecutionCommandIntent,
     ObservationRecord,
     OperationsRecordError,
     RealizedGraphProjectionRecord,
@@ -173,6 +202,51 @@ class ExecuteActivityRun:
             raise InvalidOperationCommand("idempotency_key must be IdempotencyKey")
         if type(self.max_effects) is not int or self.max_effects < 1:
             raise InvalidOperationCommand("max_effects must be a positive integer")
+
+
+@dataclass(frozen=True)
+class ExecuteManagedActivityRun:
+    """Awaited execution carries the authenticated caller separately from its fence."""
+
+    execution: ExecuteActivityRun
+    context: TrustedCommandContext
+
+    def __post_init__(self) -> None:
+        if type(self.execution) is not ExecuteActivityRun or type(self.context) is not TrustedCommandContext:
+            raise InvalidOperationCommand("managed execution command is invalid")
+        self.execution.__post_init__()
+
+
+@dataclass(frozen=True)
+class ReobserveConnectorConnection:
+    """Explicitly admit exactly one successor of a completed native wait."""
+
+    execution: ExecuteActivityRun
+    context: TrustedCommandContext
+    predecessor: EffectAttemptIdentity
+
+    def __post_init__(self) -> None:
+        ExecuteManagedActivityRun(self.execution, self.context)
+        intent = ManagedExecutionCommandIntent.from_context(self.context, predecessor=self.predecessor)
+        if (intent.predecessor is None or self.execution.max_effects != 1
+                or intent.predecessor.run_id.value != self.execution.run_id):
+            raise InvalidOperationCommand("connector reobservation command is invalid")
+
+
+class ManagedHealthEffectPort(Protocol):
+    """Pure complete selection followed by one awaited, authority-bound read."""
+
+    def select(self, *, plan, current, desired, registered_products, runtime_authorities): ...
+
+    async def observe_signed(self, realization, request, authority: HealthSigningAuthorityPair) -> NodeHealthReadResult: ...
+
+    async def observe_connection(self, realization, request, authority: RegisteredRuntimeAuthority) -> NativeConnectionObservation | NativeConnectionRefused: ...
+
+
+@dataclass(frozen=True)
+class _HealthExecution:
+    context: Any
+    activity: PlannedActivity
 
 
 @dataclass(frozen=True)
@@ -363,10 +437,15 @@ class ActivityRealizationContext:
                 pass
             case candidate if candidate is ActivityEventKind.STEP_COMPENSATION_STARTED:
                 pass
+            case candidate if (
+                candidate is ActivityEventKind.STEP_OBSERVATION_RESTARTED
+                and is_native_connection_operation(self.activity.operation)
+            ):
+                pass
             case _:
                 raise InvalidOperationCommand(
-                    "realization intent must be step_started or "
-                    "step_compensation_started"
+                    "realization intent must start an effect, compensation, "
+                    "or native connection reobservation"
                 )
         if self.intent_event.activity_id != self.activity.activity_id.value:
             raise InvalidOperationCommand("realization intent must match activity")
@@ -783,13 +862,14 @@ class ExecutionCoordinatorResult:
         }
 
 
-def _execution_command_fingerprint(command: ExecuteActivityRun) -> str:
+def _execution_command_fingerprint(command: ExecuteActivityRun, managed_intent=None) -> str:
     return execution_command_intent_fingerprint(
         run_id=command.run_id,
         worker_id=command.authority.worker_id,
         authority_scopes=command.authority.scopes,
         claim_generation=command.fence.generation,
         max_effects=command.max_effects,
+        managed_intent=managed_intent,
     )
 
 
@@ -829,6 +909,8 @@ class ExecutionCoordinator:
         reconciliation_service: EffectAttemptReconciliationService,
         clock: Callable[[], str],
         id_factory: Callable[[], str],
+        managed_health: ManagedHealthEffectPort | None = None,
+        health_signing_authority: HealthSigningAuthorityReloadService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._lifecycle = lifecycle
@@ -838,6 +920,8 @@ class ExecutionCoordinator:
         self._reconciliation_service = reconciliation_service
         self._clock = clock
         self._id_factory = id_factory
+        self._managed_health = managed_health
+        self._health_signing_authority = health_signing_authority
 
     def execute(self, command: ExecuteActivityRun) -> ExecutionCoordinatorResult:
         _require_operate_scope(command.authority)
@@ -848,18 +932,343 @@ class ExecutionCoordinator:
         self._complete_command(command, result)
         return result
 
+    async def execute_managed(self, command: ExecuteManagedActivityRun) -> ExecutionCoordinatorResult:
+        if type(command) is not ExecuteManagedActivityRun:
+            raise InvalidOperationCommand("managed execution command is invalid")
+        provenance = self._managed_provenance(command)
+        execution = command.execution
+        replay = self._admit_command(execution, provenance)
+        if replay is not None:
+            return replay
+        context = self._load_context(execution)
+        refused = self._managed_preflight(context, command.context)
+        if refused is not None:
+            self._complete_command(execution, refused, provenance)
+            return refused
+        steps = self._execution_steps(execution, managed=True)
+        reply = None
+        try:
+            while True:
+                try:
+                    work = steps.send(reply)
+                except StopIteration as completed:
+                    result = completed.value
+                    break
+                reply = await self._execute_health(command, work)
+        finally:
+            steps.close()
+        self._complete_command(execution, result, provenance)
+        return result
+
+    def _managed_provenance(self, command):
+        if type(command) not in (ExecuteManagedActivityRun, ReobserveConnectorConnection):
+            raise InvalidOperationCommand("managed execution command is invalid")
+        command.__post_init__()
+        execution = command.execution
+        _require_operate_scope(execution.authority)
+        context = command.context
+        provenance = ManagedExecutionCommandIntent.from_context(context,
+            predecessor=command.predecessor if type(command) is ReobserveConnectorConnection else None)
+        if (context.actor_id != execution.authority.worker_id
+                or any(scope not in context.granted_scopes for scope in execution.authority.scopes)
+                or PolicyScope.EXECUTION_OPERATE not in context.granted_scopes):
+            raise ExecutionCoordinatorDenied("managed execution caller does not hold worker authority")
+        return provenance
+
+    def _managed_preflight(self, context, caller):
+        guarded = self._guard_runtime_management(context, 0, managed_execution=True)
+        if guarded is not None:
+            return guarded
+        expected = tuple(activity.activity_id for activity in context.plan.activities
+            if type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth))
+        if not expected:
+            return None
+        required = (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE,
+            PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
+        if any(scope not in caller.granted_scopes for scope in required):
+            raise ExecutionCoordinatorDenied("managed health scope is missing")
+        selected = None
+        if self._managed_health is not None and self._health_signing_authority is not None:
+            try:
+                selected = self._managed_health.select(plan=context.plan,
+                    current=DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
+                    desired=DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
+                    registered_products=context.registered_products,
+                    runtime_authorities=context.runtime_authorities)
+            except Exception:
+                pass
+        if (type(selected) is not tuple or selected != expected
+                or any(type(value) is not ActivityId for value in selected)):
+            return ExecutionCoordinatorResult(context.run, CoordinatorStatus.UNSUPPORTED)
+        return None
+
+    async def _execute_health(self, command, work, *, admitted_attempt=None):
+        execution, context, activity = command.execution, work.context, work.activity
+        required = (PolicyScope.NODE_CONTROL_READ, PolicyScope.NODE_CONTROL_EXECUTE,
+            PolicyScope.DELEGATION_KEY_USE, PolicyScope.SECRET_PROVIDER_USE)
+        if any(scope not in command.context.granted_scopes for scope in required):
+            raise ExecutionCoordinatorDenied("managed health scope is missing")
+        intent = _runtime_effect_intent_for_context(context, activity)
+        native = is_native_connection_operation(activity.operation)
+        preparation = None
+        if admitted_attempt is None:
+            start = StartEffectAttempt(context.request.identity.request_id,
+                EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
+                    EffectAttemptIdentity(intent.source.run_id, activity.activity_id.value, 1),
+                    request_fingerprint=runtime_effect_intent_fingerprint(intent)),
+                intent, execution.authority, execution.fence)
+            if native:
+                started = self._start_service.execute(start)
+            else:
+                health = self._start_service.execute_health(StartHealthEffectAttempt(start, command.context))
+                started, preparation = health.start, health.preparation
+            if type(started) is ExistingAttempt:
+                return None
+            if type(started) is not NewlyStarted:
+                raise ExecutionCoordinatorConflict("managed health start result is invalid")
+            attempt = started.attempt
+        else:
+            attempt = admitted_attempt
+        realization = context.realization_context(activity, attempt.original_start_event)
+        request = runtime_effect_request_for_intent(intent,
+            effect_id=attempt.original_start_event.event_id, secret_resolution_grants=())
+        selected_runtime = self._selected_managed_runtime(context, intent)
+        if native:
+            intent_record, runtime = self._managed_dispatch_authority(command, attempt, selected_runtime)
+            response = NativeConnectionReadFailure()
+            cancelled = None
+            try:
+                observed = await self._managed_health.observe_connection(realization, request, runtime)
+                if type(observed) in (NativeConnectionObservation, NativeConnectionRefused):
+                    if type(observed) is NativeConnectionObservation:
+                        observed.__post_init__()
+                        if (observed.effect_id != request.effect_id
+                                or observed.activity_id != request.activity_id.value):
+                            raise ValueError("native read correlation mismatch")
+                    response = observed
+            except asyncio.CancelledError as error:
+                cancelled = error
+            except Exception:
+                pass
+            try:
+                folded = self._fold_service.execute_native(FoldNativeConnectionObservation(
+                    context.request.identity.request_id, attempt.state.identity, response,
+                    command.context, execution.authority, execution.fence, intent_record, runtime))
+            except Exception:
+                if cancelled is not None:
+                    raise cancelled from None
+                raise
+            if cancelled is not None:
+                raise cancelled
+            return folded
+
+        # Original grants begin at the next integral second. Await at most that
+        # fraction once, then reload current authority; never extend or resign.
+        now = datetime.now(timezone.utc).timestamp()
+        delay = max(0.0, preparation.transit_grant.not_before - now)
+        if delay >= 1.0:
+            raise ExecutionCoordinatorDenied("original health grant is not yet usable")
+        if delay:
+            await asyncio.sleep(delay)
+        intent_record, runtime = self._managed_dispatch_authority(command, attempt, selected_runtime)
+        authority = self._health_signing_authority.execute(ReloadHealthSigningAuthority(
+            context.request.identity.request_id, attempt.state.identity, command.context,
+            execution.authority, execution.fence))
+        result = _uncertain_runtime_result(request, boundary="managed-health", reason="read-failed")
+        cancelled = None
+        try:
+            observed = await self._managed_health.observe_signed(realization, request, authority)
+            if type(observed) is NodeHealthReadResult:
+                observed.__post_init__()
+                if observed.request != authority.preparation.request:
+                    raise ValueError("signed health correlation mismatch")
+                path = (type(activity.operation) is ObserveManagementBootstrap
+                    and activity.operation.stage is ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
+                if path or observed.outcome is NodeHealthReadOutcome.HEALTHY:
+                    result = RuntimeEffectResult.succeeded(request.effect_id,
+                        evidence={"health": observed.descriptor()})
+                else:
+                    result = RuntimeEffectResult.failed(request.effect_id, RuntimeEffectFailure(
+                        "node-health-not-healthy", "authenticated node health is not healthy",
+                        {"health": observed.descriptor()}))
+        except asyncio.CancelledError as error:
+            cancelled = error
+        except Exception:
+            pass
+        outcome = ExecutionEffectOutcome(attempt.state.identity, attempt.state.request_fingerprint, result)
+        try:
+            folded = self._fold_service.execute_health(GuardedHealthEffectFold(
+                FoldEffectAttempt(context.request.identity.request_id,
+                    effect_outcome_transition(outcome), execution.authority, execution.fence,
+                    effect_outcome_failure(outcome), outcome), command.context, intent_record,
+                preparation, runtime), signing_authority=self._health_signing_authority)
+        except Exception:
+            if cancelled is not None:
+                raise cancelled from None
+            raise
+        if cancelled is not None:
+            raise cancelled
+        return folded
+
+    def _selected_managed_runtime(self, context, intent):
+        selected = tuple(value for value in context.runtime_authorities
+            if value.workspace_id == context.request.identity.workspace_id
+                and value.authority_ref == intent.authority_ref
+                and value.runtime_kind is intent.runtime_kind)
+        if len(selected) != 1:
+            raise ExecutionCoordinatorDenied("managed runtime authority is unavailable")
+        return selected[0]
+
+    def _managed_dispatch_authority(self, command, attempt, selected_runtime):
+        with self._unit_of_work_factory() as uow:
+            stores = uow.stores
+            request, run = _locked_request_and_run(stores, command.execution)
+            if (request.identity.workspace_id != command.context.workspace_id
+                    or run.status is not ActivityRunStatus.RUNNING
+                    or stores.execution.get_latest_run_for_request_for_update(request.identity.request_id) != run
+                    or stores.effect_attempts.get_for_update(attempt.state.identity) != attempt
+                    or attempt.state.status is not EffectAttemptStatus.STARTED):
+                raise ExecutionCoordinatorDenied("managed read admission is no longer current")
+            intent = stores.effect_attempt_intents.get(attempt.state.identity)
+            _require_managed_plan(stores, intent, request)
+            authority = stores.runtime_authorities.get_active_for_update(
+                command.context.workspace_id, intent.intent.authority_ref)
+            if authority != selected_runtime:
+                raise ExecutionCoordinatorDenied("managed read runtime authority changed")
+            observed = stores.execution.observe_request_lease_for_update(request.identity.request_id)
+            if observed.request != request or observed.expired:
+                raise ExecutionCoordinatorDenied("managed read lease expired")
+            uow.commit()
+        return intent, authority
+
+    async def reobserve(self, command: ReobserveConnectorConnection) -> ExecutionCoordinatorResult:
+        if type(command) is not ReobserveConnectorConnection:
+            raise InvalidOperationCommand("connector reobservation command is invalid")
+        provenance = self._managed_provenance(command)
+        execution = command.execution
+        # Read-only replay lookup precedes every latest-predecessor predicate.
+        # Fresh admission repeats this lookup while holding the write locks.
+        replay = self._admit_command(execution, provenance, admit=False)
+        if replay is not None:
+            return replay
+        context = self._load_context(execution)
+        if self._managed_preflight(context, command.context) is not None:
+            raise ExecutionCoordinatorDenied("native reobservation capability is unavailable")
+        admitted = self._admit_reobservation(command, provenance, context)
+        if type(admitted) is ExecutionCoordinatorResult:
+            return admitted
+        activity = context.plan.activity(ActivityId(command.predecessor.activity_id))
+        folded = await self._execute_health(command, _HealthExecution(context, activity),
+            admitted_attempt=admitted)
+        observed = self._classify_current(self._load_context(execution), 1)
+        status = {
+            EffectAttemptStatus.UNCERTAIN: CoordinatorStatus.UNCERTAIN,
+            EffectAttemptStatus.UNSUPPORTED: CoordinatorStatus.UNSUPPORTED,
+            EffectAttemptStatus.FAILED: CoordinatorStatus.FAILED,
+        }.get(folded.attempt.state.status, observed.status)
+        result = ExecutionCoordinatorResult(observed.run, status, 1, activity.activity_id.value)
+        self._complete_command(execution, result, provenance)
+        return result
+
+    def _admit_reobservation(self, command, provenance, context):
+        execution = command.execution
+        fingerprint = _execution_command_fingerprint(execution, provenance)
+        with self._unit_of_work_factory() as uow:
+            stores = uow.stores
+            stores.execution.lock_command_idempotency(execution.run_id, execution.idempotency_key.value)
+            request, run = _locked_request_and_run(stores, execution)
+            if request.identity.workspace_id != provenance.workspace_id:
+                raise ExecutionCoordinatorDenied("native reobservation workspace does not match")
+            receipt = stores.execution.command_receipt_for_idempotency(execution.run_id,
+                execution.idempotency_key.value, for_update=True)
+            if receipt is not None:
+                if receipt.intent_fingerprint != fingerprint:
+                    raise ExecutionCoordinatorConflict("execution command idempotency key conflicts with prior intent")
+                return (_coordinator_result(receipt.result)
+                    if receipt.status is ExecutionCommandReceiptStatus.COMPLETED
+                    else ExecutionCoordinatorResult(run, CoordinatorStatus.UNCERTAIN))
+            if (run.status is not ActivityRunStatus.RUNNING
+                    or stores.execution.get_latest_run_for_request_for_update(request.identity.request_id) != run):
+                raise ExecutionCoordinatorConflict("native reobservation run is not current")
+            try:
+                prior = stores.effect_attempts.get_for_update(command.predecessor)
+                intent = stores.effect_attempt_intents.get(command.predecessor)
+            except (KeyError, OperationsRecordError):
+                raise ExecutionCoordinatorConflict("native predecessor truth is unavailable") from None
+            if (prior.state.status is not EffectAttemptStatus.NOT_READY
+                    or prior.state.recovery_decision is not None
+                    or not is_native_connection_operation(intent.intent.operation)
+                    or intent.request_id != request.identity.request_id
+                    or intent.original_start_event != prior.original_start_event
+                    or intent.request_fingerprint != prior.state.request_fingerprint):
+                raise ExecutionCoordinatorConflict("native predecessor is not a completed wait")
+            retained = stores.effect_outcomes.get(command.predecessor, prior.latest_transition_event.event_id)
+            if (type(retained.outcome) is not NativeConnectionEffectOutcome
+                    or retained.attempt != prior or retained.workspace_id != provenance.workspace_id):
+                raise ExecutionCoordinatorConflict("native predecessor outcome is incongruent")
+            try:
+                stores.effect_attempts.get_for_update(provenance.successor)
+            except KeyError:
+                pass
+            else:
+                raise ExecutionCoordinatorConflict("native predecessor already has a successor")
+            _require_native_plan(stores, intent, request)
+            plan = stores.activity_history.get_plan(run.plan_id)
+            events = stores.execution.events_for_run(run.run_id)
+            projection = project_activity_journal(plan.plan, activity_journal_events(events))
+            schedule = derive_schedule(plan.plan, projection.state)
+            history = tuple(event for event in events if event.activity_id == command.predecessor.activity_id)
+            if (projection.uncertain or schedule.running or schedule.failed
+                    or projection.state.step(SagaStepId(command.predecessor.activity_id)).status is not SagaStepStatus.WAITING
+                    or not history or history[-1] != prior.latest_transition_event):
+                raise ExecutionCoordinatorConflict("native predecessor is not the current waiting step")
+            runtime = stores.runtime_authorities.get_active_for_update(provenance.workspace_id, intent.intent.authority_ref)
+            if runtime != self._selected_managed_runtime(context, intent.intent):
+                raise ExecutionCoordinatorDenied("native reobservation runtime authority changed")
+            clock = stores.execution.observe_request_lease_for_update(request.identity.request_id)
+            if clock.request != request or clock.expired:
+                raise ExecutionCoordinatorDenied("native reobservation lease expired")
+            state = fold_effect_attempt(None, EffectAttemptTransition(EffectAttemptTransitionKind.STARTED,
+                provenance.successor, request_fingerprint=intent.request_fingerprint,
+                prior_attempt=command.predecessor), fence=EffectAttemptFence(execution.fence.worker_id,
+                    execution.fence.generation))
+            event = ActivityEventRecord(self._id_factory(), run.run_id,
+                stores.execution.next_event_ordinal(run.run_id), ActivityEventKind.STEP_OBSERVATION_RESTARTED,
+                clock.observed_at, activity_id=command.predecessor.activity_id,
+                evidence=BoundedEvidence.from_mapping({"effect_attempt": EffectAttemptEventEvidence(
+                    state.identity.attempt, effect_attempt_state_fingerprint(state)).descriptor()}))
+            attempt = EffectAttemptRecord(state, event, event)
+            successor_intent = EffectAttemptIntentRecord(state.identity, event, intent.intent)
+            receipt = ExecutionCommandReceiptRecord(run_id=execution.run_id,
+                idempotency_key=execution.idempotency_key.value, intent_fingerprint=fingerprint,
+                worker_id=execution.authority.worker_id, authority_scopes=execution.authority.scopes,
+                claim_generation=execution.fence.generation, max_effects=1, admitted_at=clock.observed_at,
+                initial_run=run, managed_intent=provenance)
+            if (stores.execution.add_event(event) != event
+                    or stores.effect_attempt_intents.insert(successor_intent) != successor_intent
+                    or stores.effect_attempts.insert_absent(attempt) != attempt
+                    or stores.execution.add_command_receipt(receipt) != receipt):
+                raise ExecutionCoordinatorConflict("native reobservation acknowledgement is incongruent")
+            uow.commit()
+        return attempt
+
     def _admit_command(
         self,
         command: ExecuteActivityRun,
+        managed_intent: ManagedExecutionCommandIntent | None = None,
+        *,
+        admit: bool = True,
     ) -> ExecutionCoordinatorResult | None:
-        fingerprint = _execution_command_fingerprint(command)
+        fingerprint = _execution_command_fingerprint(command, managed_intent)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             stores.execution.lock_command_idempotency(
                 command.run_id,
                 command.idempotency_key.value,
             )
-            _, run = _locked_request_and_run(stores, command)
+            request, run = _locked_request_and_run(stores, command)
+            if managed_intent is not None and managed_intent.workspace_id != request.identity.workspace_id:
+                raise ExecutionCoordinatorDenied("managed execution workspace does not match")
             receipt = stores.execution.command_receipt_for_idempotency(
                 command.run_id,
                 command.idempotency_key.value,
@@ -877,6 +1286,8 @@ class ExecutionCoordinator:
                     run,
                     CoordinatorStatus.UNCERTAIN,
                 )
+            if not admit:
+                return None
             stores.execution.add_command_receipt(
                 ExecutionCommandReceiptRecord(
                     run_id=command.run_id,
@@ -888,6 +1299,7 @@ class ExecutionCoordinator:
                     max_effects=command.max_effects,
                     admitted_at=self._clock(),
                     initial_run=run,
+                    managed_intent=managed_intent,
                 )
             )
             unit_of_work.commit()
@@ -897,8 +1309,9 @@ class ExecutionCoordinator:
         self,
         command: ExecuteActivityRun,
         result: ExecutionCoordinatorResult,
+        managed_intent: ManagedExecutionCommandIntent | None = None,
     ) -> None:
-        fingerprint = _execution_command_fingerprint(command)
+        fingerprint = _execution_command_fingerprint(command, managed_intent)
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
             stores.execution.lock_command_idempotency(
@@ -922,11 +1335,21 @@ class ExecutionCoordinator:
         self,
         command: ExecuteActivityRun,
     ) -> ExecutionCoordinatorResult:
+        steps = self._execution_steps(command)
+        try:
+            next(steps)
+        except StopIteration as completed:
+            return completed.value
+        finally:
+            steps.close()
+        raise ExecutionCoordinatorConflict("synchronous execution reached an awaited health effect")
+
+    def _execution_steps(self, command: ExecuteActivityRun, *, managed: bool = False):
         attempted = 0
         current: ExecutionCoordinatorResult | None = None
         for _ in range(command.max_effects):
             context = self._load_context(command)
-            guarded = self._guard_runtime_management(context, attempted)
+            guarded = self._guard_runtime_management(context, attempted, managed_execution=managed)
             if guarded is not None:
                 return guarded
             current = self._classify_current(context, attempted)
@@ -939,6 +1362,24 @@ class ExecutionCoordinator:
             if activity is None:
                 raise ExecutionCoordinatorConflict("ready activity identity is missing")
             planned = context.plan.activity(ActivityId(activity))
+            if type(planned.operation) in (ObserveManagementBootstrap, ObserveNodeHealth):
+                if current.status is CoordinatorStatus.IN_FLIGHT:
+                    return current
+                folded = yield _HealthExecution(context, planned)
+                if folded is None:
+                    return ExecutionCoordinatorResult(context.run, CoordinatorStatus.IN_FLIGHT,
+                        attempted, planned.activity_id.value)
+                attempted += 1
+                status = folded.attempt.state.status
+                if status in (EffectAttemptStatus.UNCERTAIN, EffectAttemptStatus.UNSUPPORTED,
+                        EffectAttemptStatus.FAILED):
+                    observed = self._classify_current(self._load_context(command))
+                    return ExecutionCoordinatorResult(observed.run, {
+                        EffectAttemptStatus.UNCERTAIN: CoordinatorStatus.UNCERTAIN,
+                        EffectAttemptStatus.UNSUPPORTED: CoordinatorStatus.UNSUPPORTED,
+                        EffectAttemptStatus.FAILED: CoordinatorStatus.FAILED,
+                    }[status], attempted, planned.activity_id.value)
+                continue
             legacy = False
             match planned.operation:
                 case (
@@ -1234,7 +1675,7 @@ class ExecutionCoordinator:
             if selected_conflict is not None:
                 raise ExecutionCoordinatorConflict(selected_conflict)
         context = self._load_context(command)
-        guarded = self._guard_runtime_management(context, attempted)
+        guarded = self._guard_runtime_management(context, attempted, managed_execution=managed)
         if guarded is not None:
             return guarded
         current = self._classify_current(context, attempted)
@@ -1251,13 +1692,19 @@ class ExecutionCoordinator:
         self,
         context: "_CoordinatorContext",
         effects_attempted: int,
+        *,
+        managed_execution: bool = False,
     ) -> ExecutionCoordinatorResult | None:
         # Existing authoritative lifecycle states retain their classification.
         # The ordinary classifier can write completion/failure for RUNNING, so
         # unsupported material must be intercepted before calling it.
         if context.run.status is not ActivityRunStatus.RUNNING:
             return None
-        if not runtime_management_execution_is_unsupported(
+        has_health = any(
+            type(activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth)
+            for activity in context.plan.activities
+        )
+        if (managed_execution or not has_health) and not runtime_management_execution_is_unsupported(
             DEFAULT_GRAPH_CODEC.decode(context.base_graph.graph_descriptor),
             DEFAULT_GRAPH_CODEC.decode(context.desired_graph.graph_descriptor),
             context.plan,

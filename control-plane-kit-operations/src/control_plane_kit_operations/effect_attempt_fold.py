@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from control_plane_kit_core.identity import TrustedCommandContext
 from control_plane_kit_core.operations import (
     EffectAttemptIdentity,
     EffectAttemptStatus,
@@ -28,11 +29,16 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcome,
     EffectAttemptOutcomeRecord,
     ExecutionEffectOutcome,
+    NativeConnectionObservation,
+    NativeConnectionRefused,
+    NativeConnectionReadFailure,
     ObservedEffectOutcome,
     effect_outcome_failure,
     effect_outcome_transition,
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
+from control_plane_kit_operations.health_effect_attempt_start import _valid_context
+from control_plane_kit_operations.health_effect_preparations import HealthEffectPreparationRecord
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import (
     BoundedEvidence,
@@ -48,6 +54,9 @@ from control_plane_kit_operations.runtime_authorities import (
     RuntimeAuthorityRegistrationError,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
+from control_plane_kit_operations.runtime_management_targets import (
+    is_native_connection_operation, is_signed_management_health_operation,
+)
 
 
 class EffectAttemptFoldError(RuntimeError):
@@ -95,6 +104,100 @@ class GuardedObservedEffectFold:
             raise InvalidOperationCommand(
                 "guarded observed effect fold command is invalid"
             )
+
+
+@dataclass(frozen=True)
+class FoldNativeConnectionObservation:
+    """Submit a correlated raw sample; the transaction owns acceptance time."""
+
+    request_id: str
+    identity: EffectAttemptIdentity
+    observation: NativeConnectionObservation | NativeConnectionRefused | NativeConnectionReadFailure = field(repr=False)
+    context: TrustedCommandContext = field(repr=False)
+    authority: ExecutionWorkerAuthority
+    fence: ExecutionLeaseFence
+    intent_record: EffectAttemptIntentRecord = field(repr=False)
+    runtime_authority: RegisteredRuntimeAuthority = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not _valid_native_fold(self):
+            raise InvalidOperationCommand("native connection fold command is invalid")
+
+
+@dataclass(frozen=True)
+class GuardedHealthEffectFold:
+    """A signed read result bound to its original admitted preparation."""
+
+    fold: FoldEffectAttempt
+    context: TrustedCommandContext = field(repr=False)
+    intent_record: EffectAttemptIntentRecord = field(repr=False)
+    preparation: HealthEffectPreparationRecord = field(repr=False)
+    runtime_authority: RegisteredRuntimeAuthority = field(repr=False)
+
+    def __post_init__(self):
+        if not _valid_health_fold(self):
+            raise InvalidOperationCommand("signed health fold command is invalid")
+
+
+def _valid_health_fold(command):
+    if type(command) is not GuardedHealthEffectFold:
+        return False
+    try:
+        intent = _validated_intent_record(command.intent_record)
+        runtime = _validated_runtime_authority(command.runtime_authority)
+        preparation = command.preparation
+        return (_valid_fold_command(command.fold)
+            and type(command.fold.outcome) is ExecutionEffectOutcome
+            and _valid_context(command.context)
+            and intent is not None and runtime is not None
+            and type(preparation) is HealthEffectPreparationRecord
+            and is_signed_management_health_operation(intent.intent.operation)
+            and command.fold.transition.identity == intent.identity == preparation.identity
+            and command.fold.request_id == intent.request_id
+            and command.fold.outcome.request_fingerprint == intent.request_fingerprint == preparation.request_fingerprint
+            and command.fold.outcome.effect_id == intent.original_start_event.event_id == preparation.original_event_id
+            and runtime.workspace_id == intent.workspace_id
+            and runtime.authority_ref == intent.intent.authority_ref
+            and runtime.runtime_kind is intent.intent.runtime_kind)
+    except (AttributeError, ValueError, TypeError):
+        return False
+
+
+def _valid_native_fold(command: object) -> bool:
+    if type(command) is not FoldNativeConnectionObservation:
+        return False
+    try:
+        intent = _validated_intent_record(command.intent_record)
+        runtime = _validated_runtime_authority(command.runtime_authority)
+        if (not _bounded_command_text(command.request_id)
+                or not _identity_is_exact(command.identity)
+                or not _valid_context(command.context)
+                or type(command.observation) not in (NativeConnectionObservation,
+                    NativeConnectionRefused, NativeConnectionReadFailure)
+                or type(command.authority) is not ExecutionWorkerAuthority
+                or type(command.authority.scopes) is not tuple
+                or any(type(scope) is not PolicyScope for scope in command.authority.scopes)
+                or type(command.fence) is not ExecutionLeaseFence
+                or type(command.fence.generation) is not int
+                or command.authority.worker_id != command.fence.worker_id
+                or intent is None or runtime is None):
+            return False
+        command.identity.__post_init__()
+        sample = type(command.observation) is NativeConnectionObservation
+        if sample:
+            command.observation.__post_init__()
+        ExecutionWorkerAuthority(command.authority.worker_id, command.authority.scopes)
+        ExecutionLeaseFence(command.fence.worker_id, command.fence.generation)
+        return (intent.identity == command.identity
+            and intent.request_id == command.request_id
+            and (not sample or (command.observation.activity_id == command.identity.activity_id
+                and command.observation.effect_id == intent.original_start_event.event_id))
+            and runtime.workspace_id == intent.workspace_id
+            and runtime.authority_ref == intent.intent.authority_ref
+            and runtime.runtime_kind is intent.intent.runtime_kind
+            and is_native_connection_operation(intent.intent.operation))
+    except (AttributeError, TypeError, ValueError):
+        return False
 
 
 @dataclass(frozen=True)
@@ -513,6 +616,8 @@ __all__ = [
     "EffectAttemptFoldResult",
     "ExistingFold",
     "FoldEffectAttempt",
+    "FoldNativeConnectionObservation",
     "GuardedObservedEffectFold",
+    "GuardedHealthEffectFold",
     "NewlyFolded",
 ]

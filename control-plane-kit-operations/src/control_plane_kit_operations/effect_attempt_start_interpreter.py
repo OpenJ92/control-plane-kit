@@ -16,13 +16,13 @@ from control_plane_kit_core.operations.lifecycle import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.planning import (
-    ObserveNodeHealth,
     SagaJournalError,
     SagaStateError,
     derive_schedule,
     project_activity_journal,
 )
 from control_plane_kit_operations.activity_journal import activity_journal_events
+from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation
 from control_plane_kit_operations.effect_attempt_start import (
     EffectAttemptStartConflict,
     EffectAttemptStartDenied,
@@ -131,14 +131,14 @@ class EffectAttemptStartService:
                 _require_replay(command, fence, request, run, attempt)
                 _require_intent_replay(stores, command, attempt)
                 result = ExistingAttempt(attempt)
-                if type(command.intent.operation) is ObserveNodeHealth:
+                if is_signed_management_health_operation(command.intent.operation):
                     preparation = health_replay(stores, attempt, health)
                     if health is not None:
                         result = HealthEffectAttemptStartResult(result, preparation)
                 unit_of_work.commit()
                 return result
 
-            if type(command.intent.operation) is ObserveNodeHealth and health is None:
+            if is_signed_management_health_operation(command.intent.operation) and health is None:
                 raise EffectAttemptStartDenied("health effect start requires trusted admission")
             latest_run = _latest_run_for_update(stores, command.request_id)
             plan = _plan(stores, request.identity.plan_id)

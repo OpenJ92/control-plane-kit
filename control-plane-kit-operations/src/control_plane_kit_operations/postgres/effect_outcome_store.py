@@ -50,6 +50,9 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     EffectAttemptOutcomeRecord,
     EffectOutcomeProfile,
     ExecutionEffectOutcome,
+    NativeConnectionEffectOutcome,
+    NativeConnectionObservation,
+    NativeConnectionOutcome,
     ObservedEffectOutcome,
     effect_outcome_observation_records,
 )
@@ -63,6 +66,7 @@ from control_plane_kit_operations.records import (
     ObservationRecord,
     OperationsRecordError,
 )
+from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
 
 
 _COLUMN_NAMES = (
@@ -295,6 +299,8 @@ def _require_record(value: object) -> EffectAttemptOutcomeRecord:
 
 
 def _encode_preimage(record: EffectAttemptOutcomeRecord) -> bytes:
+    if type(record.outcome) is NativeConnectionEffectOutcome:
+        return rfc8785.dumps(record.outcome.acceptance_descriptor())
     value = (
         record.outcome.result
         if type(record.outcome) is ExecutionEffectOutcome
@@ -399,11 +405,12 @@ def _reconstruct_row(
         raise ValueError("effect outcome event coordinate is invalid")
     attempt = EffectAttemptRecord(state, original, direct)
     profile = EffectOutcomeProfile(row[5])
-    outcome = (
-        ExecutionEffectOutcome(identity, row[7], value)
-        if profile is EffectOutcomeProfile.EXECUTION_RESULT
-        else ObservedEffectOutcome(identity, value)
-    )
+    if profile is EffectOutcomeProfile.NATIVE_CONNECTION:
+        outcome = NativeConnectionEffectOutcome(identity, row[7], value[0], value[1], value[2])
+    elif profile is EffectOutcomeProfile.EXECUTION_RESULT:
+        outcome = ExecutionEffectOutcome(identity, row[7], value)
+    else:
+        outcome = ObservedEffectOutcome(identity, value)
     observations = _membership_records(row, memberships)
     _require_verification_membership(
         connection,
@@ -427,7 +434,9 @@ def _require_verification_membership(
     request_id: object,
     error_message: str,
 ) -> None:
-    if not any(
+    native = (type(outcome) is NativeConnectionEffectOutcome
+        or attempt.original_start_event.kind.value == "step_observation_restarted")
+    if not native and not any(
         type(item) is VerificationCompleted
         for item in outcome.endpoint_observations
     ):
@@ -450,6 +459,11 @@ def _require_verification_membership(
             intent_record.workspace_id == workspace_id
             and intent_record.request_id == request_id
             and expected == observations
+            and (not native or (
+                is_native_connection_operation(intent_record.intent.operation)
+                and intent_record.identity == attempt.state.identity
+                and intent_record.original_start_event == attempt.original_start_event
+                and intent_record.request_fingerprint == attempt.state.request_fingerprint))
         )
     except (KeyError, RuntimeEffectContractError, OperationsRecordError, ValueError):
         pass
@@ -500,6 +514,8 @@ def _decode_preimage(value: object, profile: object) -> object:
         selected = EffectOutcomeProfile(profile)
         if selected is EffectOutcomeProfile.EXECUTION_RESULT:
             return _runtime_result(decoded)
+        if selected is EffectOutcomeProfile.NATIVE_CONNECTION:
+            return _native_acceptance(decoded)
         return _runtime_observation(decoded)
     except (KeyError, TypeError, UnicodeError, ValueError, RuntimeEffectContractError):
         raise ValueError("effect outcome preimage is invalid") from None
@@ -539,6 +555,25 @@ def _runtime_result(value: object) -> RuntimeEffectResult:
         failure,
         observations,
     )
+
+
+def _native_acceptance(value: object):
+    row = _exact_mapping(value, {"observation", "accepted_at", "acceptance_reason"})
+    raw = _exact_mapping(row["observation"], {"outcome", "effect_id", "activity_id",
+        "container_id", "sample_start", "sample_end", "ready_connections", "connector_id"})
+    count = raw["ready_connections"]
+    if count is not None:
+        if (type(count) is not str or not 1 <= len(count) <= 20
+                or any(character < "0" or character > "9" for character in count)
+                or str(int(count)) != count):
+            raise ValueError("native count is invalid")
+        count = int(count)
+    sample = NativeConnectionObservation(NativeConnectionOutcome(raw["outcome"]),
+        raw["effect_id"], raw["activity_id"], raw["container_id"], raw["sample_start"],
+        raw["sample_end"], count, raw["connector_id"])
+    if sample.descriptor() != raw:
+        raise ValueError("native sample is invalid")
+    return sample, row["accepted_at"], row["acceptance_reason"]
 
 
 def _runtime_failure(value: object) -> RuntimeEffectFailure:

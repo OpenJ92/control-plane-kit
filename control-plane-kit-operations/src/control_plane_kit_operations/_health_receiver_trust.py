@@ -33,11 +33,11 @@ def _context(plan, graphs, selected, workspace):
         return NodeControlGraphReference(role, value)
     target = NodeControlTarget(ref(NodeControlGraphReferenceRole.WORKSPACE, workspace),
         ref(NodeControlGraphReferenceRole.GRAPH_REVISION, authored),
-        ref(NodeControlGraphReferenceRole.NODE, operation.node_id),
-        ref(NodeControlGraphReferenceRole.PROVIDER_SOCKET, operation.provider_socket_name))
+        ref(NodeControlGraphReferenceRole.NODE, selected.target_node_id),
+        ref(NodeControlGraphReferenceRole.PROVIDER_SOCKET, selected.target_provider_socket_name))
     runtime = ref(NodeControlGraphReferenceRole.RUNTIME, operation.target.runtime_id)
     gateway = ref(NodeControlGraphReferenceRole.NODE, selected.gateway_node_id)
-    declaration = WorkloadNodeControlSurfaceDeclaration(selected.workload_surface,
+    declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface,
         WorkloadNodeControlSurfaceDeclarationProfile.V2)
     return graph, authored, projection, side, target, runtime, gateway, declaration
 
@@ -90,7 +90,7 @@ def require_health_receiver_coverage(stores, registry, *, plan, graphs, selected
         lambda: _context(plan, graphs, selected, workspace), refuse)
     for purpose, node_id, socket, key in (
             (_PURPOSES[0], selected.gateway_node_id, selected.gateway_transit_provider_socket_name, keys[0]),
-            (_PURPOSES[1], selected.operation.node_id, selected.operation.provider_socket_name, keys[1])):
+            (_PURPOSES[1], selected.target_node_id, selected.target_provider_socket_name, keys[1])):
         node, reference = _checked(lambda: _node_reference(graph, node_id, runtime.value, socket), refuse)
         # Owner exceptions retain identity even if named like our contract refusal.
         product = stores.registered_products.get(workspace, reference)

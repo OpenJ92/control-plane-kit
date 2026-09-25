@@ -10,7 +10,7 @@ from control_plane_kit_core.node_control import (
     NodeControlGraphReference, NodeControlGraphReferenceRole, NodeHealthReadKind,
 )
 from control_plane_kit_core.planning import (
-    ActivityId, ActivityPlan, ObserveManagementBootstrap, ObserveNodeHealth,
+    ActivityId, ActivityPlan, ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth,
     PlanGraphSide, StartNode, compile_graph_activity_plan,
 )
 from control_plane_kit_core.topology import DeploymentGraph, GraphDescriptorCodec, validate_graph
@@ -41,6 +41,35 @@ class MarkedSpecCodec:
 
 
 class RuntimeManagementTargetTests(unittest.TestCase):
+    def test_original_signed_bootstrap_stages_select_gateway_own_surface(self):
+        plan, _, current, desired = self.context()
+        project, error = self.api()
+        stages = {value.operation.stage for value in plan.activities
+            if type(value.operation) is ObserveManagementBootstrap}
+        self.assertEqual(stages, {
+            ManagementBootstrapStage.CONNECTOR_CONNECTED,
+            ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+            ManagementBootstrapStage.GATEWAY_INGRESS_READY,
+        })
+        for activity in plan.activities:
+            operation = activity.operation
+            if type(operation) is not ObserveManagementBootstrap:
+                continue
+            if operation.stage is ManagementBootstrapStage.CONNECTOR_CONNECTED:
+                self.refuse(project, error, plan, activity.activity_id, operation, current, desired)
+                continue
+            with self.subTest(stage=operation.stage):
+                try:
+                    target = project(plan, activity.activity_id, operation, current, desired)
+                except error:
+                    self.fail("original signed bootstrap stage has no trusted target projection")
+                self.assertEqual(target.operation, operation)
+                self.assertEqual(target.activity_id, activity.activity_id)
+                self.assertEqual(target.target_node_id, "gateway")
+                self.assertEqual(target.target_provider_socket_name, "gateway-ready")
+                self.assertIs(target.target_health_kind, NodeHealthReadKind.READINESS)
+                self.assertEqual(target.target_surface, desired.graph.node("gateway").block_spec.control_surfaces[0])
+
     def api(self):
         # Assert missing behavior after collection and valid fixture construction.
         name = "control_plane_kit_operations.runtime_management_targets"
@@ -114,8 +143,11 @@ class RuntimeManagementTargetTests(unittest.TestCase):
         self.assertEqual(result.gateway_transit_provider_socket_name, "transit-health")
         self.assertEqual(result.ingress, desired.graph.public_ingresses[0])
         self.assertEqual(result.ingress.connector_node_id, "connector")
-        self.assertEqual(result.workload_surface, desired.graph.node("api").block_spec.control_surfaces[0])
-        self.assertEqual(result.workload_surface.provider_socket_name.value, "sdk-health")
+        self.assertEqual(result.target_surface, desired.graph.node("api").block_spec.control_surfaces[0])
+        self.assertEqual(result.target_surface.provider_socket_name.value, "sdk-health")
+        self.assertEqual(result.target_node_id, "api")
+        self.assertEqual(result.target_provider_socket_name, "sdk-health")
+        self.assertIs(result.target_health_kind, NodeHealthReadKind.READINESS)
         self.assertIs(result.operation.health_kind, NodeHealthReadKind.READINESS)
         with self.assertRaises(FrozenInstanceError):
             result.gateway_node_id = "peer"
@@ -126,7 +158,8 @@ class RuntimeManagementTargetTests(unittest.TestCase):
         plan, activity, current, desired = self.context(peer=True)
         peer = next(value for value in plan.activities
             if type(value.operation) is ObserveNodeHealth and value.operation.node_id == "peer")
-        bootstrap = next(value for value in plan.activities if type(value.operation) is ObserveManagementBootstrap)
+        bootstrap = next(value for value in plan.activities if type(value.operation) is ObserveManagementBootstrap
+            and value.operation.stage is ManagementBootstrapStage.CONNECTOR_CONNECTED)
         start = next(value for value in plan.activities if type(value.operation) is StartNode)
         project, error = self.api()
         for identity, candidate in (

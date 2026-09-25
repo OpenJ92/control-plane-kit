@@ -9,11 +9,16 @@ from control_plane_kit_core.configuration import ConfigurationArtifact, Configur
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
 from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole, NodeControlTarget, workload_node_control_audience
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationCodec, WorkloadNodeControlSurfaceDeclarationProfile
-from control_plane_kit_core.planning import ActivityPlan, ObserveNodeHealth, PlanGraphSide, compile_graph_activity_plan
+from control_plane_kit_core.planning import (
+    ActivityPlan, ManagementBootstrapStage, ObserveManagementBootstrap,
+    ObserveNodeHealth, PlanGraphSide, compile_graph_activity_plan,
+)
 from control_plane_kit_core.products import ContainerServerProduct, OciImageReference, ProductDescriptorCodec, ProductIdentity, ProductReference, ProductRuntimeContract, ProviderRuntimePort
 from control_plane_kit_core.topology import DeploymentGraph, validate_graph
 from control_plane_kit_operations.products import ImportProductDescriptorCommand, InlineDescriptorSource, ProductRegistrationService
-from control_plane_kit_operations.runtime_management_targets import project_management_health_target
+from control_plane_kit_operations.runtime_management_targets import (
+    ManagementHealthTargetProjectionError, project_management_health_target,
+)
 from tests.runtime_management_fixtures import bootstrap_management_graph
 from tests.test_delegation_signing_keys import PUBLIC_KEY_A, PUBLIC_KEY_B
 
@@ -82,7 +87,10 @@ class ByteDecoder:
             audience=workload_node_control_audience(target), **common)
 
 
-def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_changes=None):
+def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_changes=None, stage=None):
+    if stage is not None:
+        return _bootstrap_context(test, stage=stage, side=side,
+            changes=changes, slot_changes=slot_changes)
     graph = bootstrap_management_graph(test)
     declaration = WorkloadNodeControlSurfaceDeclaration(graph.node("api").block_spec.control_surfaces[0],
         WorkloadNodeControlSurfaceDeclarationProfile.V2)
@@ -121,6 +129,61 @@ def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_change
         activity = plan.activity(activity.activity_id)
         current = desired
     projected = project_management_health_target(plan, activity.activity_id, activity.operation, current, desired)
+    return (plan, activity, current, desired, projected), documents, selected
+
+
+def _bootstrap_context(test, *, stage, side, changes, slot_changes):
+    """Both signed receiver families inhabit one gateway product, not two nodes.
+
+    This is a focused admission/reload world. Its caller may seed predecessor
+    journal facts; it is not evidence that creation or bootstrap effects ran.
+    The workload-only context above retains its original defaults and pins.
+    """
+    test.assertIs(side, PlanGraphSide.DESIRED_GRAPH)
+    test.assertIn(stage, (
+        ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+        ManagementBootstrapStage.GATEWAY_INGRESS_READY,
+    ))
+    graph = bootstrap_management_graph(test)
+    gateway = graph.node("gateway")
+    declaration = WorkloadNodeControlSurfaceDeclaration(
+        gateway.block_spec.control_surfaces[0], WorkloadNodeControlSurfaceDeclarationProfile.V2)
+    selected, defaults = {}, []
+    for family in PURPOSES:
+        values = {"node": "gateway", "revision": "health-desired"}
+        chosen = artifact(family, declaration, **(values | (changes or {}).get(family, {})))
+        selected[family] = replace(chosen, **(slot_changes or {}).get(family, {}))
+        defaults.append(artifact(family, declaration, **values,
+            keys=[dict(key_id="default-only", pem=PUBLIC_KEY_C)]))
+    contract = ProductRuntimeContract(sockets=gateway.sockets,
+        provider_ports=(ProviderRuntimePort("http", 8000),),
+        capabilities=gateway.block_spec.capabilities,
+        control_surfaces=gateway.block_spec.control_surfaces,
+        gateway_transit=gateway.block_spec.gateway_transit,
+        configuration_artifacts=tuple(defaults))
+    document = ProductDescriptorCodec().encode_document(ContainerServerProduct(
+        ProductIdentity("test", "bootstrap-gateway", 1),
+        OciImageReference("ghcr.io", "test/bootstrap-gateway", "sha256:" + "b" * 64), contract))
+    product_reference = ProductReference.from_document(document)
+    gateway = replace(gateway, configuration_artifacts=tuple(selected.values()), metadata={
+        **gateway.metadata, "product_identity": product_reference.identity.key,
+        "product_descriptor_digest": product_reference.descriptor_sha256.value})
+    desired = validate_graph(replace(graph, nodes={**graph.nodes, "gateway": gateway}))
+    current = validate_graph(DeploymentGraph(graph.name))
+    current.require_valid()
+    desired.require_valid()
+    plan = compile_graph_activity_plan(current, desired)
+    activities = tuple(item for item in plan.activities
+        if type(item.operation) is ObserveManagementBootstrap and item.operation.stage is stage)
+    test.assertEqual(len(activities), 1)
+    activity, = activities
+    try:
+        projected = project_management_health_target(plan, activity.activity_id, activity.operation, current, desired)
+    except ManagementHealthTargetProjectionError:
+        test.fail("original signed bootstrap stage must project the gateway's own health target")
+    # Binding identity is (product, purpose), so the same registered product
+    # supplies both families without overwriting either selected artifact.
+    documents = {family: document for family in PURPOSES}
     return (plan, activity, current, desired, projected), documents, selected
 
 

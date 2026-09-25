@@ -1043,17 +1043,18 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             tuple(
                 delivery.reference.reference_id
                 for delivery in deliveries
-                if isinstance(delivery, SecretEnvironmentDelivery)
-                and delivery.environment_name == "TUNNEL_TOKEN"
+                if isinstance(delivery, SecretFileDelivery)
+                and delivery.target_path == "/run/secrets/cloudflare-tunnel-token"
             ),
             (active_secret.secret_ref.reference_id,),
         )
         self.assertNotIn("tunnel-token-value", repr(request.descriptor()).lower())
 
     def test_explicit_compiled_tunnel_token_needs_no_generated_material(self) -> None:
-        delivery = SecretEnvironmentDelivery(
-            "TUNNEL_TOKEN", SecretReference("secret://workspace-a/selected/tunnel"),
+        delivery = SecretFileDelivery(
+            "/run/secrets/cloudflare-tunnel-token", SecretReference("secret://workspace-a/selected/tunnel"),
             SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            path_binding=SecretFilePathBinding("TUNNEL_TOKEN_FILE"),
         )
         context = _context(
             activity=PlannedActivity(
@@ -1063,7 +1064,10 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
             registered_products=(_registered_product(name="cloudflared-connector"),),
         )
 
-        request = runtime_effect_request_for_context(context)
+        try:
+            request = runtime_effect_request_for_context(context)
+        except InvalidOperationCommand:
+            self.fail("protected compiled token-file delivery was not recognized")
 
         self.assertEqual(
             request.products[0].product.runtime_contract.secret_deliveries,
@@ -1071,9 +1075,10 @@ class RuntimeEffectTranslationTests(unittest.TestCase):
         )
 
     def test_generated_ingress_material_satisfies_declared_secret_slot(self) -> None:
-        declared = SecretEnvironmentDelivery(
-            "TUNNEL_TOKEN", SecretReference("secret://defaults/tunnel"),
+        declared = SecretFileDelivery(
+            "/run/secrets/cloudflare-tunnel-token", SecretReference("secret://defaults/tunnel"),
             SecretUseIntent.CLOUDFLARE_TUNNEL_TOKEN,
+            path_binding=SecretFilePathBinding("TUNNEL_TOKEN_FILE"),
         )
         base = _registered_product(name="cloudflared-connector").descriptor_document.product
         product = replace(base, runtime_contract=replace(
@@ -1496,7 +1501,7 @@ def _graph(
 def _public_ingress_graph(
     *,
     public_ingresses: tuple[NamedPublicIngress, ...] | None = None,
-    connector_deliveries: tuple[SecretEnvironmentDelivery, ...] = (),
+    connector_deliveries: tuple[SecretDelivery, ...] = (),
     ingress_lifecycle: PublicIngressLifecycle = PublicIngressLifecycle.EPHEMERAL,
 ) -> DeploymentGraph:
     gateway = Node(

@@ -10,11 +10,27 @@ from control_plane_kit_core.operations import (
     HttpOperationSafety,
     HttpSchemaRef,
     InvalidHttpApiContract,
+    operator_command_http_routes,
     operator_read_http_routes,
 )
 
 
 class HttpApiContractTests(unittest.TestCase):
+    def test_connector_reobservation_declares_authenticated_bounded_command(self) -> None:
+        route = next(route for route in operator_command_http_routes()
+            if route.route_id == "command.deployment.reobserve-connector")
+        self.assertEqual(route, HttpApiRouteContract(
+            route_id="command.deployment.reobserve-connector",
+            method=HttpMethod.POST,
+            path_template="/workspaces/{workspace_id}/runs/{run_id}/reobserve-connector",
+            service_role=ControlPlaneServiceRole.EXECUTION,
+            auth_scope=HttpAuthScope.EXECUTION_RUN,
+            safety=HttpOperationSafety.COMMAND,
+            request_schema=HttpSchemaRef("ReobserveConnectorConnectionRequest"),
+            response_schema=HttpSchemaRef("ExecutionRunResponse"),
+        ))
+        self.assertEqual(HttpApiRouteContract.from_descriptor(route.descriptor()), route)
+
     def test_operator_read_routes_preserve_frozen_route_inventory(self) -> None:
         contract = HttpApiContract(operator_read_http_routes())
 

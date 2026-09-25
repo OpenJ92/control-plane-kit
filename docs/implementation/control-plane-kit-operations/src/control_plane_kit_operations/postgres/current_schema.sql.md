@@ -27,3 +27,17 @@ Installation executes only in an object-free namespace. Incompatible retained
 stores are refused intact, never reset, migrated or backfilled. The reset-required
 diagnostic does not authorize a reset. No live database/provider mutation is part
 of this source slice.
+
+Managed health execution adds NOT_READY attempt state and the
+`native-connection` outcome profile. This profile allows only SUCCEEDED or
+NOT_READY with zero endpoint-observation rows; its protected canonical preimage
+retains the original bounded native sample, acceptance timestamp and reason.
+The acceptance timestamp must agree with the completion event. Native counts
+use canonical decimal strings so the full uint64 domain is preserved.
+Explicit observation restart/not-ready event vocabulary retains immutable
+attempt commitments. The existing receipt leaf retains nullable managed caller
+and predecessor provenance; legacy receipt fingerprints remain unchanged.
+
+These are changes to the exact current schema, not an automatic migration.
+Installation still rejects incompatible populated namespaces without changing
+them. Application admission/fold transactions own all related writes.

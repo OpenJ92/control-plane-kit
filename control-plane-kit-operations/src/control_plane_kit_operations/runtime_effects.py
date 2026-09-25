@@ -12,6 +12,8 @@ from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.planning.activity_plan import (
     AddSocketConnection,
     NodeTarget,
+    ObserveManagementBootstrap,
+    ObserveNodeHealth,
     ReconcileNode,
     RemoveNodeResource,
     RemoveRuntimeResource,
@@ -75,6 +77,8 @@ from control_plane_kit_operations.ingress_authorities import (
     OwnedIngressResourceStatus,
     RegisteredIngressAuthority,
     cloudflare_tunnel_token_delivery_plan,
+    require_cloudflared_tunnel_token_delivery,
+    _uses_cloudflared_token_slot,
 )
 from control_plane_kit_operations.products import (
     RegisteredImagePullAuthority,
@@ -103,6 +107,8 @@ def runtime_effect_request_for_context(
         raise InvalidOperationCommand(
             "runtime effect translation requires ActivityRealizationContext"
         )
+    if type(context.activity.operation) in (ObserveManagementBootstrap, ObserveNodeHealth):
+        raise InvalidOperationCommand("runtime management execution is unsupported")
     intent = _runtime_effect_intent_for_context(context, context.activity)
     return runtime_effect_request_for_intent(
         intent,
@@ -424,10 +430,11 @@ def _secret_deliveries_for_node(
     # The compiled node already owns configured references for descriptor slots
     # and active socket deliveries. Descriptor defaults are not extra material.
     deliveries = tuple(node.secret_deliveries)
-    if _has_tunnel_token_delivery(deliveries):
-        return tuple(sorted(deliveries, key=secret_delivery_sort_key))
     ingress = _connector_ingress_for_node(graph, node.node_id)
     if ingress is None:
+        return tuple(sorted(deliveries, key=secret_delivery_sort_key))
+    if _has_tunnel_token_delivery(deliveries):
+        require_cloudflared_tunnel_token_delivery(deliveries)
         return tuple(sorted(deliveries, key=secret_delivery_sort_key))
     resource = _ingress_resource_for(context.ingress_resources, ingress.ingress_id)
     generated = _generated_ingress_secret_for(
@@ -453,11 +460,7 @@ def _secret_deliveries_for_node(
 
 
 def _has_tunnel_token_delivery(deliveries: tuple[SecretDelivery, ...]) -> bool:
-    return any(
-        isinstance(delivery, SecretEnvironmentDelivery)
-        and delivery.environment_name == "TUNNEL_TOKEN"
-        for delivery in deliveries
-    )
+    return any(_uses_cloudflared_token_slot(delivery) for delivery in deliveries)
 
 
 def _connector_ingress_for_node(

@@ -830,6 +830,15 @@ def operator_command_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "ExecutionRunResponse",
             ),
             (
+                "command.deployment.reobserve-connector",
+                "/workspaces/{workspace_id}/runs/{run_id}/reobserve-connector",
+                ControlPlaneServiceRole.EXECUTION,
+                HttpAuthScope.EXECUTION_RUN,
+                HttpOperationSafety.COMMAND,
+                "ReobserveConnectorConnectionRequest",
+                "ExecutionRunResponse",
+            ),
+            (
                 "command.graph.advance-current",
                 "/workspaces/{workspace_id}/runs/{run_id}/advance-current-graph",
                 ControlPlaneServiceRole.LIFECYCLE,

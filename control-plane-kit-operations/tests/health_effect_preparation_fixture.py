@@ -80,14 +80,14 @@ class HealthEffectPreparationFixture:
             ref(NodeControlGraphReferenceRole.WORKSPACE, "workspace-a"),
             ref(NodeControlGraphReferenceRole.GRAPH_REVISION,
                 "health-base" if side is PlanGraphSide.BASE_GRAPH else "health-desired"),
-            ref(NodeControlGraphReferenceRole.NODE, activity.operation.node_id),
-            ref(NodeControlGraphReferenceRole.PROVIDER_SOCKET, activity.operation.provider_socket_name),
+            ref(NodeControlGraphReferenceRole.NODE, projection.target_node_id),
+            ref(NodeControlGraphReferenceRole.PROVIDER_SOCKET, projection.target_provider_socket_name),
         )
         declaration = WorkloadNodeControlSurfaceDeclaration(
-            projection.workload_surface, WorkloadNodeControlSurfaceDeclarationProfile.V2)
+            projection.target_surface, WorkloadNodeControlSurfaceDeclarationProfile.V2)
         request = NodeHealthReadRequest(target,
             ref(NodeControlGraphReferenceRole.RUNTIME, activity.operation.target.runtime_id),
-            activity.operation.health_kind, declaration.identity(), request_id)
+            projection.target_health_kind, declaration.identity(), request_id)
         common = dict(canonicalization=NodeControlCanonicalization.JCS_RFC8785_V1,
             issuer="cpk-server", target=request.target, runtime_id=request.runtime_id,
             kind=request.kind, declaration_identity=request.declaration_identity,

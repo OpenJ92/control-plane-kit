@@ -240,13 +240,13 @@ def build_health_start(admission: _HealthAdmission, command: StartHealthEffectAt
         target = NodeControlTarget(
             NodeControlGraphReference(NodeControlGraphReferenceRole.WORKSPACE, command.context.workspace_id),
             NodeControlGraphReference(NodeControlGraphReferenceRole.GRAPH_REVISION, admission.authored_graph_id),
-            NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, operation.node_id),
-            NodeControlGraphReference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, operation.provider_socket_name))
-        declaration = WorkloadNodeControlSurfaceDeclaration(selected.workload_surface,
+            NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, selected.target_node_id),
+            NodeControlGraphReference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, selected.target_provider_socket_name))
+        declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface,
             WorkloadNodeControlSurfaceDeclarationProfile.V2).identity()
         request = NodeHealthReadRequest(target,
             NodeControlGraphReference(NodeControlGraphReferenceRole.RUNTIME, operation.target.runtime_id),
-            operation.health_kind, declaration, logical_id)
+            selected.target_health_kind, declaration, logical_id)
         common = dict(canonicalization=NodeControlCanonicalization.JCS_RFC8785_V1,
             target=target, runtime_id=request.runtime_id, kind=request.kind,
             declaration_identity=declaration, request_id=logical_id, request_digest=request.canonical_digest(),
