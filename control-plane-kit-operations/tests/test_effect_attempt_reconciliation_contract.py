@@ -540,8 +540,8 @@ class EffectAttemptReconciliationContractTests(
         self.assertEqual(
             {str(error) for error in errors},
             {
-                "realization intent must be step_started or "
-                "step_compensation_started"
+                "realization intent must start an effect, compensation, "
+                "or native connection reobservation"
             },
         )
         for error in errors:
@@ -571,8 +571,8 @@ class EffectAttemptReconciliationContractTests(
                     dataclasses.replace(base, intent_event=event)
                 self.assertEqual(
                     str(caught.exception),
-                    "realization intent must be step_started or "
-                    "step_compensation_started",
+                    "realization intent must start an effect, compensation, "
+                    "or native connection reobservation",
                 )
                 self.assertIsNone(caught.exception.__cause__)
                 self.assertIsNone(caught.exception.__context__)
