@@ -27,7 +27,7 @@ from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcom
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import (
     ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth,
-    StartNode, StartRuntime, derive_schedule, project_activity_journal,
+    StartNode, StartRuntime, compile_graph_activity_plan, derive_schedule, project_activity_journal,
 )
 from control_plane_kit_core.planning.saga import SagaStepId
 from control_plane_kit_core.policies import PolicyScope
@@ -40,7 +40,7 @@ from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_core.secrets import (
     SecretProviderEndpointReference, SecretProviderId, SecretReference, SecretUseIntent,
 )
-from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph, validate_graph
 from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations import coordinator, health_receiver_trust
 from control_plane_kit_operations.activity_journal import activity_journal_events
@@ -250,10 +250,33 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
             decoder_bindings.extend(bindings(health_receiver_trust,
                 {family: document for family in families}, decoder))
         graph = replace(graph, nodes=nodes, runtimes={"docker": replace(graph.runtimes["docker"],
-            authority_ref=RuntimeAuthorityReference("local-docker"))}, public_ingresses=(replace(
-                graph.public_ingresses[0], hostname="cpk-gateway-001.openj92.dev"),))
+            authority_ref=RuntimeAuthorityReference("local-docker"))})
+        graph = self.native_before_path_graph(graph)
         validate_graph(graph).require_valid()
         return graph, documents, health_receiver_trust.HealthReceiverDecoders(tuple(decoder_bindings))
+
+    def native_before_path_graph(self, graph):
+        # The overlap tests need a completed native wait while independent PATH
+        # is still available. Core orders sibling observations by hashed IDs,
+        # so choose only a lawful authored hostname, using its real compiler.
+        # This is a bounded test-input choice, not a required runtime ordering:
+        # preserve all products, permissions and dependency edges, and let the
+        # application compile again. Tests check its actual plan before effects.
+        current = validate_graph(DeploymentGraph("empty"))
+        for number in range(1, 17):
+            candidate = replace(graph, public_ingresses=(replace(graph.public_ingresses[0],
+                hostname=f"cpk-gateway-{number:03d}.openj92.dev"),))
+            plan = compile_graph_activity_plan(current, validate_graph(candidate))
+            native, = (activity for activity in plan.activities
+                if type(activity.operation) is ObserveManagementBootstrap
+                and activity.operation.stage is ManagementBootstrapStage.CONNECTOR_CONNECTED)
+            path, = (activity for activity in plan.activities
+                if type(activity.operation) is ObserveManagementBootstrap
+                and activity.operation.stage is ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
+            self.assertEqual(native.dependencies, path.dependencies)
+            if plan.activities.index(native) < plan.activities.index(path):
+                return candidate
+        self.fail("bounded authored hostnames did not provide native-before-PATH fixture ordering")
 
     def application(self):
         uow = self.unit_of_work

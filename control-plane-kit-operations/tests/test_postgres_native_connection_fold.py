@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 import rfc8785
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core import RuntimeEffectResult
 from control_plane_kit_core.operations import ActivityEventKind, ActivityRunStatus
@@ -34,6 +35,7 @@ from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.effect_outcome_store import EffectAttemptOutcomeStore
 from control_plane_kit_operations.postgres.runtime_authority_store import RuntimeAuthorityStore
 from control_plane_kit_operations.records import OperationsRecordError
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, encode_stored_activity_plan
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.execution_lease_recovery_fixture import Sequence
@@ -268,6 +270,30 @@ class PostgresNativeConnectionFoldTests(PostgresHealthEffectStartFixture, unitte
             with mock.patch.object(EffectAttemptOutcomeStore, "insert", side_effect=RuntimeError("injected write failure")):
                 with self.assertRaisesRegex(RuntimeError, "injected write failure"):
                     service.execute_native(command)
+            self.assertEqual(self.native_snapshot(), before)
+
+    def test_first_acceptance_requires_current_approval_and_complete_canonical_plan(self):
+        command, service = self.command(), self.service()
+        with self.observed_time("2030-01-01T00:00:02Z"):
+            self.connection.execute("UPDATE cpk_approval_decisions SET decision='rejected' "
+                "WHERE decision_id='approval-decision-a'")
+            before = self.native_snapshot()
+            with self.assertRaises((EffectAttemptFoldDenied, EffectAttemptFoldConflict)):
+                service.execute_native(command)
+            self.assertEqual(self.native_snapshot(), before)
+            self.connection.execute("UPDATE cpk_approval_decisions SET decision='approved' "
+                "WHERE decision_id='approval-decision-a'")
+            # Remove a final leaf so the graph remains well formed while the
+            # selected native operation and its pins are unchanged.
+            leaf = self.health_plan.activities[-1]
+            self.assertNotEqual(leaf.activity_id, self.health_activity.activity_id)
+            shortened = replace(self.health_plan, activities=self.health_plan.activities[:-1])
+            self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id='plan-a'",
+                (Jsonb(encode_stored_activity_plan(shortened,
+                    profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1)),))
+            before = self.native_snapshot()
+            with self.assertRaises((EffectAttemptFoldDenied, EffectAttemptFoldConflict)):
+                service.execute_native(command)
             self.assertEqual(self.native_snapshot(), before)
 
     def test_retained_acceptance_codec_rejects_tampered_reason_time_and_decimal_count(self):

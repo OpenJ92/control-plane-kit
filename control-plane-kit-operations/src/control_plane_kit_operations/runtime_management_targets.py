@@ -34,6 +34,12 @@ class ManagementHealthTargetProjection:
 _MISMATCH = "management health target does not match pinned plan context"
 
 
+def is_native_connection_operation(operation: object) -> bool:
+    """Classify the passive connector stage; this supplies no authority."""
+    return (type(operation) is ObserveManagementBootstrap
+        and operation.stage is ManagementBootstrapStage.CONNECTOR_CONNECTED)
+
+
 def is_signed_management_health_operation(operation: object) -> bool:
     """Classify the signed transport family; this supplies no authority."""
     return (type(operation) is ObserveNodeHealth

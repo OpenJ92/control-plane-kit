@@ -9527,11 +9527,14 @@
         "ExecutionCoordinatorResult",
         "RuntimeEffectInterpreter",
         "RuntimeInterpreterDispatcher",
-        "ExecuteManagedActivityRun"
+        "ExecuteManagedActivityRun",
+        "ManagedHealthEffectPort",
+        "ReobserveConnectorConnection"
       ],
       "destination": "control_plane_kit_operations.coordinator",
       "internal_dependencies": [
         "control_plane_kit_core.identity",
+        "control_plane_kit_core.node_health_read_results",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.execution",
         "control_plane_kit_core.operations.lifecycle",
@@ -9547,6 +9550,7 @@
         "control_plane_kit_operations.activity_journal",
         "control_plane_kit_operations.effect_attempt_fold",
         "control_plane_kit_operations.effect_attempt_fold_interpreter",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
         "control_plane_kit_operations.effect_attempt_reconciliation",
         "control_plane_kit_operations.effect_attempt_reconciliation_interpreter",
         "control_plane_kit_operations.effect_attempt_start",
@@ -9554,6 +9558,8 @@
         "control_plane_kit_operations.effect_attempts",
         "control_plane_kit_operations.effect_outcome_evidence",
         "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_signing_authority",
         "control_plane_kit_operations.ingress_authorities",
         "control_plane_kit_operations.lifecycle",
         "control_plane_kit_operations.products",
@@ -9561,6 +9567,7 @@
         "control_plane_kit_operations.runtime_authorities",
         "control_plane_kit_operations.runtime_effects",
         "control_plane_kit_operations.runtime_management_admission",
+        "control_plane_kit_operations.runtime_management_targets",
         "control_plane_kit_operations.secret_providers",
         "control_plane_kit_operations.workflows"
       ],
@@ -9570,7 +9577,7 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.coordinator",
-      "motivation": "Composes durable activity scheduling with exact effect-attempt start, direct fold, and reconciliation services without owning provider or recovery truth.",
+      "motivation": "Composes durable activity scheduling with exact effect-attempt start, fold, and reconciliation services, optional awaited managed health ports, and explicit atomic native reobservation admission without owning provider or recovery truth.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
@@ -9581,7 +9588,10 @@
         "tests/test_postgres_effect_attempt_coordinator_concurrency.py",
         "tests/test_postgres_effect_attempt_coordinator_crash_rollback.py",
         "tests/test_postgres_effect_attempt_coordinator_compensation_isolation.py",
-        "tests/test_postgres_effect_attempt_coordinator_first_replay.py"
+        "tests/test_postgres_effect_attempt_coordinator_first_replay.py",
+        "tests/test_managed_application_chain.py",
+        "tests/test_managed_health_boundaries.py",
+        "tests/test_managed_reobservation_admission.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -9655,6 +9665,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_fold_interpreter",
         "control_plane_kit_operations.planning",
         "control_plane_kit_operations.runtime_effects"
       ],
@@ -9716,6 +9727,8 @@
         "NativeConnectionEffectOutcome",
         "NativeConnectionObservation",
         "NativeConnectionOutcome",
+        "NativeConnectionReadFailure",
+        "NativeConnectionRefused",
         "ObservedEffectOutcome",
         "effect_outcome_failure",
         "effect_outcome_observation_records",
@@ -9732,7 +9745,11 @@
         "control_plane_kit_operations.records"
       ],
       "known_package_consumers": [
-        "control_plane_kit_operations"
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_fold_interpreter",
+        "control_plane_kit_operations.postgres.effect_outcome_store"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_outcome_evidence",
@@ -9763,10 +9780,12 @@
         "control_plane_kit_core.runtime_effect_observation",
         "control_plane_kit_core.runtime_effects",
         "control_plane_kit_core.types",
-        "control_plane_kit_operations.records"
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_management_targets"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations",
+        "control_plane_kit_operations.coordinator",
         "control_plane_kit_operations.health_signing_authority"
       ],
       "migration_prerequisites": [],
@@ -9889,11 +9908,14 @@
         "EffectAttemptFoldResult",
         "ExistingFold",
         "FoldEffectAttempt",
+        "FoldNativeConnectionObservation",
+        "GuardedHealthEffectFold",
         "GuardedObservedEffectFold",
         "NewlyFolded"
       ],
       "destination": "control_plane_kit_operations.effect_attempt_fold",
       "internal_dependencies": [
+        "control_plane_kit_core.identity",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.policies",
         "control_plane_kit_core.runtime_authority",
@@ -9903,9 +9925,12 @@
         "control_plane_kit_operations.effect_attempts",
         "control_plane_kit_operations.effect_outcome_evidence",
         "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.health_effect_attempt_start",
+        "control_plane_kit_operations.health_effect_preparations",
         "control_plane_kit_operations.lifecycle",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_management_targets",
         "control_plane_kit_operations.workflows"
       ],
       "known_package_consumers": [
@@ -9914,14 +9939,15 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_fold",
-      "motivation": "Owns the command, mutation result, and observational replay language for one effect-attempt fold without interpreting durable mutation.",
+      "motivation": "Owns distinct generic, guarded signed-health, and raw native observation fold commands, mutation results, and observational replay values without interpreting durable mutation or allowing callers to choose native acceptance time.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
       "protecting_tests": [
         "tests/test_atomic_effect_attempt_fold_contract.py",
         "tests/test_effect_attempt_fold_contract.py",
-        "tests/test_guarded_observed_effect_fold_contract.py"
+        "tests/test_guarded_observed_effect_fold_contract.py",
+        "tests/test_postgres_native_connection_fold.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -9936,22 +9962,31 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_fold_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
         "control_plane_kit_core.policies",
+        "control_plane_kit_core.runtime_effects",
+        "control_plane_kit_core.topology",
         "control_plane_kit_operations.effect_attempt_fold",
         "control_plane_kit_operations.effect_attempt_intent_evidence",
         "control_plane_kit_operations.effect_attempts",
         "control_plane_kit_operations.effect_outcome_evidence",
+        "control_plane_kit_operations.health_signing_authority",
+        "control_plane_kit_operations.plan_derivation",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.runtime_authorities",
+        "control_plane_kit_operations.runtime_management_admission",
+        "control_plane_kit_operations.runtime_management_targets",
         "control_plane_kit_operations.workflows"
       ],
       "known_package_consumers": [
-        "control_plane_kit_operations"
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.coordinator"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.effect_attempt_fold_interpreter",
-      "motivation": "Owns the provider-free atomic durable interpreter for one effect-attempt fold.",
+      "motivation": "Owns the provider-free atomic durable interpreter for one effect-attempt fold, including signed-health authority revalidation in the fold transaction and native classification at database acceptance after current authority, pinned fresh plan, and approval binding validation, with immutable replay.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
@@ -9962,7 +9997,8 @@
         "tests/test_postgres_guarded_observed_effect_fold_authority.py",
         "tests/test_postgres_guarded_observed_effect_fold_concurrency.py",
         "tests/test_postgres_guarded_observed_effect_fold_first_replay.py",
-        "tests/test_postgres_guarded_observed_effect_fold_rollback.py"
+        "tests/test_postgres_guarded_observed_effect_fold_rollback.py",
+        "tests/test_postgres_native_connection_fold.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -10141,7 +10177,8 @@
         "control_plane_kit_operations.postgres.execution",
         "control_plane_kit_operations.postgres.observed_state",
         "control_plane_kit_operations.postgres.schema",
-        "control_plane_kit_operations.records"
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.runtime_management_targets"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
@@ -10149,7 +10186,7 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.effect_outcome_store",
-      "motivation": "Owns exact immutable PostgreSQL persistence and bounded restart reconstruction for direct effect-attempt outcome evidence.",
+      "motivation": "Owns exact immutable PostgreSQL persistence and bounded restart reconstruction for direct effect-attempt outcome evidence, retaining native samples with their original database acceptance decision and exact native intent membership.",
       "movement": "remain",
       "optional_external_dependencies": [
         "rfc8785"
@@ -10158,7 +10195,8 @@
       "protecting_tests": [
         "tests/test_postgres_effect_outcome_store_contract.py",
         "tests/test_postgres_effect_outcome_store.py",
-        "tests/test_postgres_effect_outcome_schema.py"
+        "tests/test_postgres_effect_outcome_schema.py",
+        "tests/test_postgres_native_connection_fold.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -10708,7 +10746,7 @@
       "owner": "operation",
       "destination": "control_plane_kit_operations.runtime_management_targets",
       "role": "pinned-management-health-target-projection",
-      "motivation": "Select the exact plan activity and graph-derived management health references without addresses, external effects or dispatch authority.",
+      "motivation": "Classify native versus signed management observation operations and select exact plan activities and graph-derived signed health references without external effects or dispatch authority.",
       "internal_dependencies": [
         "control_plane_kit_core.node_control",
         "control_plane_kit_core.planning",
@@ -10727,7 +10765,12 @@
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
         "control_plane_kit_operations._health_effect_attempt_start",
-        "control_plane_kit_operations.health_signing_authority"
+        "control_plane_kit_operations.health_signing_authority",
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_fold",
+        "control_plane_kit_operations.effect_attempt_fold_interpreter",
+        "control_plane_kit_operations.effect_attempt_intent_evidence",
+        "control_plane_kit_operations.postgres.effect_outcome_store"
       ],
       "migration_prerequisites": [],
       "movement": "remain",
@@ -10762,6 +10805,7 @@
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.planning",
         "control_plane_kit_operations.admission",
+        "control_plane_kit_operations.effect_attempt_fold_interpreter",
         "control_plane_kit_operations.runtime_management_admission",
         "control_plane_kit_operations.postgres.activity_history"
       ],
@@ -10792,6 +10836,7 @@
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
         "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.effect_attempt_fold",
         "control_plane_kit_operations.health_effect_attempt_start",
         "control_plane_kit_operations.health_signing_authority"
       ],
@@ -10878,6 +10923,8 @@
       "known_package_consumers": [
         "control_plane_kit_operations",
         "control_plane_kit_operations._health_effect_attempt_start",
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_fold",
         "control_plane_kit_operations.effect_attempt_start_interpreter",
         "control_plane_kit_operations.health_signing_authority"
       ],
@@ -10993,7 +11040,9 @@
         "control_plane_kit_operations.secret_providers"
       ],
       "known_package_consumers": [
-        "control_plane_kit_operations"
+        "control_plane_kit_operations",
+        "control_plane_kit_operations.coordinator",
+        "control_plane_kit_operations.effect_attempt_fold_interpreter"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.health_signing_authority",

@@ -58,6 +58,120 @@ class ConcurrentTrackingUnitOfWorkFactory(TrackingUnitOfWorkFactory):
 
 
 class ManagedReobservationAdmissionTests(ManagedApplicationFixture):
+    async def first_native_wait_before_path(self):
+        await self.prepare_and_start()
+        native, = (activity for activity in self.plan.activities
+            if activity.activity_id.value == self.native_id)
+        path, = (activity for activity in self.plan.activities
+            if type(activity.operation) is ObserveManagementBootstrap
+            and activity.operation.stage is ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
+        # Fixture prerequisite, checked before any external effects: these are
+        # independent siblings and this authored graph must schedule native first.
+        # Do not alter dependency edges or seed history to reach this scenario.
+        self.assertEqual(native.dependencies, path.dependencies)
+        self.assertLess(self.plan.activities.index(native), self.plan.activities.index(path),
+            "authored fixture must schedule native before PATH for this overlap law")
+        self.assertEqual(self.effects(), ((), (), (), (), ()))
+        for _ in range(len(self.plan.activities) + 2):
+            result = await self.execute_one()
+            if self.health.native_reads:
+                break
+            self.assertEqual(result["coordinator_status"], "progressed", result)
+        self.assertEqual(len(self.health.native_reads), 1)
+        self.assertEqual(self.native_attempt(1)[0].state.status.value, "not_ready")
+        identity = EffectAttemptIdentity(RunId(self.run_id), path.activity_id.value, 1)
+        with self.unit_of_work() as uow:
+            with self.assertRaises(KeyError):
+                uow.stores.effect_attempts.get(identity)
+        return identity
+
+    async def assert_competing_path_blocks_native_successor(self, key):
+        before, effects = self.durable_snapshot(), self.effects()
+        predecessor = self.native_attempt(1)
+        with self.assertRaises(ExecutionCoordinatorConflict):
+            await self.reobserve(1, key, app=self.application())
+        self.assertEqual((self.durable_snapshot(), self.effects()), (before, effects))
+        self.assertEqual(self.native_attempt(1), predecessor)
+        self.assertEqual(len(self.health.native_reads), 1)
+        with self.unit_of_work() as uow:
+            self.assertIsNone(uow.stores.execution.command_receipt_for_idempotency(self.run_id, key))
+            with self.assertRaises(KeyError):
+                uow.stores.effect_attempts.get(
+                    EffectAttemptIdentity(RunId(self.run_id), self.native_id, 2))
+
+    async def test_awaiting_signed_path_prevents_native_successor_admission(self):
+        path_identity = await self.first_native_wait_before_path()
+        entered, release = asyncio.Event(), asyncio.Event()
+        entries = []
+        observe = self.health.observe_signed
+
+        async def held(realization, request, authority):
+            if request.activity_id.value == path_identity.activity_id:
+                self.assertEqual(self.tracker.active, 0)
+                entries.append(request)
+                entered.set()
+                await release.wait()
+            return await observe(realization, request, authority)
+
+        async def drive_to_path():
+            for _ in range(len(self.plan.activities) + 2):
+                result = await self.execute_one()
+                if entries:
+                    return result
+                self.assertEqual(result["coordinator_status"], "progressed", result)
+            self.fail("ordinary execution did not reach the independent signed PATH")
+
+        with mock.patch.object(self.health, "observe_signed", side_effect=held):
+            task = asyncio.create_task(drive_to_path())
+            waiter = asyncio.create_task(entered.wait())
+            try:
+                done, _ = await asyncio.wait((task, waiter), timeout=10,
+                    return_when=asyncio.FIRST_COMPLETED)
+                if task in done:
+                    await task
+                    self.fail("signed PATH returned without awaiting the held port")
+                self.assertIn(waiter, done, "signed PATH did not reach the external port")
+                with self.unit_of_work() as uow:
+                    self.assertEqual(uow.stores.effect_attempts.get(path_identity).state.status.value, "started")
+                await self.assert_competing_path_blocks_native_successor("path-in-flight-next")
+                self.assertEqual(len(entries), 1)
+            finally:
+                release.set()
+                if not waiter.done():
+                    waiter.cancel()
+                await asyncio.gather(waiter, return_exceptions=True)
+                await asyncio.wait_for(task, timeout=10)
+        with self.unit_of_work() as uow:
+            self.assertEqual(uow.stores.effect_attempts.get(path_identity).state.status.value, "succeeded")
+
+    async def test_uncertain_signed_path_prevents_native_successor_admission(self):
+        path_identity = await self.first_native_wait_before_path()
+        entries = []
+        observe = self.health.observe_signed
+
+        async def interrupted(realization, request, authority):
+            if request.activity_id.value == path_identity.activity_id:
+                self.assertEqual(self.tracker.active, 0)
+                entries.append(request)
+                raise RuntimeError("recording signed PATH transport interrupted")
+            return await observe(realization, request, authority)
+
+        with mock.patch.object(self.health, "observe_signed", side_effect=interrupted):
+            for _ in range(len(self.plan.activities) + 2):
+                result = await self.execute_one()
+                if entries:
+                    break
+                self.assertEqual(result["coordinator_status"], "progressed", result)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(result["coordinator_status"], "uncertain")
+        with self.unit_of_work() as uow:
+            path_attempt = uow.stores.effect_attempts.get(path_identity)
+            self.assertEqual(path_attempt.state.status.value, "uncertain")
+            outcome = uow.stores.effect_outcomes.get(path_identity, path_attempt.latest_transition_event.event_id)
+            self.assertEqual(outcome.attempt, path_attempt)
+        await self.assert_competing_path_blocks_native_successor("path-uncertain-next")
+        self.assertEqual(len(entries), 1)
+
     @asynccontextmanager
     async def held_successor_read(self, key):
         entered, release = asyncio.Event(), asyncio.Event()

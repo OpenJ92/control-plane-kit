@@ -566,6 +566,16 @@ class NativeConnectionOutcome(StrEnum):
     UNKNOWN = "unknown"
 
 
+@dataclass(frozen=True)
+class NativeConnectionRefused:
+    """The native reader cannot select this request; no completed sample."""
+
+
+@dataclass(frozen=True)
+class NativeConnectionReadFailure:
+    """The read boundary failed without a correlated sample; no error payload."""
+
+
 def _native_timestamp_ns(value: object) -> int:
     # Preserve the reader's nanoseconds. datetime's microsecond conversion must
     # not round a sample across the ten-second acceptance boundary.
@@ -782,7 +792,11 @@ class EffectAttemptOutcomeRecord:
                 expected_start = "step_started" if state.identity.attempt == 1 else "step_observation_restarted"
                 valid = start_kind == expected_start and self.outcome.accepted_at == latest.occurred_at
             else:
-                valid = start_kind in ("step_started", "step_compensation_started")
+                valid = (start_kind in ("step_started", "step_compensation_started")
+                    or (start_kind == "step_observation_restarted"
+                        and self.outcome.__class__ is ExecutionEffectOutcome
+                        and self.outcome.status in (EffectAttemptStatus.UNSUPPORTED, EffectAttemptStatus.UNCERTAIN)
+                        and not self.outcome.endpoint_observations))
             expected_latest_kind = (
                 "step_compensation_" if compensation else "step_"
             ) + self.outcome.status.value
@@ -1285,6 +1299,8 @@ __all__ = (
     "ExecutionEffectOutcome",
     "NativeConnectionEffectOutcome",
     "NativeConnectionObservation",
+    "NativeConnectionRefused",
+    "NativeConnectionReadFailure",
     "NativeConnectionOutcome",
     "ObservedEffectOutcome",
     "effect_outcome_failure",

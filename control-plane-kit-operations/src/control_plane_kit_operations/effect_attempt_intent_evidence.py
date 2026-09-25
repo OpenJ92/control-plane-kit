@@ -37,6 +37,7 @@ from control_plane_kit_operations.records import (
     ActivityEventRecord,
     OperationsRecordError,
 )
+from control_plane_kit_operations.runtime_management_targets import is_native_connection_operation
 
 
 _INTENT_ERROR = "effect attempt intent evidence is invalid"
@@ -68,6 +69,8 @@ def _canonical_runtime_effect_intent(
         event_kind is not None
         and event_kind is not ActivityEventKind.STEP_STARTED
         and event_kind is not ActivityEventKind.STEP_COMPENSATION_STARTED
+        and not (event_kind is ActivityEventKind.STEP_OBSERVATION_RESTARTED
+            and is_native_connection_operation(intent.operation))
     ):
         return b""
     return rfc8785.dumps(descriptor)
@@ -245,6 +248,8 @@ class EffectAttemptIntentRecord:
                 or identity.activity_id != intent.activity_id.value
                 or event.run_id != identity.run_id.value
                 or event.activity_id != identity.activity_id
+                or (event.kind is ActivityEventKind.STEP_OBSERVATION_RESTARTED
+                    and identity.attempt <= 1)
             )
         if invalid:
             _raise_intent_error()

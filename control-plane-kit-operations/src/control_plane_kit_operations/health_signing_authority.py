@@ -274,87 +274,94 @@ class HealthSigningAuthorityReloadService:
         _require(all(scope in command.context.granted_scopes for scope in _SCOPES)
             and PolicyScope.EXECUTION_OPERATE in command.authority.scopes)
         with self._unit_of_work_factory() as unit_of_work:
-            stores = unit_of_work.stores
-            # Match the existing first-start lock order. Owner calls stay outside
-            # pure refusal catches, preserving raw/driver/domain error identity.
-            request = _record(stores.execution.get_request_for_update(command.request_id), ExecutionRequestRecord)
-            run = _record(stores.execution.get_run_for_request_for_update(command.request_id,
-                command.identity.run_id.value), ActivityRunRecord)
-            attempt = _record(stores.effect_attempts.get_for_update(command.identity), EffectAttemptRecord)
-            latest = _record(stores.execution.get_latest_run_for_request_for_update(command.request_id), ActivityRunRecord)
-            _require(request.identity.request_id == command.request_id
-                and request.identity.workspace_id == command.context.workspace_id
-                and request.status is ExecutionRequestStatus.CLAIMED
-                and _valid_value(request.claim, ClaimIdentity) and request.claim.fence == command.fence
-                and run.run_id == command.identity.run_id.value and run.admission.request_id == command.request_id
-                and run.plan_id == request.identity.plan_id and run.status is ActivityRunStatus.RUNNING and latest == run
-                and attempt.state.identity == command.identity and attempt.state.status is EffectAttemptStatus.STARTED
-                and attempt.state.prior_attempt is None
-                and attempt.state.fence == EffectAttemptFence(command.fence.worker_id, command.fence.generation)
-                and attempt.original_start_event == attempt.latest_transition_event
-                and attempt.original_start_event.kind is ActivityEventKind.STEP_STARTED)
-            evidence = _record(stores.effect_attempt_intents.get(command.identity), EffectAttemptIntentRecord)
-            preparation = stores.health_effect_preparations.get(command.identity)
-            _require(_valid_preparation(preparation))
-            intent, source = evidence.intent, evidence.intent.source
-            _require(evidence.identity == preparation.identity == command.identity
-                and preparation.workspace_id == command.context.workspace_id
-                and evidence.original_start_event == attempt.original_start_event
-                and preparation.original_event_id == attempt.original_start_event.event_id
-                and preparation.request_fingerprint == evidence.request_fingerprint == attempt.state.request_fingerprint
-                and preparation.request_fingerprint == runtime_effect_intent_fingerprint(intent)
-                and is_signed_management_health_operation(intent.operation)
-                and source.request_id == command.request_id and source.run_id == command.identity.run_id
-                and source.workspace_id == command.context.workspace_id
-                and source.plan_id == request.identity.plan_id and intent.activity_id.value == command.identity.activity_id)
-            plan = _record(stores.activity_history.get_plan_for_share(request.identity.plan_id), ActivityPlanRecord)
-            _require(plan.plan_id == request.identity.plan_id and plan.session_id == request.identity.session_id
-                and plan.status is ActivityPlanStatus.PLANNED and plan.plan.ready_for_execution
-                and (plan.base_graph_id, plan.desired_graph_id) == (source.base_graph_id, source.desired_graph_id)
-                and (plan.base_realized_projection_id, plan.desired_realized_projection_id)
-                    == (preparation.base_realized_projection_id, preparation.desired_realized_projection_id))
-            _approval(stores, request, plan)
-            selected, target, runtime, declaration, gateway, graphs = _target(stores, plan, intent, preparation)
-            keys = []
-            for name, purpose, _ in _FAMILIES:
-                key = stores.delegation_signing_keys.require_unambiguous_active(preparation.workspace_id, purpose)
-                _require(_valid_key(key, preparation.workspace_id, purpose))
-                grant = getattr(preparation, name + "_grant")
-                _require(key.registration_id == getattr(preparation, name + "_key_registration_id")
-                    and key.issuer == grant.issuer and key.key_id == grant.key_id and grant.purpose is purpose)
-                keys.append(key)
-            _require(keys[0].registration_id != keys[1].registration_id
-                and keys[0].public_key.fingerprint_sha256 != keys[1].public_key.fingerprint_sha256
-                and keys[0].private_key_reference != keys[1].private_key_reference)
-            require_health_receiver_coverage(stores, self._health_receiver_decoders, plan=plan, graphs=graphs,
-                selected=selected, workspace=preparation.workspace_id, keys=keys,
-                refuse=lambda: HealthSigningAuthorityUnavailable(_UNAVAILABLE))
-            truth = stores.node_control_signing_authority.get_health_for_share(preparation)
-            _require(type(truth) is _LockedSigningTruth)
-            resolutions = tuple(_resolution(preparation, key, getattr(truth, name), intent_kind,
-                command.context.actor_id, request.identity.session_id, attempt.original_start_event.occurred_at,
-                getattr(preparation, name + "_authorization_id"))
-                for (name, _, intent_kind), key in zip(_FAMILIES, keys))
-            observation = stores.execution.observe_request_lease_for_update(command.request_id)
-            now = _observed_epoch(observation, request)
-            transit = verify_gateway_node_health_read_transit_grant(preparation.transit_grant, preparation.request,
-                expected_issuer=keys[0].issuer, expected_key_id=keys[0].key_id,
-                expected_attempt_id=health_effect_attempt_wire_id(command.identity), expected_gateway_node_id=gateway,
-                expected_target=target, expected_runtime_id=runtime, expected_declaration=declaration,
-                expected_kind=selected.target_health_kind, now=now)
-            _require(transit.is_accepted)
-            workload = verify_workload_node_health_read_grant(preparation.workload_grant, preparation.request,
-                expected_issuer=keys[1].issuer, expected_key_id=keys[1].key_id,
-                expected_target=target, expected_runtime_id=runtime, expected_declaration=declaration,
-                expected_kind=selected.target_health_kind, expected_audience=workload_node_control_audience(target), now=now)
-            _require(workload.is_accepted)
-            result = HealthSigningAuthorityPair(preparation,
-                GatewayNodeHealthReadTransitSigningAuthority(keys[0].public_key, resolutions[0]),
-                WorkloadNodeHealthReadSigningAuthority(keys[1].public_key, resolutions[1]))
+            result, _ = self.in_unit_of_work(unit_of_work, command)
             unit_of_work.commit()
-        # No result escapes a failed transaction exit. This is not a durable
-        # dispatch claim or a guarantee that time/authority cannot change later.
         return result
+
+    def in_unit_of_work(self, unit_of_work, command: ReloadHealthSigningAuthority):
+        """Return authority and its DB observation under the caller's transaction."""
+        if not _valid_command(command):
+            raise HealthSigningAuthorityError(_INVALID)
+        _require(all(scope in command.context.granted_scopes for scope in _SCOPES)
+            and PolicyScope.EXECUTION_OPERATE in command.authority.scopes)
+        stores = unit_of_work.stores
+        # Match the existing first-start lock order. Owner calls stay outside
+        # pure refusal catches, preserving raw/driver/domain error identity.
+        request = _record(stores.execution.get_request_for_update(command.request_id), ExecutionRequestRecord)
+        run = _record(stores.execution.get_run_for_request_for_update(command.request_id,
+            command.identity.run_id.value), ActivityRunRecord)
+        attempt = _record(stores.effect_attempts.get_for_update(command.identity), EffectAttemptRecord)
+        latest = _record(stores.execution.get_latest_run_for_request_for_update(command.request_id), ActivityRunRecord)
+        _require(request.identity.request_id == command.request_id
+            and request.identity.workspace_id == command.context.workspace_id
+            and request.status is ExecutionRequestStatus.CLAIMED
+            and _valid_value(request.claim, ClaimIdentity) and request.claim.fence == command.fence
+            and run.run_id == command.identity.run_id.value and run.admission.request_id == command.request_id
+            and run.plan_id == request.identity.plan_id and run.status is ActivityRunStatus.RUNNING and latest == run
+            and attempt.state.identity == command.identity and attempt.state.status is EffectAttemptStatus.STARTED
+            and attempt.state.prior_attempt is None
+            and attempt.state.fence == EffectAttemptFence(command.fence.worker_id, command.fence.generation)
+            and attempt.original_start_event == attempt.latest_transition_event
+            and attempt.original_start_event.kind is ActivityEventKind.STEP_STARTED)
+        evidence = _record(stores.effect_attempt_intents.get(command.identity), EffectAttemptIntentRecord)
+        preparation = stores.health_effect_preparations.get(command.identity)
+        _require(_valid_preparation(preparation))
+        intent, source = evidence.intent, evidence.intent.source
+        _require(evidence.identity == preparation.identity == command.identity
+            and preparation.workspace_id == command.context.workspace_id
+            and evidence.original_start_event == attempt.original_start_event
+            and preparation.original_event_id == attempt.original_start_event.event_id
+            and preparation.request_fingerprint == evidence.request_fingerprint == attempt.state.request_fingerprint
+            and preparation.request_fingerprint == runtime_effect_intent_fingerprint(intent)
+            and is_signed_management_health_operation(intent.operation)
+            and source.request_id == command.request_id and source.run_id == command.identity.run_id
+            and source.workspace_id == command.context.workspace_id
+            and source.plan_id == request.identity.plan_id and intent.activity_id.value == command.identity.activity_id)
+        plan = _record(stores.activity_history.get_plan_for_share(request.identity.plan_id), ActivityPlanRecord)
+        _require(plan.plan_id == request.identity.plan_id and plan.session_id == request.identity.session_id
+            and plan.status is ActivityPlanStatus.PLANNED and plan.plan.ready_for_execution
+            and (plan.base_graph_id, plan.desired_graph_id) == (source.base_graph_id, source.desired_graph_id)
+            and (plan.base_realized_projection_id, plan.desired_realized_projection_id)
+                == (preparation.base_realized_projection_id, preparation.desired_realized_projection_id))
+        _approval(stores, request, plan)
+        selected, target, runtime, declaration, gateway, graphs = _target(stores, plan, intent, preparation)
+        keys = []
+        for name, purpose, _ in _FAMILIES:
+            key = stores.delegation_signing_keys.require_unambiguous_active(preparation.workspace_id, purpose)
+            _require(_valid_key(key, preparation.workspace_id, purpose))
+            grant = getattr(preparation, name + "_grant")
+            _require(key.registration_id == getattr(preparation, name + "_key_registration_id")
+                and key.issuer == grant.issuer and key.key_id == grant.key_id and grant.purpose is purpose)
+            keys.append(key)
+        _require(keys[0].registration_id != keys[1].registration_id
+            and keys[0].public_key.fingerprint_sha256 != keys[1].public_key.fingerprint_sha256
+            and keys[0].private_key_reference != keys[1].private_key_reference)
+        require_health_receiver_coverage(stores, self._health_receiver_decoders, plan=plan, graphs=graphs,
+            selected=selected, workspace=preparation.workspace_id, keys=keys,
+            refuse=lambda: HealthSigningAuthorityUnavailable(_UNAVAILABLE))
+        truth = stores.node_control_signing_authority.get_health_for_share(preparation)
+        _require(type(truth) is _LockedSigningTruth)
+        resolutions = tuple(_resolution(preparation, key, getattr(truth, name), intent_kind,
+            command.context.actor_id, request.identity.session_id, attempt.original_start_event.occurred_at,
+            getattr(preparation, name + "_authorization_id"))
+            for (name, _, intent_kind), key in zip(_FAMILIES, keys))
+        observation = stores.execution.observe_request_lease_for_update(command.request_id)
+        now = _observed_epoch(observation, request)
+        transit = verify_gateway_node_health_read_transit_grant(preparation.transit_grant, preparation.request,
+            expected_issuer=keys[0].issuer, expected_key_id=keys[0].key_id,
+            expected_attempt_id=health_effect_attempt_wire_id(command.identity), expected_gateway_node_id=gateway,
+            expected_target=target, expected_runtime_id=runtime, expected_declaration=declaration,
+            expected_kind=selected.target_health_kind, now=now)
+        _require(transit.is_accepted)
+        workload = verify_workload_node_health_read_grant(preparation.workload_grant, preparation.request,
+            expected_issuer=keys[1].issuer, expected_key_id=keys[1].key_id,
+            expected_target=target, expected_runtime_id=runtime, expected_declaration=declaration,
+            expected_kind=selected.target_health_kind, expected_audience=workload_node_control_audience(target), now=now)
+        _require(workload.is_accepted)
+        result = HealthSigningAuthorityPair(preparation,
+            GatewayNodeHealthReadTransitSigningAuthority(keys[0].public_key, resolutions[0]),
+            WorkloadNodeHealthReadSigningAuthority(keys[1].public_key, resolutions[1]))
+        return result, observation
 
 
 def _approval(stores, request, plan):

@@ -151,6 +151,11 @@ EXACT_IMPORT_SURFACE = (
         "OperationsRecordError",
         None,
     ),
+    architecture_testing.ImportSurfaceEntry(
+        "control_plane_kit_operations.runtime_management_targets",
+        "is_native_connection_operation",
+        None,
+    ),
     architecture_testing.ImportSurfaceEntry("dataclasses", "dataclass", None),
     architecture_testing.ImportSurfaceEntry("dataclasses", "field", None),
     architecture_testing.ImportSurfaceEntry("json", None, None),
@@ -221,6 +226,9 @@ EXACT_CALL_SURFACE = (
     ),
     architecture_testing.ResolvedCallTarget(
         "control_plane_kit_operations.records.OperationsRecordError"
+    ),
+    architecture_testing.ResolvedCallTarget(
+        "control_plane_kit_operations.runtime_management_targets.is_native_connection_operation"
     ),
     architecture_testing.ResolvedCallTarget("dataclasses.dataclass"),
     architecture_testing.ResolvedCallTarget("dataclasses.field"),
@@ -794,6 +802,7 @@ class EffectAttemptIntentContractTests(
                 "control_plane_kit_core.runtime_effects",
                 "control_plane_kit_core.types",
                 "control_plane_kit_operations.records",
+                "control_plane_kit_operations.runtime_management_targets",
             },
         )
         self.assertEqual(row["optional_external_dependencies"], ["rfc8785"])
