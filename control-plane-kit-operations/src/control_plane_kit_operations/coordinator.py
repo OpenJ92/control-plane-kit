@@ -437,10 +437,15 @@ class ActivityRealizationContext:
                 pass
             case candidate if candidate is ActivityEventKind.STEP_COMPENSATION_STARTED:
                 pass
+            case candidate if (
+                candidate is ActivityEventKind.STEP_OBSERVATION_RESTARTED
+                and is_native_connection_operation(self.activity.operation)
+            ):
+                pass
             case _:
                 raise InvalidOperationCommand(
-                    "realization intent must be step_started or "
-                    "step_compensation_started"
+                    "realization intent must start an effect, compensation, "
+                    "or native connection reobservation"
                 )
         if self.intent_event.activity_id != self.activity.activity_id.value:
             raise InvalidOperationCommand("realization intent must match activity")

@@ -58,7 +58,7 @@ EXPECTED_CHECKS = {
     "cpk_effect_attempts_state_check": (
         "((status = ANY (ARRAY['started'::text, 'succeeded'::text, "
         "'failed'::text, 'unsupported'::text, 'uncertain'::text, "
-        "'abandoned'::text])) AND (((status = 'started'::text) AND "
+        "'not_ready'::text, 'abandoned'::text])) AND (((status = 'started'::text) AND "
         "(outcome_fingerprint IS NULL)) OR ((status <> 'started'::text) "
         "AND (outcome_fingerprint IS NOT NULL))))"
     ),

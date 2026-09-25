@@ -19,6 +19,10 @@ from control_plane_kit_core.operations.lifecycle import (
 from control_plane_kit_core.planning import (
     AllocatePublicIngress,
     ActivityId,
+    ManagementBootstrapStage,
+    ManagementObservationTarget,
+    ObserveManagementBootstrap,
+    PlanGraphSide,
     PublicIngressActivityTarget,
     SocketConnectionTarget,
     SwitchSocketConnection,
@@ -580,7 +584,7 @@ EXACT_COORDINATOR_CALLS = _exact_calls(
         1,
     ),
     ("control_plane_kit_operations.runtime_management_admission.runtime_management_execution_is_unsupported", 1),
-    ("control_plane_kit_operations.runtime_management_targets.is_native_connection_operation", 2),
+    ("control_plane_kit_operations.runtime_management_targets.is_native_connection_operation", 3),
     ("control_plane_kit_operations.secret_providers.AuthorizeSecretUse", 1),
     ("control_plane_kit_operations.secret_providers.secret_use_correlation_for", 1),
     ("control_plane_kit_operations.workflows.IdempotencyKey", 2),
@@ -939,6 +943,38 @@ class EffectAttemptCoordinatorContractTests(
         self.assertIs(coordinator._start_service, start)
         self.assertIs(coordinator._fold_service, fold)
         self.assertIs(coordinator._reconciliation_service, reconciliation)
+
+    def test_realization_rejects_observation_restart_for_mutation(self) -> None:
+        context = self.pinned_runtime_context()
+        activity = context.plan.activity(ActivityId("activity-a"))
+        event = ActivityEventRecord(
+            "observation-restart-event-a",
+            context.run.run_id,
+            1,
+            ActivityEventKind.STEP_OBSERVATION_RESTARTED,
+            "2030-01-01T00:00:01Z",
+            activity_id=activity.activity_id.value,
+        )
+        with self.assertRaises(InvalidOperationCommand):
+            context.realization_context(activity, event)
+
+    def test_realization_rejects_observation_restart_for_signed_bootstrap_stages(self) -> None:
+        context = self.pinned_runtime_context()
+        original = context.plan.activity(ActivityId("activity-a"))
+        target = ManagementObservationTarget("docker", PlanGraphSide.DESIRED_GRAPH, "a" * 64, "b" * 64)
+        event = ActivityEventRecord(
+            "observation-restart-event-a", context.run.run_id, 1,
+            ActivityEventKind.STEP_OBSERVATION_RESTARTED, "2030-01-01T00:00:01Z",
+            activity_id=original.activity_id.value,
+        )
+        for stage in (ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH,
+                ManagementBootstrapStage.GATEWAY_INGRESS_READY):
+            with self.subTest(stage=stage):
+                activity = replace(original, operation=ObserveManagementBootstrap(target, stage))
+                started = replace(event, kind=ActivityEventKind.STEP_STARTED)
+                self.assertEqual(context.realization_context(activity, started).intent_event, started)
+                with self.assertRaises(InvalidOperationCommand):
+                    context.realization_context(activity, event)
 
     def test_forward_coordinator_blocks_compensation_before_any_effect_authority(
         self,

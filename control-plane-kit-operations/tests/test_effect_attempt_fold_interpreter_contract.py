@@ -354,10 +354,19 @@ class EffectAttemptFoldInterpreterContractTests(
                     if isinstance(node, ast.Import)
                     for alias in node.names
                 )
+                # These closed Core values represent native refusal/uncertainty;
+                # they do not grant provider execution. Keep every other ban.
+                pure_runtime_values = "control_plane_kit_core.runtime_effects"
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ImportFrom) and node.module == pure_runtime_values:
+                        self.assertEqual({alias.name for alias in node.names},
+                            {"RuntimeEffectResult", "RuntimeEffectFailure"})
+                    if isinstance(node, ast.Import):
+                        self.assertNotIn(pure_runtime_values, {alias.name for alias in node.names})
                 self.assertTrue(
                     all(
                         fragment not in imported
-                        for imported in imports
+                        for imported in imports - {pure_runtime_values}
                         for fragment in forbidden_import_fragments
                     ),
                     imports,

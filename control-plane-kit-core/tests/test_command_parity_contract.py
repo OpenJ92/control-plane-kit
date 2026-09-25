@@ -163,6 +163,14 @@ class CommandParityContractTests(unittest.TestCase):
                     ApprovalPolicy.SUBMITS_FOR_APPROVAL,
                 ),
                 (
+                    "deployment.reobserve-connector",
+                    "command.deployment.reobserve-connector",
+                    "reobserve_connector_connection",
+                    ControlPlaneServiceRole.EXECUTION,
+                    CommandIdempotencyPolicy.REQUIRED,
+                    ApprovalPolicy.REQUIRES_CURRENT_APPROVAL,
+                ),
+                (
                     "desired-graph.set",
                     "command.desired-graph.set",
                     "set_desired_graph",

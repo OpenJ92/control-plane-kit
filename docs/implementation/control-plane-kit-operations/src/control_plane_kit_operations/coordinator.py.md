@@ -63,6 +63,8 @@ and excludes competing in-flight, failed or uncertain work. The receipt,
 successor start event, immutable intent and attempt commit together under the
 request lock, before exactly one external read. Distinct keys cannot consume
 the same predecessor; an incomplete same-key receipt never dispatches again.
+The realization context admits the observation-restart event only for the
+native connection operation; mutation realization still rejects that event.
 Replay precedes the latest-predecessor check and returns the retained result,
 even after later reads have completed.
 
@@ -80,3 +82,8 @@ The managed application targets exercise these paths through the actual
 authenticated Operations application, PostgreSQL owners and recording effect
 ports. They are source-composition evidence only; concrete server transport,
 provider execution and the live grandparent capstone have separate owners.
+Core declares `command.deployment.reobserve-connector` as an authenticated POST
+command at `/workspaces/{workspace_id}/runs/{run_id}/reobserve-connector`, with
+the `reobserve_connector_connection` MCP parity identity, required idempotency
+and current approval. These are pure protocol values. Servers181 still owns
+transport registration and the bounded request schema implementation.
