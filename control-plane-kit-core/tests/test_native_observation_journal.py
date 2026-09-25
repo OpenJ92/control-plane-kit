@@ -127,6 +127,15 @@ class NativeObservationJournalTests(unittest.TestCase):
             with self.subTest(kind=kind), self.assertRaises(ValueError):
                 project_activity_journal(self.plan(), legacy + (self.event(4, kind, attempt=1),))
 
+    def test_explicit_native_events_require_an_activity_and_bounded_attempt(self):
+        for kind in ("STEP_OBSERVATION_NOT_READY", "STEP_OBSERVATION_RESTARTED"):
+            selected = getattr(ActivityJournalEventKind, kind, None)
+            self.assertIsNotNone(selected, "completed native observation journal law is missing")
+            for activity, attempt in ((None, 1), ("connection", None),
+                    ("connection", True), ("connection", 0), ("connection", 2_147_483_648)):
+                with self.subTest(kind=kind, activity=activity, attempt=attempt), self.assertRaises(ValueError):
+                    ActivityJournalEvent("event", "run-a", 1, selected, activity, attempt)
+
     def test_unknown_dispatch_and_terminal_failure_cannot_be_reobserved(self):
         prefix = self.waiting_history()[:-1]
         for terminal in ("STEP_UNCERTAIN", "STEP_FAILED", "STEP_UNSUPPORTED"):
@@ -135,3 +144,6 @@ class NativeObservationJournalTests(unittest.TestCase):
                     self.event(4, terminal, attempt=1),
                     self.event(5, "STEP_OBSERVATION_RESTARTED", attempt=2),
                 ))
+        with self.assertRaises(ValueError):
+            project_activity_journal(self.plan(), self.waiting_history() +
+                (self.event(5, "STEP_UNCERTAIN", attempt=1),))
