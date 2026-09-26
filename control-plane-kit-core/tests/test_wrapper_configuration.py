@@ -120,6 +120,12 @@ class WrapperConfigurationTests(unittest.TestCase):
         command["purpose"] = "workload-node-control"
         surplus["verifiers"].append(command)
         self.refusal(lambda: self.codec.decode(surplus))
+        # Selected Core refuses empty surfaces; do not revive an older SDK edge.
+        empty = self.document(legacy)
+        empty["declaration"]["surface"]["variables"] = []
+        empty["verifiers"] = [family for family in empty["verifiers"]
+                              if family["purpose"] == "workload-node-control-surface-read"]
+        self.refusal(lambda: self.codec.decode(empty))
 
     def test_closed_bounded_input_refuses_unknown_profiles_and_material_without_leaks(self):
         original = self.document()

@@ -7,6 +7,11 @@ families are exact: surface-read always, workload command iff variables exist,
 and workload health iff health reads exist. V1 variable-only and V2 health-bearing
 declarations keep their existing identities and wire formats. This new envelope
 does not reinterpret application-specific configuration profiles.
+Selected Core rejects a surface with neither variables nor health reads. Empty
+V1 input therefore refuses even with only surface-read keys; this module does
+not reintroduce that older SDK edge or change the declaration law. SDK consumers
+must use the reviewed selected Core coordinate, not infer validity solely from
+their older `has_variables` expression.
 
 The codec accepts a closed document or bounded UTF-8 bytes, rejects duplicate
 JSON keys and non-finite constants, and emits canonical JSON bytes. Configuration
