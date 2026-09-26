@@ -11,13 +11,13 @@ import rfc8785
 from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationFileMode, ConfigurationMediaType
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
-from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding, SocketDerivedEnvironmentBinding
 from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole, NodeControlTarget
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductIdentity, ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.topology import GraphDescriptorCodec, compile_topology
 from tests.test_delegation_keys import PUBLIC_KEY_A
-from tests.test_node_health_declarations import NodeHealthDeclarationTests
-from tests.test_node_control_surfaces import WorkloadNodeControlSurfaceTests
+from tests import test_node_health_declarations as health_fixtures
+from tests import test_node_control_surfaces as surface_fixtures
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration
 
 MODULE = "control_plane_kit_core.wrapper_configuration"
@@ -28,7 +28,7 @@ PATH_KEY = "CPK_WRAPPER_CONFIGURATION_FILE"
 class WrapperConfigurationTests(unittest.TestCase):
     def setUp(self):
         # Establish existing typed fixtures before the intentional missing API assertion.
-        self.declaration = NodeHealthDeclarationTests().declaration()
+        self.declaration = health_fixtures.NodeHealthDeclarationTests().declaration()
         self.target = NodeControlTarget(*(
             NodeControlGraphReference(role, name) for role, name in (
                 (NodeControlGraphReferenceRole.WORKSPACE, "workspace-a"),
@@ -37,7 +37,7 @@ class WrapperConfigurationTests(unittest.TestCase):
                 (NodeControlGraphReferenceRole.PROVIDER_SOCKET, "control"))))
         self.runtime = NodeControlGraphReference(NodeControlGraphReferenceRole.RUNTIME, "runtime-a")
         self.key = DelegationPublicKey("public-a", DelegationKeyAlgorithm.ED25519, PUBLIC_KEY_A)
-        self.product = NodeHealthDeclarationTests().product(self.declaration.surface)
+        self.product = health_fixtures.NodeHealthDeclarationTests().product(self.declaration.surface)
         self.assertIsNotNone(importlib.util.find_spec(MODULE), "shared wrapper configuration is not implemented")
         self.api = importlib.import_module(MODULE)
         self.codec = self.api.WorkloadNodeControlConfigurationCodec()
@@ -99,8 +99,8 @@ class WrapperConfigurationTests(unittest.TestCase):
             value.runtime_id = self.runtime
 
     def test_existing_variable_only_and_mixed_declarations_require_exact_key_families(self):
-        legacy = WorkloadNodeControlSurfaceDeclaration(WorkloadNodeControlSurfaceTests().surface("control", "mode"))
-        mixed = NodeHealthDeclarationTests().declaration("mode")
+        legacy = WorkloadNodeControlSurfaceDeclaration(surface_fixtures.WorkloadNodeControlSurfaceTests().surface("control", "mode"))
+        mixed = health_fixtures.NodeHealthDeclarationTests().declaration("mode")
         for declaration in (legacy, self.declaration, mixed):
             document = self.document(declaration)
             value = self.codec.decode(document)
@@ -205,6 +205,9 @@ class WrapperConfigurationTests(unittest.TestCase):
             self.refusal(lambda: self.select((changed,)))
         other_surface = replace(self.declaration.surface, provider_socket_name=NodeControlGraphReference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, "other"))
         self.refusal(lambda: self.select((artifact,), surfaces=(other_surface,)))
+        derived = SocketDerivedEnvironmentBinding(PATH_KEY, artifact.target_path, "edge-a")
+        self.refusal(lambda: self.select((artifact,), environment=(derived,)))
+        self.refusal(lambda: self.select((artifact,), environment=environment + (derived,)))
 
 
 if __name__ == "__main__":

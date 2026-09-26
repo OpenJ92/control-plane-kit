@@ -11136,6 +11136,42 @@
         "transformations"
       ],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/_health_receiver_trust.py"
+    },
+    {
+      "canonical_public_exports": [
+        "MAX_WRAPPER_CONFIGURATION_BYTES",
+        "WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT",
+        "WrapperConfigurationError",
+        "NodeControlVerificationConfiguration",
+        "WorkloadNodeControlConfiguration",
+        "WorkloadNodeControlConfigurationCodec",
+        "select_workload_node_control_configuration_artifact"
+      ],
+      "destination": "control_plane_kit_core.wrapper_configuration",
+      "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire",
+        "control_plane_kit_core.configuration",
+        "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.environment",
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads"
+      ],
+      "known_package_consumers": [],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.wrapper_configuration",
+      "motivation": "Shared pure receiver configuration and structural artifact binding without product-specific parsing or runtime setup.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": [
+        "tests/test_wrapper_configuration.py"
+      ],
+      "role": "deployment-language",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/wrapper_configuration.py"
     }
   ],
   "owner_vocabulary": [

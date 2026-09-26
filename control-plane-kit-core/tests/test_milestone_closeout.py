@@ -74,6 +74,7 @@ EXPECTED_MODULES = {
     "topology.validation",
     "types",
     "verification",
+    "wrapper_configuration",
 }
 
 FORBIDDEN_IMPORT_ROOTS = {
