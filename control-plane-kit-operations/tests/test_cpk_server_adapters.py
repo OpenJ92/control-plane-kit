@@ -1935,6 +1935,45 @@ class CpkServerOperationsAdapterTests(unittest.TestCase):
                 self.assertEqual(raised.exception.status, 403)
         self.assertEqual(program.commands, [])
 
+    def test_proposed_identity_is_forwarded_by_http_and_mcp_desired_graph_commands(self):
+        desired = RecordingService()
+        service = CpkServerPlanningService(RecordingService(), desired_graphs=desired)
+        graph = DeploymentGraph("client-complete-graph")
+        payload = {"workspace_id": "workspace-a", "session_id": "session-a",
+            "graph": DEFAULT_GRAPH_CODEC.encode(graph), "expected_desired_graph_id": None,
+            "expected_desired_graph_revision": 0, "idempotency_key": "proposed",
+            "proposed_graph_id": "client-revision"}
+        for surface in ("http", "mcp"):
+            service.handle(RouteRequest(surface=surface,
+                route_id="command.desired-graph.set", service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={} if surface == "mcp" else {"workspace_id": "workspace-a"},
+                payload=payload, principal=operator_principal()))
+        self.assertEqual(len(desired.commands), 2)
+        for command in desired.commands:
+            self.assertEqual(command.proposed_graph_id, "client-revision")
+            self.assertEqual(DEFAULT_GRAPH_CODEC.encode(command.graph), payload["graph"])
+
+    def test_proposed_identity_is_forwarded_by_http_and_mcp_inline_prepare(self):
+        projection = DeploymentNoChanges(DeploymentProgramReference("workspace-a", "plan-a"))
+        program = RecordingDeploymentProgram(projection)
+        service = CpkServerPlanningService(RecordingService(), deployment_program=program)
+        payload = {"workspace_id": "workspace-a",
+            "desired_graph": DEFAULT_GRAPH_CODEC.encode(DeploymentGraph("complete-input")),
+            "expected_current": {"authored_graph_id": "current", "realized_projection_id": "projection"},
+            "expected_desired": None, "expected_desired_graph_revision": 0,
+            "title": "Proposed graph", "idempotency_key": "proposed",
+            "proposed_graph_id": "client-revision"}
+        for surface in ("http", "mcp"):
+            result = service.handle(RouteRequest(surface=surface,
+                route_id="command.deployment.prepare", service_role=ControlPlaneServiceRole.PLANNING,
+                path_parameters={} if surface == "mcp" else {"workspace_id": "workspace-a"},
+                payload=payload, principal=operator_principal()))
+            self.assertEqual(result["status"], "no-changes")
+        self.assertEqual(len(program.commands), 2)
+        for command in program.commands:
+            self.assertEqual(command.proposed_graph_id, "client-revision")
+            self.assertEqual(DEFAULT_GRAPH_CODEC.encode(command.desired), payload["desired_graph"])
+
     def test_deployment_prepare_replays_durable_no_change_without_effects(self) -> None:
         self.seed_workspace()
         with self.unit_of_work() as unit_of_work:
