@@ -3,6 +3,7 @@ from dataclasses import replace
 import unittest
 
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductIdentity, ProductReference
 from control_plane_kit_core.wrapper_configuration import (
     WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT as ENVIRONMENT,
@@ -132,8 +133,12 @@ class PostgresSharedHealthReceiverTests(PostgresHealthEffectStartFixture, unitte
         self.refused()
 
     def test_transit_decoder_port_cannot_reintroduce_workload_product_bindings(self):
+        artifact = self.receiver_artifacts["workload"]
         with self.assertRaises(trust.HealthReceiverTrustError) as caught:
-            bindings(trust, {"workload": self.receiver_documents["workload"]}, ByteDecoder(trust))
+            trust.HealthReceiverDecoderBinding(
+                ProductReference.from_document(self.receiver_documents["workload"]),
+                DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ, "workload-node-control-configuration.v1",
+                artifact.artifact_id, artifact.target_path, artifact.media_type, artifact.file_mode, ByteDecoder(trust))
         self.assertEqual(str(caught.exception), "health receiver trust is unavailable")
         self.assertIsNone(caught.exception.__cause__)
         self.assertIsNone(caught.exception.__context__)
