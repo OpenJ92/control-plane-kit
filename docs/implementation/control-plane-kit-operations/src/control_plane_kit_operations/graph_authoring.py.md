@@ -4,6 +4,16 @@ Maintain this companion alongside its source.
 Desired-graph authoring retains its existing caller-owned transaction, revision
 checks, registered product requirements and authored/realized graph records.
 
+`validate_proposed_graph_id` validates explicitly supplied names through Core's
+public `NodeControlGraphReference(GRAPH_REVISION, value)` law. This admits exact
+strings of 1–128 ASCII identifier characters and rejects public credential or
+endpoint material. Refusal is fixed and detached; the name grants no authority.
+Omitted historical IDs do not pass through this new admission step.
+`GraphIdentityConflict` is the inward domain error used by the PostgreSQL graph
+store for immutable-ID collision. This module imports no backend and performs
+no IO at import time. Existing authoring accepts the admitted name through its
+unchanged explicit `graph_id` seam and never rewrites supplied graph bytes.
+
 `product_reference_in_node(node)` is the authoritative pure extraction of an
 optional pinned product reference. It retains the existing metadata pair,
 namespace/name/integer-revision normalization, digest validation and error family.

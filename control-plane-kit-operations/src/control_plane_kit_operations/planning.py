@@ -35,6 +35,7 @@ from control_plane_kit_operations.graph_authoring import (
     SetDesiredGraphCommand,
     SetDesiredGraphResult,
     set_desired_graph_in_unit_of_work,
+    validate_proposed_graph_id,
 )
 from control_plane_kit_operations.records import (
     ActivityPlanRecord,
@@ -126,6 +127,7 @@ class SetDesiredGraph:
     idempotency_key: IdempotencyKey
     expected_desired_realized_projection_id: str | None = None
     expected_desired_graph_revision: int = 0
+    proposed_graph_id: str | None = None
 
     def __post_init__(self) -> None:
         _required_text(self.session_id, "session_id")
@@ -151,9 +153,19 @@ class SetDesiredGraph:
                 "expected_desired_graph_revision must be nonnegative"
             )
         _require_idempotency_key(self.idempotency_key)
+        if self.proposed_graph_id is not None:
+            invalid_proposal = False
+            try:
+                validate_proposed_graph_id(self.proposed_graph_id)
+            except GraphAuthoringError:
+                invalid_proposal = True
+            if invalid_proposal:
+                raise InvalidOperationCommand(
+                    "proposed_graph_id must be a bounded public graph reference"
+                )
 
     def descriptor(self) -> dict[str, object]:
-        return {
+        result = {
             "command": OperatorCommandKind.SET_DESIRED_GRAPH.value,
             "session_id": self.session_id,
             "workspace_id": self.workspace_id,
@@ -166,6 +178,9 @@ class SetDesiredGraph:
             "idempotency_key": self.idempotency_key.value,
             "graph": _graph_summary(self.graph),
         }
+        if self.proposed_graph_id is not None:
+            result["proposed_graph_id"] = self.proposed_graph_id
+        return result
 
 
 @dataclass(frozen=True)
@@ -430,7 +445,11 @@ class DesiredGraphCommandService:
                             command.expected_desired_graph_revision
                         ),
                     ),
-                    graph_id=self._id_factory(),
+                    graph_id=(
+                        self._id_factory()
+                        if command.proposed_graph_id is None
+                        else command.proposed_graph_id
+                    ),
                     created_at=created_at,
                 )
             except KeyError as error:
@@ -910,20 +929,21 @@ def _planning_evidence_matches(
 
 
 def _desired_graph_fingerprint(command: SetDesiredGraph) -> str:
-    return _fingerprint(
-        {
-            "command": OperatorCommandKind.SET_DESIRED_GRAPH.value,
-            "session_id": command.session_id,
-            "workspace_id": command.workspace_id,
-            "actor_id": command.actor_id,
-            "expected_desired_graph_id": command.expected_desired_graph_id,
-            "expected_desired_realized_projection_id": (
-                command.expected_desired_realized_projection_id
-            ),
-            "expected_desired_graph_revision": command.expected_desired_graph_revision,
-            "graph": DEFAULT_GRAPH_CODEC.encode(command.graph),
-        }
-    )
+    intent = {
+        "command": OperatorCommandKind.SET_DESIRED_GRAPH.value,
+        "session_id": command.session_id,
+        "workspace_id": command.workspace_id,
+        "actor_id": command.actor_id,
+        "expected_desired_graph_id": command.expected_desired_graph_id,
+        "expected_desired_realized_projection_id": (
+            command.expected_desired_realized_projection_id
+        ),
+        "expected_desired_graph_revision": command.expected_desired_graph_revision,
+        "graph": DEFAULT_GRAPH_CODEC.encode(command.graph),
+    }
+    if command.proposed_graph_id is not None:
+        intent["proposed_graph_id"] = command.proposed_graph_id
+    return _fingerprint(intent)
 
 
 def _activity_plan_fingerprint(command: RequestActivityPlan) -> str:

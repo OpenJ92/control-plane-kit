@@ -842,6 +842,7 @@ class CpkServerPlanningService:
                     workspace_id=_workspace_id(payload),
                     actor_id=context.actor_id,
                     graph=graph,
+                    proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
                     expected_desired_graph_id=_optional_text(
                         payload,
                         "expected_desired_graph_id",
@@ -920,6 +921,7 @@ def _prepare_deployment(
                     _text(payload, "idempotency_key")
                 ),
                 approval_comment=_optional_text(payload, "approval_comment"),
+                proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
             )
         )
     except DeploymentProgramAuthorizationDenied:

@@ -135,6 +135,7 @@ class DeploymentProgram:
                         command.expected_desired_graph_revision
                     ),
                     idempotency_key=keys["desired"],
+                    proposed_graph_id=command.proposed_graph_id,
                 ),
                 DesiredGraphCommandError,
             )
@@ -247,25 +248,26 @@ def _execute_approval(service: ApprovalCommandService, command: RequestApproval)
 
 
 def _intent_digest(command: PrepareDeploymentProgram) -> str:
-    return _sha256(
-        {
-            "profile": "deployment-program-prepare.v1",
-            "workspace_id": command.context.workspace_id,
-            "actor_id": command.context.actor_id,
-            "desired": DEFAULT_GRAPH_CODEC.encode(command.desired),
-            "expected_current": _lineage(command.expected_current),
-            "expected_desired": (
-                None
-                if command.expected_desired is None
-                else _lineage(command.expected_desired)
-            ),
-            "expected_desired_graph_revision": (
-                command.expected_desired_graph_revision
-            ),
-            "title": command.title,
-            "approval_comment": command.approval_comment,
-        }
-    )
+    intent = {
+        "profile": "deployment-program-prepare.v1",
+        "workspace_id": command.context.workspace_id,
+        "actor_id": command.context.actor_id,
+        "desired": DEFAULT_GRAPH_CODEC.encode(command.desired),
+        "expected_current": _lineage(command.expected_current),
+        "expected_desired": (
+            None
+            if command.expected_desired is None
+            else _lineage(command.expected_desired)
+        ),
+        "expected_desired_graph_revision": (
+            command.expected_desired_graph_revision
+        ),
+        "title": command.title,
+        "approval_comment": command.approval_comment,
+    }
+    if command.proposed_graph_id is not None:
+        intent["proposed_graph_id"] = command.proposed_graph_id
+    return _sha256(intent)
 
 
 def _child_keys(command: PrepareDeploymentProgram) -> dict[str, IdempotencyKey]:
