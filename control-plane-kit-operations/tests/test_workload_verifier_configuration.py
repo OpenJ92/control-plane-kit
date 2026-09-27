@@ -22,7 +22,9 @@ from control_plane_kit_core.secrets import SecretReference
 from control_plane_kit_operations.cpk_server import (
     CpkServerApplicationError, CpkServerReadService,
 )
-from control_plane_kit_operations.delegation_signing_keys import RegisteredDelegationSigningKey
+from control_plane_kit_operations.delegation_signing_keys import (
+    RegisteredDelegationSigningKey, delegation_signing_key_registration_id_for,
+)
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import WorkspaceRecord
 
@@ -76,13 +78,20 @@ class WorkloadVerifierConfigurationTests(unittest.TestCase):
         with self.uow() as uow:
             for index in range(count):
                 key_id = f"key-{index}"
+                public_key = DelegationPublicKey(
+                    key_id, DelegationKeyAlgorithm.ED25519,
+                    "-----BEGIN PUBLIC KEY-----\n" + f"{purpose.value}-{issuer}-{index}-"
+                    + "A" * padding + "public-material\n-----END PUBLIC KEY-----\n",
+                )
+                private_reference = SecretReference("secret://private-canary/key")
                 record = RegisteredDelegationSigningKey(
-                    registration_id=f"{workspace}-{purpose.value}-{issuer}-{index}",
+                    registration_id=delegation_signing_key_registration_id_for(
+                        workspace_id=workspace, purpose=purpose, issuer=issuer,
+                        public_key=public_key, private_key_reference=private_reference,
+                    ),
                     workspace_id=workspace, purpose=purpose, issuer=issuer,
-                    public_key=DelegationPublicKey(key_id, DelegationKeyAlgorithm.ED25519,
-                        "-----BEGIN PUBLIC KEY-----\n" + f"{purpose.value}-{issuer}-{index}-"
-                        + "A" * padding + "public-material\n-----END PUBLIC KEY-----\n"),
-                    private_key_reference=SecretReference("secret://private-canary/key"),
+                    public_key=public_key,
+                    private_key_reference=private_reference,
                     admitted_by="operator-a", admitted_at=NOW,
                 )
                 records.append(uow.stores.delegation_signing_keys.register(record))
