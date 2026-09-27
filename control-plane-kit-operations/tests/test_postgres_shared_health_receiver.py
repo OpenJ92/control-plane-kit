@@ -50,8 +50,9 @@ class PostgresSharedHealthReceiverTests(PostgresHealthEffectStartFixture, unitte
             health_receiver_decoders=self.registry()).execute_health(self.start_health_command())
 
     def refused(self):
-        before, ids = self.health_snapshot(), Sequence("must-not-allocate")
+        ids = Sequence("must-not-allocate")
         with self.observed_time("2030-01-01T00:00:00Z"):
+            before = self.health_snapshot()
             with self.assertRaises(EffectAttemptStartDenied) as caught:
                 self.start(ids)
         self.assertEqual(ids.calls, [])
