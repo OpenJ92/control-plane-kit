@@ -35,3 +35,5 @@ outcome. No successful result escapes a failed exit, and missing acknowledgement
 is not proof of rollback. Exact replay may observe the retained result without
 redispatch. #1846 must independently reload postcommit eligibility, including
 not-yet-valid or expired intervals, before signing or external effects.
+
+Operations1872 changes the shared coverage owner, not this transaction algorithm. health_receiver_decoders now carries gateway transit only; all workload/gateway own-health uses the registered and actually selected common Core configuration with an exact slot join. New conforming workloads require no decoder entry. Existing first-start ordering, ID/write atomicity, replay, clock, owner exception and uncertain-commit behavior remain unchanged. Empty transit composition still cannot authorize a fresh signed health operation.

@@ -1,38 +1,12 @@
 Source: [_health_receiver_trust.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/_health_receiver_trust.py).
 Maintain this companion alongside its source.
 
-One shared check joins validated approved graph pins to each receiver's selected
-node, runtime and provider socket. The node's exact product reference retrieves
-its registered canonical descriptor. That read establishes immutable provenance;
-it does not add product-status revocation policy or a current-product lock.
-Existing graph, approval, active-key and protected-provider owners retain their
-current authorization responsibilities.
+The common first-start/reload owner joins original approved graph pins to receiver node/runtime/socket, then retrieves the exact registered canonical descriptor by workspace/reference. This is immutable provenance; no ACTIVE-only revocation policy or product-status lock is added. Store exceptions remain outside pure-refusal catches.
 
-The trusted registry must name exactly one product/purpose binding. Its slot
-must occur once in descriptor defaults and once in selected node artifacts.
-Only the actual artifact is passed to the decoder. The selected profile is a
-trusted parser contract; Operations does not parse product JSON. Result family,
-purpose, issuer, runtime and applicable target/gateway/declaration/audience must
-agree with independently projected approved intent. At least one configured
-key must match the signer's full public identity; whole-keyset equality is not
-required.
+For WORKLOAD_NODE_HEALTH_READ, the shared Core selector resolves the registered descriptor's public binding/artifacts/surface and separately resolves actual node artifacts plus all effective public/socket-derived bindings and surfaces. Their complete id/path/media/mode slots must match. The actual selected artifact alone supplies receiver target/runtime/declaration and health verifier issuer/keys through Core's shared codec. The declared/default bytes are validated as protocol data for slot selection but never replace actual bytes. Thus separately valid A/default and B/selected still refuse when redirected. No product name/path allowlist, own-health decoder registry or old-format fallback exists.
 
-First-start calls this after original graph/active-key checks and before
-correlation locks, time, IDs and durable writes. Reload calls it against original
-pins and selected bytes before returning protected resolution references. It
-does not renew intervals, create history or read a clock. Replay never enters
-this helper. No new schema, material resolution, signing or external effects
-are introduced.
+Gateway transit retains the existing exact product/transit-purpose binding and declared/actual slot selection, then its separate trusted decoder. This distinction applies to protocol semantics, not the gateway product's own-health: that always follows the common workload branch.
 
-Pure validation failures and explicit decoder `HealthReceiverTrustError` map to
-the caller's fixed refusal, raised outside the caught candidate context. Store
-reads remain outside those catches; unexpected decoder and owner exceptions
-retain object identity. They are not safe public error payloads. The decoder
-is trusted code: its no-I/O and deterministic contract requires adapter review,
-not an in-process sandbox.
+Both branches produce existing closed receiver facts. Unchanged coverage checks exact family/purpose/issuer/runtime, independent expected gateway or target/declaration/audience, and full public identity of the current signer. Rotation overlap is allowed without whole-keyset equality. Core shared failures map to the caller's fixed refusal outside caught contexts; unexpected transit decoder/store errors preserve identity and are not display-safe payloads.
 
-Targets protect selected-byte substitution with a fresh valid digest, wrong
-identity/key/profile/slot, overlap, original BASE pins, repeated read-only reload,
-empty composition and both decoder-free replay entrances. Existing atomicity,
-rollback, uncertain-commit and concurrency assertions remain intact through
-explicit fixture composition. Execution of the implementation remains pending.
+First-start still calls this after original graph/current-key checks and before time/IDs/durable writes. Reload uses original selected pins before returning protected resolution references, without clock renewal, new history or repair. Replay bypasses receiver interpretation. Existing UoW, concurrency, rollback, temporal validity, retry/uncertainty and signing authority remain their original owners. No schema, provider call, material resolution or external effect is introduced.
