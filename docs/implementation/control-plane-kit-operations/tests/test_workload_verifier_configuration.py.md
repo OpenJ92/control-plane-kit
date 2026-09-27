@@ -18,5 +18,6 @@ they neither simulate stores nor decide authority. An initial ordinary read
 exposes the missing route before any concurrency apparatus is started.
 
 Synthetic PEM values exercise existing Operations registration/projection laws;
+registration identities use the public canonical signing-key identity helper.
 these tests do not claim SDK cryptographic verification or Servers delivery.
 Existing gateway and key-lifecycle suites remain the compatibility baseline.

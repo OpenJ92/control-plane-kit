@@ -1,0 +1,5 @@
+Source: [gateway_security.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/read_services/gateway_security.py).
+Maintain this companion alongside its source.
+
+Owns the existing gateway security projections and the workload public verifier snapshot. Workload selection accepts one to three existing workload purposes, requires surface-read, rejects duplicates and sorts only after validation. It selects all active families in fixed purpose order under the caller's read UoW, then reads each selected issuer's active/verify-only records with a 17-row SQL sentinel and refuses more than 16. Exact record membership and selected-active inclusion precede existing Core family validation. The complete public envelope is limited to 64 KiB; expected authority/configuration errors become fixed detached refusals. No private reference, lifecycle metadata or credential resolution reaches the response. Existing gateway semantics are unchanged. The result is an observation, not a lease.
+

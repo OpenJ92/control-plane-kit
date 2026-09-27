@@ -830,6 +830,12 @@ _OPERATOR_READ_PROJECTIONS = (
         "GatewayVerifierConfigurationReadResponse",
     ),
     (
+        "read.workload-verifier-configuration",
+        "read.workload-verifier-configuration",
+        "get_workload_verifier_configuration",
+        "WorkloadVerifierConfigurationReadResponse",
+    ),
+    (
         "read.gateway-probe-detail",
         "read.gateway-probe-detail",
         "get_gateway_probe_detail",

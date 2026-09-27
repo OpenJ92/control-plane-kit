@@ -165,4 +165,6 @@ class DelegationSigningKeyStore(Protocol):
         workspace_id: str,
         purpose: DelegationKeyPurpose,
         issuer: str,
+        *,
+        limit: int | None = None,
     ) -> tuple[RegisteredDelegationSigningKey, ...]: ...
