@@ -395,6 +395,7 @@ class DeploymentProgramCommandTests(unittest.TestCase):
                 "title",
                 "idempotency_key",
                 "approval_comment",
+                "proposed_graph_id",
             ),
         )
         self.assertEqual(
@@ -425,6 +426,9 @@ class DeploymentProgramCommandTests(unittest.TestCase):
                     "ExternalReadinessAttestation"
                 },
                 "control_plane_kit_operations.records": {"GraphProjectionLineage"},
+                "control_plane_kit_operations.graph_authoring": {
+                    "GraphAuthoringError", "validate_proposed_graph_id"
+                },
                 "control_plane_kit_operations.workflows": {"IdempotencyKey"},
             },
         )
