@@ -1,0 +1,6 @@
+Source: [test_postgres_signed_bootstrap_health.py](../../../../control-plane-kit-operations/tests/test_postgres_signed_bootstrap_health.py).
+Maintain this companion alongside its source.
+
+The existing real PostgreSQL tests exercise original signed bootstrap stages through first-start, retained preparation/store reconstruction and current authority reload. Gateway transit and gateway own-health inhabit one registered product while retaining separate purposes and signing authority. Operations1872 moves the own-health artifact to the same common workload configuration used by ordinary applications. Transit decoder-call assertions now cover transit only; actual shared target/declaration, selected-versus-default bytes and both retained key/use families protect the removed callback's observable laws.
+
+Missing transit support and unsupported common interpretation each deny reload. Actor/workspace/fence, original interval/fractional boundary, key revocation, pinned graph/operation and transaction/history assertions remain unchanged. Replay traps both transit decoder and common codec and cannot renew authority. Seeded predecessor facts are focused fixture setup, not executed creation/native/ingress acceptance. Managed chain tests separately cover their application composition.

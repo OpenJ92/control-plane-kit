@@ -97,3 +97,5 @@ concurrent read-lock retention. Injected-time tests prove orchestration and
 interval boundaries; unchanged real DB clock behavior retains predecessor
 owner evidence. Native implementation validation remains pending at source
 checkpoint; no live/signing acceptance is inferred.
+
+Operations1872 updates only the shared receiver owner's representation: all own-health projects the selected common Core configuration, while injected health_receiver_decoders supplies gateway transit only. Workload bindings are explicitly invalid. Exact registered/default versus actual selected slot joins and current authority coverage precede returned resolution references as before. This supersedes the earlier statement that trusted product decoders interpret both families; transaction, original pins, current actor/key/time, replay and owner-error laws are unchanged. No SDK process import or new public service parameter is added.

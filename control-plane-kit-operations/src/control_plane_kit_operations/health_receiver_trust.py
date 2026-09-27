@@ -1,4 +1,4 @@
-"""Configured public receiver facts and a trusted, effect-free decoder port."""
+"""Configured public receiver facts and a distinct, effect-free transit port."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -157,19 +157,19 @@ class HealthReceiverSelection:
 
 
 class HealthReceiverDecoder(Protocol):
-    """Trusted deterministic interpretation of supplied bytes, with no I/O.
+    """Trusted deterministic transit interpretation of supplied bytes, with no I/O.
 
     Implementations report configured facts, not expected selection identities.
     Unsupported/malformed profiles raise HealthReceiverTrustError; unrelated
     programming errors propagate. Bindings must keep historical semantics stable.
     """
 
-    def decode(self, selection: HealthReceiverSelection) -> GatewayHealthReceiverTrust | WorkloadHealthReceiverTrust: ...
+    def decode(self, selection: HealthReceiverSelection) -> GatewayHealthReceiverTrust: ...
 
 
 @dataclass(frozen=True, slots=True, repr=False)
 class HealthReceiverDecoderBinding:
-    """One exact product/purpose, declared artifact slot and parser profile."""
+    """One exact transit product, declared artifact slot and parser profile."""
 
     product_reference: ProductReference
     purpose: DelegationKeyPurpose
@@ -183,7 +183,7 @@ class HealthReceiverDecoderBinding:
     def __post_init__(self) -> None:
         try:
             _require(type(self) is HealthReceiverDecoderBinding and type(self.purpose) is DelegationKeyPurpose
-                     and self.purpose in _PURPOSES and type(self.product_reference) is ProductReference)
+                     and self.purpose is _PURPOSES[0] and type(self.product_reference) is ProductReference)
             codec = ProductReferenceCodec()
             _require(_same(self.product_reference, codec.decode(codec.encode(self.product_reference))))
             _require(type(self.configuration_profile) is str and reference_violation(self.configuration_profile) is None)
@@ -200,7 +200,7 @@ class HealthReceiverDecoderBinding:
 
 @dataclass(frozen=True, slots=True, repr=False)
 class HealthReceiverDecoders:
-    """An immutable trusted composition table; an empty table fails closed."""
+    """Immutable gateway-transit composition; own-health has no decoder table."""
 
     bindings: tuple[HealthReceiverDecoderBinding, ...]
     _index: Mapping = field(init=False, repr=False, compare=False)

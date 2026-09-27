@@ -11091,7 +11091,7 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.health_receiver_trust",
-      "motivation": "Owns closed configured receiver facts, exact pinned selection and trusted effect-free decoder composition.",
+      "motivation": "Owns closed configured receiver facts, exact pinned selection and distinct gateway-transit decoder composition.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
@@ -11113,6 +11113,7 @@
         "control_plane_kit_core.node_control_surface_reads",
         "control_plane_kit_core.planning",
         "control_plane_kit_core.products",
+        "control_plane_kit_core.wrapper_configuration",
         "control_plane_kit_operations.graph_authoring",
         "control_plane_kit_operations.health_receiver_trust",
         "control_plane_kit_operations.products"
@@ -11123,7 +11124,7 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations._health_receiver_trust",
-      "motivation": "Shares exact pinned artifact selection and configured public-key coverage between first health admission and authority reload.",
+      "motivation": "Shares registered/common own-health configuration projection, separate transit selection and public-key coverage between first health admission and authority reload.",
       "movement": "remain",
       "optional_external_dependencies": [],
       "owner": "operation",
@@ -11156,7 +11157,9 @@
         "control_plane_kit_core.node_control",
         "control_plane_kit_core.node_control_surface_reads"
       ],
-      "known_package_consumers": [],
+      "known_package_consumers": [
+        "control_plane_kit_operations._health_receiver_trust"
+      ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_core.wrapper_configuration",
       "motivation": "Shared pure receiver configuration and structural artifact binding without product-specific parsing or runtime setup.",

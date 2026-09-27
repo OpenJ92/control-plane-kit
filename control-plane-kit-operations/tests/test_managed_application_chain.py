@@ -75,7 +75,7 @@ from control_plane_kit_operations.secret_providers import (
 from control_plane_kit_operations.workflows import OperationCommandService
 from control_plane_kit_operations.workspaces import WorkspaceCommandService
 from tests import postgres_health_effect_start_fixture as health_registration_fixture
-from tests.health_receiver_trust_fixture import ByteDecoder, artifact, bindings
+from tests.health_receiver_trust_fixture import ByteDecoder, artifact, bindings, wrapper_environment
 from tests.runtime_management_fixtures import bootstrap_management_graph
 from tests.test_cpk_server_adapters import GeneratedIds, RouteRequest, operator_principal, worker_principal
 from tests.test_ingress_realization import RecordingIngressInterpreter, TrackingUnitOfWorkFactory
@@ -240,11 +240,13 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
                 ProductRuntimeContract(sockets=node.sockets,
                     provider_ports=tuple(ProviderRuntimePort(socket.name, 8000) for socket in node.sockets.providers),
                     capabilities=node.block_spec.capabilities, control_surfaces=node.block_spec.control_surfaces,
-                    gateway_transit=node.block_spec.gateway_transit, configuration_artifacts=chosen))
+                    gateway_transit=node.block_spec.gateway_transit, configuration_artifacts=chosen,
+                    public_environment=(*node.public_environment, *wrapper_environment(chosen)) if "workload" in families else node.public_environment))
             document = ProductDescriptorCodec().encode_document(product)
             documents[name] = document
             reference = ProductReference.from_document(document)
-            nodes[name] = replace(node, configuration_artifacts=chosen, metadata={
+            nodes[name] = replace(node, configuration_artifacts=chosen,
+                public_environment=product.runtime_contract.public_environment, metadata={
                 "product_identity": reference.identity.key,
                 "product_descriptor_digest": reference.descriptor_sha256.value})
             decoder_bindings.extend(bindings(health_receiver_trust,

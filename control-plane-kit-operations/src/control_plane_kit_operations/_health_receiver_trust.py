@@ -5,6 +5,9 @@ from control_plane_kit_core.node_control import NodeControlGraphReference, NodeC
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile
 from control_plane_kit_core.planning import PlanGraphSide
 from control_plane_kit_core.products import ProductReference
+from control_plane_kit_core.wrapper_configuration import (
+    WorkloadNodeControlConfigurationCodec, select_workload_node_control_configuration_artifact,
+)
 from control_plane_kit_operations.graph_authoring import product_reference_in_node
 from control_plane_kit_operations.health_receiver_trust import (
     GatewayHealthReceiverTrust, HealthReceiverDecoders, HealthReceiverSelection, HealthReceiverTrustError,
@@ -59,13 +62,37 @@ def _selection(registry, product, node, reference, purpose, workspace, authored,
     _require(type(product) is RegisteredProduct and product.workspace_id == workspace
              and _same(product.reference, reference))
     # No ACTIVE-status policy is introduced: this is immutable descriptor provenance.
-    binding = registry.binding_for(reference, purpose)
-    declared = tuple(value for value in product.descriptor_document.product.runtime_contract.configuration_artifacts
-                     if _slot(value) == _slot(binding))
-    actual = tuple(value for value in node.configuration_artifacts if _slot(value) == _slot(binding))
-    _require(len(declared) == len(actual) == 1)
+    contract = product.descriptor_document.product.runtime_contract
+    if purpose is _PURPOSES[1]:
+        # Each input must select the same declared slot. Independently valid
+        # configurations cannot redirect descriptor A to selected artifact B.
+        declared = select_workload_node_control_configuration_artifact(
+            artifacts=contract.configuration_artifacts, environment=contract.public_environment,
+            control_surfaces=contract.control_surfaces)
+        actual = select_workload_node_control_configuration_artifact(
+            artifacts=node.configuration_artifacts,
+            environment=node.public_environment + node.socket_environment,
+            control_surfaces=node.block_spec.control_surfaces)
+        _require(_slot(declared) == _slot(actual))
+        binding = None
+    else:
+        binding = registry.binding_for(reference, purpose)
+        declared = tuple(value for value in contract.configuration_artifacts if _slot(value) == _slot(binding))
+        selected = tuple(value for value in node.configuration_artifacts if _slot(value) == _slot(binding))
+        _require(len(declared) == len(selected) == 1)
+        actual = selected[0]
     return binding, HealthReceiverSelection(workspace, authored, projection, side,
-        node.node_id, node.runtime_id, socket, reference, product.descriptor_document, actual[0])
+        node.node_id, node.runtime_id, socket, reference, product.descriptor_document, actual)
+
+
+def _workload_trust(selection):
+    configured = WorkloadNodeControlConfigurationCodec().decode_bytes(selection.artifact.content.encode("utf-8"))
+    families = tuple(value for value in configured.verifiers if value.purpose is _PURPOSES[1])
+    _require(len(families) == 1)
+    family, = families
+    return WorkloadHealthReceiverTrust(target=configured.target, runtime_id=configured.runtime_id,
+        declaration=configured.declaration, purpose=family.purpose, issuer=family.issuer,
+        audience=workload_node_control_audience(configured.target), public_keys=family.public_keys)
 
 
 def _coverage(decoded, purpose, signer, target, runtime, gateway, declaration):
@@ -96,6 +123,9 @@ def require_health_receiver_coverage(stores, registry, *, plan, graphs, selected
         product = stores.registered_products.get(workspace, reference)
         binding, selection = _checked(lambda: _selection(registry, product, node, reference,
             purpose, workspace, authored, projection, side, socket), refuse)
-        # Unexpected adapter bugs are not display-safe contract refusals.
-        decoded = _checked(lambda: binding.decoder.decode(selection), refuse, (HealthReceiverTrustError,))
+        if purpose is _PURPOSES[1]:
+            decoded = _checked(lambda: _workload_trust(selection), refuse)
+        else:
+            # Unexpected transit adapter bugs are not display-safe contract refusals.
+            decoded = _checked(lambda: binding.decoder.decode(selection), refuse, (HealthReceiverTrustError,))
         _checked(lambda: _coverage(decoded, purpose, key, target, runtime, gateway, declaration), refuse)
