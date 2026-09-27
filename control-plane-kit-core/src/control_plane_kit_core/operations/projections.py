@@ -52,6 +52,7 @@ class ReadProjectionKind(StrEnum):
     SECRET_REFERENCE_DETAIL = "secret-reference-detail"
     DELEGATION_KEYS = "delegation-keys"
     GATEWAY_VERIFIER_CONFIGURATION = "gateway-verifier-configuration"
+    WORKLOAD_VERIFIER_CONFIGURATION = "workload-verifier-configuration"
     GATEWAY_PROBE_DETAIL = "gateway-probe-detail"
     GATEWAY_PROBE_TIMELINE = "gateway-probe-timeline"
 
@@ -73,6 +74,7 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_SECRET_REFERENCE = "redacted-secret-reference"
     REDACTED_DELEGATION_KEY = "redacted-delegation-key"
     PUBLIC_GATEWAY_VERIFIER_CONFIGURATION = "public-gateway-verifier-configuration"
+    PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION = "public-workload-verifier-configuration"
     DELEGATED_GATEWAY_PROBE_EVIDENCE = "delegated-gateway-probe-evidence"
 
 
@@ -308,6 +310,12 @@ _CANONICAL_PROJECTIONS = (
         ReadProjectionKind.GATEWAY_VERIFIER_CONFIGURATION,
         "GatewayVerifierConfigurationReadResponse",
         ReadProjectionPolicy.PUBLIC_GATEWAY_VERIFIER_CONFIGURATION,
+    ),
+    _ProjectionDefinition(
+        "read.workload-verifier-configuration",
+        ReadProjectionKind.WORKLOAD_VERIFIER_CONFIGURATION,
+        "WorkloadVerifierConfigurationReadResponse",
+        ReadProjectionPolicy.PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION,
     ),
     _ProjectionDefinition(
         "read.gateway-probe-detail",

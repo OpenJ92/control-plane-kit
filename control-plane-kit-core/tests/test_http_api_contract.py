@@ -95,6 +95,7 @@ class HttpApiContractTests(unittest.TestCase):
                     "GET",
                     "/workspaces/{workspace_id}/sessions/{session_id}/plans",
                 ),
+                ("GET", "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}"),
             ],
         )
         self.assertEqual(
@@ -191,6 +192,7 @@ class HttpApiContractTests(unittest.TestCase):
                 "/workspaces/{workspace_id}/sessions/{session_id}/actions",
                 "/workspaces/{workspace_id}/sessions/{session_id}/approvals",
                 "/workspaces/{workspace_id}/sessions/{session_id}/plans",
+                "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}",
             ],
         )
         self.assertEqual(HttpApiContract.from_descriptor(descriptor), contract)

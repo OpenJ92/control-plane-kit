@@ -331,6 +331,9 @@ _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
     "read.gateway-verifier-configuration": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
     ),
+    "read.workload-verifier-configuration": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.DELEGATION_KEY_READ,)
+    ),
     "command.workspace.create": RouteAuthorizationPolicy(
         required_scopes=(PolicyScope.HUB_INSTANCE_CREATE,)
     ),
@@ -1732,7 +1735,27 @@ def _read_model(
             _workspace_id(args),
             _path_or_payload(args, "gateway_node_id", "gateway_node_id"),
         )
+    if route_id == "read.workload-verifier-configuration":
+        return service.workload_verifier_configuration(
+            _workspace_id(args), _workload_verifier_purposes(args),
+        )
     raise _unsupported_route(request)
+
+
+def _workload_verifier_purposes(
+    values: Mapping[str, object],
+) -> tuple[DelegationKeyPurpose, ...]:
+    selector = values.get("purposes")
+    if type(selector) is not str or not 1 <= len(selector) <= 192:
+        raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
+    tokens = selector.split(",")
+    if not 1 <= len(tokens) <= 3:
+        raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
+    try:
+        return tuple(DelegationKeyPurpose(token) for token in tokens)
+    except ValueError:
+        pass
+    raise CpkServerApplicationError(400, "workload verifier purposes are malformed")
 
 
 def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
@@ -1743,6 +1766,7 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 
 
 _CLOSED_READ_ARGUMENTS = {
+    "read.workload-verifier-configuration": ("purposes", False),
     "read.desired-topology-drafts": (None, True),
     "read.desired-topology-draft-revisions": ("draft_id", True),
     "read.desired-topology-draft-revision": (("draft_id", "revision"), False),

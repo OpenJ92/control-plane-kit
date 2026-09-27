@@ -414,6 +414,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "GatewayVerifierConfigurationReadResponse",
             ),
             (
+                "read.workload-verifier-configuration",
+                "/workspaces/{workspace_id}/workload-verifier-configuration/{purposes}",
+                "WorkloadVerifierConfigurationReadResponse",
+            ),
+            (
                 "read.pending-approvals",
                 "/workspaces/{workspace_id}/approvals/pending",
                 "PendingApprovalsReadResponse",

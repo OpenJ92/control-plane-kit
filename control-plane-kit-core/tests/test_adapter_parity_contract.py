@@ -246,6 +246,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "SessionPlansReadResponse",
                 ),
                 (
+                    "read.workload-verifier-configuration",
+                    "read.workload-verifier-configuration",
+                    "get_workload_verifier_configuration",
+                    "WorkloadVerifierConfigurationReadResponse",
+                ),
+                (
                     "read.workspace",
                     "read.workspace",
                     "get_workspace",

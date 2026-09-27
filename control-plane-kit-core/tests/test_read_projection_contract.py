@@ -420,6 +420,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 (
+                    "read.workload-verifier-configuration",
+                    ReadProjectionKind.WORKLOAD_VERIFIER_CONFIGURATION,
+                    "WorkloadVerifierConfigurationReadResponse",
+                    ReadProjectionPolicy.PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION,
+                    True,
+                    False,
+                ),
+                (
                     "read.workspace",
                     ReadProjectionKind.WORKSPACE,
                     "WorkspaceReadResponse",
