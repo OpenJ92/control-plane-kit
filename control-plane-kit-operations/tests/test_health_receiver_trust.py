@@ -6,7 +6,7 @@ import unittest
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
 from control_plane_kit_core.products import ProductReference
 from tests.health_effect_preparation_fixture import forged_copy
-from tests.health_receiver_trust_fixture import api, bindings, ByteDecoder, context, reference, selection
+from tests.health_receiver_trust_fixture import api, bindings, ByteDecoder, context, reference, selection, workload_trust
 
 
 class HealthReceiverTrustTests(unittest.TestCase):
@@ -19,6 +19,8 @@ class HealthReceiverTrustTests(unittest.TestCase):
         self.decoder = ByteDecoder(self.api)
 
     def decoded(self, family):
+        if family == "workload":
+            return workload_trust(self.api, self.artifacts[family])
         return self.decoder.decode(selection(self.api, self.documents[family], self.artifacts[family], family))
 
     def refuse(self, call):

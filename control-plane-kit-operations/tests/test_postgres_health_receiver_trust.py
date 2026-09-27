@@ -8,6 +8,8 @@ from control_plane_kit_core.node_control import NodeHealthReadKind
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile
 from control_plane_kit_core.planning import PlanGraphSide
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
+from control_plane_kit_core.products import ProductReference
+from control_plane_kit_core.wrapper_configuration import WorkloadNodeControlConfigurationCodec
 from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartDenied, ExistingAttempt
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.health_signing_authority import HealthSigningAuthorityReloadService, HealthSigningAuthorityUnavailable, ReloadHealthSigningAuthority
@@ -79,8 +81,8 @@ class PostgresHealthReceiverTrustTests(PostgresHealthEffectStartFixture, unittes
         with self.observed_time("2030-01-01T00:00:00Z"):
             result, _ = self.start(registry)
         self.assertEqual(self.health_counts(), (1, 1, 2, 1))
-        self.assertEqual(len(decoder.calls), 2)
-        for family in PURPOSES:
+        self.assertEqual(len(decoder.calls), 1)
+        for family in ("transit",):
             selected = next(call for call in decoder.calls if call.receiver_node_id == NODES[family])
             self.assertEqual(selected.artifact, self.receiver_artifacts[family])
             self.assertEqual(selected.product_reference, self.receiver_products[family].reference)
@@ -90,6 +92,12 @@ class PostgresHealthReceiverTrustTests(PostgresHealthEffectStartFixture, unittes
             self.assertIs(selected.graph_side, PlanGraphSide.DESIRED_GRAPH)
             self.assertNotEqual(selected.artifact.content_digest,
                 selected.descriptor_document.product.runtime_contract.configuration_artifacts[0].content_digest)
+        configured = WorkloadNodeControlConfigurationCodec().decode_bytes(self.receiver_artifacts["workload"].content.encode())
+        self.assertEqual(result.preparation.request.target, configured.target)
+        self.assertEqual(result.preparation.request.declaration_identity, configured.declaration.identity())
+        self.assertEqual(result.preparation.workload_key_registration_id, self.keys["workload"].registration_id)
+        self.assertNotEqual(self.receiver_artifacts["workload"].content_digest,
+            self.receiver_documents["workload"].product.runtime_contract.configuration_artifacts[0].content_digest)
 
     def test_fresh_valid_artifact_with_different_key_refuses_but_overlap_accepts(self):
         for family in PURPOSES:
@@ -99,7 +107,12 @@ class PostgresHealthReceiverTrustTests(PostgresHealthEffectStartFixture, unittes
             self.assertNotEqual(self.receiver_artifacts[family].content_digest, original.content_digest)
             registry, decoder = self.registry()
             self.refused_start(registry)
-            self.assertTrue(any(call.artifact == self.receiver_artifacts[family] for call in decoder.calls))
+            if family == "transit":
+                self.assertTrue(any(call.artifact == self.receiver_artifacts[family] for call in decoder.calls))
+            else:
+                configured = WorkloadNodeControlConfigurationCodec().decode_bytes(self.receiver_artifacts[family].content.encode())
+                configured_family = next(value for value in configured.verifiers if value.purpose is PURPOSES[family])
+                self.assertNotEqual(configured_family.public_keys, (self.keys[family].public_key,))
             self.reset_receiver(changes={family: dict(keys=[
                 dict(key_id="health-" + family, pem=PEMS[family]),
                 dict(key_id="overlap", pem=PUBLIC_KEY_C)])})
@@ -138,12 +151,13 @@ class PostgresHealthReceiverTrustTests(PostgresHealthEffectStartFixture, unittes
         self.reset_receiver()
         decoder = ByteDecoder(self.contract)
         admitted = bindings(self.contract, self.receiver_documents, decoder)
-        wrong = replace(admitted[0], product_reference=admitted[1].product_reference)
-        self.refused_start(self.contract.HealthReceiverDecoders((wrong, admitted[1])))
-        for change in (dict(artifact_id="other-slot"), dict(target_path="/etc/test/other.json")):
-            self.reset_receiver(slots={"transit": change})
-            registry, _ = self.registry()
-            self.refused_start(registry)
+        wrong = replace(admitted[0], product_reference=ProductReference.from_document(self.receiver_documents["workload"]))
+        self.refused_start(self.contract.HealthReceiverDecoders((wrong,)))
+        for family in PURPOSES:
+            for change in (dict(artifact_id="other-slot"), dict(target_path="/etc/test/other.json")):
+                self.reset_receiver(slots={family: change})
+                registry, _ = self.registry()
+                self.refused_start(registry)
 
     def test_reload_rechecks_original_base_pins_and_bytes_without_new_history_or_interval(self):
         self.reset_receiver(side=PlanGraphSide.BASE_GRAPH)
@@ -158,7 +172,9 @@ class PostgresHealthReceiverTrustTests(PostgresHealthEffectStartFixture, unittes
         self.assertEqual(first, second)
         self.assertEqual(first.preparation, original)
         self.assertEqual(self.health_snapshot(), before)
-        self.assertEqual(len(decoder.calls), 4)
+        self.assertEqual(len(decoder.calls), 2)
+        self.assertEqual(first.workload.public_key, self.keys["workload"].public_key)
+        self.assertEqual(first.preparation.request.target.graph_revision.value, "health-base")
         for selected in decoder.calls:
             self.assertIs(selected.graph_side, PlanGraphSide.BASE_GRAPH)
             self.assertEqual(selected.realized_projection_id, original.base_realized_projection_id)
@@ -176,7 +192,9 @@ class PostgresHealthReceiverTrustTests(PostgresHealthEffectStartFixture, unittes
                 self.reload(result.preparation, empty)
         decoder = ByteDecoder(self.contract)
         registry, _ = self.registry(decoder)
-        with mock.patch.object(decoder, "decode", side_effect=AssertionError("replay decoded receiver trust")):
+        with mock.patch.object(WorkloadNodeControlConfigurationCodec, "decode_bytes",
+                side_effect=AssertionError("replay decoded common configuration")), \
+                mock.patch.object(decoder, "decode", side_effect=AssertionError("replay decoded receiver trust")):
             ids = Sequence("must-not-allocate")
             service = EffectAttemptStartService(self.unit_of_work, id_factory=ids, health_receiver_decoders=registry)
             with self.forbid_fresh_health():

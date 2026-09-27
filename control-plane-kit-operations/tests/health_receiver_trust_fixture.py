@@ -7,7 +7,7 @@ import json
 
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationFileMode, ConfigurationMediaType
 from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
-from control_plane_kit_core.wrapper_configuration import WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT
+from control_plane_kit_core.wrapper_configuration import WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT, WorkloadNodeControlConfigurationCodec
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
 from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole, NodeControlTarget, workload_node_control_audience
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationCodec, WorkloadNodeControlSurfaceDeclarationProfile
@@ -50,7 +50,7 @@ def public_key(family, *, key_id=None, pem=None):
                                PEMS[family] if pem is None else pem)
 
 
-def artifact(family, surface_declaration, *, revision="health-desired", shared=False, **changes):
+def artifact(family, surface_declaration, *, revision="health-desired", shared=True, **changes):
     value = dict(profile=PROFILE, family=family, workspace="workspace-a", node=NODES[family],
         runtime="docker", issuer="cpk-server", purpose=PURPOSES[family].value,
         revision=revision, socket="http", declaration=surface_declaration.descriptor(),
@@ -96,16 +96,20 @@ class ByteDecoder:
                 workspace_id=reference("workspace", value["workspace"]),
                 gateway_node_id=reference("node", value["node"]),
                 audience=f"gateway:{value['workspace']}:{value['node']}", **common)
-        target = NodeControlTarget(reference("workspace", value["workspace"]),
-            reference("graph-revision", value["revision"]), reference("node", value["node"]),
-            reference("provider-socket", value["socket"]))
-        return self.contract.WorkloadHealthReceiverTrust(target=target,
-            declaration=WorkloadNodeControlSurfaceDeclarationCodec().decode(value["declaration"]),
-            audience=workload_node_control_audience(target), **common)
+        raise self.contract.HealthReceiverTrustError("health receiver trust is unavailable")
+
+
+def workload_trust(contract, chosen):
+    """Construct public fact values for their pure nominal-value tests only."""
+    configured = WorkloadNodeControlConfigurationCodec().decode_bytes(chosen.content.encode())
+    family = next(value for value in configured.verifiers if value.purpose is PURPOSES["workload"])
+    return contract.WorkloadHealthReceiverTrust(target=configured.target, runtime_id=configured.runtime_id,
+        declaration=configured.declaration, purpose=family.purpose, issuer=family.issuer,
+        audience=workload_node_control_audience(configured.target), public_keys=family.public_keys)
 
 
 def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_changes=None, stage=None,
-            shared=False, transform=None):
+            shared=True, transform=None):
     if stage is not None:
         return _bootstrap_context(test, stage=stage, side=side,
             changes=changes, slot_changes=slot_changes, shared=shared)
@@ -229,7 +233,7 @@ def bindings(contract, documents, decoder):
         configuration_profile=PROFILE, artifact_id="test-" + family,
         target_path="/etc/test/" + family + ".json", media_type=ConfigurationMediaType.JSON,
         file_mode=ConfigurationFileMode.READ_ONLY, decoder=decoder)
-        for family, document in documents.items())
+        for family, document in documents.items() if family == "transit")
 
 
 def selection(contract, document, chosen, family="transit"):
