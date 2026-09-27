@@ -18,3 +18,5 @@ tests use Core public identity semantics; cryptographic receiver parsing remains
 product-owned and was independently accepted in Servers207.
 
 Target-only checkpoint for1857: static review and native red remain pending.
+
+Operations1872 target checkpoint adds opt-in shared workload wire generation and its explicit public environment binding, leaving predecessor fixtures unchanged until causal red. The transit format remains separate. A pre-plan transform permits independently named/located products and A-to-B redirection while the actual graph compiler and registration service remain owners. Malformed profile/purpose witnesses remain literal artifact bytes for owner refusal; expected graph facts are never substituted into decoded receiver facts.

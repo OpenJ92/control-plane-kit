@@ -1,0 +1,4 @@
+Source: [test_postgres_shared_health_receiver.py](../../../../control-plane-kit-operations/tests/test_postgres_shared_health_receiver.py).
+Maintain this companion alongside its source.
+
+Operations1872 targets call real PostgreSQL first-start/reload with accepted Core shared bytes and only a transit decoder. Registered independently named own-health products/paths must work without parser entries. Defaults intentionally use a different key. A redirect witness first proves descriptor A and selected B each independently satisfy the shared selector, then requires refusal with no ID/history mutation. Missing binding/unknown profile refuse; the distinct transit port must reject attempts to reintroduce workload bindings. No SDK transport, signing, provider or parallel durable state machine is implemented here. Existing owner fixtures establish real approved plans and active key/reference provenance before the target behavior.

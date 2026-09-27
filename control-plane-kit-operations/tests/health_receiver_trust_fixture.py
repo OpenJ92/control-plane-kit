@@ -6,6 +6,8 @@ import importlib.util
 import json
 
 from control_plane_kit_core.configuration import ConfigurationArtifact, ConfigurationFileMode, ConfigurationMediaType
+from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
+from control_plane_kit_core.wrapper_configuration import WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
 from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole, NodeControlTarget, workload_node_control_audience
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationCodec, WorkloadNodeControlSurfaceDeclarationProfile
@@ -48,12 +50,27 @@ def public_key(family, *, key_id=None, pem=None):
                                PEMS[family] if pem is None else pem)
 
 
-def artifact(family, surface_declaration, *, revision="health-desired", **changes):
+def artifact(family, surface_declaration, *, revision="health-desired", shared=False, **changes):
     value = dict(profile=PROFILE, family=family, workspace="workspace-a", node=NODES[family],
         runtime="docker", issuer="cpk-server", purpose=PURPOSES[family].value,
         revision=revision, socket="http", declaration=surface_declaration.descriptor(),
         keys=[dict(key_id="health-" + family, pem=PEMS[family])])
     value.update(changes)
+    if shared and family == "workload":
+        # Literal shared wire data permits malformed-profile/purpose witnesses;
+        # the actual Core codec is exercised by the owner, not replaced here.
+        health = dict(purpose=value["purpose"], issuer=value["issuer"], public_keys=[
+            dict(key_id=key["key_id"], algorithm="ed25519", public_key_pem=key["pem"])
+            for key in value["keys"]])
+        surface = dict(purpose=DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ.value,
+            issuer=value["issuer"], public_keys=[dict(key_id="surface-read", algorithm="ed25519",
+                                                   public_key_pem=PUBLIC_KEY_C)])
+        target = NodeControlTarget(reference("workspace", value["workspace"]),
+            reference("graph-revision", value["revision"]), reference("node", value["node"]),
+            reference("provider-socket", value["socket"]))
+        value = dict(profile="workload-node-control-configuration.v1" if value["profile"] == PROFILE else value["profile"],
+            target=target.descriptor(), runtime_id=value["runtime"], declaration=value["declaration"],
+            verifiers=[surface, health])
     return ConfigurationArtifact("test-" + family, "/etc/test/" + family + ".json",
         ConfigurationMediaType.JSON, json.dumps(value, sort_keys=True), ConfigurationFileMode.READ_ONLY)
 
@@ -87,10 +104,11 @@ class ByteDecoder:
             audience=workload_node_control_audience(target), **common)
 
 
-def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_changes=None, stage=None):
+def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_changes=None, stage=None,
+            shared=False, transform=None):
     if stage is not None:
         return _bootstrap_context(test, stage=stage, side=side,
-            changes=changes, slot_changes=slot_changes)
+            changes=changes, slot_changes=slot_changes, shared=shared)
     graph = bootstrap_management_graph(test)
     declaration = WorkloadNodeControlSurfaceDeclaration(graph.node("api").block_spec.control_surfaces[0],
         WorkloadNodeControlSurfaceDeclarationProfile.V2)
@@ -99,22 +117,25 @@ def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_change
     revision = "health-base" if side is PlanGraphSide.BASE_GRAPH else "health-desired"
     for family, node_id in NODES.items():
         node = graph.node(node_id)
-        chosen = artifact(family, declaration, **({"revision": revision} | (changes or {}).get(family, {})))
+        chosen = artifact(family, declaration, shared=shared, **({"revision": revision} | (changes or {}).get(family, {})))
         selected[family] = replace(chosen, **(slot_changes or {}).get(family, {}))
         # Deliberately wrong default makes accidental descriptor fallback visible.
-        default = artifact(family, declaration, keys=[dict(key_id="default-only", pem=PUBLIC_KEY_C)])
+        default = artifact(family, declaration, shared=shared, keys=[dict(key_id="default-only", pem=PUBLIC_KEY_C)])
+        environment = wrapper_environment((default,)) if shared and family == "workload" else node.public_environment
         contract = ProductRuntimeContract(sockets=node.sockets,
             provider_ports=(ProviderRuntimePort("http", 8000),),
             capabilities=node.block_spec.capabilities, control_surfaces=node.block_spec.control_surfaces,
-            gateway_transit=node.block_spec.gateway_transit, configuration_artifacts=(default,))
+            gateway_transit=node.block_spec.gateway_transit, configuration_artifacts=(default,), public_environment=environment)
         document = ProductDescriptorCodec().encode_document(ContainerServerProduct(
             ProductIdentity("test", "health-" + family, 1),
             OciImageReference("ghcr.io", "test/health-" + family, "sha256:" + "b" * 64), contract))
         documents[family] = document
         ref = ProductReference.from_document(document)
-        nodes[node_id] = replace(node, configuration_artifacts=(selected[family],), metadata={
+        nodes[node_id] = replace(node, configuration_artifacts=(selected[family],), public_environment=environment, metadata={
             **node.metadata, "product_identity": ref.identity.key,
             "product_descriptor_digest": ref.descriptor_sha256.value})
+    if transform is not None:
+        nodes, documents, selected = transform(nodes, documents, selected)
     desired = validate_graph(replace(graph, nodes=nodes))
     current = validate_graph(DeploymentGraph(graph.name))
     current.require_valid()
@@ -132,7 +153,7 @@ def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_change
     return (plan, activity, current, desired, projected), documents, selected
 
 
-def _bootstrap_context(test, *, stage, side, changes, slot_changes):
+def _bootstrap_context(test, *, stage, side, changes, slot_changes, shared):
     """Both signed receiver families inhabit one gateway product, not two nodes.
 
     This is a focused admission/reload world. Its caller may seed predecessor
@@ -151,21 +172,23 @@ def _bootstrap_context(test, *, stage, side, changes, slot_changes):
     selected, defaults = {}, []
     for family in PURPOSES:
         values = {"node": "gateway", "revision": "health-desired"}
-        chosen = artifact(family, declaration, **(values | (changes or {}).get(family, {})))
+        chosen = artifact(family, declaration, shared=shared, **(values | (changes or {}).get(family, {})))
         selected[family] = replace(chosen, **(slot_changes or {}).get(family, {}))
-        defaults.append(artifact(family, declaration, **values,
+        defaults.append(artifact(family, declaration, shared=shared, **values,
             keys=[dict(key_id="default-only", pem=PUBLIC_KEY_C)]))
     contract = ProductRuntimeContract(sockets=gateway.sockets,
         provider_ports=(ProviderRuntimePort("http", 8000),),
         capabilities=gateway.block_spec.capabilities,
         control_surfaces=gateway.block_spec.control_surfaces,
         gateway_transit=gateway.block_spec.gateway_transit,
-        configuration_artifacts=tuple(defaults))
+        configuration_artifacts=tuple(defaults),
+        public_environment=wrapper_environment(defaults) if shared else gateway.public_environment)
     document = ProductDescriptorCodec().encode_document(ContainerServerProduct(
         ProductIdentity("test", "bootstrap-gateway", 1),
         OciImageReference("ghcr.io", "test/bootstrap-gateway", "sha256:" + "b" * 64), contract))
     product_reference = ProductReference.from_document(document)
-    gateway = replace(gateway, configuration_artifacts=tuple(selected.values()), metadata={
+    gateway = replace(gateway, configuration_artifacts=tuple(selected.values()),
+        public_environment=contract.public_environment, metadata={
         **gateway.metadata, "product_identity": product_reference.identity.key,
         "product_descriptor_digest": product_reference.descriptor_sha256.value})
     desired = validate_graph(replace(graph, nodes={**graph.nodes, "gateway": gateway}))
@@ -193,6 +216,11 @@ def register_products(test, documents):
         workspace_id="workspace-a", descriptor_document=document, source=InlineDescriptorSource(),
         imported_by="operator-a", imported_at="2026-08-01T10:00:00Z"))
         for family, document in documents.items()}
+
+
+def wrapper_environment(artifacts):
+    chosen = next(value for value in artifacts if value.artifact_id == "test-workload")
+    return (PublicStaticEnvironmentBinding(WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT, chosen.target_path),)
 
 
 def bindings(contract, documents, decoder):
