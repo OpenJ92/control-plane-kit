@@ -1,6 +1,18 @@
 Source: [planning.py](../../../../../control-plane-kit-operations/src/control_plane_kit_operations/planning.py).
 Maintain this companion alongside its source.
 
+`SetDesiredGraph.proposed_graph_id` optionally supplies a new immutable authored
+graph name. It is validated under the shared public graph-reference law, then
+included in the command descriptor and full graph-bearing intent fingerprint
+only when present. Omission preserves historical descriptor/fingerprint bytes.
+The service resolves action replay before choosing the supplied name or calling
+the existing allocator. Workspace/session/product admission and pointer fences
+still precede the immutable INSERT. Graph, projection, pointer and action share
+the caller-owned transaction; a collision rolls back with fixed refusal and
+never adopts an existing graph. No new reservation, schema or effect is added.
+`test_planning_commands.py` covers persistence, legacy bytes, replay, fresh and
+concurrent collision, detached error chains and unrelated late-action failure.
+
 The planning command validates pinned base and desired projections and explicitly
 selects the management-graph-pair-v1 profile inside the caller-owned unit of work.
 Fresh commands then apply the separate runtime-management planning policy before secret-delivery

@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from control_plane_kit_core.node_control import (
+    NodeControlContractError,
+    NodeControlGraphReference,
+    NodeControlGraphReferenceRole,
+)
 from control_plane_kit_core.products import (
     ProductDescriptorDigest,
     ProductIdentity,
@@ -25,6 +30,23 @@ from control_plane_kit_operations.records import (
 
 class GraphAuthoringError(ValueError):
     """Raised when desired graph authoring violates operations policy."""
+
+
+class GraphIdentityConflict(GraphAuthoringError):
+    """Raised when immutable graph identity cannot be freshly admitted."""
+
+
+def validate_proposed_graph_id(value: str) -> None:
+    """Admit a public graph-revision name without granting graph authority."""
+
+    if type(value) is str:
+        try:
+            NodeControlGraphReference(NodeControlGraphReferenceRole.GRAPH_REVISION, value)
+        except NodeControlContractError:
+            pass
+        else:
+            return
+    raise GraphAuthoringError("proposed_graph_id must be a bounded public graph reference")
 
 
 @dataclass(frozen=True)

@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.topology import GraphDescriptorError
 from control_plane_kit_core.types import WorkspaceLifecycle
+from control_plane_kit_operations.graph_authoring import GraphIdentityConflict
 from control_plane_kit_operations.postgres.schema import PostgresConnection
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
@@ -279,23 +281,31 @@ class PostgresGraphTopologyStore:
 
     def save(self, record: GraphVersionRecord) -> GraphVersionRecord:
         encoded_created_at = encode_postgres_timestamp(record.created_at)
-        self._connection.execute(
-            """
-            INSERT INTO cpk_graph_versions
-              (graph_id, workspace_id, version, graph_descriptor, created_by, created_at, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                record.graph_id,
-                record.workspace_id,
-                record.version,
-                Jsonb(record.graph_descriptor),
-                record.created_by,
-                encoded_created_at,
-                Jsonb(record.metadata),
-            ),
-        )
-        return record
+        try:
+            self._connection.execute(
+                """
+                INSERT INTO cpk_graph_versions
+                  (graph_id, workspace_id, version, graph_descriptor, created_by, created_at, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    record.graph_id,
+                    record.workspace_id,
+                    record.version,
+                    Jsonb(record.graph_descriptor),
+                    record.created_by,
+                    encoded_created_at,
+                    Jsonb(record.metadata),
+                ),
+            )
+        except UniqueViolation as error:
+            if error.diag.constraint_name != "cpk_graph_versions_pkey":
+                raise
+        else:
+            return record
+        # Detach the database detail, including another workspace's graph name.
+        # The caller's unit of work owns rollback of the failed transaction.
+        raise GraphIdentityConflict("graph identity is unavailable")
 
     def get(self, graph_id: str) -> GraphVersionRecord:
         row = self._connection.execute(
