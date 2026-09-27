@@ -382,7 +382,9 @@ class PlanningCommandTests(unittest.TestCase):
 
     def test_invalid_proposed_identity_refuses_before_durable_mutation(self):
         before = self.graph_truth()
-        for identity in ("", "bad\nidentity", "x" * 201, 1, True):
+        self.assertEqual(self.proposed_command("x" * 128).proposed_graph_id, "x" * 128)
+        for identity in ("", "bad\nidentity", "x" * 129, "x" * 201,
+                         "bad/identity", "bad:identity", "sk-synthetic-canary", 1, True):
             with self.subTest(identity=identity), self.assertRaises(InvalidOperationCommand):
                 self.proposed_command(identity)
         self.assertEqual(self.graph_truth(), before)

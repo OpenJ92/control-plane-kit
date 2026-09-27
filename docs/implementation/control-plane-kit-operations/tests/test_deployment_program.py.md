@@ -8,6 +8,8 @@ field list and admits the shared pure proposed-name validator/error import from
 graph_authoring. All prior fields, referenced type identities, invalid-input,
 redaction and forbidden-effect assertions remain intact. Importing that owner
 must remain acyclic and perform no IO; it does not execute its command service.
+Invalid proposed-name cases also require detached bounded contract errors for
+overlong, credential-shaped and hostile string-subclass inputs.
 
 This schema expectation follows the reviewed target interface, not a new graph
 synthesis or draft capability. Omitted command descriptors/fingerprints keep

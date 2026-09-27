@@ -8,6 +8,10 @@ exact proposed name/descriptor persistence and replay, byte-identical legacy
 omission fingerprint, fresh same-name refusal even for equal bytes, bounded
 foreign-workspace collision, unrelated action-uniqueness failure preservation,
 invalid name rejection and a concurrent cross-workspace primary-key race.
+Proposed names use Core's public nominal graph-revision identifier language:
+the 128-character boundary is admitted, while longer values, separators outside
+that language, and credential-shaped public material are refused. Legacy
+omitted names continue through the existing allocator.
 
 The race forwards real database operations and synchronizes both graph INSERTs
 before execution; it does not emulate a store or decide a winner. Full owner row

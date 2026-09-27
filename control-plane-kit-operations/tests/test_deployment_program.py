@@ -220,12 +220,16 @@ class DeploymentProgramCommandTests(unittest.TestCase):
             },
             {"idempotency_key": object()},
             {"context": _context("w" * 513)},
+            {"proposed_graph_id": "x" * 129},
+            {"proposed_graph_id": "sk-synthetic-canary"},
+            {"proposed_graph_id": _HostileText("candidate")},
         )
         for changes in invalid:
             with self.subTest(changes=changes):
                 self.assert_contract_error(
                     lambda changes=changes: _prepare(module, **changes),
                     "w" * 513,
+                    "sk-synthetic-canary",
                 )
 
     def test_prepare_bounds_optional_comment_and_redacts_repr_descriptor(self) -> None:
