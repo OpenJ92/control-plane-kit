@@ -96,6 +96,47 @@ class ReceiverNodeControlResultTests(ReceiverNodeControlFixtures, unittest.TestC
                     fresh = other.result(outcome)
                     self.assertEqual(fresh.request_digest, candidate.canonical_digest())
 
+    def test_python_equal_boolean_numeric_requests_cannot_share_result_encode_context(self):
+        cases = ((self.variables()[0][0], core.ScalarControlState),
+                 (self.variables()[1][0], lambda value: core.MapControlState((("entry", value),))))
+        for variable, state in cases:
+            for boolean, number in ((True, 1), (False, 0), (True, 1.0), (False, 0.0)):
+                for actual, expected in ((boolean, number), (number, boolean)):
+                    request, _, producer = self.result_context(variable=variable, state=state(actual))
+                    retained, _, consumer = self.result_context(variable=variable, state=state(expected))
+                    # Preserve historical Python equality, but distinguish JCS origins.
+                    self.assertEqual(request, retained)
+                    self.assertEqual(request.request_id, retained.request_id)
+                    self.assertIs(request.operation, retained.operation)
+                    self.assertNotEqual(request.canonical_bytes(), retained.canonical_bytes())
+                    self.assertNotEqual(request.canonical_digest(), retained.canonical_digest())
+                    for outcome in self.outcomes(request, variable):
+                        result = producer.result(outcome)
+                        self.assertEqual(result.request_digest, request.canonical_digest())
+                        self.refusal(lambda: consumer.decode(result.descriptor()))
+                        self.refusal(lambda: consumer.decode_canonical_bytes(result.canonical_bytes()))
+                        self.refusal(lambda: consumer.encode(result))
+                        self.refusal(lambda: consumer.encode_canonical_bytes(result))
+
+    def test_equal_canonical_integer_float_requests_share_result_encode_context(self):
+        cases = ((self.variables()[0][0], core.ScalarControlState),
+                 (self.variables()[1][0], lambda value: core.MapControlState((("entry", value),))))
+        for variable, state in cases:
+            for actual, expected in ((1, 1.0), (1.0, 1)):
+                request, _, producer = self.result_context(variable=variable, state=state(actual))
+                retained, _, consumer = self.result_context(variable=variable, state=state(expected))
+                self.assertEqual(request, retained)
+                self.assertEqual(request.canonical_bytes(), retained.canonical_bytes())
+                self.assertEqual(request.canonical_digest(), retained.canonical_digest())
+                for outcome in self.outcomes(request, variable):
+                    result = producer.result(outcome)
+                    self.assertEqual(consumer.encode(result), result.descriptor())
+                    self.assertEqual(consumer.encode_canonical_bytes(result), result.canonical_bytes())
+                    observed = consumer.decode(result.descriptor())
+                    self.assertEqual(observed.request.canonical_bytes(), retained.canonical_bytes())
+                    self.assertEqual(observed.request_digest, request.canonical_digest())
+                    self.assertEqual(consumer.decode_canonical_bytes(result.canonical_bytes()), observed)
+
     def test_missing_or_wrong_digest_is_never_backfilled_from_expected_request(self):
         for operation in core.NodeControlOperation:
             request, declaration, codec = self.result_context(operation=operation)
