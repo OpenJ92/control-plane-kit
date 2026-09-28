@@ -29,3 +29,8 @@ Core #1888 reexports the explicit successor health request/workload grant,
 gateway transit and result profiles, nominal digests, codecs and verification
 results/predicates. Existing health kinds/outcomes/bounds retain their original
 canonical owners. Imports introduce no signing, network, SDK or Operations edge.
+
+Core #1889 reexports explicit V2 receiver surface-description request/grant and
+V3 capabilities/status result contracts. Existing declaration versions, kinds,
+coverage and bounds retain their original owners. Surface description remains
+distinct from health and variable READ_STATE; no transit or route is introduced.
