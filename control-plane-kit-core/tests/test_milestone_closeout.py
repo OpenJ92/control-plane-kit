@@ -61,6 +61,8 @@ EXPECTED_MODULES = {
     "products",
     "public_ingress",
     "receiver_configuration",
+    "receiver_control_surface_read_results",
+    "receiver_control_surface_reads",
     "receiver_health_read_results",
     "receiver_health_reads",
     "receiver_health_transit",
