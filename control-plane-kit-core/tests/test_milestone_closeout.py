@@ -60,6 +60,8 @@ EXPECTED_MODULES = {
     "probe_intents",
     "products",
     "public_ingress",
+    "receiver_configuration",
+    "receiver_identity",
     "runtime_authority",
     "runtime_effect_observation",
     "runtime_effects",

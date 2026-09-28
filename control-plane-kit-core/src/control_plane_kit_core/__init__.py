@@ -818,3 +818,22 @@ __all__ += [
     "PlanGraphSide", "ResolvedManagementBootstrap", "ResolvedNodeHealth",
     "compile_graph_activity_plan", "resolve_management_observation",
 ]
+
+from control_plane_kit_core.receiver_identity import (
+    MAX_NODE_CONTROL_RECEIVER_TARGET_BYTES, MAX_NODE_CONTROL_AUTHORITY_CONTEXT_BYTES,
+    ReceiverIdentityError, NodeControlReceiverTarget, NodeControlAuthorityContext,
+    NodeControlReceiverTargetCodec, NodeControlAuthorityContextCodec,
+    receiver_node_control_audience,
+)
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfiguration, ReceiverNodeControlConfigurationCodec,
+    select_receiver_node_control_configuration_artifact,
+)
+
+__all__ += [
+    "MAX_NODE_CONTROL_RECEIVER_TARGET_BYTES", "MAX_NODE_CONTROL_AUTHORITY_CONTEXT_BYTES",
+    "ReceiverIdentityError", "NodeControlReceiverTarget", "NodeControlAuthorityContext",
+    "NodeControlReceiverTargetCodec", "NodeControlAuthorityContextCodec",
+    "receiver_node_control_audience", "ReceiverNodeControlConfiguration",
+    "ReceiverNodeControlConfigurationCodec", "select_receiver_node_control_configuration_artifact",
+]
