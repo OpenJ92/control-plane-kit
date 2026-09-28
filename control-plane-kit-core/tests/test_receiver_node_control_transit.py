@@ -62,6 +62,9 @@ class ReceiverNodeControlTransitTests(ReceiverNodeControlFixtures, unittest.Test
         request = self.request()
         for name in ("workspace_id", "runtime_id", "node_id", "provider_socket_name", "receiver_id"):
             changed = self.changed_target(self.gateway(), name)
+            if name == "receiver_id":
+                changed = replace(changed, receiver_id="c"*32)
+            self.assertNotEqual(changed, self.gateway())
             if name in ("workspace_id", "runtime_id"):
                 self.refusal(lambda: self.grant(gateway_target=changed))
                 self.refusal(lambda: self.verify(self.grant(), expected_gateway_target=changed))
