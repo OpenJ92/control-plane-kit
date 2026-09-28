@@ -147,8 +147,20 @@ Closed transformations from the baseline descriptors are:
 - Results: retain operation-specific outcome/state and original exact request
   ID/digest binding under the new result profile. Surface-result V3 uses the
   existing declaration-appropriate payload semantics; it does not rename
-  variable registry coverage or add new capabilities. Command results add the
-  profile to their historical result variant shape.
+  variable registry coverage or add new capabilities. Every successor command
+  result variant adds `profile: workload-node-control-result.v2` and
+  `request_digest` to its historical result variant shape. The digest is the
+  complete canonical digest of the actual validated originating
+  `ReceiverNodeControlRequest`, including target, authority context, declaration,
+  operation, variable, payload, precondition and idempotency inputs. Historical
+  command results had no request digest; their unprofiled codecs and golden bytes
+  remain unchanged. This is an explicit successor strengthening approved during
+  #1890's source dry run.
+  A consuming codec/verifier compares the received request ID, operation and
+  digest with the independently retained original request and existing variable
+  contract. It never fills a missing or mismatched digest from its expected
+  request. Bytes that never form a valid request retain bounded transport-error
+  behavior rather than a fabricated request-correlated semantic result.
 - Preparations/intents: new profile encloses the exact new requests/grants and
   preserves existing plan/projection/attempt/key/event witnesses. Redundant
   witnesses must be validated against canonical payload, never independently
@@ -160,6 +172,16 @@ maximum intervals and existing per-family aggregate byte limits remain. A
 maximal input that no longer fits is explicitly refused; C1 tests reachable
 positive bounds instead of silently expanding limits. Private credential and
 endpoint values remain prohibited in public references/errors/history.
+
+For command results, the profile member adds 44 canonical bytes and the
+64-character hexadecimal request-digest member adds 84, including their object
+commas. The combined 128-byte overhead stays within the existing 16,384-byte
+result cap; successor boundary witnesses include both fields and do not assume
+every historical maximum still fits. The existing per-variant state, version,
+codec and evidence rules remain. Result correlation does not authenticate a
+responder or prove execution, success, installation, current authority,
+freshness or exactly-once behavior. SDK/product emitters and the existing
+Operations/transport/composition owners retain those independent responsibilities.
 
 Workload audience remains the existing node/socket audience; gateway audience
 keeps existing workspace/node routing semantics using `gateway_target`. These
