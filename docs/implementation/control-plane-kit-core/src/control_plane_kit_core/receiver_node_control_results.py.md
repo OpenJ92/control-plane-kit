@@ -19,6 +19,13 @@ request ID, operation and complete digest before decoding outcome semantics.
 Missing or wrong emitter digest is never backfilled. Invalid originating requests
 cannot produce correlated semantic outcomes; transport errors remain external.
 
+Encode also compares complete canonical request digests against the retained
+context. Generated Python value equality alone is insufficient: boolean and
+numeric scalar/map values can compare equal while their canonical origins differ.
+Historical equality stays unchanged; canonical numeric equivalents such as1 and
+1.0 continue to share an encoding context. The emitted digest still comes from
+the actual result request, never from the retained expectation.
+
 Every use revalidates request/declaration and nested outcome semantics, including
 forged objects. Declared variable and codec, operation/evidence matrix and stale
 state refusal remain owned by NodeControlResultCodec. Dict/raw wire stays closed;

@@ -138,6 +138,8 @@ class ReceiverNodeControlResultCodec:
             _require(type(result) is ReceiverNodeControlResult)
             rebuilt = replace(result)
             _require(rebuilt.request == self._request and rebuilt.declaration == self._declaration)
+            # Python equality identifies bool/number states that JCS distinguishes.
+            _require(rebuilt.request.canonical_digest() == self._request.canonical_digest())
             return _document(rebuilt)
         except _INPUT_ERRORS:
             failure = ReceiverNodeControlContractError(_ERROR)
