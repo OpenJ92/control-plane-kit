@@ -7,6 +7,7 @@ import unittest
 
 import rfc8785
 import control_plane_kit_core as core
+from control_plane_kit_core.node_control import MAX_NODE_CONTROL_PAYLOAD_BYTES
 from tests import test_node_control_canonical_wire as canonical
 from tests import test_node_control_result_variants as historical
 from tests.test_receiver_node_control import ReceiverNodeControlFixtures, trim_to_bound
@@ -184,7 +185,7 @@ class ReceiverNodeControlResultTests(ReceiverNodeControlFixtures, unittest.TestC
         self.assertEqual(len(rfc8785.dumps(exact)), 16384)
         self.assertEqual(len(rfc8785.dumps(overflow)), 16385)
         result = codec.decode(exact)
-        self.assertEqual(len(result.canonical_bytes()), core.MAX_NODE_CONTROL_PAYLOAD_BYTES)
+        self.assertEqual(len(result.canonical_bytes()), MAX_NODE_CONTROL_PAYLOAD_BYTES)
         self.assertEqual(codec.decode_canonical_bytes(result.canonical_bytes()), result)
         for wire in (exact, overflow):
             old_shape = {k: v for k, v in wire.items() if k not in {"profile", "request_digest"}}
