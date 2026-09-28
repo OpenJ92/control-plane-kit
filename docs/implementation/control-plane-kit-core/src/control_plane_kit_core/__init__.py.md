@@ -24,3 +24,8 @@ Core #1887 reexports the receiver identity/context values, their codecs and byte
 limits, the receiver audience function, and explicit V2 configuration/selector.
 Canonical ownership stays in receiver_identity and receiver_configuration; reused
 historical wrapper types and constants keep their existing export owners.
+
+Core #1888 reexports the explicit successor health request/workload grant,
+gateway transit and result profiles, nominal digests, codecs and verification
+results/predicates. Existing health kinds/outcomes/bounds retain their original
+canonical owners. Imports introduce no signing, network, SDK or Operations edge.

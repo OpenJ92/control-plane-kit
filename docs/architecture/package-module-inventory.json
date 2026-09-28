@@ -11195,7 +11195,9 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_core",
-        "control_plane_kit_core.receiver_configuration"
+        "control_plane_kit_core.receiver_configuration",
+        "control_plane_kit_core.receiver_health_reads",
+        "control_plane_kit_core.receiver_health_transit"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_core.receiver_identity",
@@ -11235,6 +11237,81 @@
       "role": "deployment-language",
       "semantic_roles": ["values", "transformations"],
       "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_configuration.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ReceiverHealthReadContractError", "ReceiverHealthReadRequestProfile", "ReceiverHealthReadRequestDigest",
+        "ReceiverHealthReadRequest", "ReceiverHealthReadRequestCodec", "DelegatedWorkloadReceiverHealthReadGrantProfile",
+        "DelegatedWorkloadReceiverHealthReadGrant", "DelegatedWorkloadReceiverHealthReadGrantCodec",
+        "WorkloadReceiverHealthReadGrantVerificationCode", "WorkloadReceiverHealthReadGrantVerificationResult",
+        "verify_workload_receiver_health_read_grant"
+      ],
+      "destination": "control_plane_kit_core.receiver_health_reads",
+      "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.node_control", "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.node_health_reads", "control_plane_kit_core.receiver_identity"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_core", "control_plane_kit_core.receiver_health_transit",
+        "control_plane_kit_core.receiver_health_read_results"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.receiver_health_reads",
+      "motivation": "Strict successor health request/workload claims with independently installed receiver scope and correlated graph authority context.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_receiver_health_reads.py", "tests/test_node_health_read_authority.py"],
+      "role": "deployment-language",
+      "semantic_roles": ["values", "transformations"],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_health_reads.py"
+    },
+    {
+      "canonical_public_exports": [
+        "GatewayReceiverHealthReadTransitContractError", "DelegatedGatewayReceiverHealthReadTransitGrantProfile",
+        "GatewayReceiverHealthReadTransitGrantDigest", "DelegatedGatewayReceiverHealthReadTransitGrant",
+        "DelegatedGatewayReceiverHealthReadTransitGrantCodec", "GatewayReceiverHealthReadTransitGrantVerificationCode",
+        "GatewayReceiverHealthReadTransitGrantVerificationResult", "verify_gateway_receiver_health_read_transit_grant"
+      ],
+      "destination": "control_plane_kit_core.receiver_health_transit",
+      "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.delegation_keys",
+        "control_plane_kit_core.node_control", "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.node_health_transit", "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.receiver_health_reads"
+      ],
+      "known_package_consumers": ["control_plane_kit_core"],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.receiver_health_transit",
+      "motivation": "Pure health transit claims bind the gateway own receiver independently from the admitted workload target and request context.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_receiver_health_transit.py", "tests/test_node_health_transit.py"],
+      "role": "deployment-language",
+      "semantic_roles": ["values", "transformations"],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_health_transit.py"
+    },
+    {
+      "canonical_public_exports": ["ReceiverHealthReadResultProfile", "ReceiverHealthReadResult", "ReceiverHealthReadResultCodec"],
+      "destination": "control_plane_kit_core.receiver_health_read_results",
+      "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire", "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads", "control_plane_kit_core.node_health_read_results",
+        "control_plane_kit_core.receiver_health_reads"
+      ],
+      "known_package_consumers": ["control_plane_kit_core"],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.receiver_health_read_results",
+      "motivation": "Closed health outcomes retain exact independently supplied successor request/declaration correlation and context-tight byte bounds.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_receiver_health_read_results.py", "tests/test_node_health_read_results.py"],
+      "role": "deployment-language",
+      "semantic_roles": ["values", "transformations"],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_health_read_results.py"
     }
   ],
   "owner_vocabulary": [
