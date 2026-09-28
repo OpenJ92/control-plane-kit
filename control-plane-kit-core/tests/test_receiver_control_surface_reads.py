@@ -340,9 +340,9 @@ class ReceiverControlSurfaceReadTests(ReceiverControlSurfaceFixtures, unittest.T
         codec = self.reads.DelegatedWorkloadReceiverControlSurfaceReadGrantCodec()
         self.assertEqual(len(rfc8785.dumps(grant_document)), 1984)
         grant = codec.decode(grant_document)
-        self.assertEqual(len(grant.canonical_bytes()), core.MAX_DELEGATED_WORKLOAD_NODE_CONTROL_SURFACE_READ_GRANT_BYTES)
+        self.assertEqual(len(grant.canonical_bytes()), core.MAX_DELEGATED_NODE_CONTROL_SURFACE_READ_GRANT_BYTES)
         self.assertEqual(codec.decode_canonical_bytes(grant.canonical_bytes()), grant)
-        bad = grant_document | {"authority_context": overflow["authority_context"]}
+        bad = grant_document | {"request_id": overflow["request_id"]}
         self.assertEqual(len(rfc8785.dumps(bad)), 1985)
         self.refusal(lambda: codec.decode(bad))
         self.refusal(lambda: codec.decode_canonical_bytes(rfc8785.dumps(bad)))
