@@ -19,3 +19,8 @@ Core #1832 reexports the pure management selection/transit values and their
 strict codecs, the typed management diff value, and the health path selector.
 Each export is its owner-defined identity. Selection adds no runtime authority,
 provider client or deployment effect.
+
+Core #1887 reexports the receiver identity/context values, their codecs and byte
+limits, the receiver audience function, and explicit V2 configuration/selector.
+Canonical ownership stays in receiver_identity and receiver_configuration; reused
+historical wrapper types and constants keep their existing export owners.

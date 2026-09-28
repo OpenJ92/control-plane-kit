@@ -83,6 +83,24 @@ class NodeControlVerificationConfiguration:
         raise failure
 
 
+def _validated_declaration_verifiers(provider_socket_name, declaration, verifiers) -> tuple[NodeControlVerificationConfiguration, ...]:
+    """Shared structural facts; configuration profiles keep separate codecs."""
+    _require(type(declaration) is WorkloadNodeControlSurfaceDeclaration)
+    codec = WorkloadNodeControlSurfaceDeclarationCodec()
+    _require(codec.decode(codec.encode(declaration)) == declaration)
+    _require(provider_socket_name == declaration.surface.provider_socket_name)
+    _require(type(verifiers) is tuple and 1 <= len(verifiers) <= len(_PURPOSES))
+    for family in verifiers:
+        _require(type(family) is NodeControlVerificationConfiguration and replace(family) == family)
+    required = {DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ}
+    if declaration.surface.variables:
+        required.add(DelegationKeyPurpose.WORKLOAD_NODE_CONTROL)
+    if declaration.surface.health_reads:
+        required.add(DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ)
+    _require({family.purpose for family in verifiers} == required and len(verifiers) == len(required))
+    return tuple(sorted(verifiers, key=lambda family: family.purpose))
+
+
 def _document(configuration: WorkloadNodeControlConfiguration) -> dict:
     return {
         "profile": _PROFILE,
@@ -113,20 +131,8 @@ class WorkloadNodeControlConfiguration:
             for name, role in _TARGET_ROLES:
                 _reference(getattr(self.target, name), role)
             _reference(self.runtime_id, NodeControlGraphReferenceRole.RUNTIME)
-            _require(type(self.declaration) is WorkloadNodeControlSurfaceDeclaration)
-            codec = WorkloadNodeControlSurfaceDeclarationCodec()
-            _require(codec.decode(codec.encode(self.declaration)) == self.declaration)
-            _require(self.target.provider_socket_name == self.declaration.surface.provider_socket_name)
-            _require(type(self.verifiers) is tuple and 1 <= len(self.verifiers) <= len(_PURPOSES))
-            for family in self.verifiers:
-                _require(type(family) is NodeControlVerificationConfiguration and replace(family) == family)
-            required = {DelegationKeyPurpose.WORKLOAD_NODE_CONTROL_SURFACE_READ}
-            if self.declaration.surface.variables:
-                required.add(DelegationKeyPurpose.WORKLOAD_NODE_CONTROL)
-            if self.declaration.surface.health_reads:
-                required.add(DelegationKeyPurpose.WORKLOAD_NODE_HEALTH_READ)
-            _require({family.purpose for family in self.verifiers} == required and len(self.verifiers) == len(required))
-            object.__setattr__(self, "verifiers", tuple(sorted(self.verifiers, key=lambda family: family.purpose)))
+            object.__setattr__(self, "verifiers", _validated_declaration_verifiers(
+                self.target.provider_socket_name, self.declaration, self.verifiers))
             _require(len(canonical_json_bytes(_document(self))) <= MAX_WRAPPER_CONFIGURATION_BYTES)
             return
         except _INPUT_ERRORS:
@@ -198,6 +204,28 @@ class WorkloadNodeControlConfigurationCodec:
         raise failure
 
 
+def _select_wrapper_configuration_slot(
+    *, artifacts: tuple[ConfigurationArtifact, ...],
+    environment: tuple[PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding, ...],
+    control_surfaces: tuple[WorkloadNodeControlSurfaceDescriptor, ...],
+) -> ConfigurationArtifact:
+    """Select an exact structural slot without choosing a configuration profile."""
+    _require(type(control_surfaces) is tuple and len(control_surfaces) == 1
+             and type(control_surfaces[0]) is WorkloadNodeControlSurfaceDescriptor)
+    _require(type(environment) is tuple and all(type(item) in (
+        PublicStaticEnvironmentBinding, SocketDerivedEnvironmentBinding) for item in environment))
+    bindings = tuple(item for item in environment if item.name == WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT)
+    _require(len(bindings) == 1 and type(bindings[0]) is PublicStaticEnvironmentBinding)
+    validate_configuration_target_path(bindings[0].value)
+    _require(type(artifacts) is tuple and all(type(item) is ConfigurationArtifact for item in artifacts))
+    selected = tuple(item for item in artifacts if item.target_path == bindings[0].value)
+    _require(len(selected) == 1)
+    artifact = selected[0]
+    _require(ConfigurationArtifact.from_descriptor(artifact.descriptor()) == artifact)
+    _require(artifact.media_type is ConfigurationMediaType.JSON and artifact.file_mode is ConfigurationFileMode.READ_ONLY)
+    return artifact
+
+
 def select_workload_node_control_configuration_artifact(
     *, artifacts: tuple[ConfigurationArtifact, ...],
     environment: tuple[PublicStaticEnvironmentBinding | SocketDerivedEnvironmentBinding, ...],
@@ -210,19 +238,8 @@ def select_workload_node_control_configuration_artifact(
     registered and selected slots. Descriptor default bytes are not deployed truth.
     """
     try:
-        _require(type(control_surfaces) is tuple and len(control_surfaces) == 1
-                 and type(control_surfaces[0]) is WorkloadNodeControlSurfaceDescriptor)
-        _require(type(environment) is tuple and all(type(item) in (
-            PublicStaticEnvironmentBinding, SocketDerivedEnvironmentBinding) for item in environment))
-        bindings = tuple(item for item in environment if item.name == WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT)
-        _require(len(bindings) == 1 and type(bindings[0]) is PublicStaticEnvironmentBinding)
-        validate_configuration_target_path(bindings[0].value)
-        _require(type(artifacts) is tuple and all(type(item) is ConfigurationArtifact for item in artifacts))
-        selected = tuple(item for item in artifacts if item.target_path == bindings[0].value)
-        _require(len(selected) == 1)
-        artifact = selected[0]
-        _require(ConfigurationArtifact.from_descriptor(artifact.descriptor()) == artifact)
-        _require(artifact.media_type is ConfigurationMediaType.JSON and artifact.file_mode is ConfigurationFileMode.READ_ONLY)
+        artifact = _select_wrapper_configuration_slot(
+            artifacts=artifacts, environment=environment, control_surfaces=control_surfaces)
         configuration = WorkloadNodeControlConfigurationCodec().decode_bytes(artifact.content.encode("utf-8"))
         _require(configuration.declaration.surface == control_surfaces[0])
         return artifact

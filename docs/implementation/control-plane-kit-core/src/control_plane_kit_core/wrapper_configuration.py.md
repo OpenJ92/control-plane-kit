@@ -1,6 +1,12 @@
 Source: [wrapper_configuration.py](../../../../../control-plane-kit-core/src/control_plane_kit_core/wrapper_configuration.py).
 Maintain this companion with source and imported contract changes.
 
+Core #1887 extracts two private structural helpers for declaration/verifier
+validation and exact artifact-slot selection. The explicit V2 successor in
+`receiver_configuration` reuses these laws. This module's public V1 constructor,
+codec, selector and wire shape remain unchanged; its selector still refuses V2.
+Neither selector performs profile fallback.
+
 One shared `workload-node-control-configuration.v1` envelope reuses existing
 target/runtime/declaration and public-key values. Its purpose-separated verifier
 families are exact: surface-read always, workload command iff variables exist,

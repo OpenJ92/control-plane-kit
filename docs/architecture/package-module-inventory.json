@@ -11158,6 +11158,7 @@
         "control_plane_kit_core.node_control_surface_reads"
       ],
       "known_package_consumers": [
+        "control_plane_kit_core.receiver_configuration",
         "control_plane_kit_operations._health_receiver_trust"
       ],
       "migration_prerequisites": [],
@@ -11175,6 +11176,65 @@
         "transformations"
       ],
       "source": "control-plane-kit-core/src/control_plane_kit_core/wrapper_configuration.py"
+    },
+    {
+      "canonical_public_exports": [
+        "MAX_NODE_CONTROL_RECEIVER_TARGET_BYTES",
+        "MAX_NODE_CONTROL_AUTHORITY_CONTEXT_BYTES",
+        "ReceiverIdentityError",
+        "NodeControlReceiverTarget",
+        "NodeControlAuthorityContext",
+        "NodeControlReceiverTargetCodec",
+        "NodeControlAuthorityContextCodec",
+        "receiver_node_control_audience"
+      ],
+      "destination": "control_plane_kit_core.receiver_identity",
+      "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire",
+        "control_plane_kit_core.node_control"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_core",
+        "control_plane_kit_core.receiver_configuration"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.receiver_identity",
+      "motivation": "Pure logical receiver scope separated from selected authored graph and realized projection context.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_receiver_identity.py", "tests/test_receiver_configuration.py"],
+      "role": "deployment-language",
+      "semantic_roles": ["values", "transformations"],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_identity.py"
+    },
+    {
+      "canonical_public_exports": [
+        "ReceiverNodeControlConfiguration",
+        "ReceiverNodeControlConfigurationCodec",
+        "select_receiver_node_control_configuration_artifact"
+      ],
+      "destination": "control_plane_kit_core.receiver_configuration",
+      "internal_dependencies": [
+        "control_plane_kit_core._node_control_public_wire",
+        "control_plane_kit_core.configuration",
+        "control_plane_kit_core.environment",
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.node_control_surface_reads",
+        "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.wrapper_configuration"
+      ],
+      "known_package_consumers": ["control_plane_kit_core"],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_core.receiver_configuration",
+      "motivation": "Explicit V2 configuration and structural artifact selection for logical receivers, without authority context or profile fallback.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "core",
+      "protecting_tests": ["tests/test_receiver_configuration.py", "tests/test_wrapper_configuration.py"],
+      "role": "deployment-language",
+      "semantic_roles": ["values", "transformations"],
+      "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_configuration.py"
     }
   ],
   "owner_vocabulary": [
