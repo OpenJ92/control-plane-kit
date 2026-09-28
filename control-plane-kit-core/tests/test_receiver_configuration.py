@@ -87,7 +87,8 @@ class ReceiverConfigurationTests(unittest.TestCase):
         self.assertEqual(self.codec.decode(document), value)
 
     def test_variable_only_and_mixed_declarations_keep_exact_purpose_families(self):
-        variable = WorkloadNodeControlSurfaceDeclaration(surface_fixtures.NodeControlSurfaceTests().surface())
+        variable = WorkloadNodeControlSurfaceDeclaration(
+            surface_fixtures.WorkloadNodeControlSurfaceTests().surface("control", "mode"))
         mixed = health_fixtures.NodeHealthDeclarationTests().declaration("mode")
         for declaration in (self.declaration, variable, mixed):
             document = self.document(declaration)
