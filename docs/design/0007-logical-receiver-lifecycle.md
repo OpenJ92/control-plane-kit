@@ -139,6 +139,11 @@ Closed transformations from the baseline descriptors are:
   new values. Keep original attempt/request/interval/key/purpose bindings.
   Workload and gateway target workspace/runtime must agree for this supported
   local management path. Gateway own target is checked against local config.
+  `gateway_target.provider_socket_name` is the gateway's configured common
+  own-receiver control endpoint, not its transit socket. Independently preserve
+  the exact graph-selected transit socket, protocol, ingress and management-path
+  relationship checks. Own-receiver identity neither substitutes for transit
+  admission nor requires those distinct sockets to have the same name.
 - Results: retain operation-specific outcome/state and original exact request
   ID/digest binding under the new result profile. Surface-result V3 uses the
   existing declaration-appropriate payload semantics; it does not rename
@@ -200,8 +205,10 @@ provider credential, or arbitrary private application configuration is returned.
 The authoring function retains existing IDs only through that pinned context;
 it selects all public keys/configuration before submission. New receivers get
 fresh IDs. The complete graph includes every actual gateway, ingress, route
-binding and artifact: no topology expansion or ID/key generation happens inside
-an effect or after approval. A proposed authored graph ID solves record-ID
+binding and artifact: no topology expansion, logical receiver-ID generation or
+public verifier selection happens inside an effect or after approval. Physical
+configuration allocation IDs follow the distinct prepared-effect rule in
+section 6. A proposed authored graph ID solves record-ID
 availability; a reused saved graph ID is not a fresh receiver generation.
 
 Write the generated graph to a private immutable local preparation file using
@@ -318,16 +325,23 @@ continuation; scope changes remove the old ID and accept the new ID. These
 index updates, current-pointer CAS and advancement history share one UoW.
 
 Serialize lifecycle mutations with a workspace-scoped transaction advisory
-lock acquired before lifecycle row reads/writes. Retain existing command
-idempotency locking first. Within the guarded operation preserve established
-request -> run -> attempt order where those rows are needed; take graph/index
-rows in deterministic ID order. All graph selection/publication, execution
-admission and advancement paths that can change this lifecycle must take the
-same guard; no route-specific exemption. O1 transaction tests check lock-order
-interaction with existing paths, not just fake-store behavior.
+lock acquired before lifecycle row reads/writes. The total order is command
+idempotency guard -> workspace lifecycle guard -> execution request row -> run
+row -> attempt row -> session row if required -> workspace row -> graph/index
+rows in deterministic ID order; omit only categories not needed by that
+operation. The idempotency guard is not an execution request-row lock. No path
+may acquire the lifecycle guard while holding a later-order row. All graph
+selection/publication, execution admission and advancement paths that can change
+this lifecycle must take the same guard; no route-specific exemption. O1's
+source dry run must map every affected existing path to this order before code.
+A known incompatible path is an explicit contract hold for review, not a
+contradiction deferred to testing. Actual Postgres tests then exercise the
+agreed order and rollback, rather than substituting fake-store behavior.
 
-Add an indexed bounded lookup over the existing execution owner for unresolved
-requests/runs affecting the selected workspace and graph bindings. Its purpose
+Add an indexed bounded lookup over the existing execution owner for all
+unresolved requests/runs affecting each stable workspace/runtime/node/socket
+scope, including superseded and abandoned graph bindings. Do not restrict the
+search to currently selected graph IDs or the newly supplied receiver ID. Its purpose
 is to refuse a conflicting reintroduction/scope change while creation/removal
 is active or uncertain, not to classify provider reality from graph state. The
 query returns a bounded conflict (including overflow), never a partial list
@@ -403,8 +417,12 @@ neither Docker volume names nor receiver ID as a substitute for content.
 
 `allocation_id` identifies one immutable physical allocation lifetime, not the
 logical receiver. The existing effect-preparation owner generates and persists
-it before the first provider mutation, under the approved exact scope/slot/
-content allocation operation. Original-request retry reuses that exact value.
+it in the exact prepared effect request/intent, covered by that request's
+canonical fingerprint before first dispatch, under the approved exact scope/
+slot/content allocation operation. Original-request retry reuses that exact
+value; it cannot be reminted between preparation and provider call. Outcomes
+reference the original prepared allocation rather than inventing one after an
+uncertain effect.
 Evidenced reuse carries the existing allocation reference; a genuinely new
 allocation gets a fresh discriminator even if content is identical. No new
 allocation registry or graph expansion is required: the original effect intent
@@ -504,7 +522,8 @@ intended-red and owning green evidence. Frozen negative laws are retained.
 
 Additional new-law cards required before source: copied abandoned pending ID;
 retired ID via saved graph; conflicting concurrent introduction; acceptance
-racing deletion; exact local-file replay after crash; fresh instantiation;
+racing deletion; unresolved old-scope effect hidden by a superseded graph/new ID;
+exact local-file replay after crash; fresh instantiation;
 Secrets rejection before provider initialization; frozen controller plus
 unlisted product; staging residue after acknowledged provider write; cleanup
 reservation race, in-use/foreign/shared/unknown refusal and non-forced deletion.
@@ -521,8 +540,10 @@ A: app api, receiver X, config digest h1
 B: same api/X/h1, add worker Y
    retain X from accepted A -> introduce Y -> approve B
    health request: target X, authority B, exact request digest q
-   signer checks current B/plan/attempt/keys; X verifies local X and signed q
-   result records B + X + original attempt; it does not certify new image bytes
+   signer checks original plan pins (accepted A, selected desired B/projection),
+   current applicable authority/keys and target association; X verifies local X
+   and signed q. Result stays under B's pending operation until lawful advancement;
+   it records B + X + original attempt, not a claim about new image bytes
 C: api/X/h2 (new public key bundle), worker Y
    plan exposes changed material; stage/verify h2 before replacement
    existing X identity stays; selected installed trust must cover the signer
