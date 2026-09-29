@@ -11,6 +11,11 @@ from typing import Any
 
 import psycopg
 
+from tests.lifecycle_lock_fixture import (
+    LifecycleLockFixture, LIFECYCLE_LOCK, REQUEST_LOCK, RUN_LOCK,
+    SESSION_LOCK, WORKSPACE_LOCK,
+)
+
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.operations import RunId
 from control_plane_kit_core.operations.lifecycle import (
@@ -245,7 +250,113 @@ class Sequence:
         return self._values.pop(0)
 
 
-class CurrentGraphAdvancementTests(unittest.TestCase):
+class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
+    def test_advancement_and_lifecycle_retry_recovery_preserve_outcomes_in_both_orders(self):
+        from control_plane_kit_core.operations.lifecycle import RecoveryScope
+        from control_plane_kit_operations.lifecycle import RunLifecycleCommandService, RunLifecycleError, StartActivityRun, ExecutionLeaseDuration
+        from control_plane_kit_operations.activity_run_retry import RetryFailedActivityRun
+        from control_plane_kit_operations.activity_run_retry_interpreter import ActivityRunRetryCommandService
+        from control_plane_kit_operations.execution_lease_recovery import RecoveryAuthority, RenewExpiredExecutionClaim
+        from control_plane_kit_operations.execution_lease_recovery_interpreter import ExecutionLeaseRecoveryCommandService
+        for kind in ("lifecycle", "retry", "recovery"):
+            for advance_first in (False, True):
+                with self.subTest(kind=kind, advance_first=advance_first):
+                    self.reset_truth()
+                    self.seed_succeeded_run()
+                    def advance(uow):
+                        return CurrentGraphAdvancementCommandService(uow,
+                            clock=lambda: "2026-07-22T13:05:00Z",
+                            id_factory=Sequence("advance-event", "advance-action")).execute(self.command())
+                    def other(uow):
+                        def no_id():
+                            self.fail("refused terminal operation allocated identity")
+                        fence = ExecutionLeaseFence("worker-a", 1)
+                        key = IdempotencyKey("opposing-" + kind)
+                        if kind == "lifecycle":
+                            return RunLifecycleCommandService(uow, clock=lambda: "2026-07-22T13:05:00Z",
+                                id_factory=no_id).execute(StartActivityRun("run-a", self.authority(), fence, key))
+                        if kind == "retry":
+                            return ActivityRunRetryCommandService(uow, id_factory=no_id).execute(
+                                RetryFailedActivityRun("request-a", RunId("run-a"), fence,
+                                    RecoveryAuthority("operator-a", "operator-proof", (RecoveryScope.OPERATE,)), key))
+                        return ExecutionLeaseRecoveryCommandService(uow, id_factory=no_id).execute(
+                            RenewExpiredExecutionClaim("request-a", RunId("run-a"), fence,
+                                RecoveryAuthority("operator-a", "operator-proof", (RecoveryScope.RENEW_CLAIM,)),
+                                ExecutionLeaseDuration(600), key))
+                    ordered = (advance, other) if advance_first else (other, advance)
+                    futures = self.opposing_commands(*ordered, pause_after=lambda sql, parameters:
+                        "FROM cpk_execution_requests" in sql and "FOR UPDATE" in sql
+                        and parameters == ("request-a",))
+                    accepted, refused = futures if advance_first else futures[::-1]
+                    result = accepted.result(timeout=1)
+                    self.assertEqual(result.to_authored_graph_id, "graph-desired")
+                    with self.assertRaises(RunLifecycleError):
+                        refused.result(timeout=1)
+                    self.assertEqual(self.advancement_truth()[2], 1)
+                    with self.unit_of_work() as uow:
+                        self.assertIs(uow.stores.execution.get_run("run-a").status, ActivityRunStatus.SUCCEEDED)
+                        actions = tuple(action for action in uow.stores.activity_history.actions_for_session("session-a")
+                            if action.action_type is LifecycleOperationKind.ADVANCE_CURRENT_GRAPH)
+                        self.assertEqual(actions, (result.action,))
+
+    def test_selection_and_publication_vs_advancement_preserve_cas_in_both_orders(self):
+        from control_plane_kit_operations.desired_topology_drafts import (
+            CreateDesiredTopologyDraft, SelectDesiredTopologyDraft, DesiredTopologyDraftCommandService,
+        )
+        from control_plane_kit_operations.desired_realized_projections import (
+            PublishDesiredRealizedProjection, DesiredRealizedProjectionCommandService,
+        )
+        from tests.draft_catalogue_fixture import principal
+        for kind in ("selection", "publication"):
+            for advance_first in (False, True):
+                with self.subTest(kind=kind, advance_first=advance_first):
+                    self.reset_truth()
+                    self.seed_succeeded_run()
+                    draft_service = lambda uow: DesiredTopologyDraftCommandService(uow,
+                        clock=lambda: "2026-07-22T13:05:00Z",
+                        id_factory=Sequence("draft-a", "draft-graph", "draft-action", "selected-action"))
+                    if kind == "selection":
+                        draft = draft_service(self.unit_of_work).execute(CreateDesiredTopologyDraft(
+                            principal().command_context("workspace-a"), "session-a", "Next draft",
+                            DeploymentGraph("draft"), IdempotencyKey("create-draft")))
+                        selected_graph = draft.graph_id
+                        command = SelectDesiredTopologyDraft(principal().command_context("workspace-a"),
+                            "session-a", draft.draft_id, draft.revision, "graph-desired",
+                            self.desired_projection.projection_id, self.desired_graph_revision,
+                            IdempotencyKey("select-draft"))
+                        def publish(uow):
+                            return DesiredTopologyDraftCommandService(uow,
+                                clock=lambda: "2026-07-22T13:05:00Z",
+                                id_factory=Sequence("selection-action")).execute(command)
+                    else:
+                        selected_graph = "graph-desired"
+                        command = PublishDesiredRealizedProjection("session-a", "workspace-a", "operator-a",
+                            "graph-desired", self.desired_projection.projection_id, self.desired_graph_revision,
+                            self.desired_projection, "operation-publish", 1, IdempotencyKey("publish-new-generation"))
+                        def publish(uow):
+                            return DesiredRealizedProjectionCommandService(uow,
+                                clock=lambda: "2026-07-22T13:05:00Z",
+                                action_id_factory=lambda: "publication-action").execute(command)
+                    def advance(uow):
+                        return CurrentGraphAdvancementCommandService(uow,
+                            clock=lambda: "2026-07-22T13:05:00Z",
+                            id_factory=Sequence("advance-event", "advance-action")).execute(self.command())
+                    ordered = (advance, publish) if advance_first else (publish, advance)
+                    futures = self.opposing_commands(*ordered, pause_after=lambda sql, parameters:
+                        "pg_advisory_xact_lock" in sql and parameters == ("receiver-lifecycle:workspace-a",))
+                    advancement, publication = futures if advance_first else futures[::-1]
+                    self.assertIsNotNone(publication.result(timeout=1))
+                    if advance_first:
+                        self.assertEqual(advancement.result(timeout=1).to_authored_graph_id, "graph-desired")
+                    else:
+                        with self.assertRaises(CurrentGraphAdvancementConflict):
+                            advancement.result(timeout=1)
+                    with self.unit_of_work() as uow:
+                        workspace = uow.stores.workspaces.get("workspace-a")
+                    self.assertEqual(workspace.desired_graph_id, selected_graph)
+                    self.assertEqual(workspace.desired_graph_revision, self.desired_graph_revision + 1)
+                    self.assertEqual(workspace.current_graph_id, "graph-desired" if advance_first else "graph-current")
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
@@ -517,12 +628,14 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
 
         self.assertEqual(result.to_authored_graph_id, "graph-desired")
 
-    def test_first_execution_locks_workspace_before_request_and_run(self) -> None:
+    def test_first_execution_locks_request_before_session_and_workspace(self) -> None:
+        # #1896 A2 strengthened law explicitly supersedes the old
+        # workspace-before-request structural assertion; terminal truth survives.
         self.seed_succeeded_run()
         blocker = psycopg.connect(self.database_url)
         blocker.execute(
-            "SELECT workspace_id FROM cpk_workspaces "
-            "WHERE workspace_id = 'workspace-a' FOR UPDATE"
+            "SELECT request_id FROM cpk_execution_requests "
+            "WHERE request_id = 'request-a' FOR UPDATE"
         )
         blocker_pid = blocker.info.backend_pid
         worker_pids: queue.Queue[int] = queue.Queue()
@@ -544,8 +657,12 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 self.wait_until_blocked_by(worker_pid, blocker_pid)
                 with psycopg.connect(self.database_url) as probe:
                     probe.execute(
-                        "SELECT request_id FROM cpk_execution_requests "
-                        "WHERE request_id = 'request-a' FOR UPDATE NOWAIT"
+                        "SELECT workspace_id FROM cpk_workspaces "
+                        "WHERE workspace_id = 'workspace-a' FOR UPDATE NOWAIT"
+                    )
+                    probe.execute(
+                        "SELECT session_id FROM cpk_operation_sessions "
+                        "WHERE session_id = 'session-a' FOR UPDATE NOWAIT"
                     )
                     probe.execute(
                         "SELECT run_id FROM cpk_activity_runs "
@@ -558,6 +675,19 @@ class CurrentGraphAdvancementTests(unittest.TestCase):
                 blocker.close()
 
         self.assertEqual(result.to_authored_graph_id, "graph-desired")
+
+    def test_fresh_advancement_takes_exact_guard_before_request_and_all_later_rows(self):
+        self.seed_succeeded_run()
+        def execute(uow):
+            return CurrentGraphAdvancementCommandService(uow,
+                clock=lambda: "2026-07-22T13:05:00Z",
+                id_factory=Sequence("guard-event", "guard-action")).execute(self.command())
+        with self.blocked_command(LIFECYCLE_LOCK, ("receiver-lifecycle:workspace-a",), execute) as future:
+            for query, key in ((REQUEST_LOCK, "request-a"), (RUN_LOCK, "run-a"),
+                               (SESSION_LOCK, "session-a"), (WORKSPACE_LOCK, "workspace-a")):
+                self.assert_row_lockable(query, (key,))
+            self.assert_advisory_available("operation-action:session-a:advance-a", available=False)
+        self.assertEqual(future.result(timeout=1).to_authored_graph_id, "graph-desired")
 
     def test_replay_locks_request_before_run_but_changed_intent_locks_neither(self) -> None:
         self.seed_succeeded_run()

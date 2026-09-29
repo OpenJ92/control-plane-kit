@@ -364,16 +364,23 @@ class PostgresExecutionStore:
         self,
         request_id: str,
     ) -> ActivityRunRecord:
+        return self._latest_run_for_request(request_id, for_update=True)
+
+    def get_latest_run_for_request(self, request_id: str) -> ActivityRunRecord:
+        """Bounded locator; the caller must hold the request before preparing runs."""
+        return self._latest_run_for_request(request_id, for_update=False)
+
+    def _latest_run_for_request(self, request_id: str, *, for_update: bool) -> ActivityRunRecord:
         _recovery_request_id(request_id)
+        suffix = " FOR UPDATE" if for_update else ""
         row = self._connection.execute(
-            """
+            f"""
             SELECT run_id, plan_id, request_id, attempt, prior_run_id, status,
                    created_at, started_at, settled_at, metadata
             FROM cpk_activity_runs
             WHERE request_id = %s
             ORDER BY attempt DESC
-            LIMIT 1
-            FOR UPDATE
+            LIMIT 1{suffix}
             """,
             (request_id,),
         ).fetchone()

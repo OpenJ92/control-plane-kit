@@ -13,9 +13,22 @@ from control_plane_kit_operations.postgres.node_control_signing_authority_store 
 from control_plane_kit_operations.secret_providers import SecretProviderRegistrationError
 from tests.health_signing_authority_fixture import PostgresHealthSigningAuthorityFixture, timestamp
 from tests.test_postgres_health_effect_start_rollback import _CommitThenRaiseConnection
+from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT_LOCK
 
 
-class PostgresHealthSigningTransactionTests(PostgresHealthSigningAuthorityFixture, unittest.TestCase):
+class PostgresHealthSigningTransactionTests(LifecycleLockFixture, PostgresHealthSigningAuthorityFixture, unittest.TestCase):
+    def test_distinct_latest_run_is_locked_before_attempt_and_refuses_without_history_change(self):
+        self.seed_distinct_latest_run()
+        identity = self.preparation.identity
+        before = self.health_snapshot()
+        with self.blocked_command(RUN_LOCK, ("run-later",),
+                lambda uow: self.reload(unit_of_work=uow)) as future:
+            self.assert_row_lockable(ATTEMPT_LOCK,
+                (identity.run_id.value, identity.activity_id, identity.attempt))
+        with self.assertRaises(self.reload_api.HealthSigningAuthorityUnavailable):
+            future.result(timeout=1)
+        self.assert_history_unchanged(before)
+
     def test_plan_and_chain_owner_errors_keep_raw_and_domain_named_identity(self):
         for owner, method in ((PostgresActivityHistoryStore, "get_plan_for_share"),
                 (_NodeControlSigningAuthorityStore, "get_health_for_share")):

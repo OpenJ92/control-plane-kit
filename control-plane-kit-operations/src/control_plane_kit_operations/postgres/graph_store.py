@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from psycopg.errors import UniqueViolation
@@ -273,11 +273,34 @@ class PostgresWorkspaceStore:
         return str(row[0])
 
 
+@dataclass(frozen=True, eq=False)
+class WorkspaceLifecycleGuard:
+    """Internal evidence of a guard held by one transaction-owned graph store."""
+
+    workspace_id: str
+    _owner: object = field(repr=False)
+
+
 class PostgresGraphTopologyStore:
     """Postgres-backed immutable graph topology-version store."""
 
     def __init__(self, connection: PostgresConnection) -> None:
         self._connection = connection
+
+    def lock_receiver_lifecycle(self, workspace_id: str) -> WorkspaceLifecycleGuard:
+        """Enter before existing rows; exact-key transaction reentry is legal."""
+        self._connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (f"receiver-lifecycle:{workspace_id}",),
+        )
+        return WorkspaceLifecycleGuard(workspace_id, self)
+
+    def owns_receiver_lifecycle(self, guard: object, workspace_id: str) -> bool:
+        return (
+            type(guard) is WorkspaceLifecycleGuard
+            and guard._owner is self
+            and guard.workspace_id == workspace_id
+        )
 
     def save(self, record: GraphVersionRecord) -> GraphVersionRecord:
         encoded_created_at = encode_postgres_timestamp(record.created_at)

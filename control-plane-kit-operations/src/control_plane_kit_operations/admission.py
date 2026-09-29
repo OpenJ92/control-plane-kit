@@ -253,6 +253,7 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionIdempotencyConflict(
                     "idempotency key is already owned by another session action"
                 )
+            stores.graphs.lock_receiver_lifecycle(command.workspace_id)
             try:
                 session = history.get_session_for_update(command.session_id)
                 workspace = stores.workspaces.get_for_update(command.workspace_id)

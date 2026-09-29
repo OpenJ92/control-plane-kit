@@ -41,9 +41,23 @@ from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.execution_lease_recovery_fixture import Sequence
 from tests.health_effect_start_fixture import trusted_health_context
 from tests.postgres_health_effect_start_fixture import PostgresHealthEffectStartFixture
+from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT_LOCK
 
 
-class PostgresNativeConnectionFoldTests(PostgresHealthEffectStartFixture, unittest.TestCase):
+class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffectStartFixture, unittest.TestCase):
+    def test_distinct_latest_run_is_locked_before_started_attempt_and_refuses_without_writes(self):
+        self.seed_distinct_latest_run()
+        identity = self.started.state.identity
+        before = self.native_snapshot()
+        def execute(uow):
+            return EffectAttemptFoldService(uow, id_factory=Sequence("must-not-allocate")).execute_native(self.command())
+        with self.blocked_command(RUN_LOCK, ("run-later",), execute) as future:
+            self.assert_row_lockable(ATTEMPT_LOCK,
+                (identity.run_id.value, identity.activity_id, identity.attempt))
+        with self.assertRaises(EffectAttemptFoldConflict):
+            future.result(timeout=1)
+        self.assertEqual(self.native_snapshot(), before)
+
     def health_context(self, **options):
         _, _, current, desired, _ = super().health_context(
             stage=ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
@@ -123,7 +137,11 @@ class PostgresNativeConnectionFoldTests(PostgresHealthEffectStartFixture, unitte
             self.assertEqual(uow.stores.effect_outcomes.get(self.started.state.identity,
                 result.attempt.latest_transition_event.event_id), result.outcome_record)
         before, ids = self.native_snapshot(), Sequence("must-not-allocate")
-        with self.forbid_fresh_health(), mock.patch.object(RuntimeAuthorityStore,
+        with self.forbid_fresh_health(), mock.patch.object(PostgresExecutionStore,
+                "get_latest_run_for_request_for_update", side_effect=AssertionError("terminal replay read latest run")), \
+                mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request",
+                side_effect=AssertionError("terminal replay located latest run")), \
+                mock.patch.object(RuntimeAuthorityStore,
                 "get_active_for_update", side_effect=AssertionError("replay reloaded current runtime authority")):
             replay = self.service(ids).execute_native(command)
             self.assertEqual(replay, ExistingFold(result.attempt, result.outcome_record))

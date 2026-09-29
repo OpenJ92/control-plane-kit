@@ -426,6 +426,9 @@ class DesiredGraphCommandService:
                 result = _desired_graph_replay(unit_of_work, existing, fingerprint)
                 unit_of_work.commit()
                 return result
+            lifecycle_guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(
+                command.workspace_id
+            )
             session = _desired_session(unit_of_work, command)
             if session.status is not OperationSessionStatus.OPEN:
                 raise DesiredGraphSessionConflict("operation session is not open")
@@ -445,6 +448,7 @@ class DesiredGraphCommandService:
                             command.expected_desired_graph_revision
                         ),
                     ),
+                    lifecycle_guard=lifecycle_guard,
                     graph_id=(
                         self._id_factory()
                         if command.proposed_graph_id is None
@@ -537,6 +541,7 @@ class ActivityPlanningCommandService:
                 )
                 unit_of_work.commit()
                 return result
+            unit_of_work.stores.graphs.lock_receiver_lifecycle(command.workspace_id)
             try:
                 session = history.get_session_for_update(command.session_id)
             except KeyError as error:

@@ -88,7 +88,12 @@ class SessionCommandSerializationContractTests(unittest.TestCase):
             )
             calls = writers[item["writer"]]
             with self.subTest(command=item["command"]):
-                identity = calls.index("lock_action_idempotency")
+                # Publication consumes a same-transaction prepared key/guard;
+                # its real PostgreSQL composition is covered by lifecycle locks.
+                identity = calls.index(
+                    "require" if item["command"] == "publish-desired-realized-projection"
+                    else "lock_action_idempotency"
+                )
                 session = calls.index("get_session_for_update")
                 if item["command"] in {
                     "record-recovery-decision",

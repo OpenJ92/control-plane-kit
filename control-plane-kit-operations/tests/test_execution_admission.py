@@ -101,7 +101,22 @@ class Sequence:
         return self._values.pop(0)
 
 
-class ExecutionAdmissionTests(unittest.TestCase):
+from tests.lifecycle_lock_fixture import LifecycleLockFixture, LIFECYCLE_LOCK, SESSION_LOCK, WORKSPACE_LOCK
+
+
+class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
+    def test_admission_takes_both_command_keys_then_lifecycle_before_existing_rows(self):
+        self.database_url = os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]
+        def execute(uow):
+            return ExecutionAdmissionCommandService(uow, clock=lambda: "2026-07-22T12:04:00Z",
+                id_factory=Sequence("request-lock", "action-lock")).execute(self.command())
+        with self.blocked_command(LIFECYCLE_LOCK, ("receiver-lifecycle:workspace-a",), execute) as future:
+            self.assert_row_lockable(SESSION_LOCK, ("session-a",))
+            self.assert_row_lockable(WORKSPACE_LOCK, ("workspace-a",))
+            self.assert_advisory_available("operation-action:session-a:execute-a", available=False)
+            self.assert_advisory_available("execution-admission:workspace-a:execute-a", available=False)
+        self.assertFalse(future.result(timeout=1).replayed)
+
     def setUp(self) -> None:
         database_url = os.environ.get("CPK_OPERATIONS_TEST_DATABASE_URL")
         if not database_url:
