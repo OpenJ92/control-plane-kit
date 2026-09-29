@@ -258,6 +258,9 @@ def validate_current_rows(connection: _Connection) -> None:
         from control_plane_kit_operations.postgres.receiver_lifecycle_store import (
             validate_current_rows as validate_receiver_rows,
         )
+        from control_plane_kit_operations.postgres.receiver_execution_scopes import (
+            validate_current_rows as validate_execution_scope_rows,
+        )
 
         validate_effect_attempt_rows(connection)
         _validate_effect_attempt_intent_rows(connection)
@@ -265,6 +268,7 @@ def validate_current_rows(connection: _Connection) -> None:
         validate_saved_preparation_sources(connection)
         validate_health_preparations(connection)
         validate_receiver_rows(connection)
+        validate_execution_scope_rows(connection)
     except (TypeError, ValueError, OperationsRecordError):
         raise CurrentRowDrift from None
     rows = connection.execute(_VERIFY_REFERENCES).fetchall()

@@ -148,7 +148,7 @@ class FailedRunCompensationFixture:
             "expected_current_graph_id": "graph-current",
             "desired_graph_id": "graph-desired",
             "expected_desired_graph_revision": 1,
-            "execution_intent_fingerprint": "a" * 64,
+            "execution_intent_fingerprint": self.execution_fingerprint,
             "authority": RecoveryAuthority(
                 "operator-a",
                 "authority-reference-a",
@@ -170,6 +170,8 @@ class FailedRunCompensationFixture:
         )
 
     def seed_truth(self) -> None:
+        from tests.graph_lineage_fixture import execution_graph
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
         plan = ActivityPlan(
             (
                 PlannedActivity(
@@ -198,7 +200,10 @@ class FailedRunCompensationFixture:
                 stores,
                 workspace_id="workspace-a",
                 graph_ids=("graph-current", "graph-desired"),
+                graphs={key: execution_graph(key, node_ids=("node-a",)) for key in ("graph-current", "graph-desired")},
             )
+            stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             stores.activity_history.add_session(
                 OperationSessionRecord(
                     "session-a",
@@ -246,25 +251,14 @@ class FailedRunCompensationFixture:
                     "2026-08-25T11:53:00Z",
                 )
             )
-            stores.execution.add_request(
-                ExecutionRequestRecord(
-                    ExecutionRequestIdentity(
-                        "request-a", "workspace-a", "session-a", "plan-a"
-                    ),
-                    ExecutionRequestStatus.CLAIMED,
-                    "operator-a",
-                    "2026-08-25T11:54:00Z",
-                    "approval-request-a",
-                    "approval-decision-a",
-                    ExecutionIdempotency("execute-a", "a" * 64),
-                    ClaimIdentity(
-                        "worker-a",
-                        1,
-                        "2026-08-25T11:54:00Z",
-                        "2026-08-25T13:54:00Z",
-                    ),
-                )
-            )
+            unit_of_work.commit()
+        admitted = admit_fixture_plan(self, requested_at="2026-08-25T11:54:00Z")
+        self.execution_fingerprint = admitted.request.idempotency.intent_fingerprint
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET status='claimed', claim_worker_id='worker-a', claim_generation=1, "
+            "claimed_at='2026-08-25T11:54:00Z', lease_expires_at='2026-08-25T13:54:00Z' WHERE request_id='request-a'")
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
             stores.execution.add_run(
                 ActivityRunRecord(
                     "run-a",

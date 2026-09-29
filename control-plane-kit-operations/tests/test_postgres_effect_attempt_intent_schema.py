@@ -268,26 +268,9 @@ class PostgresEffectAttemptIntentSchemaTests(
                 desired_graph_id=desired_graph_id,
             ),
         )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            SELECT %s, workspace_id, session_id, %s, status,
-                   requested_by, requested_at, approval_request_id,
-                   approval_decision_id, %s, %s,
-                   claim_worker_id, claim_generation, claimed_at, lease_expires_at
-            FROM cpk_execution_requests WHERE request_id='request-a'
-            """,
-            (
-                request_id,
-                plan_id,
-                "intent-max-idempotency",
-                runtime_effect_intent_fingerprint(intent),
-            ),
-        )
+        from tests.receiver_scope_history_fixture import clone_recorded_request
+        clone_recorded_request(self.connection, request_id=request_id, plan_id=plan_id,
+            idempotency_key="intent-max-idempotency", intent_fingerprint=runtime_effect_intent_fingerprint(intent))
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs

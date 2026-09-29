@@ -69,6 +69,24 @@ class PostgresExecutionStore:
         self._connection = connection
 
     def add_request(self, record: ExecutionRequestRecord) -> ExecutionRequestRecord:
+        """Direct history insertion is restricted to proved empty footprints."""
+        from .receiver_execution_scopes import _ExecutionScopeStorage
+        from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
+        storage = _ExecutionScopeStorage(self._connection)
+        derived = storage.derive(record.identity)
+        if derived.scopes:
+            raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+        return self._insert_scoped_request(record, storage, derived)
+
+    def _admit_request(self, record, *, lifecycle_guard):
+        """Private semantic-admission coupling; a held guard alone is no grant."""
+        from .receiver_execution_scopes import _ExecutionScopeStorage
+        storage = _ExecutionScopeStorage(self._connection)
+        storage.guard(record.identity.workspace_id, lifecycle_guard)
+        derived = storage.derive(record.identity)
+        return self._insert_scoped_request(record, storage, derived)
+
+    def _insert_scoped_request(self, record, storage, derived):
         claim = record.claim
         self._connection.execute(
             """
@@ -76,8 +94,9 @@ class PostgresExecutionStore:
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
                approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               claim_worker_id, claim_generation, claimed_at, lease_expires_at,
+               receiver_scope_count, receiver_scope_digest)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 record.identity.request_id,
@@ -99,9 +118,17 @@ class PostgresExecutionStore:
                 None
                 if claim is None
                 else encode_postgres_timestamp(claim.lease_expires_at),
+                len(derived.scopes),
+                derived.source_digest,
             ),
         )
+        storage.persist(record.identity, derived)
         return record
+
+    def receiver_scope_evidence(self, workspace_id, requested_scopes, guard):
+        """Bounded internal history accounting under the existing workspace L."""
+        from .receiver_execution_scopes import read_receiver_scope_evidence
+        return read_receiver_scope_evidence(self._connection, workspace_id, requested_scopes, guard)
 
     def lock_admission_idempotency(
         self,

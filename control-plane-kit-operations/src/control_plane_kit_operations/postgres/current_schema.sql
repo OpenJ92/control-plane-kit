@@ -338,6 +338,10 @@ CREATE TABLE cpk_execution_requests (
     claim_generation bigint,
     claimed_at timestamp with time zone,
     lease_expires_at timestamp with time zone,
+    receiver_scope_count integer NOT NULL,
+    receiver_scope_digest text NOT NULL,
+    CONSTRAINT cpk_execution_requests_receiver_scope_count_check CHECK (((receiver_scope_count >= 0) AND (receiver_scope_count <= 1024))),
+    CONSTRAINT cpk_execution_requests_receiver_scope_digest_check CHECK (((receiver_scope_digest COLLATE "C") ~ '^[0-9a-f]{64}$'::text)),
     CONSTRAINT cpk_execution_requests_claim_check CHECK ((((status = 'claimed'::text) AND (claim_worker_id IS NOT NULL) AND (claim_generation IS NOT NULL) AND (claimed_at IS NOT NULL) AND (lease_expires_at IS NOT NULL)) OR ((status <> 'claimed'::text) AND (claim_worker_id IS NULL) AND (claim_generation IS NULL) AND (claimed_at IS NULL) AND (lease_expires_at IS NULL)))),
     CONSTRAINT cpk_execution_requests_claim_generation_check CHECK (((claim_generation >= 1) AND (claim_generation <= 9223372036854775807))),
     CONSTRAINT cpk_execution_requests_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'claimed'::text, 'cancelled'::text, 'abandoned'::text])))
@@ -575,6 +579,7 @@ CREATE TABLE cpk_operation_actions (
 );
 
 CREATE INDEX cpk_operation_actions_current_graph_advancement ON cpk_operation_actions USING btree (session_id, (payload ->> 'run_id'::text), action_id) WHERE (action_type = 'advance-current-graph'::text);
+CREATE INDEX cpk_operation_actions_receiver_cancel ON cpk_operation_actions USING btree (session_id, (payload ->> 'run_id'::text), action_id) WHERE (action_type = 'cancel-run'::text);
 
 CREATE TABLE cpk_operation_sessions (
     session_id text NOT NULL,
@@ -1531,3 +1536,22 @@ ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_b
 ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_projection_workspace_fkey FOREIGN KEY (realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
 ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_projection_source_fkey FOREIGN KEY (realized_projection_id, graph_id) REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id);
 ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_scope_fkey FOREIGN KEY (workspace_id, receiver_id, runtime_id, node_id, provider_socket_name) REFERENCES cpk_graph_receiver_introductions(workspace_id, receiver_id, runtime_id, node_id, provider_socket_name);
+
+CREATE TABLE cpk_execution_receiver_scopes (
+    request_id text NOT NULL,
+    workspace_id text NOT NULL,
+    scope_ordinal integer NOT NULL,
+    scope_kind text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text,
+    CONSTRAINT cpk_execution_receiver_scopes_pkey PRIMARY KEY (request_id, scope_ordinal),
+    CONSTRAINT cpk_execution_receiver_scopes_request_workspace_fk FOREIGN KEY (request_id, workspace_id) REFERENCES cpk_execution_requests(request_id, workspace_id),
+    CONSTRAINT cpk_execution_receiver_scopes_position_check CHECK (((scope_ordinal >= 0) AND (scope_ordinal <= 1023))),
+    CONSTRAINT cpk_execution_receiver_scopes_kind_check CHECK ((scope_kind = ANY (ARRAY['node'::text, 'runtime'::text]))),
+    CONSTRAINT cpk_execution_receiver_scopes_runtime_check CHECK (((btrim(runtime_id) <> ''::text) AND (octet_length(runtime_id) <= 2048))),
+    CONSTRAINT cpk_execution_receiver_scopes_node_check CHECK ((((scope_kind = 'runtime'::text) AND (node_id IS NULL)) OR ((scope_kind = 'node'::text) AND (node_id IS NOT NULL) AND (btrim(node_id) <> ''::text) AND (octet_length(node_id) <= 2048)))),
+    CONSTRAINT cpk_execution_receiver_scopes_key_bytes_check CHECK (((btrim(request_id) <> ''::text) AND (btrim(workspace_id) <> ''::text) AND ((((octet_length(workspace_id) + octet_length(runtime_id)) + octet_length(request_id)) + octet_length(COALESCE(node_id, ''::text))) <= 1024)))
+);
+CREATE UNIQUE INDEX cpk_execution_receiver_scopes_runtime_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, request_id) WHERE (scope_kind = 'runtime'::text);
+CREATE UNIQUE INDEX cpk_execution_receiver_scopes_node_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, node_id, request_id) WHERE (scope_kind = 'node'::text);
+CREATE INDEX cpk_execution_receiver_scopes_runtime_nodes_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, request_id, node_id) WHERE (scope_kind = 'node'::text);

@@ -258,6 +258,8 @@ class PostgresExecutionLeaseRecoveryFixture:
         history: str | None = None,
         approval_subject: str = "activity-plan",
     ) -> None:
+        from tests.graph_lineage_fixture import execution_graph
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
         active = decision is RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
         history = history or ("active-empty" if active else "failed")
         plan = ActivityPlan(
@@ -278,7 +280,10 @@ class PostgresExecutionLeaseRecoveryFixture:
                 stores,
                 workspace_id="workspace-a",
                 graph_ids=("graph-current", "graph-desired"),
+                graphs={key: execution_graph(key) for key in ("graph-current", "graph-desired")},
             )
+            stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             stores.activity_history.add_session(
                 OperationSessionRecord(
                     "session-a",
@@ -348,12 +353,12 @@ class PostgresExecutionLeaseRecoveryFixture:
                 ApprovalRequestRecord(
                     "approval-request-a",
                     "session-a",
-                    subject,
+                    ActivityPlanApprovalSubject("plan-a"),
                     "operator-a",
                     "2026-08-15T03:57:00Z",
-                    approval_scope,
-                    approval_risk,
-                    destructive,
+                    PolicyScope.PLAN_APPROVE,
+                    RiskLevel.LOW,
+                    False,
                 )
             )
             stores.activity_history.add_approval_decision(
@@ -362,29 +367,29 @@ class PostgresExecutionLeaseRecoveryFixture:
                     "approval-request-a",
                     "manager-a",
                     ApprovalDecisionKind.APPROVED,
-                    approval_scope,
+                    PolicyScope.PLAN_APPROVE,
                     "2026-08-15T03:58:00Z",
                 )
             )
-            stores.execution.add_request(
-                ExecutionRequestRecord(
-                    ExecutionRequestIdentity(
-                        "request-a", "workspace-a", "session-a", "plan-a"
-                    ),
-                    ExecutionRequestStatus.CLAIMED,
-                    "operator-a",
-                    "2026-08-15T03:59:00Z",
-                    "approval-request-a",
-                    "approval-decision-a",
-                    ExecutionIdempotency("execute-a", "execute-fingerprint-a"),
-                    ClaimIdentity(
-                        "worker-a",
-                        7,
-                        "2098-01-01T00:00:00Z" if active else "1999-01-01T00:00:00Z",
-                        "2099-01-01T00:00:00Z" if active else "2000-01-01T00:00:00Z",
-                    ),
-                )
-            )
+            unit_of_work.commit()
+        admit_fixture_plan(self, requested_at="2026-08-15T03:59:00Z")
+        # Recorded lease/run overlays preserve the recovery law's original fence and time.
+        self.connection.execute(
+            "UPDATE cpk_execution_requests SET status='claimed', claim_worker_id='worker-a', "
+            "claim_generation=7, claimed_at=%s, lease_expires_at=%s WHERE request_id='request-a'",
+            ("2098-01-01T00:00:00Z" if active else "1999-01-01T00:00:00Z",
+             "2099-01-01T00:00:00Z" if active else "2000-01-01T00:00:00Z"))
+        if approval_subject != "activity-plan":
+            from psycopg.types.json import Jsonb
+            self.connection.execute(
+                "UPDATE cpk_approval_requests SET plan_id=NULL, rotation_id='rotation-a', subject_kind=%s, subject_payload=%s, "
+                "review_digest=%s, required_scope=%s, max_risk=%s, destructive=%s WHERE request_id='approval-request-a'",
+                (subject.kind.value, Jsonb(subject.descriptor()), subject.review_digest,
+                 approval_scope.value, approval_risk.value, destructive))
+            self.connection.execute("UPDATE cpk_approval_decisions SET scope=%s WHERE decision_id='approval-decision-a'",
+                                    (approval_scope.value,))
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
             stores.execution.add_run(
                 ActivityRunRecord(
                     "run-a",

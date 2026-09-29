@@ -11519,6 +11519,84 @@
         "interpreter"
       ],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/receiver_lifecycle_store.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "module": "control_plane_kit_operations.receiver_execution_scopes",
+      "destination": "control_plane_kit_operations.receiver_execution_scopes",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/receiver_execution_scopes.py",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.plan_derivation",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
+      ],
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "motivation": "Execution-owned immutable original-source coverage and nonauthorizing history classification; cancellation returns an unresolved fresh-gate obligation.",
+      "protecting_tests": [
+        "tests/test_receiver_execution_scope_derivation.py",
+        "tests/test_receiver_execution_scope_classification.py"
+      ]
+    },
+    {
+      "canonical_public_exports": [],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "module": "control_plane_kit_operations.postgres.receiver_execution_scopes",
+      "destination": "control_plane_kit_operations.postgres.receiver_execution_scopes",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/receiver_execution_scopes.py",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations.activity_journal",
+        "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+        "control_plane_kit_operations.postgres.effect_attempt_store",
+        "control_plane_kit_operations.postgres.effect_outcome_store",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store",
+        "control_plane_kit_operations.postgres.failed_run_compensation_store",
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.temporal",
+        "control_plane_kit_operations.receiver_execution_scopes",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.revision_history"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.current_data_validation"
+      ],
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "semantic_roles": [
+        "interpreter"
+      ],
+      "motivation": "Existing execution-store composition for bounded original-source reads, scope persistence in admission transactions, complete history retrieval and exact current-row verification. Reuses effect-owner decoders and historical receipt/success laws; adds no store bundle service or effect authority.",
+      "protecting_tests": [
+        "tests/test_postgres_receiver_execution_scopes.py",
+        "tests/test_postgres_receiver_execution_scope_schema.py",
+        "tests/test_receiver_execution_scope_classification.py",
+        "tests/test_receiver_execution_scope_row_budgets.py",
+        "tests/test_receiver_execution_scope_transport.py"
+      ]
     }
   ],
   "owner_vocabulary": [

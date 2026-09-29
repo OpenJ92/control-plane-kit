@@ -447,6 +447,7 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                     '2026-08-07T06:00:00Z');
             """
         )
+        from tests.receiver_scope_history_fixture import empty_plan_payload, insert_recorded_request
         self.connection.execute(
             """
             INSERT INTO cpk_activity_plans
@@ -454,9 +455,9 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
                base_realized_projection_id, desired_realized_projection_id,
                desired_graph_revision, status, created_at, payload)
             VALUES ('plan-a', 'session-a', 'graph-a', 'graph-a', %s, %s, 1,
-                    'planned', '2026-08-07T06:01:00Z', '{}'::jsonb)
+                    'planned', '2026-08-07T06:01:00Z', %s)
             """,
-            (projection.projection_id, projection.projection_id),
+            (projection.projection_id, projection.projection_id, Jsonb(empty_plan_payload())),
         )
         self.connection.execute(
             """
@@ -473,13 +474,11 @@ class PostgresSchemaFoundationTests(unittest.TestCase):
               (decision_id, request_id, actor_id, decision, scope, decided_at)
             VALUES ('approval-decision-a', 'approval-request-a', 'manager',
                     'approved', 'plan:approve', '2026-08-07T06:03:00Z');
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
-                    'operator', '2026-08-07T06:04:00Z', 'approval-request-a',
-                    'approval-decision-a', 'execute-a', 'fingerprint-a');
+            """
+        )
+        insert_recorded_request(self.connection, requested_by="operator", requested_at="2026-08-07T06:04:00Z")
+        self.connection.execute(
+            """
             INSERT INTO cpk_activity_runs
               (run_id, plan_id, request_id, attempt, status, created_at,
                metadata)

@@ -10,6 +10,8 @@ from control_plane_kit_core.operations import (
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.planning import NodeTarget, RuntimeTarget, StartNode, StartRuntime, WaitForHealthy
+from control_plane_kit_core.planning import SocketConnectionTarget, SwitchSocketConnection
+from control_plane_kit_operations.coordinator import ActivityExecutionOutcome
 from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
 from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
@@ -162,6 +164,39 @@ class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, u
         with self.unit_of_work() as uow:
             uow.stores.workspaces.set_desired_graph("workspace-a", "graph-current")
             uow.commit()
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+
+    def test_mixed_effect_and_journal_only_operations_retain_exact_acceptance(self):
+        module = self.require_scopes()
+        self.admit_operations("mixed", StartNode(NodeTarget("app")),
+                              SwitchSocketConnection(SocketConnectionTarget("edge-a")))
+        adapter = RecordingRuntimeAdapter(
+            lambda context, request: RuntimeEffectResult.succeeded(request.effect_id),
+            ActivityExecutionOutcome.succeeded())
+        claimed, completed = self.execute_effects("mixed", adapter)
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        self.assertEqual(len(adapter.runtime_calls), 1)
+        self.assertEqual(len(adapter.legacy_calls), 1)
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "conflict")
+        self.advance(claimed, "mixed")
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+
+    def test_acceptance_receipt_requires_its_original_complete_success_journal(self):
+        module = self.require_scopes()
+        self.admit_operations("accepted-history", StartNode(NodeTarget("app")))
+        claimed, completed = self.execute_effects("accepted-history")
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        self.advance(claimed, "accepted-history")
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            self.assertEqual(uow.stores.connection.execute(
+                "UPDATE cpk_activity_events SET event_type='run_resumed' "
+                "WHERE run_id='run-accepted-history' AND event_type='run_succeeded'").rowcount, 1)
+            evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
+            self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "unavailable")
         self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
 
     def test_known_failure_is_conflict_without_generic_disposal(self):

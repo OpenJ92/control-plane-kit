@@ -270,3 +270,61 @@ caps can refuse otherwise settled history; there is no pruning/recovery escape.
 The supported-writer completeness limit against privileged raw SQL remains
 explicit. C1 acceptance is staged accounting, not B/C joint completion or live
 adoption.
+
+## Released source candidate after causal red
+
+North released bounded C1 source after Meridian accepted the exact target head
+`823f62c17a6ff40567e2481c3a9137ce5022750f`. Local and hosted ordinary suites
+both collected 1,950 tests and produced exactly 58 missing-module and nine
+missing-relation failures, with no errors. This is first-boundary red evidence;
+no deeper history, budget, schema or fixture law earned green credit.
+Release: [#1902 comment](https://github.com/OpenJ92/control-plane-kit/issues/1902#issuecomment-5891920884).
+
+The source candidate adds the two reviewed internal modules. Pure derivation
+unions actual forward and compensation targets from original material and hashes
+the frozen witness. Existing admission derives and stores the header/rows under
+its existing lifecycle lock and transaction before the real admission action.
+The old public writer accepts only genuinely empty derived coverage. Replay and
+request DTOs retain their original shape.
+
+The SQL reader reserves finite transport before every fetch, caches immutable
+original material within a read, verifies complete scope sets and independently
+retrieves intents. Existing attempt, intent, outcome and compensation codecs
+remain the semantic owners; small decode-with-supplied-evidence functions let
+the reader reuse them without unbounded hidden fetches or fake connections.
+Historical acceptance reuses the existing receipt law and the advancement
+owner's complete-success law on the journal preceding that receipt. It never
+re-evaluates current lease eligibility or treats compensation as disposal.
+
+Kepler's source findings produced three corrections: concrete candidate prefixes
+are capped at 65 rows; journal-only socket/ingress starts are associated with the
+original plan and checked through the existing saga projection; compensation
+steps must match the original plan's inverse operation and material source.
+Two source-phase regression targets add mixed real-coordinator history and a
+damaged success journal beneath an exact acceptance receipt. There are now 69
+C1 target methods; the two additions have no independent red/green claim yet.
+
+All 19 audited request-producing fixture files are translated. Recorded
+read/schema/index histories derive identity-specific witnesses using production
+derivation, preserve times, widths and populations (including 10,000 query-plan
+rows), and use explicit test-only SQL. Service fixtures use actual admission
+with real original targets before recorded lease/failure overlays. Empty
+coordinator-history cases remain explicitly recorded because admission rejects
+empty plans. Managed teardown retains its own actual approval/admission path;
+source preparation does not admit early. Advancement preparation commits before
+admission to preserve lock order. Assertions account for the exact admission
+action baseline while retaining operation deltas and failure types.
+
+This candidate is unvalidated. Exact PostgreSQL normalization of the prospective
+44 relations, 557 columns, 449 constraints and 147 indexes, shared-budget positive
+feasibility, and preservation of all predecessor fixture laws remain owning-suite
+obligations after independent source review. Static diff checks are not execution
+evidence. No installation migration, backfill, repair or default witness exists.
+
+Security/data/history: fixed candidate-free refusals, bounded source transport,
+tenant and original-identity checks; no root exports, route, StoreBundle service,
+provider effect or new authority. Admission writes header/scopes/action atomically
+and rolls back together on late failure. Current reentry verifies every request
+in keyset batches without repairing history. The reader returns only an internal
+classification; `requires-fresh-gate-closure` remains a C3 obligation. C2/C3/D,
+aggregate acceptance, publication/adoption and live execution remain separate.
