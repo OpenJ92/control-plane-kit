@@ -242,3 +242,23 @@ prepared path accepts and forbids fresh latest/signing/time queries on refusal.
 These are review-found preservation fixes, not changes to lifecycle or recovery
 policy. No separate executable red or green is claimed for this correction;
 exact delta review precedes the ordinary owning green gate.
+
+### First source-green attempt: existing companion expectations
+
+The reviewed corrected source `f8536c03077f227e151cea4715685d4b1a1251ba`
+completed the ordinary suite with 1,861 tests, 49 failures and one error;
+[terminal evidence and cleanup](https://github.com/OpenJ92/control-plane-kit/pull/1900#issuecomment-5884593492)
+record the full classification. There was no collection/setup failure. Later
+compile/import stages did not run, and no package-green claim is made.
+
+Four existing test companions retained pre-A structure: claim identity traces
+expected session before request (45 invalid-candidate subcases plus one full
+trace), atomic fold import/call and two dependency sets omitted the reviewed
+run-prefix extraction, and publication's static writer check expected direct
+key acquisition instead of prepared-context validation. Their translation keeps
+bounded invalid-identity rejection, factory counts, no-mutation assertions,
+exact import/call/dependency checks, and preparation-before-session consumption.
+The real PostgreSQL publication targets retain the key/guard/row ordering,
+same-owner/scope, caller rollback and finished-context laws. No source behavior,
+public exports, authority, schema or recovery policy changes in this correction.
+Exact review and another ordinary owning suite remain required.

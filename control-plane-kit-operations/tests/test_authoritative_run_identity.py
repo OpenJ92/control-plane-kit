@@ -466,7 +466,7 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
                     *canaries,
                 )
                 self.assertEqual(trace.factory_calls, 1)
-                self.assertEqual(trace.log[6:8], ["runs_for_request", "id_factory:1"])
+                self.assertEqual(trace.log[7:9], ["runs_for_request", "id_factory:1"])
                 for mutation in (
                     "claim_request",
                     "add_run",
@@ -502,8 +502,9 @@ class AuthoritativeRunIdentityTests(unittest.TestCase):
                 "get_request",
                 "lock_action_idempotency",
                 "action_for_idempotency",
-                "get_session_for_update",
+                "get_request_for_update",
                 "get_request",
+                "get_session_for_update",
                 "runs_for_request",
                 "id_factory:1",
                 "claim_request",
