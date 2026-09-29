@@ -3,6 +3,7 @@ from dataclasses import replace
 import unittest
 from unittest import mock
 
+from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
@@ -11,12 +12,14 @@ from control_plane_kit_core.planning import ObserveNodeHealth, compile_graph_act
 from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt, GuardedHealthEffectFold, ExistingFold
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
+from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
 from control_plane_kit_operations.health_signing_authority import HealthSigningAuthorityReloadService, HealthSigningAuthorityUnavailable
-from control_plane_kit_operations.postgres import PostgresExecutionStore
+from control_plane_kit_operations.postgres import PostgresExecutionStore, PostgresUnitOfWork
 from control_plane_kit_operations.postgres.runtime_authority_store import RuntimeAuthorityStore
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 from control_plane_kit_operations.runtime_management_targets import project_management_health_target
 from tests.execution_lease_recovery_fixture import Sequence
+from tests.draft_selection_fixture import _ObservedConnection
 from tests.health_signing_authority_fixture import PostgresHealthSigningAuthorityFixture
 from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT_LOCK
 
@@ -111,4 +114,34 @@ class PostgresLifecycleHealthFoldLockTests(
                 side_effect=AssertionError("terminal replay reloaded signing authority")):
             replay = self.fold(self.unit_of_work, command)
         self.assertEqual(replay, ExistingFold(result.attempt, result.outcome_record))
+        self.assert_history_unchanged(before)
+
+    def test_prepared_reload_rechecks_same_transaction_run_change_without_new_keys(self):
+        command, before = self.reload_command(), self.health_snapshot()
+        statements = []
+        service = HealthSigningAuthorityReloadService(self.unit_of_work,
+            health_receiver_decoders=self.health_receiver_decoders())
+        with PostgresUnitOfWork(lambda: _ObservedConnection(self.lock_connection(), statements)) as uow:
+            request = uow.stores.execution.get_request_for_update(command.request_id)
+            prefix = _lock_effect_run_prefix(uow, request, command.identity.run_id.value,
+                latest_required=True)
+            accepted, _ = service.in_unit_of_work(uow, command, run_prefix=prefix)
+            self.assertEqual(accepted.preparation, self.preparation)
+            changed = uow.stores.execution.compare_and_set_run_status(
+                command.identity.run_id.value, expected=ActivityRunStatus.RUNNING,
+                replacement=ActivityRunStatus.FAILED)
+            self.assertIs(changed.status, ActivityRunStatus.FAILED)
+            self.assertIs(prefix.requested_run.status, ActivityRunStatus.RUNNING)
+            statements.clear()
+            with self.forbid_fresh_health(), \
+                    mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request",
+                        side_effect=AssertionError("prepared reload located a new latest run")), \
+                    mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request_for_update",
+                        side_effect=AssertionError("prepared reload locked a new latest run")):
+                with self.assertRaises(HealthSigningAuthorityUnavailable):
+                    service.in_unit_of_work(uow, command, run_prefix=prefix)
+            self.assertFalse(any(sql.startswith(("INSERT", "UPDATE", "DELETE")) for sql in statements))
+            self.assertEqual(uow.stores.execution.get_run(changed.run_id), changed)
+        # The caller's status change rolls back; reload grants no new authority
+        # and changes no retained attempt/preparation/authorization history.
         self.assert_history_unchanged(before)

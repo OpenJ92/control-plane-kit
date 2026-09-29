@@ -12,6 +12,7 @@ from control_plane_kit_operations.graph_authoring import (
 )
 from control_plane_kit_operations.planning import DesiredGraphCommandService, SetDesiredGraph
 from control_plane_kit_operations.postgres.unit_of_work import UnitOfWorkStateError
+from control_plane_kit_operations.records import OperationSessionStatus
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.draft_catalogue_fixture import NOW
 from tests.saved_preparation_fixture import SavedPreparationFixture
@@ -213,3 +214,21 @@ class PostgresLifecycleGraphLockTests(
             result = self.publish_prepared(uow, command, self.prepare(uow, command))
             self.assertEqual(result.desired_graph_revision, command.expected_desired_graph_revision + 1)
         self.assertEqual(self.all_truth(), before)
+
+    def test_prepared_publication_rechecks_same_transaction_terminal_session(self):
+        command, before = self.publication_command(), self.all_truth()
+        for status in (OperationSessionStatus.CLOSED, OperationSessionStatus.CANCELLED):
+            with self.subTest(status=status), self.observed_uow(statements := [])() as uow:
+                prepared = self.prepare(uow, command)
+                changed = uow.stores.activity_history.transition_open_session(
+                    command.session_id, replacement=status, closed_at=NOW)
+                self.assertIs(changed.status, status)
+                self.assertIs(prepared.session.status, OperationSessionStatus.OPEN)
+                statements.clear()
+                with self.assertRaises(publication.DesiredRealizedProjectionPublicationConflict):
+                    self.publish_prepared(uow, command, prepared)
+                self.assertFalse(any(sql.startswith(("INSERT", "UPDATE", "DELETE")) for sql in statements))
+                self.assertEqual(uow.stores.activity_history.get_session(command.session_id), changed)
+            # The caller did not commit its close/cancel; both it and publication
+            # remain subject to the original caller-owned rollback boundary.
+            self.assertEqual(self.all_truth(), before)

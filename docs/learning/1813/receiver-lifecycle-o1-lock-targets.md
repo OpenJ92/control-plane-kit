@@ -221,3 +221,24 @@ owned; existing action/event/result semantics and recovery decisions govern.
 Residual risk is an omitted first acquisition or a branch/error-precedence drift;
 independent source review and full owning green are still required. No rolling
 coexistence claim with old writers. B/C/D and live work remain held; timer off.
+
+### Source review: same-transaction mutable truth
+
+The local source checkpoint `889162f777b2b84e29215f71d049be3c14b6784a`
+received [Meridian HOLD](https://github.com/OpenJ92/control-plane-kit/issues/1896#issuecomment-5883449347)
+for two P2 regressions raised in Vale's self-review and independently confirmed.
+Holding a row excludes other transactions, but does not prevent the caller from
+changing that row inside the same UoW. Fresh publication trusted its saved OPEN
+session, and nested health reload trusted its saved RUNNING run.
+
+The correction rereads the already-held session after replay resolution, and
+the prepared run context rereads only its exact request-scoped held run IDs,
+refusing changed records. Neither correction introduces a first key acquisition
+or a latest-run lookup after attempt/runtime locks. New strengthened regression
+targets close/cancel the session or CAS the held run to FAILED inside the same
+transaction. They require refusal, no DML from the refused operation, and caller
+rollback restoring retained truth; the health target first proves the unchanged
+prepared path accepts and forbids fresh latest/signing/time queries on refusal.
+These are review-found preservation fixes, not changes to lifecycle or recovery
+policy. No separate executable red or green is claimed for this correction;
+exact delta review precedes the ordinary owning green gate.

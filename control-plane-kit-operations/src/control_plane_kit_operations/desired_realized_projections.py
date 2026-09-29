@@ -238,7 +238,14 @@ def publish_desired_realized_projection_in_unit_of_work(
     )
     if existing is not None:
         return _replay(stores, existing, fingerprint)
-    session = prepared.session
+    # Preparation already holds this exact session key. A caller may have
+    # closed it within the same transaction, so consume current locked truth.
+    try:
+        session = history.get_session_for_update(command.session_id)
+    except KeyError as error:
+        raise DesiredRealizedProjectionPublicationNotFound(
+            "operation session was not found"
+        ) from error
     if session.workspace_id != command.workspace_id:
         raise DesiredRealizedProjectionPublicationConflict(
             "operation session and projection must belong to one workspace"
