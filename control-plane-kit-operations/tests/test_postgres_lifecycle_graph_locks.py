@@ -94,6 +94,11 @@ class PostgresLifecycleGraphLockTests(
                 with self.blocked_command(
                     LIFECYCLE_LOCK, ("receiver-lifecycle:workspace-a",), execute,
                 ) as future:
+                    if kind == "publication":
+                        self.assert_advisory_available(
+                            f"operation-action:{command.session_id}:{command.idempotency_key.value}",
+                            available=False,
+                        )
                     self.assert_row_lockable(SESSION_LOCK, (self.sessions["workspace-a"],))
                     self.assert_row_lockable(WORKSPACE_LOCK, ("workspace-a",))
                     self.assert_advisory_available("receiver-lifecycle:workspace-b", available=True)

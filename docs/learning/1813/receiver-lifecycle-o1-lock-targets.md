@@ -262,3 +262,10 @@ The real PostgreSQL publication targets retain the key/guard/row ordering,
 same-owner/scope, caller rollback and finished-context laws. No source behavior,
 public exports, authority, schema or recovery policy changes in this correction.
 Exact review and another ordinary owning suite remain required.
+
+Review of the companion translation found that consuming `prepared.require`
+alone no longer proves generic publication's earlier action-key acquisition.
+The existing real PostgreSQL publication entrant now probes that exact action
+key as unavailable while the service waits at the lifecycle guard and session/
+workspace rows remain available. This preserves the original identity-before-
+session law at the actual composed boundary, without a new source-layout rule.
