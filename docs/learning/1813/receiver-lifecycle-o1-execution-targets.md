@@ -190,7 +190,7 @@ No C3 fresh-dispatch/public claim/start closure, end-to-end C-N11 clearance,
 own-run exclusion or contention activation is credited by these C1 tests.
 The old suite must remain collected; no skip/xfail or weakened assertion.
 
-The complete candidate target checkpoint contains 60 test methods in seven
+The complete candidate target checkpoint contains 67 test methods in seven
 files, with one shared real-service fixture. This is an authored inventory,
 not a predicted suite result or executable evidence. It awaits independent
 target review and ordinary causal red. Tests intentionally assert the absent
@@ -234,6 +234,24 @@ execution claims. Runtime cost and the feasibility of the large fixture values
 remain unproved until the owning suite reaches those assertions.
 
 ## Review, validation and handoff
+
+The full review of `3bf99c4` returned HOLD. This target-only correction retains
+the real persisted intent when constructing an inverse, uses its actual start
+event ID for the outcome, and supplies canonical UTC clocks through the existing
+PostgreSQL temporal codec. It adds missing-direct-outcome and post-dispatch
+cancellation negatives, and a failed-run/later-accepted-retry history within
+one request. Persisted forged digests, an entirely missing scope set, and
+corruption beyond the first 64 identities must all refuse current verification
+without repair; only discoverable corruption receives online assertions.
+
+The actual EXPLAIN proof now requires each candidate prefix's index scan to
+reach a Limit before combination, deduplication or sorting. A separate two-node
+case fills the 64-request budget and repeats those same identities on a later
+distinct prefix before adding a 65th identity. A point query also excludes
+over-cap unrelated node-only history on the same runtime. These are strengthened
+and new-law target corrections against the frozen query/classification contract,
+not application implementation or executable evidence. Independent delta review
+must pass before publication of this complete candidate and ordinary causal red.
 
 Before ordinary causal red, publish the reviewed target checkpoint as unvalidated
 on a draft child PR into `codex/1882-receiver-lifecycle-integration`. Meridian

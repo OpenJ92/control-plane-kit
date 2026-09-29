@@ -10,13 +10,12 @@ from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedAct
 from control_plane_kit_core.products import ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.operations import RunId, RecoveryScope
-from control_plane_kit_core.runtime_effect_observation import RuntimeEffectIntent, RuntimeEffectIntentSource
-from control_plane_kit_core.runtime_effects import RuntimeEffectKind
-from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.topology import compile_topology
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.advancement import AdvanceCurrentGraph, CurrentGraphAdvancementCommandService
 from control_plane_kit_operations.coordinator import ExecuteActivityRun, ExecutionCoordinator
+from control_plane_kit_operations.activity_run_retry import RetryFailedActivityRun
+from control_plane_kit_operations.activity_run_retry_interpreter import ActivityRunRetryCommandService
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
@@ -33,6 +32,7 @@ from control_plane_kit_operations.lifecycle import (
 )
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.products import InlineDescriptorSource
+from control_plane_kit_operations.postgres.temporal import decode_postgres_timestamp
 from control_plane_kit_operations.records import (
     ExecutionRequestIdentity, RealizedGraphProjectionRecord,
 )
@@ -123,7 +123,7 @@ class ReceiverExecutionScopeFixture:
 
     def lifecycle(self, *ids):
         return RunLifecycleCommandService(self.unit_of_work,
-            clock=lambda: datetime.now(timezone.utc).isoformat(),
+            clock=lambda: decode_postgres_timestamp(datetime.now(timezone.utc)),
             id_factory=admission_tests.Sequence(*ids))
 
     def claim(self, suffix="a", *, duration_seconds=600):
@@ -139,6 +139,13 @@ class ReceiverExecutionScopeFixture:
                 ExecutionLeaseFence("worker-a", claimed.request.claim.generation),
                 IdempotencyKey("cancel-" + suffix)))
 
+    def retry(self, previous, suffix):
+        return ActivityRunRetryCommandService(self.unit_of_work, id_factory=GeneratedIds("retry-" + suffix)).execute(
+            RetryFailedActivityRun(previous.request.identity.request_id, RunId(previous.run.run_id),
+                ExecutionLeaseFence("worker-a", previous.request.claim.generation),
+                RecoveryAuthority("operator-a", "test-recovery-authority", (RecoveryScope.OPERATE,)),
+                IdempotencyKey("retry-" + suffix)))
+
     def execute_effects(self, suffix, adapter=None):
         """Compose existing production services; the adapter performs no I/O."""
         claimed = self.claim(suffix)
@@ -150,7 +157,7 @@ class ReceiverExecutionScopeFixture:
         self.lifecycle("event-start-" + suffix, "action-start-" + suffix).execute(
             StartActivityRun(claimed.run.run_id, authority, fence, IdempotencyKey("start-" + suffix)))
         ids = GeneratedIds("effect-" + suffix)
-        clock = lambda: datetime.now(timezone.utc).isoformat()
+        clock = lambda: decode_postgres_timestamp(datetime.now(timezone.utc))
         fold = EffectAttemptFoldService(self.unit_of_work, id_factory=ids)
         coordinator = ExecutionCoordinator(self.unit_of_work,
             lifecycle=RunLifecycleCommandService(self.unit_of_work, clock=clock, id_factory=ids),
@@ -167,7 +174,7 @@ class ReceiverExecutionScopeFixture:
         with self.unit_of_work() as uow:
             plan = uow.stores.activity_history.get_plan(claimed.request.identity.plan_id)
         return CurrentGraphAdvancementCommandService(self.unit_of_work,
-            clock=lambda: datetime.now(timezone.utc).isoformat(),
+            clock=lambda: decode_postgres_timestamp(datetime.now(timezone.utc)),
             id_factory=admission_tests.Sequence("event-advance-" + suffix, "action-advance-" + suffix)).execute(
             AdvanceCurrentGraph(workspace_id="workspace-a", run_id=claimed.run.run_id,
                 plan_id=plan.plan_id, expected_current_graph_id=plan.base_graph_id,
@@ -184,7 +191,7 @@ class ReceiverExecutionScopeFixture:
             plan = uow.stores.activity_history.get_plan(claimed.request.identity.plan_id)
             failure = uow.stores.execution.events_for_run(claimed.run.run_id)[-1].failure
         return FailedRunCompensationCommandService(self.unit_of_work,
-            clock=lambda: datetime.now(timezone.utc).isoformat(), id_factory=GeneratedIds("compensate-" + suffix)).execute(
+            clock=lambda: decode_postgres_timestamp(datetime.now(timezone.utc)), id_factory=GeneratedIds("compensate-" + suffix)).execute(
             BeginFailedRunCompensation(workspace_id="workspace-a", request_id=claimed.request.identity.request_id,
                 run_id=RunId(claimed.run.run_id), plan_id=plan.plan_id,
                 expected_current_graph_id=plan.base_graph_id, desired_graph_id=plan.desired_graph_id,
@@ -195,14 +202,12 @@ class ReceiverExecutionScopeFixture:
                 idempotency_key=IdempotencyKey("compensate-" + suffix)))
 
     def start_inverse(self, claimed, compensation, suffix, *, position=1):
-        with self.unit_of_work() as uow:
-            plan = uow.stores.activity_history.get_plan(claimed.request.identity.plan_id)
         step = compensation.program.steps[position - 1]
-        intent = RuntimeEffectIntent(kind=RuntimeEffectKind.REALIZE_ACTIVITY, runtime_kind=RuntimeKind.DOCKER,
-            source=RuntimeEffectIntentSource("workspace-a", claimed.request.identity.request_id,
-                RunId(claimed.run.run_id), plan.plan_id, plan.base_graph_id, plan.desired_graph_id),
-            activity_id=ActivityId(step.source_effect.attempt_identity.activity_id), operation=step.operation,
-            authority_ref=None, authority_deliveries=(), products=())
+        with self.unit_of_work() as uow:
+            original = uow.stores.effect_attempt_intents.get(step.source_effect.attempt_identity)
+        # Preserve real admitted product/authority/source material exactly,
+        # changing only the recorded inverse operation as the owner requires.
+        intent = replace(original.intent, operation=step.operation)
         return FailedRunCompensationAttemptStartService(self.unit_of_work, id_factory=GeneratedIds("inverse-" + suffix)).execute(
             StartFailedRunCompensationAttempt(compensation.record.program_id, position, intent,
                 ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),

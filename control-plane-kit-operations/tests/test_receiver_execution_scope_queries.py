@@ -32,6 +32,12 @@ def plan_nodes(plan):
         yield from plan_nodes(child)
 
 
+def plan_paths(plan, parents=()):
+    yield plan, parents
+    for child in plan.get("Plans", ()):
+        yield from plan_paths(child, (*parents, plan))
+
+
 class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.TestCase):
     def seed_fanout(self, *, groups, nodes, copies):
         runtimes = tuple(DockerRuntime(runtime_id="runtime-" + str(group), children=tuple(
@@ -103,10 +109,27 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
                     explained = recording.connection.execute("EXPLAIN (FORMAT JSON, COSTS FALSE) " + query, params).fetchone()[0][0]["Plan"]
                     nodes = tuple(plan_nodes(explained))
                     indexes.update(node["Index Name"] for node in nodes if "Index Name" in node)
-                    for node in nodes:
-                        if node["Node Type"] in ("Sort", "Incremental Sort"):
-                            self.assertTrue(any(child["Node Type"] == "Limit" for child in plan_nodes(node)),
-                                            "candidate sorting must follow a bounded prefix")
+                    prefix_indexes = {SCOPES + suffix for suffix in (
+                        "_runtime_lookup", "_node_lookup", "_runtime_nodes_lookup")}
+                    for node, parents in plan_paths(explained):
+                        if node.get("Index Name") not in prefix_indexes:
+                            continue  # Exact unique-key point reads need no sentinel.
+                        condition = node.get("Index Cond", "")
+                        self.assertIn("workspace_id", condition)
+                        self.assertIn("runtime_id", condition)
+                        if node["Index Name"] == SCOPES + "_node_lookup":
+                            self.assertIn("node_id", condition)
+                        capped = False
+                        for parent in reversed(parents):
+                            if parent["Node Type"] == "Limit":
+                                capped = True
+                                break
+                            self.assertNotIn(parent["Node Type"], (
+                                "Sort", "Incremental Sort", "Unique", "Aggregate", "GroupAggregate",
+                                "HashAggregate", "Nested Loop", "Hash Join", "Merge Join", "Append",
+                                "Merge Append", "SetOp"),
+                                "each candidate prefix must be capped before combination/deduplication/sorting")
+                        self.assertTrue(capped, "an ordered but unbounded candidate index scan is insufficient")
         self.assertTrue({SCOPES + suffix for suffix in (
             "_runtime_lookup", "_node_lookup", "_runtime_nodes_lookup")} <= indexes)
 

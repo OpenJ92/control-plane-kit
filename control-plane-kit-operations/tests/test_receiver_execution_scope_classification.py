@@ -15,13 +15,64 @@ from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
-from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
+from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority, PauseActivityRun
 from control_plane_kit_operations.records import FailureEvidence
+from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture
 from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, RecordingRuntimeAdapter
 
 
 class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_missing_required_direct_outcome_is_unavailable_not_recovered_evidence(self):
+        module = self.require_scopes()
+        self.admit_operations("missing-outcome", StartNode(NodeTarget("app")))
+        _, completed = self.execute_effects("missing-outcome")
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "conflict")
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            # The no-observation adapter created no dependent observation rows.
+            # Delete only its direct outcome inside this rolled-back corruption.
+            self.assertEqual(uow.stores.connection.execute(
+                "DELETE FROM cpk_effect_attempt_outcomes WHERE run_id='run-missing-outcome'").rowcount, 1)
+            evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
+            self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "unavailable")
+        self.assertEqual(self.evidence(scope).disposition, "conflict")
+
+    def test_cancellation_after_uncertain_dispatch_does_not_prove_no_dispatch(self):
+        module = self.require_scopes()
+        self.admit_operations("dispatched", StartNode(NodeTarget("app")))
+        adapter = RecordingRuntimeAdapter(lambda context, request: RuntimeEffectResult.uncertain(
+            request.effect_id, RuntimeEffectFailure("lost-result", "bounded uncertain dispatch")))
+        claimed, _ = self.execute_effects("dispatched", adapter)
+        self.lifecycle("event-pause-dispatched", "action-pause-dispatched").execute(
+            PauseActivityRun(claimed.run.run_id,
+                ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
+                ExecutionLeaseFence("worker-a", claimed.request.claim.generation),
+                IdempotencyKey("pause-dispatched")))
+        cancelled = self.cancel(claimed, "dispatched")
+        self.assertEqual(cancelled.run.status, ActivityRunStatus.CANCELLED)
+        result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
+        self.assertEqual(result.disposition, "conflict")
+        self.assertIn("run-dispatched", result.run_ids)
+
+    def test_later_accepted_retry_does_not_account_for_older_run_of_same_request(self):
+        module = self.require_scopes()
+        self.admit_operations("same-request", StartNode(NodeTarget("app")))
+        adapter = RecordingRuntimeAdapter(lambda context, request: RuntimeEffectResult.failed(
+            request.effect_id, RuntimeEffectFailure("first-failed", "bounded earlier failure")))
+        claimed, first = self.execute_effects("same-request", adapter)
+        self.assertEqual(first.run.status, ActivityRunStatus.FAILED)
+        retried = self.retry(claimed, "same-request")
+        _, completed = self.execute_claimed_effects(retried, "same-request-retry")
+        self.assertEqual(completed.run.status, ActivityRunStatus.SUCCEEDED)
+        self.advance(retried, "same-request-retry")
+        result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
+        self.assertEqual(result.disposition, "conflict")
+        self.assertEqual(result.request_ids, ("execution-same-request",))
+        self.assertIn(claimed.run.run_id, result.run_ids)
+
     def test_successful_inverse_does_not_invent_whole_run_disposal(self):
         module = self.require_scopes()
         self.admit_operations("inverse", StartNode(NodeTarget("app")), StartNode(NodeTarget("app")))
@@ -35,7 +86,7 @@ class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, u
         self.assertEqual(len(compensation.program.steps), 1)
         inverse = self.start_inverse(claimed, compensation, "inverse")
         outcome = ExecutionEffectOutcome(inverse.binding.inverse_attempt, inverse.intent.request_fingerprint,
-                                         RuntimeEffectResult.succeeded("recorded-inverse-effect"))
+                                         RuntimeEffectResult.succeeded(inverse.attempt.original_start_event.event_id))
         EffectAttemptFoldService(self.unit_of_work, id_factory=GeneratedIds("inverse-fold")).execute(
             FoldEffectAttempt("execution-inverse", effect_outcome_transition(outcome),
                 ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),

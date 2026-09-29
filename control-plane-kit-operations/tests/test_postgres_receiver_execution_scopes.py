@@ -6,7 +6,7 @@ import unittest
 import psycopg
 
 from control_plane_kit_core.operations import ExecutionRequestStatus
-from control_plane_kit_core.planning import NodeTarget, WaitForHealthy
+from control_plane_kit_core.planning import ActivityId, ActivityPlan, NodeTarget, PlannedActivity, StartNode, WaitForHealthy
 from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.postgres.schema import SchemaInstallationError
 from control_plane_kit_operations.records import ExecutionIdempotency, ExecutionRequestRecord
@@ -14,6 +14,81 @@ from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture
 
 
 class PostgresReceiverExecutionScopeTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def seed_pair_plans(self):
+        self.seed_graphs("pair-base", self.empty_graph("pair-base"),
+                         "pair-desired", self.graph(nodes=("app", "other")))
+        with self.unit_of_work() as uow:
+            uow.stores.workspaces.set_current_graph("workspace-a", "pair-base")
+            uow.stores.workspaces.set_desired_graph("workspace-a", "pair-desired")
+            uow.commit()
+        for name, nodes in (("both", ("app", "other")), ("app", ("app",)), ("other", ("other",))):
+            plan = ActivityPlan(tuple(PlannedActivity(ActivityId("start-" + node),
+                StartNode(NodeTarget(node))) for node in nodes))
+            self.seed_plan_truth(plan_id="pair-plan-" + name, approval_request_id="pair-approval-" + name,
+                approval_decision_id="pair-decision-" + name, plan=plan,
+                base_graph_id="pair-base", desired_graph_id="pair-desired")
+
+    def admit_pair_plan(self, name, suffix):
+        return self.admission_service("pair-request-" + suffix, "pair-action-" + suffix).execute(
+            self.command(plan_id="pair-plan-" + name, approval_request_id="pair-approval-" + name,
+                         key="pair-" + suffix))
+
+    def test_known_64_requests_on_later_distinct_prefix_fit_but_new_65th_refuses(self):
+        module = self.require_scopes()
+        self.seed_pair_plans()
+        for index in range(64):
+            self.admit_pair_plan("both", str(index))
+        scopes = tuple(module.ExecutionReceiverScope("docker", node) for node in ("app", "other"))
+        result = self.evidence(*scopes)
+        self.assertEqual(result.disposition, "conflict")
+        self.assertEqual(set(result.request_ids), {"pair-request-" + str(index) for index in range(64)})
+        self.assertEqual(len(result.request_ids), 64)
+        # The later node prefix repeats all known IDs before this new identity.
+        self.admit_pair_plan("other", "zz-overflow")
+        self.assertEqual(self.evidence(*scopes).disposition, "capacity")
+
+    def test_node_point_does_not_consume_unrelated_nodes_on_same_runtime(self):
+        module = self.require_scopes()
+        self.seed_pair_plans()
+        for index in range(65):
+            self.admit_pair_plan("other", str(index))
+        self.admit_pair_plan("app", "app")
+        result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
+        self.assertEqual(result.disposition, "conflict")
+        self.assertEqual(result.request_ids, ("pair-request-app",))
+        self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", None)).disposition, "capacity")
+
+    def test_forged_digest_with_intact_rows_refuses_online_and_current_verification(self):
+        module = self.require_scopes()
+        self.admit()
+        original = self.scope_header()
+        forged = "0" * 64 if original[1] != "0" * 64 else "1" * 64
+        self.connection.execute("UPDATE cpk_execution_requests SET receiver_scope_digest=%s WHERE request_id='execution-a'", (forged,))
+        try:
+            rows = self.scope_rows()
+            result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
+            self.assertEqual(result.disposition, "unavailable")
+            with self.assertRaises(SchemaInstallationError):
+                install_schema(self.connection)
+            self.assertEqual(self.scope_header(), (original[0], forged))
+            self.assertEqual(self.scope_rows(), rows)
+        finally:
+            self.connection.execute("UPDATE cpk_execution_requests SET receiver_scope_digest=%s WHERE request_id='execution-a'", (original[1],))
+
+    def test_current_verifier_detects_an_entire_missing_scope_set_without_backfill(self):
+        self.require_catalog()
+        self.admit()
+        original = self.scope_header(), self.scope_rows()
+        with self.unit_of_work() as uow:
+            connection = uow.stores.connection
+            self.assertEqual(connection.execute("DELETE FROM cpk_execution_receiver_scopes WHERE request_id='execution-a'").rowcount, 1)
+            with self.assertRaises(SchemaInstallationError):
+                install_schema(connection)
+            self.assertEqual(connection.execute("SELECT count(*) FROM cpk_execution_receiver_scopes WHERE request_id='execution-a'").fetchone()[0], 0)
+            self.assertEqual(connection.execute("SELECT receiver_scope_count,receiver_scope_digest FROM cpk_execution_requests WHERE request_id='execution-a'").fetchone(), original[0])
+        self.assertEqual((self.scope_header(), self.scope_rows()), original)
+        # No online reverse-omission discovery is claimed for privileged SQL.
+
     def test_admission_commits_exact_scope_header_rows_and_real_action(self):
         module = self.require_scopes()
         self.require_catalog()
@@ -149,3 +224,13 @@ class PostgresReceiverExecutionScopeTests(ReceiverExecutionScopeFixture, unittes
         before = self.connection.execute("SELECT request_id,receiver_scope_count,receiver_scope_digest FROM cpk_execution_requests ORDER BY request_id").fetchall()
         install_schema(self.connection)
         self.assertEqual(self.connection.execute("SELECT request_id,receiver_scope_count,receiver_scope_digest FROM cpk_execution_requests ORDER BY request_id").fetchall(), before)
+        last_id, count, digest = before[64]
+        self.assertEqual(last_id, "execution-overflow")
+        forged = "0" * 64 if digest != "0" * 64 else "1" * 64
+        self.connection.execute("UPDATE cpk_execution_requests SET receiver_scope_digest=%s WHERE request_id=%s", (forged, last_id))
+        try:
+            with self.assertRaises(SchemaInstallationError):
+                install_schema(self.connection)
+            self.assertEqual(self.scope_header(last_id), (count, forged))
+        finally:
+            self.connection.execute("UPDATE cpk_execution_requests SET receiver_scope_digest=%s WHERE request_id=%s", (digest, last_id))

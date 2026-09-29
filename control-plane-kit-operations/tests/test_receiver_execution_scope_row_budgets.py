@@ -2,14 +2,10 @@
 
 import unittest
 
-from control_plane_kit_core.operations import ActivityEventKind, ActivityRunStatus, RunId
-from control_plane_kit_core.operations.lifecycle import RecoveryScope
+from control_plane_kit_core.operations import ActivityEventKind, ActivityRunStatus
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.planning import NodeTarget, StartNode
 from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
-from control_plane_kit_operations.activity_run_retry import RetryFailedActivityRun
-from control_plane_kit_operations.activity_run_retry_interpreter import ActivityRunRetryCommandService
-from control_plane_kit_operations.execution_lease_recovery import RecoveryAuthority
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority, PauseActivityRun, StartActivityRun
 from control_plane_kit_operations.records import ActivityEventRecord
@@ -66,7 +62,7 @@ class ReceiverExecutionScopeRowBudgetTests(ReceiverExecutionScopeFixture, unitte
         from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
         from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
         outcome = ExecutionEffectOutcome(inverse.binding.inverse_attempt, inverse.intent.request_fingerprint,
-                                         RuntimeEffectResult.succeeded("budget-inverse"))
+                                         RuntimeEffectResult.succeeded(inverse.attempt.original_start_event.event_id))
         EffectAttemptFoldService(self.unit_of_work, id_factory=GeneratedIds("budget-inverse-fold")).execute(
             FoldEffectAttempt(claimed.request.identity.request_id, effect_outcome_transition(outcome),
                 ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
@@ -98,13 +94,6 @@ class ReceiverExecutionScopeRowBudgetTests(ReceiverExecutionScopeFixture, unitte
             PauseActivityRun("run-events", authority, fence, IdempotencyKey("events-overflow")))
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_activity_events WHERE run_id='run-events'").fetchone()[0], 8193)
         self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition, "capacity")
-
-    def retry(self, previous, suffix):
-        return ActivityRunRetryCommandService(self.unit_of_work, id_factory=GeneratedIds("retry-" + suffix)).execute(
-            RetryFailedActivityRun(previous.request.identity.request_id, RunId(previous.run.run_id),
-                ExecutionLeaseFence("worker-a", previous.request.claim.generation),
-                RecoveryAuthority("operator-a", "test-recovery-authority", (RecoveryScope.OPERATE,)),
-                IdempotencyKey("retry-" + suffix)))
 
     def test_256_original_runs_fit_and_257_refuse_without_latest_run_shortcut(self):
         module = self.require_scopes()
