@@ -143,3 +143,9 @@ class PostgresReceiverExecutionScopeTests(ReceiverExecutionScopeFixture, unittes
         self.admit("overflow")
         result = self.evidence(*scopes)
         self.assertEqual(result.disposition, "capacity")
+        # Current verification has its own per-request budget and exhaustively
+        # walks identities; it must not mistake the online64-candidate ceiling
+        # for a whole-database verification limit or alter recorded coverage.
+        before = self.connection.execute("SELECT request_id,receiver_scope_count,receiver_scope_digest FROM cpk_execution_requests ORDER BY request_id").fetchall()
+        install_schema(self.connection)
+        self.assertEqual(self.connection.execute("SELECT request_id,receiver_scope_count,receiver_scope_digest FROM cpk_execution_requests ORDER BY request_id").fetchall(), before)

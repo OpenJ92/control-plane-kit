@@ -7,16 +7,48 @@ import unittest
 import rfc8785
 
 from control_plane_kit_core.planning import (
-    ActivityId, ActivityImpact, ActivityPlan, DataResourceTarget, DestroyDataResource,
+    ActivityId, ActivityImpact, ActivityPlan, AllocatePublicIngress, DataResourceTarget, DestroyDataResource,
     NodeTarget, PlannedActivity, ReconcileNode, ReconcileRuntime, RemoveNodeResource,
-    RiskLevel, RuntimeTarget, StartNode, StartRuntime, StopNode, StopRuntime, WaitForHealthy,
+    PublicIngressActivityTarget, RemovePublicIngress, RiskLevel, RuntimeTarget, StartNode, StartRuntime,
+    StopNode, StopRuntime, SwitchSocketConnection, WaitForHealthy, compile_activity_plan,
 )
+from control_plane_kit_core.planning.scenarios import switch_database_endpoint
+from control_plane_kit_core.topology import diff_graphs, validate_graph
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture
 from tests.test_execution_admission import review_plan
+from tests.test_runtime_effect_translation import _public_ingress_graph
 
 
 class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_actual_socket_record_activity_is_positive_empty(self):
+        module = self.require_scopes()
+        scenario = switch_database_endpoint()
+        plan = compile_activity_plan(diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph)))
+        operations = tuple(activity.operation for activity in plan.activities
+                           if isinstance(activity.operation, SwitchSocketConnection))
+        self.assertTrue(operations)
+        source = self.source_with_operations(*operations, base_graph=scenario.current_graph,
+                                             desired_graph=scenario.desired_graph)
+        self.assertEqual(module.derive_execution_receiver_scopes(*source).scopes, ())
+
+    def test_ingress_is_outside_receiver_scope_but_does_not_erase_node_work(self):
+        module = self.require_scopes()
+        before = _public_ingress_graph(public_ingresses=())
+        after = _public_ingress_graph()
+        ingress = AllocatePublicIngress(PublicIngressActivityTarget("gateway-public"))
+        source = self.source_with_operations(ingress, base_graph=before, desired_graph=after)
+        self.assertEqual(module.derive_execution_receiver_scopes(*source).scopes, ())
+        source = self.source_with_operations(RemovePublicIngress(PublicIngressActivityTarget("gateway-public")),
+                                             base_graph=after, desired_graph=before)
+        self.assertEqual(module.derive_execution_receiver_scopes(*source).scopes, ())
+        source = self.source_with_operations(ingress, StartNode(NodeTarget("gateway")),
+                                             base_graph=before, desired_graph=after)
+        self.assertEqual(module.derive_execution_receiver_scopes(*source).scopes,
+                         (module.ExecutionReceiverScope("docker", "gateway"),))
+        # Empty receiver footprint does not grant ingress effect permission;
+        # existing authority-use admission tests remain its governing owner.
+
     def test_review_data_destruction_and_unknown_variants_never_become_empty_scope(self):
         module = self.require_scopes()
         identity, plan, base, desired = self.source()
@@ -58,6 +90,18 @@ class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unitt
         self.assertEqual(derived.scopes, (module.ExecutionReceiverScope("docker", "app"),))
         with self.assertRaises(FrozenInstanceError):
             derived.source_digest = "0" * 64
+
+    def test_all_stored_profiles_preserve_literal_scope_and_legacy_original_identity_rule(self):
+        module = self.require_scopes()
+        identity, plan, base, desired = self.source()
+        for profile in (None, *PlanDerivationProfile):
+            with self.subTest(profile=profile):
+                original = replace(plan, derivation_profile=profile)
+                self.assertEqual(module.derive_execution_receiver_scopes(identity, original, base, desired).scopes,
+                                 (module.ExecutionReceiverScope("docker", "app"),))
+        legacy = replace(plan, base_realized_projection_id=None, desired_realized_projection_id=None)
+        self.assertEqual(module.derive_execution_receiver_scopes(identity, legacy, base, desired).scopes,
+                         (module.ExecutionReceiverScope("docker", "app"),))
 
     def test_witness_matches_exact_original_stored_payload_and_projection_digests(self):
         module = self.require_scopes()
@@ -125,10 +169,10 @@ class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unitt
 
     def test_duplicate_scopes_are_canonical_without_dropping_distinct_nodes(self):
         module = self.require_scopes()
-        source = self.source_with_operations(StartNode(NodeTarget("z")), StartNode(NodeTarget("A")),
-            StartNode(NodeTarget("z")), desired_graph=self.graph(nodes=("z", "A")))
+        source = self.source_with_operations(StartNode(NodeTarget("a")), StartNode(NodeTarget("Z")),
+            StartNode(NodeTarget("a")), desired_graph=self.graph(nodes=("a", "Z")))
         self.assertEqual(module.derive_execution_receiver_scopes(*source).scopes,
-                         (module.ExecutionReceiverScope("docker", "A"), module.ExecutionReceiverScope("docker", "z")))
+                         (module.ExecutionReceiverScope("docker", "Z"), module.ExecutionReceiverScope("docker", "a")))
 
     def test_health_observation_is_positive_empty_with_real_distinct_witness(self):
         module = self.require_scopes()

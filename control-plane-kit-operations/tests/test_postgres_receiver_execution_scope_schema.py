@@ -1,6 +1,7 @@
 """#1902 exact prospective catalog and SQL-enforced scope representation."""
 
 import unittest
+from hashlib import sha256
 
 import psycopg
 
@@ -27,6 +28,9 @@ class PostgresReceiverExecutionScopeSchemaTests(ReceiverExecutionScopeFixture, u
             self.assertTrue(column.not_null)
             self.assertIsNone(column.default_expression)
             self.assertEqual(column.formatted_type, "integer" if name.endswith("count") else "text")
+        self.assertEqual({item.name for item in contract.constraints
+            if item.relation == "cpk_execution_requests" and item.name.startswith("cpk_execution_requests_receiver_scope_")},
+            {"cpk_execution_requests_receiver_scope_count_check", "cpk_execution_requests_receiver_scope_digest_check"})
         constraints = {value.name: value for value in contract.constraints if value.relation == SCOPES}
         self.assertEqual(set(constraints), {SCOPES + suffix for suffix in (
             "_pkey", "_request_workspace_fk", "_position_check", "_kind_check",
@@ -94,6 +98,27 @@ class PostgresReceiverExecutionScopeSchemaTests(ReceiverExecutionScopeFixture, u
             with self.subTest(column=column, value=value), self.assertRaises(error):
                 with self.connection.transaction():
                     self.connection.execute(psycopg.sql.SQL("UPDATE cpk_execution_requests SET {}=%s WHERE request_id='execution-a'").format(psycopg.sql.Identifier(column)), (value,))
+
+    def test_sql_combined_key_accepts_1024_bytes_and_refuses_1025_without_truncation(self):
+        self.require_catalog()
+        self.admit()
+        fixed = len("execution-aworkspace-adocker".encode())
+        size = 1024 - fixed
+        noise = "".join(sha256(str(i).encode()).hexdigest() for i in range(32))[:size]
+        multibyte = "é" * (size // 2) + "x" * (size % 2)
+        for node in (noise, multibyte):
+            with self.subTest(kind="multibyte" if node == multibyte else "incompressible"):
+                self.assertEqual(len(node.encode()) + fixed, 1024)
+                with self.connection.transaction():
+                    self.connection.execute("UPDATE cpk_execution_receiver_scopes SET node_id=%s WHERE request_id='execution-a'", (node,))
+                    actual = self.connection.execute("SELECT node_id FROM cpk_execution_receiver_scopes WHERE request_id='execution-a'").fetchone()[0]
+                    self.assertEqual(actual, node)
+                    # This is SQL representation evidence, not original-scope
+                    # derivation. Restore original rows before current reentry.
+                    raise psycopg.Rollback()
+                with self.assertRaises(psycopg.errors.CheckViolation):
+                    with self.connection.transaction():
+                        self.connection.execute("UPDATE cpk_execution_receiver_scopes SET node_id=%s WHERE request_id='execution-a'", (node + "x",))
 
     def test_current_reentry_preserves_coverage_and_executes_only_queries(self):
         self.require_catalog()

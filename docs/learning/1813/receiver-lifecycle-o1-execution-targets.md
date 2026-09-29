@@ -190,6 +190,49 @@ No C3 fresh-dispatch/public claim/start closure, end-to-end C-N11 clearance,
 own-run exclusion or contention activation is credited by these C1 tests.
 The old suite must remain collected; no skip/xfail or weakened assertion.
 
+The complete candidate target checkpoint contains 60 test methods in seven
+files, with one shared real-service fixture. This is an authored inventory,
+not a predicted suite result or executable evidence. It awaits independent
+target review and ordinary causal red. Tests intentionally assert the absent
+module or catalog inside the method, so intended red is an assertion rather
+than a collection/import failure. A first-boundary failure proves only that
+boundary; later fixture feasibility and semantic assertions still need green.
+
+Exact inherited admission anchors are
+`test_revocation_after_approval_blocks_new_execution_but_preserves_receipt`,
+`test_identical_replay_returns_original_and_changed_intent_conflicts`,
+`test_approval_cannot_be_reused_after_projection_cycles_back`,
+`test_concurrent_identical_admission_converges`,
+`test_admission_replay_survives_close_but_new_admission_is_fenced`, and
+`test_late_action_failure_rolls_back_execution_request` in
+`test_execution_admission.py`. The exact inherited socket anchor is
+`test_runtime_interpreter_dispatcher.py::test_socket_connection_operation_is_recorded_without_runtime_effect`.
+Inherited transport laws remain in
+`test_postgres_effect_attempt_intent_store.py::test_transport_bounds_gate_before_python_decode_on_get_and_current`
+and `test_postgres_effect_outcome_store.py::test_exact_8192_byte_preimage_roundtrips_and_workspace_is_derived`
+with their existing negative/schema tests. C1's real-cursor targets additionally
+observe the combined reader's transported values, oversized original material,
+64 KiB cancellation action boundary and growth after a length probe.
+
+Capacity interpretation is deliberately conservative. The 4096 raw-row positive
+uses four exhausted prefixes, with 32 distinct requests and 128 scopes per
+request. A single full transport-reduced prefix must instead refuse, even at
+the nominal raw-row cap. The 16 MiB negative uses twenty distinct individually
+legal near-cap original descriptors; immutable caching cannot erase their
+minimum total. The monitor delegates actual SQL/results unchanged, counts
+projected scalar text/bytea (NULL zero), and never supplies rows or alters limits.
+The one race target injects a rolled-back database mutation after the actual
+length probe; it never changes the probe result delivered to the reader.
+
+Row-budget targets use real execution/retry/compensation owners for complete
+attempt/intent/outcome evidence. The independent-intent one-over negative is a
+rolled-back deletion of a freshly started attempt before any outcome exists,
+leaving its real intent. Compensation's at-limit case includes steps and
+bindings; its next lawful atomic start adds three inseparable rows and must
+refuse. Recorded pause/resume event populations are read fixtures, not provider
+execution claims. Runtime cost and the feasibility of the large fixture values
+remain unproved until the owning suite reaches those assertions.
+
 ## Review, validation and handoff
 
 Before ordinary causal red, publish the reviewed target checkpoint as unvalidated

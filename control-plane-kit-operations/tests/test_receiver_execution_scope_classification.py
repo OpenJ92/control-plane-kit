@@ -1,6 +1,7 @@
 """#1902 pure evidence disposition; C-N11 never earns C3 closure here."""
 
 import unittest
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.operations import (
     ActivityRunStatus, EffectAttemptIdentity, EffectAttemptTransition,
@@ -12,6 +13,7 @@ from control_plane_kit_core.planning import NodeTarget, RuntimeTarget, StartNode
 from control_plane_kit_core.runtime_effects import RuntimeEffectFailure, RuntimeEffectResult
 from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import FailureEvidence
@@ -20,6 +22,28 @@ from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, Reco
 
 
 class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_successful_inverse_does_not_invent_whole_run_disposal(self):
+        module = self.require_scopes()
+        self.admit_operations("inverse", StartNode(NodeTarget("app")), StartNode(NodeTarget("app")))
+        adapter = RecordingRuntimeAdapter(
+            lambda context, request: RuntimeEffectResult.succeeded(request.effect_id),
+            lambda context, request: RuntimeEffectResult.failed(request.effect_id,
+                RuntimeEffectFailure("after-success", "bounded later failure")))
+        claimed, failed = self.execute_effects("inverse", adapter)
+        self.assertEqual(failed.run.status, ActivityRunStatus.FAILED)
+        compensation = self.begin_compensation(claimed, "inverse")
+        self.assertEqual(len(compensation.program.steps), 1)
+        inverse = self.start_inverse(claimed, compensation, "inverse")
+        outcome = ExecutionEffectOutcome(inverse.binding.inverse_attempt, inverse.intent.request_fingerprint,
+                                         RuntimeEffectResult.succeeded("recorded-inverse-effect"))
+        EffectAttemptFoldService(self.unit_of_work, id_factory=GeneratedIds("inverse-fold")).execute(
+            FoldEffectAttempt("execution-inverse", effect_outcome_transition(outcome),
+                ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
+                ExecutionLeaseFence("worker-a", claimed.request.claim.generation), None, outcome))
+        result = self.evidence(module.ExecutionReceiverScope("docker", "app"))
+        self.assertEqual(result.disposition, "conflict")
+        self.assertIn("run-inverse", result.run_ids)
+
     def test_independent_orphan_intent_refuses_even_when_attempt_prefix_is_empty(self):
         module = self.require_scopes()
         self.admit_operations("orphan", StartNode(NodeTarget("app")))
@@ -158,6 +182,38 @@ class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, u
             with self.unit_of_work() as uow:
                 uow.stores.activity_history.add_action(cancelled.action)
                 uow.commit()
+
+    def test_cancel_witness_must_match_every_original_identity_and_event_coordinate(self):
+        module = self.require_scopes()
+        self.admit()
+        cancelled = self.cancel(self.claim())
+        original = dict(cancelled.action.payload)
+        for key, value in (("execution_request_id", "foreign-request"), ("plan_id", "foreign-plan"),
+                           ("run_id", "foreign-run"), ("event_id", "foreign-event"),
+                           ("event_type", "run_failed"), ("event_ordinal", 999), ("run_status", "failed")):
+            with self.subTest(key=key):
+                self.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id=%s",
+                                        (Jsonb({**original, key: value}), cancelled.action.action_id))
+                try:
+                    self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition,
+                                     "unavailable")
+                finally:
+                    self.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id=%s",
+                                            (Jsonb(original), cancelled.action.action_id))
+
+    def test_no_caller_flag_or_ignored_run_can_supply_clearance(self):
+        module = self.require_scopes()
+        self.admit()
+        self.cancel(self.claim())
+        scope = module.ExecutionReceiverScope("docker", "app")
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
+            self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "requires-fresh-gate-closure")
+            with self.assertRaises(TypeError):
+                module.classify_receiver_scope_evidence(evidence, reactivation_closed=True)
+            with self.assertRaises(TypeError):
+                uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard, excluded_run_ids=("run-a",))
 
     def test_cancel_action_time_mismatch_cannot_supply_no_dispatch_proof(self):
         module = self.require_scopes()

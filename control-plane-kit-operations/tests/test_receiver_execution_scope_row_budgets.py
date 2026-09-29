@@ -24,6 +24,57 @@ def failed_adapter():
 
 
 class ReceiverExecutionScopeRowBudgetTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_exact_original_retry_preserves_coverage_while_competing_scope_remains_occupied(self):
+        module = self.require_scopes()
+        self.admit_operations("retry", StartNode(NodeTarget("app")))
+        claimed, failed = self.execute_effects("retry", failed_adapter())
+        self.assertEqual(failed.run.status, ActivityRunStatus.FAILED)
+        before = self.scope_header("execution-retry"), self.scope_rows("execution-retry")
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "conflict")
+        retried = self.retry(claimed, "lawful-original")
+        self.assertEqual(retried.run.status, ActivityRunStatus.CLAIMED)
+        self.assertEqual((self.scope_header("execution-retry"), self.scope_rows("execution-retry")), before)
+        after = self.evidence(scope)
+        self.assertEqual(after.disposition, "conflict")
+        self.assertEqual(set(after.run_ids), {claimed.run.run_id, retried.run.run_id})
+
+    def test_compensation_steps_and_bindings_consume_the_same_effect_budget(self):
+        module = self.require_scopes()
+        self.admit_operations("compensation-budget", *(StartNode(NodeTarget("app")) for _ in range(682)))
+        remaining = [681]
+
+        def fail_after_successes(context, request):
+            if remaining[0]:
+                remaining[0] -= 1
+                return RuntimeEffectResult.succeeded(request.effect_id)
+            return RuntimeEffectResult.failed(request.effect_id, RuntimeEffectFailure("last-failed", "bounded final failure"))
+
+        adapter = RecordingRuntimeAdapter(*(fail_after_successes for _ in range(682)))
+        claimed, failed = self.execute_claimed_effects(self.claim("compensation-budget", duration_seconds=3600),
+                                                     "compensation-budget", adapter)
+        self.assertEqual(failed.run.status, ActivityRunStatus.FAILED)
+        compensation = self.begin_compensation(claimed, "budget")
+        self.assertEqual(len(compensation.program.steps), 681)
+        # 682 attempts + 682 independent intents +681 program steps =2045.
+        inverse = self.start_inverse(claimed, compensation, "budget-one")
+        # First inverse contributes attempt + intent + binding, exactly2048.
+        self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition, "conflict")
+        # Finish this inverse through the existing fold owner before starting
+        # the next ordered program step. No whole-run disposal is inferred.
+        from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
+        from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
+        from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
+        outcome = ExecutionEffectOutcome(inverse.binding.inverse_attempt, inverse.intent.request_fingerprint,
+                                         RuntimeEffectResult.succeeded("budget-inverse"))
+        EffectAttemptFoldService(self.unit_of_work, id_factory=GeneratedIds("budget-inverse-fold")).execute(
+            FoldEffectAttempt(claimed.request.identity.request_id, effect_outcome_transition(outcome),
+                ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
+                ExecutionLeaseFence("worker-a", claimed.request.claim.generation), None, outcome))
+        self.start_inverse(claimed, compensation, "budget-two", position=2)
+        # A lawful atomic inverse start adds three inseparable evidence rows.
+        self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition, "capacity")
+
     def test_8192_journal_events_fit_and_8193_refuse_without_partial_history(self):
         module = self.require_scopes()
         self.admit_operations("events", StartNode(NodeTarget("app")))

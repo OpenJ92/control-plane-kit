@@ -9,6 +9,10 @@ from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
 from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedActivity
 from control_plane_kit_core.products import ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.operations import RunId, RecoveryScope
+from control_plane_kit_core.runtime_effect_observation import RuntimeEffectIntent, RuntimeEffectIntentSource
+from control_plane_kit_core.runtime_effects import RuntimeEffectKind
+from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_core.topology import compile_topology
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.advancement import AdvanceCurrentGraph, CurrentGraphAdvancementCommandService
@@ -16,6 +20,13 @@ from control_plane_kit_operations.coordinator import ExecuteActivityRun, Executi
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.effect_attempt_reconciliation_interpreter import EffectAttemptReconciliationService
+from control_plane_kit_operations.execution_lease_recovery import RecoveryAuthority
+from control_plane_kit_operations.failed_run_compensation import (
+    BeginFailedRunCompensation, FailedRunCompensationCommandService, FailedRunCompensationReason,
+)
+from control_plane_kit_operations.failed_run_compensation_attempt import (
+    FailedRunCompensationAttemptStartService, StartFailedRunCompensationAttempt,
+)
 from control_plane_kit_operations.lifecycle import (
     CancelActivityRun, ClaimAndOpenActivityRun, ExecutionLeaseDuration,
     ExecutionWorkerAuthority, RunLifecycleCommandService, StartActivityRun,
@@ -167,6 +178,35 @@ class ReceiverExecutionScopeFixture:
                 authority=ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
                 fence=ExecutionLeaseFence("worker-a", claimed.request.claim.generation),
                 idempotency_key=IdempotencyKey("advance-" + suffix)))
+
+    def begin_compensation(self, claimed, suffix):
+        with self.unit_of_work() as uow:
+            plan = uow.stores.activity_history.get_plan(claimed.request.identity.plan_id)
+            failure = uow.stores.execution.events_for_run(claimed.run.run_id)[-1].failure
+        return FailedRunCompensationCommandService(self.unit_of_work,
+            clock=lambda: datetime.now(timezone.utc).isoformat(), id_factory=GeneratedIds("compensate-" + suffix)).execute(
+            BeginFailedRunCompensation(workspace_id="workspace-a", request_id=claimed.request.identity.request_id,
+                run_id=RunId(claimed.run.run_id), plan_id=plan.plan_id,
+                expected_current_graph_id=plan.base_graph_id, desired_graph_id=plan.desired_graph_id,
+                expected_desired_graph_revision=plan.desired_graph_revision,
+                execution_intent_fingerprint=claimed.request.idempotency.intent_fingerprint,
+                authority=RecoveryAuthority("operator-a", "test-recovery-authority", (RecoveryScope.COMPENSATE,)),
+                reason=FailedRunCompensationReason.POST_EFFECT_FAILURE, source_failure=failure,
+                idempotency_key=IdempotencyKey("compensate-" + suffix)))
+
+    def start_inverse(self, claimed, compensation, suffix, *, position=1):
+        with self.unit_of_work() as uow:
+            plan = uow.stores.activity_history.get_plan(claimed.request.identity.plan_id)
+        step = compensation.program.steps[position - 1]
+        intent = RuntimeEffectIntent(kind=RuntimeEffectKind.REALIZE_ACTIVITY, runtime_kind=RuntimeKind.DOCKER,
+            source=RuntimeEffectIntentSource("workspace-a", claimed.request.identity.request_id,
+                RunId(claimed.run.run_id), plan.plan_id, plan.base_graph_id, plan.desired_graph_id),
+            activity_id=ActivityId(step.source_effect.attempt_identity.activity_id), operation=step.operation,
+            authority_ref=None, authority_deliveries=(), products=())
+        return FailedRunCompensationAttemptStartService(self.unit_of_work, id_factory=GeneratedIds("inverse-" + suffix)).execute(
+            StartFailedRunCompensationAttempt(compensation.record.program_id, position, intent,
+                ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
+                ExecutionLeaseFence("worker-a", claimed.request.claim.generation)))
 
     def scope_rows(self, request="execution-a"):
         return self.connection.execute(

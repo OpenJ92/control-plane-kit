@@ -119,6 +119,13 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
         result = self.evidence(*scopes, module.ExecutionReceiverScope("docker", "one-over"))
         self.assertEqual(result.disposition, "capacity")
 
+    def test_transported_reference_bound_uses_utf8_without_truncating_scope(self):
+        module = self.require_scopes()
+        scope = module.ExecutionReceiverScope("é" * 1024, None)
+        self.assertEqual(self.evidence(scope).disposition, "nonconflicting")
+        with self.assertRaises(module.ReceiverScopeCapacity):
+            module.ExecutionReceiverScope("é" * 1024 + "x", None)
+
     def test_foreign_workspace_guard_and_finished_guard_never_supply_evidence(self):
         module = self.require_scopes()
         scope = module.ExecutionReceiverScope("docker", "app")
