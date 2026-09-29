@@ -551,6 +551,7 @@ class _ExecutionScopeStorage:
                 attempts, intents, outcomes = self.effects(request, original, run, events)
                 programs, bindings = self.compensations(request, original, run, events, attempts, intents, outcomes)
                 if run.status is ActivityRunStatus.CANCELLED:
+                    _require(bool(events) and events[-1].kind is ActivityEventKind.RUN_CANCELLED)
                     historical = _historical_recovery_journal(events)
                     _require(historical is not None)
                     _require(all(encode_postgres_timestamp(left.occurred_at) <= encode_postgres_timestamp(right.occurred_at)
