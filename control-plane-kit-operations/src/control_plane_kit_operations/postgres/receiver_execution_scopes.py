@@ -252,15 +252,11 @@ class _ExecutionScopeStorage:
             params = [workspace_id, runtime_id]
             if kind == "runtime":
                 where += "'runtime'"
-                order = "request_id"
             else:
                 where += "'node'"
                 if kind == "node":
                     where += " AND node_id=%s"
                     params.append(node_id)
-                    order = "request_id"
-                else:
-                    order = "request_id,node_id"
             limit = min(MAX_CANDIDATE_ROWS - raw + 1, self.transport.remaining // 4096)
             if kind != "all-nodes":
                 limit = min(limit, MAX_REQUESTS + 1)
@@ -279,11 +275,13 @@ class _ExecutionScopeStorage:
             # node and ordinal/kind, is checked by verify() before classification.
             rows = self.connection.execute(
                 "SELECT " + ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in ("request_id", "workspace_id"))
-                + f",({valid}) FROM cpk_execution_receiver_scopes WHERE {where} ORDER BY {order} LIMIT %s",
+                + f",({valid}) FROM cpk_execution_receiver_scopes WHERE {where} LIMIT %s",
                 (*params, limit),
             ).fetchall()
             self.transport.charge(reserved, rows)
-            # A full transport-reduced prefix provides no exhaustion proof.
+            # Any full prefix refuses before interpretation; a shorter page
+            # contains every matching row, irrespective of retrieval order.
+            # The cap bounds returned rows, not PostgreSQL's internal scan work.
             _capacity(len(rows) < limit)
             raw += len(rows)
             _capacity(raw <= MAX_CANDIDATE_ROWS)

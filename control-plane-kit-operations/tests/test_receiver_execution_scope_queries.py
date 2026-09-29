@@ -26,12 +26,6 @@ class QueryRecorder:
         return self.connection.execute(query, params)
 
 
-def plan_nodes(plan):
-    yield plan
-    for child in plan.get("Plans", ()):
-        yield from plan_nodes(child)
-
-
 def plan_paths(plan, parents=()):
     yield plan, parents
     for child in plan.get("Plans", ()):
@@ -86,10 +80,10 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
         result = self.evidence(module.ExecutionReceiverScope("runtime-0", None))
         self.assertEqual(result.disposition, "capacity")
 
-    def test_actual_node_and_runtime_queries_are_eligible_for_all_three_prefix_indexes(self):
+    def test_actual_queries_cap_all_three_indexed_prefix_kinds_before_relational_processing(self):
         module = self.require_scopes()
-        # Distinct node predicates must be selective enough to distinguish the
-        # exact-node index from the equally eligible all-nodes ordering.
+        # Representative retained history; optimizer choice among compatible
+        # overlapping indexes is not an application invariant.
         self.seed_fanout(groups=1, nodes=64, copies=16)
         self.seed_plan_truth(plan_id="runtime-plan", approval_request_id="runtime-approval",
             approval_decision_id="runtime-decision", plan=ActivityPlan((
@@ -99,12 +93,17 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
             self.command(plan_id="runtime-plan", approval_request_id="runtime-approval", key="runtime"))
         self.connection.execute("ANALYZE cpk_execution_receiver_scopes")
         recording = QueryRecorder(psycopg.connect(os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]))
-        indexes = set()
+        proven_prefixes = set()
         candidate_plans = []
+        prefix_tails = {
+            "workspace_id=%s AND runtime_id=%s AND scope_kind='runtime' LIMIT %s": "runtime",
+            "workspace_id=%s AND runtime_id=%s AND scope_kind='node' AND node_id=%s LIMIT %s": "node-point",
+            "workspace_id=%s AND runtime_id=%s AND scope_kind='node' LIMIT %s": "all-nodes",
+        }
         with PostgresUnitOfWork(lambda: recording) as uow:
             guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
-            # Proves index eligibility and ordering, not a production latency
-            # promise or a claim that tiny populations must choose an index.
+            # Proves prefix eligibility and a cap before relational processing,
+            # not a bound on bitmap construction or index/heap work and latency.
             recording.connection.execute("SET LOCAL enable_seqscan=off")
             for scope in (module.ExecutionReceiverScope("runtime-0", "node-0-0"),
                           module.ExecutionReceiverScope("runtime-0", None)):
@@ -112,24 +111,38 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
                 evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
                 self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "conflict")
                 selected = [(query, params) for query, params in recording.calls
-                            if isinstance(query, str) and SCOPES in query and query.lstrip().upper().startswith(("SELECT", "WITH"))]
-                self.assertTrue(selected)
+                            if isinstance(query, str) and SCOPES in query and "scope_kind=" in query
+                            and query.lstrip().upper().startswith(("SELECT", "WITH"))]
+                self.assertEqual(len(selected), 2, {"scope": scope, "queries": selected})
+                observed_prefixes = []
                 for query, params in selected:
                     explained = recording.connection.execute("EXPLAIN (FORMAT JSON, COSTS FALSE) " + query, params).fetchone()[0][0]["Plan"]
-                    if "scope_kind=" in query:
-                        candidate_plans.append((query, explained))
-                    nodes = tuple(plan_nodes(explained))
-                    indexes.update(node["Index Name"] for node in nodes if "Index Name" in node)
-                    prefix_indexes = {SCOPES + suffix for suffix in (
-                        "_runtime_lookup", "_node_lookup", "_runtime_nodes_lookup")}
+                    diagnostic = {"fixture_query": query, "fixture_params": params, "plan": explained}
+                    candidate_plans.append(diagnostic)
+                    tail = query.partition(" WHERE ")[2]
+                    self.assertIn(tail, prefix_tails, diagnostic)
+                    prefix = prefix_tails[tail]
+                    observed_prefixes.append(prefix)
+                    expected_params = ("workspace-a", "runtime-0")
+                    if prefix == "node-point":
+                        expected_params += ("node-0-0",)
+                    self.assertEqual(params[:-1], expected_params, diagnostic)
+                    self.assertIs(type(params[-1]), int, diagnostic)
+                    self.assertGreater(params[-1], 0, diagnostic)
+                    self.assertLessEqual(params[-1], 4097 if prefix == "all-nodes" else 65, diagnostic)
+                    compatible_indexes = {SCOPES + "_runtime_lookup"} if prefix == "runtime" else {
+                        SCOPES + "_node_lookup", SCOPES + "_runtime_nodes_lookup"}
+                    compatible_paths = 0
                     for node, parents in plan_paths(explained):
-                        if node.get("Index Name") not in prefix_indexes:
-                            continue  # Exact unique-key point reads need no sentinel.
+                        if node.get("Index Name") not in compatible_indexes:
+                            continue
+                        path_diagnostic = {**diagnostic, "index": node["Index Name"],
+                            "ancestors": tuple(parent["Node Type"] for parent in parents)}
                         condition = node.get("Index Cond", "")
-                        self.assertIn("workspace_id", condition)
-                        self.assertIn("runtime_id", condition)
-                        if node["Index Name"] == SCOPES + "_node_lookup":
-                            self.assertIn("node_id", condition)
+                        self.assertIn("workspace_id", condition, path_diagnostic)
+                        self.assertIn("runtime_id", condition, path_diagnostic)
+                        if prefix == "node-point":
+                            self.assertIn("node_id", condition, path_diagnostic)
                         capped = False
                         for parent in reversed(parents):
                             if parent["Node Type"] == "Limit":
@@ -138,20 +151,18 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
                             self.assertNotIn(parent["Node Type"], (
                                 "Sort", "Incremental Sort", "Unique", "Aggregate", "GroupAggregate",
                                 "HashAggregate", "Nested Loop", "Hash Join", "Merge Join", "Append",
-                                "Merge Append", "SetOp"),
+                                "Merge Append", "SetOp", "ProjectSet"),
                                 {
                                     "law": "each candidate prefix must be capped before combination/deduplication/sorting",
-                                    "fixture_query": query,
-                                    "fixture_params": params,
-                                    "index": node["Index Name"],
-                                    "ancestors": tuple(ancestor["Node Type"] for ancestor in parents),
-                                    "plan": explained,
+                                    **path_diagnostic,
                                 })
-                        self.assertTrue(capped, "an ordered but unbounded candidate index scan is insufficient")
-        expected_indexes = {SCOPES + suffix for suffix in (
-            "_runtime_lookup", "_node_lookup", "_runtime_nodes_lookup")}
-        self.assertTrue(expected_indexes <= indexes,
-            {"missing_indexes": sorted(expected_indexes - indexes), "candidate_plans": candidate_plans})
+                        self.assertTrue(capped, path_diagnostic)
+                        compatible_paths += 1
+                    self.assertGreater(compatible_paths, 0, diagnostic)
+                    proven_prefixes.add(prefix)
+                self.assertCountEqual(observed_prefixes,
+                    ("runtime", "all-nodes" if scope.node_id is None else "node-point"), candidate_plans)
+        self.assertEqual(proven_prefixes, {"runtime", "node-point", "all-nodes"}, candidate_plans)
 
     def test_requested_scope_limit_deduplicates_before_capacity_and_refuses_1025(self):
         module = self.require_scopes()

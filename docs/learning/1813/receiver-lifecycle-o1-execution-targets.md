@@ -444,3 +444,40 @@ planner's choice: the unchanged actual-plan assertions must prove the physical
 cap-before-sort law in the owning gate. The correction is unvalidated pending
 independent delta review and ordinary validation. No new authority, durable
 mutation, provider, secret/logging or network surface is introduced.
+
+### Accepted unordered prefix correction
+
+The smaller projection at `1755bed5` did not fix the chosen plan: hosted
+1,956 tests in 1,741.096 seconds and local 1,956 tests in 4,105.763 seconds
+both retained one failure and no errors. Local exit was 1; full traceback
+matched the exact-node bitmap/heap/Sort/Result/Limit path. Compile/import did
+not run. The exact local runner, PostgreSQL container and network were absent
+afterward. No green credit follows from this failed candidate.
+
+North accepted Kepler/Meridian's [query-contract clarification](https://github.com/OpenJ92/control-plane-kit/pull/1906#issuecomment-5899826124)
+before source changed. Candidate prefixes now omit SQL ordering; the existing
+final sorted request IDs remain canonical. Any filled effective LIMIT refuses
+capacity before row interpretation, including an exactly-full population.
+Otherwise the entire visible prefix was retrieved, so ordering cannot change
+completeness. Fixed prefix traversal, guards, raw-row charging, transport
+reservations/actual charges, all ceilings and full original verification remain.
+Multiple simultaneous faults can choose different closed refusal reasons under
+unordered traversal; no precedence between such faults is promised.
+
+The actual-plan target now proves all three prefix kinds, each from the captured
+production query. It checks exact predicate/LIMIT tails, actual synthetic prefix
+parameters and positive integer limits, two branches per requested scope,
+compatible indexed conditions for every query, and the unchanged forbidden
+relational operations before the nearest Limit. Node equality follows the query
+branch rather than the chosen overlapping index's name. Exact three-index
+catalog tests, fixture populations, planner settings and all behavioral capacity
+and completeness targets remain unchanged. This is an explicit contract/test
+amendment, not a claim that the previously failing assertion was green.
+
+The guarantee bounds rows returned beyond each prefix, transport and subsequent
+processing. Bitmap construction, index/heap scans and database memory/CPU/pages
+or latency are not bounded by SQL LIMIT; large matching histories can still cost
+database work while the lifecycle lock is held. No pruning, mutation authority,
+new schema/index, planner policy, provider action or security relaxation is
+introduced. The amended source/doc/test delta requires independent review and
+ordinary owning validation before any completion or merge claim.
