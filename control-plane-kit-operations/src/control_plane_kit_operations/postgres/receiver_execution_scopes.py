@@ -268,10 +268,17 @@ class _ExecutionScopeStorage:
             reserved = limit * 4096
             self.transport.reserve(reserved)
             valid = " AND ".join(f"octet_length({name})<=2048" for name in ("request_id", "workspace_id", "runtime_id"))
-            valid += " AND (node_id IS NULL OR octet_length(node_id)<=2048)"
-            valid += " AND octet_length(request_id)+octet_length(workspace_id)+octet_length(runtime_id)+octet_length(COALESCE(node_id,''))<=1024"
+            node_bytes = "0"
+            if kind != "runtime":
+                valid += " AND (node_id IS NULL OR octet_length(node_id)<=2048)"
+                node_bytes = "octet_length(COALESCE(node_id,''))"
+            valid += f" AND octet_length(request_id)+octet_length(workspace_id)+octet_length(runtime_id)+{node_bytes}<=1024"
+            # Candidate discovery needs only these identities. Keep projection
+            # and guards within the lookup index keys; runtime scopes imply a
+            # zero-length NULL node. Full retained scope truth, including that
+            # node and ordinal/kind, is checked by verify() before classification.
             rows = self.connection.execute(
-                "SELECT " + ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in _SCOPE)
+                "SELECT " + ",".join(f"CASE WHEN {valid} THEN {name}::text END" for name in ("request_id", "workspace_id"))
                 + f",({valid}) FROM cpk_execution_receiver_scopes WHERE {where} ORDER BY {order} LIMIT %s",
                 (*params, limit),
             ).fetchall()

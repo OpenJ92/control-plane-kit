@@ -413,3 +413,34 @@ network or cleanup behavior changed. No limits, negative assertions or owner
 checks were removed. No fake outcomes, new executor, alternate harness or
 current-schema repair was introduced. Corrected source review precedes the
 next owning run; staged merge and C2/C3/D remain separate North dispositions.
+
+### Candidate query plan diagnosis and projection correction
+
+The corrected fixture gate at `2b4f0021` completed 1,956 tests with one remaining
+failure locally and in CI: a candidate index scan reached Sort before Limit.
+Diagnostic-only `878f2e99` preserved all assertions, data, planner settings and
+production SQL, adding the actual query and plan to the failing assertion.
+Its ordinary local gate completed 1,956 tests in 3,863.535 seconds, exit 1,
+one failure and no errors; the exact runner, PostgreSQL container and network
+were absent afterward. Hosted evidence was 1,956 tests in 1,461.163 seconds,
+also one failure. Neither gate reached compile/import or earns green.
+
+Both plans identify the exact-node prefix: the correct node lookup index fed
+a Bitmap Heap Scan, then Sort on request ID before Result/Limit. The candidate
+query unnecessarily fetched ordinal and kind outside the lookup keys. The
+consumer only needs request/workspace identities and its validity scalar.
+The narrow correction projects those guarded identities, using existing
+indexed request/workspace/runtime/node fields for node-branch byte checks.
+The runtime branch uses its predicate-known zero node length, avoiding a heap
+node reference without adding a filter that could hide corrupt candidates.
+Full original scope verification still checks every retained ordinal, kind,
+runtime and node before any complete evidence/classification is returned.
+
+Raw row counting, 4,096-byte reservation, actual returned-value charging,
+sentinels, request caps, predicates, order and LIMIT remain unchanged. No
+schema/index, planner setting, fixture population, timeout or assertion change
+is included. This permits an index-covered path but does not establish the
+planner's choice: the unchanged actual-plan assertions must prove the physical
+cap-before-sort law in the owning gate. The correction is unvalidated pending
+independent delta review and ordinary validation. No new authority, durable
+mutation, provider, secret/logging or network surface is introduced.
