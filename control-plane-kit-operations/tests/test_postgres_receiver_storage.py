@@ -10,6 +10,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.topology import DeploymentGraph, validate_graph
+from control_plane_kit_core.configuration import ConfigurationMediaType
 from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
 )
@@ -49,7 +50,8 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
         graphs = (
             replace(original, nodes={"api": replace(node, configuration_artifacts=())}),
             replace(original, nodes={"api": replace(node, configuration_artifacts=(
-                replace(artifact, content="opaque historical application content"),))}),
+                replace(artifact, media_type=ConfigurationMediaType.TEXT,
+                        content="opaque historical application content"),))}),
         )
         records = []
         with self.unit_of_work() as uow:
