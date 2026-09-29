@@ -45,7 +45,7 @@ class ReceiverStorageFixture(DraftCatalogueFixture):
         return import_module(module)
 
     def receiver_graph(self, *, workspace="workspace-a", receiver=RECEIVER,
-                       target_changes=None, artifact_changes=None, pretty=False):
+                       node_id="api", target_changes=None, artifact_changes=None, pretty=False):
         graph = sdk_health_graph()
         node = graph.node("api")
         declaration = WorkloadNodeControlSurfaceDeclaration(
@@ -53,7 +53,7 @@ class ReceiverStorageFixture(DraftCatalogueFixture):
         )
         document = {
             "profile": "workload-node-control-configuration.v2",
-            "target": dict(workspace_id=workspace, runtime_id="docker", node_id="api",
+            "target": dict(workspace_id=workspace, runtime_id="docker", node_id=node_id,
                            provider_socket_name="http", receiver_id=receiver),
             "declaration": declaration.descriptor(),
             "verifiers": [dict(purpose=purpose, issuer="test-issuer", public_keys=[dict(
@@ -70,11 +70,13 @@ class ReceiverStorageFixture(DraftCatalogueFixture):
         artifact = replace(artifact, **(artifact_changes or {}))
         unrelated = ConfigurationArtifact("application", "/etc/test/application.txt",
             ConfigurationMediaType.TEXT, '{"receiver_id":"not-a-receiver-configuration"}')
-        node = replace(node, configuration_artifacts=(unrelated, artifact), public_environment=(
+        node = replace(node, node_id=node_id, configuration_artifacts=(unrelated, artifact), public_environment=(
             PublicStaticEnvironmentBinding(WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT,
                                            "/etc/test/receiver.json"),
         ))
-        graph = replace(graph, nodes={"api": node})
+        graph = replace(graph, nodes={node_id: node}, runtimes={
+            "docker": replace(graph.runtimes["docker"], children=(node_id,)),
+        })
         validate_graph(graph).require_valid()
         return graph, artifact, declaration
 

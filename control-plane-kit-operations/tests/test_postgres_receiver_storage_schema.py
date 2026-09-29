@@ -10,6 +10,7 @@ from control_plane_kit_operations.postgres.schema import SchemaInstallationError
 from control_plane_kit_operations.postgres.current_schema_contract import CURRENT_POSTGRES_SCHEMA_CONTRACT
 from tests.receiver_storage_fixture import ReceiverStorageFixture
 from tests.receiver_storage_schema_contract import BIND, CHECKS, COLUMNS, FOREIGN_KEYS, INTRO, KEYS, NULLABLE
+from tests.test_current_schema_installation import _RecordingConnection
 
 
 class PostgresReceiverStorageSchemaTests(ReceiverStorageFixture, unittest.TestCase):
@@ -61,6 +62,11 @@ class PostgresReceiverStorageSchemaTests(ReceiverStorageFixture, unittest.TestCa
     def test_crossed_graph_projection_action_session_draft_and_scope_are_rejected(self):
         graph, projection, action, draft_id = self.seed(with_draft=True)
         with self.unit_of_work() as uow:
+            uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            same_workspace_graph, same_workspace_projection = self.material(uow)
+            other_draft = self.draft(uow, same_workspace_graph)
+            uow.commit()
+        with self.unit_of_work() as uow:
             uow.stores.graphs.lock_receiver_lifecycle("workspace-b")
             foreign_graph, foreign_projection = self.material(uow, workspace="workspace-b")
             foreign_action = self.action(uow, "workspace-b")
@@ -73,6 +79,8 @@ class PostgresReceiverStorageSchemaTests(ReceiverStorageFixture, unittest.TestCa
             (INTRO, {"introducing_action_id": foreign_action.action_id,
                      "introducing_session_id": foreign_action.session_id}),
             (INTRO, {"introducing_draft_id": "missing-draft"}),
+            (INTRO, {"introducing_draft_id": other_draft}),
+            (INTRO, {"introducing_realized_projection_id": same_workspace_projection.projection_id}),
             (INTRO, {"first_accepted_action_id": foreign_action.action_id,
                      "first_accepted_session_id": foreign_action.session_id}),
             (INTRO, {"first_accepted_action_id": action.action_id,
@@ -81,6 +89,7 @@ class PostgresReceiverStorageSchemaTests(ReceiverStorageFixture, unittest.TestCa
                      "retired_session_id": foreign_action.session_id}),
             (BIND, {"graph_id": foreign_graph.graph_id}),
             (BIND, {"realized_projection_id": foreign_projection.projection_id}),
+            (BIND, {"realized_projection_id": same_workspace_projection.projection_id}),
             (BIND, {"runtime_id": "other-runtime"}),
             (BIND, {"node_id": "other-node"}),
             (BIND, {"provider_socket_name": "other-socket"}),
@@ -125,3 +134,27 @@ class PostgresReceiverStorageSchemaTests(ReceiverStorageFixture, unittest.TestCa
         self.assertEqual(self.truth(), before)
         self.assertEqual(self.connection.execute(
             "SELECT selected_configuration_digest FROM cpk_graph_receiver_bindings").fetchone(), ("f" * 64,))
+
+    def test_pre_receiver_baseline_refuses_without_repair_or_loss_of_existing_rows(self):
+        with self.unit_of_work() as uow:
+            self.require_storage(uow.stores.graphs)
+        # Construct the precise predecessor by removing only the reviewed B delta
+        # from this test's disposable schema. This is not an upgrade/reset API.
+        self.connection.execute("DROP TABLE cpk_graph_receiver_introductions, cpk_graph_receiver_bindings")
+        for relation, name, *_ in KEYS[-2:]:
+            self.connection.execute(sql.SQL("ALTER TABLE {} DROP CONSTRAINT {}").format(
+                sql.Identifier(relation), sql.Identifier(name)))
+        before_objects = self.connection.execute(
+            "SELECT oid,relname,relkind FROM pg_class WHERE relnamespace=current_schema()::regnamespace ORDER BY oid"
+        ).fetchall()
+        before_rows = self.connection.execute("SELECT * FROM cpk_workspaces ORDER BY workspace_id").fetchall()
+        recorder = _RecordingConnection(self.connection)
+        with self.assertRaises(SchemaInstallationError) as caught:
+            install_schema(recorder)
+        self.assert_bounded(caught.exception, "operations schema reset is required")
+        self.assertEqual(self.connection.execute(
+            "SELECT oid,relname,relkind FROM pg_class WHERE relnamespace=current_schema()::regnamespace ORDER BY oid"
+        ).fetchall(), before_objects)
+        self.assertEqual(self.connection.execute("SELECT * FROM cpk_workspaces ORDER BY workspace_id").fetchall(), before_rows)
+        for call in recorder.calls:
+            self.assertNotRegex(" ".join(call.lower().split()), r"\b(create|alter|drop|truncate|insert|update|delete)\b")

@@ -7,7 +7,7 @@ import unittest
 
 import psycopg
 
-from control_plane_kit_core.topology import DeploymentGraph
+from control_plane_kit_core.topology import DeploymentGraph, validate_graph
 from control_plane_kit_operations.postgres import install_schema
 from control_plane_kit_operations.records import GraphVersionRecord, RealizedGraphProjectionRecord
 from tests.draft_catalogue_fixture import NOW
@@ -39,6 +39,8 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
             bindings = uow.stores.graphs.receiver_bindings("workspace-a", record.graph_id, projection.projection_id)
             self.assertEqual(len(bindings), 1)
             binding = bindings[0]
+            with self.assertRaises(FrozenInstanceError):
+                binding.receiver_id = "b" * 32
             self.assertEqual((binding.receiver_id, binding.runtime_id, binding.node_id,
                               binding.provider_socket_name), (RECEIVER, "docker", "api", "http"))
             self.assertEqual(binding.selected_configuration_digest, artifact.content_digest)
@@ -66,6 +68,7 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
     def test_global_claim_race_has_one_owner_and_tenant_blind_loser(self):
         with self.unit_of_work() as uow:
             api = self.require_storage(uow.stores.graphs)
+        before = self.truth()
         barrier = threading.Barrier(2)
 
         def claim(workspace):
@@ -94,6 +97,8 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
         self.assertIsNone(self.introduction(losers[0][0]))
         self.assertEqual(self.connection.execute(
             "SELECT count(*) FROM cpk_graph_receiver_introductions").fetchone()[0], 1)
+        self.assertEqual(self.truth(), tuple(value + delta for value, delta in zip(
+            before, (1, 1, 1, 0, 0, 1, 1), strict=True)))
 
     def test_original_provenance_cannot_be_replaced_by_new_graph_or_action(self):
         record, projection, action, draft_id = self.seed(with_draft=True)
@@ -105,15 +110,20 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
                     guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
                     candidate, realized = self.material(uow) if change == "graph" else (record, projection)
                     witness = self.action(uow) if change == "action" else action
+                    candidate_draft = self.draft(uow, candidate) if change == "graph" else draft_id
                     with self.assertRaises(api.ReceiverLifecycleStorageConflict) as caught:
                         self.reserve(uow, candidate, realized, witness, guard,
-                                     draft_id=None if change == "draft" else draft_id)
+                                     draft_id=None if change == "draft" else candidate_draft)
                 self.assert_bounded(caught.exception, "receiver identity is unavailable")
                 self.assertEqual(self.truth(), before)
                 self.assertEqual(self.introduction(), original)
 
     def test_stored_material_is_authoritative_over_self_consistent_caller_records(self):
         record, projection, action, _ = self.seed()
+        with self.unit_of_work() as uow:
+            uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            _, other_projection = self.material(uow)
+            uow.commit()
         before = self.truth()
         changed = GraphVersionRecord.from_graph(
             graph_id=record.graph_id, workspace_id=record.workspace_id, version=record.version,
@@ -122,6 +132,7 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
         forged_projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=changed)
         forged_projection = replace(forged_projection, projection_id=projection.projection_id)
         for candidate, realized in ((changed, projection), (changed, forged_projection),
+                                    (record, other_projection),
                                     (record, replace(projection, projection_id="missing-projection"))):
             for writer in ("reserve", "bindings"):
                 with self.subTest(writer=writer, candidate=candidate.graph_id, projection=realized.projection_id):
@@ -160,6 +171,8 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
             later, realized = self.material(uow)
             uow.stores.graphs._persist_receiver_bindings(later, realized, lifecycle_guard=guard)
             empty, empty_projection = self.material(uow, graph=DeploymentGraph("empty"))
+            self.assertEqual(uow.stores.graphs.receiver_bindings(
+                "workspace-a", empty.graph_id, empty_projection.projection_id), ())
             uow.commit()
         self.connection.execute("DELETE FROM cpk_graph_receiver_bindings WHERE graph_id=%s", (later.graph_id,))
         self.connection.execute(
@@ -180,21 +193,47 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
 
     def test_guard_from_other_store_transaction_or_workspace_has_no_write_authority(self):
         record, projection, action, _ = self.seed()
-        before = self.truth()
+        with self.unit_of_work() as uow:
+            accept, retire = self.action(uow), self.action(uow)
+            uow.commit()
+
+        def refuse_all(store, guard):
+            api = self.require_storage(store)
+            operations = (
+                lambda: store._reserve_receiver_introductions(record, projection,
+                    action_id=action.action_id, session_id=action.session_id, lifecycle_guard=guard),
+                lambda: store._persist_receiver_bindings(record, projection, lifecycle_guard=guard),
+                lambda: store._record_receiver_first_acceptance("workspace-a", RECEIVER,
+                    action_id=accept.action_id, session_id=accept.session_id, lifecycle_guard=guard),
+                lambda: store._record_receiver_retirement("workspace-a", RECEIVER,
+                    action_id=retire.action_id, session_id=retire.session_id, lifecycle_guard=guard),
+            )
+            for index, operation in enumerate(operations):
+                with self.subTest(writer=index), self.assertRaises(api.ReceiverLifecycleStorageError):
+                    operation()
+
         with self.unit_of_work() as prior:
-            stale = prior.stores.graphs.lock_receiver_lifecycle("workspace-a")
-        with self.unit_of_work() as outer:
-            foreign = outer.stores.graphs.lock_receiver_lifecycle("workspace-a")
-            with self.unit_of_work() as uow:
-                api = self.require_storage(uow.stores.graphs)
-                wrong_workspace = uow.stores.graphs.lock_receiver_lifecycle("workspace-b")
-                for guard in (stale, foreign, wrong_workspace, object()):
-                    with self.subTest(guard=type(guard).__name__):
-                        with self.assertRaises(api.ReceiverLifecycleStorageError):
-                            self.reserve(uow, record, projection, action, guard)
-                        with self.assertRaises(api.ReceiverLifecycleStorageError):
-                            uow.stores.graphs._persist_receiver_bindings(record, projection, lifecycle_guard=guard)
-        self.assertEqual(self.truth(), before)
+            retained = prior.stores.graphs
+            stale = retained.lock_receiver_lifecycle("workspace-a")
+        for phase in ("pending", "accepted"):
+            if phase == "accepted":
+                with self.unit_of_work() as uow:
+                    guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+                    uow.stores.graphs._record_receiver_first_acceptance("workspace-a", RECEIVER,
+                        action_id=accept.action_id, session_id=accept.session_id, lifecycle_guard=guard)
+                    uow.commit()
+            before, original = self.truth(), self.introduction()
+            with self.subTest(phase=phase, retained_store=True):
+                refuse_all(retained, stale)
+            with self.unit_of_work() as outer:
+                foreign = outer.stores.graphs.lock_receiver_lifecycle("workspace-a")
+                with self.unit_of_work() as uow:
+                    wrong_workspace = uow.stores.graphs.lock_receiver_lifecycle("workspace-b")
+                    for guard in (stale, foreign, wrong_workspace, object()):
+                        with self.subTest(phase=phase, guard=type(guard).__name__):
+                            refuse_all(uow.stores.graphs, guard)
+            self.assertEqual(self.truth(), before)
+            self.assertEqual(self.introduction(), original)
 
     def test_acceptance_and_retirement_are_paired_write_once_and_replay_exactly(self):
         self.seed()
@@ -234,6 +273,7 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
         with self.unit_of_work() as uow:
             self.require_storage(uow.stores.graphs)
         before = self.truth()
+        reached_commit_request = False
         with self.assertRaises(psycopg.errors.ForeignKeyViolation):
             with self.unit_of_work() as uow:
                 guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
@@ -243,6 +283,35 @@ class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
                 self.reserve(uow, graph, projection, action, guard, draft_id=draft_id)
                 self.assertIsNotNone(uow.stores.graphs.receiver_introduction("workspace-a", RECEIVER))
                 uow.commit()
+                reached_commit_request = True
+        self.assertTrue(reached_commit_request, "failure must occur at deferred physical commit, not reservation")
+        self.assertEqual(self.truth(), before)
+
+    def test_multiple_members_are_complete_and_duplicate_receiver_scope_is_refused(self):
+        first = self.receiver_graph()[0]
+        second = self.receiver_graph(node_id="other", receiver="b" * 32)[0]
+        graph = replace(first, nodes={**first.nodes, **second.nodes}, runtimes={
+            "docker": replace(first.runtimes["docker"], children=("api", "other")),
+        })
+        validate_graph(graph).require_valid()
+        record, projection, _, _ = self.seed(graph=graph)
+        with self.unit_of_work() as uow:
+            api = self.require_storage(uow.stores.graphs)
+            members = uow.stores.graphs.receiver_bindings("workspace-a", record.graph_id, projection.projection_id)
+            self.assertEqual({(member.node_id, member.receiver_id) for member in members},
+                             {("api", RECEIVER), ("other", "b" * 32)})
+            self.assertEqual(len(members), 2)
+        before = self.truth()
+        fresh_first = self.receiver_graph(receiver="c" * 32)[0]
+        duplicate = self.receiver_graph(node_id="other", receiver="c" * 32)[0]
+        duplicate_graph = replace(graph, nodes={**fresh_first.nodes, **duplicate.nodes})
+        validate_graph(duplicate_graph).require_valid()
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            candidate, realized = self.material(uow, graph=duplicate_graph)
+            action = self.action(uow)
+            with self.assertRaises(api.ReceiverLifecycleStorageError):
+                self.reserve(uow, candidate, realized, action, guard)
         self.assertEqual(self.truth(), before)
 
     def test_exception_after_commit_request_rolls_back_graph_action_and_both_indices(self):

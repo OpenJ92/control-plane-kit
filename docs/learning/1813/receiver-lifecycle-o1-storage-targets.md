@@ -55,19 +55,30 @@ query-only reentry, rollback, old-baseline or no-repair assertion is relaxed.
 | stored-material substitution | B3 new | Changed caller graph/projection bytes, phantom projection and wrong stored source refuse. |
 | scope/slot refusal | B3 new | Material must agree with selected artifact and actual graph scope. |
 | member completeness | B3 new | Missing, extra, crossed or foreign membership refuses, never returns a partial set. |
-| wrong guard | L1 strengthened | Exact active store/UoW/workspace ownership precedes writes. |
+| multiple members/duplicate identity | B1/B3 new | Complete two-member positive and fresh duplicate-receiver negative; returned binding records are immutable. |
+| wrong guard | L1 strengthened | All four writers require exact active store/UoW/workspace ownership, including the expired original store with its own guard. |
 | witness transitions | B4 new | Acceptance and retirement pair fields, write once, replay exactly and cannot clear/replace. |
 | deferred original binding | U1 strengthened/B2 new | Commit-time failure removes graph/projection/action/draft/origin together. |
 | exception after commit request | U1 strengthened | Late caller failure rolls back both new indexes and all prior command writes. |
 | tombstone/history | B5 new/C1 strengthened | Tombstone retains provenance; current verification retains rows; references prohibit deletion. |
 | exact catalog/FK/CHECK | C1 strengthened/B1–B4 new | Exact keys, references, nullability and deferred edge; actual PostgreSQL rejects crossed witnesses/scopes and malformed shapes. |
 | derived digest drift | C2 strengthened/B3 new | Current reentry rejects inconsistent derived truth without repair. |
+| exact pre-B baseline | C2 strengthened | Removing only the B delta in the disposable namespace produces unchanged rejection with no reentry DDL/DML. |
 
 The fixture uses existing real Core codecs and PostgreSQL UoWs. It does not
 model admission, effect history, clocks, providers or a replacement storage
 service. Missing new interfaces are asserted inside test bodies, preserving
 collection and attributing intended red to absent B behavior. Real C command
 late-action/CAS and all-entrance closure remain C2/C3 integration targets.
+
+Meridian's first review held `d425734` for three causal-integrity corrections:
+prove deferred failure reached the commit request, cover all witness writers and
+expired same-store guards, and isolate provenance/source rejection from other
+FK failures. The correction adds an explicit commit-reached marker, valid
+pending/accepted guard matrices, a structurally valid replacement origin and
+real same-workspace crossed projection/draft cases. It also asserts loser
+rollback, an empty-member positive and a complete multi-member case. No run or
+source release is inferred from these target corrections.
 
 Independent review must check target coverage and fixture validity before the
 ordinary `./control-plane-kit-operations/test.sh` causal-red run, with clean
