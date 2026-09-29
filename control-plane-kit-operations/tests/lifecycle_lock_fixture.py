@@ -11,6 +11,7 @@ import psycopg
 
 from control_plane_kit_operations.postgres import PostgresUnitOfWork
 from control_plane_kit_operations.records import RetryIdentity
+from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 
 
 LIFECYCLE_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))"
@@ -83,8 +84,14 @@ class LifecycleLockFixture:
         # is not evidence that retrying a RUNNING run is an admissible command.
         with self.unit_of_work() as uow:
             prior = uow.stores.execution.get_run("run-a")
-            later = replace(prior, run_id="run-later", retry=RetryIdentity(2, "run-a"))
+            self.assertIs(prior.status, ActivityRunStatus.RUNNING)
+            self.assertIsNotNone(prior.started_at)
+            # Keep the active-request uniqueness law: a distinct retained
+            # terminal run can be latest while the selected old run is active.
+            later = replace(prior, run_id="run-later", retry=RetryIdentity(2, "run-a"),
+                status=ActivityRunStatus.FAILED, settled_at=prior.started_at)
             uow.stores.execution.add_run(later)
+            self.assertEqual(uow.stores.execution.get_run("run-a"), prior)
             uow.commit()
         return later
 

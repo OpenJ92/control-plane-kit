@@ -288,12 +288,16 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
                         "FROM cpk_execution_requests" in sql and "FOR UPDATE" in sql
                         and parameters == ("request-a",))
                     accepted, refused = futures if advance_first else futures[::-1]
-                    self.assertEqual(accepted.result(timeout=1).to_authored_graph_id, "graph-desired")
+                    result = accepted.result(timeout=1)
+                    self.assertEqual(result.to_authored_graph_id, "graph-desired")
                     with self.assertRaises(RunLifecycleError):
                         refused.result(timeout=1)
-                    self.assertEqual(self.advancement_truth()[2:], (1, 1))
+                    self.assertEqual(self.advancement_truth()[2], 1)
                     with self.unit_of_work() as uow:
                         self.assertIs(uow.stores.execution.get_run("run-a").status, ActivityRunStatus.SUCCEEDED)
+                        actions = tuple(action for action in uow.stores.activity_history.actions_for_session("session-a")
+                            if action.action_type is LifecycleOperationKind.ADVANCE_CURRENT_GRAPH)
+                        self.assertEqual(actions, (result.action,))
 
     def test_selection_and_publication_vs_advancement_preserve_cas_in_both_orders(self):
         from control_plane_kit_operations.desired_topology_drafts import (

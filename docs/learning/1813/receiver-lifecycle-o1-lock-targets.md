@@ -93,3 +93,50 @@ run selection, exact-key reentry and caller-owned commit boundary. Revalidation
 must refuse newly discovered earlier keys instead of locking them late. No
 claim of compatibility with simultaneously running old writer code. B/C/D and
 downstream/live gates remain held; timer remains off.
+
+## First owning run: mixed red, source still held
+
+Target checkpoint `590c7e1839b2ede3ffc2694906625efb549736e8` received
+[target-only PASS](https://github.com/OpenJ92/control-plane-kit/issues/1896#issuecomment-5882339289)
+and was published in [draft PR1900](https://github.com/OpenJ92/control-plane-kit/pull/1900)
+with [pre-gate evidence](https://github.com/OpenJ92/control-plane-kit/issues/1896#issuecomment-5882356869).
+The ordinary Operations gate exited 1 after 1,859 tests in 2,409.278 seconds:
+29 failures and 16 errors. Package integrity passed (1,839 discovered identities,
+four scanner-detected mock locations, zero approved skips); this scanner count
+does not erase the explicitly disclosed `mock.patch.object` instrumentation.
+The full log is `/tmp/cpk-1896-red-590c7e1.log`, SHA256
+`ddd17439f85d56a8264082ca4b0e078f9c32134b620f2fbb9439ec9b8344bfc4`.
+The wrapper removed its exact `cpk-1896-red-590c7e1-postgres` container and
+`cpk-1896-red-590c7e1` network; both absence checks returned no names.
+
+Useful intended red includes actual NOWAIT failures on prematurely held
+workspace/session/request/program rows; absent lifecycle guards and prepared
+helper preconditions; absent compensation binding reread; and a real PostgreSQL
+deadlock between the same-key lifecycle writer and compensation admission when
+lifecycle leads. This last result upgrades the earlier source-only inverse-edge
+analysis to observed owning-suite evidence. It is not live/provider evidence.
+
+The aggregate is **mixed red**, independently classified by
+[Meridian](https://github.com/OpenJ92/control-plane-kit/issues/1896#issuecomment-5882790548).
+Three test defects receive no causal-red credit and require target-only repair:
+
+- Two distinct-latest setup errors cloned a second active run, violating
+  `cpk_activity_runs_active_request`. Retain the original RUNNING requested run
+  and all schema constraints; insert the distinct latest fixture row as FAILED
+  with valid terminal timing. Deliberately divergent lineage still exercises
+  refusal rather than authorizing a retry.
+- Two nested-health setup errors selected a recompiled activity by its old ID.
+  Runtime authority changes the graph digest and compiled ID. Select by the
+  original health node/socket/kind/transport/runtime/side, retain the new target
+  and recompute its projection; never copy the obsolete ID or target digest.
+- Six advancement opposing-service subtests counted zero actions through an
+  old helper's underscore action discriminator. Keep the one-event assertion
+  and assert exactly the returned action using the typed
+  `LifecycleOperationKind.ADVANCE_CURRENT_GRAPH` store result. Do not change
+  production action vocabulary or weaken one-action evidence.
+
+Application source remains unchanged. The corrected exact target checkpoint
+requires review before the ordinary gate reruns. New source is not released by
+this mixed run. When a plain latest-run locator is implemented, extend the
+terminal replay absence witness to that owner query as well as the current
+locked method; Meridian retained this bounded source-review followup.

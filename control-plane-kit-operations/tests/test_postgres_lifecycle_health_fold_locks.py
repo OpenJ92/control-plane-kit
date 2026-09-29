@@ -7,7 +7,7 @@ from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
 from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
 from control_plane_kit_core.runtime_effects import RuntimeEffectResult
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
-from control_plane_kit_core.planning import compile_graph_activity_plan
+from control_plane_kit_core.planning import ObserveNodeHealth, compile_graph_activity_plan
 from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt, GuardedHealthEffectFold, ExistingFold
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
@@ -15,6 +15,7 @@ from control_plane_kit_operations.health_signing_authority import HealthSigningA
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.runtime_authority_store import RuntimeAuthorityStore
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
+from control_plane_kit_operations.runtime_management_targets import project_management_health_target
 from tests.execution_lease_recovery_fixture import Sequence
 from tests.health_signing_authority_fixture import PostgresHealthSigningAuthorityFixture
 from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT_LOCK
@@ -24,15 +25,28 @@ class PostgresLifecycleHealthFoldLockTests(
     LifecycleLockFixture, PostgresHealthSigningAuthorityFixture, unittest.TestCase,
 ):
     def health_context(self, **options):
-        _, selected, current, desired, extra = super().health_context(**options)
+        _, selected, current, desired, _ = super().health_context(**options)
         graph = desired.graph
         desired = validate_graph(replace(graph, runtimes={**graph.runtimes,
             "docker": replace(graph.runtimes["docker"],
                 authority_ref=RuntimeAuthorityReference("health-docker"))}))
         desired.require_valid()
         plan = compile_graph_activity_plan(current, desired)
-        selected, = (item for item in plan.activities if item.activity_id == selected.activity_id)
-        return plan, selected, current, desired, extra
+        # A changed authority changes both activity ID and target graph digest.
+        # Match the health purpose/scope, then retain the recompiled target.
+        original = selected.operation
+        selected, = (item for item in plan.activities
+            if type(item.operation) is ObserveNodeHealth
+            and item.operation.node_id == original.node_id
+            and item.operation.provider_socket_name == original.provider_socket_name
+            and item.operation.health_kind is original.health_kind
+            and item.operation.transport is original.transport
+            and item.operation.target.runtime_id == original.target.runtime_id
+            and item.operation.target.graph_side is original.target.graph_side)
+        self.assertNotEqual(selected.operation.target.graph_digest, original.target.graph_digest)
+        projection = project_management_health_target(
+            plan, selected.activity_id, selected.operation, current, desired)
+        return plan, selected, current, desired, projection
 
     def health_start_value(self, **options):
         command = super().health_start_value(**options)
