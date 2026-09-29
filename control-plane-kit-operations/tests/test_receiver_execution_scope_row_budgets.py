@@ -35,29 +35,43 @@ class ReceiverExecutionScopeRowBudgetTests(ReceiverExecutionScopeFixture, unitte
         self.assertEqual(after.disposition, "conflict")
         self.assertEqual(set(after.run_ids), {claimed.run.run_id, retried.run.run_id})
 
+    def effect_counts(self):
+        return self.connection.execute("SELECT (SELECT count(*) FROM cpk_effect_attempts), "
+            "(SELECT count(*) FROM cpk_effect_attempt_intents), "
+            "(SELECT count(*) FROM cpk_failed_run_compensation_steps), "
+            "(SELECT count(*) FROM cpk_failed_run_compensation_attempt_bindings)").fetchone()
+
     def test_compensation_steps_and_bindings_consume_the_same_effect_budget(self):
         module = self.require_scopes()
-        self.admit_operations("compensation-budget", *(StartNode(NodeTarget("app")) for _ in range(682)))
-        remaining = [681]
+        programs = []
+        # Preserve the shared row law across actual owner-created programs,
+        # without making this read test a single huge coordinator stress test.
+        for number, effects in enumerate((*([31] * 21), 17)):
+            suffix = f"compensation-budget-{number:02}"
+            self.admit_operations(suffix, *(StartNode(NodeTarget("app")) for _ in range(effects)))
+            remaining = [effects - 1]
 
-        def fail_after_successes(context, request):
-            if remaining[0]:
-                remaining[0] -= 1
-                return RuntimeEffectResult.succeeded(request.effect_id)
-            return RuntimeEffectResult.failed(request.effect_id, RuntimeEffectFailure("last-failed", "bounded final failure"))
+            def fail_after_successes(context, request):
+                if remaining[0]:
+                    remaining[0] -= 1
+                    return RuntimeEffectResult.succeeded(request.effect_id)
+                return RuntimeEffectResult.failed(request.effect_id,
+                    RuntimeEffectFailure("last-failed", "bounded final failure"))
 
-        adapter = RecordingRuntimeAdapter(*(fail_after_successes for _ in range(682)))
-        claimed, failed = self.execute_claimed_effects(self.claim("compensation-budget", duration_seconds=3600),
-                                                     "compensation-budget", adapter)
-        self.assertEqual(failed.run.status, ActivityRunStatus.FAILED)
-        compensation = self.begin_compensation(claimed, "budget")
-        self.assertEqual(len(compensation.program.steps), 681)
-        # 682 attempts + 682 independent intents +681 program steps =2045.
-        inverse = self.start_inverse(claimed, compensation, "budget-one")
-        # First inverse contributes attempt + intent + binding, exactly2048.
+            adapter = RecordingRuntimeAdapter(*(fail_after_successes for _ in range(effects)))
+            claimed, failed = self.execute_claimed_effects(self.claim(suffix, duration_seconds=3600), suffix, adapter)
+            self.assertEqual(failed.run.status, ActivityRunStatus.FAILED)
+            compensation = self.begin_compensation(claimed, suffix)
+            self.assertEqual(len(compensation.program.steps), effects - 1)
+            programs.append((claimed, compensation, suffix))
+        self.assertEqual(self.effect_counts(), (668, 668, 646, 0))
+        for claimed, compensation, suffix in programs:
+            inverse = self.start_inverse(claimed, compensation, suffix + "-one")
+        self.assertEqual(self.effect_counts(), (690, 690, 646, 22))
+        self.assertEqual(sum(self.effect_counts()), 2048)
         self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition, "conflict")
-        # Finish this inverse through the existing fold owner before starting
-        # the next ordered program step. No whole-run disposal is inferred.
+        # Fold the last program's real first inverse, then start its next ordered
+        # step. One lawful start atomically adds attempt, intent and binding.
         from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
         from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
         from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
@@ -67,8 +81,9 @@ class ReceiverExecutionScopeRowBudgetTests(ReceiverExecutionScopeFixture, unitte
             FoldEffectAttempt(claimed.request.identity.request_id, effect_outcome_transition(outcome),
                 ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
                 ExecutionLeaseFence("worker-a", claimed.request.claim.generation), None, outcome))
-        self.start_inverse(claimed, compensation, "budget-two", position=2)
-        # A lawful atomic inverse start adds three inseparable evidence rows.
+        self.start_inverse(claimed, compensation, suffix + "-two", position=2)
+        self.assertEqual(self.effect_counts(), (691, 691, 646, 23))
+        self.assertEqual(sum(self.effect_counts()), 2051)
         self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition, "capacity")
 
     def test_8192_journal_events_fit_and_8193_refuse_without_partial_history(self):
@@ -121,9 +136,12 @@ class ReceiverExecutionScopeRowBudgetTests(ReceiverExecutionScopeFixture, unitte
 
     def test_attempts_and_independent_intents_share_2048_row_budget(self):
         module = self.require_scopes()
-        self.admit_operations("effects", *(StartNode(NodeTarget("app")) for _ in range(1024)))
-        _, complete = self.execute_claimed_effects(self.claim("effects", duration_seconds=3600), "effects")
-        self.assertEqual(complete.run.status, ActivityRunStatus.SUCCEEDED)
+        for number in range(32):
+            suffix = f"effects-{number:02}"
+            self.admit_operations(suffix, *(StartNode(NodeTarget("app")) for _ in range(32)))
+            _, complete = self.execute_claimed_effects(self.claim(suffix, duration_seconds=3600), suffix)
+            self.assertEqual(complete.run.status, ActivityRunStatus.SUCCEEDED)
+        self.assertEqual(self.effect_counts(), (1024, 1024, 0, 0))
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempts").fetchone()[0], 1024)
         self.assertEqual(self.connection.execute("SELECT count(*) FROM cpk_effect_attempt_intents").fetchone()[0], 1024)
         self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition, "conflict")
@@ -147,4 +165,7 @@ class ReceiverExecutionScopeRowBudgetTests(ReceiverExecutionScopeFixture, unitte
 
         self.execute_effects("zz-overflow", RecordingRuntimeAdapter(inspect_intent_overflow))
         self.assertEqual(observed, ["capacity"])
+        # The callback's corruption rolled back; the real overflow run retained
+        # both its attempt and independent intent.
+        self.assertEqual(self.effect_counts(), (1025, 1025, 0, 0))
         self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition, "capacity")

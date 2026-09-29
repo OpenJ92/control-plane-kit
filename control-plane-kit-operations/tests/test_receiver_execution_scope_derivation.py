@@ -12,7 +12,7 @@ from control_plane_kit_core.planning import (
     PublicIngressActivityTarget, RemovePublicIngress, RiskLevel, RuntimeTarget, StartNode, StartRuntime,
     StopNode, StopRuntime, SwitchSocketConnection, WaitForHealthy, compile_activity_plan,
 )
-from control_plane_kit_core.planning.scenarios import switch_database_endpoint
+from control_plane_kit_core.planning.scenarios import backend_switch
 from control_plane_kit_core.topology import diff_graphs, validate_graph
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture
@@ -23,7 +23,7 @@ from tests.test_runtime_effect_translation import _public_ingress_graph
 class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unittest.TestCase):
     def test_actual_socket_record_activity_is_positive_empty(self):
         module = self.require_scopes()
-        scenario = switch_database_endpoint()
+        scenario = backend_switch()
         plan = compile_activity_plan(diff_graphs(validate_graph(scenario.current_graph), validate_graph(scenario.desired_graph)))
         operations = tuple(activity.operation for activity in plan.activities
                            if isinstance(activity.operation, SwitchSocketConnection))
@@ -106,7 +106,7 @@ class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unitt
     def test_witness_matches_exact_original_stored_payload_and_projection_digests(self):
         module = self.require_scopes()
         identity, plan, base, desired = self.source()
-        payload = self.connection.execute("SELECT payload FROM cpk_activity_plans WHERE plan_id='plan-a'").fetchone()[0]
+        payload = self.connection.execute("SELECT payload FROM cpk_activity_plans WHERE plan_id=%s", (plan.plan_id,)).fetchone()[0]
         expected = {
             "profile": "receiver-execution-scopes.v1",
             "workspace_id": identity.workspace_id, "request_id": identity.request_id,
@@ -169,10 +169,10 @@ class ReceiverExecutionScopeDerivationTests(ReceiverExecutionScopeFixture, unitt
 
     def test_duplicate_scopes_are_canonical_without_dropping_distinct_nodes(self):
         module = self.require_scopes()
-        source = self.source_with_operations(StartNode(NodeTarget("a")), StartNode(NodeTarget("Z")),
-            StartNode(NodeTarget("a")), desired_graph=self.graph(nodes=("a", "Z")))
+        source = self.source_with_operations(StartNode(NodeTarget("z")), StartNode(NodeTarget("a")),
+            StartNode(NodeTarget("z")), desired_graph=self.graph(nodes=("z", "a")))
         self.assertEqual(module.derive_execution_receiver_scopes(*source).scopes,
-                         (module.ExecutionReceiverScope("docker", "Z"), module.ExecutionReceiverScope("docker", "a")))
+                         (module.ExecutionReceiverScope("docker", "a"), module.ExecutionReceiverScope("docker", "z")))
 
     def test_health_observation_is_positive_empty_with_real_distinct_witness(self):
         module = self.require_scopes()

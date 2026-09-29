@@ -29,8 +29,14 @@ class PostgresReceiverExecutionScopeTests(ReceiverExecutionScopeFixture, unittes
                 base_graph_id="pair-base", desired_graph_id="pair-desired")
 
     def admit_pair_plan(self, name, suffix):
+        with self.unit_of_work() as uow:
+            template = uow.stores.activity_history.get_plan("pair-plan-" + name)
+        self.seed_plan_truth(plan_id="pair-copy-plan-" + suffix,
+            approval_request_id="pair-copy-approval-" + suffix,
+            approval_decision_id="pair-copy-decision-" + suffix, plan=template.plan,
+            base_graph_id=template.base_graph_id, desired_graph_id=template.desired_graph_id)
         return self.admission_service("pair-request-" + suffix, "pair-action-" + suffix).execute(
-            self.command(plan_id="pair-plan-" + name, approval_request_id="pair-approval-" + name,
+            self.command(plan_id="pair-copy-plan-" + suffix, approval_request_id="pair-copy-approval-" + suffix,
                          key="pair-" + suffix))
 
     def test_known_64_requests_on_later_distinct_prefix_fit_but_new_65th_refuses(self):
@@ -137,7 +143,7 @@ class PostgresReceiverExecutionScopeTests(ReceiverExecutionScopeFixture, unittes
         module = self.require_scopes()
         identity, _, _, _ = self.source()
         request = ExecutionRequestRecord(identity, ExecutionRequestStatus.QUEUED, "operator-a",
-            "2026-07-22T12:04:00Z", "approval-request-a", "approval-decision-a",
+            "2026-07-22T12:04:00Z", "scope-approval-a", "scope-decision-a",
             ExecutionIdempotency("bare", "bare-fingerprint"))
         with self.assertRaises(module.ReceiverScopeUnavailable):
             with self.unit_of_work() as uow:

@@ -91,7 +91,7 @@ class ReceiverExecutionScopeTransportTests(ReceiverExecutionScopeFixture, unitte
                 # observation, before guarded retrieval. It changes DB truth,
                 # never the returned row, decoder, limit or reservation.
                 observer.connection.execute(
-                    "UPDATE cpk_activity_plans SET payload=jsonb_build_object('growth',repeat('x',1048577)) WHERE plan_id='plan-a'")
+                    "UPDATE cpk_activity_plans SET payload=jsonb_build_object('growth',repeat('x',1048577)) WHERE plan_id='scope-plan-a'")
                 injected.append(True)
 
         result, observer = self.measured_read(after_row=grow_original)
@@ -131,7 +131,7 @@ class ReceiverExecutionScopeTransportTests(ReceiverExecutionScopeFixture, unitte
         self.admit()
         _, _, _, desired = self.source()
         originals = (
-            ("cpk_activity_plans", "payload", "plan_id", "plan-a"),
+            ("cpk_activity_plans", "payload", "plan_id", "scope-plan-a"),
             ("cpk_realized_graph_projections", "graph_descriptor", "projection_id", desired.projection_id),
         )
         for table, column, identity, value in originals:

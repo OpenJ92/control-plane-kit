@@ -357,3 +357,59 @@ now exposes its existing bounded historical pair projection separately from
 the current-fence comparison. C1 uses only that projection before checking the
 cancellation envelope. A real renewal/cancel target and corrupted-consequence
 negative preserve both the lawful path and refusal without fabricated authority.
+
+### First source owning gate and fixture correction
+
+At reviewed `c7833aba`, the unchanged ordinary local gate ran 1,956 tests in
+6,031.201 seconds and exited 1 with 32 failures and 11 errors. Setup/collection
+completed; post-suite compile/import did not run. The harness removed its exact
+container and network. [Terminal evidence and cleanup](https://github.com/OpenJ92/control-plane-kit/pull/1906#issuecomment-5894861004).
+Hosted Operations stopped at its configured 30-minute limit without terminal
+behavioral results; Core and Current Backend passed. No hosted retry or timeout
+change was made. Neither partial gate earns Operations green or adoption credit.
+
+The terminal failure ledger is:
+
+| Root cause | Terminal observations | Correction and preserved law |
+| --- | --- | --- |
+| Schema/atlas companions | 9 failures | Keep exact counts, hash, all table fields, FK ledger and graph assertions; update companions to the already checked current catalog. |
+| Real admission action omitted from old snapshots | 10 failures | Preserve the complete initial action prefix and assert exactly one retry/recovery action or exactly two renewal actions in addition. Concurrency winners, loser denials, event identities and replay remain unchanged. |
+| Default scope fixture included runtime work | 11 failures, 2 SQL boundary errors | Store a separate explicit node-only default plan before real admission. Preserve exact node footprint/digest, runtime overlap, forged-count and 1024/1025-byte assertions. Keep the inherited structural plan as distinct original truth. |
+| Repeated active requests reused one plan | 6 errors | Give every real queued candidate its own immutable approved plan. Preserve candidate/raw-row populations, exact prefixes and overflow results; do not disable the active-plan unique constraint. |
+| Recorded query workspace missing | 1 error | Create the actual workspace before authored material; retain the 10,000-row indexed history population. |
+| Invalid socket/node fixture examples | 1 failure, 1 error | Use the actual backend-switch scenario and valid product role IDs; preserve socket positive-empty, exact ordering and duplicate-node laws. |
+| Health source changed after request witness | 1 error | Explicit recorded-health fixture prepares final plan/profile/material/options before deriving its first request witness. Default recovery fixtures still use real admission; no production re-witness, repair or current-verifier weakening. |
+| Tiny index-planner sample | 1 failure | Populate distinct real-admitted plans with many same-runtime nodes and ANALYZE. Retain all three indexes, actual SQL, prefix conditions and LIMIT-before-sort assertions; report missing indexes and candidate EXPLAIN on failure. Selected-plan success remains unverified. |
+
+No production source defect or new semantic decision has been established by
+these traces. This correction changes tests/fixtures and documentation only;
+all resulting behavior still needs exact-head owning evidence. Meridian's
+independent terminal focus confirmed the stale health witness and the absence
+of an established production index defect.
+
+The health family is explicitly recorded history, unlike its recovery-service
+base fixture. Its BASE-side and deliberately false relation-digest variants
+must reach the existing health-owner assertions, without pretending those
+histories passed execution admission. Construction preserves original IDs,
+times and actual intent/preparation owners. Final originals precede request
+coverage; current reentry remains read-only and refuses genuine corruption.
+
+The five shared row-budget methods completed without terminal failures, but
+large single-run coordinator histories dominated runtime. Reviewed fixture
+refinement uses 32 real runs of 32 effects for 1,024 attempts plus 1,024
+independent intents. A real overflow start, with only its attempt deletion
+rolled back, still proves literal 2,049-row refusal and restoration at 2,050.
+Compensation uses 22 actual programs: 668 forward attempts/intents and 646
+steps, then 22 first inverse starts yield 690/690/646/22 rows, exactly 2,048.
+Folding the last program's first inverse and starting its next ordered step
+produces 691/691/646/23, the first lawful +3 overflow at 2,051. Persisted category
+counts, real semantic owners and all ceilings remain explicit. This strengthens
+shared accumulation across programs; it does not retain a claim of one huge
+681-step program stress coverage. Performance improvement is unmeasured until
+the corrected ordinary gate runs.
+
+Security/data/history: no production schema, authority, provider, credential,
+network or cleanup behavior changed. No limits, negative assertions or owner
+checks were removed. No fake outcomes, new executor, alternate harness or
+current-schema repair was introduced. Corrected source review precedes the
+next owning run; staged merge and C2/C3/D remain separate North dispositions.

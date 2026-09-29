@@ -6,7 +6,7 @@ from importlib import import_module
 from importlib.util import find_spec
 
 from control_plane_kit_core.algebra import DeploymentTopology, DockerRuntime
-from control_plane_kit_core.planning import ActivityId, ActivityPlan, PlannedActivity
+from control_plane_kit_core.planning import ActivityId, ActivityPlan, NodeTarget, PlannedActivity, StartNode
 from control_plane_kit_core.products import ProductInstanceConfiguration, instantiate_product
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.operations import RunId, RecoveryScope
@@ -50,7 +50,6 @@ class ReceiverExecutionScopeFixture:
     unit_of_work = admission_tests.ExecutionAdmissionTests.unit_of_work
     operation_service = admission_tests.ExecutionAdmissionTests.operation_service
     admission_service = admission_tests.ExecutionAdmissionTests.admission_service
-    command = admission_tests.ExecutionAdmissionTests.command
     seed_graphs = admission_tests.ExecutionAdmissionTests.seed_graphs
     seed_plan_truth = admission_tests.ExecutionAdmissionTests.seed_plan_truth
     product = admission_tests.ExecutionAdmissionTests.product
@@ -59,11 +58,21 @@ class ReceiverExecutionScopeFixture:
 
     def setUp(self):
         admission_tests.ExecutionAdmissionTests.setUp(self)
+        # The scope default describes node work only. The inherited structural
+        # example also reconciles its runtime and remains separate stored truth.
+        self.seed_plan_truth(plan_id="scope-plan-a", approval_request_id="scope-approval-a",
+            approval_decision_id="scope-decision-a", plan=ActivityPlan((
+                PlannedActivity(ActivityId("scope-start-app"), StartNode(NodeTarget("app"))),)))
         with self.unit_of_work() as uow:
             uow.stores.registered_products.register(workspace_id="workspace-a",
                 descriptor_document=self.document, source=InlineDescriptorSource(),
                 imported_by="operator-a", imported_at="2026-07-22T12:01:30Z")
             uow.commit()
+
+    def command(self, **kwargs):
+        kwargs.setdefault("plan_id", "scope-plan-a")
+        kwargs.setdefault("approval_request_id", "scope-approval-a")
+        return admission_tests.ExecutionAdmissionTests.command(self, **kwargs)
 
     def require_scopes(self):
         name = "control_plane_kit_operations.receiver_execution_scopes"
@@ -76,10 +85,10 @@ class ReceiverExecutionScopeFixture:
 
     def source(self, *, request_id="execution-a"):
         with self.unit_of_work() as uow:
-            plan = uow.stores.activity_history.get_plan("plan-a")
+            plan = uow.stores.activity_history.get_plan("scope-plan-a")
             base = uow.stores.realized_graphs.get(plan.base_realized_projection_id)
             desired = uow.stores.realized_graphs.get(plan.desired_realized_projection_id)
-        identity = ExecutionRequestIdentity(request_id, "workspace-a", "session-a", "plan-a")
+        identity = ExecutionRequestIdentity(request_id, "workspace-a", "session-a", "scope-plan-a")
         return identity, plan, base, desired
 
     def source_with_operations(self, *operations, base_graph=None, desired_graph=None):
@@ -110,6 +119,10 @@ class ReceiverExecutionScopeFixture:
                                 DockerRuntime(runtime_id=runtime, children=blocks)))
 
     def admit(self, suffix="a"):
+        if suffix != "a":
+            # Independent queued candidates need independent approved plans;
+            # the production one-active-request-per-plan constraint stays intact.
+            return self.admit_operations(suffix, StartNode(NodeTarget("app")))
         return self.admission_service("execution-" + suffix, "action-execute-" + suffix).execute(
             self.command(key="execute-" + suffix))
 

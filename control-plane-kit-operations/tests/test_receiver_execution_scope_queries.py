@@ -52,13 +52,13 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
         for group in range(groups):
             plan = ActivityPlan(tuple(PlannedActivity(ActivityId(f"start-{group}-{node}"),
                 StartNode(NodeTarget(f"node-{group}-{node}"))) for node in range(nodes)))
-            self.seed_plan_truth(plan_id=f"fanout-plan-{group}", approval_request_id=f"fanout-approval-{group}",
-                approval_decision_id=f"fanout-decision-{group}", plan=plan,
-                base_graph_id="fanout-base", desired_graph_id="fanout-desired")
             for copy in range(copies):
                 suffix = f"{group}-{copy}"
+                self.seed_plan_truth(plan_id="fanout-plan-" + suffix, approval_request_id="fanout-approval-" + suffix,
+                    approval_decision_id="fanout-decision-" + suffix, plan=plan,
+                    base_graph_id="fanout-base", desired_graph_id="fanout-desired")
                 self.admission_service("fanout-request-" + suffix, "fanout-action-" + suffix).execute(
-                    self.command(plan_id=f"fanout-plan-{group}", approval_request_id=f"fanout-approval-{group}", key="fanout-" + suffix))
+                    self.command(plan_id="fanout-plan-" + suffix, approval_request_id="fanout-approval-" + suffix, key="fanout-" + suffix))
 
     def test_shared_4096_raw_rows_fit_across_prefixes_and_4097_refuse_before_dedup(self):
         module = self.require_scopes()
@@ -88,17 +88,26 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
 
     def test_actual_node_and_runtime_queries_are_eligible_for_all_three_prefix_indexes(self):
         module = self.require_scopes()
-        self.admit()
-        self.admit_operations("runtime", StartRuntime(RuntimeTarget("docker")))
+        # Distinct node predicates must be selective enough to distinguish the
+        # exact-node index from the equally eligible all-nodes ordering.
+        self.seed_fanout(groups=1, nodes=64, copies=16)
+        self.seed_plan_truth(plan_id="runtime-plan", approval_request_id="runtime-approval",
+            approval_decision_id="runtime-decision", plan=ActivityPlan((
+                PlannedActivity(ActivityId("start-runtime"), StartRuntime(RuntimeTarget("runtime-0"))),)),
+            base_graph_id="fanout-base", desired_graph_id="fanout-desired")
+        self.admission_service("runtime-request", "runtime-action").execute(
+            self.command(plan_id="runtime-plan", approval_request_id="runtime-approval", key="runtime"))
+        self.connection.execute("ANALYZE cpk_execution_receiver_scopes")
         recording = QueryRecorder(psycopg.connect(os.environ["CPK_OPERATIONS_TEST_DATABASE_URL"]))
         indexes = set()
+        candidate_plans = []
         with PostgresUnitOfWork(lambda: recording) as uow:
             guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
             # Proves index eligibility and ordering, not a production latency
             # promise or a claim that tiny populations must choose an index.
             recording.connection.execute("SET LOCAL enable_seqscan=off")
-            for scope in (module.ExecutionReceiverScope("docker", "app"),
-                          module.ExecutionReceiverScope("docker", None)):
+            for scope in (module.ExecutionReceiverScope("runtime-0", "node-0-0"),
+                          module.ExecutionReceiverScope("runtime-0", None)):
                 recording.calls.clear()
                 evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
                 self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "conflict")
@@ -107,6 +116,8 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
                 self.assertTrue(selected)
                 for query, params in selected:
                     explained = recording.connection.execute("EXPLAIN (FORMAT JSON, COSTS FALSE) " + query, params).fetchone()[0][0]["Plan"]
+                    if "scope_kind=" in query:
+                        candidate_plans.append((query, explained))
                     nodes = tuple(plan_nodes(explained))
                     indexes.update(node["Index Name"] for node in nodes if "Index Name" in node)
                     prefix_indexes = {SCOPES + suffix for suffix in (
@@ -130,8 +141,10 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
                                 "Merge Append", "SetOp"),
                                 "each candidate prefix must be capped before combination/deduplication/sorting")
                         self.assertTrue(capped, "an ordered but unbounded candidate index scan is insufficient")
-        self.assertTrue({SCOPES + suffix for suffix in (
-            "_runtime_lookup", "_node_lookup", "_runtime_nodes_lookup")} <= indexes)
+        expected_indexes = {SCOPES + suffix for suffix in (
+            "_runtime_lookup", "_node_lookup", "_runtime_nodes_lookup")}
+        self.assertTrue(expected_indexes <= indexes,
+            {"missing_indexes": sorted(expected_indexes - indexes), "candidate_plans": candidate_plans})
 
     def test_requested_scope_limit_deduplicates_before_capacity_and_refuses_1025(self):
         module = self.require_scopes()

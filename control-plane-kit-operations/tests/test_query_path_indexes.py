@@ -93,7 +93,7 @@ class QueryPathIndexContractTests(unittest.TestCase):
         contract = current_schema_contract.CURRENT_POSTGRES_SCHEMA_CONTRACT
         indexes = {value.name: value for value in contract.indexes}
 
-        self.assertEqual(len(contract.indexes), 142)
+        self.assertEqual(len(contract.indexes), 147)
         for name, (relation, keys, predicate) in _EXPECTED_QUERY_PATH_INDEXES.items():
             with self.subTest(index=name):
                 value = indexes[name]
@@ -770,6 +770,8 @@ class QueryPathPlannerTests(unittest.TestCase):
         from tests.graph_lineage_fixture import seed_authored_graphs
         from tests.receiver_scope_history_fixture import empty_plan_payload, insert_recorded_requests
         from control_plane_kit_operations.postgres.graph_store import PostgresRealizedGraphProjectionStore
+        self.connection.execute("INSERT INTO cpk_workspaces (workspace_id,name,lifecycle) "
+                                "VALUES ('workspace-target','Target','created')")
         seed_authored_graphs(self.connection, workspace_id="workspace-target", graph_ids=("graph-a", "graph-b"))
         projections = PostgresRealizedGraphProjectionStore(self.connection)
         original_pins = tuple(projections.save(projections.identity_for_authored("workspace-target", graph_id)).projection_id

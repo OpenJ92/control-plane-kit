@@ -251,6 +251,11 @@ class PostgresExecutionLeaseRecoveryFixture:
             approval_subject=approval_subject,
         )
 
+    def seed_execution_request(self) -> None:
+        """Service fixtures establish request truth through real admission."""
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
+        admit_fixture_plan(self, requested_at="2026-08-15T03:59:00Z")
+
     def seed_truth(
         self,
         decision: RecoveryDecisionKind,
@@ -259,7 +264,6 @@ class PostgresExecutionLeaseRecoveryFixture:
         approval_subject: str = "activity-plan",
     ) -> None:
         from tests.graph_lineage_fixture import execution_graph
-        from tests.receiver_scope_history_fixture import admit_fixture_plan
         active = decision is RecoveryDecisionKind.RENEW_ACTIVE_CLAIM
         history = history or ("active-empty" if active else "failed")
         plan = ActivityPlan(
@@ -372,7 +376,7 @@ class PostgresExecutionLeaseRecoveryFixture:
                 )
             )
             unit_of_work.commit()
-        admit_fixture_plan(self, requested_at="2026-08-15T03:59:00Z")
+        self.seed_execution_request()
         # Recorded lease/run overlays preserve the recovery law's original fence and time.
         self.connection.execute(
             "UPDATE cpk_execution_requests SET status='claimed', claim_worker_id='worker-a', "
