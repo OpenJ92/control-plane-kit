@@ -1472,3 +1472,62 @@ ALTER TABLE ONLY cpk_health_effect_preparations
 
 ALTER TABLE ONLY cpk_health_effect_preparations
     ADD CONSTRAINT cpk_health_effect_preparations_workload_authorization_fk FOREIGN KEY (workload_authorization_id, workspace_id) REFERENCES cpk_secret_use_authorizations(authorization_id, workspace_id);
+
+CREATE TABLE cpk_graph_receiver_introductions (
+    workspace_id text NOT NULL,
+    receiver_id text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    provider_socket_name text NOT NULL,
+    introducing_graph_id text NOT NULL,
+    introducing_realized_projection_id text NOT NULL,
+    introducing_action_id text NOT NULL,
+    introducing_session_id text NOT NULL,
+    introducing_draft_id text,
+    first_accepted_action_id text,
+    first_accepted_session_id text,
+    retired_action_id text,
+    retired_session_id text
+);
+
+CREATE TABLE cpk_graph_receiver_bindings (
+    workspace_id text NOT NULL,
+    graph_id text NOT NULL,
+    realized_projection_id text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    provider_socket_name text NOT NULL,
+    receiver_id text NOT NULL,
+    selected_configuration_digest text NOT NULL,
+    declaration_identity text NOT NULL
+);
+
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_pkey PRIMARY KEY (workspace_id, receiver_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_receiver_key UNIQUE (receiver_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_scope_key UNIQUE (workspace_id, receiver_id, runtime_id, node_id, provider_socket_name);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_pkey PRIMARY KEY (workspace_id, graph_id, realized_projection_id, node_id, provider_socket_name);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_receiver_key UNIQUE (workspace_id, graph_id, realized_projection_id, receiver_id);
+ALTER TABLE ONLY cpk_operation_actions ADD CONSTRAINT cpk_operation_actions_action_session_key UNIQUE (action_id, session_id);
+ALTER TABLE ONLY cpk_desired_topology_draft_revisions ADD CONSTRAINT cpk_desired_topology_draft_revisions_draft_graph_key UNIQUE (workspace_id, draft_id, graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_receiver_check CHECK ((receiver_id ~ '^[0-9a-f]{32}$'::text));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_acceptance_pair_check CHECK (((first_accepted_action_id IS NULL) = (first_accepted_session_id IS NULL)));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retirement_pair_check CHECK (((retired_action_id IS NULL) = (retired_session_id IS NULL)));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retirement_accepted_check CHECK (((retired_action_id IS NULL) OR (first_accepted_action_id IS NOT NULL)));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retirement_action_check CHECK (((retired_action_id IS NULL) OR (retired_action_id <> first_accepted_action_id)));
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_configuration_digest_check CHECK ((selected_configuration_digest ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_declaration_identity_check CHECK ((declaration_identity ~ '^[0-9a-f]{64}$'::text));
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_graph_fkey FOREIGN KEY (workspace_id, introducing_graph_id) REFERENCES cpk_graph_versions(workspace_id, graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_projection_workspace_fkey FOREIGN KEY (introducing_realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_projection_source_fkey FOREIGN KEY (introducing_realized_projection_id, introducing_graph_id) REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_origin_action_fkey FOREIGN KEY (introducing_action_id, introducing_session_id) REFERENCES cpk_operation_actions(action_id, session_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_origin_workspace_fkey FOREIGN KEY (introducing_session_id, workspace_id) REFERENCES cpk_operation_sessions(session_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_accepted_action_fkey FOREIGN KEY (first_accepted_action_id, first_accepted_session_id) REFERENCES cpk_operation_actions(action_id, session_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_accepted_workspace_fkey FOREIGN KEY (first_accepted_session_id, workspace_id) REFERENCES cpk_operation_sessions(session_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retired_action_fkey FOREIGN KEY (retired_action_id, retired_session_id) REFERENCES cpk_operation_actions(action_id, session_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_retired_workspace_fkey FOREIGN KEY (retired_session_id, workspace_id) REFERENCES cpk_operation_sessions(session_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_draft_fkey FOREIGN KEY (workspace_id, introducing_draft_id, introducing_graph_id) REFERENCES cpk_desired_topology_draft_revisions(workspace_id, draft_id, graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_introductions ADD CONSTRAINT cpk_graph_receiver_introductions_original_binding_fkey FOREIGN KEY (workspace_id, introducing_graph_id, introducing_realized_projection_id, receiver_id) REFERENCES cpk_graph_receiver_bindings(workspace_id, graph_id, realized_projection_id, receiver_id) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_graph_fkey FOREIGN KEY (workspace_id, graph_id) REFERENCES cpk_graph_versions(workspace_id, graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_projection_workspace_fkey FOREIGN KEY (realized_projection_id, workspace_id) REFERENCES cpk_realized_graph_projections(projection_id, workspace_id);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_projection_source_fkey FOREIGN KEY (realized_projection_id, graph_id) REFERENCES cpk_realized_graph_projections(projection_id, source_authored_graph_id);
+ALTER TABLE ONLY cpk_graph_receiver_bindings ADD CONSTRAINT cpk_graph_receiver_bindings_scope_fkey FOREIGN KEY (workspace_id, receiver_id, runtime_id, node_id, provider_socket_name) REFERENCES cpk_graph_receiver_introductions(workspace_id, receiver_id, runtime_id, node_id, provider_socket_name);

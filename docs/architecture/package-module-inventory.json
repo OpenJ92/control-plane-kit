@@ -11460,6 +11460,65 @@
       "role": "durable-control-plane-operation",
       "semantic_roles": ["values", "interpreter"],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_run_prefix.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations.receiver_lifecycle",
+      "internal_dependencies": [
+        "control_plane_kit_core.receiver_configuration",
+        "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_core.wrapper_configuration"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.receiver_lifecycle",
+      "motivation": "Graph-owned receiver structural facts and complete material integrity; no lifecycle admission or provider authority.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_receiver_storage.py",
+        "tests/test_postgres_receiver_storage_schema.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/receiver_lifecycle.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations.postgres.receiver_lifecycle_store",
+      "internal_dependencies": [
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.postgres.temporal"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.current_data_validation"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.receiver_lifecycle_store",
+      "motivation": "Graph-owned receiver structural facts and complete material integrity; no lifecycle admission or provider authority.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_receiver_storage.py",
+        "tests/test_postgres_receiver_storage_schema.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/receiver_lifecycle_store.py"
     }
   ],
   "owner_vocabulary": [

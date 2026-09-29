@@ -1,6 +1,16 @@
 Source: [current_schema.sql](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/current_schema.sql).
 Maintain this companion alongside its source.
 
+Receiver storage adds graph-owned introductions and complete per-projection
+binding sets. Seven keys include global receiver uniqueness and structural
+action/session and draft/graph support. Seven checks constrain receiver/digest
+grammar and paired acceptance/retirement witnesses. Fifteen NO ACTION foreign
+keys retain exact workspace, graph, source projection, action/session, draft and
+scope provenance. Only original binding is deferred until commit; introducing
+and binding rows are created in one caller transaction. Store transitions own
+write-once history, without temporal triggers or a public arbitrary-row writer.
+No lifecycle admission or execution authority follows from these facts.
+
 The current fresh schema includes `cpk_health_effect_preparations`, an immutable
 leaf with eighteen columns: structured attempt identity, workspace/logical request,
 original fingerprint/event commitment, two projection identities, four family

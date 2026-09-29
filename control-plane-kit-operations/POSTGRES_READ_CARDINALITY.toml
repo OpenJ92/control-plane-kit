@@ -1,6 +1,32 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+selector = "_ReceiverStorage.bindings"
+category = "exact-verifier"
+sql = "exact workspace/graph/projection; LIMIT derived receiver count plus one; CASE-bounded text; Python member ordering; full stored-material congruence"
+consumer_kind = "production"
+consumer = "PostgresGraphTopologyStore receiver member reads and private writers verify complete derived membership"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+selector = "validate_current_rows"
+occurrence = 1
+category = "exact-verifier"
+sql = "binding projection and introduction origin UNION; workspace/graph/projection keyset LIMIT 64; CASE-bounded identities; complete traversal of indexed material"
+consumer_kind = "production"
+consumer = "current schema verification rederives all retained receiver-owned projection sets without classifying generic history"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+selector = "validate_current_rows"
+occurrence = 2
+category = "exact-verifier"
+sql = "introduction workspace/receiver keyset LIMIT 64; CASE-bounded text; exact original binding reconstruction"
+consumer_kind = "production"
+consumer = "current schema verification checks all retained introduction provenance and original membership without repair"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.health_effect_preparation_store"
 selector = "_validate_current_rows"
 category = "exact-verifier"

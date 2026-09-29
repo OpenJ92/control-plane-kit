@@ -12,6 +12,7 @@ from control_plane_kit_core.topology import GraphDescriptorError
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.graph_authoring import GraphIdentityConflict
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.receiver_lifecycle_store import _ReceiverStorage
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
@@ -279,6 +280,7 @@ class WorkspaceLifecycleGuard:
 
     workspace_id: str
     _owner: object = field(repr=False)
+    _transaction_id: int = field(repr=False)
 
 
 class PostgresGraphTopologyStore:
@@ -286,6 +288,7 @@ class PostgresGraphTopologyStore:
 
     def __init__(self, connection: PostgresConnection) -> None:
         self._connection = connection
+        self._receivers = _ReceiverStorage(connection)
 
     def lock_receiver_lifecycle(self, workspace_id: str) -> WorkspaceLifecycleGuard:
         """Enter before existing rows; exact-key transaction reentry is legal."""
@@ -293,7 +296,8 @@ class PostgresGraphTopologyStore:
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"receiver-lifecycle:{workspace_id}",),
         )
-        return WorkspaceLifecycleGuard(workspace_id, self)
+        transaction_id = self._connection.execute("SELECT txid_current()").fetchone()[0]
+        return WorkspaceLifecycleGuard(workspace_id, self, transaction_id)
 
     def owns_receiver_lifecycle(self, guard: object, workspace_id: str) -> bool:
         return (
@@ -301,6 +305,30 @@ class PostgresGraphTopologyStore:
             and guard._owner is self
             and guard.workspace_id == workspace_id
         )
+
+    def receiver_introduction(self, workspace_id: str, receiver_id: str):
+        return self._receivers.introduction(workspace_id, receiver_id)
+
+    def receiver_bindings(self, workspace_id: str, graph_id: str, realized_projection_id: str):
+        return self._receivers.bindings(workspace_id, graph_id, realized_projection_id)
+
+    def _reserve_receiver_introductions(self, graph, projection, *, action_id, session_id,
+                                       draft_id=None, lifecycle_guard):
+        return self._receivers.reserve(self, graph, projection, action_id=action_id,
+            session_id=session_id, draft_id=draft_id, lifecycle_guard=lifecycle_guard)
+
+    def _persist_receiver_bindings(self, graph, projection, *, lifecycle_guard):
+        return self._receivers.persist(self, graph, projection, lifecycle_guard=lifecycle_guard)
+
+    def _record_receiver_first_acceptance(self, workspace_id, receiver_id, *, action_id,
+                                         session_id, lifecycle_guard):
+        return self._receivers.record_witness(self, workspace_id, receiver_id, action_id=action_id,
+            session_id=session_id, lifecycle_guard=lifecycle_guard, retirement=False)
+
+    def _record_receiver_retirement(self, workspace_id, receiver_id, *, action_id,
+                                   session_id, lifecycle_guard):
+        return self._receivers.record_witness(self, workspace_id, receiver_id, action_id=action_id,
+            session_id=session_id, lifecycle_guard=lifecycle_guard, retirement=True)
 
     def save(self, record: GraphVersionRecord) -> GraphVersionRecord:
         encoded_created_at = encode_postgres_timestamp(record.created_at)
