@@ -99,7 +99,7 @@ evidence only at the first reached assertion, not credit for later target laws.
 
 The multi-member fixture errored before B: renaming its node to `other` retained
 `BlockSpec.role_id='api'`. Core's graph codec requires map key, node ID and block
-role ID to agree (`topology/codec.py`, `_validate_references`). The correction
+role ID to agree (`topology/codec.py`, `_validate`). The correction
 renames the role alongside the node and runtime membership. It preserves the
 multi-member/duplicate-identity target and all graph validation assertions.
 This fixture error is not intended red; the correction has not been executed.
