@@ -123,7 +123,8 @@ Three test defects receive no causal-red credit and require target-only repair:
 - Two distinct-latest setup errors cloned a second active run, violating
   `cpk_activity_runs_active_request`. Retain the original RUNNING requested run
   and all schema constraints; insert the distinct latest fixture row as FAILED
-  with valid terminal timing. Deliberately divergent lineage still exercises
+  with the original started_at and NULL settled_at. FAILED is not settled in
+  this model. Deliberately divergent lineage still exercises
   refusal rather than authorizing a retry.
 - Two nested-health setup errors selected a recompiled activity by its old ID.
   Runtime authority changes the graph digest and compiled ID. Select by the

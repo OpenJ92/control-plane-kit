@@ -87,9 +87,9 @@ class LifecycleLockFixture:
             self.assertIs(prior.status, ActivityRunStatus.RUNNING)
             self.assertIsNotNone(prior.started_at)
             # Keep the active-request uniqueness law: a distinct retained
-            # terminal run can be latest while the selected old run is active.
+            # failed run can be latest while the selected old run is active.
             later = replace(prior, run_id="run-later", retry=RetryIdentity(2, "run-a"),
-                status=ActivityRunStatus.FAILED, settled_at=prior.started_at)
+                status=ActivityRunStatus.FAILED, settled_at=None)
             uow.stores.execution.add_run(later)
             self.assertEqual(uow.stores.execution.get_run("run-a"), prior)
             uow.commit()
