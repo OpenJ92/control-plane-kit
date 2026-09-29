@@ -130,7 +130,7 @@ class FailedRunCompensationAttemptStartService:
 
     def _start(self, stores, command):
         try:
-            record, program = stores.failed_run_compensations.get_for_update(
+            record, program = stores.failed_run_compensations.get(
                 command.program_id
             )
         except KeyError as error:
@@ -141,7 +141,20 @@ class FailedRunCompensationAttemptStartService:
             raise FailedRunCompensationAttemptConflict(
                 "compensation program is incongruent"
             ) from error
-        _validate_program_lineage(stores, record, program, command)
+        # The immutable locator supplies identities, never lock ownership.
+        # Validate request scope before any run/attempt from that locator.
+        try:
+            request = stores.execution.get_request_for_update(record.request_id)
+            if (request.identity.workspace_id != record.workspace_id
+                    or request.identity.session_id != record.session_id
+                    or request.identity.plan_id != record.plan_id
+                    or program.evidence.lineage.run_id.value != record.run_id):
+                raise FailedRunCompensationAttemptConflict("compensation scope changed")
+            run = stores.execution.get_run_for_request_for_update(record.request_id, record.run_id)
+            if run.plan_id != record.plan_id:
+                raise FailedRunCompensationAttemptConflict("compensation run scope changed")
+        except (KeyError, OperationsRecordError) as error:
+            raise FailedRunCompensationAttemptConflict("compensation lineage is incomplete") from error
         bindings = stores.failed_run_compensation_attempts.for_program(
             program.program_id
         )
@@ -151,9 +164,8 @@ class FailedRunCompensationAttemptStartService:
             raise FailedRunCompensationAttemptConflict(
                 "compensation bindings are not contiguous"
             )
-        if command.position <= len(bindings):
-            return _replay(stores, program, command, bindings[command.position - 1])
-        if command.position != len(bindings) + 1:
+        replaying = command.position <= len(bindings)
+        if not replaying and command.position != len(bindings) + 1:
             raise FailedRunCompensationAttemptConflict(
                 "only the first incomplete compensation step may start"
             )
@@ -161,6 +173,48 @@ class FailedRunCompensationAttemptStartService:
             raise FailedRunCompensationAttemptConflict(
                 "compensation program has no incomplete step"
             )
+        needed_bindings = (bindings[command.position - 1],) if replaying else bindings
+        identities = {program.steps[command.position - 1].source_effect.attempt_identity}
+        for binding in needed_bindings:
+            if (binding.program_id != program.program_id
+                    or not 1 <= binding.position <= len(program.steps)):
+                raise FailedRunCompensationAttemptConflict("compensation binding scope changed")
+            source = program.steps[binding.position - 1].source_effect.attempt_identity
+            expected_inverse = EffectAttemptIdentity(source.run_id, source.activity_id, source.attempt + 1)
+            if binding.source_attempt != source or binding.inverse_attempt != expected_inverse:
+                raise FailedRunCompensationAttemptConflict("compensation binding identity changed")
+            identities.update((source, binding.inverse_attempt))
+        if any(identity.run_id.value != record.run_id for identity in identities):
+            raise FailedRunCompensationAttemptConflict("compensation attempt scope changed")
+        if not replaying:
+            source = program.steps[command.position - 1].source_effect.attempt_identity
+            inverse = EffectAttemptIdentity(source.run_id, source.activity_id, source.attempt + 1)
+            try:
+                stores.effect_attempts.get(inverse)
+            except KeyError:
+                pass
+            else:
+                raise FailedRunCompensationAttemptConflict("inverse attempt already exists")
+        # All required existing attempts precede the workspace/program suffix.
+        try:
+            for identity in sorted(identities, key=lambda value: (
+                    value.run_id.value, value.activity_id, value.attempt)):
+                if stores.effect_attempts.get_for_update(identity).state.identity != identity:
+                    raise FailedRunCompensationAttemptConflict("compensation attempt identity changed")
+            stores.workspaces.get_for_update(record.workspace_id)
+            locked_record, locked_program = stores.failed_run_compensations.get_for_update(command.program_id)
+            locked_bindings = stores.failed_run_compensation_attempts.for_program(program.program_id)
+        except (KeyError, OperationsRecordError) as error:
+            raise FailedRunCompensationAttemptConflict("compensation truth is incomplete") from error
+        if (locked_record != record or locked_program != program
+                or locked_program.fingerprint() != program.fingerprint()
+                or locked_program.steps != program.steps or locked_bindings != bindings):
+            raise FailedRunCompensationAttemptConflict("compensation collection changed")
+        # The existing checks now reenter only this prepared request/run/attempt
+        # and workspace set. A changed collection cannot add a late earlier lock.
+        _validate_program_lineage(stores, record, program, command)
+        if replaying:
+            return _replay(stores, program, command, bindings[command.position - 1])
         for binding in bindings:
             _require_succeeded_prior_binding(stores, program, binding)
         step = program.steps[command.position - 1]

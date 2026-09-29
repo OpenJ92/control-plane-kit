@@ -351,11 +351,11 @@ class RunLifecycleCommandService:
                 result = _replay(stores, locked_request, existing, fingerprint)
                 unit_of_work.commit()
                 return result
+            request = _get_request_for_update(stores, command.request_id)
             session = _get_open_session_for_update(
                 history,
                 locator.identity.session_id,
             )
-            request = _get_request(stores, command.request_id)
             if request.identity.session_id != session.session_id:
                 raise RunLifecycleConflict(
                     "execution request session linkage changed"
@@ -487,16 +487,16 @@ class RunLifecycleCommandService:
                 )
                 unit_of_work.commit()
                 return result
-            session = _get_open_session_for_update(
-                history,
-                locator_request.identity.session_id,
-            )
             request = _get_request_for_update(
                 stores,
                 locator_run.admission.request_id,
             )
             run = _get_run_for_update(stores, command.run_id)
             _require_run_request_linkage(run, request)
+            session = _get_open_session_for_update(
+                history,
+                locator_request.identity.session_id,
+            )
             if request.identity.session_id != session.session_id:
                 raise RunLifecycleConflict("activity run session linkage changed")
             _require_worker_owns(request, command.authority, command.fence)

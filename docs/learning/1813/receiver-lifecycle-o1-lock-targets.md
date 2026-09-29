@@ -1,6 +1,7 @@
 # #1896 lock-protocol targets
 
-Status: target-only checkpoint, not executable green or source acceptance.
+Status: causal-red accepted; bounded source candidate awaits independent review
+and ordinary Operations green. No implementation acceptance yet.
 
 Base: `9a1ece35cd381c0d36443939e02d23df37ed6502`.
 Branch: `codex/1896-lifecycle-locks`; destination: `roadmap/1813-runtime-control`.
@@ -141,3 +142,82 @@ requires review before the ordinary gate reruns. New source is not released by
 this mixed run. When a plain latest-run locator is implemented, extend the
 terminal replay absence witness to that owner query as well as the current
 locked method; Meridian retained this bounded source-review followup.
+
+## Corrected red and bounded source candidate
+
+The corrected target-only `8f1dfb2c59246301a3d140db4cfc769f960f6f03` ran the
+ordinary Operations suite to completion: 1,859 tests in 2,324.329 seconds,
+23 failures and 15 errors. The [terminal report](https://github.com/OpenJ92/control-plane-kit/pull/1900#issuecomment-5883238017)
+records exact prerequisites, log and cleanup. Log SHA256 is
+`b3b701cf7caf3ac35bd8d701173c187dea2dd4656dbe12ededf9bedf22ad9268`.
+All three fixture defects disappeared. Fourteen actual NOWAIT witnesses, one
+reproduced same-key deadlock and 23 missing-contract assertions earned
+[Meridian causal-red PASS](https://github.com/OpenJ92/control-plane-kit/issues/1896#issuecomment-5883254768).
+No later assertion hidden behind an early failure, or later compile/import
+stage, receives credit. Both exact suite-owned Docker resources were absent.
+
+North then [released bounded application work](https://github.com/OpenJ92/control-plane-kit/issues/1896#issuecomment-5883262738).
+The source candidate preserves the frozen participation table and implements:
+
+- `postgres/graph_store.py`: transaction-owned `WorkspaceLifecycleGuard`, minted
+  after the exact advisory key and checked by store identity plus workspace.
+  Access through active `uow.stores` rejects finished transactions. The desired
+  helper requires this guard; supported outer services acquire it before rows.
+- `desired_realized_projections.py`: `ExistingPublication | PreparedPublication`.
+  Preparation owns action key, fresh lifecycle key and session. Persistence
+  requires the exact workspace/session/key/store context and performs no first
+  key acquisition. Rotation preparation resolves action replay before current
+  rotation lookup; fresh construction uses the prepared workspace and verifies
+  rotation linkage under lock. This prevents a locator reread from selecting a
+  different workspace after the prefix.
+- Advancement, lifecycle, retry/recovery and compensation move only their
+  reviewed first acquisitions. No new lifecycle guard appears in the frozen
+  no-L execution set. Compensation replay still holds request serialization;
+  changed replay intent is checked before that lock. Compensation attempt
+  preparation collects the selected source/bound inverse identities, rejects a
+  preexisting unbound next inverse, locks exact attempts deterministically, then
+  locks workspace/program and rechecks record/program/ordered steps/bindings.
+  Existing policy and authority checks reenter those held identities.
+- New internal `effect_run_prefix.py` owns bounded run preparation shared by
+  native fold and health reload. It depends only on Operations records, is in
+  the module inventory and has no root exports. The already-held request is its
+  caller precondition. Locators validate scope before locks, use the bounded
+  plain latest query, lock retry order and compare locked records. The context
+  binds its transaction execution store and exact held run IDs. Nested reload
+  consumes that context; it does not discover a new run after runtime/attempt.
+- Native/health fold uses a nonlocking attempt locator under the held request
+  to preserve denial and terminal-replay branches, then checks the locked attempt
+  still matches. Native malformed intent/current authority checks precede fresh
+  latest lookup. Health preparation reads its immutable intent/plan before the
+  run prefix. Current signing/runtime/time checks remain on the fresh branch.
+
+The target tests now forbid both locked and plain latest queries during terminal
+native/health replay. The existing standalone health latest-owner substitution
+test moves to the plain locator; its refusal, exact call and unchanged-history
+assertions remain. This is an isomorphic owner-query translation, not a new
+retry fixture or weakened assertion.
+
+### Internal composition example
+
+```python
+with unit_of_work_factory() as uow:
+    prepared = prepare_desired_realized_projection_publication(
+        uow, command.workspace_id, command.session_id, command.idempotency_key.value,
+    )
+    result = publish_desired_realized_projection_in_unit_of_work(
+        uow, command, prepared=prepared, created_at=created_at, action_id=action_id,
+    )
+    uow.commit()
+```
+
+The ordinary PostgreSQL targets execute this shape, including caller rollback,
+wrong owner/scope and finished-transaction refusal. This is an internal command
+composition contract, not an HTTP/MCP capability or protection against malicious
+in-process Python/raw SQL.
+
+Security/data/history: no new authorization, routes, descriptors, secret output,
+schema/reset behavior or external effects. Transaction rollback remains caller
+owned; existing action/event/result semantics and recovery decisions govern.
+Residual risk is an omitted first acquisition or a branch/error-precedence drift;
+independent source review and full owning green are still required. No rolling
+coexistence claim with old writers. B/C/D and live work remain held; timer off.

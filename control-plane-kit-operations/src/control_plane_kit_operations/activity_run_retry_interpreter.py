@@ -85,6 +85,11 @@ class ActivityRunRetryCommandService:
                 unit_of_work.commit()
                 return result
 
+            request = _request_for_update(stores, command.request_id)
+            prior_run = _run_for_request_for_update(
+                stores, command.request_id, command.prior_run_id.value,
+            )
+            latest_run = _latest_run_for_update(stores, command.request_id)
             try:
                 session = history.get_session_for_update(
                     locator.identity.session_id
@@ -102,13 +107,6 @@ class ActivityRunRetryCommandService:
             if session.status is not OperationSessionStatus.OPEN:
                 raise RunLifecycleConflict("operation session is not open")
 
-            request = _request_for_update(stores, command.request_id)
-            prior_run = _run_for_request_for_update(
-                stores,
-                command.request_id,
-                command.prior_run_id.value,
-            )
-            latest_run = _latest_run_for_update(stores, command.request_id)
             _require_first_state(
                 command,
                 locator,

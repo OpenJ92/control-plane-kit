@@ -101,6 +101,8 @@ class PostgresLifecycleHealthFoldLockTests(
         before = self.health_snapshot()
         with mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request_for_update",
                 side_effect=AssertionError("terminal replay read latest run")), \
+                mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request",
+                side_effect=AssertionError("terminal replay located latest run")), \
                 mock.patch.object(PostgresExecutionStore, "observe_request_lease_for_update",
                 side_effect=AssertionError("terminal replay sampled current clock")), \
                 mock.patch.object(RuntimeAuthorityStore, "get_active_for_update",

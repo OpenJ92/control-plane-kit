@@ -87,9 +87,9 @@ class ExecutionLeaseRecoveryCommandService:
                 unit_of_work.commit()
                 return result
 
-            session = _open_session(history, locator.identity.session_id)
             request = _request_for_update(stores, command.request_id)
             run = _latest_run_for_update(stores, command.request_id)
+            session = _open_session(history, locator.identity.session_id)
             _require_locked_identity(command, locator, request, run, session.session_id)
             _require_first_state(command, request, run)
             _, _, plan = locked_recovery_approval(

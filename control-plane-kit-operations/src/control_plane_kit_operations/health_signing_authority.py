@@ -35,6 +35,9 @@ from control_plane_kit_operations.delegation_signing_keys import delegation_sign
 from control_plane_kit_operations.effect_attempt_start import _bounded_command_text
 from control_plane_kit_operations.effect_attempt_intent_evidence import EffectAttemptIntentRecord
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
+from control_plane_kit_operations.effect_run_prefix import (
+    EffectRunPrefixConflict, PreparedEffectRunPrefix, _lock_effect_run_prefix,
+)
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.health_effect_attempt_start import _valid_context
 from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders, HealthReceiverTrustError
@@ -278,20 +281,28 @@ class HealthSigningAuthorityReloadService:
             unit_of_work.commit()
         return result
 
-    def in_unit_of_work(self, unit_of_work, command: ReloadHealthSigningAuthority):
+    def in_unit_of_work(self, unit_of_work, command: ReloadHealthSigningAuthority, *, run_prefix=None):
         """Return authority and its DB observation under the caller's transaction."""
         if not _valid_command(command):
             raise HealthSigningAuthorityError(_INVALID)
         _require(all(scope in command.context.granted_scopes for scope in _SCOPES)
             and PolicyScope.EXECUTION_OPERATE in command.authority.scopes)
         stores = unit_of_work.stores
-        # Match the existing first-start lock order. Owner calls stay outside
-        # pure refusal catches, preserving raw/driver/domain error identity.
+        # The outer fold supplies every held run before attempt/runtime locks.
+        # Standalone reload prepares the same prefix here.
         request = _record(stores.execution.get_request_for_update(command.request_id), ExecutionRequestRecord)
-        run = _record(stores.execution.get_run_for_request_for_update(command.request_id,
-            command.identity.run_id.value), ActivityRunRecord)
+        try:
+            if run_prefix is None:
+                run_prefix = _lock_effect_run_prefix(unit_of_work, request,
+                    command.identity.run_id.value, latest_required=True)
+            if type(run_prefix) is not PreparedEffectRunPrefix:
+                raise EffectRunPrefixConflict("effect run prefix is invalid")
+            run_prefix.require(unit_of_work, request, command.identity.run_id.value, latest_required=True)
+        except EffectRunPrefixConflict:
+            raise HealthSigningAuthorityUnavailable(_UNAVAILABLE) from None
+        run = _record(run_prefix.requested_run, ActivityRunRecord)
+        latest = _record(run_prefix.latest_run, ActivityRunRecord)
         attempt = _record(stores.effect_attempts.get_for_update(command.identity), EffectAttemptRecord)
-        latest = _record(stores.execution.get_latest_run_for_request_for_update(command.request_id), ActivityRunRecord)
         _require(request.identity.request_id == command.request_id
             and request.identity.workspace_id == command.context.workspace_id
             and request.status is ExecutionRequestStatus.CLAIMED

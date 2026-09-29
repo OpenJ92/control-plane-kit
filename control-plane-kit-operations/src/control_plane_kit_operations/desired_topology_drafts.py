@@ -239,6 +239,7 @@ class DesiredTopologyDraftCommandService:
                 result = _replay_result(uow, command, existing, descriptor)
                 uow.commit()
                 return result
+            uow.stores.graphs.lock_receiver_lifecycle(context.workspace_id)
             try:
                 session = history.get_session_for_update(command.session_id)
             except KeyError:
@@ -376,6 +377,7 @@ def _execute_reference_command(service, command):
             result = _reference_replay(uow, command, existing)
             uow.commit()
             return result
+        uow.stores.graphs.lock_receiver_lifecycle(context.workspace_id)
         try:
             session = history.get_session_for_update(command.session_id)
         except KeyError:

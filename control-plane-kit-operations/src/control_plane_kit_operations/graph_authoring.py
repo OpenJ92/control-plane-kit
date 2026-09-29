@@ -121,9 +121,13 @@ class GraphAuthoringService:
         if not isinstance(command, SetDesiredGraphCommand):
             raise GraphAuthoringError("set_desired_graph requires SetDesiredGraphCommand")
         with self._unit_of_work_factory() as unit_of_work:
+            lifecycle_guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(
+                command.workspace_id
+            )
             result = set_desired_graph_in_unit_of_work(
                 unit_of_work,
                 command,
+                lifecycle_guard=lifecycle_guard,
                 graph_id=self._graph_id_factory(),
                 created_at=self._clock(),
             )
@@ -148,6 +152,7 @@ def set_desired_graph_in_unit_of_work(
     unit_of_work: Any,
     command: SetDesiredGraphCommand,
     *,
+    lifecycle_guard: object,
     graph_id: str,
     created_at: str,
 ) -> SetDesiredGraphResult:
@@ -155,6 +160,10 @@ def set_desired_graph_in_unit_of_work(
 
     if not isinstance(command, SetDesiredGraphCommand):
         raise GraphAuthoringError("set_desired_graph requires SetDesiredGraphCommand")
+    if not unit_of_work.stores.graphs.owns_receiver_lifecycle(
+        lifecycle_guard, command.workspace_id
+    ):
+        raise GraphAuthoringError("desired graph requires its transaction workspace guard")
     _validate_text(graph_id, "graph_id")
     _validate_text(created_at, "created_at")
     product_references = product_references_in_graph(command.graph)

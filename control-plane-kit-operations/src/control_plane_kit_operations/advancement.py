@@ -320,16 +320,17 @@ class CurrentGraphAdvancementCommandService:
                 )
                 unit_of_work.commit()
                 return result
-            session = _get_session_for_update(
-                history,
-                locator_request.identity.session_id,
-            )
-            workspace = _get_workspace_for_update(stores, command.workspace_id)
+            stores.graphs.lock_receiver_lifecycle(command.workspace_id)
             request = _get_request_for_update(
                 stores,
                 locator_run.admission.request_id,
             )
             run = _get_run_for_update(stores, command.run_id)
+            session = _get_session_for_update(
+                history,
+                locator_request.identity.session_id,
+            )
+            workspace = _get_workspace_for_update(stores, command.workspace_id)
             plan = _get_plan(history, command.plan_id)
             _require_run_request_linkage(run, request)
             if session.status is not OperationSessionStatus.OPEN:

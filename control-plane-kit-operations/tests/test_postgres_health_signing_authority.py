@@ -70,7 +70,7 @@ class PostgresHealthSigningAuthorityTests(PostgresHealthSigningAuthorityFixture,
         # this is not a database insertion or proof of a new retry mechanism.
         other = replace(run, run_id="run-new")
         before = self.health_snapshot()
-        with mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request_for_update", return_value=other) as read:
+        with mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request", return_value=other) as read:
             with self.assertRaises(self.reload_api.HealthSigningAuthorityUnavailable):
                 self.reload()
         read.assert_called_once_with("request-a")

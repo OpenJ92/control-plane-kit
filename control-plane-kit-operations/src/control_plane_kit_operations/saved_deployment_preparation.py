@@ -135,7 +135,8 @@ class SavedDeploymentPreparationService:
                     validate_saved_preparation_source(source, result.session, revision)
                     uow.commit()
                     return result
-                # No existing session row: key -> workspace -> draft precedes inserts.
+                # No existing session row: key -> lifecycle -> workspace -> draft.
+                uow.stores.graphs.lock_receiver_lifecycle(command.context.workspace_id)
                 workspace = uow.stores.workspaces.get_for_update(command.context.workspace_id)
                 draft = uow.stores.desired_topology_drafts.get(
                     command.context.workspace_id, command.desired.draft_id, for_update=True)

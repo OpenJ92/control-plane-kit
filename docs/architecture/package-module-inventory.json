@@ -9962,6 +9962,7 @@
       ],
       "destination": "control_plane_kit_operations.effect_attempt_fold_interpreter",
       "internal_dependencies": [
+        "control_plane_kit_operations.effect_run_prefix",
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.planning",
@@ -11008,6 +11009,7 @@
       ],
       "destination": "control_plane_kit_operations.health_signing_authority",
       "internal_dependencies": [
+        "control_plane_kit_operations.effect_run_prefix",
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.delegation_keys",
         "control_plane_kit_core.identity",
@@ -11435,6 +11437,29 @@
       "role": "deployment-language",
       "semantic_roles": ["values", "transformations"],
       "source": "control-plane-kit-core/src/control_plane_kit_core/receiver_node_control_results.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations.effect_run_prefix",
+      "internal_dependencies": ["control_plane_kit_operations.records"],
+      "known_package_consumers": [
+        "control_plane_kit_operations.effect_attempt_fold_interpreter",
+        "control_plane_kit_operations.health_signing_authority"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.effect_run_prefix",
+      "motivation": "Internal caller-transaction preparation locks bounded request-scoped run identities before effect attempts or runtime authority. It adds no reusable user authority or external effect.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_native_connection_fold.py",
+        "tests/test_postgres_health_signing_transactions.py",
+        "tests/test_postgres_lifecycle_health_fold_locks.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["values", "interpreter"],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_run_prefix.py"
     }
   ],
   "owner_vocabulary": [

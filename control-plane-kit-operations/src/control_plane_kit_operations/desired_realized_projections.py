@@ -10,6 +10,7 @@ from typing import Any, Callable
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_operations.records import (
     OperationActionRecord,
+    OperationSessionRecord,
     OperationSessionStatus,
     RealizedGraphProjectionRecord,
 )
@@ -145,6 +146,33 @@ class DesiredRealizedProjectionPublicationResult:
             )
 
 
+@dataclass(frozen=True)
+class ExistingPublication:
+    """Retained action selected under its exact idempotency key."""
+
+    action: OperationActionRecord
+
+
+@dataclass(frozen=True)
+class PreparedPublication:
+    """Internal fresh-publication prefix; never serialized as user authority."""
+
+    guard: object
+    session: OperationSessionRecord
+    idempotency_key: str
+
+    def require(self, unit_of_work, workspace_id, session_id, idempotency_key):
+        if (
+            not unit_of_work.stores.graphs.owns_receiver_lifecycle(self.guard, workspace_id)
+            or self.session.workspace_id != workspace_id
+            or self.session.session_id != session_id
+            or self.idempotency_key != idempotency_key
+        ):
+            raise DesiredRealizedProjectionPublicationConflict(
+                "publication requires its transaction workspace/session/key preparation"
+            )
+
+
 class DesiredRealizedProjectionCommandService:
     """Own the transaction for generic desired realized-material publication."""
 
@@ -166,9 +194,14 @@ class DesiredRealizedProjectionCommandService:
         if not isinstance(command, PublishDesiredRealizedProjection):
             raise TypeError("command must be PublishDesiredRealizedProjection")
         with self._unit_of_work_factory() as unit_of_work:
+            prepared = prepare_desired_realized_projection_publication(
+                unit_of_work, command.workspace_id, command.session_id,
+                command.idempotency_key.value,
+            )
             result = publish_desired_realized_projection_in_unit_of_work(
                 unit_of_work,
                 command,
+                prepared=prepared,
                 created_at=self._clock(),
                 action_id=self._action_id_factory(),
             )
@@ -180,6 +213,7 @@ def publish_desired_realized_projection_in_unit_of_work(
     unit_of_work: Any,
     command: PublishDesiredRealizedProjection,
     *,
+    prepared: ExistingPublication | PreparedPublication,
     created_at: str,
     action_id: str,
 ) -> DesiredRealizedProjectionPublicationResult:
@@ -191,23 +225,20 @@ def publish_desired_realized_projection_in_unit_of_work(
     _required_text(action_id, "action_id")
     stores = unit_of_work.stores
     history = stores.activity_history
-    history.lock_action_idempotency(
-        command.session_id,
-        command.idempotency_key.value,
-    )
+    fingerprint = _fingerprint(command)
+    if type(prepared) is ExistingPublication:
+        return _replay(stores, prepared.action, fingerprint)
+    if type(prepared) is not PreparedPublication:
+        raise DesiredRealizedProjectionPublicationConflict("publication preparation is missing")
+    prepared.require(unit_of_work, command.workspace_id, command.session_id,
+                     command.idempotency_key.value)
     existing = history.action_for_idempotency(
         command.session_id,
         command.idempotency_key.value,
     )
-    fingerprint = _fingerprint(command)
     if existing is not None:
         return _replay(stores, existing, fingerprint)
-    try:
-        session = history.get_session_for_update(command.session_id)
-    except KeyError as error:
-        raise DesiredRealizedProjectionPublicationNotFound(
-            "operation session was not found"
-        ) from error
+    session = prepared.session
     if session.workspace_id != command.workspace_id:
         raise DesiredRealizedProjectionPublicationConflict(
             "operation session and projection must belong to one workspace"
@@ -285,27 +316,33 @@ def publish_desired_realized_projection_in_unit_of_work(
 
 def prepare_desired_realized_projection_publication(
     unit_of_work: Any,
+    workspace_id: str,
     session_id: str,
     idempotency_key: str,
-) -> OperationActionRecord | None:
-    """Serialize publication identity and fence new work on the owning session."""
+) -> ExistingPublication | PreparedPublication:
+    """Enter before existing rows: action key, lifecycle guard, then session."""
 
     history = unit_of_work.stores.activity_history
     history.lock_action_idempotency(session_id, idempotency_key)
     existing = history.action_for_idempotency(session_id, idempotency_key)
     if existing is not None:
-        return existing
+        return ExistingPublication(existing)
+    guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(workspace_id)
     try:
         session = history.get_session_for_update(session_id)
     except KeyError as error:
         raise DesiredRealizedProjectionPublicationNotFound(
             "operation session was not found"
         ) from error
+    if session.workspace_id != workspace_id:
+        raise DesiredRealizedProjectionPublicationConflict(
+            "operation session and projection must belong to one workspace"
+        )
     if session.status is not OperationSessionStatus.OPEN:
         raise DesiredRealizedProjectionPublicationConflict(
             "operation session is not open"
         )
-    return None
+    return PreparedPublication(guard, session, idempotency_key)
 
 
 def _replay(

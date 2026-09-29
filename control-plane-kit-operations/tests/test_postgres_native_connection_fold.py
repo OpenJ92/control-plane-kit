@@ -139,6 +139,8 @@ class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffe
         before, ids = self.native_snapshot(), Sequence("must-not-allocate")
         with self.forbid_fresh_health(), mock.patch.object(PostgresExecutionStore,
                 "get_latest_run_for_request_for_update", side_effect=AssertionError("terminal replay read latest run")), \
+                mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request",
+                side_effect=AssertionError("terminal replay located latest run")), \
                 mock.patch.object(RuntimeAuthorityStore,
                 "get_active_for_update", side_effect=AssertionError("replay reloaded current runtime authority")):
             replay = self.service(ids).execute_native(command)

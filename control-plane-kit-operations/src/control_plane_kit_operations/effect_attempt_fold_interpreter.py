@@ -59,6 +59,9 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     effect_outcome_observation_records,
     effect_outcome_transition,
 )
+from control_plane_kit_operations.effect_run_prefix import (
+    EffectRunPrefixConflict, _lock_effect_run_prefix,
+)
 from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.runtime_management_targets import (
     is_native_connection_operation, is_signed_management_health_operation,
@@ -237,12 +240,46 @@ def _execute_fold(
             command.request_id,
             identity.run_id.value,
         )
-        attempt = _attempt_for_update(stores, identity)
+        run_prefix, located_native_intent, located_health_intent = None, None, None
+        if native is not None or health is not None:
+            # Request serialization permits a nonlocking branch locator. Keep
+            # malformed truth/current authority refusals before fresh latest-run
+            # acquisition; then lock the selected prefix before the attempt.
+            located_attempt = _attempt_for_update(stores, identity, for_update=False)
+            _require_current_authority(command, request)
+            latest_required = False
+            if native is not None:
+                located_native_intent = _native_fold_intent(
+                    stores, native, request, run, located_attempt, fence)
+                latest_required = located_attempt.state.status is EffectAttemptStatus.STARTED
+                if latest_required and run.status is not ActivityRunStatus.RUNNING:
+                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+            else:
+                _require_request_run(command, request, run, located_attempt)
+                _require_transition_authority(command, fence, located_attempt, False)
+                latest_required = _fold(command, located_attempt) != located_attempt.state
+                if latest_required:
+                    located_health_intent = _read_fold_intent(stores, command, located_attempt, None, health)
+                    if located_health_intent is None:
+                        raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+                    _require_managed_plan(stores, located_health_intent, request)
+            if latest_required:
+                try:
+                    run_prefix = _lock_effect_run_prefix(unit_of_work, request,
+                        identity.run_id.value, latest_required=True)
+                except EffectRunPrefixConflict:
+                    raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR) from None
+            attempt = _attempt_for_update(stores, identity)
+            if attempt != located_attempt:
+                raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
+        else:
+            attempt = _attempt_for_update(stores, identity)
         _require_current_authority(command, request)
         native_intent, native_clock = None, None
         if native is not None:
             command, native_intent, native_clock = _prepare_native_fold(
-                stores, native, request, run, attempt, fence)
+                stores, native, request, run, attempt, fence,
+                run_prefix=run_prefix, intent=located_native_intent)
         _require_request_run(command, request, run, attempt)
         if guarded is None and type(command.outcome) is ObservedEffectOutcome:
             raise EffectAttemptFoldConflict(_REPLAY_ERROR)
@@ -280,30 +317,10 @@ def _execute_fold(
             if replay_error is not None:
                 raise EffectAttemptFoldConflict(replay_error)
         else:
-            invalid_truth = False
             denied = False
-            intent_record = None
-            try:
-                intent_record = stores.effect_attempt_intents.get(
-                    attempt.state.identity
-                )
-            except (KeyError, OperationsRecordError):
-                invalid_truth = True
-            else:
-                invalid_truth = (
-                    type(intent_record) is not EffectAttemptIntentRecord
-                    or intent_record.identity != attempt.state.identity
-                    or intent_record.original_start_event
-                    != attempt.original_start_event
-                    or intent_record.request_id != command.request_id
-                    or intent_record.request_fingerprint
-                    != attempt.state.request_fingerprint
-                    or (
-                        guarded is not None
-                        and intent_record != guarded.intent_record
-                    )
-                    or (health is not None and intent_record != health.intent_record)
-                )
+            intent_record = (located_health_intent if health is not None else
+                _read_fold_intent(stores, command, attempt, guarded, None))
+            invalid_truth = intent_record is None
             observation = None
             if (not invalid_truth and native is None
                     and is_native_connection_operation(intent_record.intent.operation)):
@@ -316,7 +333,6 @@ def _execute_fold(
                 raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
             health_clock = None
             if not invalid_truth and health is not None:
-                _require_managed_plan(stores, intent_record, request)
                 try:
                     current_runtime = stores.runtime_authorities.get_active_for_update(
                         request.identity.workspace_id, intent_record.intent.authority_ref)
@@ -326,7 +342,7 @@ def _execute_fold(
                     raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
                 authority, health_clock = signing_authority.in_unit_of_work(unit_of_work,
                     ReloadHealthSigningAuthority(command.request_id, attempt.state.identity,
-                        health.context, command.authority, command.fence))
+                        health.context, command.authority, command.fence), run_prefix=run_prefix)
                 if authority.preparation != health.preparation:
                     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
             if not invalid_truth:
@@ -435,7 +451,23 @@ class _AcceptedNativeFold:
         return effect_outcome_failure(self.outcome)
 
 
-def _prepare_native_fold(stores, command, request, run, attempt, fence):
+def _read_fold_intent(stores, command, attempt, guarded, health):
+    try:
+        intent = stores.effect_attempt_intents.get(attempt.state.identity)
+    except (KeyError, OperationsRecordError):
+        return None
+    if (type(intent) is not EffectAttemptIntentRecord
+            or intent.identity != attempt.state.identity
+            or intent.original_start_event != attempt.original_start_event
+            or intent.request_id != command.request_id
+            or intent.request_fingerprint != attempt.state.request_fingerprint
+            or guarded is not None and intent != guarded.intent_record
+            or health is not None and intent != health.intent_record):
+        return None
+    return intent
+
+
+def _native_fold_intent(stores, command, request, run, attempt, fence):
     if (attempt.state.identity != command.identity
             or run.admission.request_id != command.request_id
             or run.plan_id != request.identity.plan_id
@@ -451,7 +483,10 @@ def _prepare_native_fold(stores, command, request, run, attempt, fence):
             or intent.original_start_event != attempt.original_start_event
             or intent.request_fingerprint != attempt.state.request_fingerprint):
         raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
+    return intent
 
+
+def _prepare_native_fold(stores, command, request, run, attempt, fence, *, run_prefix, intent):
     if attempt.state.status is not EffectAttemptStatus.STARTED:
         # Replay recovers the accepted value; it never asks today's runtime or
         # clock to reinterpret an old sample. The ordinary fold checks it again.
@@ -474,7 +509,7 @@ def _prepare_native_fold(stores, command, request, run, attempt, fence):
         outcome, clock = retained.outcome, None
     else:
         if (run.status is not ActivityRunStatus.RUNNING
-                or stores.execution.get_latest_run_for_request_for_update(command.request_id) != run):
+                or run_prefix is None or run_prefix.latest_run != run):
             raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
         _require_native_plan(stores, intent, request)
         try:
@@ -634,9 +669,10 @@ def _run_for_request_for_update(stores: Any, request_id: str, run_id: str):
     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
 
 
-def _attempt_for_update(stores: Any, identity: Any) -> EffectAttemptRecord:
+def _attempt_for_update(stores: Any, identity: Any, *, for_update=True) -> EffectAttemptRecord:
     try:
-        attempt = stores.effect_attempts.get_for_update(identity)
+        read = stores.effect_attempts.get_for_update if for_update else stores.effect_attempts.get
+        attempt = read(identity)
     except KeyError:
         failure = "missing"
     except (OperationsRecordError, ValueError):
