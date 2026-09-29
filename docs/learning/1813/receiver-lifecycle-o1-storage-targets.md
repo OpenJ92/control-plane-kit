@@ -1,7 +1,7 @@
 # O1.B storage target checkpoint
 
-Status: initial target run completed; fixture correction awaiting review.
-Application source remains held.
+Status: corrected ordinary causal-red independently passed at `820c9a4`.
+Application source requires North's separate bounded release.
 Base: joint freeze `847a7053def484e516e7214e9e563ed9f376b491`. Branch
 `codex/1897-receiver-storage-targets` targets the unreleased B+C collection.
 North released B targets only. B remains jointly unaccepted with C; private
@@ -113,6 +113,31 @@ not run after failure. No alternate runner, host Python or schema probe was used
 Meridian reviews this correction and terminal classification; North decides the
 next validation/source boundary. No clean full target-red or B acceptance is
 claimed for the first run.
+
+## Corrected ordinary causal-red
+
+The independently reviewed correction at
+`820c9a4462bbea066b267caf722a85bf8d0ba44b` ran the same ordinary suite with the
+clean pinned prerequisite: exit 1, 1,879 tests in 2,398.305 seconds, 18 failures
+and zero errors. All 1,861 existing tests passed. Seventeen new assertions
+identified the missing receiver read API; one identified the missing relation.
+The multi-member case now passes Core graph validation and reaches that same
+intended missing-API assertion. This supersedes the correction's unexecuted
+status above, without changing the first run's mixed-result classification.
+
+Meridian issued CAUSAL-RED PASS on this exact coordinate and log. Credit remains
+limited to first missing surfaces; deeper target assertions must still become
+green during implementation. Package integrity and behavioral collection
+completed, but post-test compile/import stages did not run after failure.
+The exact `cpk-1897-target-red2-postgres` container and `cpk-1897-target-red2`
+network were confirmed absent afterward. Source and prerequisite remained clean.
+
+Log `/tmp/cpk-1897-red-820c9a4.log`, SHA256
+`f7645158b1b817d3aeceed960916a03fcdcc27e2b51c694005502de197aa338d`.
+[Durable PR evidence](https://github.com/OpenJ92/control-plane-kit/pull/1905#issuecomment-5887846955)
+and [issue evidence](https://github.com/OpenJ92/control-plane-kit/issues/1897#issuecomment-5887847245).
+North owns the next source release. B remains staged and jointly unaccepted
+with C; no intermediate deployment or C activation follows from target-red.
 
 Security/data/history: all database mutations are confined to owning-suite
 disposable schemas; public-key fixture material is not a credential. Global
