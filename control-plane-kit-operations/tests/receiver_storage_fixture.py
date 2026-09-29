@@ -70,7 +70,8 @@ class ReceiverStorageFixture(DraftCatalogueFixture):
         artifact = replace(artifact, **(artifact_changes or {}))
         unrelated = ConfigurationArtifact("application", "/etc/test/application.txt",
             ConfigurationMediaType.TEXT, '{"receiver_id":"not-a-receiver-configuration"}')
-        node = replace(node, node_id=node_id, configuration_artifacts=(unrelated, artifact), public_environment=(
+        node = replace(node, node_id=node_id, block_spec=replace(node.block_spec, role_id=node_id),
+            configuration_artifacts=(unrelated, artifact), public_environment=(
             PublicStaticEnvironmentBinding(WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT,
                                            "/etc/test/receiver.json"),
         ))

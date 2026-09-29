@@ -1,6 +1,7 @@
 # O1.B storage target checkpoint
 
-Status: targets drafted for Meridian review; no execution or application source.
+Status: initial target run completed; fixture correction awaiting review.
+Application source remains held.
 Base: joint freeze `847a7053def484e516e7214e9e563ed9f376b491`. Branch
 `codex/1897-receiver-storage-targets` targets the unreleased B+C collection.
 North released B targets only. B remains jointly unaccepted with C; private
@@ -84,7 +85,34 @@ Independent review must check target coverage and fixture validity before the
 ordinary `./control-plane-kit-operations/test.sh` causal-red run, with clean
 architecture-testing `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`. Apparatus or
 collection failure earns no behavioral credit and invokes the existing stop
-rule. This document records no run, green result, source release or acceptance.
+rule. A target run is recorded below; no green result, source release or
+acceptance is claimed.
+
+## First ordinary run and fixture correction
+
+Reviewed target `85e6f4ac85e42de766d8a73c7f8fc853d755c062` ran the ordinary
+Operations wrapper with clean pinned architecture-testing. It exited 1 after
+1,879 tests in 2,462.748 seconds: 17 failures and one error. The 1,861 existing
+tests passed. Sixteen new assertions identified missing `receiver_introduction`;
+one identified the absent introduction relation. Those are missing-behavior
+evidence only at the first reached assertion, not credit for later target laws.
+
+The multi-member fixture errored before B: renaming its node to `other` retained
+`BlockSpec.role_id='api'`. Core's graph codec requires map key, node ID and block
+role ID to agree (`topology/codec.py`, `_validate_references`). The correction
+renames the role alongside the node and runtime membership. It preserves the
+multi-member/duplicate-identity target and all graph validation assertions.
+This fixture error is not intended red; the correction has not been executed.
+
+Original log: `/tmp/cpk-1897-red-85e6f4a.log`, SHA256
+`1ec4be3fbe3e337c738e199592e6ca4794f62bc3e24932217e8697e8c710a737`.
+The exact `cpk-1897-target-red-postgres` container and `cpk-1897-target-red`
+network were both confirmed absent after the wrapper exited. Collection and
+package integrity completed; the wrapper's post-test compile/import stages did
+not run after failure. No alternate runner, host Python or schema probe was used.
+Meridian reviews this correction and terminal classification; North decides the
+next validation/source boundary. No clean full target-red or B acceptance is
+claimed for the first run.
 
 Security/data/history: all database mutations are confined to owning-suite
 disposable schemas; public-key fixture material is not a credential. Global
