@@ -139,7 +139,14 @@ class ReceiverExecutionScopeQueryTests(ReceiverExecutionScopeFixture, unittest.T
                                 "Sort", "Incremental Sort", "Unique", "Aggregate", "GroupAggregate",
                                 "HashAggregate", "Nested Loop", "Hash Join", "Merge Join", "Append",
                                 "Merge Append", "SetOp"),
-                                "each candidate prefix must be capped before combination/deduplication/sorting")
+                                {
+                                    "law": "each candidate prefix must be capped before combination/deduplication/sorting",
+                                    "fixture_query": query,
+                                    "fixture_params": params,
+                                    "index": node["Index Name"],
+                                    "ancestors": tuple(ancestor["Node Type"] for ancestor in parents),
+                                    "plan": explained,
+                                })
                         self.assertTrue(capped, "an ordered but unbounded candidate index scan is insufficient")
         expected_indexes = {SCOPES + suffix for suffix in (
             "_runtime_lookup", "_node_lookup", "_runtime_nodes_lookup")}
