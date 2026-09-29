@@ -96,7 +96,7 @@ def _require_historical_cancellation_envelope(run, events):
             state = replacement
             if event.kind in (ActivityEventKind.RUN_STARTED, ActivityEventKind.RUN_CANCELLED) and started_at is None:
                 started_at = event.occurred_at
-        elif event.kind.value.startswith("step_") or event.kind is ActivityEventKind.RECOVERY_DECISION_RECORDED:
+        elif event.kind.value.startswith("step_"):
             continue
         else:
             raise ValueError("historical cancellation event is incongruent")

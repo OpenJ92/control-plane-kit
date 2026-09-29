@@ -25,6 +25,34 @@ from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, Reco
 
 
 class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_real_active_renewal_then_cancel_retains_complete_nondispatch_history(self):
+        from control_plane_kit_core.operations import RecoveryScope
+        from control_plane_kit_operations.execution_lease_recovery import RecoveryAuthority, RenewActiveExecutionClaim
+        from control_plane_kit_operations.execution_lease_recovery_interpreter import ExecutionLeaseRecoveryCommandService
+        from control_plane_kit_operations.lifecycle import CancelActivityRun, ExecutionLeaseDuration
+        module = self.require_scopes()
+        self.admit()
+        claimed = self.claim()
+        renewed = ExecutionLeaseRecoveryCommandService(self.unit_of_work,
+            id_factory=GeneratedIds("renew-before-cancel")).execute(RenewActiveExecutionClaim(
+                "execution-a", RunId("run-a"), ExecutionLeaseFence("worker-a", claimed.request.claim.generation),
+                RecoveryAuthority("operator-a", "test-recovery-authority", (RecoveryScope.RENEW_CLAIM,)),
+                ExecutionLeaseDuration(600), IdempotencyKey("renew-before-cancel")))
+        self.assertGreater(renewed.request.claim.generation, claimed.request.claim.generation)
+        self.lifecycle("renew-cancel-event", "renew-cancel-action").execute(CancelActivityRun(
+            "run-a", ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
+            renewed.request.claim.fence, IdempotencyKey("renew-cancel")))
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "requires-fresh-gate-closure")
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            self.assertEqual(uow.stores.connection.execute(
+                "UPDATE cpk_activity_events SET event_type='request_claim_taken_over' WHERE event_id=%s",
+                (renewed.consequence_event.event_id,)).rowcount, 1)
+            evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
+            self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "unavailable")
+        self.assertEqual(self.evidence(scope).disposition, "requires-fresh-gate-closure")
+
     def test_retry_chain_rejects_foreign_predecessor_gap_and_backward_time(self):
         module = self.require_scopes()
         self.admit_operations("chain", StartNode(NodeTarget("app")))

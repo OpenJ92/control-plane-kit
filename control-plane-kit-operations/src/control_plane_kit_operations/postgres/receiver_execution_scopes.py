@@ -537,6 +537,7 @@ class _ExecutionScopeStorage:
         from control_plane_kit_operations.revision_history import historical_advancement
         from control_plane_kit_operations.advancement import _require_complete_success
         from control_plane_kit_operations.lifecycle import _require_historical_cancellation_envelope
+        from control_plane_kit_operations._execution_lease_recovery_support import _historical_recovery_journal
         from .temporal import decode_postgres_cursor_timestamp, encode_postgres_timestamp
         self.guard(workspace_id, guard)
         candidates = []
@@ -550,7 +551,11 @@ class _ExecutionScopeStorage:
                 attempts, intents, outcomes = self.effects(request, original, run, events)
                 programs, bindings = self.compensations(request, original, run, events, attempts, intents, outcomes)
                 if run.status is ActivityRunStatus.CANCELLED:
-                    _require_historical_cancellation_envelope(run, events)
+                    historical = _historical_recovery_journal(events)
+                    _require(historical is not None)
+                    _require(all(encode_postgres_timestamp(left.occurred_at) <= encode_postgres_timestamp(right.occurred_at)
+                                 for left, right in zip(events, events[1:])))
+                    _require_historical_cancellation_envelope(run, historical[0])
                 forward = {activity.activity_id.value: activity.operation for activity in plan.plan.activities}
                 inverse_ids = {binding.inverse_attempt for binding in bindings}
                 for intent in intents:

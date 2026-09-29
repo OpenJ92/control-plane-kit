@@ -304,7 +304,7 @@ Two source-phase regression targets add mixed real-coordinator history and a
 damaged success journal beneath an exact acceptance receipt. Three further
 review targets cover wrong retry predecessors/gaps/chronology, a damaged original
 opening beneath cancellation, and valid no-dispatch pause/resume cancellation.
-There are now 72 C1 target methods; the five source-phase additions have no
+There are now 73 C1 target methods; the six source-phase additions have no
 independent red/green claim yet.
 
 All 19 audited request-producing fixture files are translated. Recorded
@@ -348,3 +348,12 @@ Coordinator source setup now selects workspace pins/generation in the intended
 seed, and managed cases admit only after their source/authority preparation.
 The 10,000-row query fixture supplies real non-null original projection pins.
 These are review corrections, not green evidence or broader release authority.
+
+Delta review also caught the distinct cursor timestamp representation and a
+valid active-renewal/cancel history. The SQL revision projection now normalizes
+its six-digit cursor instants through existing temporal codecs solely for the
+shared association helper; cursor output is unchanged. The lease-recovery owner
+now exposes its existing bounded historical pair projection separately from
+the current-fence comparison. C1 uses only that projection before checking the
+cancellation envelope. A real renewal/cancel target and corrupted-consequence
+negative preserve both the lawful path and refusal without fabricated authority.

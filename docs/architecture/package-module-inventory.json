@@ -11564,6 +11564,7 @@
       "internal_dependencies": [
         "control_plane_kit_core.operations",
         "control_plane_kit_core.planning",
+        "control_plane_kit_operations._execution_lease_recovery_support",
         "control_plane_kit_operations.activity_journal",
         "control_plane_kit_operations.advancement",
         "control_plane_kit_operations.lifecycle",
