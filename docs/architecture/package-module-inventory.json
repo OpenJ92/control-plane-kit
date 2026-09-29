@@ -11566,6 +11566,7 @@
         "control_plane_kit_core.planning",
         "control_plane_kit_operations.activity_journal",
         "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.lifecycle",
         "control_plane_kit_operations.postgres.activity_history",
         "control_plane_kit_operations.postgres.effect_attempt_intent_store",
         "control_plane_kit_operations.postgres.effect_attempt_store",

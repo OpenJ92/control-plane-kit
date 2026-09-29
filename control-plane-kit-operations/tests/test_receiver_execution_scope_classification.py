@@ -17,7 +17,7 @@ from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
-from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority, PauseActivityRun
+from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority, PauseActivityRun, ResumeActivityRun, StartActivityRun
 from control_plane_kit_operations.records import FailureEvidence
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.receiver_execution_scope_fixture import ReceiverExecutionScopeFixture
@@ -25,6 +25,62 @@ from tests.postgres_effect_attempt_coordinator_fixture import GeneratedIds, Reco
 
 
 class ReceiverExecutionScopeClassificationTests(ReceiverExecutionScopeFixture, unittest.TestCase):
+    def test_retry_chain_rejects_foreign_predecessor_gap_and_backward_time(self):
+        module = self.require_scopes()
+        self.admit_operations("chain", StartNode(NodeTarget("app")))
+        failed_adapter = lambda: RecordingRuntimeAdapter(lambda context, request: RuntimeEffectResult.failed(
+            request.effect_id, RuntimeEffectFailure("chain-failure", "bounded failure")))
+        original, failed = self.execute_effects("chain", failed_adapter())
+        self.assertEqual(failed.run.status, ActivityRunStatus.FAILED)
+        retried = self.retry(original, "chain")
+        self.admit_operations("foreign-chain", StartNode(NodeTarget("app")))
+        foreign, _ = self.execute_effects("foreign-chain", failed_adapter())
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "conflict")
+        mutations = (
+            ("prior_run_id=%s", (foreign.run.run_id,)),
+            ("attempt=%s", (3,)),
+            ("created_at=%s", ("1999-01-01T00:00:00Z",)),
+        )
+        for assignment, values in mutations:
+            with self.subTest(assignment=assignment), self.unit_of_work() as uow:
+                guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+                self.assertEqual(uow.stores.connection.execute(
+                    "UPDATE cpk_activity_runs SET " + assignment + " WHERE run_id=%s",
+                    (*values, retried.run.run_id)).rowcount, 1)
+                evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
+                self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "unavailable")
+        self.assertEqual(self.evidence(scope).disposition, "conflict")
+
+    def test_cancel_witness_without_original_opening_is_unavailable(self):
+        module = self.require_scopes()
+        self.admit()
+        self.cancel(self.claim())
+        scope = module.ExecutionReceiverScope("docker", "app")
+        self.assertEqual(self.evidence(scope).disposition, "requires-fresh-gate-closure")
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            self.assertEqual(uow.stores.connection.execute(
+                "UPDATE cpk_activity_events SET event_type='run_resumed' "
+                "WHERE run_id='run-a' AND event_type='run_opened'").rowcount, 1)
+            evidence = uow.stores.execution.receiver_scope_evidence("workspace-a", (scope,), guard)
+            self.assertEqual(module.classify_receiver_scope_evidence(evidence).disposition, "unavailable")
+        self.assertEqual(self.evidence(scope).disposition, "requires-fresh-gate-closure")
+
+    def test_cancel_after_lawful_pause_resume_without_dispatch_keeps_closure_obligation(self):
+        module = self.require_scopes()
+        self.admit()
+        claimed = self.claim()
+        authority = ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,))
+        fence = ExecutionLeaseFence("worker-a", claimed.request.claim.generation)
+        for suffix, command in (("start", StartActivityRun), ("pause", PauseActivityRun),
+                                ("resume", ResumeActivityRun), ("pause-again", PauseActivityRun)):
+            self.lifecycle("envelope-event-" + suffix, "envelope-action-" + suffix).execute(
+                command(claimed.run.run_id, authority, fence, IdempotencyKey("envelope-" + suffix)))
+        self.cancel(claimed)
+        self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition,
+                         "requires-fresh-gate-closure")
+
     def test_missing_required_direct_outcome_is_unavailable_not_recovered_evidence(self):
         module = self.require_scopes()
         self.admit_operations("missing-outcome", StartNode(NodeTarget("app")))

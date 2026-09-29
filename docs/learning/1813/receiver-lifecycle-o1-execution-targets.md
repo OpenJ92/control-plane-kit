@@ -301,8 +301,11 @@ are capped at 65 rows; journal-only socket/ingress starts are associated with th
 original plan and checked through the existing saga projection; compensation
 steps must match the original plan's inverse operation and material source.
 Two source-phase regression targets add mixed real-coordinator history and a
-damaged success journal beneath an exact acceptance receipt. There are now 69
-C1 target methods; the two additions have no independent red/green claim yet.
+damaged success journal beneath an exact acceptance receipt. Three further
+review targets cover wrong retry predecessors/gaps/chronology, a damaged original
+opening beneath cancellation, and valid no-dispatch pause/resume cancellation.
+There are now 72 C1 target methods; the five source-phase additions have no
+independent red/green claim yet.
 
 All 19 audited request-producing fixture files are translated. Recorded
 read/schema/index histories derive identity-specific witnesses using production
@@ -328,3 +331,20 @@ and rolls back together on late failure. Current reentry verifies every request
 in keyset batches without repairing history. The reader returns only an internal
 classification; `requires-fresh-gate-closure` remains a C3 obligation. C2/C3/D,
 aggregate acceptance, publication/adoption and live execution remain separate.
+
+### Independent source review correction
+
+Meridian held source candidate `56c74b14` for two incomplete-history cases and
+three fixture/inventory defects. Request-local retry linkage and native-instant
+chronology now share a pure association helper in the existing revision-history
+owner, used by both its prior SQL projection and C1. Cancellation envelope checks
+live in the existing lifecycle owner and share its unchanged ordinary transition
+facts, including its narrower CLAIMED/PAUSED cancellation rule. The reader uses
+these only after bounded retrieval; it does not replay current claim or authority.
+
+The three new fetch-all sites are recorded in the exhaustive cardinality
+inventory (71 total; five repeated selectors); discovery remains strict.
+Coordinator source setup now selects workspace pins/generation in the intended
+seed, and managed cases admit only after their source/authority preparation.
+The 10,000-row query fixture supplies real non-null original projection pins.
+These are review corrections, not green evidence or broader release authority.

@@ -296,6 +296,7 @@ class _ExecutionScopeStorage:
 
     def runs(self, request):
         from .execution import _activity_run
+        from control_plane_kit_operations.revision_history import validate_retry_predecessor
         rows = self.transport.read("cpk_activity_runs", _columns(_RUN, json_columns=("metadata",),
             ceilings={"metadata": 65536}), "request_id=%s", (request.identity.request_id,),
             order="attempt", maximum=MAX_RUNS - self.run_count)
@@ -303,6 +304,15 @@ class _ExecutionScopeStorage:
         result = tuple(_activity_run(_decode(row, _RUN, json_columns=("metadata",),
             int_columns=("attempt",), time_columns=("created_at", "started_at", "settled_at"))) for row in rows)
         _require(all(run.plan_id == request.identity.plan_id for run in result))
+        _require(tuple(run.retry.attempt for run in result) == tuple(range(1, len(result) + 1)))
+        by_id = {run.run_id: run for run in result}
+        for run in result:
+            _require(run.admission.request_id == request.identity.request_id)
+            prior = by_id.get(run.retry.prior_run_id)
+            validate_retry_predecessor(prior_run_id=run.retry.prior_run_id, attempt=run.retry.attempt,
+                plan_id=run.plan_id, request_id=request.identity.request_id, created_at=run.created_at,
+                prior=None if prior is None else (prior.run_id, prior.plan_id, prior.admission.request_id,
+                    prior.retry.attempt, prior.created_at))
         return result
 
     def events(self, run_id):
@@ -522,10 +532,11 @@ class _ExecutionScopeStorage:
         return ((record, program),), bindings
 
     def evidence(self, workspace_id, requested_scopes, guard):
-        from control_plane_kit_core.operations import ActivityEventKind
+        from control_plane_kit_core.operations import ActivityEventKind, ActivityRunStatus
         from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeEvidence, _RequestEvidence, _RunEvidence
         from control_plane_kit_operations.revision_history import historical_advancement
         from control_plane_kit_operations.advancement import _require_complete_success
+        from control_plane_kit_operations.lifecycle import _require_historical_cancellation_envelope
         from .temporal import decode_postgres_cursor_timestamp, encode_postgres_timestamp
         self.guard(workspace_id, guard)
         candidates = []
@@ -538,6 +549,8 @@ class _ExecutionScopeStorage:
                 events = self.events(run.run_id)
                 attempts, intents, outcomes = self.effects(request, original, run, events)
                 programs, bindings = self.compensations(request, original, run, events, attempts, intents, outcomes)
+                if run.status is ActivityRunStatus.CANCELLED:
+                    _require_historical_cancellation_envelope(run, events)
                 forward = {activity.activity_id.value: activity.operation for activity in plan.plan.activities}
                 inverse_ids = {binding.inverse_attempt for binding in bindings}
                 for intent in intents:

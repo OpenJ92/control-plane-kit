@@ -769,7 +769,11 @@ class QueryPathPlannerTests(unittest.TestCase):
         from psycopg.types.json import Jsonb
         from tests.graph_lineage_fixture import seed_authored_graphs
         from tests.receiver_scope_history_fixture import empty_plan_payload, insert_recorded_requests
+        from control_plane_kit_operations.postgres.graph_store import PostgresRealizedGraphProjectionStore
         seed_authored_graphs(self.connection, workspace_id="workspace-target", graph_ids=("graph-a", "graph-b"))
+        projections = PostgresRealizedGraphProjectionStore(self.connection)
+        original_pins = tuple(projections.save(projections.identity_for_authored("workspace-target", graph_id)).projection_id
+                              for graph_id in ("graph-a", "graph-b"))
         self.connection.execute("SET session_replication_role = replica")
         try:
             self.connection.execute(
@@ -783,12 +787,13 @@ class QueryPathPlannerTests(unittest.TestCase):
                    base_realized_projection_id, desired_realized_projection_id,
                    status, created_at, payload)
                 VALUES ('plan-target', 'session-target', 'graph-a', 'graph-b',
-                        NULL, NULL, 'planned',
+                        'projection-a', 'projection-b', 'planned',
                         '2026-08-12T00:00:00Z', '{}'::jsonb);
                 """
             )
-            self.connection.execute("UPDATE cpk_activity_plans SET payload=%s WHERE plan_id='plan-target'",
-                                    (Jsonb(empty_plan_payload()),))
+            self.connection.execute("UPDATE cpk_activity_plans SET base_realized_projection_id=%s, "
+                                    "desired_realized_projection_id=%s, payload=%s WHERE plan_id='plan-target'",
+                                    (*original_pins, Jsonb(empty_plan_payload())))
             insert_recorded_requests(self.connection, ({
                 "request_id": f"execution-{value}", "workspace_id": "workspace-target", "session_id": "session-target",
                 "plan_id": "plan-target", "status": "cancelled", "requested_by": "operator",

@@ -1006,6 +1006,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 authority_ref=desired.runtimes["docker"].authority_ref, runtime_kind=RuntimeKind.DOCKER,
                 authority=LocalDockerSocketAuthority(), admitted_by="operator-a", admitted_at="2026-07-22T12:00:00Z")
             uow.commit()
+        self.admit_prepared_execution(plan)
         self.claim_and_start()
         adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
         coordinator = self.coordinator(adapter)
@@ -1029,7 +1030,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
 
         current, desired, plan, products = managed_teardown(self)
         self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
-            product_document=products[0].descriptor_document, derivation_profile=PROFILE)
+            product_document=products[0].descriptor_document, derivation_profile=PROFILE, source_only=True)
         # Source preparation is separate: the following real approval/admission
         # commands own this destructive plan and its explicit denial cases.
         with self.unit_of_work() as uow:
@@ -1619,8 +1620,6 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 )
             )
             unit_of_work.stores.realized_graphs.save(desired_projection)
-            unit_of_work.stores.workspaces.set_current_graph("workspace-a", "graph-current")
-            workspace = unit_of_work.stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             unit_of_work.commit()
         original_desired_projection_id = self.connection.execute(
             """
@@ -2001,6 +2000,8 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             )
             unit_of_work.stores.realized_graphs.save(base_projection)
             unit_of_work.stores.realized_graphs.save(desired_projection)
+            unit_of_work.stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            workspace = unit_of_work.stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             unit_of_work.stores.registered_products.register(
                 workspace_id="workspace-a",
                 descriptor_document=product_document,
@@ -2028,6 +2029,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             unit_of_work.commit()
         if source_only:
             return
+        self.admit_prepared_execution(plan)
+
+    def admit_prepared_execution(self, plan):
         from control_plane_kit_core.policies import ApprovalPolicy
         from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
         from control_plane_kit_operations.records import ApprovalRequestRecord, ApprovalDecisionRecord, ApprovalDecisionKind
@@ -2047,6 +2051,10 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             insert_recorded_request(self.connection)
         else:
             scopes = [PolicyScope.PLAN_EXECUTE]
+            with self.unit_of_work() as uow:
+                source = uow.stores.activity_history.get_plan("plan-a")
+                base_projection = uow.stores.realized_graphs.get(source.base_realized_projection_id)
+                desired_projection = uow.stores.realized_graphs.get(source.desired_realized_projection_id)
             for projection in (base_projection, desired_projection):
                 graph = DEFAULT_GRAPH_CODEC.decode(projection.graph_descriptor)
                 if any(runtime.authority_ref is not None for runtime in graph.runtimes.values()):
