@@ -1,6 +1,21 @@
 Source: [graph_store.py](../../../../../../control-plane-kit-operations/src/control_plane_kit_operations/postgres/graph_store.py).
 Maintain this companion alongside its source.
 
+The graph store also owns receiver point reads and complete binding-set reads.
+Its private receiver helper shares the caller's connection; it is neither a new
+StoreBundle service nor a package-root export. Private writers reserve immutable
+origins, persist derived binding sets and record paired acceptance/retirement
+witnesses. They require the same store, workspace and still-active transaction
+as the lifecycle guard. The guard retains the existing advisory lock identity
+and carries its PostgreSQL transaction ID to reject expired retained guards.
+
+Receiver origin replay must match the immutable tuple exactly. Reservation
+orders receiver IDs globally, uses PostgreSQL unique conflict arbitration and
+then reads only within the caller workspace. A collision returns one bounded
+detached conflict without disclosing foreign provenance. Stored graph/projection
+records are authoritative; caller records are checked against exact retained
+material before derivation. C owns action meaning and semantic admission.
+
 Workspace and immutable authored/realized graph stores use their caller's
 connection and never commit independently. Authored graph INSERT relies on the
 global primary key to resolve concurrent name collisions. Only PostgreSQL

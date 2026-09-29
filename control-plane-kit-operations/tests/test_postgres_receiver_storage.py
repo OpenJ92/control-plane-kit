@@ -2,19 +2,129 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
+import json
 import threading
 import unittest
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.topology import DeploymentGraph, validate_graph
+from control_plane_kit_core.node_control_surface_reads import (
+    WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
+)
+from control_plane_kit_core.wrapper_configuration import WorkloadNodeControlConfigurationCodec
 from control_plane_kit_operations.postgres import install_schema
+from control_plane_kit_operations.postgres.schema import SchemaInstallationError
 from control_plane_kit_operations.records import GraphVersionRecord, RealizedGraphProjectionRecord
 from tests.draft_catalogue_fixture import NOW
 from tests.receiver_storage_fixture import ReceiverStorageFixture, RECEIVER
+from tests.health_receiver_trust_fixture import artifact as legacy_artifact
 
 
 class PostgresReceiverStorageTests(ReceiverStorageFixture, unittest.TestCase):
+    def test_distinct_legacy_and_receiver_nodes_preserve_legacy_material(self):
+        first = self.receiver_graph()[0]
+        other = self.receiver_graph(node_id="legacy", receiver="b" * 32)[0].node("legacy")
+        declaration = WorkloadNodeControlSurfaceDeclaration(
+            other.block_spec.control_surfaces[0], WorkloadNodeControlSurfaceDeclarationProfile.V2)
+        artifact = legacy_artifact("workload", declaration, node="legacy")
+        WorkloadNodeControlConfigurationCodec().decode_bytes(artifact.content.encode())
+        other = replace(other, configuration_artifacts=(artifact,), public_environment=(
+            replace(other.public_environment[0], value=artifact.target_path),))
+        graph = replace(first, nodes={**first.nodes, "legacy": other}, runtimes={
+            "docker": replace(first.runtimes["docker"], children=("api", "legacy")),})
+        record, projection, _, _ = self.seed(graph=graph)
+        before = self.truth()
+        install_schema(self.connection)
+        with self.unit_of_work() as uow:
+            members = uow.stores.graphs.receiver_bindings("workspace-a", record.graph_id, projection.projection_id)
+            self.assertEqual(tuple(item.node_id for item in members), ("api",))
+            self.assertEqual(uow.stores.realized_graphs.get(projection.projection_id), projection)
+        self.assertEqual(self.truth(), before)
+
+    def test_unindexed_generic_history_does_not_gain_wrapper_requirements(self):
+        original, artifact, _ = self.receiver_graph()
+        node = original.node("api")
+        graphs = (
+            replace(original, nodes={"api": replace(node, configuration_artifacts=())}),
+            replace(original, nodes={"api": replace(node, configuration_artifacts=(
+                replace(artifact, content="opaque historical application content"),))}),
+        )
+        records = []
+        with self.unit_of_work() as uow:
+            for graph in graphs:
+                record, projection = self.material(uow, graph=graph)
+                # Existing lineage validation still applies; this is not merely
+                # an unreachable retained graph.
+                self.draft(uow, record)
+                records.append((record, projection))
+            uow.commit()
+        before = self.truth()
+        install_schema(self.connection)
+        with self.unit_of_work() as uow:
+            for record, projection in records:
+                self.assertEqual(uow.stores.graphs.get(record.graph_id), record)
+                self.assertEqual(uow.stores.realized_graphs.get(projection.projection_id), projection)
+        self.assertEqual(self.truth(), before)
+
+    def test_indexed_selected_artifact_corruption_and_partial_membership_refuse_reentry(self):
+        first = self.receiver_graph()[0]
+        second = self.receiver_graph(node_id="Other-node", receiver="b" * 32)[0]
+        graph = replace(first, nodes={**first.nodes, **second.nodes}, runtimes={
+            "docker": replace(first.runtimes["docker"], children=("api", "Other-node")),})
+        original, _, _, _ = self.seed(graph=graph)
+        with self.unit_of_work() as uow:
+            guard = uow.stores.graphs.lock_receiver_lifecycle("workspace-a")
+            later, projection = self.material(uow, graph=graph)
+            uow.stores.graphs._persist_receiver_bindings(later, projection, lifecycle_guard=guard)
+            uow.commit()
+        node = graph.node("api")
+        selected = node.configuration_artifacts[-1]
+        document = json.loads(selected.content)
+        del document["target"]
+        invalid_artifacts = (
+            replace(selected, target_path="/not-selected.json"),
+            replace(selected, content=json.dumps(document)),
+        )
+        for artifact in invalid_artifacts:
+            changed = replace(graph, nodes={**graph.nodes, "api": replace(node,
+                configuration_artifacts=(*node.configuration_artifacts[:-1], artifact))})
+            corrupted = RealizedGraphProjectionRecord.from_graph(
+                projection_id=projection.projection_id, workspace_id=projection.workspace_id,
+                source_authored_graph_id=later.graph_id, projection_kind=projection.projection_kind,
+                projection_key=projection.projection_key, graph=changed,
+                created_by=projection.created_by, created_at=projection.created_at)
+            with self.subTest(artifact=artifact.target_path), self.connection.transaction():
+                self.connection.execute(
+                    "UPDATE cpk_realized_graph_projections SET graph_descriptor=%s,projection_digest=%s "
+                    "WHERE projection_id=%s",
+                    (Jsonb(corrupted.graph_descriptor), corrupted.projection_digest, projection.projection_id))
+                with self.assertRaises(SchemaInstallationError):
+                    install_schema(self.connection)
+                self.assertEqual(self.connection.execute(
+                    "SELECT graph_descriptor FROM cpk_realized_graph_projections WHERE projection_id=%s",
+                    (projection.projection_id,)).fetchone()[0], corrupted.graph_descriptor)
+                raise psycopg.Rollback()
+        before = self.truth()
+        self.connection.execute("DELETE FROM cpk_graph_receiver_bindings WHERE graph_id=%s AND node_id=%s",
+                                (later.graph_id, "Other-node"))
+        with self.assertRaises(SchemaInstallationError):
+            install_schema(self.connection)
+        self.assertEqual(self.truth()[-1], before[-1] - 1)
+        self.assertEqual(self.introduction().introducing_graph_id, original.graph_id)
+
+    def test_member_order_is_independent_of_database_text_collation(self):
+        graphs = [self.receiver_graph(node_id=name, receiver=receiver * 32)[0]
+                  for name, receiver in (("a-node", "a"), ("A_node", "b"), ("z.node", "c"))]
+        graph = replace(graphs[0], nodes={name: node for item in graphs for name, node in item.nodes.items()},
+                        runtimes={"docker": replace(graphs[0].runtimes["docker"],
+                                  children=("a-node", "A_node", "z.node"))})
+        record, projection, _, _ = self.seed(graph=graph)
+        with self.unit_of_work() as uow:
+            bindings = uow.stores.graphs.receiver_bindings("workspace-a", record.graph_id, projection.projection_id)
+            self.assertEqual(tuple(item.node_id for item in bindings), ("A_node", "a-node", "z.node"))
+
     def test_exact_selected_bytes_scope_and_origin_survive_reload_and_replay(self):
         graph, artifact, declaration = self.receiver_graph(pretty=True)
         record, projection, action, draft_id = self.seed(graph=graph, with_draft=True)

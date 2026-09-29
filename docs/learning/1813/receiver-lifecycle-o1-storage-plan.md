@@ -206,6 +206,22 @@ by its derived receiver count plus one; mismatch/overflow refuses, never returns
 a partial membership set. Installer validation uses existing 64-row keyset batch
 and bounded descriptor transport conventions; no ancestor scan or global list.
 
+Implementation review refinement (North, Meridian and Kepler): exact-current
+receiver validation traverses the union of retained binding projection identities
+and every introduction origin. It strictly rederives each complete referenced set
+and all original provenance. Unindexed generic history retains its existing
+validation; a wrapper environment name alone adds no receiver requirement.
+Explicit receiver member reads and writers remain strict, including missing
+selected artifacts and malformed selected successor material. Distinct historical
+V1 and successor V2 nodes may coexist; B does not impose graph-wide profile policy.
+
+This scan cannot discover omission or deletion of ALL continuation bindings for
+a later non-origin projection. Direct member reads still rederive and refuse
+that missing set; original origins remain referenced and physically protected.
+C's supported graph/projection publication must atomically establish complete
+receiver membership or refuse. Universal admission/completeness remains a joint
+B+C gate obligation, not storage-only acceptance or a raw-SQL omission guarantee.
+
 Internal persistence operations, available only within the coordinated C
 composition, have these responsibilities (names are provisional, laws are not):
 
