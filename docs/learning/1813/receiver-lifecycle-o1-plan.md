@@ -1,6 +1,20 @@
 # #1882: graph-owned receiver lifecycle planning
 
-Status: planning candidate, not a target-test or source release.
+Status: planning accepted in PR1895 at `9a1ece35`; O1.A released for
+target-first development. O1.B/C/D and parent acceptance remain held.
+
+The original dry run below records the `03ae77` source. Its provisional
+lock-closure/child-publication notices are superseded by the
+[final reviewed ledger](receiver-lifecycle-o1-lock-ledger.md),
+[freeze review](https://github.com/OpenJ92/control-plane-kit/issues/1896#issuecomment-5881898456),
+and [North's O1.A release](https://github.com/OpenJ92/control-plane-kit/issues/1896#issuecomment-5882109601).
+Published children are [A #1896](https://github.com/OpenJ92/control-plane-kit/issues/1896),
+[B #1897](https://github.com/OpenJ92/control-plane-kit/issues/1897),
+[C #1898](https://github.com/OpenJ92/control-plane-kit/issues/1898), and
+[D #1899](https://github.com/OpenJ92/control-plane-kit/issues/1899).
+The [A target checkpoint](receiver-lifecycle-o1-lock-targets.md) records its
+test translation. A adds locking only; C owns successor provenance refusal,
+unresolved-scope admission and lifecycle activation.
 
 Governing [release](https://github.com/OpenJ92/control-plane-kit/issues/1882#issuecomment-5881554480)
 follows [C1 acceptance](https://github.com/OpenJ92/control-plane-kit/issues/1881#issuecomment-5881553598).
