@@ -9464,7 +9464,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.failed_run_compensation_store",
@@ -9493,7 +9494,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store",
@@ -10108,7 +10110,8 @@
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.effect_attempt_store",
@@ -10141,7 +10144,8 @@
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.effect_attempt_intent_store",
@@ -10183,7 +10187,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.effect_outcome_store",
@@ -10293,7 +10298,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.activity_run_retry_interpreter",
-        "control_plane_kit_operations.execution_lease_recovery_interpreter"
+        "control_plane_kit_operations.execution_lease_recovery_interpreter",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations._execution_lease_recovery_support",
@@ -10653,8 +10659,10 @@
       "role": "read-projection",
       "motivation": "Pure saved provenance and historical advancement attribution; no current fencing or external effects.",
       "internal_dependencies": [
+        "control_plane_kit_operations._temporal",
         "control_plane_kit_operations.advancement",
         "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.records",
         "control_plane_kit_operations.saved_deployment_preparation",
         "control_plane_kit_operations.workflows"
       ],
@@ -10667,6 +10675,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.revision_history_store",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes",
         "control_plane_kit_operations.read_services.revision_history",
         "control_plane_kit_operations.read_services.instance"
       ],
