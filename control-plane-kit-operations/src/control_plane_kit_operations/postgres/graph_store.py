@@ -15,7 +15,9 @@ from control_plane_kit_operations.receiver_lifecycle import (
     ReceiverLifecycleStorageError, _require, derive_receiver_bindings,
 )
 from control_plane_kit_operations.postgres.schema import PostgresConnection
-from control_plane_kit_operations.postgres.receiver_lifecycle_store import _ReceiverStorage
+from control_plane_kit_operations.postgres.receiver_lifecycle_store import (
+    _ReceiverStorage, _ReceiverAuthoringSnapshot, _validate_receiver_origin_action,
+)
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
@@ -384,10 +386,12 @@ class PostgresGraphTopologyStore:
     def receiver_bindings(self, workspace_id: str, graph_id: str, realized_projection_id: str):
         return self._receivers.bindings(workspace_id, graph_id, realized_projection_id)
 
+    def receiver_authoring_snapshot(self):
+        """Graph-owned bounded selectors for the caller's read-only snapshot."""
+        return _ReceiverAuthoringSnapshot(self._connection)
+
     def _require_receiver_origin_action(self, origin):
-        from control_plane_kit_core.operations.commands import OperatorCommandKind
         from control_plane_kit_operations.postgres.activity_history import _action_record
-        from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
 
         row = self._connection.execute(
             "SELECT a.action_id,a.session_id,a.ordinal,a.action_type,a.actor_id,"
@@ -399,44 +403,16 @@ class PostgresGraphTopologyStore:
         ).fetchone()
         _require(row is not None and row[5] is not None)
         action = _action_record(row)
-        payload = dict(action.payload)
-        _require(payload.get("workspace_id") == origin.workspace_id)
-        _require(type(payload.get("receiver_lifecycle")) is dict)
-        ReceiverLifecycleExpectation(**payload.pop("receiver_lifecycle"))
         projection = PostgresRealizedGraphProjectionStore(self._connection).get(
             origin.introducing_realized_projection_id)
         graph = self.get(origin.introducing_graph_id)
-        _require(graph.workspace_id == projection.workspace_id == origin.workspace_id
-                 and projection.source_authored_graph_id == graph.graph_id)
-        if action.action_type is OperatorCommandKind.SET_DESIRED_GRAPH:
-            _require(set(payload) == {"workspace_id", "previous_desired_graph_id", "desired_graph_id",
-                "desired_realized_projection_id", "desired_graph_revision", "product_references"})
-            _require(payload["desired_graph_id"] == graph.graph_id
-                     and payload["desired_realized_projection_id"] == projection.projection_id
-                     and origin.introducing_draft_id is None)
-            _require(projection == RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph))
-        elif action.action_type in (OperatorCommandKind.CREATE_DESIRED_TOPOLOGY_DRAFT,
-                                    OperatorCommandKind.REVISE_DESIRED_TOPOLOGY_DRAFT):
-            _require(set(payload) == {"workspace_id", "draft_id", "revision", "graph_id"})
-            _require(payload["graph_id"] == graph.graph_id
-                     and payload["draft_id"] == origin.introducing_draft_id)
-            _require(type(payload["revision"]) is int and 0 < payload["revision"] <= 9_223_372_036_854_775_807)
+        revision = _validate_receiver_origin_action(origin, action, graph, projection)
+        if revision is not None:
             _require(self._connection.execute(
                 "SELECT EXISTS(SELECT 1 FROM cpk_desired_topology_draft_revisions "
                 "WHERE workspace_id=%s AND draft_id=%s AND revision=%s AND graph_id=%s)",
-                (origin.workspace_id, origin.introducing_draft_id, payload["revision"], graph.graph_id),
+                (origin.workspace_id, origin.introducing_draft_id, revision, graph.graph_id),
             ).fetchone() == (True,))
-            _require(projection == RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph))
-        elif action.action_type is OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION:
-            _require(set(payload) == {"workspace_id", "authored_graph_id", "previous_realized_projection_id",
-                "desired_realized_projection_id", "desired_realized_projection_digest", "desired_graph_revision",
-                "projection_kind", "projection_key", "source_operation_id", "source_operation_version"})
-            _require(payload["authored_graph_id"] == graph.graph_id
-                     and payload["desired_realized_projection_id"] == projection.projection_id
-                     and payload["desired_realized_projection_digest"] == projection.projection_digest
-                     and origin.introducing_draft_id is None)
-        else:
-            _require(False)
 
     def _reserve_receiver_introductions(self, graph, projection, *, action_id, session_id,
                                        draft_id=None, lifecycle_guard):

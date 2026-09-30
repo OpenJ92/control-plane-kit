@@ -15,3 +15,12 @@ workspace_id and purposes. Its bounded CSV is decoded to existing purpose enum
 values without hiding duplicates; the projection owns allowed-family semantics.
 Workspace-scoped DELEGATION_KEY_READ is checked before opening the existing
 read UoW. No command or effect surface is added.
+
+The receiver-authoring-context route requires both workspace-read and
+delegation-key-read before UoW construction, then validates its closed logical
+arguments. Its dedicated service owns one read-only repeatable-read snapshot;
+the ordinary read UoW is not also entered. HTTP-shaped path plus optional
+expected/pending-draft values and MCP-shaped complete arguments share the same
+query/service/descriptor. Database and decode failures map to bounded fresh
+application errors. This mapping does not implement Server query decoding or
+authorize dependency adoption; those remain Servers #238.

@@ -1,8 +1,12 @@
 # O1.D receiver authoring context targets
 
-Status: **target-only, unexecuted, awaiting independent target-integrity review**.
-No production/interface shim, dependency upgrade, push, Docker invocation or
-provider action accompanies this checkpoint. Selected base is
+Status: **local implementation awaiting independent static review; unvalidated**.
+The reviewed targets were published in draft PR #1914 and their one intended-red
+owning gate is complete. North's
+[source release](https://github.com/OpenJ92/control-plane-kit/issues/1899#issuecomment-5918850735)
+permits local implementation only; publication and executable validation remain
+separate releases. No dependency adoption or provider action accompanies this
+checkpoint. Selected base is
 `0aadecdef61e106bc628157974989fe3aba405d3`, tree
 `fa9b51628f407b3d81bcc463c100e7e399b7a1b6`; branch
 `codex/1899-receiver-authoring-context` follows the existing O1 integration
@@ -15,6 +19,52 @@ The [Servers #238 adoption handoff](https://github.com/OpenJ92/control-plane-kit
 is already durable. The frozen planning record follows below; its statements
 about no targets/commits are historical planning status, superseded only by this
 checkpoint section.
+
+## Implementation checkpoint
+
+The [terminal intended-red classification](https://github.com/OpenJ92/control-plane-kit/pull/1914#issuecomment-5918798540)
+is independently accepted. Actual CI checkout `e5371f5d9d91fef8f9c73e23d994334a94ef0983`
+has the reviewed target tree `d94e60c88d4ce123016356d4507064c8c7647531`.
+Core ran 908 tests with three absent-declaration failures and zero errors;
+Operations ran 2,120 with 24 failure entries and 15 errors, all in new targets at
+absent route/API/snapshot boundaries. Existing tests passed. Later branches
+remain unexercised; this is no claim of fixture or implementation green.
+
+Chosen implementation stays within the accepted source ceiling:
+
+- Core declares one route, projection and parity binding, with named logical
+  query/response bounds. Operations requires both scopes before opening a UoW.
+- A dedicated read service owns a fresh read-only repeatable-read snapshot via
+  local framework-neutral protocols. PostgreSQL supplies that capability without
+  changing ordinary UoW behavior, including cleanup when entry fails.
+- Graph-owned selectors share a pre-fetch row/byte/statement ledger. SQL length
+  probes precede guarded text transport and decode. Complete immutable source
+  records are cached only within that snapshot; arbitrary metadata is excluded.
+- Original-action correspondence is a shared pure validator, also called by
+  the existing graph mutation owner. Scoped boolean witnesses establish original
+  draft/recorded acceptance attribution without traversing execution history.
+- The result preserves each source's literal selected artifact and original
+  introduction. It neither flattens source associations nor grants later
+  mutation authority. Errors are fresh, bounded and whole-context refusals.
+
+The existing exact read-package inventory gains the new module and public
+identities. Accepted behavioral targets are unchanged. Read cardinality/module
+inventories, source companions and the package README document actual ownership,
+limits and the non-executing A/B/C, live-draft and retained-retry example.
+
+Alternatives rejected remain stitched READ COMMITTED reads, advisory mutation
+locks, generic transaction modes, raw getter fallbacks and Server-owned semantic
+projection. Security: public verifier material requires graph+key read; no key
+registry lookup, private credential disclosure or provider effect. Data/history:
+the snapshot rolls back and closes, creates no records, and can be stale when
+delivered. SQL internal work is outside the transport budget guarantee. Server
+auto-registration/query/envelope/adoption remains the explicit #238 boundary.
+
+Only static source inspection and `git diff --check` accompany this checkpoint.
+Meridian reviews auth/data/test integrity; Kepler reviews snapshot/catalogue/
+provenance ownership. North owns subsequent publication and the single ordinary
+owning gate. No host Python/import/compile, Docker run or scheduled monitor was
+used for implementation validation.
 
 ## Target shape and law mapping
 

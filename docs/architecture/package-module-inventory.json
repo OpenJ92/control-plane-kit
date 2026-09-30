@@ -2,6 +2,44 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "module": "control_plane_kit_operations.read_services.receiver_authoring_context",
+      "destination": "control_plane_kit_operations.read_services.receiver_authoring_context",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/read_services/receiver_authoring_context.py",
+      "owner": "operation",
+      "role": "read-projection",
+      "semantic_roles": ["values", "read-projection"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [
+        "ReceiverAuthoringContext", "ReceiverAuthoringContextError",
+        "ReceiverAuthoringContextQuery", "ReceiverAuthoringContextReadService"
+      ],
+      "internal_dependencies": [
+        "control_plane_kit_core.configuration",
+        "control_plane_kit_core.identity",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_core.receiver_configuration",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.read_services.errors"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.cpk_server",
+        "control_plane_kit_operations.read_services",
+        "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+      ],
+      "optional_external_dependencies": [],
+      "motivation": "Explicit graph+key authorized authoring read over a framework-neutral snapshot capability; returns exact selected public material and recorded attribution without admission authority, mutation, or provider freshness.",
+      "protecting_tests": [
+        "tests/test_receiver_authoring_context.py",
+        "tests/test_receiver_authoring_context_snapshot.py",
+        "tests/test_receiver_authoring_context_bounds.py",
+        "tests/test_read_services_package.py"
+      ]
+    },
+    {
       "canonical_public_exports": [],
       "destination": "control_plane_kit_operations._gateway_child_association",
       "internal_dependencies": [
@@ -11558,7 +11596,10 @@
       "canonical_public_exports": [],
       "destination": "control_plane_kit_operations.postgres.receiver_lifecycle_store",
       "internal_dependencies": [
+        "control_plane_kit_core.operations.commands",
+        "control_plane_kit_core.topology",
         "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations.read_services.receiver_authoring_context",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.postgres.temporal"
       ],
@@ -11568,13 +11609,16 @@
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.receiver_lifecycle_store",
-      "motivation": "Graph-owned receiver structural facts and complete material integrity; no lifecycle admission or provider authority.",
+      "motivation": "Graph-owned receiver structural facts, shared pure origin attribution, and complete material integrity. Authoring snapshot selectors share pre-fetch transport budgets without lifecycle admission or provider authority.",
       "movement": "remain",
       "optional_external_dependencies": [
         "psycopg"
       ],
       "owner": "operation",
       "protecting_tests": [
+        "tests/test_receiver_authoring_context.py",
+        "tests/test_receiver_authoring_context_snapshot.py",
+        "tests/test_receiver_authoring_context_bounds.py",
         "tests/test_postgres_receiver_storage.py",
         "tests/test_postgres_receiver_storage_schema.py"
       ],

@@ -18,6 +18,7 @@ class ReadProjectionKind(StrEnum):
     """Closed operator read projection identities."""
 
     WORKSPACE = "workspace"
+    RECEIVER_AUTHORING_CONTEXT = "receiver-authoring-context"
     CURRENT_GRAPH = "current-graph"
     DESIRED_GRAPH = "desired-graph"
     OPERATOR_GRAPH = "operator-graph"
@@ -75,6 +76,7 @@ class ReadProjectionPolicy(StrEnum):
     REDACTED_DELEGATION_KEY = "redacted-delegation-key"
     PUBLIC_GATEWAY_VERIFIER_CONFIGURATION = "public-gateway-verifier-configuration"
     PUBLIC_WORKLOAD_VERIFIER_CONFIGURATION = "public-workload-verifier-configuration"
+    PUBLIC_RECEIVER_AUTHORING_CONTEXT = "public-receiver-authoring-context"
     DELEGATED_GATEWAY_PROBE_EVIDENCE = "delegated-gateway-probe-evidence"
 
 
@@ -297,6 +299,12 @@ class _ProjectionDefinition:
 
 
 _CANONICAL_PROJECTIONS = (
+    _ProjectionDefinition(
+        "read.receiver-authoring-context",
+        ReadProjectionKind.RECEIVER_AUTHORING_CONTEXT,
+        "ReceiverAuthoringContextReadResponse",
+        ReadProjectionPolicy.PUBLIC_RECEIVER_AUTHORING_CONTEXT,
+    ),
     _ProjectionDefinition(
         "read.delegation-keys",
         ReadProjectionKind.DELEGATION_KEYS,

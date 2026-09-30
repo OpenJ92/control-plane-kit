@@ -818,6 +818,12 @@ def operator_command_parity(
 
 _OPERATOR_READ_PROJECTIONS = (
     (
+        "read.receiver-authoring-context",
+        "read.receiver-authoring-context",
+        "get_receiver_authoring_context",
+        "ReceiverAuthoringContextReadResponse",
+    ),
+    (
         "read.delegation-keys",
         "read.delegation-keys",
         "list_delegation_keys",

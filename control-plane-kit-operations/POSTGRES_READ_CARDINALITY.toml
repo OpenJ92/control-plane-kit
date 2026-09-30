@@ -585,3 +585,21 @@ category = "fixed-cardinality"
 sql = "workspace/runtime and optional exact-node ordered index prefixes; concrete prefixes LIMIT at most 65; all-node prefixes bounded by shared 4096 raw rows and remaining 4096-byte-per-row reservations; full reduced page refuses"
 consumer_kind = "production"
 consumer = "Execution receiver overlap classification discovers at most 64 distinct requests without omitting historical node coverage"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+selector = "_ReceiverAuthoringSnapshot._fetch"
+occurrence = 1
+category = "exact-verifier"
+sql = "Fixed scoped point or receiver membership selector; LIMIT maximum plus one (at most 65); int4/null byte probes with pre-reserved 512 bytes per row, shared 4096-row/1024-statement/8-MiB context budget"
+consumer_kind = "production"
+consumer = "Receiver authoring snapshot reserves complete public source and original attribution material before text transport"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+selector = "_ReceiverAuthoringSnapshot._fetch"
+occurrence = 2
+category = "exact-verifier"
+sql = "Same scoped selector and limit as probe; SQL guards per-cell caps, row count and aggregate column bytes; text/null and bool only; complete observed result reserved before execute against the same context budget"
+consumer_kind = "production"
+consumer = "Receiver authoring read validates complete graph/projection/binding and origin facts in one repeatable-read snapshot"
