@@ -106,12 +106,13 @@ store or a rewrite of the legacy suite.
 | `test_receiver_lifecycle_expectations.py` | Exact immutable product, reference bounds, paired desired/generation, all five pins. |
 | `test_receiver_graph_admission.py` | Atomic introduction, pending mixed continuation, scope/provenance refusal, current CAS, original replay, global/head/identical races, authorization and rollback. |
 | `test_receiver_admission_boundaries.py` | Single-record/action-free refusal, implicit pointer paths, both real opposing schedules, retained projection replay and empty/populated bootstrap. |
-| `test_receiver_publication_admission.py` | Exact publication pins/bindings, caller rollback and fresh prepared-prefix revalidation. |
+| `test_receiver_publication_admission.py` | Genuinely fresh changed-material projection, exact returned projection bindings/digests, caller rollback, prepared-prefix and late continuation-source revalidation. |
 | `test_receiver_admission_formats.py` | Wire null/closed product, exact forwarding, frozen absent fingerprint, closed old/new replay, complete 64-KiB action bound before writes. |
 | `test_receiver_admission_composition.py` | Interrupted and completed old-child receipt recovery, mismatch refusal, original current pins before new graph write. |
 | `test_receiver_gateway_publication_formats.py` | Gateway forwards original pins; its exact old publication receipt recovers after supersession without selecting legacy on mismatch. |
 | `test_receiver_admission_execution_evidence.py` | Actual C1 history produces all five dispositions; C2 refuses the four non-clearance outcomes; disjoint and genuine legacy accepted-run positives. |
 | `test_receiver_accepted_continuation.py` | Recorded accepted X plus new Y, changed declaration/key identity, old-current-only receiver detection, wrong original/acceptance evidence, retired/relabelled/moved refusal. |
+| `test_receiver_reference_admission.py` | Saved-source session/reference and direct no-op planning positives, corrupted non-original receiver membership before any fresh writes, exact replay after later truth. |
 
 `receiver_admission_fixture.py` composes existing real-store fixtures with one
 explicit setup chain (older fixtures have both bare and `tests.*` import
@@ -134,6 +135,25 @@ The checkpoint is unexecuted and awaits independent target review. Review must
 assess proportional coverage against the whole #1903 contract, including shared
 forwarders/retirement composition, action formats and caller-UoW semantics; the
 table does not itself discharge any untested acceptance obligation.
+
+### Initial review correction
+
+Meridian's [HOLD at `223a216c`](https://github.com/OpenJ92/control-plane-kit/issues/1903#issuecomment-5901836881)
+identified four concrete defects before publication/execution. The target-only
+correction uses a nonzero microsecond fixture instant admitted by both timestamp
+languages; publishes and checks a distinct changed-material realized projection;
+adds receiver-specific saved-reference/direct-planning laws; and deletes a
+non-original selected continuation binding after the real publication action
+while pins remain unchanged. That late negative requires semantic refusal;
+the original-introduction FK cannot supply it. Fresh projection rollback also
+checks new bindings inside the caller UoW before proving they vanish on rollback.
+
+Planning positives use the existing supported no-op profile, without expanding
+runtime/configuration capabilities. Saved preparation is tested at its actual
+session/source owner before later planning. The source/reference negatives
+preserve original introduction membership while corrupting a later continuation,
+so missing source admission cannot pass accidentally through FK rejection.
+These corrections remain unexecuted pending independent delta review.
 
 Reuse real disposable PostgreSQL fixtures, graph builders and A's lock witnesses.
 Do not construct a substitute lifecycle machine or reuse B's unrestricted writer

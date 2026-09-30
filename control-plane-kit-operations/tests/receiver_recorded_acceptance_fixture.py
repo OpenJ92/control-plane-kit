@@ -24,7 +24,7 @@ from tests.receiver_scope_history_fixture import insert_recorded_request
 
 def record_accepted_current(case):
     original = case.desired_service().execute(case.desired_command())
-    at = "2026-09-06T18:01:00.000000Z"
+    at = "2026-09-06T18:01:00.000001Z"
     with case.unit_of_work() as uow:
         stores = uow.stores
         guard = stores.graphs.lock_receiver_lifecycle("workspace-a")

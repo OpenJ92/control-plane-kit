@@ -8,7 +8,7 @@ from control_plane_kit_operations.desired_realized_projections import (
     DesiredRealizedProjectionCommandService, PublishDesiredRealizedProjection,
 )
 from control_plane_kit_operations.planning import DesiredGraphCommandService, SetDesiredGraph
-from control_plane_kit_operations.records import RealizedGraphProjectionRecord
+from control_plane_kit_operations.records import RealizedGraphProjectionKind, RealizedGraphProjectionRecord
 from control_plane_kit_operations.workflows import IdempotencyKey
 from tests.draft_catalogue_fixture import NOW
 from tests.receiver_storage_fixture import ReceiverStorageFixture
@@ -71,7 +71,7 @@ class ReceiverAdmissionFixture(ReceiverStorageFixture, SavedPreparationFixture):
         projection = original if graph is None else RealizedGraphProjectionRecord.from_graph(
             projection_id=uuid.uuid4().hex, workspace_id="workspace-a",
             source_authored_graph_id=pins.desired_graph_id,
-            projection_kind=original.projection_kind, projection_key=uuid.uuid4().hex,
+            projection_kind=RealizedGraphProjectionKind.DELEGATION_VERIFIER, projection_key=uuid.uuid4().hex,
             graph=graph, created_by="operator-a", created_at=NOW)
         return PublishDesiredRealizedProjection(session_id=self.sessions["workspace-a"],
             workspace_id="workspace-a", actor_id="operator-a",
