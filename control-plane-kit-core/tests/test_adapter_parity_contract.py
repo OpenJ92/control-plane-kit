@@ -168,6 +168,12 @@ class AdapterParityContractTests(unittest.TestCase):
                     "PlanRunsReadResponse",
                 ),
                 (
+                    "read.receiver-authoring-context",
+                    "read.receiver-authoring-context",
+                    "get_receiver_authoring_context",
+                    "ReceiverAuthoringContextReadResponse",
+                ),
+                (
                     "read.run-events",
                     "read.run-events",
                     "list_run_events",
