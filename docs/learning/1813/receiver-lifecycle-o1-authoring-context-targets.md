@@ -66,6 +66,20 @@ provenance ownership. North owns subsequent publication and the single ordinary
 owning gate. No host Python/import/compile, Docker run or scheduled monitor was
 used for implementation validation.
 
+### Static review correction
+
+Kepler passed architecture at local `97d337b4` (production `940059ca`); Meridian
+identified no production blocker but held test integrity. The intentionally safe
+production `Exception` boundary could turn a fixture's `AssertionError` into an
+expected read refusal. Direct-auth tests now assert an external factory-call
+counter stays zero and require the exact forbidden/403 category. Cursor
+observation now retains a sticky violation before re-raising; the measured
+snapshot assertion checks that list outside the service boundary, so an expected
+409 cannot hide an unmetered cell or failed observation. Original byte/row/mode
+and semantic assertions remain. This additive correction changes no production
+source or contract and has not been executed. North released the local correction
+for Meridian's focused delta review; publication and owning execution remain held.
+
 ## Target shape and law mapping
 
 Paths below are under `control-plane-kit-operations/tests/` except Core.

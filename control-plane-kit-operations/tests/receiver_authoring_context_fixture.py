@@ -40,6 +40,17 @@ class ContextObserver(ValueObserver):
         self.rollbacks = 0
         self.closes = 0
         self.private_marker_seen = False
+        self.observation_failures = []
+
+    def observe(self, row, query):
+        try:
+            return super().observe(row, query)
+        except AssertionError:
+            # The public read intentionally sanitizes Exception. Keep this
+            # evidence outside that boundary so an expected 409 cannot hide
+            # an instrumentation failure or unmetered cursor value.
+            self.observation_failures.append("cursor observation failed")
+            raise
 
     def execute(self, query, params=()):
         text = str(query).lower()
@@ -124,6 +135,7 @@ class ReceiverAuthoringContextFixture:
     def assert_measured_snapshot(self, observed):
         self.assertEqual(len(observed), 1, "one context must own exactly one transaction")
         observer = observed[0]
+        self.assertEqual(observer.observation_failures, [], "read swallowed a cursor observation failure")
         self.assertTrue(observer.modes)
         self.assertEqual(set(observer.modes), {("repeatable read", "on")})
         self.assertTrue(observer.connection.closed)

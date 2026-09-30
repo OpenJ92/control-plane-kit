@@ -114,7 +114,10 @@ class ReceiverAuthoringContextTests(ReceiverAuthoringContextFixture, ReceiverAdm
         self.assert_context_refused(409, workspace="unassigned")
 
     def test_both_read_grants_and_operator_kind_precede_uow_even_for_forged_input(self):
+        factory_calls = []
+
         def forbidden():
+            factory_calls.append(True)
             self.fail("unauthorized request constructed a UoW")
         actors = [principal(scopes=scopes) for scopes in (
             (), (PolicyScope.INSTANCE_WORKSPACE_READ,), (PolicyScope.DELEGATION_KEY_READ,),
@@ -127,22 +130,31 @@ class ReceiverAuthoringContextTests(ReceiverAuthoringContextFixture, ReceiverAdm
             with self.subTest(actor=actor):
                 self.assert_context_refused(403, factory=forbidden, actor=actor,
                     scopes=[scope.value for scope in READ_SCOPES], expected={"submitted-marker": True})
+                self.assertEqual(factory_calls, [])
         request = replace(self.context_request(), principal=None)
         with self.assertRaises(CpkServerApplicationError) as caught:
             CpkServerReadService(forbidden).handle(request)
         self.assertEqual(caught.exception.status, 403)
+        self.assertEqual(factory_calls, [])
         # Dedicated owner must enforce the same rule without the adapter.
-        with self.assertRaises(ReadModelError):
+        with self.assertRaises(ReadModelError) as caught:
             self.direct_context(factory=forbidden, actor=principal(scopes=(PolicyScope.INSTANCE_WORKSPACE_READ,)))
+        self.assertEqual((caught.exception.status, caught.exception.category), (403, "forbidden"))
+        self.assertEqual(factory_calls, [])
         api = self.authoring_api()
         service = api.ReceiverAuthoringContextReadService(forbidden)
         query = api.ReceiverAuthoringContextQuery(workspace_id="workspace-a")
         for actor in actors:
             context = actor.command_context(actor.workspace_grants[0].workspace_id)
-            with self.subTest(direct_actor=actor), self.assertRaises(ReadModelError):
-                service.read(query, context=context)
-        with self.assertRaises(ReadModelError):
+            with self.subTest(direct_actor=actor):
+                with self.assertRaises(ReadModelError) as caught:
+                    service.read(query, context=context)
+                self.assertEqual((caught.exception.status, caught.exception.category), (403, "forbidden"))
+                self.assertEqual(factory_calls, [])
+        with self.assertRaises(ReadModelError) as caught:
             service.read(query, context=None)
+        self.assertEqual((caught.exception.status, caught.exception.category), (403, "forbidden"))
+        self.assertEqual(factory_calls, [])
 
     def test_closed_query_invalid_types_conflicts_and_missing_scoped_objects(self):
         pins = self.pins().descriptor()
