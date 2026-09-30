@@ -261,8 +261,12 @@ class PostgresWorkspaceStore:
         graphs = PostgresGraphTopologyStore(self._connection)
         projections = PostgresRealizedGraphProjectionStore(self._connection)
         graph = graphs.get(graph_id)
-        projection = (projections.identity_for_authored(workspace_id, graph_id)
-                      if projection_id is None else projections.get(projection_id))
+        try:
+            projection = (projections.identity_for_authored(workspace_id, graph_id)
+                          if projection_id is None else projections.get(projection_id))
+        except GraphDescriptorError as error:
+            raise RealizedGraphProjectionConflict(
+                "workspace graph pointer requires valid realized graph material") from error
         if not (graph.workspace_id == projection.workspace_id == workspace_id
                 and projection.source_authored_graph_id == graph_id):
             raise RealizedGraphProjectionConflict("realized projection source does not match workspace graph")

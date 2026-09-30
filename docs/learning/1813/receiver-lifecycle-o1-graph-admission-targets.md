@@ -256,6 +256,17 @@ The B storage fixture now uses explicit private primitives to retain its
 pre-admission storage premise; its assertions are unchanged and it earns no C2
 admission credit.
 
+The [exact source review at `811d08e3`](https://github.com/OpenJ92/control-plane-kit/pull/1907#issuecomment-5903124811)
+requested two additional bounded corrections. Both parent/child composers now
+choose the exact old receipt before constructing the new expectation product;
+otherwise an old lawful reference outside the new 256-character language would
+fail before replay. New tests cover old parent and gateway receipts with an
+actual 257-character projection reference and fresh-call refusal. The deliberate
+malformed-history predecessor fixture uses private storage to establish its
+negative premise; the public pointer retains its exact historical conflict
+class/message. Its assertions are unchanged. Kepler's narrow reader/source
+concurrence adds no green or release evidence.
+
 Security/data/history: no new credentials, network exposure or provider effects.
 Original action formats remain closed and bounded before writes. Replays read
 only original evidence and allocate no fresh intent. Failures roll back all

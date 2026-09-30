@@ -8,12 +8,38 @@ from control_plane_kit_operations.deployment_program_interpreter import (
     DeploymentProgramStateConflict, _child_keys, _intent_digest,
 )
 from control_plane_kit_operations.planning import SetDesiredGraph
+from control_plane_kit_operations.records import RealizedGraphProjectionKind
 from control_plane_kit_operations.workflows import IdempotencyKey, StartOperationSession
 from tests.draft_catalogue_fixture import principal
 from tests.receiver_admission_fixture import ReceiverAdmissionFixture
 
 
 class ReceiverAdmissionCompositionTests(ReceiverAdmissionFixture, unittest.TestCase):
+    def test_old_parent_replay_preserves_legacy_reference_outside_new_pin_language(self):
+        legacy_id = "p" * 257
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+            original = uow.stores.realized_graphs.get(workspace.current_realized_projection_id)
+            legacy = replace(original, projection_id=legacy_id,
+                projection_kind=RealizedGraphProjectionKind.DELEGATION_VERIFIER,
+                projection_key="legacy-reference")
+            uow.stores.realized_graphs.save(legacy)
+            uow.stores.workspaces.set_current_graph("workspace-a", original.source_authored_graph_id, legacy_id)
+            uow.stores.workspaces.set_desired_graph("workspace-a", original.source_authored_graph_id, legacy_id)
+            uow.commit()
+        parent = self.parent()
+        child, original = self.original_legacy_child(parent)
+        graphs = self.rows("cpk_graph_versions")
+        result = self.program().prepare(parent)
+        self.assertEqual(self.rows("cpk_graph_versions"), graphs)
+        self.assertEqual(self.command_action(child), original.action)
+        self.assertEqual(self.program().prepare(parent), result)
+        # A different parent key owns no old receipt: the new product must
+        # reject the legacy-only reference instead of choosing old format.
+        with self.assertRaises(DeploymentProgramStateConflict):
+            self.program().prepare(replace(parent, idempotency_key=IdempotencyKey("fresh-long-pin")))
+        self.assertEqual(self.rows("cpk_graph_versions"), graphs)
+
     def parent(self, *, receiver=False, key="parent"):
         workspace = self.workspace()
         return PrepareDeploymentProgram(context=principal().command_context("workspace-a"),
