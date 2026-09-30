@@ -1,10 +1,12 @@
 # O1.C3 fresh execution and acceptance targets
 
-Status: C3/#1904 is accepted and merged at `eaa47463` after the full 2,095-test
-green gate, compilation/import and independent review. Joint B+C remains held
-for one additional prescribed admission-versus-selection race pair. North
-released that test-only correction; this local target checkpoint awaits exact
-review and a separate publication/run decision. The original C3 selected base
+Status: final joint B+C architecture, transaction, security and test-integrity
+review is PASS. The sole missing admission-versus-selection race pair passed
+in the full 2,097-test gate; PR #1913 merged at `b4a139ae` with the exact tested
+tree. Aggregate PR #1901 promotion, required checks and coordinated #1897/#1898
+closure remain pending with North. The final milestone below supersedes earlier
+checkpoint holds without rewriting their historical evidence. C3/#1904 was
+accepted at `eaa47463` after its 2,095-test gate. The original C3 selected base
 is C2 merge `1d09c78d6598b4102c5c39012687f6ae9ec4d163`, containing B `a1ce6fc9`
 and C1 `89dd5229`. Governing issue is #1904; branch
 `codex/1904-receiver-execution-targets` targets
@@ -896,3 +898,98 @@ the required clock. The successor supplies the existing admission fixture's
 ID allocators and scheduling/state assertions. Meridian identified no other
 blocker; Kepler passed the two-order semantic shape. Exact delta review remains
 required before publication or executable validation.
+
+## Final joint B+C milestone and D handoff
+
+[North accepted PR #1913 and the final joint review](https://github.com/OpenJ92/control-plane-kit/pull/1913#issuecomment-5916325774).
+The actual collection merge is `b4a139aea1abb6a7466d1dea440d3d7be207f1d5`,
+tree `8b7c16a64e3f247d8acb3ff6f15cca15d913a279`, with parents accepted
+collection `eaa4746334124fafc2ef794a29013b63b2fbeb8c` and reviewed correction
+`dfd9d70efc73876eb4ad5fa6ab3a36253edb80d7`. Fetch and tree comparison confirm
+no source delta from the tested correction. Meridian's final independent
+transaction/security/test-integrity review and Kepler's final architecture
+review both PASS; their sole joint evidence HOLD is closed. Aggregate
+[PR #1901](https://github.com/OpenJ92/control-plane-kit/pull/1901) promotion and
+required checks remain pending. This record does not close #1897 or #1898.
+
+### Capability, objects and executable laws
+
+The combined Operations capability now connects graph-owned receiver provenance
+and bindings to graph admission, immutable original execution coverage, fresh
+execution permission and atomic acceptance/retirement. Existing command owners
+perform these transformations in their UoWs; graph values and retained receipts
+do not themselves authorize effects. B supplies introduction/binding and
+acceptance/retirement records; C1 supplies request scope headers/rows and bounded
+classification; C2 composes graph/draft/publication admission; C3 composes fresh
+execution and current advancement with those owners.
+
+| Transformation | Executable law in the combined owning suite |
+| --- | --- |
+| Desired graph, draft or publication → graph/projection/action/bindings | Original five pins and provenance are checked; complete owner writes are atomic and unsupported direct receiver writes refuse. |
+| Original approved plan → queued request/action/coverage | Coverage remains tied to original material. Real execution admission and receiver selection serialize in both winner orders; the loser leaves no durable writes. |
+| Retained execution truth → scope classification | C-N9/C-N10 stay conflicting. C-N11 permits reuse only with complete no-dispatch cancellation evidence and all future activation paths closed. Bounded or unavailable evidence never becomes clearance. |
+| Original receipt → replay or lawful retry | Replay preserves original meaning without fresh dispatch. Lawful original retry retains its occupied scope and does not clear a competitor. |
+| Fresh native start → committed event/intent/attempt → adapter I/O | Exact STARTED truth commits before unlocked I/O; ExistingAttempt/replay never redispatches. Late failure prevents the external call. |
+| Complete associated execution → current pointer/action/event/witnesses | First acceptance and accepted removal retirement commit together or roll back together. Desired omission alone cannot retire a receiver. |
+
+Joint review found no production defect. Its narrow correction added the
+prescribed public `RequestPlanExecution` versus `SetDesiredGraph` pair using
+real PostgreSQL blocking and exact winner/loser snapshots. Prefix-only and
+post-admission native-start schedules were insufficient for that law. Review
+also caught both omitted required clock arguments before publication; the
+tested successor supplies them without changing production or fixture helpers.
+The two original native-start schedules remain unchanged and green.
+
+### Exact final validation and review disposition
+
+[Full terminal evidence](https://github.com/OpenJ92/control-plane-kit/pull/1913#issuecomment-5916269786)
+records ordinary `./control-plane-kit-operations/test.sh`, run `36745663635`,
+job `109991092600`: **2,097 tests in 2,603.905 seconds, OK**, compilation and
+clean import, terminal success. All 2,097 named completion records are `ok`,
+including both added winner orders. Integrity reports 2,077 authored methods,
+four mocks and zero approved skips. The actual logged CI checkout
+`c098406be26c2dd5f9be6eacb7803bc86d3016c0` has the same reviewed tree and
+parents as the accepted collection merge; architecture-testing is
+`7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`. The 583,618-byte raw log SHA256
+is `fadd3fa3b898bf52313f08035e9276fa14559b495d29e69e09ed74a76d3ffbbe`.
+Both reviewers independently verified the raw evidence and exact source
+association. Core passed 907 package and 21 integrity tests plus compilation
+and import. The [earlier automatic collection gate](https://github.com/OpenJ92/control-plane-kit/pull/1901#issuecomment-5916009474)
+also passed 2,095 tests; it is explicitly not evidence for the two added tests.
+
+Current Backend passed with runner `c098406b` but locked CPK source
+`f45384e72a79f59c93a715fd08f409f86a91218a` and the retained external package
+pins. It proves that baseline composition, not downstream receiver adoption.
+This final learning update changes documentation only and requires static
+diff validation and documentation review; it adds no executable claim or run.
+
+### Remaining limits, risks and next boundary
+
+The approved scope deviation transfers actual accepted managed A→B→C proof to
+[#1912](https://github.com/OpenJ92/control-plane-kit/issues/1912); desired-only
+NoOp refusal is not equivalent. Initial acceptance and full-removal consumer
+tests retain their explicit valid upstream-completion premise.
+[O2/#1883](https://github.com/OpenJ92/control-plane-kit/issues/1883) still owns
+successor-health completion and adoption. Those capabilities, downstream server
+adoption, live/provider behavior and #1879 foundation acceptance are unearned.
+
+Security and data risks remain bounded as reviewed: tenant/approval/fence and
+original-material checks remain authoritative; stable IDs and receipts grant
+no adoption, cleanup or redispatch permission. Exact-schema mismatch refuses
+rather than migrates. Lifetime same-scope capacity and unresolved history can
+prevent progress; returned-row limits do not bound all database scan/JSON work.
+Supported-writer invariants do not claim detection of hostile privileged SQL.
+A crash after STARTED commit remains conservative uncertainty, with no inferred
+provider rollback, compensation or cleanup. Actions, events and original
+receipts retain the operational explanation; process logs are supplementary.
+
+[D/#1899](https://github.com/OpenJ92/control-plane-kit/issues/1899) can rely on
+this pending/current/retired distinction after North's aggregate release:
+introduction reserves identity; real current advancement records acceptance;
+desired omission or draft tombstone preserves reservation; accepted full
+removal retires identity. Authoring must preserve these facts and original
+receipt meaning rather than infer disposal or permission from a graph edit.
+No joint architecture or executable-evidence blocker remains for that handoff,
+but D is not released by this document. North still owns required-check and
+aggregate merge verification, the coordinated B/C closeout and the decision
+that the next milestone is safe to begin.
