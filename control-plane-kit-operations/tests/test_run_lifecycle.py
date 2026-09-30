@@ -229,13 +229,13 @@ from tests.lifecycle_lock_fixture import LifecycleLockFixture, REQUEST_LOCK, SES
 
 
 class RunLifecycleTests(LifecycleLockFixture, unittest.TestCase):
-    def test_first_claim_takes_request_before_session_without_lifecycle_guard(self):
+    def test_first_claim_holds_c3_lifecycle_guard_before_request_and_session(self):
         def execute(uow):
             return RunLifecycleCommandService(uow, clock=lambda: "2026-07-22T13:00:00Z",
                 id_factory=Sequence("run-lock", "event-lock", "action-lock")).execute(self.target_claim_command())
         with self.blocked_command(REQUEST_LOCK, ("request-a",), execute) as future:
             self.assert_row_lockable(SESSION_LOCK, ("session-a",))
-            self.assert_advisory_available("receiver-lifecycle:workspace-a", available=True)
+            self.assert_advisory_available("receiver-lifecycle:workspace-a", available=False)
         result = future.result(timeout=1)
         self.assertEqual(result.run.run_id, "run-lock")
         self.assertEqual(result.request.claim.generation, 1)
