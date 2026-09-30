@@ -49,7 +49,7 @@ class ReceiverFreshExecutionScheduleTests(ReceiverFreshExecutionFixture, Lifecyc
         self.assertEqual(before["cpk_execution_requests"], [])
         self.assertEqual(before["cpk_execution_receiver_scopes"], [])
         first, second = self.opposing_commands(
-            lambda factory: ExecutionAdmissionCommandService(factory,
+            lambda factory: ExecutionAdmissionCommandService(factory, clock=lambda: "2026-07-22T12:04:00Z",
                 id_factory=Sequence("execution-a", "race-admission-action")).execute(admission),
             lambda factory: self.desired_service(factory).execute(selection), lifecycle_acquired)
         admitted = first.result(timeout=1)
@@ -89,7 +89,7 @@ class ReceiverFreshExecutionScheduleTests(ReceiverFreshExecutionFixture, Lifecyc
         self.assertEqual(before["cpk_execution_receiver_scopes"], [])
         first, second = self.opposing_commands(
             lambda factory: self.desired_service(factory).execute(selection),
-            lambda factory: ExecutionAdmissionCommandService(factory,
+            lambda factory: ExecutionAdmissionCommandService(factory, clock=lambda: "2026-07-22T12:04:00Z",
                 id_factory=lambda: self.fail("stale admission allocated an identity")).execute(admission),
             lifecycle_acquired)
         selected = first.result(timeout=1)

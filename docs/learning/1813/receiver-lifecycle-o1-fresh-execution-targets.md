@@ -888,3 +888,11 @@ not cover the absent pair. PR1901 automatic checks are observed separately.
 Locked Backend uses CPK `f45384e72a79f59c93a715fd08f409f86a91218a`; it is baseline
 composition, not receiver adoption. Joint B/C acceptance, D, #1912 actual accepted
 A→B→C, O2 health, downstream/live and foundation closeout remain distinct holds.
+
+Exact target review at `eb62f544d92d6549695c74c4ff031e2679c09bec` found
+one constructor-reachability defect: both admission service constructors omitted
+the required clock. The successor supplies the existing admission fixture's
+`2026-07-22T12:04:00Z` clock at both calls, preserving their worker UoW factories,
+ID allocators and scheduling/state assertions. Meridian identified no other
+blocker; Kepler passed the two-order semantic shape. Exact delta review remains
+required before publication or executable validation.
