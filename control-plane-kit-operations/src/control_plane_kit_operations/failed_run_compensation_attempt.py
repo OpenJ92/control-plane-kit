@@ -285,6 +285,15 @@ class FailedRunCompensationAttemptStartService:
             )
         stores.failed_run_compensation_attempts.insert(binding)
         _require_fresh_inverse_receiver_permission(stores, request, guard, command.intent)
+        try:
+            preserved = (stores.execution.get_event(event.event_id) == event
+                and stores.effect_attempt_intents.get(inverse_identity) == intent
+                and stores.effect_attempts.get(inverse_identity) == attempt
+                and stores.failed_run_compensation_attempts.for_program(program.program_id) == (*bindings, binding))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            preserved = False
+        if not preserved:
+            raise FailedRunCompensationAttemptConflict("persisted inverse start changed")
         return NewlyBoundCompensationAttempt(
             binding,
             attempt,

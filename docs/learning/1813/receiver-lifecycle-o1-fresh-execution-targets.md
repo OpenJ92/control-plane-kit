@@ -458,3 +458,23 @@ then request-scoped run locks precede attempt locks, with held-run reentry after
 writes. The exact trace adds that final recheck and retains the one database
 clock observation, identity and no-write/error assertions. Replay's existing
 request → run → attempt → intent trace is unchanged.
+
+### Exact-source review correction: retained first-start truth
+
+Meridian initially passed `39f77877` statically, then superseded that disposition
+with a P1 HOLD after Vale raised supplied write acknowledgements versus actual
+retained rows. No checkpoint publication or gate had occurred. Final input and
+material checks alone could miss an AFTER INSERT trigger deleting a just-written
+forward attempt or inverse binding while the physical writer still returned its
+supplied acknowledgement.
+
+The narrow correction rereads the exact new event, intent and attempt after all
+fresh writes; inverse start also compares the complete expected prior binding
+prefix plus the new binding. These are nonlocking typed reads at already known
+identities, followed by existing bounded refusal/rollback. Original source,
+held-run and material checks remain. No classifier, new lock, replay, policy or
+permission object is introduced. Two actual-owner trigger negatives require the
+semantic conflict and complete rollback; the injected deletes do not depend on
+SQL/FK failure. Existing coordinator tests retain commit-before-unlocked-I/O and
+no-redispatch responsibility. The corrected successor requires exact delta
+review before North may re-release publication and the sole hosted gate.

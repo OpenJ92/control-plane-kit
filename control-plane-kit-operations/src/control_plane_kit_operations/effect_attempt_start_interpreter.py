@@ -258,6 +258,10 @@ class EffectAttemptStartService:
                 prefix.require(unit_of_work, request, run.run_id, latest_required=True)
                 _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
                     compensation=event_kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
+                if (stores.execution.get_event(event.event_id) != event
+                        or stores.effect_attempt_intents.get(intent_record.identity) != intent_record
+                        or stores.effect_attempts.get(result.attempt.state.identity) != result.attempt):
+                    raise ValueError("persisted start changed")
             except (KeyError, ValueError, TypeError, AttributeError):
                 permission_failed = True
             else:

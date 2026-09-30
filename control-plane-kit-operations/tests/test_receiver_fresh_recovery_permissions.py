@@ -88,6 +88,27 @@ class ReceiverFreshCompensationPermissionTests(FailedRunCompensationFixture, Fre
 
 
 class ReceiverFreshInversePermissionTests(FailedRunCompensationAttemptFixture, FreshRecoveryLockWitness, unittest.TestCase):
+    def test_deleted_new_inverse_binding_refuses_and_rolls_back_complete_start(self):
+        from control_plane_kit_operations.failed_run_compensation_attempt import FailedRunCompensationAttemptConflict
+        self.seed_admitted_program()
+        command = self.start_command()
+        before = self.permission_truth(), self.binding_snapshot(), self.source_truth_snapshot()
+        self.connection.execute("CREATE FUNCTION c3_delete_new_binding() RETURNS trigger LANGUAGE plpgsql AS $$ "
+            "BEGIN DELETE FROM cpk_failed_run_compensation_attempt_bindings "
+            "WHERE program_id=NEW.program_id AND position=NEW.position; RETURN NEW; END $$")
+        self.connection.execute("CREATE TRIGGER c3_delete_new_binding AFTER INSERT "
+            "ON cpk_failed_run_compensation_attempt_bindings FOR EACH ROW EXECUTE FUNCTION c3_delete_new_binding()")
+        try:
+            with self.assertRaises(FailedRunCompensationAttemptConflict) as caught:
+                self.attempt_service("deleted-inverse-binding").execute(command)
+            self.assertEqual(str(caught.exception), "persisted inverse start changed")
+            self.assertIsNone(caught.exception.__cause__)
+            self.assertIsNone(caught.exception.__context__)
+            self.assertEqual((self.permission_truth(), self.binding_snapshot(), self.source_truth_snapshot()), before)
+        finally:
+            self.connection.execute("DROP TRIGGER c3_delete_new_binding ON cpk_failed_run_compensation_attempt_bindings")
+            self.connection.execute("DROP FUNCTION c3_delete_new_binding()")
+
     def test_base_inverse_refuses_inherited_receiver_product_at_same_legacy_coordinate(self):
         from dataclasses import replace
         from control_plane_kit_core.planning import NodeTarget, ReconcileNode
@@ -240,6 +261,26 @@ class ReceiverFreshInversePermissionTests(FailedRunCompensationAttemptFixture, F
 
 
 class ReceiverFreshEffectPermissionTests(PostgresEffectAttemptStartFixture, FreshRecoveryLockWitness, unittest.TestCase):
+    def test_deleted_new_forward_attempt_refuses_and_rolls_back_complete_start(self):
+        from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartConflict
+        command = self.start_command()
+        before = self.permission_truth(), self.attempt_snapshot()
+        self.connection.execute("CREATE FUNCTION c3_delete_new_attempt() RETURNS trigger LANGUAGE plpgsql AS $$ "
+            "BEGIN DELETE FROM cpk_effect_attempts WHERE run_id=NEW.run_id "
+            "AND activity_id=NEW.activity_id AND attempt=NEW.attempt; RETURN NEW; END $$")
+        self.connection.execute("CREATE TRIGGER c3_delete_new_attempt AFTER INSERT ON cpk_effect_attempts "
+            "FOR EACH ROW EXECUTE FUNCTION c3_delete_new_attempt()")
+        try:
+            with self.assertRaises(EffectAttemptStartConflict) as caught:
+                self.start_service("deleted-forward-attempt").execute(command)
+            self.assertEqual(str(caught.exception), "effect attempt start truth is invalid")
+            self.assertIsNone(caught.exception.__cause__)
+            self.assertIsNone(caught.exception.__context__)
+            self.assertEqual((self.permission_truth(), self.attempt_snapshot()), before)
+        finally:
+            self.connection.execute("DROP TRIGGER c3_delete_new_attempt ON cpk_effect_attempts")
+            self.connection.execute("DROP FUNCTION c3_delete_new_attempt()")
+
     def test_fresh_effect_rechecks_changed_pins_after_lifecycle_wait(self):
         command = self.start_command()
         result = self.assert_rechecks_pins_while_waiting(lambda factory:
