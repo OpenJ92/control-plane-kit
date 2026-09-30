@@ -625,6 +625,10 @@ from .read_pages import (
     read_cursor_from_mapping,
 )
 from .read_services import (
+    ReceiverAuthoringContext,
+    ReceiverAuthoringContextError,
+    ReceiverAuthoringContextQuery,
+    ReceiverAuthoringContextReadService,
     ControlSurfaceReadModel,
     FocusedDetailReadModel,
     GraphPointerReadModel,
@@ -1079,6 +1083,10 @@ __all__ = [
     "RuntimeAuthorityAuthorizationDenied",
     "RecordOperationAction",
     "ReadModelError",
+    "ReceiverAuthoringContext",
+    "ReceiverAuthoringContextError",
+    "ReceiverAuthoringContextQuery",
+    "ReceiverAuthoringContextReadService",
     "RetryIdentity",
     "RetryFailedActivityRun",
     "RequestApproval",

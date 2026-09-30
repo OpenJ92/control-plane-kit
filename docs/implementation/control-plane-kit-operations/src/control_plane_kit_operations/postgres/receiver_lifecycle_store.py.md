@@ -24,3 +24,20 @@ non-origin binding set; C must establish complete membership atomically at every
 supported publication entry. Direct explicit member reads remain complete.
 Bounded member results are normalized in Python before comparison so database
 text collation cannot change material equality.
+
+The authoring snapshot adds fixed scoped selectors with one shared ledger:
+1,024 SELECTs, 4,096 returned rows and 8 MiB scalar transport. Every query
+reserves its upper bound before execution. Int4/null length probes reserve
+512 bytes per possible row; guarded text fetches reserve observed lengths and
+boolean flags, then charge actual values before JSON decode. SQL repeats cell,
+row-count and aggregate-column guards. Descriptor cells are at most 1 MiB,
+introducing payloads 64 KiB and ancillary text 2 KiB. Arbitrary record metadata
+is excluded. Exact complete graph/material cache hits reuse the same budget.
+
+Original action attribution is one shared pure validator used by this bounded
+reader and the existing graph owner. Original draft-revision and recorded
+acceptance witnesses are bounded boolean existence reads in the same snapshot.
+No execution/run/outcome traversal recomputes acceptance. This helper does not
+authorize a read: the dedicated application service does so before snapshot
+entry. A legacy receiver-free draft without a persisted identity projection
+returns an explicit absent projection and creates no record.

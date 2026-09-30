@@ -316,6 +316,14 @@ class ReadProjectionContractTests(unittest.TestCase):
                     True,
                 ),
                 (
+                    "read.receiver-authoring-context",
+                    getattr(ReadProjectionKind, "RECEIVER_AUTHORING_CONTEXT", None),
+                    "ReceiverAuthoringContextReadResponse",
+                    getattr(ReadProjectionPolicy, "PUBLIC_RECEIVER_AUTHORING_CONTEXT", None),
+                    True,
+                    False,
+                ),
+                (
                     "read.run-events",
                     ReadProjectionKind.RUN_EVENTS,
                     "RunEventsReadResponse",

@@ -30,3 +30,9 @@ adoption, retry, schema change or independent store transaction. Real PostgreSQL
 planning tests prove equal-name refusal, foreign-state preservation, concurrent
 one-winner behavior, and unrelated late-action uniqueness rollback. The store's
 domain import points inward; graph_authoring has no backend dependency.
+
+`receiver_authoring_snapshot()` vends the private bounded graph/provenance
+reader for the UoW's explicit snapshot entry. The original-action validator is
+shared with the existing mutation path; only its pure correspondence checks
+are factored. The read uses no raw unbounded getter or lifecycle lock and cannot
+write acceptance, reserve identities or acquire external evidence.

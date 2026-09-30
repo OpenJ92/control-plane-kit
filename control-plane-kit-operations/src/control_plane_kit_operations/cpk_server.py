@@ -126,6 +126,9 @@ from control_plane_kit_operations.products import (
     RegisterImagePullAuthorityCommand,
 )
 from control_plane_kit_operations.read_services import InstanceReadService, ReadModelError
+from control_plane_kit_operations.read_services.receiver_authoring_context import (
+    ReceiverAuthoringContextError, ReceiverAuthoringContextQuery, ReceiverAuthoringContextReadService,
+)
 from control_plane_kit_operations.desired_topology_drafts import (
     CreateDesiredTopologyDraft, ReviseDesiredTopologyDraft, DesiredTopologyDraftCommandService,
     DesiredTopologyDraftError, DesiredTopologyDraftConflict,
@@ -266,6 +269,8 @@ _WORKER_OPERATION = RouteAuthorizationPolicy(
 )
 
 _ROUTE_AUTHORIZATION_POLICIES: dict[str, RouteAuthorizationPolicy] = {
+    "read.receiver-authoring-context": RouteAuthorizationPolicy(
+        required_scopes=(PolicyScope.INSTANCE_WORKSPACE_READ, PolicyScope.DELEGATION_KEY_READ)),
     "read.desired-topology-drafts": _WORKSPACE_READ,
     "read.desired-topology-draft-revisions": _WORKSPACE_READ,
     "read.desired-topology-draft-revision": _WORKSPACE_READ,
@@ -466,6 +471,17 @@ class CpkServerReadService:
         self._clock = clock
 
     def handle(self, request: CpkServerRouteRequest) -> Mapping[str, object]:
+        if request.route_id == "read.receiver-authoring-context":
+            context = _trusted_context(request)
+            arguments = _closed_read_arguments(request)
+            failure = None
+            try:
+                query = ReceiverAuthoringContextQuery.from_mapping(arguments)
+                return ReceiverAuthoringContextReadService(self._unit_of_work_factory).read(
+                    query, context=context).descriptor()
+            except ReceiverAuthoringContextError as error:
+                failure = (error.status, str(error))
+            raise CpkServerApplicationError(*failure)
         if request.route_id.startswith("read.desired-topology-draft"):
             _trusted_context(request)
         read_arguments = (
@@ -1769,6 +1785,7 @@ def _arguments(request: CpkServerRouteRequest) -> dict[str, object]:
 
 
 _CLOSED_READ_ARGUMENTS = {
+    "read.receiver-authoring-context": (None, False),
     "read.workload-verifier-configuration": ("purposes", False),
     "read.desired-topology-drafts": (None, True),
     "read.desired-topology-draft-revisions": ("draft_id", True),
@@ -1827,6 +1844,8 @@ def _closed_read_arguments(request: CpkServerRouteRequest) -> dict[str, object]:
     parent, paged = _CLOSED_READ_ARGUMENTS[request.route_id]
     required = {"workspace_id"} | (set() if parent is None else set(parent) if isinstance(parent, tuple) else {parent})
     optional = {"limit", "after"} if paged else set()
+    if request.route_id == "read.receiver-authoring-context":
+        optional = {"expected", "pending_draft"}
     path = dict(request.path_parameters)
     payload = dict(request.payload)
     if request.surface == "http":

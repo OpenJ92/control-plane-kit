@@ -1,6 +1,12 @@
 """Read-only projections over durable operations truth."""
 
 from .errors import ReadModelError
+from .receiver_authoring_context import (
+    ReceiverAuthoringContext,
+    ReceiverAuthoringContextError,
+    ReceiverAuthoringContextQuery,
+    ReceiverAuthoringContextReadService,
+)
 from .instance import InstanceReadService
 from .observations import (
     ObservationFreshnessPolicy,
@@ -24,6 +30,10 @@ __all__ = [
     "OperatorOverviewReadModel",
     "ProjectedObservation",
     "ReadModelError",
+    "ReceiverAuthoringContext",
+    "ReceiverAuthoringContextError",
+    "ReceiverAuthoringContextQuery",
+    "ReceiverAuthoringContextReadService",
     "WorkspaceReadModel",
     "WorkspaceSummary",
     "project_observation",

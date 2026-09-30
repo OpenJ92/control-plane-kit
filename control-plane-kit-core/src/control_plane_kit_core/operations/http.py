@@ -309,6 +309,11 @@ def operator_read_http_routes() -> tuple[HttpApiRouteContract, ...]:
                 "WorkspaceReadResponse",
             ),
             (
+                "read.receiver-authoring-context",
+                "/workspaces/{workspace_id}/receiver-authoring-context",
+                "ReceiverAuthoringContextReadResponse",
+            ),
+            (
                 "read.current-graph",
                 "/workspaces/{workspace_id}/graphs/current",
                 "GraphReadResponse",
@@ -877,7 +882,10 @@ def _read_route(
         service_role=ControlPlaneServiceRole.READS,
         auth_scope=HttpAuthScope.READ,
         safety=HttpOperationSafety.READ_ONLY,
+        request_schema=HttpSchemaRef("ReceiverAuthoringContextReadRequest", max_bytes=16384)
+        if route_id == "read.receiver-authoring-context" else HttpSchemaRef("EmptyRequest", max_bytes=1024),
         response_schema=HttpSchemaRef(response_schema, max_bytes=1048576 if route_id in {
+            "read.receiver-authoring-context",
             "read.desired-topology-draft-revision-preparations",
             "read.desired-topology-draft-revision-attempts",
         } else 65536),
