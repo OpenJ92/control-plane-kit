@@ -2,8 +2,12 @@ Source: [current_schema_contract.py](../../../../../../control-plane-kit-operati
 Maintain this companion alongside its source.
 
 The frozen semantic contract mirrors the complete fresh SQL, including health
-preparations and managed command receipt provenance: 41 relations, 526 columns,
-411 constraints, 135 indexes and 95 foreign keys. The health table has eighteen columns, sixteen checks, four
+preparations, managed command receipt provenance and graph receiver storage:
+43 relations, 549 columns, 440 constraints, 142 indexes and 110 foreign keys.
+Receiver storage adds two relations, twenty-three columns, seven keys/indexes,
+seven checks and fifteen restrictive foreign keys. Only the original-binding
+receiver reference is deferred, allowing atomic introduction/binding creation.
+The health table has eighteen columns, sixteen checks, four
 primary/unique constraints and eight restrictive owner foreign keys. Existing
 health signing vocabulary and rotation restrictions remain unchanged.
 The optional receipt `managed_intent` adds one bounded JSON column and check;

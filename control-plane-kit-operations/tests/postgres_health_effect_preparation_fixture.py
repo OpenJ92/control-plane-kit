@@ -29,11 +29,26 @@ class PostgresHealthEffectPreparationFixture(
     HealthEffectPreparationFixture, PostgresEffectAttemptIntentStoreFixture,
 ):
     def setUp(self):
+        self._health_source_options = {}
         PostgresEffectAttemptIntentStoreFixture.setUp(self)
         self.addCleanup(PostgresEffectAttemptIntentStoreFixture.tearDown, self)
         self.seed_health_owners()
 
-    def seed_health_owners(self, side=None, relation_digest=None):
+    def seed_execution_request(self):
+        # This family tests retained preparation/storage identities, including
+        # deliberately non-admissible BASE and relation-pin variants. Construct
+        # its final recorded originals before deriving a witness; no admission
+        # receipt or supported execution is claimed by this historical fixture.
+        from tests.receiver_scope_history_fixture import insert_recorded_request
+        self.seed_health_source(**self._health_source_options)
+        insert_recorded_request(self.connection, requested_at="2026-08-15T03:59:00Z")
+
+    def reset_health_truth(self, **options):
+        self._health_source_options = options
+        self.reset_start_truth()
+        self.seed_health_owners()
+
+    def seed_health_source(self, side=None, relation_digest=None):
         options = {} if side is None else {"side": side}
         self.values = self.material(**options)
         plan, activity, current, desired, _ = self.health_context(**options)
@@ -53,8 +68,8 @@ class PostgresHealthEffectPreparationFixture(
                 projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=authored)
                 self.values[("base" if name == "health-base" else "desired") + "_realized_projection_id"] = projection.projection_id
                 stores.realized_graphs.save(projection)
-            # This is seed construction, not mutation/admission under test. Retain
-            # the existing request/run/approval IDs while installing a real plan.
+            # Complete recorded source construction before any request, scope
+            # witness, run, intent or health preparation exists.
             uow.stores.connection.execute("""
                 UPDATE cpk_activity_plans SET base_graph_id='health-base', desired_graph_id='health-desired',
                   base_realized_projection_id=%s,
@@ -63,6 +78,10 @@ class PostgresHealthEffectPreparationFixture(
             """, (self.values["base_realized_projection_id"], self.values["desired_realized_projection_id"],
                 Jsonb(encode_stored_activity_plan(plan, profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1))))
             uow.commit()
+        self._health_plan = plan
+
+    def seed_health_owners(self):
+        plan, activity = self._health_plan, self.health_activity
         intent = self.intent(activity_id=activity.activity_id.value)
         intent = replace(intent, operation=activity.operation, products=(), authority_deliveries=(),
             source=replace(intent.source, base_graph_id="health-base", desired_graph_id="health-desired"))

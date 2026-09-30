@@ -2,6 +2,39 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations._gateway_child_association",
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.operations.commands",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations._execution_lease_recovery_support",
+        "control_plane_kit_operations.admission",
+        "control_plane_kit_operations.gateway_key_rotations",
+        "control_plane_kit_operations.receiver_lifecycle"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations._gateway_child_association",
+      "motivation": "Shared stable parent approval and retained child association checks; fresh admission retains live phase/version policy at its owner.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_gateway_child_recovery_permissions.py",
+        "tests/test_gateway_key_rotation_overlap_admission.py",
+        "tests/test_gateway_key_rotation_overlap_program.py",
+        "tests/test_gateway_key_rotation_retirement_program.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["transformations"],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_gateway_child_association.py"
+    },
+    {
       "canonical_public_exports": [
         "ActivityDependency",
         "ActivityId",
@@ -9464,7 +9497,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.failed_run_compensation_store",
@@ -9493,7 +9527,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store",
@@ -10108,7 +10143,8 @@
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.effect_attempt_store",
@@ -10141,7 +10177,8 @@
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.effect_attempt_intent_store",
@@ -10183,7 +10220,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.current_data_validation",
-        "control_plane_kit_operations.postgres.stores"
+        "control_plane_kit_operations.postgres.stores",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations.postgres.effect_outcome_store",
@@ -10285,6 +10323,7 @@
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.planning",
+        "control_plane_kit_operations._gateway_child_association",
         "control_plane_kit_operations.activity_journal",
         "control_plane_kit_operations.activity_run_retry",
         "control_plane_kit_operations.execution_leases",
@@ -10293,7 +10332,8 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.activity_run_retry_interpreter",
-        "control_plane_kit_operations.execution_lease_recovery_interpreter"
+        "control_plane_kit_operations.execution_lease_recovery_interpreter",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations._execution_lease_recovery_support",
@@ -10459,6 +10499,7 @@
         "control_plane_kit_operations._temporal",
         "control_plane_kit_operations.graph_authoring",
         "control_plane_kit_operations.products",
+        "control_plane_kit_operations.receiver_lifecycle",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.workflows"
       ],
@@ -10507,6 +10548,8 @@
       "internal_dependencies": [
         "control_plane_kit_operations.desired_topology_drafts",
         "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations.postgres.graph_store",
         "control_plane_kit_operations.postgres.schema",
         "control_plane_kit_operations.postgres.temporal"
       ],
@@ -10614,6 +10657,7 @@
         "control_plane_kit_operations.deployment_program",
         "control_plane_kit_operations.graph_authoring",
         "control_plane_kit_operations.products",
+        "control_plane_kit_operations.receiver_lifecycle",
         "control_plane_kit_operations.records",
         "control_plane_kit_operations.workflows"
       ],
@@ -10653,8 +10697,10 @@
       "role": "read-projection",
       "motivation": "Pure saved provenance and historical advancement attribution; no current fencing or external effects.",
       "internal_dependencies": [
+        "control_plane_kit_operations._temporal",
         "control_plane_kit_operations.advancement",
         "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.records",
         "control_plane_kit_operations.saved_deployment_preparation",
         "control_plane_kit_operations.workflows"
       ],
@@ -10667,6 +10713,7 @@
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.revision_history_store",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes",
         "control_plane_kit_operations.read_services.revision_history",
         "control_plane_kit_operations.read_services.instance"
       ],
@@ -11460,6 +11507,228 @@
       "role": "durable-control-plane-operation",
       "semantic_roles": ["values", "interpreter"],
       "source": "control-plane-kit-operations/src/control_plane_kit_operations/effect_run_prefix.py"
+    },
+    {
+      "canonical_public_exports": ["ReceiverLifecycleExpectation"],
+      "destination": "control_plane_kit_operations.receiver_lifecycle",
+      "internal_dependencies": [
+        "control_plane_kit_core.node_control",
+        "control_plane_kit_core.receiver_configuration",
+        "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_core.wrapper_configuration",
+        "control_plane_kit_operations.receiver_execution_scopes"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.receiver_lifecycle_store",
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.planning",
+        "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.desired_topology_drafts",
+        "control_plane_kit_operations.desired_realized_projections",
+        "control_plane_kit_operations.saved_deployment_preparation",
+        "control_plane_kit_operations.deployment_program_interpreter",
+        "control_plane_kit_operations.gateway_key_rotation_projection",
+        "control_plane_kit_operations.cpk_server"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.receiver_lifecycle",
+      "motivation": "Graph-owned receiver facts, explicit five-pin expectation and private same-transaction admission checks. Reuses the execution-owned C1 classifier and original receipt read through existing stores; values and returned evidence confer no authority.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_receiver_storage.py",
+        "tests/test_postgres_receiver_storage_schema.py",
+        "tests/test_receiver_lifecycle_expectations.py",
+        "tests/test_receiver_graph_admission.py",
+        "tests/test_receiver_accepted_continuation.py",
+        "tests/test_receiver_admission_formats.py",
+        "tests/test_receiver_admission_execution_evidence.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/receiver_lifecycle.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations.postgres.receiver_lifecycle_store",
+      "internal_dependencies": [
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.postgres.temporal"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.current_data_validation"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations.postgres.receiver_lifecycle_store",
+      "motivation": "Graph-owned receiver structural facts and complete material integrity; no lifecycle admission or provider authority.",
+      "movement": "remain",
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_postgres_receiver_storage.py",
+        "tests/test_postgres_receiver_storage_schema.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": [
+        "interpreter"
+      ],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/receiver_lifecycle_store.py"
+    },
+    {
+      "canonical_public_exports": [],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "module": "control_plane_kit_operations.receiver_execution_scopes",
+      "destination": "control_plane_kit_operations.receiver_execution_scopes",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/receiver_execution_scopes.py",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_operations.plan_derivation",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.receiver_execution_scopes"
+      ],
+      "optional_external_dependencies": [
+        "rfc8785"
+      ],
+      "semantic_roles": [
+        "values",
+        "transformations"
+      ],
+      "motivation": "Execution-owned immutable original-source coverage and nonauthorizing history classification; cancellation returns an unresolved fresh-gate obligation.",
+      "protecting_tests": [
+        "tests/test_receiver_execution_scope_derivation.py",
+        "tests/test_receiver_execution_scope_classification.py"
+      ]
+    },
+    {
+      "canonical_public_exports": [],
+      "migration_prerequisites": [],
+      "movement": "remain",
+      "owner": "operation",
+      "role": "durable-control-plane-operation",
+      "module": "control_plane_kit_operations.postgres.receiver_execution_scopes",
+      "destination": "control_plane_kit_operations.postgres.receiver_execution_scopes",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/receiver_execution_scopes.py",
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_operations._execution_lease_recovery_support",
+        "control_plane_kit_operations.activity_journal",
+        "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.lifecycle",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.effect_attempt_intent_store",
+        "control_plane_kit_operations.postgres.effect_attempt_store",
+        "control_plane_kit_operations.postgres.effect_outcome_store",
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.failed_run_compensation_attempt_store",
+        "control_plane_kit_operations.postgres.failed_run_compensation_store",
+        "control_plane_kit_operations.postgres.graph_store",
+        "control_plane_kit_operations.postgres.temporal",
+        "control_plane_kit_operations.receiver_execution_scopes",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.revision_history"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations.postgres.execution",
+        "control_plane_kit_operations.postgres.current_data_validation"
+      ],
+      "optional_external_dependencies": [
+        "psycopg"
+      ],
+      "semantic_roles": [
+        "interpreter"
+      ],
+      "motivation": "Existing execution-store composition for bounded original-source reads, scope persistence in admission transactions, complete history retrieval and exact current-row verification. Reuses effect-owner decoders and historical receipt/success laws; adds no store bundle service or effect authority.",
+      "protecting_tests": [
+        "tests/test_postgres_receiver_execution_scopes.py",
+        "tests/test_postgres_receiver_execution_scope_schema.py",
+        "tests/test_receiver_execution_scope_classification.py",
+        "tests/test_receiver_execution_scope_row_budgets.py",
+        "tests/test_receiver_execution_scope_transport.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.graph_store",
+      "destination": "control_plane_kit_operations.postgres.graph_store",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/graph_store.py",
+      "owner": "operation",
+      "role": "durable-store",
+      "semantic_roles": ["interpreter"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.topology",
+        "control_plane_kit_core.types",
+        "control_plane_kit_operations.graph_authoring",
+        "control_plane_kit_operations.receiver_lifecycle",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.postgres.receiver_lifecycle_store",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.postgres.temporal"
+      ],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.stores"],
+      "optional_external_dependencies": ["psycopg"],
+      "motivation": "Existing workspace/graph/projection persistence; C2 public single-record writes refuse receiver-affecting changes while private primitives support complete semantic transactions and original introducing-action checks. Does not import execution history or grant receiver acceptance.",
+      "protecting_tests": [
+        "tests/test_workspace_graph_stores.py",
+        "tests/test_realized_graph_projection_store.py",
+        "tests/test_receiver_admission_boundaries.py"
+      ]
+    },
+    {
+      "module": "control_plane_kit_operations.postgres.execution",
+      "destination": "control_plane_kit_operations.postgres.execution",
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/postgres/execution.py",
+      "owner": "operation",
+      "role": "durable-store",
+      "semantic_roles": ["interpreter"],
+      "movement": "remain",
+      "migration_prerequisites": [],
+      "canonical_public_exports": [],
+      "internal_dependencies": [
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations.execution_leases",
+        "control_plane_kit_operations.read_pages",
+        "control_plane_kit_operations.records",
+        "control_plane_kit_operations.receiver_execution_scopes",
+        "control_plane_kit_operations.postgres.schema",
+        "control_plane_kit_operations.postgres.temporal",
+        "control_plane_kit_operations.postgres.receiver_execution_scopes",
+        "control_plane_kit_operations.postgres.receiver_lifecycle_store",
+        "control_plane_kit_operations.postgres.activity_history",
+        "control_plane_kit_operations.advancement",
+        "control_plane_kit_operations.revision_history",
+        "control_plane_kit_operations.receiver_lifecycle"
+      ],
+      "known_package_consumers": ["control_plane_kit_operations.postgres.stores"],
+      "optional_external_dependencies": [],
+      "motivation": "Existing execution store. C2's private _receiver_acceptance_evidence reuses one bounded C1 reader per origin set and original receipt/journal validators; no new locks, execution writes or public store service. Current graph membership remains graph-owned.",
+      "protecting_tests": [
+        "tests/test_receiver_accepted_continuation.py",
+        "tests/test_receiver_reference_admission.py",
+        "tests/test_receiver_admission_execution_evidence.py"
+      ]
     }
   ],
   "owner_vocabulary": [

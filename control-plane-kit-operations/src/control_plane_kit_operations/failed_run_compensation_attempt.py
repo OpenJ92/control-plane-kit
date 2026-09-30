@@ -58,6 +58,10 @@ class FailedRunCompensationAttemptNotFound(FailedRunCompensationAttemptError):
     """Raised when an exact compensation coordinate is absent."""
 
 
+class _BindingLocatorChanged(Exception):
+    """One competing binding appeared before locks or writes."""
+
+
 @dataclass(frozen=True, slots=True)
 class StartFailedRunCompensationAttempt:
     program_id: str
@@ -123,10 +127,16 @@ class FailedRunCompensationAttemptStartService:
     ) -> FailedRunCompensationAttemptStartResult:
         if type(command) is not StartFailedRunCompensationAttempt:
             raise FailedRunCompensationAttemptError("command is invalid")
-        with self._unit_of_work() as unit_of_work:
-            result = self._start(unit_of_work.stores, command)
-            unit_of_work.commit()
-            return result
+        for pass_number in range(2):
+            try:
+                with self._unit_of_work() as unit_of_work:
+                    result = self._start(unit_of_work.stores, command)
+                    unit_of_work.commit()
+                    return result
+            except _BindingLocatorChanged:
+                if pass_number:
+                    break
+        raise FailedRunCompensationAttemptConflict("compensation branch changed")
 
     def _start(self, stores, command):
         try:
@@ -141,6 +151,9 @@ class FailedRunCompensationAttemptStartService:
             raise FailedRunCompensationAttemptConflict(
                 "compensation program is incongruent"
             ) from error
+        located_bindings = stores.failed_run_compensation_attempts.for_program(program.program_id)
+        guard = (stores.graphs.lock_receiver_lifecycle(record.workspace_id)
+                 if command.position > len(located_bindings) else None)
         # The immutable locator supplies identities, never lock ownership.
         # Validate request scope before any run/attempt from that locator.
         try:
@@ -158,6 +171,14 @@ class FailedRunCompensationAttemptStartService:
         bindings = stores.failed_run_compensation_attempts.for_program(
             program.program_id
         )
+        if bindings != located_bindings:
+            if (command.position == len(located_bindings) + 1
+                    and len(bindings) == command.position
+                    and bindings[:-1] == located_bindings):
+                # Re-enter from outside the UoW so exact replay can prepare its
+                # own attempt-lock set. No IDs or durable writes precede this.
+                raise _BindingLocatorChanged
+            raise FailedRunCompensationAttemptConflict("compensation branch changed")
         if tuple(binding.position for binding in bindings) != tuple(
             range(1, len(bindings) + 1)
         ):
@@ -223,6 +244,7 @@ class FailedRunCompensationAttemptStartService:
             raise FailedRunCompensationAttemptConflict(
                 "inverse intent is incongruent"
             )
+        _require_fresh_inverse_receiver_permission(stores, request, guard, command.intent)
         source_identity = source.state.identity
         inverse_identity = EffectAttemptIdentity(
             source_identity.run_id,
@@ -272,18 +294,42 @@ class FailedRunCompensationAttemptStartService:
             command.intent,
         )
         stores.execution.add_event(event)
-        stores.effect_attempt_intents.insert(intent)
-        if stores.effect_attempts.insert_absent(attempt) is None:
+        stores.effect_attempt_intents._insert(intent)
+        if stores.effect_attempts._insert_absent(attempt) is None:
             raise FailedRunCompensationAttemptConflict(
                 "inverse attempt already exists"
             )
         stores.failed_run_compensation_attempts.insert(binding)
+        _require_fresh_inverse_receiver_permission(stores, request, guard, command.intent)
+        try:
+            preserved = (stores.execution.get_event(event.event_id) == event
+                and stores.effect_attempt_intents.get(inverse_identity) == intent
+                and stores.effect_attempts.get(inverse_identity) == attempt
+                and stores.failed_run_compensation_attempts.for_program(program.program_id) == (*bindings, binding))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            preserved = False
+        if not preserved:
+            raise FailedRunCompensationAttemptConflict("persisted inverse start changed")
         return NewlyBoundCompensationAttempt(
             binding,
             attempt,
             intent,
             False,
         )
+
+
+def _require_fresh_inverse_receiver_permission(stores, request, guard, intent):
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_execution
+    from control_plane_kit_operations.receiver_execution_scopes import _validate_effect_receiver_material
+    try:
+        _validate_receiver_execution(stores, request, guard)
+        original, derived = stores.execution._receiver_execution_material(request.identity, guard)
+        _validate_effect_receiver_material(request.identity, original, derived, intent, compensation=True)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise FailedRunCompensationAttemptConflict("fresh inverse permission is unavailable")
 
 
 def _validate_program_lineage(stores, record, program, command) -> None:

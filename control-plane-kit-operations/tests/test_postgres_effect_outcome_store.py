@@ -197,8 +197,8 @@ class PostgresEffectOutcomeStoreTests(
             stores = unit_of_work.stores
             stores.execution.add_event(attempt.original_start_event)
             stores.execution.add_event(attempt.latest_transition_event)
-            stores.effect_attempt_intents.insert(intent_record)
-            stores.effect_attempts.insert_absent(attempt)
+            stores.effect_attempt_intents._insert(intent_record)
+            stores.effect_attempts._insert_absent(attempt)
             stores.observed_state.put(false_observation)
             with self.assertRaisesRegex(
                 OperationsRecordError,
@@ -223,8 +223,8 @@ class PostgresEffectOutcomeStoreTests(
             stores = unit_of_work.stores
             stores.execution.add_event(attempt.original_start_event)
             stores.execution.add_event(attempt.latest_transition_event)
-            stores.effect_attempt_intents.insert(intent_record)
-            stores.effect_attempts.insert_absent(attempt)
+            stores.effect_attempt_intents._insert(intent_record)
+            stores.effect_attempts._insert_absent(attempt)
             for observation in observations:
                 stores.observed_state.put(observation)
             stores.effect_outcomes.insert(record)
@@ -335,12 +335,12 @@ class PostgresEffectOutcomeStoreTests(
             stores = unit_of_work.stores
             stores.execution.add_event(prior.original_start_event)
             self.add_record_intent(stores, prior)
-            self.assertEqual(stores.effect_attempts.insert_absent(prior), prior)
+            self.assertEqual(stores.effect_attempts._insert_absent(prior), prior)
             stores.execution.add_event(record.attempt.original_start_event)
             stores.execution.add_event(record.attempt.latest_transition_event)
             self.add_record_intent(stores, record.attempt)
             self.assertEqual(
-                stores.effect_attempts.insert_absent(record.attempt),
+                stores.effect_attempts._insert_absent(record.attempt),
                 record.attempt,
             )
             for observation in record.endpoint_observations:
@@ -731,7 +731,7 @@ class PostgresEffectOutcomeStoreTests(
             stores.execution.add_event(second.attempt.original_start_event)
             stores.execution.add_event(second.attempt.latest_transition_event)
             self.add_record_intent(stores, second.attempt)
-            stores.effect_attempts.insert_absent(second.attempt)
+            stores.effect_attempts._insert_absent(second.attempt)
             with self.assertRaises(UniqueViolation) as caught:
                 stores.effect_outcomes.insert(second)
         self.assertEqual(
@@ -780,7 +780,7 @@ class PostgresEffectOutcomeStoreTests(
             stores.execution.add_event(foreign.attempt.original_start_event)
             stores.execution.add_event(foreign.attempt.latest_transition_event)
             self.add_record_intent(stores, foreign.attempt)
-            stores.effect_attempts.insert_absent(foreign.attempt)
+            stores.effect_attempts._insert_absent(foreign.attempt)
             unit_of_work.commit()
         with self.unit_of_work() as unit_of_work:
             with self.assertRaises(OperationsRecordError) as caught:

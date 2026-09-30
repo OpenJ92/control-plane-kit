@@ -74,6 +74,20 @@ class EffectAttemptStore:
         self,
         record: EffectAttemptRecord,
     ) -> EffectAttemptRecord | None:
+        from .effect_attempt_intent_store import EffectAttemptIntentStore
+        from .receiver_execution_scopes import _require_nonaffecting_intent
+        from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
+        _require_record(record)
+        try:
+            intent = EffectAttemptIntentStore(self._connection).get(record.state.identity)
+        except KeyError:
+            intent = None
+        if intent is None or intent.original_start_event != record.original_start_event:
+            raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+        _require_nonaffecting_intent(self._connection, intent)
+        return self._insert_absent(record)
+
+    def _insert_absent(self, record: EffectAttemptRecord) -> EffectAttemptRecord | None:
         _require_record(record)
         row = self._connection.execute(
             f"""
@@ -205,6 +219,14 @@ def _decode_row(connection: _Connection, row: object) -> EffectAttemptRecord:
 def _reconstruct_row(connection: _Connection, row: object) -> EffectAttemptRecord:
     if type(row) not in (tuple, list) or len(row) != len(_COLUMN_NAMES):
         raise ValueError("effect attempt row shape is invalid")
+    event_store = PostgresExecutionStore(connection)
+    return _record_from_events(row, event_store.get_event(row[15]), event_store.get_event(row[18]))
+
+
+def _record_from_events(row, original, latest) -> EffectAttemptRecord:
+    """Decode the same owner value after a caller's bounded event retrieval."""
+    if type(row) not in (tuple, list) or len(row) != len(_COLUMN_NAMES):
+        raise ValueError("effect attempt row shape is invalid")
     identity = EffectAttemptIdentity(RunId(row[0]), row[1], row[2])
     prior = (
         None
@@ -231,9 +253,6 @@ def _reconstruct_row(connection: _Connection, row: object) -> EffectAttemptRecor
         prior_attempt=prior,
         recovery_decision=recovery,
     )
-    event_store = PostgresExecutionStore(connection)
-    original = event_store.get_event(row[15])
-    latest = event_store.get_event(row[18])
     if (
         (original.event_id, original.run_id, original.ordinal)
         != (row[15], row[16], row[17])

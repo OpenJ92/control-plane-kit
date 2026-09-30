@@ -304,6 +304,28 @@ class PostgresActivityHistoryStore:
         ).fetchall()
         return tuple(_action_record(row) for row in rows)
 
+    def _projection_publication_actions(
+        self, session_id: str, desired_projection_id: str,
+    ) -> tuple[OperationActionRecord, ...]:
+        """Return at most two candidate receipts so ambiguity cannot be hidden.
+
+        The caller validates session ownership and all original associations.
+        LIMIT bounds returned material, not PostgreSQL's internal scan work.
+        """
+        rows = self._connection.execute(
+            """
+            SELECT action_id, session_id, ordinal, action_type, actor_id, payload,
+                   created_at, idempotency_key, intent_fingerprint
+            FROM cpk_operation_actions
+            WHERE session_id = %s AND action_type = %s
+              AND payload->>'desired_realized_projection_id' = %s
+            LIMIT 2
+            """,
+            (session_id, OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION.value,
+             desired_projection_id),
+        ).fetchall()
+        return tuple(_action_record(row) for row in rows)
+
     def action_page(
         self,
         request: ReadPageRequest,

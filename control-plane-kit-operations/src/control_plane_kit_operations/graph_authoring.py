@@ -26,6 +26,9 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
     WorkspaceRecord,
 )
+from control_plane_kit_operations.receiver_lifecycle import (
+    ReceiverLifecycleStorageError, _retained_receiver_material, derive_receiver_bindings,
+)
 
 
 class GraphAuthoringError(ValueError):
@@ -170,6 +173,17 @@ def set_desired_graph_in_unit_of_work(
     workspace = unit_of_work.stores.workspaces.get_for_update(
         command.workspace_id,
     )
+    try:
+        receiver_material = derive_receiver_bindings(command.workspace_id, graph_id,
+            "proposed-identity", command.graph.descriptor())
+        for graph, projection in ((workspace.current_graph_id, workspace.current_realized_projection_id),
+                                  (workspace.desired_graph_id, workspace.desired_realized_projection_id)):
+            receiver_material += _retained_receiver_material(unit_of_work.stores,
+                command.workspace_id, graph, projection)
+        if receiver_material:
+            raise ReceiverLifecycleStorageError("receiver authoring requires its complete operation")
+    except (ValueError, KeyError):
+        raise GraphAuthoringError("receiver authoring requires its complete operation") from None
     if (
         workspace.desired_graph_id != command.expected_desired_graph_id
         or workspace.desired_realized_projection_id

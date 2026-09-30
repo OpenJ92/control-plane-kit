@@ -1,4 +1,4 @@
-"""#1896 request/run prefixes preserve the existing execution policies."""
+"""#1896 later-row ordering with #1904 fresh lifecycle-prefix supersession."""
 import unittest
 
 from control_plane_kit_core.operations.lifecycle import RecoveryDecisionKind
@@ -23,7 +23,7 @@ from tests.lifecycle_lock_fixture import (
 class PostgresLifecycleExecutionLockTests(
     LifecycleLockFixture, PostgresActivityRunRetryFixture, unittest.TestCase,
 ):
-    def test_retry_and_recovery_take_request_and_run_before_session_without_new_lifecycle_guard(self):
+    def test_retry_and_recovery_hold_c3_lifecycle_before_request_run_and_session(self):
         for kind in ("retry", "recovery"):
             for blocked in ("request", "run"):
                 with self.subTest(kind=kind, blocked=blocked):
@@ -42,14 +42,14 @@ class PostgresLifecycleExecutionLockTests(
                     with self.blocked_command(query, (key,), execute) as future:
                         self.assert_row_lockable(SESSION_LOCK, ("session-a",))
                         self.assert_row_lockable(WORKSPACE_LOCK, ("workspace-a",))
-                        self.assert_advisory_available("receiver-lifecycle:workspace-a", available=True)
+                        self.assert_advisory_available("receiver-lifecycle:workspace-a", available=False)
                         if blocked == "request":
                             self.assert_row_lockable(RUN_LOCK, ("run-a",))
                         else:
                             self.assert_row_retained(REQUEST_LOCK, ("request-a",))
                     self.assertFalse(future.result(timeout=1).replayed)
 
-    def test_lifecycle_transition_takes_request_before_session_without_new_guard(self):
+    def test_fresh_start_holds_c3_lifecycle_before_request_and_session(self):
         self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
         command = StartActivityRun("run-a",
             ExecutionWorkerAuthority("worker-a", (PolicyScope.EXECUTION_OPERATE,)),
@@ -60,7 +60,7 @@ class PostgresLifecycleExecutionLockTests(
         with self.blocked_command(REQUEST_LOCK, ("request-a",), execute) as future:
             self.assert_row_lockable(SESSION_LOCK, ("session-a",))
             self.assert_row_lockable(RUN_LOCK, ("run-a",))
-            self.assert_advisory_available("receiver-lifecycle:workspace-a", available=True)
+            self.assert_advisory_available("receiver-lifecycle:workspace-a", available=False)
         self.assertEqual(future.result(timeout=1).run.status.value, "running")
 
 
@@ -112,7 +112,7 @@ class PostgresLifecycleCompensationLockTests(
             self.assert_advisory_available("receiver-lifecycle:workspace-a", available=True)
         self.assertFalse(future.result(timeout=1).replayed)
 
-    def test_compensation_attempt_prefix_is_request_run_attempt_workspace_program(self):
+    def test_fresh_compensation_attempt_prefix_is_lifecycle_request_run_attempt_workspace_program(self):
         self.seed_admitted_program()
         command = self.start_command()
         with self.unit_of_work() as uow:
@@ -135,6 +135,6 @@ class PostgresLifecycleCompensationLockTests(
                         self.assert_row_lockable(ATTEMPT_LOCK, attempt_key)
                     if blocker == REQUEST_LOCK:
                         self.assert_row_lockable(RUN_LOCK, ("run-a",))
-                    self.assert_advisory_available("receiver-lifecycle:workspace-a", available=True)
+                    self.assert_advisory_available("receiver-lifecycle:workspace-a", available=False)
                 self.assertEqual(future.result(timeout=1).binding.source_attempt, source)
                 self.assertEqual(self.source_truth_snapshot(), before)

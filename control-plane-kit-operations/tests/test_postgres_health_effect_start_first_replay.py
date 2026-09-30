@@ -79,7 +79,7 @@ class PostgresHealthEffectStartFirstReplayTests(PostgresHealthEffectStartFixture
         from contextlib import ExitStack
         calls = []
         boundaries = ((PostgresExecutionStore, "add_event", "event"),
-            (EffectAttemptIntentStore, "insert", "intent"), (EffectAttemptStore, "insert_absent", "attempt"),
+            (EffectAttemptIntentStore, "_insert", "intent"), (EffectAttemptStore, "_insert_absent", "attempt"),
             (SecretUseAuthorizationStore, "add", "use"), (HealthEffectPreparationStore, "insert_absent", "preparation"))
         def unit_of_work():
             uow = self.unit_of_work()

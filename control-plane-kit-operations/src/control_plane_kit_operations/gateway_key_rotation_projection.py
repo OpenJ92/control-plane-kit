@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
 
 from control_plane_kit_core.delegation_authority import (
     DelegationVerifierProjection,
@@ -98,6 +99,10 @@ def build_gateway_key_rotation_projection_publication(
             source_operation_id=command.rotation_id,
             source_operation_version=command.expected_rotation_version,
             idempotency_key=command.idempotency_key,
+            receiver_lifecycle=(ReceiverLifecycleExpectation(command.expected_authored_graph_id,
+                command.expected_current_realized_projection_id, command.expected_authored_graph_id,
+                command.expected_desired_realized_projection_id, command.expected_desired_graph_revision)
+                if "receiver_lifecycle" in payload else None),
         )
 
     if type(prepared) is not PreparedPublication:
@@ -189,6 +194,9 @@ def build_gateway_key_rotation_projection_publication(
         source_operation_id=rotation.rotation_id,
         source_operation_version=rotation.version,
         idempotency_key=command.idempotency_key,
+        receiver_lifecycle=ReceiverLifecycleExpectation(command.expected_authored_graph_id,
+            command.expected_current_realized_projection_id, command.expected_authored_graph_id,
+            command.expected_desired_realized_projection_id, command.expected_desired_graph_revision),
     )
 
 

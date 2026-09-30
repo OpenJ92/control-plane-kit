@@ -24,3 +24,13 @@ constant `FOR SHARE` lock through the caller's transaction. It introduces no
 plan mutation or new approval policy. Missing/decoder/driver exceptions retain
 their existing identity. The ordinary getter and list/projection behavior are
 preserved.
+
+`_projection_publication_actions` is a private retained-association lookup for
+an already validated child session. Its parameterized SQL selects only the
+session, publication kind and desired projection, returning at most two typed
+actions. The caller requires exactly one and checks workspace, independently
+expected rotation/version/revision/base/phase and original material. A malformed
+matching duplicate cannot be filtered out in favor of a valid row. No full
+session list or arbitrary long-history cutoff is used. LIMIT bounds returned
+row/decoding count only: payload bytes and PostgreSQL scan/JSON predicate work
+are not capped by this query. No schema/index change or independent commit.

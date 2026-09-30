@@ -88,6 +88,14 @@ class PostgresEffectAttemptStartFixture(
                 unit_of_work.commit()
 
     def intent(
+        self, *, products=None, **changes,
+    ):
+        # First-start exercises the original runtime operation, with no node
+        # product or authority. Recorded codec/fold owners opt into rich bytes.
+        return replace(self.retained_intent(products=() if products is None else products,
+            **changes), authority_ref=None)
+
+    def retained_intent(
         self,
         *,
         compensation: bool = False,

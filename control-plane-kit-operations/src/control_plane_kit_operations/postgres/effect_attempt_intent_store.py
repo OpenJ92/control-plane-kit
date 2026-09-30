@@ -85,6 +85,12 @@ class EffectAttemptIntentStore:
         self,
         record: EffectAttemptIntentRecord,
     ) -> EffectAttemptIntentRecord:
+        from .receiver_execution_scopes import _require_nonaffecting_intent
+        _require_record(record)
+        _require_nonaffecting_intent(self._connection, record)
+        return self._insert(record)
+
+    def _insert(self, record: EffectAttemptIntentRecord) -> EffectAttemptIntentRecord:
         admitted, preimage = _require_record(record)
         identity = admitted.identity
         event = admitted.original_start_event

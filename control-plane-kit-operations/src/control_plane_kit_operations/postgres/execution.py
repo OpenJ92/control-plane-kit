@@ -69,6 +69,24 @@ class PostgresExecutionStore:
         self._connection = connection
 
     def add_request(self, record: ExecutionRequestRecord) -> ExecutionRequestRecord:
+        """Direct history insertion is restricted to proved empty footprints."""
+        from .receiver_execution_scopes import _ExecutionScopeStorage
+        from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
+        storage = _ExecutionScopeStorage(self._connection)
+        derived = storage.derive(record.identity)
+        if derived.scopes:
+            raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+        return self._insert_scoped_request(record, storage, derived)
+
+    def _admit_request(self, record, *, lifecycle_guard):
+        """Private semantic-admission coupling; a held guard alone is no grant."""
+        from .receiver_execution_scopes import _ExecutionScopeStorage
+        storage = _ExecutionScopeStorage(self._connection)
+        storage.guard(record.identity.workspace_id, lifecycle_guard)
+        derived = storage.derive(record.identity)
+        return self._insert_scoped_request(record, storage, derived)
+
+    def _insert_scoped_request(self, record, storage, derived):
         claim = record.claim
         self._connection.execute(
             """
@@ -76,8 +94,9 @@ class PostgresExecutionStore:
               (request_id, workspace_id, session_id, plan_id, status,
                requested_by, requested_at, approval_request_id,
                approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               claim_worker_id, claim_generation, claimed_at, lease_expires_at,
+               receiver_scope_count, receiver_scope_digest)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 record.identity.request_id,
@@ -99,9 +118,116 @@ class PostgresExecutionStore:
                 None
                 if claim is None
                 else encode_postgres_timestamp(claim.lease_expires_at),
+                len(derived.scopes),
+                derived.source_digest,
             ),
         )
+        storage.persist(record.identity, derived)
         return record
+
+    def receiver_scope_evidence(self, workspace_id, requested_scopes, guard):
+        """Bounded internal history accounting under the existing workspace L."""
+        from .receiver_execution_scopes import read_receiver_scope_evidence
+        return read_receiver_scope_evidence(self._connection, workspace_id, requested_scopes, guard)
+
+    def _receiver_execution_material(self, identity, guard):
+        from .receiver_execution_scopes import _ExecutionScopeStorage
+        storage = _ExecutionScopeStorage(self._connection)
+        storage.guard(identity.workspace_id, guard)
+        return storage.verify(identity)
+
+    def _require_empty_receiver_scope(self, request_id):
+        from .receiver_execution_scopes import _ExecutionScopeStorage
+        from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
+        request = self.get_request(request_id)
+        _, derived = _ExecutionScopeStorage(self._connection).verify(request.identity)
+        if derived.scopes:
+            raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+
+    def _receiver_acceptance_evidence(self, origins):
+        """Read original acceptance facts; current membership is graph-owned.
+
+        One bounded C1 reader accounts for the entire requested receipt set.
+        This neither locks requests/runs nor mutates or renews any permission.
+        """
+        from dataclasses import replace
+        from .receiver_execution_scopes import _ExecutionScopeStorage, _ACTION, _columns, _decode
+        from .activity_history import _action_record
+        from .receiver_lifecycle_store import _BIND_COLUMNS
+        from .temporal import decode_postgres_cursor_timestamp
+        from control_plane_kit_operations.advancement import _require_complete_success
+        from control_plane_kit_operations.revision_history import historical_advancement
+        from control_plane_kit_operations.receiver_lifecycle import (
+            ReceiverBinding, ReceiverLifecycleStorageError, _require, _receiver_scope, _text,
+            derive_receiver_bindings,
+        )
+
+        reader = _ExecutionScopeStorage(self._connection)
+        receipts, requests, result = {}, {}, []
+        try:
+            for origin in origins:
+                key = (origin.workspace_id, origin.first_accepted_session_id, origin.first_accepted_action_id)
+                _require(all(type(value) is str and value for value in key))
+                if key not in receipts:
+                    rows = reader.transport.read("cpk_operation_actions", _columns(_ACTION,
+                        json_columns=("payload",), ceilings={"payload": 65536}),
+                        "action_id=%s AND session_id=%s", (key[2], key[1]), point=True, cache=True)
+                    _require(len(rows) == 1)
+                    action = _action_record(_decode(rows[0], _ACTION, json_columns=("payload",),
+                        int_columns=("ordinal",), time_columns=("created_at",)))
+                    payload = action.payload
+                    request_id, run_id = payload["execution_request_id"], payload["run_id"]
+                    for locator in (request_id, run_id, payload["plan_id"]):
+                        _text(locator)
+                    request_key = (origin.workspace_id, request_id)
+                    if request_key not in requests:
+                        request = reader.request(*request_key)
+                        original, _ = reader.verify(request.identity)
+                        requests[request_key] = request, original, reader.runs(request)
+                    request, (plan, base, desired), runs = requests[request_key]
+                    _require(request.identity.session_id == action.session_id == origin.first_accepted_session_id
+                             and request.identity.plan_id == plan.plan_id == payload["plan_id"])
+                    matching = tuple(item for item in runs if item.run_id == run_id)
+                    _require(len(matching) == 1)
+                    run = matching[0]
+                    events = reader.events(run_id)
+                    _require(tuple(event.ordinal for event in events) == tuple(range(1, len(events) + 1))
+                             and len({event.event_id for event in events}) == len(events)
+                             and all(event.run_id == run_id for event in events))
+                    accepted = tuple(event for event in events if event.kind is ActivityEventKind.CURRENT_GRAPH_ADVANCED)
+                    actions = reader.actions(action.session_id, run_id, "advance-current-graph")
+                    _require(len(accepted) == len(actions) == 1 and actions[0] == action)
+                    event = accepted[0]
+                    normalized_event = replace(event, occurred_at=decode_postgres_cursor_timestamp(
+                        encode_postgres_timestamp(event.occurred_at)))
+                    normalized_action = replace(action, created_at=decode_postgres_cursor_timestamp(
+                        encode_postgres_timestamp(action.created_at)))
+                    receipt = historical_advancement(workspace_id=origin.workspace_id,
+                        session_id=action.session_id, plan_id=plan.plan_id,
+                        plan=dict(base_graph_id=plan.base_graph_id, base_realized_projection_id=base.projection_id,
+                            desired_graph_id=plan.desired_graph_id, desired_realized_projection_id=desired.projection_id,
+                            desired_graph_revision=plan.desired_graph_revision),
+                        request_id=request_id, run_id=run_id, projection_digest=desired.projection_digest,
+                        events=(normalized_event,), actions=(normalized_action,))
+                    _require(receipt["state"] == "accepted")
+                    _require_complete_success(plan.plan, run,
+                        tuple(item for item in events if item.ordinal < event.ordinal))
+                    expected = derive_receiver_bindings(origin.workspace_id, desired.source_authored_graph_id,
+                        desired.projection_id, desired.graph_descriptor)
+                    _require(bool(expected))
+                    rows = reader.transport.read("cpk_graph_receiver_bindings", _columns(_BIND_COLUMNS),
+                        "workspace_id=%s AND graph_id=%s AND realized_projection_id=%s",
+                        (origin.workspace_id, desired.source_authored_graph_id, desired.projection_id),
+                        order="node_id,provider_socket_name", maximum=len(expected), cache=True)
+                    actual = tuple(ReceiverBinding(*_decode(row, _BIND_COLUMNS)) for row in rows)
+                    _require(actual == expected)
+                    receipts[key] = (action, event, plan, run, desired, actual)
+                facts = receipts[key]
+                _require(any(_receiver_scope(binding) == _receiver_scope(origin) for binding in facts[-1]))
+                result.append(facts)
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError):
+            raise ReceiverLifecycleStorageError("receiver acceptance evidence is unavailable") from None
+        return tuple(result)
 
     def lock_admission_idempotency(
         self,
@@ -263,6 +389,13 @@ class PostgresExecutionStore:
         worker_id: str,
         lease_duration_seconds: int,
     ) -> ExecutionRequestRecord | None:
+        if (type(lease_duration_seconds) is not int
+                or not 1 <= lease_duration_seconds <= 3600):
+            raise OperationsRecordError("lease duration is invalid")
+        self._require_empty_receiver_scope(request_id)
+        return self._claim_request(request_id, worker_id, lease_duration_seconds)
+
+    def _claim_request(self, request_id, worker_id, lease_duration_seconds):
         if (
             type(lease_duration_seconds) is not int
             or not 1 <= lease_duration_seconds <= 3600
@@ -420,6 +553,19 @@ class PostgresExecutionStore:
     ) -> ExecutionRequestRecord | None:
         _recovery_request_id(request_id)
         _recovery_fence_pair(expected_fence, replacement_fence)
+        _recovery_observed_at(observed_at)
+        if (type(lease_duration_seconds) is not int
+                or not 1 <= lease_duration_seconds <= 3600):
+            raise OperationsRecordError("recovery lease duration is invalid")
+        self._require_empty_receiver_scope(request_id)
+        return self._rotate_request_claim(request_id, expected_fence=expected_fence,
+            replacement_fence=replacement_fence, observed_at=observed_at,
+            lease_duration_seconds=lease_duration_seconds)
+
+    def _rotate_request_claim(self, request_id, *, expected_fence, replacement_fence,
+                              observed_at, lease_duration_seconds):
+        _recovery_request_id(request_id)
+        _recovery_fence_pair(expected_fence, replacement_fence)
         encoded_observed_at = _recovery_observed_at(observed_at)
         if (
             type(lease_duration_seconds) is not int
@@ -496,6 +642,10 @@ class PostgresExecutionStore:
         return None if row is None else _execution_request(row)
 
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
+        self._require_empty_receiver_scope(record.admission.request_id)
+        return self._add_run(record)
+
+    def _add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
         self._connection.execute(
             """
             INSERT INTO cpk_activity_runs
@@ -558,6 +708,14 @@ class PostgresExecutionStore:
         started_at: str | None = None,
         settled_at: str | None = None,
     ) -> ActivityRunRecord | None:
+        if replacement in (ActivityRunStatus.CLAIMED, ActivityRunStatus.RUNNING,
+                            ActivityRunStatus.COMPENSATING):
+            self._require_empty_receiver_scope(self.get_run(run_id).admission.request_id)
+        return self._compare_and_set_run_status(run_id, expected=expected, replacement=replacement,
+            started_at=started_at, settled_at=settled_at)
+
+    def _compare_and_set_run_status(self, run_id, *, expected, replacement,
+                                    started_at=None, settled_at=None):
         _require_run_id(run_id)
         encoded_started_at = _encode_optional_timestamp(started_at)
         encoded_settled_at = _encode_optional_timestamp(settled_at)

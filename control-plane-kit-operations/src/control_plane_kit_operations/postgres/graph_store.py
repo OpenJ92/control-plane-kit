@@ -11,7 +11,11 @@ from psycopg.types.json import Jsonb
 from control_plane_kit_core.topology import GraphDescriptorError
 from control_plane_kit_core.types import WorkspaceLifecycle
 from control_plane_kit_operations.graph_authoring import GraphIdentityConflict
+from control_plane_kit_operations.receiver_lifecycle import (
+    ReceiverLifecycleStorageError, _require, derive_receiver_bindings,
+)
 from control_plane_kit_operations.postgres.schema import PostgresConnection
+from control_plane_kit_operations.postgres.receiver_lifecycle_store import _ReceiverStorage
 from control_plane_kit_operations.postgres.temporal import (
     decode_postgres_timestamp,
     encode_postgres_timestamp,
@@ -35,6 +39,15 @@ class PostgresWorkspaceStore:
         self._connection = connection
 
     def create(self, record: WorkspaceRecord) -> WorkspaceRecord:
+        # A pointer-bearing bootstrap cannot borrow foreign receiver material.
+        for graph_id, projection_id in (
+            (record.current_graph_id, record.current_realized_projection_id),
+            (record.desired_graph_id, record.desired_realized_projection_id),
+        ):
+            if graph_id is not None:
+                graph = PostgresGraphTopologyStore(self._connection).get(graph_id)
+                _require(graph.workspace_id == record.workspace_id)
+                self._require_legacy_pointer_material(record.workspace_id, graph_id, projection_id)
         self._connection.execute(
             """
             INSERT INTO cpk_workspaces
@@ -81,6 +94,7 @@ class PostgresWorkspaceStore:
         graph_id: str,
         realized_projection_id: str | None = None,
     ) -> WorkspaceRecord:
+        self._require_legacy_pointer_change(workspace_id, ((graph_id, realized_projection_id),))
         projection_id = self._projection_for_source(
             workspace_id,
             graph_id,
@@ -108,6 +122,21 @@ class PostgresWorkspaceStore:
         expected_desired_realized_projection_id: str,
         expected_desired_graph_revision: int,
     ) -> WorkspaceRecord | None:
+        self._require_legacy_pointer_change(workspace_id, (
+            (replacement_graph_id, replacement_realized_projection_id),
+        ))
+        return self._compare_and_set_current_graph(workspace_id, expected_graph_id=expected_graph_id,
+            replacement_graph_id=replacement_graph_id,
+            expected_realized_projection_id=expected_realized_projection_id,
+            replacement_realized_projection_id=replacement_realized_projection_id,
+            expected_desired_graph_id=expected_desired_graph_id,
+            expected_desired_realized_projection_id=expected_desired_realized_projection_id,
+            expected_desired_graph_revision=expected_desired_graph_revision)
+
+    def _compare_and_set_current_graph(self, workspace_id, *, expected_graph_id,
+            replacement_graph_id, expected_realized_projection_id, replacement_realized_projection_id,
+            expected_desired_graph_id, expected_desired_realized_projection_id, expected_desired_graph_revision):
+        """Private advancement write, following complete owner validation."""
         try:
             expected_projection_id = self._projection_for_source(
                 workspace_id,
@@ -168,6 +197,10 @@ class PostgresWorkspaceStore:
         graph_id: str,
         realized_projection_id: str | None = None,
     ) -> WorkspaceRecord:
+        self._require_legacy_pointer_change(workspace_id, ((graph_id, realized_projection_id),))
+        return self._set_desired_graph(workspace_id, graph_id, realized_projection_id)
+
+    def _set_desired_graph(self, workspace_id, graph_id, realized_projection_id):
         projection_id = self._projection_for_source(
             workspace_id,
             graph_id,
@@ -194,6 +227,18 @@ class PostgresWorkspaceStore:
         expected_revision: int,
         replacement_realized_projection_id: str,
     ) -> WorkspaceRecord | None:
+        self._require_legacy_pointer_change(workspace_id, (
+            (expected_authored_graph_id, expected_realized_projection_id),
+            (expected_authored_graph_id, replacement_realized_projection_id),
+        ))
+        return self._compare_and_set_desired_projection(workspace_id,
+            expected_authored_graph_id=expected_authored_graph_id,
+            expected_realized_projection_id=expected_realized_projection_id,
+            expected_revision=expected_revision,
+            replacement_realized_projection_id=replacement_realized_projection_id)
+
+    def _compare_and_set_desired_projection(self, workspace_id, *, expected_authored_graph_id,
+            expected_realized_projection_id, expected_revision, replacement_realized_projection_id):
         replacement = self._projection_for_source(
             workspace_id,
             expected_authored_graph_id,
@@ -221,6 +266,34 @@ class PostgresWorkspaceStore:
             ),
         ).fetchone()
         return None if row is None else _workspace_record(row)
+
+    def _require_legacy_pointer_material(self, workspace_id, graph_id, projection_id):
+        if graph_id is None and projection_id is None:
+            return
+        graphs = PostgresGraphTopologyStore(self._connection)
+        projections = PostgresRealizedGraphProjectionStore(self._connection)
+        graph = graphs.get(graph_id)
+        try:
+            projection = (projections.identity_for_authored(workspace_id, graph_id)
+                          if projection_id is None else projections.get(projection_id))
+        except GraphDescriptorError as error:
+            raise RealizedGraphProjectionConflict(
+                "workspace graph pointer requires valid realized graph material") from error
+        if not (graph.workspace_id == projection.workspace_id == workspace_id
+                and projection.source_authored_graph_id == graph_id):
+            raise RealizedGraphProjectionConflict("realized projection source does not match workspace graph")
+        _require(not derive_receiver_bindings(workspace_id, graph_id, projection.projection_id,
+                                             projection.graph_descriptor))
+        _require(not derive_receiver_bindings(workspace_id, graph_id, projection.projection_id,
+                                             graph.graph_descriptor))
+
+    def _require_legacy_pointer_change(self, workspace_id, proposed):
+        # Public single-record writes never acquire lifecycle after workspace.
+        PostgresGraphTopologyStore(self._connection).lock_receiver_lifecycle(workspace_id)
+        workspace = self.get_for_update(workspace_id)
+        for graph_id, projection_id in ((workspace.current_graph_id, workspace.current_realized_projection_id),
+                (workspace.desired_graph_id, workspace.desired_realized_projection_id), *proposed):
+            self._require_legacy_pointer_material(workspace_id, graph_id, projection_id)
 
     def _get(self, workspace_id: str, *, for_update: bool) -> WorkspaceRecord:
         lock = " FOR UPDATE" if for_update else ""
@@ -279,6 +352,7 @@ class WorkspaceLifecycleGuard:
 
     workspace_id: str
     _owner: object = field(repr=False)
+    _transaction_id: int = field(repr=False)
 
 
 class PostgresGraphTopologyStore:
@@ -286,6 +360,7 @@ class PostgresGraphTopologyStore:
 
     def __init__(self, connection: PostgresConnection) -> None:
         self._connection = connection
+        self._receivers = _ReceiverStorage(connection)
 
     def lock_receiver_lifecycle(self, workspace_id: str) -> WorkspaceLifecycleGuard:
         """Enter before existing rows; exact-key transaction reentry is legal."""
@@ -293,7 +368,8 @@ class PostgresGraphTopologyStore:
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"receiver-lifecycle:{workspace_id}",),
         )
-        return WorkspaceLifecycleGuard(workspace_id, self)
+        transaction_id = self._connection.execute("SELECT txid_current()").fetchone()[0]
+        return WorkspaceLifecycleGuard(workspace_id, self, transaction_id)
 
     def owns_receiver_lifecycle(self, guard: object, workspace_id: str) -> bool:
         return (
@@ -302,7 +378,100 @@ class PostgresGraphTopologyStore:
             and guard.workspace_id == workspace_id
         )
 
+    def receiver_introduction(self, workspace_id: str, receiver_id: str):
+        return self._receivers.introduction(workspace_id, receiver_id)
+
+    def receiver_bindings(self, workspace_id: str, graph_id: str, realized_projection_id: str):
+        return self._receivers.bindings(workspace_id, graph_id, realized_projection_id)
+
+    def _require_receiver_origin_action(self, origin):
+        from control_plane_kit_core.operations.commands import OperatorCommandKind
+        from control_plane_kit_operations.postgres.activity_history import _action_record
+        from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
+
+        row = self._connection.execute(
+            "SELECT a.action_id,a.session_id,a.ordinal,a.action_type,a.actor_id,"
+            "CASE WHEN octet_length(a.payload::text)<=65536 THEN a.payload END,"
+            "a.created_at,a.idempotency_key,a.intent_fingerprint FROM cpk_operation_actions a "
+            "JOIN cpk_operation_sessions s ON s.session_id=a.session_id "
+            "WHERE a.action_id=%s AND a.session_id=%s AND s.workspace_id=%s",
+            (origin.introducing_action_id, origin.introducing_session_id, origin.workspace_id),
+        ).fetchone()
+        _require(row is not None and row[5] is not None)
+        action = _action_record(row)
+        payload = dict(action.payload)
+        _require(payload.get("workspace_id") == origin.workspace_id)
+        _require(type(payload.get("receiver_lifecycle")) is dict)
+        ReceiverLifecycleExpectation(**payload.pop("receiver_lifecycle"))
+        projection = PostgresRealizedGraphProjectionStore(self._connection).get(
+            origin.introducing_realized_projection_id)
+        graph = self.get(origin.introducing_graph_id)
+        _require(graph.workspace_id == projection.workspace_id == origin.workspace_id
+                 and projection.source_authored_graph_id == graph.graph_id)
+        if action.action_type is OperatorCommandKind.SET_DESIRED_GRAPH:
+            _require(set(payload) == {"workspace_id", "previous_desired_graph_id", "desired_graph_id",
+                "desired_realized_projection_id", "desired_graph_revision", "product_references"})
+            _require(payload["desired_graph_id"] == graph.graph_id
+                     and payload["desired_realized_projection_id"] == projection.projection_id
+                     and origin.introducing_draft_id is None)
+            _require(projection == RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph))
+        elif action.action_type in (OperatorCommandKind.CREATE_DESIRED_TOPOLOGY_DRAFT,
+                                    OperatorCommandKind.REVISE_DESIRED_TOPOLOGY_DRAFT):
+            _require(set(payload) == {"workspace_id", "draft_id", "revision", "graph_id"})
+            _require(payload["graph_id"] == graph.graph_id
+                     and payload["draft_id"] == origin.introducing_draft_id)
+            _require(type(payload["revision"]) is int and 0 < payload["revision"] <= 9_223_372_036_854_775_807)
+            _require(self._connection.execute(
+                "SELECT EXISTS(SELECT 1 FROM cpk_desired_topology_draft_revisions "
+                "WHERE workspace_id=%s AND draft_id=%s AND revision=%s AND graph_id=%s)",
+                (origin.workspace_id, origin.introducing_draft_id, payload["revision"], graph.graph_id),
+            ).fetchone() == (True,))
+            _require(projection == RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph))
+        elif action.action_type is OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION:
+            _require(set(payload) == {"workspace_id", "authored_graph_id", "previous_realized_projection_id",
+                "desired_realized_projection_id", "desired_realized_projection_digest", "desired_graph_revision",
+                "projection_kind", "projection_key", "source_operation_id", "source_operation_version"})
+            _require(payload["authored_graph_id"] == graph.graph_id
+                     and payload["desired_realized_projection_id"] == projection.projection_id
+                     and payload["desired_realized_projection_digest"] == projection.projection_digest
+                     and origin.introducing_draft_id is None)
+        else:
+            _require(False)
+
+    def _reserve_receiver_introductions(self, graph, projection, *, action_id, session_id,
+                                       draft_id=None, lifecycle_guard):
+        return self._receivers.reserve(self, graph, projection, action_id=action_id,
+            session_id=session_id, draft_id=draft_id, lifecycle_guard=lifecycle_guard)
+
+    def _reserve_new_receiver_introductions(self, graph, projection, *, action_id, session_id,
+                                          new_receiver_ids, draft_id=None, lifecycle_guard):
+        return self._receivers.reserve(self, graph, projection, action_id=action_id,
+            session_id=session_id, draft_id=draft_id, lifecycle_guard=lifecycle_guard,
+            new_receiver_ids=new_receiver_ids)
+
+    def _persist_receiver_bindings(self, graph, projection, *, lifecycle_guard):
+        return self._receivers.persist(self, graph, projection, lifecycle_guard=lifecycle_guard)
+
+    def _record_receiver_first_acceptance(self, workspace_id, receiver_id, *, action_id,
+                                         session_id, lifecycle_guard):
+        return self._receivers.record_witness(self, workspace_id, receiver_id, action_id=action_id,
+            session_id=session_id, lifecycle_guard=lifecycle_guard, retirement=False)
+
+    def _record_receiver_retirement(self, workspace_id, receiver_id, *, action_id,
+                                   session_id, lifecycle_guard):
+        return self._receivers.record_witness(self, workspace_id, receiver_id, action_id=action_id,
+            session_id=session_id, lifecycle_guard=lifecycle_guard, retirement=True)
+
     def save(self, record: GraphVersionRecord) -> GraphVersionRecord:
+        if derive_receiver_bindings(record.workspace_id, record.graph_id,
+                                    "proposed-identity", record.graph_descriptor):
+            if self._connection.execute("SELECT EXISTS(SELECT 1 FROM cpk_graph_versions WHERE graph_id=%s)",
+                                        (record.graph_id,)).fetchone() == (True,):
+                raise GraphIdentityConflict("graph identity is unavailable")
+            _require(False)
+        return self._save(record)
+
+    def _save(self, record: GraphVersionRecord) -> GraphVersionRecord:
         encoded_created_at = encode_postgres_timestamp(record.created_at)
         try:
             self._connection.execute(
@@ -379,6 +548,29 @@ class PostgresRealizedGraphProjectionStore:
         self,
         record: RealizedGraphProjectionRecord,
     ) -> RealizedGraphProjectionRecord:
+        try:
+            authored = PostgresGraphTopologyStore(self._connection).get(record.source_authored_graph_id)
+        except KeyError:
+            raise RealizedGraphProjectionConflict(
+                "realized projection source is not an authored graph in its workspace") from None
+        if authored.workspace_id != record.workspace_id:
+            raise RealizedGraphProjectionConflict(
+                "realized projection source is not an authored graph in its workspace")
+        if (derive_receiver_bindings(record.workspace_id, record.source_authored_graph_id,
+                                     record.projection_id, record.graph_descriptor)
+                or derive_receiver_bindings(record.workspace_id, record.source_authored_graph_id,
+                                            record.projection_id, authored.graph_descriptor)):
+            try:
+                existing = self.get(record.projection_id)
+            except KeyError:
+                raise ReceiverLifecycleStorageError("receiver storage is unavailable") from None
+            _require(existing == record)
+            _ReceiverStorage(self._connection).bindings(record.workspace_id,
+                record.source_authored_graph_id, record.projection_id)
+            return existing
+        return self._save(record)
+
+    def _save(self, record: RealizedGraphProjectionRecord) -> RealizedGraphProjectionRecord:
         encoded_created_at = encode_postgres_timestamp(record.created_at)
         source = self._connection.execute(
             """

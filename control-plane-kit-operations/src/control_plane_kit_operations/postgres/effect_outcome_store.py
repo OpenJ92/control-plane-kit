@@ -379,6 +379,19 @@ def _reconstruct_row(
     value: RuntimeEffectResult | object,
     memberships: object,
 ) -> EffectAttemptOutcomeRecord:
+    event_store = PostgresExecutionStore(connection)
+    record = _record_from_events(row, value, memberships,
+        event_store.get_event(row[15]), event_store.get_event(row[18]))
+    _require_verification_membership(connection, outcome=record.outcome, attempt=record.attempt,
+        observations=record.endpoint_observations, workspace_id=row[3], request_id=row[4],
+        error_message="effect attempt outcome row is invalid")
+    return record
+
+
+def _record_from_events(row, value, memberships, original, direct) -> EffectAttemptOutcomeRecord:
+    """Reuse the exact historical snapshot decoder after bounded retrieval."""
+    if type(row) not in (tuple, list) or len(row) != len(_COLUMN_NAMES):
+        raise OperationsRecordError("effect attempt outcome row is invalid")
     identity = EffectAttemptIdentity(RunId(row[0]), row[1], row[2])
     prior = (
         None
@@ -393,9 +406,6 @@ def _reconstruct_row(
         outcome_fingerprint=row[11],
         prior_attempt=prior,
     )
-    event_store = PostgresExecutionStore(connection)
-    original = event_store.get_event(row[15])
-    direct = event_store.get_event(row[18])
     if (
         (original.event_id, original.run_id, original.ordinal)
         != (row[15], row[16], row[17])
@@ -412,15 +422,6 @@ def _reconstruct_row(
     else:
         outcome = ObservedEffectOutcome(identity, value)
     observations = _membership_records(row, memberships)
-    _require_verification_membership(
-        connection,
-        outcome=outcome,
-        attempt=attempt,
-        observations=observations,
-        workspace_id=row[3],
-        request_id=row[4],
-        error_message="effect attempt outcome row is invalid",
-    )
     return EffectAttemptOutcomeRecord(row[3], outcome, attempt, observations)
 
 
@@ -446,29 +447,30 @@ def _require_verification_membership(
         intent_record = EffectAttemptIntentStore(connection).get(
             attempt.state.identity
         )
-        expected = effect_outcome_observation_records(
-            outcome,
-            attempt,
-            workspace_id=workspace_id,
-            observation_ids=tuple(
-                item.observation_id for item in observations
-            ),
-            intent_record=intent_record,
-        )
-        valid = (
-            intent_record.workspace_id == workspace_id
-            and intent_record.request_id == request_id
-            and expected == observations
-            and (not native or (
-                is_native_connection_operation(intent_record.intent.operation)
-                and intent_record.identity == attempt.state.identity
-                and intent_record.original_start_event == attempt.original_start_event
-                and intent_record.request_fingerprint == attempt.state.request_fingerprint))
-        )
+        _require_intent_membership(outcome, attempt, observations, workspace_id, request_id, intent_record)
+        valid = True
     except (KeyError, RuntimeEffectContractError, OperationsRecordError, ValueError):
         pass
     if not valid:
         raise OperationsRecordError(error_message) from None
+
+
+def _require_intent_membership(outcome, attempt, observations, workspace_id, request_id, intent_record):
+    """Pure original-intent membership law shared with bounded history reads."""
+    native = (type(outcome) is NativeConnectionEffectOutcome
+              or attempt.original_start_event.kind.value == "step_observation_restarted")
+    if not native and not any(type(item) is VerificationCompleted for item in outcome.endpoint_observations):
+        return
+    expected = effect_outcome_observation_records(outcome, attempt, workspace_id=workspace_id,
+        observation_ids=tuple(item.observation_id for item in observations), intent_record=intent_record)
+    valid = (intent_record.workspace_id == workspace_id and intent_record.request_id == request_id
+             and expected == observations and (not native or (
+                 is_native_connection_operation(intent_record.intent.operation)
+                 and intent_record.identity == attempt.state.identity
+                 and intent_record.original_start_event == attempt.original_start_event
+                 and intent_record.request_fingerprint == attempt.state.request_fingerprint)))
+    if not valid:
+        raise OperationsRecordError("effect attempt outcome membership is invalid")
 
 
 def _observation_count(row: object) -> int:

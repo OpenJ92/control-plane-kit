@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=e5163641402d1f3bdcf3b7e7da877db8107096c870cb0fbe30fd0e9ff57b578e relations=41 columns=526 constraints=411 indexes=135 foreign-keys=95 -->
+<!-- current-schema-contract: sha256=34a250ef291ad69ec223c10405bc92c5c9955bd4ab8c40364375bb2cacb9ddd9 relations=44 columns=557 constraints=449 indexes=147 foreign-keys=111 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -29,6 +29,7 @@ repair, data conversion, or inference from an older layout.
 
 <!-- multi-table-scc: cpk_graph_versions,cpk_realized_graph_projections,cpk_workspaces -->
 <!-- draft-catalogue-scc: cpk_desired_topology_draft_revisions,cpk_desired_topology_drafts -->
+<!-- receiver-storage-scc: cpk_graph_receiver_bindings,cpk_graph_receiver_introductions -->
 <!-- self-reference: cpk_activity_runs,cpk_effect_attempts,cpk_secret_providers,cpk_secret_references -->
 <!-- outcome-aggregate: cpk_effect_attempt_outcomes,cpk_effect_attempt_outcome_observations -->
 <!-- future-impact: 1553,1554,1555,1556,1243,1244 -->
@@ -53,6 +54,21 @@ a deferred composite foreign key. Insert draft and revisions together, then veri
 the final head at commit. Saved graphs must already exist in the same workspace.
 This cycle preserves draft identity and history without selecting desired truth.
 There is no public physical deletion or automatic restore procedure.
+
+The receiver storage component retains an immutable introduction and its original
+binding together. Insert the introduction, then its bindings in the same transaction;
+the original-binding foreign key is deferred until commit. All references use
+restrictive deletion. Restore owning graphs, projections, sessions/actions and any
+saved draft revision first, then introductions and bindings together. This is a
+restore ordering constraint, not a migration or deletion API. Acceptance and
+retirement witnesses are paired write-once store transitions; retained retirement
+keeps the globally unique receiver identity reserved.
+
+Receiver reentry verifies every retained indexed projection and introduction
+origin. Generic unindexed graphs keep their existing meaning. An entirely absent
+later non-origin binding set is not discoverable from these retained indices;
+direct receiver member reads still refuse it. C owns atomic initial membership
+at supported publication entries and the joint acceptance gate.
 
 Self-references express retry ancestry for activity runs, immediate retry
 ancestry for effect attempts, and supersession chains for provider and
@@ -300,6 +316,7 @@ cpk_effect_attempts -->|cpk_effect_attempts_original_event_fk| cpk_activity_even
 cpk_effect_attempts -->|cpk_effect_attempts_prior_fkey| cpk_effect_attempts
 cpk_effect_attempts -->|cpk_effect_attempts_run_id_fkey| cpk_activity_runs
 cpk_execution_command_receipts -->|cpk_execution_command_receipts_run_id_fkey| cpk_activity_runs
+cpk_execution_receiver_scopes -->|cpk_execution_receiver_scopes_request_workspace_fk| cpk_execution_requests
 cpk_execution_requests -->|cpk_execution_requests_approval_identity_fk| cpk_approval_decisions
 cpk_execution_requests -->|cpk_execution_requests_approval_request_id_fkey| cpk_approval_requests
 cpk_execution_requests -->|cpk_execution_requests_plan_session_fk| cpk_activity_plans
@@ -323,6 +340,21 @@ cpk_gateway_key_rotations -->|cpk_gateway_key_rotations_workspace_id_fkey| cpk_w
 cpk_gateway_probe_attempts -->|cpk_gateway_probe_attempts_current_graph_id_fkey| cpk_graph_versions
 cpk_gateway_probe_attempts -->|cpk_gateway_probe_attempts_workspace_id_fkey| cpk_workspaces
 cpk_generated_ingress_secret_references -->|cpk_generated_ingress_secret_references_workspace_id_fkey| cpk_workspaces
+cpk_graph_receiver_bindings -->|cpk_graph_receiver_bindings_graph_fkey| cpk_graph_versions
+cpk_graph_receiver_bindings -->|cpk_graph_receiver_bindings_projection_source_fkey| cpk_realized_graph_projections
+cpk_graph_receiver_bindings -->|cpk_graph_receiver_bindings_projection_workspace_fkey| cpk_realized_graph_projections
+cpk_graph_receiver_bindings -->|cpk_graph_receiver_bindings_scope_fkey| cpk_graph_receiver_introductions
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_accepted_action_fkey| cpk_operation_actions
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_accepted_workspace_fkey| cpk_operation_sessions
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_draft_fkey| cpk_desired_topology_draft_revisions
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_graph_fkey| cpk_graph_versions
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_origin_action_fkey| cpk_operation_actions
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_origin_workspace_fkey| cpk_operation_sessions
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_original_binding_fkey| cpk_graph_receiver_bindings
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_projection_source_fkey| cpk_realized_graph_projections
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_projection_workspace_fkey| cpk_realized_graph_projections
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_retired_action_fkey| cpk_operation_actions
+cpk_graph_receiver_introductions -->|cpk_graph_receiver_introductions_retired_workspace_fkey| cpk_operation_sessions
 cpk_graph_versions -->|cpk_graph_versions_workspace_id_fkey| cpk_workspaces
 cpk_health_effect_preparations -->|cpk_health_effect_preparations_attempt_fk| cpk_effect_attempts
 cpk_health_effect_preparations -->|cpk_health_effect_preparations_base_projection_fk| cpk_realized_graph_projections
@@ -406,6 +438,7 @@ order is semantically significant for every composite identity.
 | `cpk_effect_attempts_prior_fkey` | `cpk_effect_attempts` | `prior_run_id, prior_activity_id, prior_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | A retry names the immediately preceding attempt for the same run and activity. |
 | `cpk_effect_attempts_run_id_fkey` | `cpk_effect_attempts` | `run_id` | `cpk_activity_runs` | `run_id` | Every effect attempt belongs to one durable activity run. |
 | `cpk_execution_command_receipts_run_id_fkey` | `cpk_execution_command_receipts` | `run_id` | `cpk_activity_runs` | `run_id` | Every admitted command receipt belongs to the exact run it may advance. |
+| `cpk_execution_receiver_scopes_request_workspace_fk` | `cpk_execution_receiver_scopes` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Immutable scope coverage belongs to the exact original request and workspace. |
 | `cpk_execution_requests_approval_identity_fk` | `cpk_execution_requests` | `approval_decision_id, approval_request_id` | `cpk_approval_decisions` | `decision_id, request_id` | The selected decision must resolve the selected request. |
 | `cpk_execution_requests_approval_request_id_fkey` | `cpk_execution_requests` | `approval_request_id` | `cpk_approval_requests` | `request_id` | An approved execution names an existing request. |
 | `cpk_execution_requests_plan_session_fk` | `cpk_execution_requests` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The execution request and plan share one session. |
@@ -429,6 +462,21 @@ order is semantically significant for every composite identity.
 | `cpk_gateway_probe_attempts_current_graph_id_fkey` | `cpk_gateway_probe_attempts` | `current_graph_id` | `cpk_graph_versions` | `graph_id` | A probe records the exact accepted current graph. |
 | `cpk_gateway_probe_attempts_workspace_id_fkey` | `cpk_gateway_probe_attempts` | `workspace_id` | `cpk_workspaces` | `workspace_id` | A gateway probe is scoped to one workspace. |
 | `cpk_generated_ingress_secret_references_workspace_id_fkey` | `cpk_generated_ingress_secret_references` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Generated ingress secret references are workspace scoped. |
+| `cpk_graph_receiver_bindings_graph_fkey` | `cpk_graph_receiver_bindings` | `workspace_id, graph_id` | `cpk_graph_versions` | `workspace_id, graph_id` | The exact authored graph belongs to this workspace. |
+| `cpk_graph_receiver_bindings_projection_source_fkey` | `cpk_graph_receiver_bindings` | `realized_projection_id, graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The selected realized projection derives from this exact authored graph. |
+| `cpk_graph_receiver_bindings_projection_workspace_fkey` | `cpk_graph_receiver_bindings` | `realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The selected realized projection belongs to this workspace. |
+| `cpk_graph_receiver_bindings_scope_fkey` | `cpk_graph_receiver_bindings` | `workspace_id, receiver_id, runtime_id, node_id, provider_socket_name` | `cpk_graph_receiver_introductions` | `workspace_id, receiver_id, runtime_id, node_id, provider_socket_name` | Each binding preserves its introduction's workspace, receiver, runtime, node and socket. |
+| `cpk_graph_receiver_introductions_accepted_action_fkey` | `cpk_graph_receiver_introductions` | `first_accepted_action_id, first_accepted_session_id` | `cpk_operation_actions` | `action_id, session_id` | First acceptance retains the exact action/session pair. |
+| `cpk_graph_receiver_introductions_accepted_workspace_fkey` | `cpk_graph_receiver_introductions` | `first_accepted_session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | The acceptance session belongs to this workspace. |
+| `cpk_graph_receiver_introductions_draft_fkey` | `cpk_graph_receiver_introductions` | `workspace_id, introducing_draft_id, introducing_graph_id` | `cpk_desired_topology_draft_revisions` | `workspace_id, draft_id, graph_id` | Optional draft provenance names the same workspace and saved authored graph. |
+| `cpk_graph_receiver_introductions_graph_fkey` | `cpk_graph_receiver_introductions` | `workspace_id, introducing_graph_id` | `cpk_graph_versions` | `workspace_id, graph_id` | The exact authored graph belongs to this workspace. |
+| `cpk_graph_receiver_introductions_origin_action_fkey` | `cpk_graph_receiver_introductions` | `introducing_action_id, introducing_session_id` | `cpk_operation_actions` | `action_id, session_id` | Original provenance pairs an existing action with its exact session. |
+| `cpk_graph_receiver_introductions_origin_workspace_fkey` | `cpk_graph_receiver_introductions` | `introducing_session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | The introducing session belongs to the introduction's workspace. |
+| `cpk_graph_receiver_introductions_original_binding_fkey` | `cpk_graph_receiver_introductions` | `workspace_id, introducing_graph_id, introducing_realized_projection_id, receiver_id` | `cpk_graph_receiver_bindings` | `workspace_id, graph_id, realized_projection_id, receiver_id` | The original projection must contain this receiver at commit; this alone is deferred. |
+| `cpk_graph_receiver_introductions_projection_source_fkey` | `cpk_graph_receiver_introductions` | `introducing_realized_projection_id, introducing_graph_id` | `cpk_realized_graph_projections` | `projection_id, source_authored_graph_id` | The selected realized projection derives from this exact authored graph. |
+| `cpk_graph_receiver_introductions_projection_workspace_fkey` | `cpk_graph_receiver_introductions` | `introducing_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The selected realized projection belongs to this workspace. |
+| `cpk_graph_receiver_introductions_retired_action_fkey` | `cpk_graph_receiver_introductions` | `retired_action_id, retired_session_id` | `cpk_operation_actions` | `action_id, session_id` | Retirement retains the exact action/session pair. |
+| `cpk_graph_receiver_introductions_retired_workspace_fkey` | `cpk_graph_receiver_introductions` | `retired_session_id, workspace_id` | `cpk_operation_sessions` | `session_id, workspace_id` | The retirement session belongs to this workspace. |
 | `cpk_graph_versions_workspace_id_fkey` | `cpk_graph_versions` | `workspace_id` | `cpk_workspaces` | `workspace_id` | Every authored graph belongs to one workspace. |
 | `cpk_health_effect_preparations_attempt_fk` | `cpk_health_effect_preparations` | `run_id, activity_id, attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
 | `cpk_health_effect_preparations_base_projection_fk` | `cpk_health_effect_preparations` | `base_realized_projection_id, workspace_id` | `cpk_realized_graph_projections` | `projection_id, workspace_id` | The immutable health preparation retains this exact owner commitment in its workspace; presence grants no current authority. |
@@ -662,12 +710,25 @@ deleting its retained draft history.
 - **Sensitive material:** Receipts contain bounded operational coordinates only, never provider payloads, exception text, credentials, tokens, or secret values.
 - **Future impact:** A future command family needs a distinct domain-separated fingerprint and explicit result codec rather than widening this receipt implicitly.
 
+### `cpk_execution_receiver_scopes`
+- **Durable meaning and owner:** Execution-owned immutable receiver footprint derived from the exact stored plan and original material; `PostgresExecutionStore` composes its persistence and bounded evidence reader.
+- **Identity and cardinality:** `(request_id, scope_ordinal)` is primary; zero to 1,024 canonical distinct node/runtime scopes agree with the request's count and source digest.
+- **Outgoing foreign keys:** The immediate restrictive `(request_id, workspace_id)` foreign key binds the exact request owner; no cascade fabricates disposal.
+- **Inbound dependents:** No current relation references scope rows; admission, current verification and evidence retrieval require the complete set.
+- **Writers and transactions:** Real admission writes request, scope rows and action under the existing lifecycle guard in one caller transaction. The bare writer refuses affecting requests without admission context.
+- **Readers and projections:** Three ordered partial prefix indexes cover runtime-wide, exact-node and all historical nodes on a runtime. Complete bounded retrieval precedes the internal nonauthorizing classification.
+- **Mutation, locks, retries, and idempotency:** Coverage is immutable. Exact replay preserves original rows and witness; current verification refuses drift without repair, and scope reads require the existing transaction's lifecycle guard.
+- **Lifecycle, retention, deletion, and restore:** Retain original plans, projections, requests and coverage together. Restore request before rows; no migration, backfill, pruning or recovery policy is introduced.
+- **JSON boundary:** None; bounded scope fields are relational. The request digest covers original encoded plan/profile, original material identity and canonical coverage.
+- **Sensitive material:** Only bounded operational identifiers are stored, never configuration bodies, addresses, credentials or provider payloads. Refusals are candidate-free.
+- **Future impact:** #1903 consumes the single classifier; #1904 owns fresh-gate closure. Scope membership, accepted history and cancellation evidence do not grant present mutation authority.
+
 ### `cpk_execution_requests`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns durable requests to execute an approved activity plan, including database-timed, generation-fenced claim leases.
-- **Identity and cardinality:** `request_id` is primary; workspace idempotency is unique; `(request_id, plan_id)` binds downstream runs.
+- **Identity and cardinality:** `request_id` is primary; workspace idempotency is unique; `(request_id, plan_id)` binds downstream runs. Immutable receiver-scope count and digest bind complete derived original coverage.
 - **Outgoing foreign keys:** The workspace, session, plan, approval request, and approval decision must all agree through composite identities.
-- **Inbound dependents:** Activity runs bind the exact `(request_id, plan_id)` pair.
-- **Writers and transactions:** Request creation and the guarded queued-to-claimed transition run in explicit short transactions; run settlement belongs to `cpk_activity_runs`.
+- **Inbound dependents:** Activity runs bind the exact `(request_id, plan_id)` pair; receiver-scope rows bind `(request_id, workspace_id)`.
+- **Writers and transactions:** Admission creates request, derived scope rows and action atomically; claim transitions remain short caller-owned transactions and run settlement belongs to `cpk_activity_runs`.
 - **Readers and projections:** Workers query claimable requests; history projections expose bounded status and ownership facts.
 - **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; request-row locks serialize claim and lease observation, and generation one gives the initial claim an exact fence identity. #1656 owns monotonic generation changes during renewal or takeover.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, session, plan, request, decision, then execution request and runs; settled requests remain durable history.
@@ -791,6 +852,32 @@ deleting its retained draft history.
 - **JSON boundary:** `metadata` is bounded effect metadata and is not authority to resolve the referenced secret.
 - **Sensitive material:** `secret_ref` and metadata are sensitive locators; secret values and provider credentials are forbidden.
 - **Future impact:** #1556 should use the same reference-only discipline when requesting immediate signing effects.
+
+### `cpk_graph_receiver_bindings`
+- **Durable meaning and owner:** The graph store owns the complete derived receiver set for one stored authored/realized graph pair.
+- **Identity and cardinality:** Workspace, graph, projection, node and socket form the primary key; a receiver occurs at most once per exact graph/projection through an independent unique key.
+- **Outgoing foreign keys:** Restrictive references pin the same-workspace graph, projection source and exact immutable introduction scope.
+- **Inbound dependents:** Each introduction must retain its original binding through the sole deferred receiver-storage foreign key.
+- **Writers and transactions:** The private graph-store writer derives from stored material under the owning workspace lifecycle guard; the caller commits introductions and all bindings atomically.
+- **Readers and projections:** Workspace-scoped reads rederive the complete set and require exact membership, slot identity, selected raw artifact digest and declaration identity. Exact-current verification uses the same reconstruction.
+- **Mutation, locks, retries, and idempotency:** Exact replay preserves rows; partial, extra or conflicting membership refuses. The transaction-bound guard is required before any write.
+- **Lifecycle, retention, deletion, and restore:** Restore owners, then introductions and bindings together before deferred validation at commit. Retirement retains history; there is no automatic cleanup or backfill.
+- **JSON boundary:** No JSON columns. Immutable stored Core graph descriptors supply selected configuration and declaration values through public codecs.
+- **Sensitive material:** Rows contain bounded identifiers and public digests; no credentials, secret payloads or provider responses. Reads and translated errors are bounded.
+- **Future impact:** #1898 owns current admission, continuation and retirement eligibility; storage membership grants no command or execution permission.
+
+### `cpk_graph_receiver_introductions`
+- **Durable meaning and owner:** The graph store retains original receiver provenance plus paired first-acceptance and retirement witnesses.
+- **Identity and cardinality:** The workspace/receiver primary key supports scoped reads; a global receiver unique key prevents reuse across workspaces, and a scope key supports binding integrity.
+- **Outgoing foreign keys:** Restrictive references retain the original graph/projection, action/session workspace, optional saved draft revision, acceptance and retirement pairs, and the deferred original binding.
+- **Inbound dependents:** Every receiver binding pins this introduction's complete immutable scope.
+- **Writers and transactions:** Private guarded graph-store writers reserve sorted receiver identities and record paired witnesses within one caller-owned transaction; no store commits independently.
+- **Readers and projections:** Point reads require workspace and receiver. Current verification bounds keyset transport and rechecks original binding membership. No foreign-owner provenance is disclosed on collision.
+- **Mutation, locks, retries, and idempotency:** Immutable origin replay must match exactly; conflicting origins refuse. Acceptance and retirement are write-once pairs, exact replay is stable, and retirement requires distinct prior acceptance.
+- **Lifecycle, retention, deletion, and restore:** Globally reserved identities remain reserved after retirement. Restore structural owners first, then the introduction/binding cycle atomically. No deletion API, migration, repair or temporal trigger is introduced.
+- **JSON boundary:** No JSON columns or opaque lifecycle payloads; all fields are typed structural facts.
+- **Sensitive material:** Bounded opaque identities and public provenance only. Cross-workspace collisions produce one fixed detached error without inspecting foreign rows.
+- **Future impact:** #1898 must compose semantically authorized witnesses and all entry points; these structural rows do not prove current actor authority.
 
 ### `cpk_graph_versions`
 - **Durable meaning and owner:** `PostgresGraphTopologyStore` owns immutable authored graph versions for each workspace.

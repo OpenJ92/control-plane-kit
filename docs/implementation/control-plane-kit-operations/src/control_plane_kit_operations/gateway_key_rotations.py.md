@@ -16,3 +16,8 @@ Existing scopes, correlation identity, locking, transitions, approval ownership,
 retry and retained history are unchanged. Ordinary signing-key activation overlap
 is a separate existing lifecycle operation. No health generation, new network
 exposure, credentials, provider calls or destructive rotation effects are added.
+
+The public immutable approval-subject projection retains its nominal rotation
+check and delegates field projection to the private gateway child association
+owner. This shares the review meaning with admission and retained execution;
+it adds no rotation transition, side effect or public authority value.

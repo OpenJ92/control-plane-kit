@@ -98,7 +98,7 @@ if docker run --rm \
   -e CPK_READ_INTERFACES_DOCUMENT=/read-interfaces.md \
   -e CPK_OPERATIONS_TEST_DATABASE_URL=postgresql://cpk:cpk@"$POSTGRES_CONTAINER":5432/cpk \
   "$IMAGE" \
-  sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp/pkg && python -m unittest discover -s tests'; then
+  sh -c 'cp -a /core /tmp/core && cp -a /source /tmp/pkg && python -m pip install --root-user-action=ignore /tmp/core >/tmp/pip-core.log && python -m pip install --root-user-action=ignore /tmp/pkg >/tmp/pip-operations.log && cd /tmp/pkg && python -m unittest discover -s tests -v'; then
   :
 else
   test_status=$?

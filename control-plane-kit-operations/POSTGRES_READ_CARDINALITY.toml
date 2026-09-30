@@ -1,6 +1,32 @@
 version = 1
 
 [[read]]
+module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+selector = "_ReceiverStorage.bindings"
+category = "exact-verifier"
+sql = "exact workspace/graph/projection; LIMIT derived receiver count plus one; CASE-bounded text; Python member ordering; full stored-material congruence"
+consumer_kind = "production"
+consumer = "PostgresGraphTopologyStore receiver member reads and private writers verify complete derived membership"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+selector = "validate_current_rows"
+occurrence = 1
+category = "exact-verifier"
+sql = "binding projection and introduction origin UNION; workspace/graph/projection keyset LIMIT 64; CASE-bounded identities; complete traversal of indexed material"
+consumer_kind = "production"
+consumer = "current schema verification rederives all retained receiver-owned projection sets without classifying generic history"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_lifecycle_store"
+selector = "validate_current_rows"
+occurrence = 2
+category = "exact-verifier"
+sql = "introduction workspace/receiver keyset LIMIT 64; CASE-bounded text; exact original binding reconstruction"
+consumer_kind = "production"
+consumer = "current schema verification checks all retained introduction provenance and original membership without repair"
+
+[[read]]
 module = "control_plane_kit_operations.postgres.health_effect_preparation_store"
 selector = "_validate_current_rows"
 category = "exact-verifier"
@@ -15,6 +41,14 @@ category = "public-paged"
 sql = "exact workspace/draft/revision membership; temporal keyset; LIMIT limit plus one, at most eleven candidates; bounded source and receipt evidence"
 consumer_kind = "production"
 consumer = "InstanceReadService revision preparation and attempt history pages"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore._projection_publication_actions"
+category = "fixed-cardinality"
+sql = "exact child session, publication action kind and desired projection; LIMIT 2 candidates; bounds rows and decoding count, not payload bytes or database scan/JSON work"
+consumer_kind = "production"
+consumer = "_gateway_child_association validates tenant ownership and exact original child publication; zero, malformed or ambiguous receipts refuse"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.activity_history"
@@ -525,3 +559,29 @@ category = "exact-verifier"
 sql = "saved-key or source-owner session candidates; session_id ascending keyset; LIMIT 64 and SQL byte caps before decode; complete traversal, not bounded total work"
 consumer_kind = "production"
 consumer = "current schema verification checks bidirectional saved source and immutable session commitment integrity"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_execution_scopes"
+selector = "_Transport.read"
+occurrence = 1
+category = "exact-verifier"
+sql = "unique point or ordered key prefix; length-only probe LIMIT capped by remaining rows and 512-byte reservation per row; at most 32 int4/null cells"
+consumer_kind = "production"
+consumer = "Execution scope reader and current-row verifier reserve bounded original-source and history retrieval before decoding"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_execution_scopes"
+selector = "_Transport.read"
+occurrence = 2
+category = "exact-verifier"
+sql = "same unique point or ordered key prefix as length probe; guarded bounded text/bytea values; prefix sentinel or exact keyset page LIMIT; whole-read 16 MiB returned-value budget"
+consumer_kind = "production"
+consumer = "Execution scope reader and current-row verifier require complete congruent original material and retained evidence"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_execution_scopes"
+selector = "_ExecutionScopeStorage.candidates"
+category = "fixed-cardinality"
+sql = "workspace/runtime and optional exact-node ordered index prefixes; concrete prefixes LIMIT at most 65; all-node prefixes bounded by shared 4096 raw rows and remaining 4096-byte-per-row reservations; full reduced page refuses"
+consumer_kind = "production"
+consumer = "Execution receiver overlap classification discovers at most 64 distinct requests without omitting historical node coverage"
