@@ -44,3 +44,9 @@ intent and native attempt before commit, retaining that native expectation
 before health wraps the returned value. An absent pre-lock locator that becomes
 present after locking restarts once outside the UoW, before IDs/writes, to follow
 ordinary exact replay. No arbitrary error or ambiguous mutation is retried.
+
+Health-specific read/check admission follows the held session/workspace prefix
+and precedes generic receiver semantic checks, preserving its selected-slot
+refusal contract. Its correlation locks do not introduce a late earlier lock.
+All receiver permission checks still precede lease observation, IDs and writes,
+and the final retained-record/receiver rereads remain mandatory.

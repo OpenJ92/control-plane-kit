@@ -225,8 +225,10 @@ class EffectAttemptStartService:
                 from control_plane_kit_operations.records import OperationSessionStatus
                 if session.status is not OperationSessionStatus.OPEN:
                     raise ValueError("closed execution session")
-                _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
-                    compensation=event_kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
+                if health is not None:
+                    # Keep the workspace prefix before health's correlation
+                    # locks. Health owns its selected-slot denial contract.
+                    stores.workspaces.get_for_update(request.identity.workspace_id)
             except (KeyError, ValueError, TypeError, AttributeError):
                 permission_failed = True
             else:
@@ -237,6 +239,15 @@ class EffectAttemptStartService:
             if health is not None:
                 admission = admit_health_start(stores, health, request, plan, event_kind,
                     self._health_receiver_decoders)
+            try:
+                _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
+                    compensation=event_kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                permission_failed = True
+            else:
+                permission_failed = False
+            if permission_failed:
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)

@@ -560,3 +560,12 @@ no credential/provider access, bounded errors and no external redispatch. All
 corrected and previously unreached laws remain unvalidated pending exact corrected
 head review and a separately released owning Docker gate. No merge, D, joint or
 live acceptance follows from this classification.
+
+Prepublication delta review caught two further integrations and corrected them:
+actual first-start-intent tests inherit codec helpers, so that class explicitly
+selects runtime-only material; and malformed legacy health selected slots must
+retain their owner's `EffectAttemptStartDenied` contract. Health admission now
+runs after the held session/workspace prefix and before generic receiver semantic
+checks. It only reads/checks and acquires its existing correlation locks; IDs,
+writes, lease observation and all final receiver rereads still follow. No slot
+check or assertion is weakened. North released this bounded ordering correction.
