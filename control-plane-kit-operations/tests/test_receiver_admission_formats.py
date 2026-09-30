@@ -33,12 +33,15 @@ class ReceiverAdmissionFormatTests(ReceiverAdmissionFixture, unittest.TestCase):
             expected_desired_graph_revision=current.desired_graph_revision)
 
     def test_wire_explicit_null_is_malformed_even_on_legacy_graph(self):
-        before = self.admission_truth()
         for route in ("command.desired-graph.set", "command.desired-topology-draft.create"):
-            with self.subTest(route=route), self.assertRaises(CpkServerApplicationError) as captured:
-                self.wire(route, self.wire_payload(receiver=False) | {"receiver_lifecycle": None})
-            self.assertEqual(captured.exception.status, 400)
-            self.assertEqual(self.admission_truth(), before)
+            with self.subTest(route=route):
+                before = self.admission_truth()
+                payload = self.wire_payload(receiver=False) | dict(
+                    receiver_lifecycle=None, idempotency_key="wire-null-" + route)
+                with self.assertRaises(CpkServerApplicationError) as captured:
+                    self.wire(route, payload)
+                self.assertEqual(captured.exception.status, 400)
+                self.assertEqual(self.admission_truth(), before)
 
     def test_wire_closed_product_rejects_missing_extra_and_inconsistent_fields(self):
         pins = self.pins().descriptor()

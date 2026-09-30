@@ -4,7 +4,9 @@ Planning/targets only under [#1903](https://github.com/OpenJ92/control-plane-kit
 Base: accepted C1 merge `89dd522903baabad6b311ae02c1340a074d5d402`.
 Branch: `codex/1903-receiver-admission-targets`, targeting
 `codex/1882-receiver-lifecycle-integration`. Application source is not released.
-No C2 executable evidence exists yet.
+The first ordinary target-only run at `768dd6b9` completed with 66 failures and
+three test errors; its classification and target corrections are recorded below.
+No C2 source or green admission evidence is claimed.
 
 ## Reused evidence and changed source
 
@@ -131,7 +133,7 @@ assertion is presented as green admission evidence. Missing target value checks
 occur inside tests so the owning suite can collect normally on the red base;
 direct-writer and explicit-null targets exercise existing entrypoints directly.
 
-The checkpoint is unexecuted and awaits independent target review. Review must
+The initial checkpoint was unexecuted at target review. Review must
 assess proportional coverage against the whole #1903 contract, including shared
 forwarders/retirement composition, action formats and caller-UoW semantics; the
 table does not itself discharge any untested acceptance obligation.
@@ -153,7 +155,37 @@ runtime/configuration capabilities. Saved preparation is tested at its actual
 session/source owner before later planning. The source/reference negatives
 preserve original introduction membership while corrupting a later continuation,
 so missing source admission cannot pass accidentally through FK rejection.
-These corrections remain unexecuted pending independent delta review.
+Meridian passed these corrections at `768dd6b9` before publication and execution.
+
+### First ordinary run and bounded target repairs
+
+The ordinary Operations suite at `768dd6b9` ran 2,027 tests in 3,817.853 seconds
+and exited 1: 66 failures, three errors. Sixty failures stop at the intentionally
+missing five-pin value assertion; they prove that missing interface, not the
+downstream laws that those tests have not yet reached. Six failures exercise
+existing entrypoints: missing lifecycle locking for a direct pointer, public
+graph/projection writes that accept receiver material, standalone authoring,
+missing-expectation desired admission, and explicit-null desired wire admission.
+All reported failure/error identities belong to the new targets. Package setup
+and collection succeeded. The ordinary harness removed its exact owned container
+and network; compile/import stages were not reached after the failed suite.
+
+The three errors earn no causal-red credit. Two gateway targets lacked the
+existing seed builder's helper methods and failed during setup. The correction
+reuses the five original static/class methods without inheriting predecessor
+test methods. The explicit-null target recorded the expected missing rejection,
+then read `captured.exception` after its failing assertion had been caught by
+`subTest`. The correction keeps the exception/status/rollback assertions inside
+the subtest and gives each route its own idempotency key and truth snapshot, so
+one red route cannot substitute a cross-route receipt conflict for null rejection.
+The second null route and both gateway bodies have no executable credit yet.
+
+These target-only repairs await independent delta/evidence review and its
+validation disposition; no automatic rerun or source implementation follows.
+The hosted Operations run reached execution but hit its existing 30-minute
+limit without a test summary; it adds no terminal causal-red or green credit.
+Hosted Core/current-backend green are separate evidence. Full local output is
+retained at `/tmp/cpk-1903-red-768dd6b9.log`; the governing PR is #1907.
 
 Reuse real disposable PostgreSQL fixtures, graph builders and A's lock witnesses.
 Do not construct a substitute lifecycle machine or reuse B's unrestricted writer

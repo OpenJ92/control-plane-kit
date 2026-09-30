@@ -18,6 +18,11 @@ class ReceiverGatewayPublicationFormatTests(unittest.TestCase):
     seed = existing.GatewayKeyRotationOverlapProjectionTests.seed
     command = existing.GatewayKeyRotationOverlapProjectionTests.command
     service = existing.GatewayKeyRotationOverlapProjectionTests.service
+    authored_graph = staticmethod(existing.GatewayKeyRotationOverlapProjectionTests.authored_graph)
+    public_key = staticmethod(existing.GatewayKeyRotationOverlapProjectionTests.public_key)
+    projection = classmethod(existing.GatewayKeyRotationOverlapProjectionTests.projection.__func__)
+    signing_key = classmethod(existing.GatewayKeyRotationOverlapProjectionTests.signing_key.__func__)
+    rotation = staticmethod(existing.GatewayKeyRotationOverlapProjectionTests.rotation)
 
     def test_fresh_gateway_publication_forwards_the_original_five_pins(self):
         command = self.command()
