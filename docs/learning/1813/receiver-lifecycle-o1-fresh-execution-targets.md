@@ -1,8 +1,8 @@
 # O1.C3 fresh execution and acceptance targets
 
-Status: the completed hosted gate at `f9f6cd81` failed (2,090 tests, six failures,
-seven errors). North released the bounded correction described at the end of
-this record. Local correction source awaits exact independent review and a
+Status: the completed hosted gate at `32683342` failed (2,095 tests, one failure,
+one error). North released the bounded test/inventory correction described at
+the end of this record. Local correction source awaits exact delta review and a
 separate publication/run release; C3 acceptance, joint and live/adoption remain
 held. Selected base
 is C2 merge `1d09c78d6598b4102c5c39012687f6ae9ec4d163`, containing B `a1ce6fc9`
@@ -788,3 +788,45 @@ additional blocker. Kepler passed the bounded association/proof review at
 that checkpoint. The one-line fixture correction and this record require
 delta review before North's publication/run decision; neither static review
 supplies executable acceptance.
+
+### Correction gate: two remaining test-maintenance failures
+
+The sole run of reviewed `32683342193e44fd740fcc3dbef5f4b63d5beb20` completed
+as [Operations job 109936528799](https://github.com/OpenJ92/control-plane-kit/actions/runs/36729931408/job/109936528799):
+**2,095 tests in 2,726.110 seconds, one failure and one error, exit 1**.
+It ran 14:32:54Z–15:18:55Z on 2026-09-30 (46m01s), without timeout;
+compilation/import were unreached. Actual logged checkout
+`1feb5402812cfc9ef7d8638ac4147b151cc1ff9d` has reviewed tree
+`e8f908ee46fce7624dcf797a45813401d7f578dc` and accepted C2/32683342 parents.
+Actual architecture remained `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`.
+Integrity reported 2,075 authored methods, four mocks, zero approved skips.
+The 641,730-byte Operations log SHA256 is
+`6d0300c358c5d84ea46fe61a9603d7f5815859844ded3f82a7ccbd6b958b98bb`.
+Core passed 907 package tests, integrity, compilation/import; Backend passed
+separately. [Complete terminal evidence](https://github.com/OpenJ92/control-plane-kit/pull/1908#issuecomment-5914309788)
+retains the exact two tracebacks and holds acceptance.
+
+Meridian independently confirmed both omissions missed by the prior static
+review. Fresh closed-parent gateway renewal succeeded, but the new test then
+rewrote its persisted claim times before replay. The existing replay owner
+correctly rejected drift from the original decision event and lease duration.
+The correction preserves those times, keeps both parent and child closed,
+forbids lease observation and ID allocation during replay, and checks exact
+replay plus unchanged durable snapshot. Retry-specific expiry remains a
+separate subcase; this test makes no claim of actual elapsed renewal expiry.
+The existing timestamp-drift refusal test and all production checks stay intact.
+
+The other failure occurred at canonical read discovery (`72 != 71`), before
+inventory-set equality. The private publication lookup adds one fixed-cardinality
+read. Its exact `PostgresActivityHistoryStore._projection_publication_actions`
+entry now names the production association consumer, exact SQL filters and
+LIMIT 2, with row/decoding-count-only bounds. Both discovered/unique totals
+become 72 and fixed-cardinality becomes nine; exact inventory-set equality,
+repeated-occurrence identities and category assertions remain unchanged.
+
+[North's narrow correction release](https://github.com/OpenJ92/control-plane-kit/issues/1904#issuecomment-5914317023)
+covers only these tests, canonical inventory and this record. No production,
+schema, transaction, authorization or history semantics change. Static checks
+and exact successor delta review precede a separate publication/run decision.
+There is no new executable green evidence, merge, downstream/live acceptance,
+automatic retry or provider effect. Actual accepted A→B→C remains with #1912.

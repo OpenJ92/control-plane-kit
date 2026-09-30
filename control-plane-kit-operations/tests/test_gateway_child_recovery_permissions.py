@@ -8,7 +8,7 @@ from psycopg.types.json import Jsonb
 from control_plane_kit_core.operations.commands import OperatorCommandKind
 from control_plane_kit_core.operations.lifecycle import RecoveryDecisionKind
 from control_plane_kit_operations.lifecycle import RunLifecycleError
-from control_plane_kit_operations.postgres import GatewayKeyRotationStore, PostgresActivityHistoryStore
+from control_plane_kit_operations.postgres import GatewayKeyRotationStore, PostgresActivityHistoryStore, PostgresExecutionStore
 from tests.activity_run_retry_interpreter_fixture import PostgresActivityRunRetryFixture
 
 
@@ -54,11 +54,26 @@ class GatewayChildRecoveryPermissionTests(PostgresActivityRunRetryFixture, unitt
                     self.assertFalse(result.replayed)
                     self.connection.execute("UPDATE cpk_operation_sessions SET status='closed', closed_at=clock_timestamp() "
                         "WHERE session_id='session-a'")
-                    self.connection.execute("UPDATE cpk_execution_requests SET claimed_at='1999-01-01', "
-                        "lease_expires_at='2000-01-01' WHERE request_id='request-a'")
+                    if retry:
+                        # Retry replay observes the current claim. Renewal replay
+                        # must preserve its original decision's exact lease times.
+                        self.connection.execute("UPDATE cpk_execution_requests SET claimed_at='1999-01-01', "
+                            "lease_expires_at='2000-01-01' WHERE request_id='request-a'")
                     before = self.snapshot()
-                    replay = service.execute(command)
-                    self.assertEqual(replay, replace(result, request=replay.request, replayed=True))
+                    original_observe = PostgresExecutionStore.observe_request_lease_for_update
+                    def forbidden_observe(*args, **kwargs):
+                        self.fail("exact replay sampled lease time")
+                    PostgresExecutionStore.observe_request_lease_for_update = forbidden_observe
+                    try:
+                        replay_service = type(service)(self.unit_of_work,
+                            id_factory=lambda: self.fail("exact replay allocated an identity"))
+                        replay = replay_service.execute(command)
+                    finally:
+                        PostgresExecutionStore.observe_request_lease_for_update = original_observe
+                    expected = replace(result, replayed=True)
+                    if retry:
+                        expected = replace(expected, request=replay.request)
+                    self.assertEqual(replay, expected)
                     self.assertEqual(self.snapshot(), before)
 
     def test_original_association_corruption_refuses_without_ids_or_writes(self):
