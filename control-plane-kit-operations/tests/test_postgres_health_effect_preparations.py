@@ -347,8 +347,7 @@ class PostgresHealthEffectPreparationTests(PostgresHealthEffectPreparationFixtur
     def test_equal_graph_content_retains_base_authored_side_and_both_projection_ids(self):
         from control_plane_kit_core.planning import PlanGraphSide
         from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole
-        self.reset_start_truth()
-        self.seed_health_owners(side=PlanGraphSide.BASE_GRAPH)
+        self.reset_health_truth(side=PlanGraphSide.BASE_GRAPH)
         record = self.persist_health()
         with self.unit_of_work() as uow:
             base = uow.stores.realized_graphs.get(record.base_realized_projection_id)
@@ -600,10 +599,9 @@ class PostgresHealthEffectPreparationTests(PostgresHealthEffectPreparationFixtur
 
     def test_coherent_stored_plan_and_intent_cannot_invent_the_relation_digest(self):
         self.health_record()  # lawful owner setup precedes the missing-feature guard
-        self.reset_start_truth()
         # Both stored descriptors and the original event fingerprint are coherent;
         # the retained executable graphs alone expose the false relation pin.
-        self.seed_health_owners(relation_digest="f" * 64)
+        self.reset_health_truth(relation_digest="f" * 64)
         record = self.health_record()
         self.assertEqual(self.health_intent.intent.operation.target.relation_digest, "f" * 64)
         with self.assertRaises(self.api().HealthEffectPreparationError):

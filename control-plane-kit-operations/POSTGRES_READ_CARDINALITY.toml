@@ -551,3 +551,29 @@ category = "exact-verifier"
 sql = "saved-key or source-owner session candidates; session_id ascending keyset; LIMIT 64 and SQL byte caps before decode; complete traversal, not bounded total work"
 consumer_kind = "production"
 consumer = "current schema verification checks bidirectional saved source and immutable session commitment integrity"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_execution_scopes"
+selector = "_Transport.read"
+occurrence = 1
+category = "exact-verifier"
+sql = "unique point or ordered key prefix; length-only probe LIMIT capped by remaining rows and 512-byte reservation per row; at most 32 int4/null cells"
+consumer_kind = "production"
+consumer = "Execution scope reader and current-row verifier reserve bounded original-source and history retrieval before decoding"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_execution_scopes"
+selector = "_Transport.read"
+occurrence = 2
+category = "exact-verifier"
+sql = "same unique point or ordered key prefix as length probe; guarded bounded text/bytea values; prefix sentinel or exact keyset page LIMIT; whole-read 16 MiB returned-value budget"
+consumer_kind = "production"
+consumer = "Execution scope reader and current-row verifier require complete congruent original material and retained evidence"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.receiver_execution_scopes"
+selector = "_ExecutionScopeStorage.candidates"
+category = "fixed-cardinality"
+sql = "workspace/runtime and optional exact-node ordered index prefixes; concrete prefixes LIMIT at most 65; all-node prefixes bounded by shared 4096 raw rows and remaining 4096-byte-per-row reservations; full reduced page refuses"
+consumer_kind = "production"
+consumer = "Execution receiver overlap classification discovers at most 64 distinct requests without omitting historical node coverage"

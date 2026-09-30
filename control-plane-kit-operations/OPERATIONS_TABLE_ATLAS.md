@@ -1,6 +1,6 @@
 # CPK Operations Table Atlas
 
-<!-- current-schema-contract: sha256=5ab1b72024a1f372355a6113d222099b0a8da231efadcd18f60984fc7d366563 relations=43 columns=549 constraints=440 indexes=142 foreign-keys=110 -->
+<!-- current-schema-contract: sha256=34a250ef291ad69ec223c10405bc92c5c9955bd4ab8c40364375bb2cacb9ddd9 relations=44 columns=557 constraints=449 indexes=147 foreign-keys=111 -->
 
 This atlas explains the durable operational truth owned by CPK. The frozen
 contract header, foreign-key ledger, and dependency graph below are checked
@@ -316,6 +316,7 @@ cpk_effect_attempts -->|cpk_effect_attempts_original_event_fk| cpk_activity_even
 cpk_effect_attempts -->|cpk_effect_attempts_prior_fkey| cpk_effect_attempts
 cpk_effect_attempts -->|cpk_effect_attempts_run_id_fkey| cpk_activity_runs
 cpk_execution_command_receipts -->|cpk_execution_command_receipts_run_id_fkey| cpk_activity_runs
+cpk_execution_receiver_scopes -->|cpk_execution_receiver_scopes_request_workspace_fk| cpk_execution_requests
 cpk_execution_requests -->|cpk_execution_requests_approval_identity_fk| cpk_approval_decisions
 cpk_execution_requests -->|cpk_execution_requests_approval_request_id_fkey| cpk_approval_requests
 cpk_execution_requests -->|cpk_execution_requests_plan_session_fk| cpk_activity_plans
@@ -437,6 +438,7 @@ order is semantically significant for every composite identity.
 | `cpk_effect_attempts_prior_fkey` | `cpk_effect_attempts` | `prior_run_id, prior_activity_id, prior_attempt` | `cpk_effect_attempts` | `run_id, activity_id, attempt` | A retry names the immediately preceding attempt for the same run and activity. |
 | `cpk_effect_attempts_run_id_fkey` | `cpk_effect_attempts` | `run_id` | `cpk_activity_runs` | `run_id` | Every effect attempt belongs to one durable activity run. |
 | `cpk_execution_command_receipts_run_id_fkey` | `cpk_execution_command_receipts` | `run_id` | `cpk_activity_runs` | `run_id` | Every admitted command receipt belongs to the exact run it may advance. |
+| `cpk_execution_receiver_scopes_request_workspace_fk` | `cpk_execution_receiver_scopes` | `request_id, workspace_id` | `cpk_execution_requests` | `request_id, workspace_id` | Immutable scope coverage belongs to the exact original request and workspace. |
 | `cpk_execution_requests_approval_identity_fk` | `cpk_execution_requests` | `approval_decision_id, approval_request_id` | `cpk_approval_decisions` | `decision_id, request_id` | The selected decision must resolve the selected request. |
 | `cpk_execution_requests_approval_request_id_fkey` | `cpk_execution_requests` | `approval_request_id` | `cpk_approval_requests` | `request_id` | An approved execution names an existing request. |
 | `cpk_execution_requests_plan_session_fk` | `cpk_execution_requests` | `plan_id, session_id` | `cpk_activity_plans` | `plan_id, session_id` | The execution request and plan share one session. |
@@ -708,12 +710,25 @@ deleting its retained draft history.
 - **Sensitive material:** Receipts contain bounded operational coordinates only, never provider payloads, exception text, credentials, tokens, or secret values.
 - **Future impact:** A future command family needs a distinct domain-separated fingerprint and explicit result codec rather than widening this receipt implicitly.
 
+### `cpk_execution_receiver_scopes`
+- **Durable meaning and owner:** Execution-owned immutable receiver footprint derived from the exact stored plan and original material; `PostgresExecutionStore` composes its persistence and bounded evidence reader.
+- **Identity and cardinality:** `(request_id, scope_ordinal)` is primary; zero to 1,024 canonical distinct node/runtime scopes agree with the request's count and source digest.
+- **Outgoing foreign keys:** The immediate restrictive `(request_id, workspace_id)` foreign key binds the exact request owner; no cascade fabricates disposal.
+- **Inbound dependents:** No current relation references scope rows; admission, current verification and evidence retrieval require the complete set.
+- **Writers and transactions:** Real admission writes request, scope rows and action under the existing lifecycle guard in one caller transaction. The bare writer refuses affecting requests without admission context.
+- **Readers and projections:** Three ordered partial prefix indexes cover runtime-wide, exact-node and all historical nodes on a runtime. Complete bounded retrieval precedes the internal nonauthorizing classification.
+- **Mutation, locks, retries, and idempotency:** Coverage is immutable. Exact replay preserves original rows and witness; current verification refuses drift without repair, and scope reads require the existing transaction's lifecycle guard.
+- **Lifecycle, retention, deletion, and restore:** Retain original plans, projections, requests and coverage together. Restore request before rows; no migration, backfill, pruning or recovery policy is introduced.
+- **JSON boundary:** None; bounded scope fields are relational. The request digest covers original encoded plan/profile, original material identity and canonical coverage.
+- **Sensitive material:** Only bounded operational identifiers are stored, never configuration bodies, addresses, credentials or provider payloads. Refusals are candidate-free.
+- **Future impact:** #1903 consumes the single classifier; #1904 owns fresh-gate closure. Scope membership, accepted history and cancellation evidence do not grant present mutation authority.
+
 ### `cpk_execution_requests`
 - **Durable meaning and owner:** `PostgresExecutionStore` owns durable requests to execute an approved activity plan, including database-timed, generation-fenced claim leases.
-- **Identity and cardinality:** `request_id` is primary; workspace idempotency is unique; `(request_id, plan_id)` binds downstream runs.
+- **Identity and cardinality:** `request_id` is primary; workspace idempotency is unique; `(request_id, plan_id)` binds downstream runs. Immutable receiver-scope count and digest bind complete derived original coverage.
 - **Outgoing foreign keys:** The workspace, session, plan, approval request, and approval decision must all agree through composite identities.
-- **Inbound dependents:** Activity runs bind the exact `(request_id, plan_id)` pair.
-- **Writers and transactions:** Request creation and the guarded queued-to-claimed transition run in explicit short transactions; run settlement belongs to `cpk_activity_runs`.
+- **Inbound dependents:** Activity runs bind the exact `(request_id, plan_id)` pair; receiver-scope rows bind `(request_id, workspace_id)`.
+- **Writers and transactions:** Admission creates request, derived scope rows and action atomically; claim transitions remain short caller-owned transactions and run settlement belongs to `cpk_activity_runs`.
 - **Readers and projections:** Workers query claimable requests; history projections expose bounded status and ownership facts.
 - **Mutation, locks, retries, and idempotency:** Workspace idempotency distinguishes replay from conflict; request-row locks serialize claim and lease observation, and generation one gives the initial claim an exact fence identity. #1656 owns monotonic generation changes during renewal or takeover.
 - **Lifecycle, retention, deletion, and restore:** Restore workspace, session, plan, request, decision, then execution request and runs; settled requests remain durable history.

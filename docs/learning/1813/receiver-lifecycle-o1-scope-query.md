@@ -7,6 +7,13 @@ This document makes that direction concrete for review. It neither changes B's
 two graph-owned tables nor authorizes source, targets, database installation or
 external effects. Selected application source remains `2a1bf73`.
 
+Query-contract amendment for C1 [PR #1906](https://github.com/OpenJ92/control-plane-kit/pull/1906#issuecomment-5899826124):
+North accepted Kepler/Meridian's clarification that candidate rows returned from
+each prefix, transport and subsequent processing are bounded; PostgreSQL's
+internal scan work is not. The candidate-query and plan-proof wording below
+supersedes the earlier required pre-cap ordering and all-three-index-selection
+expectations. Exact catalog indexes, caps, completeness and authority are unchanged.
+
 ## Ownership and interface
 
 Add Operations module `receiver_execution_scopes.py` for closed internal scope
@@ -121,6 +128,8 @@ cpk_execution_receiver_scopes_runtime_nodes_lookup
 
 The first two indexes are unique; the third is a nonunique access path for a
 runtime-wide requested scope intersecting all historical node scopes there.
+The optimizer may choose either compatible node index for that runtime prefix;
+the catalog does not require every query to select a particular index name.
 It does not enumerate only nodes still present in today's graph.
 
 Add `cpk_operation_actions_receiver_cancel` on existing actions:
@@ -216,13 +225,16 @@ pruning or automatic cleanup is authorized to hide that limitation.
 
 1. Under L, a node-point request probes runtime rows at `(workspace,runtime)`
    and node rows at `(workspace,runtime,node)`. Each exact partial predicate
-   orders by indexed request ID and takes at most 65 scope rows. A runtime-wide
-   request probes the same runtime rows **and all historical node rows** at
-   `(workspace,runtime)`, using the third index and ordering by
-   `(request_id,node_id)`. That branch takes at most the remaining 4096-row
+   takes at most 65 scope rows without SQL ordering. A runtime-wide request
+   probes the same runtime rows **and all historical node rows** at
+   `(workspace,runtime)`, using an eligible indexed prefix. That branch takes
+   at most the remaining 4096-row
    budget plus one, further reduced by the transport reservation below. No
-   unbounded `DISTINCT` or sort precedes its cap. Deduplicate requests only from
-   these bounded rows. A 65th distinct request or 4097th scope row refuses.
+   relational `DISTINCT`, sort, join or expansion precedes its cap. Deduplicate
+   requests only from these bounded rows, then return canonical sorted IDs.
+   A 65th distinct request or 4097th scope row refuses. A filled effective page
+   always refuses before row interpretation, including exactly-full populations;
+   a shorter page contains the entire visible prefix irrespective of order.
    Collapse requested node points covered by an already-requested runtime-wide
    scope and probe repeated prefixes once. Historical nodes missing from either
    current plan side remain discoverable.
@@ -263,11 +275,22 @@ pruning or automatic cleanup is authorized to hide that limitation.
 6. Interpret complete evidence. Return bounded conflict/unavailable/capacity or
    clear; no candidate list exposed as user authority and no partial-clear result.
 
-Index shapes bound the eligible rows and avoid a full workspace/history scan;
-they are not a promise of a fixed number of physical PostgreSQL page reads.
-Actual ordinary-suite SQL-plan tests must demonstrate prefix/index eligibility
-and no pre-limit unbounded sort/JSON expansion on representative mixed-scope
-data. This document does not claim those plans have been executed.
+Index shapes provide exact-prefix access paths. Actual ordinary-suite SQL-plan
+tests must demonstrate a compatible indexed path for each runtime, node-point
+and all-nodes prefix, and no relational sort/join/dedup/JSON expansion before
+the cap on representative PostgreSQL 16 mixed-scope data. Prefix conditions are
+query-specific: node equality is required for node-point queries, not every use
+of the overlapping node index. Exact three-index catalog checks remain separate
+from the optimizer's choice among those indexes.
+
+These bounds cover candidate rows materialized beyond each prefix query,
+transported values and subsequent processing. They do not bound bitmap
+construction, index/heap work, database memory/CPU/pages or latency. Bitmap
+access is permitted index evidence, not proof that only LIMIT-many matches were
+examined. Large matching histories may therefore require substantial database
+work while L is held, despite capacity refusal and transport safety. This is an
+availability limitation; no implicit history pruning or authority relaxation
+follows. The amended query's actual plan still requires owning-suite validation.
 
 Several requested scopes can share candidates. Charge each unique request once
 against 64; charge all returned scope rows against 4096, and all transported

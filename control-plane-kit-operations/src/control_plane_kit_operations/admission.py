@@ -253,7 +253,7 @@ class ExecutionAdmissionCommandService:
                 raise ExecutionAdmissionIdempotencyConflict(
                     "idempotency key is already owned by another session action"
                 )
-            stores.graphs.lock_receiver_lifecycle(command.workspace_id)
+            lifecycle_guard = stores.graphs.lock_receiver_lifecycle(command.workspace_id)
             try:
                 session = history.get_session_for_update(command.session_id)
                 workspace = stores.workspaces.get_for_update(command.workspace_id)
@@ -413,7 +413,7 @@ class ExecutionAdmissionCommandService:
 
             ordinal = history.next_action_ordinal(command.session_id)
             requested_at = self._clock()
-            request = stores.execution.add_request(
+            request = stores.execution._admit_request(
                 ExecutionRequestRecord(
                     identity=ExecutionRequestIdentity(
                         request_id=self._id_factory(),
@@ -430,7 +430,8 @@ class ExecutionAdmissionCommandService:
                         command.idempotency_key.value,
                         fingerprint,
                     ),
-                )
+                ),
+                lifecycle_guard=lifecycle_guard,
             )
             action = history.add_action(
                 OperationActionRecord(

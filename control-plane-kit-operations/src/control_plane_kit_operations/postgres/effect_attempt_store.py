@@ -205,6 +205,14 @@ def _decode_row(connection: _Connection, row: object) -> EffectAttemptRecord:
 def _reconstruct_row(connection: _Connection, row: object) -> EffectAttemptRecord:
     if type(row) not in (tuple, list) or len(row) != len(_COLUMN_NAMES):
         raise ValueError("effect attempt row shape is invalid")
+    event_store = PostgresExecutionStore(connection)
+    return _record_from_events(row, event_store.get_event(row[15]), event_store.get_event(row[18]))
+
+
+def _record_from_events(row, original, latest) -> EffectAttemptRecord:
+    """Decode the same owner value after a caller's bounded event retrieval."""
+    if type(row) not in (tuple, list) or len(row) != len(_COLUMN_NAMES):
+        raise ValueError("effect attempt row shape is invalid")
     identity = EffectAttemptIdentity(RunId(row[0]), row[1], row[2])
     prior = (
         None
@@ -231,9 +239,6 @@ def _reconstruct_row(connection: _Connection, row: object) -> EffectAttemptRecor
         prior_attempt=prior,
         recovery_decision=recovery,
     )
-    event_store = PostgresExecutionStore(connection)
-    original = event_store.get_event(row[15])
-    latest = event_store.get_event(row[18])
     if (
         (original.event_id, original.run_id, original.ordinal)
         != (row[15], row[16], row[17])

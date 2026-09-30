@@ -109,14 +109,14 @@ class PostgresEffectAttemptIntentSchemaTests(
         self.require_intent_schema()
         contract = CURRENT_POSTGRES_SCHEMA_CONTRACT
         relations = tuple(value.name for value in contract.relations)
-        self.assertEqual(len(relations), 43)
+        self.assertEqual(len(relations), 44)
         self.assertEqual(relations.count(RELATION), 1)
-        self.assertEqual(len(contract.columns), 549)
-        self.assertEqual(len(contract.constraints), 440)
-        self.assertEqual(len(contract.indexes), 142)
+        self.assertEqual(len(contract.columns), 557)
+        self.assertEqual(len(contract.constraints), 449)
+        self.assertEqual(len(contract.indexes), 147)
         self.assertEqual(
             sum(value.kind == "f" for value in contract.constraints),
-            110,
+            111,
         )
         columns = tuple(
             value.name for value in contract.columns if value.relation == RELATION
@@ -268,26 +268,9 @@ class PostgresEffectAttemptIntentSchemaTests(
                 desired_graph_id=desired_graph_id,
             ),
         )
-        self.connection.execute(
-            """
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint,
-               claim_worker_id, claim_generation, claimed_at, lease_expires_at)
-            SELECT %s, workspace_id, session_id, %s, status,
-                   requested_by, requested_at, approval_request_id,
-                   approval_decision_id, %s, %s,
-                   claim_worker_id, claim_generation, claimed_at, lease_expires_at
-            FROM cpk_execution_requests WHERE request_id='request-a'
-            """,
-            (
-                request_id,
-                plan_id,
-                "intent-max-idempotency",
-                runtime_effect_intent_fingerprint(intent),
-            ),
-        )
+        from tests.receiver_scope_history_fixture import clone_recorded_request
+        clone_recorded_request(self.connection, request_id=request_id, plan_id=plan_id,
+            idempotency_key="intent-max-idempotency", intent_fingerprint=runtime_effect_intent_fingerprint(intent))
         self.connection.execute(
             """
             INSERT INTO cpk_activity_runs
@@ -414,10 +397,10 @@ class PostgresEffectAttemptIntentSchemaTests(
         )
         self.assertIn("### `cpk_effect_attempt_intents`", atlas)
         self.assertIn(
-            "sha256=5ab1b72024a1f372355a6113d222099b0a8da231efadcd18f60984fc7d366563",
+            "sha256=34a250ef291ad69ec223c10405bc92c5c9955bd4ab8c40364375bb2cacb9ddd9",
             atlas,
         )
-        self.assertIn("foreign-keys=110", atlas)
+        self.assertIn("foreign-keys=111", atlas)
         for name in (*EXPECTED_KEYS, *EXPECTED_FOREIGN_KEYS):
             with self.subTest(name=name):
                 self.assertIn(name, atlas)

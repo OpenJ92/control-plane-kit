@@ -996,7 +996,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
         self.assertFalse(runtime_management_execution_is_unsupported(current, desired, plan,
             registered_products=products, derivation_profile=PROFILE))
         self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
-            product_document=products[0].descriptor_document, derivation_profile=PROFILE)
+            product_document=products[0].descriptor_document, derivation_profile=PROFILE, source_only=True)
         with self.unit_of_work() as uow:
             for product in products[1:]:
                 uow.stores.registered_products.register(workspace_id="workspace-a",
@@ -1006,6 +1006,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                 authority_ref=desired.runtimes["docker"].authority_ref, runtime_kind=RuntimeKind.DOCKER,
                 authority=LocalDockerSocketAuthority(), admitted_by="operator-a", admitted_at="2026-07-22T12:00:00Z")
             uow.commit()
+        self.admit_prepared_execution(plan)
         self.claim_and_start()
         adapter = RecordingAdapter(self.tracker, ActivityExecutionOutcome.succeeded())
         coordinator = self.coordinator(adapter)
@@ -1029,11 +1030,9 @@ class ExecutionCoordinatorTests(unittest.TestCase):
 
         current, desired, plan, products = managed_teardown(self)
         self.reset_execution_request(plan=plan, base_graph=current, desired_graph=desired,
-            product_document=products[0].descriptor_document, derivation_profile=PROFILE)
-        # Replace predecessor fixture's synthetic low-risk approval/request with
-        # the real approval and request services for this destructive plan.
-        for table in ("cpk_execution_requests", "cpk_approval_decisions", "cpk_approval_requests"):
-            self.connection.execute("DELETE FROM " + table)
+            product_document=products[0].descriptor_document, derivation_profile=PROFILE, source_only=True)
+        # Source preparation is separate: the following real approval/admission
+        # commands own this destructive plan and its explicit denial cases.
         with self.unit_of_work() as uow:
             stores = uow.stores
             stores.workspaces.set_current_graph("workspace-a", "graph-current")
@@ -1940,7 +1939,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             )
         )
 
-    def seed_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None, derivation_profile=None) -> None:
+    def seed_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None, derivation_profile=None, source_only=False) -> None:
         self.connection.execute(
             """
             INSERT INTO cpk_workspaces (workspace_id, name, lifecycle)
@@ -2001,6 +2000,8 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             )
             unit_of_work.stores.realized_graphs.save(base_projection)
             unit_of_work.stores.realized_graphs.save(desired_projection)
+            unit_of_work.stores.workspaces.set_current_graph("workspace-a", "graph-current")
+            workspace = unit_of_work.stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             unit_of_work.stores.registered_products.register(
                 workspace_id="workspace-a",
                 descriptor_document=product_document,
@@ -2022,39 +2023,51 @@ class ExecutionCoordinatorTests(unittest.TestCase):
                         desired_projection.projection_id
                     ),
                     derivation_profile=derivation_profile,
+                    desired_graph_revision=workspace.desired_graph_revision,
                 )
             )
             unit_of_work.commit()
-        self.connection.execute(
-            """
-            INSERT INTO cpk_approval_requests
-              (request_id, session_id, plan_id, subject_kind, subject_payload,
-               review_digest, requested_by, requested_at,
-               required_scope, max_risk, destructive)
-            VALUES ('approval-request-a', 'session-a', 'plan-a', 'activity-plan',
-                    '{"kind":"activity-plan","plan_id":"plan-a"}'::jsonb,
-                    encode(sha256(convert_to('activity-plan:plan-a', 'UTF8')), 'hex'),
-                    'operator-a',
-                    '2026-07-22T12:03:00Z', 'plan:approve', 'low', false);
-            INSERT INTO cpk_approval_decisions
-              (decision_id, request_id, actor_id, decision, scope, decided_at)
-            VALUES ('approval-decision-a', 'approval-request-a', 'manager-a',
-                    'approved', 'plan:approve', '2026-07-22T12:03:30Z');
-            INSERT INTO cpk_execution_requests
-              (request_id, workspace_id, session_id, plan_id, status,
-               requested_by, requested_at, approval_request_id,
-               approval_decision_id, idempotency_key, intent_fingerprint)
-            VALUES ('request-a', 'workspace-a', 'session-a', 'plan-a', 'queued',
-                    'operator-a', '2026-07-22T12:04:00Z', 'approval-request-a',
-                    'approval-decision-a', 'execute-a', 'fingerprint-a');
-            """
-        )
+        if source_only:
+            return
+        self.admit_prepared_execution(plan)
 
-    def reset_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None, derivation_profile=None) -> None:
+    def admit_prepared_execution(self, plan):
+        from control_plane_kit_core.policies import ApprovalPolicy
+        from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
+        from control_plane_kit_operations.records import ApprovalRequestRecord, ApprovalDecisionRecord, ApprovalDecisionKind
+        from tests.receiver_scope_history_fixture import admit_fixture_plan, insert_recorded_request
+        requirement = ApprovalPolicy().requirement_for(plan)
+        with self.unit_of_work() as uow:
+            uow.stores.activity_history.add_approval_request(ApprovalRequestRecord(
+                "approval-request-a", "session-a", ActivityPlanApprovalSubject("plan-a"), "operator-a",
+                "2026-07-22T12:03:00Z", requirement.required_scope, requirement.max_risk, requirement.destructive))
+            uow.stores.activity_history.add_approval_decision(ApprovalDecisionRecord(
+                "approval-decision-a", "approval-request-a", "manager-a", ApprovalDecisionKind.APPROVED,
+                requirement.required_scope, "2026-07-22T12:03:30Z"))
+            uow.commit()
+        if not plan.activities:
+            # Explicit predecessor empty-plan history for coordinator zero-step
+            # and forged-plan laws. Admission intentionally rejects empty plans.
+            insert_recorded_request(self.connection)
+        else:
+            scopes = [PolicyScope.PLAN_EXECUTE]
+            with self.unit_of_work() as uow:
+                source = uow.stores.activity_history.get_plan("plan-a")
+                base_projection = uow.stores.realized_graphs.get(source.base_realized_projection_id)
+                desired_projection = uow.stores.realized_graphs.get(source.desired_realized_projection_id)
+            for projection in (base_projection, desired_projection):
+                graph = DEFAULT_GRAPH_CODEC.decode(projection.graph_descriptor)
+                if any(runtime.authority_ref is not None for runtime in graph.runtimes.values()):
+                    scopes.append(PolicyScope.RUNTIME_AUTHORITY_USE)
+                if graph.public_ingresses:
+                    scopes.append(PolicyScope.INGRESS_AUTHORITY_USE)
+            admit_fixture_plan(self, actor_scopes=tuple(dict.fromkeys(scopes)))
+
+    def reset_execution_request(self, *, plan: ActivityPlan, base_graph=None, desired_graph=None, product_document=None, derivation_profile=None, source_only=False) -> None:
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.ids = Sequence()
         self.seed_execution_request(plan=plan, base_graph=base_graph, desired_graph=desired_graph,
-            product_document=product_document, derivation_profile=derivation_profile)
+            product_document=product_document, derivation_profile=derivation_profile, source_only=source_only)
 
 
 def single_activity_plan() -> ActivityPlan:

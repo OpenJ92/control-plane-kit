@@ -330,6 +330,17 @@ def _journal_without_recovery_pairs(
     events: tuple[ActivityEventRecord, ...],
     expected_fence: ExecutionLeaseFence,
 ) -> tuple[ActivityEventRecord, ...] | None:
+    historical = _historical_recovery_journal(events)
+    if historical is None:
+        return None
+    base_events, has_prior_recovery, prior_replacement = historical
+    if has_prior_recovery and prior_replacement != expected_fence:
+        return None
+    return base_events
+
+
+def _historical_recovery_journal(events):
+    """Retained pair association only, without requiring today's lease fence."""
     base_events: list[ActivityEventRecord] = []
     has_prior_recovery = False
     prior_replacement: ExecutionLeaseFence | None = None
@@ -382,9 +393,7 @@ def _journal_without_recovery_pairs(
         has_prior_recovery = True
         prior_replacement = recovery.replacement_fence
         index += 2
-    if has_prior_recovery and prior_replacement != expected_fence:
-        return None
-    return tuple(base_events)
+    return tuple(base_events), has_prior_recovery, prior_replacement
 
 
 __all__ = ()

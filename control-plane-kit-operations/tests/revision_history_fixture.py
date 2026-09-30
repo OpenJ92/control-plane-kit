@@ -78,10 +78,12 @@ class RevisionHistoryFixture(SavedPreparationFixture):
                 ActivityPlanApprovalSubject(plan.plan_id), "operator-a", created_at, PolicyScope.PLAN_APPROVE, RiskLevel.LOW, False))
             stores.activity_history.add_approval_decision(ApprovalDecisionRecord("decision-" + suffix,
                 "approval-" + suffix, "operator-a", ApprovalDecisionKind.APPROVED, PolicyScope.PLAN_APPROVE, created_at))
-            stores.execution.add_request(ExecutionRequestRecord(
-                ExecutionRequestIdentity("request-" + suffix, workspace, plan.session_id, plan.plan_id),
-                ExecutionRequestStatus.CANCELLED, "operator-a", created_at, "approval-" + suffix,
-                "decision-" + suffix, ExecutionIdempotency("execute-" + suffix, "fixture-" + suffix)))
+            from tests.receiver_scope_history_fixture import insert_recorded_request
+            insert_recorded_request(stores.connection, request_id="request-" + suffix,
+                workspace_id=workspace, session_id=plan.session_id, plan_id=plan.plan_id,
+                status="cancelled", requested_at=created_at, approval_request_id="approval-" + suffix,
+                approval_decision_id="decision-" + suffix, idempotency_key="execute-" + suffix,
+                intent_fingerprint="fixture-" + suffix)
             if include_run:
                 stores.execution.add_run(run)
             uow.commit()
