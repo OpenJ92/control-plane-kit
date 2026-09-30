@@ -569,3 +569,43 @@ runs after the held session/workspace prefix and before generic receiver semanti
 checks. It only reads/checks and acquires its existing correlation locks; IDs,
 writes, lease observation and all final receiver rereads still follow. No slot
 check or assertion is weakened. North released this bounded ordering correction.
+
+### Corrected gate timeout and minimal visibility diagnostic
+
+The corrected `b4acb56f1c372b0910d6cc8c139629e583741ca7` checkpoint passed
+independent static review, then ran once in hosted run `36684793768`, Operations
+job `109788053753`. The actual merge checkout was
+`99b7fa604800d774de5b03322a2453a9f981621c`, with accepted C2 and b4 parents;
+its tree `0c9a4604f28ef319144376f5768fc8cc28c7a36a` matches the reviewed tree.
+The actual architecture checkout was
+`7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`. Integrity reported 2,070 authored
+methods, four mocks and zero approved skips.
+
+GitHub explicitly annotated “The job has exceeded the maximum execution time
+of 30m0s.” The job ran from 07:37:47Z to 08:08:04Z on 2026-09-30. No terminal
+unittest summary, complete failure blocks, compileall or clean import appeared.
+The full 75,446-byte log has SHA256
+`2e3e3e5887263084bdca353aff20fff88b7b678e0b6ec1ace646019bc07fc3ef`.
+Core separately passed 907 package tests, compilation and clean import;
+Current Backend separately passed. Neither establishes Operations acceptance.
+
+The last named diagnostic at 07:45:50.1567468Z says that the asynchronous body
+of `ManagedReobservationAdmissionTests.test_unsupported_native_predecessor_cannot_authorize_another_read`
+finished with `result=None`. Cancellation output followed at 08:08:01.7553109Z.
+The roughly 22-minute gap does not identify a stall or its owner: default unittest
+progress has partial lines, which may remain buffered. The captured prefix
+contains 826 dots and no explicit F/E marker, but is incomplete output, not a test
+count or per-law green evidence. No culprit is inferred from the last named test.
+Meridian independently confirmed timeout and exact evidence identity; acceptance
+remains HOLD despite the separate source static PASS.
+
+North released one observability-only preparation: append standard `-v` to
+`python -m unittest discover -s tests` in the existing Docker gate. Full stdlib
+discovery, test order, assertions, environment, dependencies, cleanup and the
+30-minute CI limit remain unchanged. Named test/status output with CI timestamps
+can expose observed progress, failure identities and cumulative time, and narrow
+where a stall may be occurring; verbose output alone cannot prove a deadlock.
+There is no selector, custom runner, watchdog, stack/local dump, timeout increase
+or semantic code change. The small diagnostic checkpoint requires independent
+review and a separate publication/run release. No blind retry, merge, D/joint or
+live acceptance is authorized by the cancelled run.
