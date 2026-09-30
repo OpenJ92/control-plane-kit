@@ -451,3 +451,10 @@ authority and empty product tuple. Three incompatible-replay cases in the start
 intent/eligibility tests now use a distinct foreign authority instead of removing
 that already-empty product tuple; every fingerprint/refusal/rollback assertion
 is preserved. Physical codec fixtures retain their richer product payloads.
+
+The first-start SQL-order spy and decoder-fault case follow the existing shared
+run-prefix owner: `get_latest_run_for_request` locates the bounded latest key,
+then request-scoped run locks precede attempt locks, with held-run reentry after
+writes. The exact trace adds that final recheck and retains the one database
+clock observation, identity and no-write/error assertions. Replay's existing
+request → run → attempt → intent trace is unchanged.

@@ -355,7 +355,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
             ),
             (
                 PostgresExecutionStore,
-                "get_latest_run_for_request_for_update",
+                "get_latest_run_for_request",
                 EffectAttemptStartConflict,
             ),
             (PostgresActivityHistoryStore, "get_plan", EffectAttemptStartConflict),
