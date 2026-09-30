@@ -55,6 +55,20 @@ string. These concrete spellings are part of Meridian's target review.
 
 ## Boundary-case evidence limits
 
+Meridian's static review of `9aa25142` held only for missing selected-material
+negatives. The additive correction exercises the D read with missing V2 verifier
+fields, duplicate JSON profile keys, a selected environment slot pointing to an
+unrelated application artifact, and exactly 65,537 content bytes. Each case
+starts with a real admitted receiver and published successor projection. Generic
+Core artifact/graph/projection construction and the existing digest owner keep
+outer material coherent; only the selected receiver representation is invalid.
+A separate syntactically malformed JSON cell is injected below the generic
+artifact owner with correct outer hashes, explicitly a corruption case. Every
+case requires the same bounded 409 category, measured snapshot cleanup, unchanged
+durable truth and successful restoration of the original exact read. No owner
+validation is weakened to make these records admissible. This correction is
+unexecuted and returns to Meridian before North's intended-red release.
+
 Tests do not invent fields in closed action/query/configuration payloads to
 manufacture an exact-cap positive. Selected JSON whitespace and existing public
 application artifact content are legitimate values, with unchanged validators.

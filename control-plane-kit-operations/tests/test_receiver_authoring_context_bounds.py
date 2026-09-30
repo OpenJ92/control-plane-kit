@@ -1,6 +1,8 @@
 """N8 complete-or-refused bounds, using real stored material and cursor values."""
 
 from dataclasses import replace
+from copy import deepcopy
+import hashlib
 import json
 import unittest
 
@@ -9,7 +11,9 @@ from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
 from control_plane_kit_core.topology import DeploymentGraph
-from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
+from control_plane_kit_operations.records import (
+    GraphVersionRecord, RealizedGraphProjectionRecord, WorkspaceRecord, _realized_projection_digest,
+)
 from tests.draft_catalogue_fixture import NOW
 from tests.receiver_admission_fixture import ReceiverAdmissionFixture
 from tests.receiver_authoring_context_fixture import ReceiverAuthoringContextFixture, body_bytes
@@ -119,6 +123,76 @@ class ReceiverAuthoringContextBoundsTests(ReceiverAuthoringContextFixture, Recei
                     self.assertLessEqual(observed[0].largest_cell, cap)
                 finally:
                     self.connection.execute(update, (Jsonb(original), value))
+
+    def test_invalid_selected_configuration_or_slot_is_whole_refusal_even_with_valid_outer_digest(self):
+        graph, artifact, _ = self.receiver_graph(pretty=True)
+        self.desired_service().execute(self.desired_command())
+        publication = self.publication(graph=graph)
+        self.publisher().execute(publication)
+        original = publication.projection
+        valid = self.context_read()
+        node = graph.node("api")
+        document = json.loads(artifact.content)
+        malformed_v2 = json.dumps({key: value for key, value in document.items() if key != "verifiers"})
+        duplicate_v2 = artifact.content.replace("{", '{"profile":"workload-node-control-configuration.v2",', 1)
+        oversized_v2 = artifact.content + " " * (65537 - len(artifact.content.encode("utf-8")))
+        self.assertEqual(len(oversized_v2.encode("utf-8")), 65537)
+        variants = []
+        for name, content in (("missing-verifiers", malformed_v2), ("duplicate-profile", duplicate_v2),
+                              ("configuration-cap-plus-one", oversized_v2)):
+            selected = replace(artifact, content=content)
+            changed_node = replace(node, configuration_artifacts=(node.configuration_artifacts[0], selected))
+            variants.append((name, replace(graph, nodes={"api": changed_node}), selected.content_digest))
+        # Leave a perfectly valid receiver artifact in the graph, but select
+        # the unrelated application file. Scanning for any valid V2 artifact
+        # instead of following the installed environment association must fail.
+        wrong_slot = replace(node, public_environment=(
+            replace(node.public_environment[0], value="/etc/test/application.txt"),))
+        variants.append(("selected-slot-mismatch", replace(graph, nodes={"api": wrong_slot}), artifact.content_digest))
+        materials = []
+        for name, changed_graph, selected_digest in variants:
+            # Core's generic artifact/graph and projection digest remain valid;
+            # it is specifically the selected receiver representation that fails.
+            material = RealizedGraphProjectionRecord.from_graph(
+                projection_id=original.projection_id, workspace_id=original.workspace_id,
+                source_authored_graph_id=original.source_authored_graph_id,
+                projection_kind=original.projection_kind, projection_key=original.projection_key,
+                graph=changed_graph, created_by=original.created_by, created_at=original.created_at)
+            materials.append((name, material.graph_descriptor, material.projection_digest, selected_digest))
+        # Syntactically broken JSON cannot enter ConfigurationArtifact. Inject
+        # only this additional corrupt consumer cell below that owner, retaining
+        # the outer hashes via the existing pure digest function, not a codec shim.
+        broken = deepcopy(dict(original.graph_descriptor))
+        selected = next(item for item in broken["nodes"]["api"]["configuration_artifacts"]
+                        if item["artifact_id"] == "selected")
+        selected["content"] = '{"profile":'
+        selected["content_digest"] = hashlib.sha256(selected["content"].encode()).hexdigest()
+        digest = _realized_projection_digest(workspace_id=original.workspace_id,
+            source_authored_graph_id=original.source_authored_graph_id,
+            projection_kind=original.projection_kind, projection_key=original.projection_key,
+            graph_descriptor=broken)
+        materials.append(("malformed-json", broken, digest, selected["content_digest"]))
+        messages = []
+        for name, descriptor, digest, selected_digest in materials:
+            with self.subTest(corruption=name):
+                self.connection.execute("UPDATE cpk_realized_graph_projections SET graph_descriptor=%s, "
+                    "projection_digest=%s WHERE projection_id=%s", (Jsonb(descriptor), digest, original.projection_id))
+                self.connection.execute("UPDATE cpk_graph_receiver_bindings SET selected_configuration_digest=%s "
+                    "WHERE realized_projection_id=%s", (selected_digest, original.projection_id))
+                try:
+                    before = self.admission_truth()
+                    factory, observed = self.measured_factory()
+                    messages.append(self.assert_context_refused(409, factory=factory))
+                    self.assert_measured_snapshot(observed)
+                    self.assertEqual(self.admission_truth(), before)
+                finally:
+                    self.connection.execute("UPDATE cpk_realized_graph_projections SET graph_descriptor=%s, "
+                        "projection_digest=%s WHERE projection_id=%s",
+                        (Jsonb(dict(original.graph_descriptor)), original.projection_digest, original.projection_id))
+                    self.connection.execute("UPDATE cpk_graph_receiver_bindings SET selected_configuration_digest=%s "
+                        "WHERE realized_projection_id=%s", (artifact.content_digest, original.projection_id))
+        self.assertEqual(len(set(messages)), 1)
+        self.assertEqual(self.context_read(), valid)
 
     def test_oversized_ancillary_actor_is_guarded_and_arbitrary_metadata_is_not_loaded(self):
         first = self.desired_service().execute(self.desired_command())
