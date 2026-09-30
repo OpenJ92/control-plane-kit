@@ -72,4 +72,10 @@ class ReceiverDirectExecutionPermissionTests(ReceiverExecutionScopeFixture, unit
                 expected=ActivityRunStatus.CLAIMED, replacement=ActivityRunStatus.RUNNING,
                 started_at=request.claim.claimed_at),
                 replace(run, status=ActivityRunStatus.RUNNING, started_at=request.claim.claimed_at))
+            rotated = uow.stores.execution.rotate_request_claim(request.identity.request_id,
+                expected_fence=request.claim.fence,
+                replacement_fence=ExecutionLeaseFence("worker-a", request.claim.generation + 1),
+                observed_at=request.claim.claimed_at, lease_duration_seconds=600)
+            self.assertEqual(rotated.claim.generation, request.claim.generation + 1)
+            self.assertEqual(rotated.identity, request.identity)
             uow.commit()

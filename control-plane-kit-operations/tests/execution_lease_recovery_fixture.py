@@ -394,7 +394,7 @@ class PostgresExecutionLeaseRecoveryFixture:
                                     (approval_scope.value,))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-a",
                     "plan-a",
@@ -413,7 +413,7 @@ class PostgresExecutionLeaseRecoveryFixture:
     def add_newer_failed_run(self) -> None:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-b",
                     "plan-a",

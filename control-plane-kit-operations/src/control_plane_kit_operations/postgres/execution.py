@@ -130,6 +130,20 @@ class PostgresExecutionStore:
         from .receiver_execution_scopes import read_receiver_scope_evidence
         return read_receiver_scope_evidence(self._connection, workspace_id, requested_scopes, guard)
 
+    def _receiver_execution_material(self, identity, guard):
+        from .receiver_execution_scopes import _ExecutionScopeStorage
+        storage = _ExecutionScopeStorage(self._connection)
+        storage.guard(identity.workspace_id, guard)
+        return storage.verify(identity)
+
+    def _require_empty_receiver_scope(self, request_id):
+        from .receiver_execution_scopes import _ExecutionScopeStorage
+        from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
+        request = self.get_request(request_id)
+        _, derived = _ExecutionScopeStorage(self._connection).verify(request.identity)
+        if derived.scopes:
+            raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+
     def _receiver_acceptance_evidence(self, origins):
         """Read original acceptance facts; current membership is graph-owned.
 
@@ -375,6 +389,13 @@ class PostgresExecutionStore:
         worker_id: str,
         lease_duration_seconds: int,
     ) -> ExecutionRequestRecord | None:
+        if (type(lease_duration_seconds) is not int
+                or not 1 <= lease_duration_seconds <= 3600):
+            raise OperationsRecordError("lease duration is invalid")
+        self._require_empty_receiver_scope(request_id)
+        return self._claim_request(request_id, worker_id, lease_duration_seconds)
+
+    def _claim_request(self, request_id, worker_id, lease_duration_seconds):
         if (
             type(lease_duration_seconds) is not int
             or not 1 <= lease_duration_seconds <= 3600
@@ -532,6 +553,19 @@ class PostgresExecutionStore:
     ) -> ExecutionRequestRecord | None:
         _recovery_request_id(request_id)
         _recovery_fence_pair(expected_fence, replacement_fence)
+        _recovery_observed_at(observed_at)
+        if (type(lease_duration_seconds) is not int
+                or not 1 <= lease_duration_seconds <= 3600):
+            raise OperationsRecordError("recovery lease duration is invalid")
+        self._require_empty_receiver_scope(request_id)
+        return self._rotate_request_claim(request_id, expected_fence=expected_fence,
+            replacement_fence=replacement_fence, observed_at=observed_at,
+            lease_duration_seconds=lease_duration_seconds)
+
+    def _rotate_request_claim(self, request_id, *, expected_fence, replacement_fence,
+                              observed_at, lease_duration_seconds):
+        _recovery_request_id(request_id)
+        _recovery_fence_pair(expected_fence, replacement_fence)
         encoded_observed_at = _recovery_observed_at(observed_at)
         if (
             type(lease_duration_seconds) is not int
@@ -608,6 +642,10 @@ class PostgresExecutionStore:
         return None if row is None else _execution_request(row)
 
     def add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
+        self._require_empty_receiver_scope(record.admission.request_id)
+        return self._add_run(record)
+
+    def _add_run(self, record: ActivityRunRecord) -> ActivityRunRecord:
         self._connection.execute(
             """
             INSERT INTO cpk_activity_runs
@@ -670,6 +708,14 @@ class PostgresExecutionStore:
         started_at: str | None = None,
         settled_at: str | None = None,
     ) -> ActivityRunRecord | None:
+        if replacement in (ActivityRunStatus.CLAIMED, ActivityRunStatus.RUNNING,
+                            ActivityRunStatus.COMPENSATING):
+            self._require_empty_receiver_scope(self.get_run(run_id).admission.request_id)
+        return self._compare_and_set_run_status(run_id, expected=expected, replacement=replacement,
+            started_at=started_at, settled_at=settled_at)
+
+    def _compare_and_set_run_status(self, run_id, *, expected, replacement,
+                                    started_at=None, settled_at=None):
         _require_run_id(run_id)
         encoded_started_at = _encode_optional_timestamp(started_at)
         encoded_settled_at = _encode_optional_timestamp(settled_at)

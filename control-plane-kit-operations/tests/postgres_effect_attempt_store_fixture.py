@@ -70,7 +70,7 @@ class PostgresEffectAttemptStoreFixture(
             intent,
         )
         self.assertEqual(evidence.request_fingerprint, record.state.request_fingerprint)
-        self.assertEqual(stores.effect_attempt_intents.insert(evidence), evidence)
+        self.assertEqual(stores.effect_attempt_intents._insert(evidence), evidence)
         return evidence
 
     def persist(self, record: EffectAttemptRecord, *, intent=None):
@@ -79,7 +79,7 @@ class PostgresEffectAttemptStoreFixture(
             self.add_record_events(stores, record)
             if hasattr(stores, "effect_attempt_intents"):
                 self.add_record_intent(stores, record, intent=intent)
-            inserted = stores.effect_attempts.insert_absent(record)
+            inserted = stores.effect_attempts._insert_absent(record)
             unit_of_work.commit()
         return inserted
 

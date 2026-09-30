@@ -125,11 +125,11 @@ class PostgresEffectAttemptIntentStoreFixture(
                 attempt.original_start_event,
             )
             self.assertEqual(
-                stores.effect_attempt_intents.insert(evidence),
+                stores.effect_attempt_intents._insert(evidence),
                 evidence,
             )
             self.assertEqual(
-                stores.effect_attempts.insert_absent(attempt),
+                stores.effect_attempts._insert_absent(attempt),
                 attempt,
             )
             unit_of_work.commit()

@@ -141,6 +141,9 @@ class FailedRunCompensationAttemptStartService:
             raise FailedRunCompensationAttemptConflict(
                 "compensation program is incongruent"
             ) from error
+        located_bindings = stores.failed_run_compensation_attempts.for_program(program.program_id)
+        guard = (stores.graphs.lock_receiver_lifecycle(record.workspace_id)
+                 if command.position > len(located_bindings) else None)
         # The immutable locator supplies identities, never lock ownership.
         # Validate request scope before any run/attempt from that locator.
         try:
@@ -158,6 +161,8 @@ class FailedRunCompensationAttemptStartService:
         bindings = stores.failed_run_compensation_attempts.for_program(
             program.program_id
         )
+        if bindings != located_bindings:
+            raise FailedRunCompensationAttemptConflict("compensation branch changed")
         if tuple(binding.position for binding in bindings) != tuple(
             range(1, len(bindings) + 1)
         ):
@@ -223,6 +228,7 @@ class FailedRunCompensationAttemptStartService:
             raise FailedRunCompensationAttemptConflict(
                 "inverse intent is incongruent"
             )
+        _require_fresh_inverse_receiver_permission(stores, request, guard, command.intent)
         source_identity = source.state.identity
         inverse_identity = EffectAttemptIdentity(
             source_identity.run_id,
@@ -272,18 +278,33 @@ class FailedRunCompensationAttemptStartService:
             command.intent,
         )
         stores.execution.add_event(event)
-        stores.effect_attempt_intents.insert(intent)
-        if stores.effect_attempts.insert_absent(attempt) is None:
+        stores.effect_attempt_intents._insert(intent)
+        if stores.effect_attempts._insert_absent(attempt) is None:
             raise FailedRunCompensationAttemptConflict(
                 "inverse attempt already exists"
             )
         stores.failed_run_compensation_attempts.insert(binding)
+        _require_fresh_inverse_receiver_permission(stores, request, guard, command.intent)
         return NewlyBoundCompensationAttempt(
             binding,
             attempt,
             intent,
             False,
         )
+
+
+def _require_fresh_inverse_receiver_permission(stores, request, guard, intent):
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_execution
+    from control_plane_kit_operations.receiver_execution_scopes import _validate_effect_receiver_material
+    try:
+        _validate_receiver_execution(stores, request, guard)
+        original, derived = stores.execution._receiver_execution_material(request.identity, guard)
+        _validate_effect_receiver_material(request.identity, original, derived, intent, compensation=True)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise FailedRunCompensationAttemptConflict("fresh inverse permission is unavailable")
 
 
 def _validate_program_lineage(stores, record, program, command) -> None:

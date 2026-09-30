@@ -104,11 +104,14 @@ class PostgresEffectAttemptStartFixture(
             request_id=request_id,
             run_id=run_id,
             activity_id=activity_id,
-            products=products,
+            products=() if products is None else products,
             process_delivery=process_delivery,
         )
         return replace(
             value,
+            # This fixture executes runtime-a, whose original authority is
+            # absent. Node products from the codec fixture are not its material.
+            authority_ref=None,
             source=replace(
                 value.source,
                 workspace_id="workspace-a",

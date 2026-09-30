@@ -404,6 +404,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 self.assertIs(caught.exception, error)
 
     def test_changed_replay_fingerprint_and_malformed_attempt_are_conflicts(self) -> None:
+        from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
         cases = (
             ("fingerprint", REPLAY_ERROR),
             ("event-evidence", INVALID_TRUTH_ERROR),
@@ -414,7 +415,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 current = self.persisted_started()
                 command = self.start_command()
                 if target == "fingerprint":
-                    foreign_intent = replace(command.intent, products=(), authority_deliveries=())
+                    foreign_intent = replace(command.intent, authority_ref=RuntimeAuthorityReference("foreign-authority"))
                     command = self.start_command(
                         intent=foreign_intent,
                         transition=self.transition(intent=foreign_intent),
@@ -479,7 +480,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
             (
                 "attempt",
                 EffectAttemptStore,
-                "insert_absent",
+                "_insert_absent",
             ),
         )
         for label, owner, method in raw_failures:
@@ -530,7 +531,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
         before = self.attempt_snapshot()
         with mock.patch.object(
             EffectAttemptStore,
-            "insert_absent",
+            "_insert_absent",
             return_value=None,
         ):
             with self.assertRaises(EffectAttemptStartConflict) as caught:
@@ -548,7 +549,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                 before = self.attempt_snapshot()
                 ids = Sequence(f"changed-{target}-return-event")
                 original_event = PostgresExecutionStore.add_event
-                original_attempt = EffectAttemptStore.insert_absent
+                original_attempt = EffectAttemptStore._insert_absent
 
                 def changed_event(store, event):
                     original_event(store, event)
@@ -573,7 +574,7 @@ class PostgresEffectAttemptStartEligibilityRollbackTests(
                     if target == "event"
                     else EffectAttemptStore
                 )
-                method = "add_event" if target == "event" else "insert_absent"
+                method = "add_event" if target == "event" else "_insert_absent"
                 replacement = (
                     changed_event if target == "event" else changed_attempt
                 )

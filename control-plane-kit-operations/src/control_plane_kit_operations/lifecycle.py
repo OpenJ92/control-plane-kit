@@ -401,7 +401,10 @@ class RunLifecycleCommandService:
                 result = _replay(stores, locked_request, existing, fingerprint)
                 unit_of_work.commit()
                 return result
+            guard = stores.graphs.lock_receiver_lifecycle(locator.identity.workspace_id)
             request = _get_request_for_update(stores, command.request_id)
+            if request.identity != locator.identity:
+                raise RunLifecycleConflict("execution request ownership changed")
             session = _get_open_session_for_update(
                 history,
                 locator.identity.session_id,
@@ -417,9 +420,10 @@ class RunLifecycleCommandService:
                 raise RunLifecycleConflict("execution request is not claimable")
             if stores.execution.runs_for_request(command.request_id):
                 raise RunLifecycleConflict("execution request already has a run")
+            _require_fresh_receiver_permission(stores, request, guard)
             run_id_candidate = self._id_factory()
             run_id = _run_id_or_lifecycle_error(run_id_candidate)
-            claimed = stores.execution.claim_request(
+            claimed = stores.execution._claim_request(
                 command.request_id,
                 command.authority.worker_id,
                 command.lease_duration.seconds,
@@ -431,7 +435,7 @@ class RunLifecycleCommandService:
             if claimed.claim is None:
                 raise RunLifecycleConflict("claimed request lacks lease evidence")
             now = claimed.claim.claimed_at
-            run = stores.execution.add_run(
+            run = stores.execution._add_run(
                 ActivityRunRecord(
                     run_id=run_id,
                     plan_id=claimed.identity.plan_id,
@@ -467,6 +471,7 @@ class RunLifecycleCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
+            _require_fresh_receiver_permission(stores, claimed, guard)
             unit_of_work.commit()
             return RunLifecycleResult(claimed, run, event, action)
 
@@ -537,10 +542,14 @@ class RunLifecycleCommandService:
                 )
                 unit_of_work.commit()
                 return result
+            guard = (stores.graphs.lock_receiver_lifecycle(locator_request.identity.workspace_id)
+                     if replacement is ActivityRunStatus.RUNNING else None)
             request = _get_request_for_update(
                 stores,
                 locator_run.admission.request_id,
             )
+            if request.identity != locator_request.identity:
+                raise RunLifecycleConflict("execution request ownership changed")
             run = _get_run_for_update(stores, command.run_id)
             _require_run_request_linkage(run, request)
             session = _get_open_session_for_update(
@@ -550,9 +559,11 @@ class RunLifecycleCommandService:
             if request.identity.session_id != session.session_id:
                 raise RunLifecycleConflict("activity run session linkage changed")
             _require_worker_owns(request, command.authority, command.fence)
+            if guard is not None:
+                _require_fresh_receiver_permission(stores, request, guard)
             transitioned = None
             for status in expected:
-                transitioned = stores.execution.compare_and_set_run_status(
+                transitioned = stores.execution._compare_and_set_run_status(
                     run.run_id,
                     expected=status,
                     replacement=replacement,
@@ -591,8 +602,24 @@ class RunLifecycleCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
+            if guard is not None:
+                _require_fresh_receiver_permission(stores, request, guard)
             unit_of_work.commit()
             return RunLifecycleResult(request, transitioned, event, action)
+
+
+def _require_fresh_receiver_permission(stores, request, guard):
+    from control_plane_kit_operations.receiver_lifecycle import (
+        _validate_receiver_execution, _validate_receiver_execution_approval,
+    )
+    try:
+        _validate_receiver_execution(stores, request, guard)
+        _validate_receiver_execution_approval(stores, request)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise RunLifecycleConflict("fresh execution permission is unavailable")
 
 
 def _get_run_for_update(stores: Any, run_id: str) -> ActivityRunRecord:

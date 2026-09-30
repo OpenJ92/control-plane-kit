@@ -1387,7 +1387,7 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
     ) -> None:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-a",
                     "plan-a",
@@ -1506,7 +1506,7 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             "claimed_at='2026-07-22T12:04:30Z', lease_expires_at='2026-07-22T12:14:30Z' WHERE request_id=%s", (request_id,))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     run_id,
                     plan_id,

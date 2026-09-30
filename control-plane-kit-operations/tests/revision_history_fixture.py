@@ -85,7 +85,7 @@ class RevisionHistoryFixture(SavedPreparationFixture):
                 approval_decision_id="decision-" + suffix, idempotency_key="execute-" + suffix,
                 intent_fingerprint="fixture-" + suffix)
             if include_run:
-                stores.execution.add_run(run)
+                stores.execution._add_run(run)
             uow.commit()
         return run
 

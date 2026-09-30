@@ -90,7 +90,7 @@ class LifecycleLockFixture:
             # failed run can be latest while the selected old run is active.
             later = replace(prior, run_id="run-later", retry=RetryIdentity(2, "run-a"),
                 status=ActivityRunStatus.FAILED, settled_at=None)
-            uow.stores.execution.add_run(later)
+            uow.stores.execution._add_run(later)
             self.assertEqual(uow.stores.execution.get_run("run-a"), prior)
             uow.commit()
         return later

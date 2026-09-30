@@ -406,7 +406,7 @@ class PostgresEffectOutcomeSchemaTests(
                 stores.execution.add_event(record.attempt.latest_transition_event)
                 self.add_record_intent(stores, record.attempt)
                 self.assertEqual(
-                    stores.effect_attempts.insert_absent(record.attempt),
+                    stores.effect_attempts._insert_absent(record.attempt),
                     record.attempt,
                 )
                 for observation in record.endpoint_observations:

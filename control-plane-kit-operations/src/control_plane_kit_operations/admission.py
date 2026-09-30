@@ -365,6 +365,8 @@ class ExecutionAdmissionCommandService:
                 plan.desired_graph_id,
                 command.workspace_id,
             )
+            _require_receiver_execution_provenance(stores, workspace,
+                plan.base_graph_id, base_projection_id, plan.desired_graph_id, desired_projection_id)
             if rotation_subject is not None:
                 _require_gateway_rotation_child_authorization(
                     stores,
@@ -457,8 +459,25 @@ class ExecutionAdmissionCommandService:
                     intent_fingerprint=fingerprint,
                 )
             )
+            _require_receiver_execution_provenance(stores, workspace,
+                plan.base_graph_id, base_projection_id, plan.desired_graph_id, desired_projection_id)
             unit_of_work.commit()
             return ExecutionAdmissionResult(request, action)
+
+
+def _require_receiver_execution_provenance(stores, workspace, base_id, base_projection,
+                                          desired_id, desired_projection):
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_reference
+    try:
+        if stores.workspaces.get(workspace.workspace_id) != workspace:
+            raise ValueError("receiver workspace changed")
+        _validate_receiver_reference(stores, workspace, base_id, base_projection)
+        _validate_receiver_reference(stores, workspace, desired_id, desired_projection)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise ExecutionAdmissionConflict("receiver execution provenance is unavailable")
 
 
 def _require_gateway_rotation_child_authorization(

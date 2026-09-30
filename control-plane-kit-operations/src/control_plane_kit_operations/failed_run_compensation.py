@@ -219,6 +219,7 @@ class FailedRunCompensationCommandService:
             if locked.identity != identity:
                 raise FailedRunCompensationConflict("execution request ownership changed")
             return _replay(stores, command, existing)
+        guard = stores.graphs.lock_receiver_lifecycle(identity.workspace_id)
         try:
             request = stores.execution.get_request_for_update(command.request_id)
             if request.identity != identity:
@@ -260,6 +261,7 @@ class FailedRunCompensationCommandService:
                 "workspace or execution intent changed"
             )
         events = stores.execution.events_for_run(command.run_id.value)
+        _require_compensation_receiver_permission(stores, request, guard)
         if (
             not events
             or events[-1].kind is not ActivityEventKind.RUN_FAILED
@@ -390,7 +392,7 @@ class FailedRunCompensationCommandService:
         stores.execution.add_event(event)
         stores.activity_history.add_action(action)
         stores.failed_run_compensations.insert(record, program)
-        updated = stores.execution.compare_and_set_run_status(
+        updated = stores.execution._compare_and_set_run_status(
             command.run_id.value,
             expected=ActivityRunStatus.FAILED,
             replacement=ActivityRunStatus.COMPENSATING,
@@ -399,6 +401,7 @@ class FailedRunCompensationCommandService:
             raise FailedRunCompensationConflict(
                 "failed run changed during compensation admission"
             )
+        _require_compensation_receiver_permission(stores, request, guard)
         return FailedRunCompensationResult(
             record,
             program,
@@ -406,6 +409,17 @@ class FailedRunCompensationCommandService:
             event,
             action,
         )
+
+
+def _require_compensation_receiver_permission(stores, request, guard):
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_execution
+    try:
+        _validate_receiver_execution(stores, request, guard)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise FailedRunCompensationConflict("fresh compensation permission is unavailable")
 
 
 def _require_replay_intent(command, action) -> None:

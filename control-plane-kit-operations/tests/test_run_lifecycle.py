@@ -615,7 +615,13 @@ class RunLifecycleTests(LifecycleLockFixture, unittest.TestCase):
         for duration_seconds in (600, 601):
             with self.subTest(duration_seconds=duration_seconds):
                 with self.unit_of_work() as unit_of_work:
-                    retained = unit_of_work.stores.execution.claim_request(
+                    from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
+                    # C3 closes the public affecting writer. The physical
+                    # conditional claim still cannot manufacture replay.
+                    with self.assertRaises(ReceiverScopeUnavailable):
+                        unit_of_work.stores.execution.claim_request(
+                            "request-a", "worker-a", duration_seconds)
+                    retained = unit_of_work.stores.execution._claim_request(
                         "request-a",
                         "worker-a",
                         duration_seconds,
@@ -1255,7 +1261,7 @@ class RunLifecycleTests(LifecycleLockFixture, unittest.TestCase):
         self._insert_run("a", status=ActivityRunStatus.CANCELLED)
         with self.unit_of_work() as unit_of_work:
             store = unit_of_work.stores.execution
-            store.add_run(
+            store._add_run(
                 self._run_record(long_run_id, attempt=2, prior_run_id="a")
             )
             store.add_event(

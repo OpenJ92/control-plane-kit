@@ -47,6 +47,7 @@ from control_plane_kit_operations.records import (
     OperationsRecordError,
 )
 from control_plane_kit_operations.workflows import InvalidOperationCommand
+from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
 from control_plane_kit_operations.health_effect_attempt_start import (
     HealthEffectAttemptStartResult, StartHealthEffectAttempt, _valid_health_command,
 )
@@ -116,16 +117,47 @@ class EffectAttemptStartService:
 
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
+            try:
+                locator = stores.execution.get_request(command.request_id)
+            except KeyError:
+                locator = None
+            except (ValueError, TypeError, AttributeError):
+                locator = False
+            if locator is None:
+                raise EffectAttemptStartNotFound(_NOT_FOUND_ERROR)
+            if locator is False:
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            try:
+                located_attempt = stores.effect_attempts.get(command.transition.identity)
+            except KeyError:
+                located_attempt = None
+            except (ValueError, TypeError, AttributeError):
+                located_attempt = False
+            if located_attempt is False:
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            guard = (stores.graphs.lock_receiver_lifecycle(locator.identity.workspace_id)
+                     if located_attempt is None else None)
             request = _request_for_update(stores, command.request_id)
-            run = _run_for_request_for_update(
-                stores,
-                command.request_id,
-                command.transition.identity.run_id.value,
-            )
+            if request.identity != locator.identity:
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            try:
+                prefix = _lock_effect_run_prefix(unit_of_work, request,
+                    command.transition.identity.run_id.value, latest_required=located_attempt is None)
+            except KeyError:
+                prefix = False
+            except (ValueError, TypeError, AttributeError):
+                prefix = None
+            if prefix is False:
+                raise EffectAttemptStartNotFound(_NOT_FOUND_ERROR)
+            if prefix is None:
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            run = prefix.requested_run
             _require_request_run(command, request, run)
             if health is not None and health.context.workspace_id != request.identity.workspace_id:
                 raise EffectAttemptStartDenied(_AUTHORITY_ERROR)
             attempt = _attempt_for_update(stores, command.transition.identity)
+            if (attempt is None) != (located_attempt is None):
+                raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             _require_current_authority(command, request)
             if attempt is not None:
                 _require_replay(command, fence, request, run, attempt)
@@ -140,7 +172,7 @@ class EffectAttemptStartService:
 
             if is_signed_management_health_operation(command.intent.operation) and health is None:
                 raise EffectAttemptStartDenied("health effect start requires trusted admission")
-            latest_run = _latest_run_for_update(stores, command.request_id)
+            latest_run = prefix.latest_run
             plan = _plan(stores, request.identity.plan_id)
             events = _events_for_run(stores, run.run_id)
             event_kind = _require_first_start(
@@ -166,6 +198,19 @@ class EffectAttemptStartService:
                 or command.intent.activity_id != activity.activity_id
                 or command.intent.operation != expected_operation
             ):
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            try:
+                session = stores.activity_history.get_session_for_update(request.identity.session_id)
+                from control_plane_kit_operations.records import OperationSessionStatus
+                if session.status is not OperationSessionStatus.OPEN:
+                    raise ValueError("closed execution session")
+                _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
+                    compensation=event_kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                permission_failed = True
+            else:
+                permission_failed = False
+            if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
             admission = None
             if health is not None:
@@ -197,7 +242,7 @@ class EffectAttemptStartService:
             )
             if stores.execution.add_event(event) != event:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
-            intent_acknowledgement = stores.effect_attempt_intents.insert(
+            intent_acknowledgement = stores.effect_attempt_intents._insert(
                 intent_record
             )
             if (
@@ -205,10 +250,20 @@ class EffectAttemptStartService:
                 or intent_acknowledgement != intent_record
             ):
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
-            if stores.effect_attempts.insert_absent(result.attempt) != result.attempt:
+            if stores.effect_attempts._insert_absent(result.attempt) != result.attempt:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             if health_write is not None:
                 result = retain_health_start(unit_of_work, health_write, result)
+            try:
+                prefix.require(unit_of_work, request, run.run_id, latest_required=True)
+                _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
+                    compensation=event_kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                permission_failed = True
+            else:
+                permission_failed = False
+            if permission_failed:
+                raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
             unit_of_work.commit()
             return result
 
@@ -478,6 +533,17 @@ def _require_first_start(
     ):
         return ActivityEventKind.STEP_COMPENSATION_STARTED
     raise EffectAttemptStartConflict(_ELIGIBILITY_ERROR)
+
+
+def _require_fresh_effect_receiver_permission(stores, request, guard, intent, *, compensation):
+    from control_plane_kit_operations.receiver_lifecycle import (
+        _validate_receiver_execution, _validate_receiver_execution_approval,
+    )
+    from control_plane_kit_operations.receiver_execution_scopes import _validate_effect_receiver_material
+    _validate_receiver_execution(stores, request, guard)
+    _validate_receiver_execution_approval(stores, request)
+    original, derived = stores.execution._receiver_execution_material(request.identity, guard)
+    _validate_effect_receiver_material(request.identity, original, derived, intent, compensation=compensation)
 
 
 __all__ = ["EffectAttemptStartService"]

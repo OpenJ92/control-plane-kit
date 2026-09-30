@@ -194,7 +194,7 @@ class PostgresEffectAttemptIntentSchemaTests(
                 attempt.original_start_event,
             )
             self.assertEqual(
-                stores.effect_attempt_intents.insert(evidence),
+                stores.effect_attempt_intents._insert(evidence),
                 evidence,
             )
             unit_of_work.commit()
@@ -308,7 +308,7 @@ class PostgresEffectAttemptIntentSchemaTests(
             stores = unit_of_work.stores
             stores.execution.add_event(attempt.original_start_event)
             with self.assertRaises(ForeignKeyViolation) as caught:
-                stores.effect_attempts.insert_absent(attempt)
+                stores.effect_attempts._insert_absent(attempt)
         self.assertEqual(
             caught.exception.diag.constraint_name,
             "cpk_effect_attempts_intent_evidence_fk",
@@ -317,7 +317,7 @@ class PostgresEffectAttemptIntentSchemaTests(
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
             stores.execution.add_event(attempt.original_start_event)
-            stores.effect_attempt_intents.insert(evidence)
+            stores.effect_attempt_intents._insert(evidence)
             unit_of_work.commit()
         with self.assertRaises(CurrentRowDrift):
             validate_current_rows(self.connection)

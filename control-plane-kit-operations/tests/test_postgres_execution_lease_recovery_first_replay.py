@@ -269,7 +269,7 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 opened,
                 action,
             )
-            self.assertEqual(stores.execution.add_run(run), run)
+            self.assertEqual(stores.execution._add_run(run), run)
             self.assertEqual(stores.execution.add_event(decision), decision)
             self.assertEqual(stores.execution.add_event(opened), opened)
             self.assertEqual(stores.activity_history.add_action(action), action)

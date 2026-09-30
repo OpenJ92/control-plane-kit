@@ -88,6 +88,114 @@ class ReceiverFreshCompensationPermissionTests(FailedRunCompensationFixture, Fre
 
 
 class ReceiverFreshInversePermissionTests(FailedRunCompensationAttemptFixture, FreshRecoveryLockWitness, unittest.TestCase):
+    def test_base_inverse_refuses_inherited_receiver_product_at_same_legacy_coordinate(self):
+        from dataclasses import replace
+        from control_plane_kit_core.planning import NodeTarget, ReconcileNode
+        from control_plane_kit_core.products import (
+            ContainerServerProduct, OciImageReference, ProductDescriptorCodec,
+            ProductIdentity, ProductRuntimeContract, ProviderRuntimePort,
+        )
+        from control_plane_kit_core.runtime_effects import RuntimeProductMaterial
+        from control_plane_kit_operations.planning import DesiredGraphCommandService, SetDesiredGraph
+        from control_plane_kit_operations.products import InlineDescriptorSource
+        from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
+        from control_plane_kit_operations.workflows import IdempotencyKey
+        from tests.failed_run_compensation_fixture import Sequence
+        from tests.receiver_storage_fixture import ReceiverStorageFixture
+        material = {}
+
+        def introduce_desired(case):
+            graph, _, _ = ReceiverStorageFixture.receiver_graph(case, node_id="node-a",
+                target_changes={"runtime_id": "runtime-a"})
+            node = replace(graph.nodes["node-a"], runtime_id="runtime-a")
+            graph = replace(graph, nodes={"node-a": node}, runtimes={"runtime-a":
+                replace(graph.runtimes["docker"], runtime_id="runtime-a")})
+            product = ContainerServerProduct(ProductIdentity("test", "inverse-receiver", 1),
+                OciImageReference("ghcr.io", "test/inverse-receiver", "sha256:" + "b" * 64),
+                ProductRuntimeContract(sockets=node.sockets, provider_ports=(ProviderRuntimePort("http", 8000),),
+                    capabilities=node.block_spec.capabilities, control_surfaces=node.block_spec.control_surfaces,
+                    configuration_artifacts=node.configuration_artifacts, public_environment=node.public_environment))
+            with case.unit_of_work() as uow:
+                registered = uow.stores.registered_products.register(workspace_id="workspace-a",
+                    descriptor_document=ProductDescriptorCodec().encode_document(product),
+                    source=InlineDescriptorSource(), imported_by="operator-a", imported_at="2026-08-25T11:50:00Z")
+                workspace = uow.stores.workspaces.get("workspace-a")
+                uow.commit()
+            node = replace(node, metadata={"product_identity": registered.reference.identity.key,
+                "product_descriptor_digest": registered.reference.descriptor_sha256.value})
+            graph = replace(graph, nodes={"node-a": node})
+            pins = ReceiverLifecycleExpectation(workspace.current_graph_id, workspace.current_realized_projection_id,
+                workspace.desired_graph_id, workspace.desired_realized_projection_id, workspace.desired_graph_revision)
+            DesiredGraphCommandService(case.unit_of_work, clock=lambda: "2026-08-25T11:50:30Z",
+                id_factory=Sequence("graph-desired", "receiver-desired-action")).execute(SetDesiredGraph(
+                    "session-a", "workspace-a", "operator-a", graph, None, IdempotencyKey("receiver-desired"),
+                    receiver_lifecycle=pins))
+            material["start-node"] = {"products": (RuntimeProductMaterial("node-a", "runtime-a",
+                registered.reference, product, public_environment=node.public_environment),)}
+
+        # Forward completion is an explicit retained premise. C2 introduction,
+        # request admission, compensation admission and inverse refusal are real.
+        self.seed_truth(node_operation=ReconcileNode(NodeTarget("node-a")),
+            desired_owner=introduce_desired, success_material=material)
+        self.service(Sequence("program-a", "compensation-started", "action-a")).execute(self.command())
+        self.connection.execute("UPDATE cpk_execution_requests SET claimed_at='2098-01-01T00:00:00Z', "
+            "lease_expires_at='2099-01-01T00:00:00Z' WHERE request_id='request-a'")
+        with self.unit_of_work() as uow:
+            _, program = uow.stores.failed_run_compensations.get("program-a")
+            step = program.steps[0]
+            self.assertEqual(step.source_effect.attempt_identity.activity_id, "start-node")
+            source = uow.stores.effect_attempt_intents.get(step.source_effect.attempt_identity)
+            inherited = replace(source.intent, operation=step.operation)
+            workspace = uow.stores.workspaces.get("workspace-a")
+            self.assertEqual(uow.stores.graphs.receiver_bindings("workspace-a", workspace.current_graph_id,
+                workspace.current_realized_projection_id), ())
+            self.assertEqual(len(uow.stores.graphs.receiver_bindings("workspace-a", workspace.desired_graph_id,
+                workspace.desired_realized_projection_id)), 1)
+        before = self.permission_truth(), self.binding_snapshot(), self.source_truth_snapshot()
+        sequence = Sequence("forbidden-inverse")
+        with self.assertRaises(FailedRunCompensationAttemptError):
+            FailedRunCompensationAttemptStartService(self.unit_of_work, id_factory=sequence).execute(
+                self.start_command(intent=inherited))
+        self.assertEqual(sequence.calls, [])
+        self.assertEqual((self.permission_truth(), self.binding_snapshot(), self.source_truth_snapshot()), before)
+
+    def test_inverse_uses_original_base_runtime_authority_without_retranslation(self):
+        from dataclasses import replace
+        from control_plane_kit_core.operations import EffectAttemptStatus
+        from control_plane_kit_core.planning import ReconcileRuntime, RuntimeTarget
+        from control_plane_kit_core.policies import PolicyScope
+        from control_plane_kit_core.runtime_authority import RuntimeAuthorityReference
+        from tests.graph_lineage_fixture import execution_graph
+        from tests.failed_run_compensation_fixture import Sequence
+        graphs = {}
+        authority = RuntimeAuthorityReference("desired-authority")
+        for key, reference in (("graph-current", RuntimeAuthorityReference("base-authority")),
+                               ("graph-desired", authority)):
+            graph = execution_graph(key, node_ids=("node-a",))
+            graphs[key] = replace(graph, runtimes={"runtime-a": replace(graph.runtimes["runtime-a"], authority_ref=reference)})
+        self.seed_truth(graphs=graphs, runtime_operation=ReconcileRuntime(RuntimeTarget("runtime-a")),
+            success_material={key: {"authority_ref": authority} for key in ("start-runtime", "start-node")},
+            actor_scopes=tuple(PolicyScope))
+        self.service(Sequence("program-a", "compensation-started", "action-a")).execute(self.command())
+        self.connection.execute("UPDATE cpk_execution_requests SET claimed_at='2098-01-01T00:00:00Z', "
+            "lease_expires_at='2099-01-01T00:00:00Z' WHERE request_id='request-a'")
+        with self.unit_of_work() as uow:
+            _, program = uow.stores.failed_run_compensations.get("program-a")
+            intents = tuple(replace(uow.stores.effect_attempt_intents.get(step.source_effect.attempt_identity).intent,
+                operation=step.operation) for step in program.steps)
+        self.assertEqual(program.steps[0].source_effect.attempt_identity.activity_id, "start-node")
+        self.assertEqual(program.steps[1].source_effect.attempt_identity.activity_id, "start-runtime")
+        # The desired-side StopNode inverse remains lawful with inherited B.
+        self.attempt_service("inverse-start-a").execute(self.start_command(intent=intents[0]))
+        self.fold_bound_attempt(EffectAttemptStatus.SUCCEEDED)
+        before = self.permission_truth(), self.binding_snapshot(), self.source_truth_snapshot()
+        sequence = Sequence("forbidden-inverse")
+        with self.assertRaises(FailedRunCompensationAttemptError):
+            FailedRunCompensationAttemptStartService(self.unit_of_work, id_factory=sequence).execute(
+                self.start_command(position=2, intent=intents[1]))
+        self.assertEqual(sequence.calls, [])
+        self.assertEqual((self.permission_truth(), self.binding_snapshot(), self.source_truth_snapshot()), before)
+
     def test_inverse_rechecks_required_program_set_after_waiting_on_workspace(self):
         self.seed_admitted_program()
         command = self.start_command()

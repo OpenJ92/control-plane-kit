@@ -287,8 +287,8 @@ class PostgresEffectAttemptStartFirstReplayTests(
         calls: list[str] = []
         appended = []
         original_event = PostgresExecutionStore.add_event
-        original_evidence = EffectAttemptIntentStore.insert
-        original_insert = EffectAttemptStore.insert_absent
+        original_evidence = EffectAttemptIntentStore._insert
+        original_insert = EffectAttemptStore._insert_absent
 
         def add_event(store, event):
             calls.append("event")
@@ -312,11 +312,11 @@ class PostgresEffectAttemptStartFirstReplayTests(
             add_event,
         ), mock.patch.object(
             EffectAttemptIntentStore,
-            "insert",
+            "_insert",
             insert_evidence,
         ), mock.patch.object(
             EffectAttemptStore,
-            "insert_absent",
+            "_insert_absent",
             insert,
         ):
             result = self.start_service("complete-before-write").execute(

@@ -169,18 +169,20 @@ class FailedRunCompensationFixture:
             BoundedEvidence.from_mapping({"phase": "start"}),
         )
 
-    def seed_truth(self) -> None:
+    def seed_truth(self, *, graphs=None, runtime_operation=None, node_operation=None,
+                   success_material=None, desired_owner=None,
+                   actor_scopes=(PolicyScope.PLAN_EXECUTE,)) -> None:
         from tests.graph_lineage_fixture import execution_graph
         from tests.receiver_scope_history_fixture import admit_fixture_plan
         plan = ActivityPlan(
             (
                 PlannedActivity(
                     ActivityId("start-runtime"),
-                    StartRuntime(RuntimeTarget("runtime-a")),
+                    runtime_operation or StartRuntime(RuntimeTarget("runtime-a")),
                 ),
                 PlannedActivity(
                     ActivityId("start-node"),
-                    StartNode(NodeTarget("node-a")),
+                    node_operation or StartNode(NodeTarget("node-a")),
                     (ActivityDependency(ActivityId("start-runtime")),),
                 ),
                 PlannedActivity(
@@ -199,11 +201,12 @@ class FailedRunCompensationFixture:
             lineage = seed_identity_graphs(
                 stores,
                 workspace_id="workspace-a",
-                graph_ids=("graph-current", "graph-desired"),
-                graphs={key: execution_graph(key, node_ids=("node-a",)) for key in ("graph-current", "graph-desired")},
+                graph_ids=("graph-current",) if desired_owner else ("graph-current", "graph-desired"),
+                graphs=graphs or {key: execution_graph(key, node_ids=("node-a",)) for key in ("graph-current", "graph-desired")},
             )
             stores.workspaces.set_current_graph("workspace-a", "graph-current")
-            stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
+            if desired_owner is None:
+                stores.workspaces.set_desired_graph("workspace-a", "graph-desired")
             stores.activity_history.add_session(
                 OperationSessionRecord(
                     "session-a",
@@ -214,6 +217,14 @@ class FailedRunCompensationFixture:
                     "2026-08-25T11:50:00Z",
                 )
             )
+            unit_of_work.commit()
+        if desired_owner is not None:
+            # The callback composes the real C2 owner before original request
+            # coverage exists; it cannot manufacture receiver provenance.
+            desired_owner(self)
+        with self.unit_of_work() as unit_of_work:
+            stores = unit_of_work.stores
+            workspace = stores.workspaces.get("workspace-a")
             stores.activity_history.add_plan(
                 ActivityPlanRecord(
                     "plan-a",
@@ -223,8 +234,8 @@ class FailedRunCompensationFixture:
                     ActivityPlanStatus.PLANNED,
                     "2026-08-25T11:51:00Z",
                     plan,
-                    base_realized_projection_id=lineage["graph-current"],
-                    desired_realized_projection_id=lineage["graph-desired"],
+                    base_realized_projection_id=workspace.current_realized_projection_id,
+                    desired_realized_projection_id=workspace.desired_realized_projection_id,
                     desired_graph_revision=1,
                 )
             )
@@ -252,14 +263,14 @@ class FailedRunCompensationFixture:
                 )
             )
             unit_of_work.commit()
-        admitted = admit_fixture_plan(self, requested_at="2026-08-25T11:54:00Z")
+        admitted = admit_fixture_plan(self, requested_at="2026-08-25T11:54:00Z", actor_scopes=actor_scopes)
         self.execution_fingerprint = admitted.request.idempotency.intent_fingerprint
         self.connection.execute(
             "UPDATE cpk_execution_requests SET status='claimed', claim_worker_id='worker-a', claim_generation=1, "
             "claimed_at='2026-08-25T11:54:00Z', lease_expires_at='2026-08-25T13:54:00Z' WHERE request_id='request-a'")
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-a",
                     "plan-a",
@@ -276,8 +287,12 @@ class FailedRunCompensationFixture:
             )
             for event in events:
                 stores.execution.add_event(event)
-            self._add_success(stores, "start-runtime", 3, 4)
-            self._add_success(stores, "start-node", 5, 6)
+            self._add_success(stores, "start-runtime", 3, 4,
+                operation=plan.activity(ActivityId("start-runtime")).operation,
+                **(success_material or {}).get("start-runtime", {}))
+            self._add_success(stores, "start-node", 5, 6,
+                operation=plan.activity(ActivityId("start-node")).operation,
+                **(success_material or {}).get("start-node", {}))
             stores.execution.add_event(
                 self.event(
                     "wait-node-started",
@@ -342,8 +357,9 @@ class FailedRunCompensationFixture:
         activity_id: str,
         start_ordinal: int,
         success_ordinal: int,
+        *, operation=None, authority_ref=None, products=(),
     ) -> None:
-        operation = (
+        operation = operation or (
             StartRuntime(RuntimeTarget("runtime-a"))
             if activity_id == "start-runtime"
             else StartNode(NodeTarget("node-a"))
@@ -361,9 +377,9 @@ class FailedRunCompensationFixture:
             ),
             ActivityId(activity_id),
             operation,
-            None,
+            authority_ref,
             (),
-            (),
+            products,
         )
         request_fingerprint = runtime_effect_intent_fingerprint(intent)
         identity = EffectAttemptIdentity(RunId("run-a"), activity_id, 1)
@@ -417,11 +433,11 @@ class FailedRunCompensationFixture:
         )
         stores.execution.add_event(start_event)
         stores.execution.add_event(success_event)
-        stores.effect_attempt_intents.insert(
+        stores.effect_attempt_intents._insert(
             EffectAttemptIntentRecord(identity, start_event, intent)
         )
         attempt = EffectAttemptRecord(succeeded, start_event, success_event)
-        stores.effect_attempts.insert_absent(attempt)
+        stores.effect_attempts._insert_absent(attempt)
         stores.effect_outcomes.insert(
             EffectAttemptOutcomeRecord("workspace-a", outcome, attempt, ())
         )

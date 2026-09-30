@@ -379,3 +379,75 @@ owning UoWs; no transaction spans external I/O. No schema change, migration,
 backfill, credential operation, provider effects or new public data exposure.
 Ambiguous effects remain conflicting. B/C joint acceptance, D and live/adoption
 remain separate North gates.
+
+### C3 source checkpoint and fixture ownership map (unvalidated)
+
+North released application source after Meridian's exact `44c697e6` fixture
+repair PASS. This supersedes the source-held statement above. The repair stays
+a distinct commit; no additional pre-source run occurred. This checkpoint is
+implementation and static inspection only. Meridian's exact-source review and
+the sole next hosted Operations suite, including compile/import, remain required.
+
+The command owners now take the lifecycle lock before their existing execution
+row prefix on fresh branches, recheck exact original plan/projection coverage,
+current graph pins, receiver membership/origins and existing approval/authority,
+and use private physical writes inside the same UoW. Original retry and inverse
+work are checked against their own original material, without demanding C2's
+global nonconflicting classification. Replay and evidence-only closure retain
+their existing meanings. Public affecting claim, lease rotation, run creation,
+enabling run CAS and intent/attempt creation refuse bare calls, including calls
+holding a lifecycle guard. Empty-scope positives remain supported.
+
+Advancement tentatively writes its actual pointer CAS, event and action, then
+uses unchanged full-history C1 accounting before B acceptance/retirement
+witnesses. Final same-UoW reads recheck original materials, current pointers,
+complete old/new membership, origins and actual own-run intent material; any
+refusal or deferred commit failure rolls back the entire change. No run is
+excluded from C1. Teardown requires the selected removal operation; stopping
+alone does not invent disposal.
+
+Kepler and Meridian's seam review identified three gaps in the first draft:
+exact original-side runtime authority, supplied products when expected receiver
+membership is empty, and repeating actual intent-material validation after late
+writes. These are corrected, with new inverse and advancement regressions.
+Lawful zero-product legacy inputs remain supported; this does not make their
+node/runtime operation nonaffecting. No inverse is rebuilt from today's graph.
+The receiver inverse test introduces desired truth through C2 before real
+request/compensation admission; its forward effects remain explicitly assumed
+history, not managed runtime/health execution evidence.
+
+Fixture translations are classified by ownership, not by public method names:
+
+| Owning laws | Changed files under `control-plane-kit-operations/tests/` | Translation and retained evidence |
+| --- | --- | --- |
+| Retained premises for read/history/lifecycle/recovery tests | `activity_run_retry_interpreter_fixture.py`, `execution_lease_recovery_fixture.py`, `failed_run_compensation_fixture.py`, `lifecycle_lock_fixture.py`, `receiver_recorded_acceptance_fixture.py`, `revision_history_fixture.py`, `test_current_graph_advancement.py`, `test_revision_history.py`, `test_postgres_execution_lease_recovery_first_replay.py`, `test_postgres_execution_lease_recovery_scoped_run.py`, maximum-ID setup in `test_run_lifecycle.py` | Physical `_add_run` retains the same supplied records and assertions. No setup earns fresh admission/dispatch credit. |
+| Physical intent/attempt codec, schema, FK, acknowledgement and outcome association | `postgres_effect_attempt_intent_store_fixture.py`, `postgres_effect_attempt_store_fixture.py`, `postgres_effect_outcome_store_fixture.py`; their `test_postgres_effect_attempt{,_intent}_{store,schema}.py` and `test_postgres_effect_outcome_{store,schema}.py` consumers | Explicit `_insert`/`_insert_absent` preserve original physical laws, including malformed rows, duplicate/rollback, raw FK failures and exact round trips. Public authorization is separately exercised by the C3 direct-writer targets. |
+| Atomic service write failure/replay/ordering | `test_postgres_effect_attempt_start_{intent,first_replay,eligibility_rollback}.py`, `test_postgres_activity_run_retry_eligibility_rollback.py`, `test_postgres_execution_lease_recovery_eligibility_errors.py` | Existing failure injection follows the owner's private physical write. Sentinels, rollback snapshots, no-write replay and acknowledgement assertions remain. |
+| Identity/factory ordering unit double | `test_authoritative_run_identity.py` | Fixed empty original material supports the newly required reads and lock; the full trace adds lifecycle serialization and final request reread. Every invalid-ID and no-mutation assertion remains. This double gives no receiver permission or database evidence. |
+| Public contract supersession | `test_run_lifecycle.py` same-worker direct claim; `test_postgres_execution_lease_recovery_store.py` duration SQL shape | Same-worker physical claim still returns no replay and leaves truth unchanged; an added public affecting-refusal assertion expresses C3. Valid duration SQL encoding uses private rotation; malformed argument tests remain public. A real empty-scope public rotation positive is added to `test_receiver_direct_execution_permissions.py`. |
+| Strengthened C3 negatives | `test_receiver_fresh_recovery_permissions.py`, `test_receiver_acceptance_advancement.py` | Actual inverse owner refuses inherited wrong-side authority and receiver product. Actual advancement rolls back witness-time membership deletion and a coherently re-encoded intent/attempt/outcome material change. The latter first proves complete C1 associations in a rollback-only premise transaction. |
+
+All existing assertions/negative cases are retained except the explicitly
+strengthened trace and public-contract additions described above. No skip,
+xfail, assertion removal, schema/harness change or fixture-level lifecycle is
+introduced. Compensation setup accepts original graph/operation/material inputs
+before coverage/program capture, plus a callback composing real C2 introduction;
+legacy defaults remain unchanged.
+
+Security/data/history: mutation still requires existing command authority,
+approval and fences. Errors remain bounded; no secrets or provider response
+bodies are added to records. There is one caller-owned UoW for each durable
+change and no transaction spans provider I/O. No new permission token, schema,
+recovery/disposal policy, public route, health adopter or external effect exists.
+First acceptance and retirement retain real action/session witnesses. B/C joint
+acceptance, D, live/adoption and O2's successor-health end-to-end chain remain
+separate, unproved gates.
+
+Static source association review also found that
+`postgres_effect_attempt_start_fixture.py` changed its inherited node intent's
+operation to Start/StopRuntime but retained an unrelated node product and runtime
+authority. Its normal runtime input now carries the original runtime's absent
+authority and empty product tuple. Three incompatible-replay cases in the start
+intent/eligibility tests now use a distinct foreign authority instead of removing
+that already-empty product tuple; every fingerprint/refusal/rollback assertion
+is preserved. Physical codec fixtures retain their richer product payloads.

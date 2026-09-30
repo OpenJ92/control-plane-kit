@@ -30,6 +30,7 @@ from control_plane_kit_operations.execution_lease_recovery import (
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
+    _require_fresh_receiver_permission,
     RunLifecycleConflict,
     RunLifecycleDenied,
     RunLifecycleIdempotencyConflict,
@@ -87,6 +88,8 @@ class ExecutionLeaseRecoveryCommandService:
                 unit_of_work.commit()
                 return result
 
+            guard = (stores.graphs.lock_receiver_lifecycle(locator.identity.workspace_id)
+                     if _decision_kind(command) is not RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM else None)
             request = _request_for_update(stores, command.request_id)
             run = _latest_run_for_update(stores, command.request_id)
             session = _open_session(history, locator.identity.session_id)
@@ -96,6 +99,8 @@ class ExecutionLeaseRecoveryCommandService:
                 stores,
                 request,
             )
+            if guard is not None:
+                _require_fresh_receiver_permission(stores, request, guard)
             require_recovery_eligible_journal(
                 _decision_kind(command),
                 command.expected_fence,
@@ -132,6 +137,8 @@ class ExecutionLeaseRecoveryCommandService:
                 raise RunLifecycleConflict("recovery consequence event was not preserved")
             if history.add_action(result.action) != result.action:
                 raise RunLifecycleConflict("recovery action was not preserved")
+            if guard is not None:
+                _require_fresh_receiver_permission(stores, result.request, guard)
             unit_of_work.commit()
             return result
 
@@ -261,7 +268,7 @@ def _persist_claim(
     else:
         replacement = result.decision_event.recovery.replacement_fence
         assert replacement is not None
-        persisted = stores.execution.rotate_request_claim(
+        persisted = stores.execution._rotate_request_claim(
             command.request_id,
             expected_fence=command.expected_fence,
             replacement_fence=replacement,
