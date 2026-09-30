@@ -200,6 +200,11 @@ class GatewayKeyRotationOverlapPreparationTests(
             approval = uow.stores.activity_history.get_approval_request(checkpoint.approval_request_id)
             request = uow.stores.execution.get_request(checkpoint.execution_request_id)
         self.assertNotEqual(approval.session_id, checkpoint.session_id)
+        # Later rotation checkpoint consistency belongs to the rotation owner.
+        # Original approval/publication/admission receipts remain authoritative.
+        self.connection.execute("UPDATE cpk_gateway_key_rotation_deployments "
+            "SET desired_revision=desired_revision+1 WHERE rotation_id=%s AND phase='overlap'",
+            (self.rotation_id,))
         # Preparation has advanced the rotation's version/status and retained
         # its child checkpoint. Its original approval still governs this child.
         ids = CountingIds("retained-child")

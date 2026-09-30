@@ -92,7 +92,6 @@ def locked_recovery_approval(
         raise RunLifecycleNotFound("recovery approval decision was not found")
     if (
         approval.request_id != request.approval_request_id
-        or approval.session_id != request.identity.session_id
         or decision.decision_id != request.approval_decision_id
         or decision.request_id != approval.request_id
         or decision.decision is not ApprovalDecisionKind.APPROVED
@@ -103,9 +102,24 @@ def locked_recovery_approval(
         raise RunLifecycleConflict("recovery approval history changed")
     subject = approval.subject
     if isinstance(subject, ActivityPlanApprovalSubject):
-        if subject.plan_id != plan.plan_id:
+        if (subject.plan_id != plan.plan_id
+                or approval.session_id != request.identity.session_id):
             raise RunLifecycleConflict("recovery plan approval changed")
-    elif not isinstance(subject, GatewayKeyRotationApprovalSubject):
+    elif type(subject) is GatewayKeyRotationApprovalSubject:
+        from control_plane_kit_operations._gateway_child_association import _require_retained_gateway_child
+        try:
+            _require_retained_gateway_child(stores, request, approval, decision)
+        except KeyError:
+            association_failure = "missing"
+        except (ValueError, TypeError, AttributeError):
+            association_failure = "invalid"
+        else:
+            association_failure = None
+        if association_failure == "missing":
+            raise RunLifecycleNotFound("recovery approval history was not found")
+        if association_failure == "invalid":
+            raise RunLifecycleConflict("recovery approval history is invalid")
+    else:
         raise RunLifecycleConflict("recovery approval subject is unsupported")
     return approval, decision, plan
 

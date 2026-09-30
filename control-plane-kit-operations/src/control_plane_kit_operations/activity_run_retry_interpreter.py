@@ -23,7 +23,7 @@ from control_plane_kit_operations.activity_run_retry import (
     RetryFailedActivityRun,
 )
 from control_plane_kit_operations.lifecycle import (
-    _require_fresh_receiver_permission,
+    _require_receiver_execution_permission,
     RunLifecycleConflict,
     RunLifecycleDenied,
     RunLifecycleIdempotencyConflict,
@@ -118,7 +118,7 @@ class ActivityRunRetryCommandService:
                 session.session_id,
             )
             _, _, plan = locked_recovery_approval(stores, request)
-            _require_fresh_receiver_permission(stores, request, guard)
+            _require_receiver_execution_permission(stores, request, guard)
             require_recovery_eligible_journal(
                 RecoveryDecisionKind.RETRY_AS_NEW_RUN,
                 command.expected_fence,
@@ -154,7 +154,8 @@ class ActivityRunRetryCommandService:
                 raise RunLifecycleConflict("retry record was not preserved")
             if history.add_action(result.action) != result.action:
                 raise RunLifecycleConflict("retry record was not preserved")
-            _require_fresh_receiver_permission(stores, request, guard)
+            locked_recovery_approval(stores, request)
+            _require_receiver_execution_permission(stores, request, guard)
             unit_of_work.commit()
             return result
 

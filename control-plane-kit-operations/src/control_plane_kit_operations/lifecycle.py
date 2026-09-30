@@ -608,12 +608,24 @@ class RunLifecycleCommandService:
             return RunLifecycleResult(request, transitioned, event, action)
 
 
-def _require_fresh_receiver_permission(stores, request, guard):
-    from control_plane_kit_operations.receiver_lifecycle import (
-        _validate_receiver_execution, _validate_receiver_execution_approval,
-    )
+def _require_receiver_execution_permission(stores, request, guard):
+    """Receiver truth only; recovery retains its existing approval owner."""
+    from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_execution
     try:
         _validate_receiver_execution(stores, request, guard)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    else:
+        return
+    raise RunLifecycleConflict("fresh execution permission is unavailable")
+
+
+def _require_fresh_receiver_permission(stores, request, guard):
+    _require_receiver_execution_permission(stores, request, guard)
+    from control_plane_kit_operations.receiver_lifecycle import (
+        _validate_receiver_execution_approval,
+    )
+    try:
         _validate_receiver_execution_approval(stores, request)
     except (ValueError, TypeError, KeyError, AttributeError):
         pass

@@ -30,7 +30,7 @@ from control_plane_kit_operations.execution_lease_recovery import (
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import (
-    _require_fresh_receiver_permission,
+    _require_receiver_execution_permission,
     RunLifecycleConflict,
     RunLifecycleDenied,
     RunLifecycleIdempotencyConflict,
@@ -100,7 +100,7 @@ class ExecutionLeaseRecoveryCommandService:
                 request,
             )
             if guard is not None:
-                _require_fresh_receiver_permission(stores, request, guard)
+                _require_receiver_execution_permission(stores, request, guard)
             require_recovery_eligible_journal(
                 _decision_kind(command),
                 command.expected_fence,
@@ -138,7 +138,8 @@ class ExecutionLeaseRecoveryCommandService:
             if history.add_action(result.action) != result.action:
                 raise RunLifecycleConflict("recovery action was not preserved")
             if guard is not None:
-                _require_fresh_receiver_permission(stores, result.request, guard)
+                locked_recovery_approval(stores, result.request)
+                _require_receiver_execution_permission(stores, result.request, guard)
             unit_of_work.commit()
             return result
 

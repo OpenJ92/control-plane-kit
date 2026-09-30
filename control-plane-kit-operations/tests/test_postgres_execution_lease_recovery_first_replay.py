@@ -175,7 +175,9 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
                 ("approval", "request-a"),
                 ("journal", RecoveryDecisionKind.RENEW_ACTIVE_CLAIM),
                 ("approval", "request-a"),
+                ("approval", "request-a"),
                 ("journal", RecoveryDecisionKind.RENEW_ACTIVE_CLAIM),
+                ("approval", "request-a"),
             ],
         )
 
@@ -1442,24 +1444,19 @@ class PostgresExecutionLeaseRecoveryFirstReplayTests(
         def fail_gateway_read(*_args, **_kwargs):
             raise AssertionError("recovery read or locked mutable gateway rotation")
 
-        for name in originals:
-            setattr(GatewayKeyRotationStore, name, fail_gateway_read)
-        try:
-            for subject_kind in ("activity-plan", "gateway-key-rotation"):
-                with self.subTest(subject=subject_kind):
-                    self.reset_truth(
-                        RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
-                        approval_subject=subject_kind,
-                    )
-                    result = self.service(
-                        "decision-a", "consequence-a", "action-a"
-                    ).execute(
-                        self.command(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM)
-                    )
+        for subject_kind in ("activity-plan", "gateway-key-rotation"):
+            with self.subTest(subject=subject_kind):
+                self.reset_truth(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,
+                    approval_subject=subject_kind)
+                for name in originals:
+                    setattr(GatewayKeyRotationStore, name, fail_gateway_read)
+                try:
+                    result = self.service("decision-a", "consequence-a", "action-a").execute(
+                        self.command(RecoveryDecisionKind.RENEW_ACTIVE_CLAIM))
                     self.assertFalse(result.replayed)
-        finally:
-            for name, method in originals.items():
-                setattr(GatewayKeyRotationStore, name, method)
+                finally:
+                    for name, method in originals.items():
+                        setattr(GatewayKeyRotationStore, name, method)
 
         self.reset_truth(
             RecoveryDecisionKind.RENEW_ACTIVE_CLAIM,

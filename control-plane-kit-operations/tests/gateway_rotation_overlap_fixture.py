@@ -364,7 +364,8 @@ class GatewayRotationOverlapFixture:
                 )
             unit_of_work.commit()
 
-    def seed_rotation_approval(self) -> None:
+    def seed_rotation_approval(self, *, approval_request_id="rotation-approval-request",
+                               approval_decision_id="rotation-approval-decision") -> None:
         OperationCommandService(
             self.unit_of_work,
             clock=lambda: "2026-08-02T01:01:00Z",
@@ -401,10 +402,10 @@ class GatewayRotationOverlapFixture:
             self.unit_of_work,
             clock=lambda: "2026-08-02T01:01:02Z",
             id_factory=Sequence(
-                "rotation-approval-request",
-                "rotation-approval-request-action",
-                "rotation-approval-decision",
-                "rotation-approval-decision-action",
+                approval_request_id,
+                approval_request_id + "-action",
+                approval_decision_id,
+                approval_decision_id + "-action",
             ),
         )
         approval = approvals.execute(

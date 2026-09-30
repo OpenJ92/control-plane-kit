@@ -70,7 +70,12 @@ class ReceiverNonaffectingDispatchTests(ReceiverCanonicalAcceptanceFixture, unit
         self.assertEqual(runtime.legacy_calls, [])
         self.assertEqual(self.receiver_origin(), accepted)
         with self.unit_of_work() as uow:
-            removed = uow.stores.ingress_resources.get_cloudflare("workspace-a", activity.operation.target.ingress_id)
+            original = interpreter.teardown_resources[0]
+            matching = tuple(resource for resource in uow.stores.ingress_resources.list_cloudflare("workspace-a")
+                if (resource.workspace_id, resource.runtime_id, resource.ingress_id, resource.epoch)
+                == (original.workspace_id, original.runtime_id, original.ingress_id, original.epoch))
+            self.assertEqual(len(matching), 1)
+            removed, = matching
             self.assertIs(removed.status, OwnedIngressResourceStatus.REMOVED)
             self.assertEqual(removed.removed_by_run_id, claimed.run.run_id)
             events = uow.stores.execution.events_for_run(claimed.run.run_id)

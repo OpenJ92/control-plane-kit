@@ -87,7 +87,7 @@ class PostgresActivityRunRetryFixture(PostgresExecutionLeaseRecoveryFixture):
         return RetryFailedActivityRun(
             request_id,
             RunId(prior_run_id),
-            expected_fence or ExecutionLeaseFence("worker-a", 7),
+            expected_fence or self.seeded_fence,
             RecoveryAuthority(actor_id, authority_reference, scopes),
             IdempotencyKey(key),
         )

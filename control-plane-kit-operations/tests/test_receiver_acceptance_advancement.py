@@ -9,6 +9,7 @@ import psycopg
 from control_plane_kit_core.operations import ActivityEventKind, ActivityRunStatus
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.advancement import CurrentGraphAdvancementError, CurrentGraphAdvancementConflict
+from control_plane_kit_operations.admission import ExecutionAdmissionConflict
 from control_plane_kit_operations.deployment_transitions import InitialDeployment, NoOpDeployment, TeardownDeployment
 from tests.receiver_canonical_acceptance_fixture import ReceiverCanonicalAcceptanceFixture
 
@@ -38,18 +39,34 @@ class ReceiverAcceptanceAdvancementTests(ReceiverCanonicalAcceptanceFixture, uni
         self.assertEqual(self.advance(claimed, "first"), replace(accepted, replayed=True))
         self.assertEqual(self.receiver_origin(), origin)
 
-    def test_canonical_noop_a_to_b_to_c_keeps_original_first_acceptance(self):
+    def test_desired_noop_b_and_c_refuse_execution_and_preserve_accepted_a(self):
+        # Strengthened desired-only/refusal law. Actual accepted A -> B -> C
+        # belongs to #1912; an empty plan is not executable work.
         _, _, original = self.accept_receiver()
         graph_ids = [original.introducing_graph_id]
+        with self.unit_of_work() as uow:
+            accepted = uow.stores.workspaces.get("workspace-a")
         for suffix in ("second", "third"):
             with self.subTest(suffix=suffix):
                 desired = self.desired_receiver(suffix, graph=self.canonical_receiver_graph)
                 graph_ids.append(desired.graph_version_id)
-                claimed, transition, plan = self.retained_success(suffix)
+                transition, plan, approval = self.plan_and_approve(suffix)
                 self.assertIsInstance(transition, NoOpDeployment)
                 self.assertEqual(plan.plan.activities, ())
-                self.advance(claimed, suffix)
+                before = self.acceptance_truth()
+                with self.assertRaises(ExecutionAdmissionConflict):
+                    self.admit_approved(suffix, plan, approval,
+                        id_factory=lambda: self.fail("empty admission allocated an identity"))
+                self.assertEqual(self.acceptance_truth(), before)
+                with self.unit_of_work() as uow:
+                    workspace = uow.stores.workspaces.get("workspace-a")
+                self.assertEqual((workspace.current_graph_id, workspace.current_realized_projection_id),
+                    (accepted.current_graph_id, accepted.current_realized_projection_id))
+                self.assertEqual(workspace.desired_graph_id, desired.graph_version_id)
+                self.assertEqual(workspace.desired_realized_projection_id, plan.desired_realized_projection_id)
+                self.assertEqual(workspace.desired_graph_revision, plan.desired_graph_revision)
                 self.assertEqual(self.receiver_origin(), original)
+                self.assertIsNone(self.receiver_origin().retired_action_id)
         self.assertEqual(len(set(graph_ids)), 3)
 
     def test_desired_omission_does_not_retire_but_real_accepted_teardown_does(self):
@@ -72,7 +89,7 @@ class ReceiverAcceptanceAdvancementTests(ReceiverCanonicalAcceptanceFixture, uni
         row = self.connection.execute("SELECT status,settled_at FROM cpk_activity_runs WHERE run_id=%s",
             (claimed.run.run_id,)).fetchone()
         try:
-            for status, settled in ((ActivityRunStatus.FAILED.value, None), (ActivityRunStatus.SUCCEEDED.value, None)):
+            for status, settled in ((ActivityRunStatus.FAILED.value, None), (ActivityRunStatus.RUNNING.value, None)):
                 with self.subTest(status=status):
                     self.connection.execute("UPDATE cpk_activity_runs SET status=%s,settled_at=%s WHERE run_id=%s",
                         (status, settled, claimed.run.run_id))

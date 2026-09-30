@@ -1,8 +1,10 @@
 # O1.C3 fresh execution and acceptance targets
 
-Status: reviewed target checkpoint and sole hosted causal-red completed; North
-released the bounded Resume-fixture correction below. Application source,
-joint acceptance and live/adoption remain held. Selected base
+Status: the completed hosted gate at `f9f6cd81` failed (2,090 tests, six failures,
+seven errors). North released the bounded correction described at the end of
+this record. Local correction source awaits exact independent review and a
+separate publication/run release; C3 acceptance, joint and live/adoption remain
+held. Selected base
 is C2 merge `1d09c78d6598b4102c5c39012687f6ae9ec4d163`, containing B `a1ce6fc9`
 and C1 `89dd5229`. Governing issue is #1904; branch
 `codex/1904-receiver-execution-targets` targets
@@ -128,7 +130,7 @@ none is proposed here.
 | Both real schedules | Cancellation/clearance plus competing reuse first makes old fresh activation refuse. Fresh activation first commits STARTED; reuse then refuses even after cancellation/lease expiry. Include selection/advancement and admission/scope-lookup contention through existing A lock witnesses. |
 | Dispatch transaction | Recording adapter observes committed exact event/intent/attempt and can acquire L; late action/commit failure makes zero calls. Replaying ExistingAttempt never redispatches. Actual node/runtime operations use native admission; socket/ingress non-receiver positives remain valid even in receiver-bearing graphs. |
 | Coverage/material | Forward and recorded inverse material fit immutable admitted scopes. Relocation retains both original runtimes; wrong material or out-of-coverage effect refuses without expanding the index. |
-| Acceptance/retirement | Real C2 introduction → canonical initial/teardown plan with explicitly retained complete-success evidence → real advancement records first acceptance/retirement. Actual same-effective-graph A→B→C no-ops preserve that witness. Desired omission, tombstone, failure and stale/incomplete completion do not retire. Losing CAS/late/deferred failure rolls back all records. Native dispatch closure is exercised separately. |
+| Acceptance/retirement | Real C2 introduction → canonical initial/teardown plan with explicitly retained complete-success evidence → real advancement records first acceptance/retirement. Desired-only B/C no-op plans refuse execution and preserve accepted A. Actual accepted A→B→C is transferred to #1912, not proved by that refusal. Desired omission, tombstone, failure and stale/incomplete completion do not retire. Losing CAS/late/deferred failure rolls back all records. Native dispatch closure is exercised separately. |
 
 Reuse `ReceiverExecutionScopeFixture` for production admission/lifecycle/retry/
 compensation/coordinator composition and C1 retained evidence. Reuse C2 graph
@@ -169,6 +171,10 @@ StartNode/Reconcile plans or arbitrary receiver-bearing reconcile changes.
 The original manual-plan draft earns no evidence and must be replaced before
 target review. North and Meridian concurred with the bounded replacement on
 [#1904](https://github.com/OpenJ92/control-plane-kit/issues/1904#issuecomment-5904154400):
+
+The no-op continuation part of this historical proposal is superseded by the
+completed-gate correction and #1912 transfer below: empty plans cannot enter
+execution, and these continuations cannot supply accepted B/C evidence.
 
 - Use existing planner owners for canonical initial/teardown and genuine
   no-op continuations, with typed registered product/configuration-slot material.
@@ -664,3 +670,110 @@ cleanup remain unchanged. Core and Current Backend limits are unchanged.
 No application or test semantics, selectors, custom runners or local duplicate
 gate are included. Security/data/history boundaries are unchanged; no provider,
 credential, tunnel, DNS or token effects. Merge, D/joint/live and O2 holds remain.
+
+### Completed gate and released correction (2026-09-30)
+
+The sole bounded full gate at `f9f6cd81aeb1d7dba4f447f85e0e078b8a3e0e2c` (short
+coordinate `f9f6cd81`; full coordinate recorded by the PR) reached a terminal
+Operations failure, not another timeout. Run `36693017530`, job
+`109814366348`, ran 08:57:53Z–09:42:49Z: **2,090 tests in 2,660.771 seconds,
+six failures and seven errors, exit 1**. Compilation and clean import were not
+reached. The actual merge checkout was
+`5ec6cd7bb7ce522a0479a51ea26a3e8f9a33af1a`, tree
+`ca9a4351474e9c97b9688c9e362a4ab1190ac3bc`, with accepted C2 and f9 parents.
+Architecture remained `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`; integrity
+reported 2,070 authored methods, four mocks and zero approved skips.
+The 665,619-byte full log SHA256 is
+`b99d68b6ac5c996823d3fae685da87b92c7a03b6202e71973a0d21254d6ea1cd`.
+Core separately passed 907 tests, integrity, compilation and clean import;
+Current Backend separately passed. Neither supplies Operations acceptance.
+[Terminal evidence](https://github.com/OpenJ92/control-plane-kit/pull/1908#issuecomment-5908642723)
+contains the durable result.
+
+The 13 non-OK records span ten methods. Complete tracebacks and independent
+review classified them as follows:
+
+| Group | Records | Observed cause and bounded correction |
+| --- | --- | --- |
+| Gateway recovery/retry | Three failures, three errors | Retained permission read mutable rotation state; fabricated child approval lacked original association. Keep the existing recovery owner, prove original receipts, and seed authentic public admission. |
+| Health start ordering | One failure | Spies observed closed public writers instead of the private physical writes; retain the ordering assertions at those writes. |
+| Canonical no-op B/C | Two errors | Admission correctly rejects empty plans. Replace the unreachable executable target with desired-only/refusal assertions; transfer actual accepted A→B→C below. |
+| Incomplete teardown | One error | An illegal succeeded/unsettled SQL fixture violated the schema before assertions. Use legal failed and running incomplete states. |
+| Ingress teardown history | One error | Current-resource lookup excludes removed resources. Select the exact removed resource from history, retaining dispatch and event checks. |
+| Nonaffecting same-worker claim | Two failures | Empty coverage does not require a receiver scope. Preserve the public idempotent claim result and unchanged fence/count assertions. |
+
+North released this bounded correction in
+[the correction decision](https://github.com/OpenJ92/control-plane-kit/issues/1904#issuecomment-5912796814)
+and [the bounded lookup addendum](https://github.com/OpenJ92/control-plane-kit/issues/1904#issuecomment-5912862859).
+The new required managed-update parent [#1909](https://github.com/OpenJ92/control-plane-kit/issues/1909)
+orders #1910 → #1911 → [#1912](https://github.com/OpenJ92/control-plane-kit/issues/1912).
+#1912 owns actual accepted A→B→C, including the former
+`test_canonical_noop_a_to_b_to_c_keeps_original_first_acceptance` second/third
+subcases. That criterion is transferred, not removed or satisfied by a weaker
+test. O1/O2 may proceed under their revised acceptance; #1879 cannot close until
+this required extension succeeds. The extension itself remains Todo/Hold.
+
+The replacement
+`test_desired_noop_b_and_c_refuse_execution_and_preserve_accepted_a` is classified
+**strengthened desired-only/refusal**, not isomorphic accepted A→B→C. It starts
+with real accepted A, creates distinct desired B and C with the actual five
+workspace pins, plans and approves each real NoOp, then snapshots after those
+legitimate writes. Admission must refuse without allocating identities or
+writing execution truth; current A, its original acceptance and its unretired
+origin remain exact. Initial acceptance, full teardown/retirement, fresh/direct
+gates, retry/replay, both schedules, C-N9/10/11 and rollback remain C3 obligations.
+
+Decision log for the local correction:
+
+- Chosen shape: the existing recovery approval/journal owner recognizes an
+  ordinary same-session plan approval or an exact gateway parent/child
+  association. Receiver eligibility is checked separately. Fresh recovery and
+  retry reread approval through that same owner, then receiver eligibility,
+  before their existing transaction commits.
+- Original association: typed rotation subject and original review approval,
+  exact REQUEST_APPROVAL action/fingerprint, child workspace/session/plan,
+  retained base/desired projections and phase identity, original ADMIT action
+  and approval pair, and the original publication lineage/revision/version.
+  Fresh gateway admission retains its mutable rotation checks.
+- Semantic decision: later optional deployment-checkpoint corruption no longer
+  revokes original retained permission. Rotation workflow consistency owns
+  those later checkpoints. Missing or malformed original receipts still refuse.
+- Bounded read: the private history-store query selects exact child session,
+  publication action kind and desired projection with SQL LIMIT 2. The caller
+  requires exactly one typed matching candidate, then validates independent
+  semantic fields. A good plus malformed matching duplicate is ambiguous,
+  never silently filtered into a good singleton. Unrelated long history is
+  allowed. The bound covers returned rows/decoding count, not payload bytes,
+  PostgreSQL scan work or JSON processing; no new index/schema/cap is claimed.
+- Fixture shape: actual parent rotation approval, child projection publication,
+  planning, admission and ClaimAndOpen replace the prior approval overlay.
+  Active renewal stops before Start; failed recovery uses the existing
+  coordinator with a failing provider substitute. Only lease-clock premises
+  are overlaid afterward; no RUNNING journal is rewritten into an empty run.
+- Alternatives rejected: mutable rotation reads during recovery, optional
+  checkpoint authority, an unbounded session-history scan, a second approval
+  owner, fabricated approval overlays and executable empty plans.
+- Tests: retain existing recovery/no-read/replay and schedule assertions;
+  strengthen final shared-owner reread and rollback checks. New owning tests
+  cover closed-parent original association, corrupt original receipts,
+  missing/wrong-kind/wrong-phase/duplicate publication, unrelated long history,
+  final reread rollback and no identities/writes on refusal. The checkpoint
+  corruption positive preserves original-receipt refusal negatives.
+- Validation: this correction has static inspection and `git diff --check`
+  only. The completed failing gate is red evidence; no green result, new suite
+  count, compilation or import result is claimed for these edits. Exact
+  Meridian source review and Kepler association review precede North's next
+  publication/run decision. The ordinary owning Docker suite remains the gate;
+  no host Python, selector, substitute harness or duplicate run was used.
+
+Security/data/history consequences: no new route, credential access, provider
+call, schema, lock order, token or authority bypass. Tenant/session ownership
+is checked before association trust. Recovery errors remain bounded; no
+receipt payload is exposed. Commands retain their existing UoW, idempotency,
+journal/replay owners and structured actions/events; late association failure
+rolls the command's writes back. Replay remains observation-only after session
+closure or lease expiry. Existing lock schedules remain required evidence.
+Residual risks are the unvalidated correction, database/payload work outside
+the row bound, and the explicit transfer of managed-update acceptance. No
+merge, joint/live acceptance, tunnel, DNS, token or image effect is released by
+this local correction.

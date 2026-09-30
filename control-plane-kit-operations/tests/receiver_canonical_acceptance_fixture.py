@@ -98,9 +98,9 @@ class ReceiverCanonicalAcceptanceFixture(ReceiverFreshExecutionFixture):
             tuple(PolicyScope), ApprovalDecisionKind.APPROVED, IdempotencyKey("decision-" + suffix)))
         return transition, planned.plan_record, approval
 
-    def admit_approved(self, suffix, plan, approval):
+    def admit_approved(self, suffix, plan, approval, *, id_factory=None):
         return ExecutionAdmissionCommandService(self.unit_of_work, clock=self.now,
-            id_factory=Sequence("execution-" + suffix, "action-execute-" + suffix)).execute(
+            id_factory=id_factory or Sequence("execution-" + suffix, "action-execute-" + suffix)).execute(
             self.command(plan_id=plan.plan_id, approval_request_id=approval.request.request_id,
                 scopes=tuple(PolicyScope), key="execute-" + suffix))
 

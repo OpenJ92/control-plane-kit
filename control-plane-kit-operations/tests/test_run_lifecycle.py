@@ -615,13 +615,9 @@ class RunLifecycleTests(LifecycleLockFixture, unittest.TestCase):
         for duration_seconds in (600, 601):
             with self.subTest(duration_seconds=duration_seconds):
                 with self.unit_of_work() as unit_of_work:
-                    from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
-                    # C3 closes the public affecting writer. The physical
-                    # conditional claim still cannot manufacture replay.
-                    with self.assertRaises(ReceiverScopeUnavailable):
-                        unit_of_work.stores.execution.claim_request(
-                            "request-a", "worker-a", duration_seconds)
-                    retained = unit_of_work.stores.execution._claim_request(
+                    # This WaitForHealthy request has empty receiver scope.
+                    # Its public conditional claim cannot manufacture replay.
+                    retained = unit_of_work.stores.execution.claim_request(
                         "request-a",
                         "worker-a",
                         duration_seconds,
