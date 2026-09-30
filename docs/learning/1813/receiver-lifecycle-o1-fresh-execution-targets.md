@@ -609,3 +609,58 @@ There is no selector, custom runner, watchdog, stack/local dump, timeout increas
 or semantic code change. The small diagnostic checkpoint requires independent
 review and a separate publication/run release. No blind retry, merge, D/joint or
 live acceptance is authorized by the cancelled run.
+
+### Verbose timeout: residual failures and bounded completion budget
+
+The sole verbose diagnostic at `acb6596d6c54cb46c9b026a6631f51a7a2c5dc5f`
+ran as hosted run `36688671073`, Operations job `109800405095`. The actual
+merge checkout was `329c4879a6f7f6fce17ea9bc512f0ed14f11cd7f`, with accepted
+C2 and acb parents and reviewed tree `613b70fbd004d9cead573fbe31157e0ea7f9147f`.
+The actual architecture checkout remained
+`7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`; integrity reported 2,070 authored
+methods, four mocks and zero approved skips. GitHub again explicitly annotated
+the 30-minute job timeout: 2026-09-30 08:16:18Z–08:46:38Z. The full
+581,309-byte log has SHA256
+`fa6a53d593ff8db28f8ebb1663f5181e61ee3c4b412ae137afa0c5309d63de3a`.
+
+Named completions continued through 08:45:49.3287762Z, approximately 44 seconds
+before cancellation output. This establishes continuing reported progress close
+to cutoff, not a deadlock or acceptable performance. The last completed method
+does not identify the test active at cancellation. No terminal unittest summary,
+complete failure traceback blocks, compileall or clean import were reached.
+Core and Current Backend separately passed; Operations acceptance remains HOLD.
+
+Raw output contains ten non-OK records across eight methods: six ERROR and four
+FAIL. The initial local parser collapsed the two canonical-noop subtest errors
+and incorrectly reported nine. The raw chronology is authoritative (all UTC):
+
+| Owner and method | Non-OK record | Time |
+| --- | --- | --- |
+| PostgresActivityRunRetryFirstReplayTests.test_both_approval_subjects_are_admitted | FAIL, gateway-key-rotation | 08:28:09.5369935 |
+| PostgresActivityRunRetryFirstReplayTests.test_retry_delegates_approval_and_journal_to_shared_support | ERROR | 08:28:25.7116564 |
+| PostgresExecutionLeaseRecoveryConcurrencyTests.test_every_asymmetric_race_forces_both_winner_orders | ERROR, takeover-before-abandon | 08:34:36.5481547 |
+| PostgresExecutionLeaseRecoveryFirstReplayTests.test_both_approval_subjects_are_rechecked_without_gateway_read_or_lock | FAIL, gateway-key-rotation | 08:35:04.8202418 |
+| PostgresExecutionLeaseRecoveryFirstReplayTests.test_predecessor_delegates_approval_and_journal_to_shared_support | ERROR, gateway-key-rotation; then method-level FAIL | 08:35:10.7488881; 08:35:10.7504712 |
+| PostgresHealthEffectStartFirstReplayTests.test_event_intent_attempt_two_uses_preparation_then_single_commit_request | FAIL | 08:38:09.6743632 |
+| ReceiverAcceptanceAdvancementTests.test_canonical_noop_a_to_b_to_c_keeps_original_first_acceptance | ERROR, second; ERROR, third | 08:42:45.8538368; 08:42:46.8084486 |
+| ReceiverAcceptanceAdvancementTests.test_failed_or_incomplete_teardown_never_changes_current_or_retirement | ERROR, succeeded | 08:43:04.6366748 |
+
+Source inspection identifies seams for later traceback classification: recovery's
+existing no-gateway-read law versus the new retained-association read; recorded
+gateway prerequisites versus actual child association; health-order spies on
+old public writers versus current private physical writers; and an invalid raw
+succeeded/unsettled row before the advancement assertion. The canonical-noop
+failure stage remains unknown, and its second failure may depend on the first.
+These are source-context candidates, not observed exception attribution or
+authorization to weaken any law, schema, approval check or assertion.
+
+North released preparation of only the Operations workflow timeout increase
+from 30 to 60 minutes plus this evidence note, for exact independent review
+before publication and one separately released hosted run. This bounded budget
+is intended to obtain a terminal suite result and tracebacks; it is neither
+performance acceptance nor permission for automatic retries. Standard verbosity,
+full discovery, commands, test order, assertions, architecture pin, Docker and
+cleanup remain unchanged. Core and Current Backend limits are unchanged.
+No application or test semantics, selectors, custom runners or local duplicate
+gate are included. Security/data/history boundaries are unchanged; no provider,
+credential, tunnel, DNS or token effects. Merge, D/joint/live and O2 holds remain.
