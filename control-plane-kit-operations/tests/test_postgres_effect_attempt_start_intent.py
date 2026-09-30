@@ -36,6 +36,7 @@ from tests.postgres_effect_attempt_intent_store_fixture import (
     store_module,
 )
 from tests.postgres_effect_attempt_start_fixture import (
+    PostgresEffectAttemptStartFixture,
     INVALID_TRUTH_ERROR,
     REPLAY_ERROR,
     SERIALIZATION_ERROR,
@@ -70,6 +71,10 @@ class PostgresEffectAttemptStartIntentTests(
     PostgresEffectAttemptIntentStoreFixture,
     unittest.TestCase,
 ):
+    def intent(self, **changes):
+        # Reuse codec persistence helpers, but this class invokes fresh start.
+        return PostgresEffectAttemptStartFixture.intent(self, **changes)
+
     def test_ungated_stage_one_values_and_predecessor_truth_are_lawful(self) -> None:
         command = self.start_command()
         _attempt, record = self.intent_attempt(intent=command.intent)

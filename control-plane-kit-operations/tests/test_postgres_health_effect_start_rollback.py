@@ -46,8 +46,8 @@ class PostgresHealthEffectStartRollbackTests(PostgresHealthEffectStartFixture, u
         self.health_start_api()
         boundaries = (
             (PostgresExecutionStore, "add_event", 1),
-            (EffectAttemptIntentStore, "insert", 1),
-            (EffectAttemptStore, "insert_absent", 1),
+            (EffectAttemptIntentStore, "_insert", 1),
+            (EffectAttemptStore, "_insert_absent", 1),
             (SecretUseAuthorizationStore, "add", 1),
             (SecretUseAuthorizationStore, "add", 2),
             (HealthEffectPreparationStore, "insert_absent", 1),

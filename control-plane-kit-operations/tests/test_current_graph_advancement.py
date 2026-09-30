@@ -366,12 +366,15 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             )
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(self.connection.close)
         install_schema(self.connection)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.seed_truth()
 
     def tearDown(self) -> None:
-        self.connection.close()
+        connection = getattr(self, "connection", None)
+        if connection is not None:
+            connection.close()
 
     def unit_of_work(self) -> PostgresUnitOfWork:
         return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))

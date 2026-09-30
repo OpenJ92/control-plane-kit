@@ -478,3 +478,85 @@ semantic conflict and complete rollback; the injected deletes do not depend on
 SQL/FK failure. Existing coordinator tests retain commit-before-unlocked-I/O and
 no-redispatch responsibility. The corrected successor requires exact delta
 review before North may re-release publication and the sole hosted gate.
+
+### First hosted source gate and bounded corrections
+
+The a67e5fdf source gate failed: run36680349156/job109774203254, actual
+merge32aead33 and tree90749517545bf7f9218b0d1f55f224ffa724d517, with the
+required architecture checkout7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef.
+Operations completed2086 tests in1172.692s with30 failures/664 errors.
+Compilation and clean import were unreached. Core and Current Backend passed
+separately. Full Operations log SHA256:
+`b454ef70b8a2020c27857554a0a4db0a05ae258870a36123c246d031497cde3b`.
+Terminal result: [PR1908 comment5906194892](https://github.com/OpenJ92/control-plane-kit/pull/1908#issuecomment-5906194892).
+
+Independent classification reconciles all entries (subtests/cleanup entries are
+not independent behavioral laws):
+
+| Class | Errors | Failures |
+| --- | ---: | ---: |
+| Connection exhaustion / schema refusal / secondary cleanup |399+83+8|0|
+| Parent rotation approval association |57|0|
+| Health wrapper final readback |15|0|
+| Raw health original plan changed after coverage |49|11|
+| Shared fixture lost rich product/authority/secret material |48|17|
+| Identical concurrent first-start / inverse winner |2|1|
+| Physical store doubles / bounded import whitelist |2|1|
+| Coordinator corruption before valid running premise |1|0|
+
+Thus490 errors are cascade/secondary cleanup and174 are primary errors.
+All183 receiver-module errors failed for connection capacity during setup;
+none gives credit to its receiver test body. One managed-health error's wrapper
+attribution is inferred from an asynchronous rethrow;14 show the final-readback
+stack directly. Exact attribution of each leaked connection is not available.
+
+The static PASS missed real composition regressions: parent/child approval
+sessions, the winner/replay transition, and the health return wrapper. It also
+missed fixture inheritance propagating empty material into rich codec/grant laws.
+Those misses are not dismissed as successor O2 work or harmless fixtures.
+
+North released these bounded source corrections before any new gate:
+
+- Subject-discriminate ordinary plan approval and retained gateway child
+  association. Extract a private shared lower owner for stable original review,
+  approval action, publication and admitted child/checkpoint correlation. Keep
+  fresh admission phase/version/canonical-plan policy at admission, and keep
+  current child eligibility at execution. No late rotation lock or approval token.
+- For an attempt appearing after a pre-lock absence locator, or exactly one next
+  inverse binding appended to the unchanged located prefix, restart once outside
+  the UoW before any ID/write. The next pass uses ordinary exact replay checks.
+  Arbitrary conflicts, errors, disappeared rows and ambiguous writes never retry.
+- Preserve the expected native attempt before health retention wraps the return
+  value; compare the actual persisted event/intent/attempt and keep the typed
+  health result intact.
+
+Fixture corrections preserve owners and assertions:
+
+- First-start retains congruent runtime-only material. Explicit recorded codec
+  and fold/reconciliation fixtures retain rich product/authority/secret bytes,
+  including all mutation, grant, fingerprint and no-observer negatives.
+- Raw health fixtures construct original selected health graphs, projections,
+  workspace pins, plan and approval before inserting their recorded request and
+  production-derived coverage. No admitted footprint is rewritten. These are
+  retained health-owner premises, including malformed bytes, not claims of real
+  admission or full-chain deployment. Managed application tests keep real admission.
+- Coordinator establishes the valid running prerequisite before the same deliberate
+  corrupt-plan negative. Private physical store tests target physical insert seams;
+  public refusal and SQL/exception assertions remain. Health rollback injections
+  follow the physical methods actually called. The import whitelist gains only
+  the exact receiver scope dependency.
+- Connection close is registered immediately; originating test-owned rows are
+  cleaned even if later setup fails, only after successful schema acceptance.
+  Nested advancement cleanup tolerates partial setup. No schema-validation bypass,
+  pool increase, reset policy or harness change is included.
+
+Existing first-winner replay, managed-health wrapper, rollback, gateway admission,
+retirement and restart tests govern. A gateway regression exercises real prepared
+child pause/resume after rotation progress with a distinct parent session, then
+rejects substituted original admission-receipt identities without new events/IDs.
+
+Security/data/history: unchanged effects boundary, one UoW for fresh writes,
+no credential/provider access, bounded errors and no external redispatch. All
+corrected and previously unreached laws remain unvalidated pending exact corrected
+head review and a separately released owning Docker gate. No merge, D, joint or
+live acceptance follows from this classification.

@@ -58,6 +58,10 @@ class FailedRunCompensationAttemptNotFound(FailedRunCompensationAttemptError):
     """Raised when an exact compensation coordinate is absent."""
 
 
+class _BindingLocatorChanged(Exception):
+    """One competing binding appeared before locks or writes."""
+
+
 @dataclass(frozen=True, slots=True)
 class StartFailedRunCompensationAttempt:
     program_id: str
@@ -123,10 +127,16 @@ class FailedRunCompensationAttemptStartService:
     ) -> FailedRunCompensationAttemptStartResult:
         if type(command) is not StartFailedRunCompensationAttempt:
             raise FailedRunCompensationAttemptError("command is invalid")
-        with self._unit_of_work() as unit_of_work:
-            result = self._start(unit_of_work.stores, command)
-            unit_of_work.commit()
-            return result
+        for pass_number in range(2):
+            try:
+                with self._unit_of_work() as unit_of_work:
+                    result = self._start(unit_of_work.stores, command)
+                    unit_of_work.commit()
+                    return result
+            except _BindingLocatorChanged:
+                if pass_number:
+                    break
+        raise FailedRunCompensationAttemptConflict("compensation branch changed")
 
     def _start(self, stores, command):
         try:
@@ -162,6 +172,12 @@ class FailedRunCompensationAttemptStartService:
             program.program_id
         )
         if bindings != located_bindings:
+            if (command.position == len(located_bindings) + 1
+                    and len(bindings) == command.position
+                    and bindings[:-1] == located_bindings):
+                # Re-enter from outside the UoW so exact replay can prepare its
+                # own attempt-lock set. No IDs or durable writes precede this.
+                raise _BindingLocatorChanged
             raise FailedRunCompensationAttemptConflict("compensation branch changed")
         if tuple(binding.position for binding in bindings) != tuple(
             range(1, len(bindings) + 1)

@@ -38,6 +38,10 @@ _validate_current_rows = getattr(store_module, "_validate_current_rows", None)
 class PostgresEffectAttemptIntentStoreFixture(
     PostgresEffectAttemptStartFixture,
 ):
+    def intent(self, **changes):
+        """Codec laws retain the product, port, authority and secret bytes."""
+        return self.retained_intent(**changes)
+
     def require_intent_store(self) -> None:
         self.assertIsNotNone(
             EffectAttemptIntentStore,

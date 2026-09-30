@@ -517,20 +517,13 @@ def _require_gateway_rotation_child_authorization(
         )
     if rotation.new_key_id is None:
         raise ExecutionAdmissionConflict("rotation lacks replacement key identity")
-    if (
-        rotation.approval_request_id != approval.request_id
-        or rotation.approval_decision_id != decision.decision_id
-        or approval.required_scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
-        or approval.max_risk is not RiskLevel.HIGH
-        or approval.destructive is not True
-        or decision.request_id != approval.request_id
-        or decision.decision is not ApprovalDecisionKind.APPROVED
-        or decision.scope is not PolicyScope.DELEGATION_KEY_ROTATE_APPROVE
-    ):
+    from control_plane_kit_operations._gateway_child_association import _require_rotation_approval
+    try:
+        _require_rotation_approval(stores.activity_history, rotation, approval, decision)
+    except ValueError as error:
         raise ExecutionAdmissionDenied(
             "rotation approval evidence does not authorize deployment child"
-        )
-    _require_rotation_approval_action(stores.activity_history, approval, subject)
+        ) from error
     if (
         rotation.workspace_id != workspace.workspace_id
         or plan.base_graph_id != plan.desired_graph_id
@@ -611,35 +604,6 @@ def _require_gateway_rotation_child_authorization(
         )
 
 
-def _require_rotation_approval_action(
-    history: Any,
-    approval: ApprovalRequestRecord,
-    subject: GatewayKeyRotationApprovalSubject,
-) -> None:
-    if approval.idempotency_key is None:
-        raise ExecutionAdmissionDenied(
-            "rotation approval request is missing durable action correlation"
-        )
-    action = history.action_for_idempotency(
-        approval.session_id,
-        approval.idempotency_key,
-    )
-    if (
-        action is None
-        or action.action_type is not OperatorCommandKind.REQUEST_APPROVAL
-        or action.payload.get("request_id") != approval.request_id
-        or action.payload.get("subject_kind") != subject.kind.value
-        or action.payload.get("subject_id") != subject.subject_id
-        or action.payload.get("review_digest") != subject.review_digest
-        or action.payload.get("required_scope") != approval.required_scope.value
-        or action.payload.get("max_risk") != approval.max_risk.value
-        or action.payload.get("destructive") is not approval.destructive
-    ):
-        raise ExecutionAdmissionDenied(
-            "rotation approval request action evidence is incomplete"
-        )
-
-
 def _require_rotation_publication_action(
     history: Any,
     *,
@@ -647,31 +611,15 @@ def _require_rotation_publication_action(
     plan: ActivityPlanRecord,
     phase: GatewayKeyRotationDeploymentPhase,
 ) -> None:
-    actions = tuple(
-        action
-        for action in history.actions_for_session(plan.session_id)
-        if action.action_type
-        is OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION
-        and action.payload.get("desired_realized_projection_id")
-        == plan.desired_realized_projection_id
-    )
-    if len(actions) != 1:
-        raise ExecutionAdmissionDenied(
-            f"rotation {phase.value} publication evidence is missing or ambiguous"
-        )
-    evidence = actions[0].payload
-    if (
-        evidence.get("workspace_id") != rotation.workspace_id
-        or evidence.get("authored_graph_id") != plan.base_graph_id
-        or evidence.get("previous_realized_projection_id")
-        != plan.base_realized_projection_id
-        or evidence.get("desired_graph_revision") != plan.desired_graph_revision
-        or evidence.get("source_operation_id") != rotation.rotation_id
-        or evidence.get("source_operation_version") != rotation.version
-    ):
+    from control_plane_kit_operations._gateway_child_association import _rotation_publication_version
+    try:
+        version = _rotation_publication_version(history, rotation, plan)
+        if version != rotation.version:
+            raise ValueError("publication version changed")
+    except ValueError as error:
         raise ExecutionAdmissionDenied(
             f"rotation {phase.value} publication evidence does not match child lineage"
-        )
+        ) from error
 
 
 def _require_authority_use_scopes(

@@ -66,6 +66,10 @@ _REPLAY_ERROR = "effect attempt replay is incongruent"
 _SERIALIZATION_ERROR = "effect attempt start changed concurrently"
 
 
+class _StartLocatorChanged(Exception):
+    """An attempt appeared before locks; restart once outside the UoW."""
+
+
 class EffectAttemptStartService:
     """Start or observe one exact effect attempt in a caller-owned UoW."""
 
@@ -101,6 +105,19 @@ class EffectAttemptStartService:
         return self._execute(command.start, command)
 
     def _execute(
+        self,
+        command: StartEffectAttempt,
+        health: StartHealthEffectAttempt | None,
+    ) -> EffectAttemptStartResult | HealthEffectAttemptStartResult:
+        for pass_number in range(2):
+            try:
+                return self._execute_once(command, health)
+            except _StartLocatorChanged:
+                if pass_number:
+                    break
+        raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
+
+    def _execute_once(
         self,
         command: StartEffectAttempt,
         health: StartHealthEffectAttempt | None,
@@ -156,6 +173,10 @@ class EffectAttemptStartService:
             if health is not None and health.context.workspace_id != request.identity.workspace_id:
                 raise EffectAttemptStartDenied(_AUTHORITY_ERROR)
             attempt = _attempt_for_update(stores, command.transition.identity)
+            if located_attempt is None and attempt is not None:
+                # No writes or IDs have been allocated. Drop the fresh prefix
+                # before choosing the winner's ordinary exact replay path.
+                raise _StartLocatorChanged
             if (attempt is None) != (located_attempt is None):
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             _require_current_authority(command, request)
@@ -250,7 +271,8 @@ class EffectAttemptStartService:
                 or intent_acknowledgement != intent_record
             ):
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
-            if stores.effect_attempts._insert_absent(result.attempt) != result.attempt:
+            expected_attempt = result.attempt
+            if stores.effect_attempts._insert_absent(expected_attempt) != expected_attempt:
                 raise EffectAttemptStartConflict(_SERIALIZATION_ERROR)
             if health_write is not None:
                 result = retain_health_start(unit_of_work, health_write, result)
@@ -260,7 +282,7 @@ class EffectAttemptStartService:
                     compensation=event_kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
                 if (stores.execution.get_event(event.event_id) != event
                         or stores.effect_attempt_intents.get(intent_record.identity) != intent_record
-                        or stores.effect_attempts.get(result.attempt.state.identity) != result.attempt):
+                        or stores.effect_attempts.get(expected_attempt.state.identity) != expected_attempt):
                     raise ValueError("persisted start changed")
             except (KeyError, ValueError, TypeError, AttributeError):
                 permission_failed = True

@@ -40,6 +40,7 @@ from tests.health_receiver_trust_fixture import bindings, ByteDecoder, context a
 
 class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAttemptStartFixture):
     def setUp(self):
+        self._health_context_options = {}
         PostgresEffectAttemptStartFixture.setUp(self)
         self.seed_ready_health()
 
@@ -53,7 +54,14 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
         return health_receiver_trust.HealthReceiverDecoders(bindings(health_receiver_trust,
             self.receiver_documents, ByteDecoder(health_receiver_trust)))
 
-    def seed_ready_health(self, **context_options):
+    def seed_execution_request(self):
+        # Recorded health-owner premise, including malformed-byte negatives.
+        # Originals and coverage are constructed once, before any request/run.
+        from tests.receiver_scope_history_fixture import insert_recorded_request
+        self._seed_original_health(**self._health_context_options)
+        insert_recorded_request(self.connection, requested_at="2026-08-15T03:59:00Z")
+
+    def _seed_original_health(self, **context_options):
         self.health_plan, self.health_activity, current, desired, _ = self.health_context(**context_options)
         self.assertTrue(self.health_plan.ready_for_execution)
         self.projections = {}
@@ -82,6 +90,16 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
                 (requirement.required_scope.value, requirement.max_risk.value, requirement.destructive))
             uow.stores.connection.execute("UPDATE cpk_approval_decisions SET scope=%s WHERE decision_id='approval-decision-a'",
                 (requirement.required_scope.value,))
+            uow.stores.connection.execute("""UPDATE cpk_workspaces
+                SET current_graph_id='health-base', current_realized_projection_id=%s,
+                    desired_graph_id='health-desired', desired_realized_projection_id=%s
+                WHERE workspace_id='workspace-a'""",
+                (self.projections["health-base"].projection_id,
+                 self.projections["health-desired"].projection_id))
+            uow.commit()
+
+    def seed_ready_health(self):
+        with self.unit_of_work() as uow:
             events = list(uow.stores.execution.events_for_run("run-a"))
             # Seed successful predecessor history using the existing journal law;
             # never remove dependencies to force the health activity ready.
@@ -108,8 +126,9 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
         self.assertEqual(self.health_counts(), (0, 0, 0, 0))
 
     def reset_health(self, **context_options):
+        self._health_context_options = context_options
         PostgresEffectAttemptStartFixture.reset_start_truth(self)
-        self.seed_ready_health(**context_options)
+        self.seed_ready_health()
 
     def seed_health_registrations(self):
         service = SecretProviderRegistrationService(self.unit_of_work)

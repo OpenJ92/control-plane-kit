@@ -112,13 +112,24 @@ class PostgresExecutionLeaseRecoveryFixture:
             )
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(self.connection.close)
         install_schema(self.connection)
+        # Registered only after schema acceptance; never repair a failed schema.
+        self.addCleanup(self._cleanup_fixture_rows)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
 
     def tearDown(self) -> None:
-        if not self.connection.closed:
-            self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
-            self.connection.close()
+        try:
+            self._cleanup_fixture_rows()
+        finally:
+            connection = getattr(self, "connection", None)
+            if connection is not None:
+                connection.close()
+
+    def _cleanup_fixture_rows(self) -> None:
+        connection = getattr(self, "connection", None)
+        if connection is not None and not connection.closed:
+            connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
 
     def require_service(self) -> None:
         self.assertIsNotNone(

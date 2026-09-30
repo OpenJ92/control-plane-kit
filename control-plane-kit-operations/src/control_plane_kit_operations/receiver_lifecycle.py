@@ -260,11 +260,15 @@ def _validate_receiver_execution_approval(stores, request):
     _require(decision is not None and decision.decision is ApprovalDecisionKind.APPROVED
              and decision.decision_id == request.approval_decision_id
              and decision.request_id == request.approval_request_id
-             and decision.scope is approval.required_scope
-             and approval.session_id == request.identity.session_id)
+             and decision.scope is approval.required_scope)
     subject = approval.subject
-    _require((type(subject) is ActivityPlanApprovalSubject and subject.plan_id == request.identity.plan_id)
-             or type(subject) is GatewayKeyRotationApprovalSubject)
+    if type(subject) is ActivityPlanApprovalSubject:
+        _require(subject.plan_id == request.identity.plan_id
+                 and approval.session_id == request.identity.session_id)
+    else:
+        _require(type(subject) is GatewayKeyRotationApprovalSubject)
+        from control_plane_kit_operations._gateway_child_association import _require_retained_gateway_child
+        _require_retained_gateway_child(stores, request, approval, decision)
 
 
 def _require(condition):
