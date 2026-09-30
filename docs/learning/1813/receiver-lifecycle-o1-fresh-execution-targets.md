@@ -1,10 +1,10 @@
 # O1.C3 fresh execution and acceptance targets
 
-Status: the completed hosted gate at `32683342` failed (2,095 tests, one failure,
-one error). North released the bounded test/inventory correction described at
-the end of this record. Local correction source awaits exact delta review and a
-separate publication/run release; C3 acceptance, joint and live/adoption remain
-held. Selected base
+Status: C3/#1904 is accepted and merged at `eaa47463` after the full 2,095-test
+green gate, compilation/import and independent review. Joint B+C remains held
+for one additional prescribed admission-versus-selection race pair. North
+released that test-only correction; this local target checkpoint awaits exact
+review and a separate publication/run decision. The original C3 selected base
 is C2 merge `1d09c78d6598b4102c5c39012687f6ae9ec4d163`, containing B `a1ce6fc9`
 and C1 `89dd5229`. Governing issue is #1904; branch
 `codex/1904-receiver-execution-targets` targets
@@ -830,3 +830,69 @@ schema, transaction, authorization or history semantics change. Static checks
 and exact successor delta review precede a separate publication/run decision.
 There is no new executable green evidence, merge, downstream/live acceptance,
 automatic retry or provider effect. Actual accepted A→B→C remains with #1912.
+
+### C3 accepted; joint admission/selection schedule closure
+
+The reviewed maintenance head `5b2e00867c1ad50f838d7546d967051ea2bc5fd7`
+passed the sole [Operations run 36737073611 / job 109961467171](https://github.com/OpenJ92/control-plane-kit/actions/runs/36737073611/job/109961467171):
+**2,095 tests in 2,578.823 seconds, OK**, compilation and clean import.
+Actual CI checkout `975d1dea144d034855f14c1570d72a28234cef71` has tree
+`90854a89ff69e631964bc87a9291e2c5ac75b3bf`, accepted C2/head parents and
+architecture `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`. Integrity was
+2,075 authored methods/four mocks/zero approved skips. The full 583,248-byte
+log SHA256 is `b0c4807d55ae77acdf81b906847c6783167d3732b5d98b9c486eb05e87c77a95`.
+Core passed 907 tests, integrity/compilation/import; locked Backend passed.
+[Complete evidence](https://github.com/OpenJ92/control-plane-kit/pull/1908#issuecomment-5915187154),
+[Meridian verified PASS](https://github.com/OpenJ92/control-plane-kit/pull/1908#issuecomment-5915213433)
+and [Kepler architecture handoff](https://github.com/OpenJ92/control-plane-kit/pull/1908#issuecomment-5915225050)
+preceded North's C3 merge at `eaa4746334124fafc2ef794a29013b63b2fbeb8c`.
+The merge has exactly the green tree and introduces no new source delta.
+C3/#1904 is accepted under its revised child contract.
+
+Joint matrix review of B/C found one additional prescribed evidence gap:
+actual execution admission versus receiver selection/scope check in both
+winner orders. Existing admission lock-prefix and sequential queued-conflict
+tests do not compose both owners; native-start races begin after admission.
+Meridian and Kepler independently held joint acceptance for this narrow gap,
+without finding a production defect or reversing the C3 child result.
+
+[North released the test-only pair](https://github.com/OpenJ92/control-plane-kit/issues/1898#issuecomment-5915387033)
+on `codex/1898-admission-selection-races` from the accepted collection.
+The two new methods in `test_receiver_fresh_execution_schedules.py` are
+**strengthened** evidence for the existing #1898 law. They reuse the valid
+node-only approved plan with no request, preconstruct the original execution
+and five-pin graph commands, and reuse the existing real PostgreSQL opposing
+owner barrier. Distinct command keys ensure the contested lock is L.
+
+Admission first commits its exact queued request, derived scope header/rows
+and actual action; waiting receiver selection must see this new conflict and
+leave graph/pointer/origin truth unchanged. Selection first commits its real
+graph/projection/action/introduction/bindings and desired generation; waiting
+original-plan admission must refuse stale truth before allocating an execution
+identity. Full snapshots preserve every prior row, allowing only explicitly
+verified winner rows and the exact winning desired-pointer delta. Both retain
+original plan/approval records and prove no run/attempt/intent creation. Existing
+native-start schedules are unchanged; no pre-admitted fixture replaces the
+RequestPlanExecution owner.
+
+This local target checkpoint has static inspection and `git diff --check`
+only. No synthetic causal-red is claimed for existing implemented behavior.
+Exact test-integrity/architecture review precedes North's publication and
+ordinary full owning-run decision. No production, schema, permissions,
+transaction, provider or history semantics change; scheduling witnesses alter
+neither owner SQL nor service results. No new fixture state machine or issue
+topology is introduced.
+
+Same-tree 2,095-test evidence remains valid for existing combined laws but does
+not cover the absent pair. PR1901 automatic checks are observed separately.
+Locked Backend uses CPK `f45384e72a79f59c93a715fd08f409f86a91218a`; it is baseline
+composition, not receiver adoption. Joint B/C acceptance, D, #1912 actual accepted
+A→B→C, O2 health, downstream/live and foundation closeout remain distinct holds.
+
+Exact target review at `eb62f544d92d6549695c74c4ff031e2679c09bec` found
+one constructor-reachability defect: both admission service constructors omitted
+the required clock. The successor supplies the existing admission fixture's
+`2026-07-22T12:04:00Z` clock at both calls, preserving their worker UoW factories,
+ID allocators and scheduling/state assertions. Meridian identified no other
+blocker; Kepler passed the two-order semantic shape. Exact delta review remains
+required before publication or executable validation.
