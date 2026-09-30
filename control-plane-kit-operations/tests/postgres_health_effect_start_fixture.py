@@ -62,9 +62,12 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
             for index, (name, graph) in enumerate((("health-base", current.graph), ("health-desired", desired.graph)), 3):
                 authored = GraphVersionRecord.from_graph(graph_id=name, workspace_id="workspace-a", version=index,
                     graph=graph, created_by="operator-a", created_at="2026-08-15T03:55:00Z")
-                uow.stores.graphs.save(authored)
+                # Retained health-history premise, including deliberately
+                # invalid selected slots. Public C2 authoring must refuse it;
+                # health admission below still owns the negative assertion.
+                uow.stores.graphs._save(authored)
                 projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=authored)
-                uow.stores.realized_graphs.save(projection)
+                uow.stores.realized_graphs._save(projection)
                 self.projections[name] = projection
             # Seed construction is not the mutation/admission under test. Keep all
             # compiled dependencies, and update the complete approval risk tuple.

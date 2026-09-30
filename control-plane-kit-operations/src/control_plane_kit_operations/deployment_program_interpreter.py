@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
 
 from control_plane_kit_core.policies import ApprovalPolicy, InstanceAccessPolicy
 from control_plane_kit_core.topology import (
@@ -114,9 +116,7 @@ class DeploymentProgram:
             )
             session_id = session_result.session.session_id
             expected_desired = command.expected_desired
-            desired_result = _execute_state(
-                self._desired_graphs,
-                SetDesiredGraph(
+            child = SetDesiredGraph(
                     session_id=session_id,
                     workspace_id=command.context.workspace_id,
                     actor_id=command.context.actor_id,
@@ -136,7 +136,30 @@ class DeploymentProgram:
                     ),
                     idempotency_key=keys["desired"],
                     proposed_graph_id=command.proposed_graph_id,
-                ),
+                )
+            old_receipt = False
+            if getattr(session_result, "replayed", False):
+                receipt = self._desired_graphs._retained_child_action(session_id, keys["desired"].value)
+                if (receipt is not None and receipt.payload.get("workspace_id") == command.context.workspace_id
+                        and "receiver_lifecycle" not in receipt.payload):
+                    # This exact old owned receipt selects its original bytes.
+                    # execute still proves its fingerprint and retained graph;
+                    # fresh refusal is never retried with omitted expectations.
+                    old_receipt = True
+            if not old_receipt:
+                try:
+                    expectation = ReceiverLifecycleExpectation(
+                        command.expected_current.authored_graph_id,
+                        command.expected_current.realized_projection_id,
+                        None if expected_desired is None else expected_desired.authored_graph_id,
+                        None if expected_desired is None else expected_desired.realized_projection_id,
+                        command.expected_desired_graph_revision)
+                except ValueError:
+                    raise DeploymentProgramStateConflict("receiver expectation is malformed") from None
+                child = replace(child, receiver_lifecycle=expectation)
+            desired_result = _execute_state(
+                self._desired_graphs,
+                child,
                 DesiredGraphCommandError,
             )
             desired_graph_id = desired_result.graph_version_id

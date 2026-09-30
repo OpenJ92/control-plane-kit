@@ -579,7 +579,8 @@ class CpkServerPlanningService:
                 command = SelectDesiredTopologyDraft(**arguments, revision=_draft_revision(values),
                     expected_desired_graph_id=_optional_text(values, "expected_desired_graph_id"),
                     expected_desired_realized_projection_id=_optional_text(values, "expected_desired_realized_projection_id"),
-                    expected_desired_graph_revision=_nonnegative_integer(values, "expected_desired_graph_revision"))
+                    expected_desired_graph_revision=_nonnegative_integer(values, "expected_desired_graph_revision"),
+                    receiver_lifecycle=_receiver_expectation(values))
             else:
                 command = DeleteDesiredTopologyDraft(**arguments,
                     expected_head_revision=_positive_int(values, "expected_head_revision", default=0))
@@ -598,7 +599,8 @@ class CpkServerPlanningService:
             except (ValueError, TypeError, KeyError):
                 raise CpkServerApplicationError(400, "draft graph is malformed") from None
             arguments = dict(context=context, session_id=_text(values, "session_id"), graph=graph,
-                             idempotency_key=_draft_idempotency_key(values))
+                             idempotency_key=_draft_idempotency_key(values),
+                             receiver_lifecycle=_receiver_expectation(values))
             if request.route_id.endswith(".create"):
                 command = CreateDesiredTopologyDraft(**arguments, title=values.get("title"))
             else:
@@ -846,6 +848,7 @@ class CpkServerPlanningService:
                     actor_id=context.actor_id,
                     graph=graph,
                     proposed_graph_id=_optional_text(payload, "proposed_graph_id"),
+                    receiver_lifecycle=_receiver_expectation(payload),
                     expected_desired_graph_id=_optional_text(
                         payload,
                         "expected_desired_graph_id",
@@ -2040,6 +2043,20 @@ def _text_tuple(
             f"{name} must be a nonempty bounded list of text",
         )
     return tuple(value)
+
+
+def _receiver_expectation(values):
+    from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation
+    if "receiver_lifecycle" not in values:
+        return None
+    value = values["receiver_lifecycle"]
+    if type(value) is not dict or set(value) != {"current_graph_id", "current_realized_projection_id",
+            "desired_graph_id", "desired_realized_projection_id", "desired_graph_revision"}:
+        raise CpkServerApplicationError(400, "receiver expectation is malformed")
+    try:
+        return ReceiverLifecycleExpectation(**value)
+    except (TypeError, ValueError):
+        raise CpkServerApplicationError(400, "receiver expectation is malformed") from None
 
 
 def _draft_idempotency_key(values: Mapping[str, object]) -> IdempotencyKey:

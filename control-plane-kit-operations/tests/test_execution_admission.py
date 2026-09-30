@@ -125,6 +125,7 @@ class ExecutionAdmissionTests(LifecycleLockFixture, unittest.TestCase):
                 "./control-plane-kit-operations/test.sh so Docker starts Postgres."
             )
         self.connection = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(self.connection.close)
         install_schema(self.connection)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.document = ProductDescriptorCodec().encode_document(

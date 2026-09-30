@@ -130,6 +130,91 @@ class PostgresExecutionStore:
         from .receiver_execution_scopes import read_receiver_scope_evidence
         return read_receiver_scope_evidence(self._connection, workspace_id, requested_scopes, guard)
 
+    def _receiver_acceptance_evidence(self, origins):
+        """Read original acceptance facts; current membership is graph-owned.
+
+        One bounded C1 reader accounts for the entire requested receipt set.
+        This neither locks requests/runs nor mutates or renews any permission.
+        """
+        from dataclasses import replace
+        from .receiver_execution_scopes import _ExecutionScopeStorage, _ACTION, _columns, _decode
+        from .activity_history import _action_record
+        from .receiver_lifecycle_store import _BIND_COLUMNS
+        from .temporal import decode_postgres_cursor_timestamp
+        from control_plane_kit_operations.advancement import _require_complete_success
+        from control_plane_kit_operations.revision_history import historical_advancement
+        from control_plane_kit_operations.receiver_lifecycle import (
+            ReceiverBinding, ReceiverLifecycleStorageError, _require, _receiver_scope, _text,
+            derive_receiver_bindings,
+        )
+
+        reader = _ExecutionScopeStorage(self._connection)
+        receipts, requests, result = {}, {}, []
+        try:
+            for origin in origins:
+                key = (origin.workspace_id, origin.first_accepted_session_id, origin.first_accepted_action_id)
+                _require(all(type(value) is str and value for value in key))
+                if key not in receipts:
+                    rows = reader.transport.read("cpk_operation_actions", _columns(_ACTION,
+                        json_columns=("payload",), ceilings={"payload": 65536}),
+                        "action_id=%s AND session_id=%s", (key[2], key[1]), point=True, cache=True)
+                    _require(len(rows) == 1)
+                    action = _action_record(_decode(rows[0], _ACTION, json_columns=("payload",),
+                        int_columns=("ordinal",), time_columns=("created_at",)))
+                    payload = action.payload
+                    request_id, run_id = payload["execution_request_id"], payload["run_id"]
+                    for locator in (request_id, run_id, payload["plan_id"]):
+                        _text(locator)
+                    request_key = (origin.workspace_id, request_id)
+                    if request_key not in requests:
+                        request = reader.request(*request_key)
+                        original, _ = reader.verify(request.identity)
+                        requests[request_key] = request, original, reader.runs(request)
+                    request, (plan, base, desired), runs = requests[request_key]
+                    _require(request.identity.session_id == action.session_id == origin.first_accepted_session_id
+                             and request.identity.plan_id == plan.plan_id == payload["plan_id"])
+                    matching = tuple(item for item in runs if item.run_id == run_id)
+                    _require(len(matching) == 1)
+                    run = matching[0]
+                    events = reader.events(run_id)
+                    _require(tuple(event.ordinal for event in events) == tuple(range(1, len(events) + 1))
+                             and len({event.event_id for event in events}) == len(events)
+                             and all(event.run_id == run_id for event in events))
+                    accepted = tuple(event for event in events if event.kind is ActivityEventKind.CURRENT_GRAPH_ADVANCED)
+                    actions = reader.actions(action.session_id, run_id, "advance-current-graph")
+                    _require(len(accepted) == len(actions) == 1 and actions[0] == action)
+                    event = accepted[0]
+                    normalized_event = replace(event, occurred_at=decode_postgres_cursor_timestamp(
+                        encode_postgres_timestamp(event.occurred_at)))
+                    normalized_action = replace(action, created_at=decode_postgres_cursor_timestamp(
+                        encode_postgres_timestamp(action.created_at)))
+                    receipt = historical_advancement(workspace_id=origin.workspace_id,
+                        session_id=action.session_id, plan_id=plan.plan_id,
+                        plan=dict(base_graph_id=plan.base_graph_id, base_realized_projection_id=base.projection_id,
+                            desired_graph_id=plan.desired_graph_id, desired_realized_projection_id=desired.projection_id,
+                            desired_graph_revision=plan.desired_graph_revision),
+                        request_id=request_id, run_id=run_id, projection_digest=desired.projection_digest,
+                        events=(normalized_event,), actions=(normalized_action,))
+                    _require(receipt["state"] == "accepted")
+                    _require_complete_success(plan.plan, run,
+                        tuple(item for item in events if item.ordinal < event.ordinal))
+                    expected = derive_receiver_bindings(origin.workspace_id, desired.source_authored_graph_id,
+                        desired.projection_id, desired.graph_descriptor)
+                    _require(bool(expected))
+                    rows = reader.transport.read("cpk_graph_receiver_bindings", _columns(_BIND_COLUMNS),
+                        "workspace_id=%s AND graph_id=%s AND realized_projection_id=%s",
+                        (origin.workspace_id, desired.source_authored_graph_id, desired.projection_id),
+                        order="node_id,provider_socket_name", maximum=len(expected), cache=True)
+                    actual = tuple(ReceiverBinding(*_decode(row, _BIND_COLUMNS)) for row in rows)
+                    _require(actual == expected)
+                    receipts[key] = (action, event, plan, run, desired, actual)
+                facts = receipts[key]
+                _require(any(_receiver_scope(binding) == _receiver_scope(origin) for binding in facts[-1]))
+                result.append(facts)
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError):
+            raise ReceiverLifecycleStorageError("receiver acceptance evidence is unavailable") from None
+        return tuple(result)
+
     def lock_admission_idempotency(
         self,
         workspace_id: str,

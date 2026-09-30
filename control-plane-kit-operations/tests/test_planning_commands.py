@@ -1049,7 +1049,9 @@ class PlanningCommandTests(unittest.TestCase):
 
     def test_malformed_durable_graph_cannot_become_desired_truth(self) -> None:
         with self.unit_of_work() as unit_of_work:
-            unit_of_work.stores.graphs.save(
+            # Explicit corrupt retained-state premise. Public graph save now
+            # refuses unclassifiable material before it can reach a pointer.
+            unit_of_work.stores.graphs._save(
                 GraphVersionRecord(
                     graph_id="graph-invalid",
                     workspace_id="workspace-a",

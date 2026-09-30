@@ -437,8 +437,10 @@ class DeploymentProgramPreparationTests(unittest.TestCase):
         scenario = self.scenario("fresh-deployment")
         cases = (
             ("stale-desired", (1, 1, 1, 1)),
-            ("missing-current", (1, 2, 2, 2)),
-            ("malformed-current", (1, 2, 2, 2)),
+            # #1903 strengthens G1: original current admission precedes child
+            # graph/action publication, including unavailable retained material.
+            ("missing-current", (1, 1, 1, 1)),
+            ("malformed-current", (1, 1, 1, 1)),
         )
         for case, partial_counts in cases:
             with self.subTest(case=case):

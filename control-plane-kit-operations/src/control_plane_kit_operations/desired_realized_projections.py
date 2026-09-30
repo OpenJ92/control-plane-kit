@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 from typing import Any, Callable
@@ -15,6 +15,11 @@ from control_plane_kit_operations.records import (
     RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.workflows import IdempotencyKey, InvalidOperationCommand
+from control_plane_kit_operations.receiver_lifecycle import (
+    ReceiverLifecycleExpectation, ReceiverLifecycleStorageError, _expectation_member,
+    _receiver_action_payload, _receiver_replay_payload, _check_receiver_expectation,
+    _receiver_sources, _validate_receiver_admission, derive_receiver_bindings,
+)
 
 
 class DesiredRealizedProjectionPublicationError(RuntimeError):
@@ -47,6 +52,7 @@ class PublishDesiredRealizedProjection:
     source_operation_id: str
     source_operation_version: int
     idempotency_key: IdempotencyKey
+    receiver_lifecycle: ReceiverLifecycleExpectation | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         for value, field in (
@@ -87,6 +93,7 @@ class PublishDesiredRealizedProjection:
 
     def descriptor(self) -> dict[str, object]:
         return {
+            **_expectation_member(self.receiver_lifecycle),
             "command": (
                 OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION.value
             ),
@@ -227,7 +234,7 @@ def publish_desired_realized_projection_in_unit_of_work(
     history = stores.activity_history
     fingerprint = _fingerprint(command)
     if type(prepared) is ExistingPublication:
-        return _replay(stores, prepared.action, fingerprint)
+        return _replay(stores, prepared.action, fingerprint, command.receiver_lifecycle)
     if type(prepared) is not PreparedPublication:
         raise DesiredRealizedProjectionPublicationConflict("publication preparation is missing")
     prepared.require(unit_of_work, command.workspace_id, command.session_id,
@@ -237,7 +244,7 @@ def publish_desired_realized_projection_in_unit_of_work(
         command.idempotency_key.value,
     )
     if existing is not None:
-        return _replay(stores, existing, fingerprint)
+        return _replay(stores, existing, fingerprint, command.receiver_lifecycle)
     # Preparation already holds this exact session key. A caller may have
     # closed it within the same transaction, so consume current locked truth.
     try:
@@ -270,46 +277,71 @@ def publish_desired_realized_projection_in_unit_of_work(
         raise DesiredRealizedProjectionPublicationConflict(
             "workspace desired realized lineage changed"
         )
+    projection = command.projection
     try:
-        projection = stores.realized_graphs.save(command.projection)
-    except ValueError as error:
-        raise DesiredRealizedProjectionPublicationConflict(str(error)) from error
-    updated = stores.workspaces.compare_and_set_desired_projection(
-        command.workspace_id,
-        expected_authored_graph_id=command.expected_authored_graph_id,
-        expected_realized_projection_id=command.expected_realized_projection_id,
-        expected_revision=command.expected_desired_graph_revision,
-        replacement_realized_projection_id=projection.projection_id,
-    )
-    if updated is None:
-        raise DesiredRealizedProjectionPublicationConflict(
-            "workspace desired realized lineage changed concurrently"
-        )
+        retained = stores.realized_graphs._by_identity(
+            workspace_id=projection.workspace_id,
+            source_authored_graph_id=projection.source_authored_graph_id,
+            projection_kind=projection.projection_kind,
+            projection_key=projection.projection_key)
+        if retained is not None:
+            if retained.projection_digest != projection.projection_digest:
+                raise DesiredRealizedProjectionPublicationConflict(
+                    "realized projection identity is already bound to different material")
+            projection = retained
+        graph = stores.graphs.get(command.expected_authored_graph_id)
+        bindings = derive_receiver_bindings(command.workspace_id, graph.graph_id,
+            projection.projection_id, projection.graph_descriptor)
+        _validate_receiver_admission(stores, workspace, command.receiver_lifecycle, bindings, prepared.guard)
+        payload = _receiver_action_payload({
+            "workspace_id": command.workspace_id,
+            "authored_graph_id": command.expected_authored_graph_id,
+            "previous_realized_projection_id": command.expected_realized_projection_id,
+            "desired_realized_projection_id": projection.projection_id,
+            "desired_realized_projection_digest": projection.projection_digest,
+            "desired_graph_revision": workspace.desired_graph_revision + 1,
+            "projection_kind": projection.projection_kind.value,
+            "projection_key": projection.projection_key,
+            "source_operation_id": command.source_operation_id,
+            "source_operation_version": command.source_operation_version,
+        }, command.receiver_lifecycle)
+    except (ValueError, KeyError):
+        raise DesiredRealizedProjectionPublicationConflict("receiver publication admission is unavailable") from None
     action = OperationActionRecord(
         action_id=action_id,
         session_id=command.session_id,
         ordinal=stores.activity_history.next_action_ordinal(command.session_id),
         action_type=OperatorCommandKind.PUBLISH_DESIRED_REALIZED_PROJECTION,
         actor_id=command.actor_id,
-        payload={
-            "workspace_id": command.workspace_id,
-            "authored_graph_id": command.expected_authored_graph_id,
-            "previous_realized_projection_id": (
-                command.expected_realized_projection_id
-            ),
-            "desired_realized_projection_id": projection.projection_id,
-            "desired_realized_projection_digest": projection.projection_digest,
-            "desired_graph_revision": updated.desired_graph_revision,
-            "projection_kind": projection.projection_kind.value,
-            "projection_key": projection.projection_key,
-            "source_operation_id": command.source_operation_id,
-            "source_operation_version": command.source_operation_version,
-        },
+        payload=payload,
         created_at=created_at,
         idempotency_key=command.idempotency_key.value,
         intent_fingerprint=fingerprint,
     )
-    stores.activity_history.add_action(action)
+    try:
+        stored = stores.realized_graphs._save(projection)
+        if stored != projection:
+            raise DesiredRealizedProjectionPublicationConflict("publication projection identity changed")
+        stores.activity_history.add_action(action)
+        held = stores.workspaces.get_for_update(command.workspace_id)
+        if held != workspace:
+            raise DesiredRealizedProjectionPublicationConflict("workspace graph truth changed")
+        new_ids = _validate_receiver_admission(stores, held, command.receiver_lifecycle, bindings, prepared.guard)
+        stores.graphs._reserve_new_receiver_introductions(graph, projection,
+            action_id=action.action_id, session_id=action.session_id,
+            new_receiver_ids=new_ids, lifecycle_guard=prepared.guard)
+        stores.graphs._persist_receiver_bindings(graph, projection, lifecycle_guard=prepared.guard)
+        _receiver_sources(stores, held)
+        _check_receiver_expectation(stores.workspaces.get_for_update(command.workspace_id), command.receiver_lifecycle)
+        updated = stores.workspaces._compare_and_set_desired_projection(
+            command.workspace_id, expected_authored_graph_id=command.expected_authored_graph_id,
+            expected_realized_projection_id=command.expected_realized_projection_id,
+            expected_revision=command.expected_desired_graph_revision,
+            replacement_realized_projection_id=projection.projection_id)
+        if updated is None:
+            raise DesiredRealizedProjectionPublicationConflict("workspace desired realized lineage changed concurrently")
+    except ValueError:
+        raise DesiredRealizedProjectionPublicationConflict("receiver publication admission is unavailable") from None
     return DesiredRealizedProjectionPublicationResult(
         workspace_id=command.workspace_id,
         authored_graph_id=command.expected_authored_graph_id,
@@ -356,6 +388,7 @@ def _replay(
     stores: Any,
     action: OperationActionRecord,
     fingerprint: str,
+    expectation=None,
 ) -> DesiredRealizedProjectionPublicationResult:
     if (
         action.action_type
@@ -366,6 +399,14 @@ def _replay(
             "idempotency key was already used for different projection intent"
         )
     evidence = action.payload
+    try:
+        _receiver_replay_payload(evidence, expectation, {
+            "workspace_id", "authored_graph_id", "previous_realized_projection_id",
+            "desired_realized_projection_id", "desired_realized_projection_digest", "desired_graph_revision",
+            "projection_kind", "projection_key", "source_operation_id", "source_operation_version",
+        })
+    except (ValueError, TypeError):
+        raise DesiredRealizedProjectionPublicationConflict("publication replay evidence is malformed") from None
     required_text = (
         "workspace_id",
         "authored_graph_id",

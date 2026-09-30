@@ -13,6 +13,7 @@ from control_plane_kit_operations.graph_authoring import product_references_in_g
 from control_plane_kit_operations.products import RegisteredProductStatus
 from control_plane_kit_operations.records import RealizedGraphProjectionRecord, SavedPreparationSourceRecord
 from control_plane_kit_operations.workflows import IdempotencyKey, OperationCommandError, StartOperationSession, _fingerprint
+from control_plane_kit_operations.receiver_lifecycle import _validate_receiver_reference
 
 
 class SavedPreparationError(ValueError):
@@ -148,6 +149,9 @@ class SavedDeploymentPreparationService:
                     or workspace.desired_graph_revision != command.expected_desired_graph_revision):
                     raise SavedPreparationError("saved preparation state is unavailable")
                 graph = _immutable_graphs(uow.stores, command)
+                _validate_receiver_reference(uow.stores, workspace,
+                    command.expected_desired.authored_graph_id, command.expected_desired.realized_projection_id,
+                    draft_head=(draft.draft_id, draft.head_revision))
                 for reference in product_references_in_graph(graph):
                     if uow.stores.registered_products.get(command.context.workspace_id, reference).status is not RegisteredProductStatus.ACTIVE:
                         raise SavedPreparationError("saved preparation state is unavailable")
