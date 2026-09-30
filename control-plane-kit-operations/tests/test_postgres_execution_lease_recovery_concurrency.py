@@ -331,7 +331,7 @@ class PostgresExecutionLeaseRecoveryConcurrencyTests(
                     loser_kind=loser_kind,
                     case=case,
                     approval_subject=(
-                        "gateway-rotation"
+                        "gateway-key-rotation"
                         if case in gateway_approval_cases
                         else "activity-plan"
                     ),

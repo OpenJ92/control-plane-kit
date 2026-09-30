@@ -777,3 +777,14 @@ Residual risks are the unvalidated correction, database/payload work outside
 the row bound, and the explicit transfer of managed-update acceptance. No
 merge, joint/live acceptance, tunnel, DNS, token or image effect is released by
 this local correction.
+
+Independent static review of `f059dd47e27da42b094a54d2755092391734bf76`
+(tree `a1b441d43ed8e18ebc6de3602405d78382d508ed`) found one fixture
+reachability blocker: both gateway abandonment/takeover race schedules used
+`gateway-rotation`, while authentic setup accepts `gateway-key-rotation`.
+The successor corrects that shared caller to the canonical discriminator;
+both schedules and all winner/loser assertions remain. Meridian found no
+additional blocker. Kepler passed the bounded association/proof review at
+that checkpoint. The one-line fixture correction and this record require
+delta review before North's publication/run decision; neither static review
+supplies executable acceptance.
