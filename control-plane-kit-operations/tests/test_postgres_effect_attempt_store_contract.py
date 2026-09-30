@@ -339,7 +339,7 @@ class PostgresEffectAttemptStoreContractTests(
         self.require_store()
         record = self.record()
         connection = _RecordingConnection()
-        self.assertIsNone(EffectAttemptStore(connection).insert_absent(record))
+        self.assertIsNone(EffectAttemptStore(connection)._insert_absent(record))
         query = " ".join(str(connection.calls[0][0]).split())
         self.assertIn(
             "ON CONFLICT (run_id, activity_id, attempt) DO NOTHING",
@@ -348,7 +348,7 @@ class PostgresEffectAttemptStoreContractTests(
 
         integrity = UniqueViolation("event-role-canary")
         with self.assertRaises(UniqueViolation) as caught:
-            EffectAttemptStore(_FailingConnection(integrity)).insert_absent(record)
+            EffectAttemptStore(_FailingConnection(integrity))._insert_absent(record)
         self.assertIs(caught.exception, integrity)
 
     def test_unexpected_sql_errors_escape_with_identity(self) -> None:

@@ -168,7 +168,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
         connection = _RecordingConnection()
         store = EffectAttemptIntentStore(connection)
 
-        self.assertEqual(store.insert(record), record)
+        self.assertEqual(store._insert(record), record)
         insert_query = " ".join(str(connection.calls[0][0]).split())
         self.assertIn("INSERT INTO cpk_effect_attempt_intents", insert_query)
         self.assertNotIn("ON CONFLICT", insert_query)
@@ -222,6 +222,7 @@ class PostgresEffectAttemptIntentStoreContractTests(
                 "control_plane_kit_core.operations",
                 "control_plane_kit_operations.effect_attempt_intent_evidence",
                 "control_plane_kit_operations.records",
+                "receiver_execution_scopes",
             },
         )
         forbidden = {

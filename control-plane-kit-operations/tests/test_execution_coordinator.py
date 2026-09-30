@@ -1628,6 +1628,7 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             WHERE plan_id = 'plan-a'
             """
         ).fetchone()[0]
+        self.claim_and_start()
         self.connection.execute(
             """
             UPDATE cpk_activity_plans
@@ -1638,7 +1639,6 @@ class ExecutionCoordinatorTests(unittest.TestCase):
             (desired_projection.projection_id,),
         )
         try:
-            self.claim_and_start()
             adapter = RecordingAdapter(
                 self.tracker,
                 ActivityExecutionOutcome.succeeded(),

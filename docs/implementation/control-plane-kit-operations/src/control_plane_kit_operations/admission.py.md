@@ -16,3 +16,9 @@ derivation does not reinterpret publication evidence as a planning-request actio
 Direct and pre-effect management transport guards remain in their existing
 owners. No provider effects, secret delivery, historical rewrite or rollout is
 introduced by this provenance prerequisite.
+
+Gateway child admission shares stable original review/approval/action and
+publication association checks with the private gateway child association owner.
+This service still locks the rotation and requires its current admitting phase,
+exact publication version and canonical projected child plan. Later execution
+consumes the original admitted association without rerunning that new-child policy.

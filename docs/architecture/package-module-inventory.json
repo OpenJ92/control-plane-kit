@@ -2,6 +2,39 @@
   "generated_from": "historical pre-extraction aggregate source snapshot; retained as architecture evidence and not current package ownership guidance",
   "modules": [
     {
+      "canonical_public_exports": [],
+      "destination": "control_plane_kit_operations._gateway_child_association",
+      "internal_dependencies": [
+        "control_plane_kit_core.approval_subjects",
+        "control_plane_kit_core.operations.commands",
+        "control_plane_kit_core.operations.lifecycle",
+        "control_plane_kit_core.planning",
+        "control_plane_kit_core.policies",
+        "control_plane_kit_operations.records"
+      ],
+      "known_package_consumers": [
+        "control_plane_kit_operations._execution_lease_recovery_support",
+        "control_plane_kit_operations.admission",
+        "control_plane_kit_operations.gateway_key_rotations",
+        "control_plane_kit_operations.receiver_lifecycle"
+      ],
+      "migration_prerequisites": [],
+      "module": "control_plane_kit_operations._gateway_child_association",
+      "motivation": "Shared stable parent approval and retained child association checks; fresh admission retains live phase/version policy at its owner.",
+      "movement": "remain",
+      "optional_external_dependencies": [],
+      "owner": "operation",
+      "protecting_tests": [
+        "tests/test_gateway_child_recovery_permissions.py",
+        "tests/test_gateway_key_rotation_overlap_admission.py",
+        "tests/test_gateway_key_rotation_overlap_program.py",
+        "tests/test_gateway_key_rotation_retirement_program.py"
+      ],
+      "role": "durable-control-plane-operation",
+      "semantic_roles": ["transformations"],
+      "source": "control-plane-kit-operations/src/control_plane_kit_operations/_gateway_child_association.py"
+    },
+    {
       "canonical_public_exports": [
         "ActivityDependency",
         "ActivityId",
@@ -10290,6 +10323,7 @@
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.planning",
+        "control_plane_kit_operations._gateway_child_association",
         "control_plane_kit_operations.activity_journal",
         "control_plane_kit_operations.activity_run_retry",
         "control_plane_kit_operations.execution_leases",

@@ -23,6 +23,7 @@ from control_plane_kit_operations.activity_run_retry import (
     RetryFailedActivityRun,
 )
 from control_plane_kit_operations.lifecycle import (
+    _require_receiver_execution_permission,
     RunLifecycleConflict,
     RunLifecycleDenied,
     RunLifecycleIdempotencyConflict,
@@ -85,6 +86,7 @@ class ActivityRunRetryCommandService:
                 unit_of_work.commit()
                 return result
 
+            guard = stores.graphs.lock_receiver_lifecycle(locator.identity.workspace_id)
             request = _request_for_update(stores, command.request_id)
             prior_run = _run_for_request_for_update(
                 stores, command.request_id, command.prior_run_id.value,
@@ -116,6 +118,7 @@ class ActivityRunRetryCommandService:
                 session.session_id,
             )
             _, _, plan = locked_recovery_approval(stores, request)
+            _require_receiver_execution_permission(stores, request, guard)
             require_recovery_eligible_journal(
                 RecoveryDecisionKind.RETRY_AS_NEW_RUN,
                 command.expected_fence,
@@ -143,7 +146,7 @@ class ActivityRunRetryCommandService:
                 event_ordinal=event_ordinal,
                 action_ordinal=action_ordinal,
             )
-            if stores.execution.add_run(result.run) != result.run:
+            if stores.execution._add_run(result.run) != result.run:
                 raise RunLifecycleConflict("retry record was not preserved")
             if stores.execution.add_event(result.decision_event) != result.decision_event:
                 raise RunLifecycleConflict("retry record was not preserved")
@@ -151,6 +154,8 @@ class ActivityRunRetryCommandService:
                 raise RunLifecycleConflict("retry record was not preserved")
             if history.add_action(result.action) != result.action:
                 raise RunLifecycleConflict("retry record was not preserved")
+            locked_recovery_approval(stores, request)
+            _require_receiver_execution_permission(stores, request, guard)
             unit_of_work.commit()
             return result
 

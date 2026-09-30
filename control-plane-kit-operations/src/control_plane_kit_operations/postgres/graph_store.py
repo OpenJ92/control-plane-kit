@@ -125,6 +125,18 @@ class PostgresWorkspaceStore:
         self._require_legacy_pointer_change(workspace_id, (
             (replacement_graph_id, replacement_realized_projection_id),
         ))
+        return self._compare_and_set_current_graph(workspace_id, expected_graph_id=expected_graph_id,
+            replacement_graph_id=replacement_graph_id,
+            expected_realized_projection_id=expected_realized_projection_id,
+            replacement_realized_projection_id=replacement_realized_projection_id,
+            expected_desired_graph_id=expected_desired_graph_id,
+            expected_desired_realized_projection_id=expected_desired_realized_projection_id,
+            expected_desired_graph_revision=expected_desired_graph_revision)
+
+    def _compare_and_set_current_graph(self, workspace_id, *, expected_graph_id,
+            replacement_graph_id, expected_realized_projection_id, replacement_realized_projection_id,
+            expected_desired_graph_id, expected_desired_realized_projection_id, expected_desired_graph_revision):
+        """Private advancement write, following complete owner validation."""
         try:
             expected_projection_id = self._projection_for_source(
                 workspace_id,

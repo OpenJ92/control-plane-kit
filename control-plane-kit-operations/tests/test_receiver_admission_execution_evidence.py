@@ -57,11 +57,24 @@ class ReceiverAdmissionExecutionEvidenceTests(ReceiverExecutionScopeFixture, uni
         self.admit()
         self.assert_refused("conflict", command)
 
-    def test_exact_no_dispatch_cancellation_still_requires_c3_fresh_gate_closure(self):
+    def test_exact_no_dispatch_cancellation_is_usable_by_closed_c3_consumer(self):
         command = self.receiver_command()
         self.admit()
-        self.cancel(self.claim())
-        self.assert_refused("requires-fresh-gate-closure", command)
+        cancelled = self.cancel(self.claim())
+        self.assertIsNotNone(cancelled.run.started_at)
+        module = self.require_scopes()
+        self.assertEqual(self.evidence(module.ExecutionReceiverScope("docker", "app")).disposition,
+                         "requires-fresh-gate-closure")
+        # #1904/C-N11 supersedes the staged C2 consumer refusal, not C1's
+        # historical proof disposition. All fresh/direct gate targets must pass.
+        result = self.desired_service().execute(command)
+        with self.unit_of_work() as uow:
+            origin = uow.stores.graphs.receiver_introduction("workspace-a", "a" * 32)
+            self.assertEqual(uow.stores.execution.get_event(cancelled.event.event_id), cancelled.event)
+            self.assertEqual(uow.stores.activity_history.action_for_idempotency(
+                "session-a", cancelled.action.idempotency_key), cancelled.action)
+        self.assertEqual(origin.introducing_action_id, result.action.action_id)
+        self.assertIsNone(origin.first_accepted_action_id)
 
     def test_unavailable_original_scope_evidence_refuses_without_partial_admission(self):
         command = self.receiver_command()

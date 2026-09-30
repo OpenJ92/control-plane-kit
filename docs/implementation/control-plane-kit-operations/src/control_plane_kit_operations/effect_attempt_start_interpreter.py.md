@@ -37,3 +37,16 @@ redispatch. #1846 must independently reload postcommit eligibility, including
 not-yet-valid or expired intervals, before signing or external effects.
 
 Operations1872 changes the shared coverage owner, not this transaction algorithm. health_receiver_decoders now carries gateway transit only; all workload/gateway own-health uses the registered and actually selected common Core configuration with an exact slot join. New conforming workloads require no decoder entry. Existing first-start ordering, ID/write atomicity, replay, clock, owner exception and uncertain-commit behavior remain unchanged. Empty transit composition still cannot authorize a fresh signed health operation.
+
+C3 also requires the fresh receiver lifecycle prefix and original material
+permission before and after writes. It compares the actual retained event,
+intent and native attempt before commit, retaining that native expectation
+before health wraps the returned value. An absent pre-lock locator that becomes
+present after locking restarts once outside the UoW, before IDs/writes, to follow
+ordinary exact replay. No arbitrary error or ambiguous mutation is retried.
+
+Health-specific read/check admission follows the held session/workspace prefix
+and precedes generic receiver semantic checks, preserving its selected-slot
+refusal contract. Its correlation locks do not introduce a late earlier lock.
+All receiver permission checks still precede lease observation, IDs and writes,
+and the final retained-record/receiver rereads remain mandatory.

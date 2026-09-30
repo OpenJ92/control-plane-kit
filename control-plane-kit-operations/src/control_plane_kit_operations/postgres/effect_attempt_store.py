@@ -74,6 +74,20 @@ class EffectAttemptStore:
         self,
         record: EffectAttemptRecord,
     ) -> EffectAttemptRecord | None:
+        from .effect_attempt_intent_store import EffectAttemptIntentStore
+        from .receiver_execution_scopes import _require_nonaffecting_intent
+        from control_plane_kit_operations.receiver_execution_scopes import ReceiverScopeUnavailable
+        _require_record(record)
+        try:
+            intent = EffectAttemptIntentStore(self._connection).get(record.state.identity)
+        except KeyError:
+            intent = None
+        if intent is None or intent.original_start_event != record.original_start_event:
+            raise ReceiverScopeUnavailable("receiver scope evidence is unavailable")
+        _require_nonaffecting_intent(self._connection, intent)
+        return self._insert_absent(record)
+
+    def _insert_absent(self, record: EffectAttemptRecord) -> EffectAttemptRecord | None:
         _require_record(record)
         row = self._connection.execute(
             f"""

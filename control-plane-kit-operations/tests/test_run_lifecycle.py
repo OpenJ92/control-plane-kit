@@ -229,13 +229,13 @@ from tests.lifecycle_lock_fixture import LifecycleLockFixture, REQUEST_LOCK, SES
 
 
 class RunLifecycleTests(LifecycleLockFixture, unittest.TestCase):
-    def test_first_claim_takes_request_before_session_without_lifecycle_guard(self):
+    def test_first_claim_holds_c3_lifecycle_guard_before_request_and_session(self):
         def execute(uow):
             return RunLifecycleCommandService(uow, clock=lambda: "2026-07-22T13:00:00Z",
                 id_factory=Sequence("run-lock", "event-lock", "action-lock")).execute(self.target_claim_command())
         with self.blocked_command(REQUEST_LOCK, ("request-a",), execute) as future:
             self.assert_row_lockable(SESSION_LOCK, ("session-a",))
-            self.assert_advisory_available("receiver-lifecycle:workspace-a", available=True)
+            self.assert_advisory_available("receiver-lifecycle:workspace-a", available=False)
         result = future.result(timeout=1)
         self.assertEqual(result.run.run_id, "run-lock")
         self.assertEqual(result.request.claim.generation, 1)
@@ -615,6 +615,8 @@ class RunLifecycleTests(LifecycleLockFixture, unittest.TestCase):
         for duration_seconds in (600, 601):
             with self.subTest(duration_seconds=duration_seconds):
                 with self.unit_of_work() as unit_of_work:
+                    # This WaitForHealthy request has empty receiver scope.
+                    # Its public conditional claim cannot manufacture replay.
                     retained = unit_of_work.stores.execution.claim_request(
                         "request-a",
                         "worker-a",
@@ -1255,7 +1257,7 @@ class RunLifecycleTests(LifecycleLockFixture, unittest.TestCase):
         self._insert_run("a", status=ActivityRunStatus.CANCELLED)
         with self.unit_of_work() as unit_of_work:
             store = unit_of_work.stores.execution
-            store.add_run(
+            store._add_run(
                 self._run_record(long_run_id, attempt=2, prior_run_id="a")
             )
             store.add_event(

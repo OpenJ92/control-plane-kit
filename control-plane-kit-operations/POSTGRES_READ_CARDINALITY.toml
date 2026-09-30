@@ -44,6 +44,14 @@ consumer = "InstanceReadService revision preparation and attempt history pages"
 
 [[read]]
 module = "control_plane_kit_operations.postgres.activity_history"
+selector = "PostgresActivityHistoryStore._projection_publication_actions"
+category = "fixed-cardinality"
+sql = "exact child session, publication action kind and desired projection; LIMIT 2 candidates; bounds rows and decoding count, not payload bytes or database scan/JSON work"
+consumer_kind = "production"
+consumer = "_gateway_child_association validates tenant ownership and exact original child publication; zero, malformed or ambiguous receipts refuse"
+
+[[read]]
+module = "control_plane_kit_operations.postgres.activity_history"
 selector = "PostgresActivityHistoryStore.overview_plans"
 category = "fixed-cardinality"
 sql = "workspace open-session and exact desired-lineage filters; LIMIT two eligible plans"

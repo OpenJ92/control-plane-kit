@@ -36,7 +36,7 @@ _CATEGORIES = frozenset(
 _CONSUMER_KINDS = frozenset({"production", "test-only"})
 _CATEGORY_COUNTS = {
     "public-paged": 17,
-    "fixed-cardinality": 8,
+    "fixed-cardinality": 9,
     "closed-finite": 2,
     "internal-complete": 24,
     "exact-verifier": 20,
@@ -204,8 +204,8 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
     def _assert_ast_discovery_has_stable_named_occurrence_identities(self) -> None:
         identities = _discover()
 
-        self.assertEqual(len(identities), 71)
-        self.assertEqual(len(set(identities)), 71)
+        self.assertEqual(len(identities), 72)
+        self.assertEqual(len(set(identities)), 72)
         grouped = defaultdict(list)
         for identity in identities:
             self.assertNotRegex(identity.module, r":\d+$")

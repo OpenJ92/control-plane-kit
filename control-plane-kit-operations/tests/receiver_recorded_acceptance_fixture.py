@@ -48,7 +48,7 @@ def record_accepted_current(case):
             lease_expires_at="2026-09-06T18:11:00Z")
         run = ActivityRunRecord("recorded-run", plan.plan_id, AdmittedRun("recorded-request"), RetryIdentity(1),
             ActivityRunStatus.SUCCEEDED, at, started_at=at, settled_at=at)
-        stores.execution.add_run(run)
+        stores.execution._add_run(run)
         journal = tuple(ActivityEventRecord("recorded-event-" + str(ordinal), run.run_id, ordinal, kind, at)
             for ordinal, kind in enumerate((ActivityEventKind.RUN_OPENED, ActivityEventKind.RUN_STARTED,
                                             ActivityEventKind.RUN_SUCCEEDED), 1))

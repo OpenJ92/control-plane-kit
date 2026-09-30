@@ -1064,17 +1064,8 @@ def gateway_key_rotation_approval_subject(
 
     if not isinstance(rotation, GatewayKeyRotation):
         raise TypeError("rotation approval subject requires GatewayKeyRotation")
-    return GatewayKeyRotationApprovalSubject(
-        rotation_id=rotation.rotation_id,
-        workspace_id=rotation.workspace_id,
-        gateway_node_id=rotation.gateway_node_id,
-        purpose=rotation.purpose,
-        issuer=rotation.issuer,
-        old_key_id=rotation.old_key_id,
-        maximum_grant_lifetime_seconds=rotation.maximum_grant_lifetime_seconds,
-        clock_skew_seconds=rotation.clock_skew_seconds,
-        rotation_intent_digest=rotation.intent_fingerprint,
-    )
+    from control_plane_kit_operations._gateway_child_association import _rotation_review_subject
+    return _rotation_review_subject(rotation)
 
 
 def _validate_approval_evidence(uow, current, command) -> None:

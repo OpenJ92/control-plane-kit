@@ -135,6 +135,66 @@ def derive_execution_receiver_scopes(identity, plan, base_projection, desired_pr
     raise ReceiverScopeUnavailable("receiver scope evidence is unavailable") from None
 
 
+def _effect_receiver_scope(identity, original, intent, *, compensation):
+    """Associate one actual intent with its immutable forward/inverse material."""
+    plan, base, desired = original
+    _require(intent.source.workspace_id == identity.workspace_id
+             and intent.source.request_id == identity.request_id
+             and intent.source.plan_id == plan.plan_id
+             and intent.source.base_graph_id == plan.base_graph_id
+             and intent.source.desired_graph_id == plan.desired_graph_id)
+    activity = plan.plan.activity(intent.activity_id)
+    if compensation:
+        inverse = activity.compensation
+        _require(type(inverse) is Compensate and intent.operation == inverse.operation)
+        material = base if inverse.material_source is CompensationMaterialSource.BASE_GRAPH else desired
+    else:
+        _require(intent.operation == activity.operation)
+        material = base if type(intent.operation) in _BASE_OPERATIONS else desired
+    graph = DEFAULT_GRAPH_CODEC.decode(material.graph_descriptor)
+    return _operation_scope(intent.operation, graph), graph, material
+
+
+def _validate_effect_receiver_material(identity, original, derived, intent, *, compensation):
+    """Receiver/coordinate proof, not a second runtime/secret translator."""
+    from dataclasses import replace
+    from control_plane_kit_operations.receiver_lifecycle import derive_receiver_bindings
+
+    scope, graph, projection = _effect_receiver_scope(identity, original, intent, compensation=compensation)
+    if scope is None:
+        return
+    _require(scope in derived.scopes)
+    _require(intent.runtime_kind is graph.runtimes[scope.runtime_id].kind)
+    _require(intent.authority_ref == graph.runtimes[scope.runtime_id].authority_ref)
+    for material in intent.products:
+        _require(material.node_id in graph.nodes)
+        node = graph.nodes[material.node_id]
+        _require(material.runtime_id == node.runtime_id == scope.runtime_id
+                 and (scope.node_id is None or material.node_id == scope.node_id))
+    bindings = derive_receiver_bindings(identity.workspace_id, projection.source_authored_graph_id,
+        projection.projection_id, projection.graph_descriptor)
+    relevant = tuple(item for item in bindings if item.runtime_id == scope.runtime_id
+                     and (scope.node_id is None or item.node_id == scope.node_id))
+    # Runtime operations have no product material. Their exact runtime target,
+    # kind and immutable coverage still include every node on that runtime.
+    if scope.node_id is None:
+        _require(not intent.products)
+        return
+    if relevant or intent.products:
+        _require(len(intent.products) == 1)
+        material, = intent.products
+        node = graph.nodes[scope.node_id]
+        _require(material.reference.identity.key == node.metadata.get("product_identity")
+                 and material.reference.descriptor_sha256.value == node.metadata.get("product_descriptor_digest"))
+        _require(material.product.runtime_contract.control_surfaces == node.block_spec.control_surfaces)
+        actual = replace(node, configuration_artifacts=material.product.runtime_contract.configuration_artifacts,
+            public_environment=material.public_environment, socket_environment=material.socket_environment)
+        candidate = replace(graph, nodes={**graph.nodes, scope.node_id: actual})
+        actual_bindings = derive_receiver_bindings(identity.workspace_id, projection.source_authored_graph_id,
+            projection.projection_id, DEFAULT_GRAPH_CODEC.encode(candidate))
+        _require(actual_bindings == bindings)
+
+
 def _derive(identity, plan, base_projection, desired_projection):
     _require(type(identity) is ExecutionRequestIdentity and type(plan) is ActivityPlanRecord)
     for value in (identity.workspace_id, identity.request_id, identity.session_id, identity.plan_id):

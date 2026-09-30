@@ -198,7 +198,11 @@ def _validate_receiver_admission(stores, workspace, expectation, proposed, guard
                            for item in retained + proposed}, key=lambda item: (item.runtime_id, item.node_id)))
     if scopes:
         evidence = stores.execution.receiver_scope_evidence(workspace.workspace_id, scopes, guard)
-        _require(classify_receiver_scope_evidence(evidence).disposition == "nonconflicting")
+        # C3 closes every fresh/direct execution path. The historical result
+        # stays unchanged; this consumer may now use its complete cancellation
+        # proof without a caller flag, ignored request or disposal policy.
+        _require(classify_receiver_scope_evidence(evidence).disposition in (
+            "nonconflicting", "requires-fresh-gate-closure"))
     return tuple(sorted(introduced))
 
 
@@ -207,6 +211,64 @@ def _validate_receiver_reference(stores, workspace, graph_id, projection_id, *, 
     for binding in _retained_receiver_material(stores, workspace.workspace_id, graph_id, projection_id):
         origin = _receiver_origin(stores, binding)
         _require(origin is not None and sources.get(binding.receiver_id) == origin)
+
+
+def _validate_receiver_execution(stores, request, guard):
+    """Check original execution against held current truth; return no grant.
+
+    The command owner enters L and its request/run/session prefix first. This
+    workspace suffix never asks whether the original work is nonconflicting:
+    that work may lawfully retain occupied scope while retrying or compensating.
+    """
+    from control_plane_kit_operations.records import OperationSessionStatus
+    _require(stores.execution.get_request(request.identity.request_id) == request)
+    session = stores.activity_history.get_session(request.identity.session_id)
+    _require(session.workspace_id == request.identity.workspace_id
+             and session.status is OperationSessionStatus.OPEN)
+    workspace = stores.workspaces.get_for_update(request.identity.workspace_id)
+    original, _ = stores.execution._receiver_execution_material(request.identity, guard)
+    plan, base, desired = original
+    _require((workspace.current_graph_id, workspace.current_realized_projection_id,
+              workspace.desired_graph_id, workspace.desired_realized_projection_id,
+              workspace.desired_graph_revision) ==
+             (plan.base_graph_id, base.projection_id, plan.desired_graph_id,
+              desired.projection_id, plan.desired_graph_revision))
+    # Legacy material remains legitimate. Receiver-bearing originals require
+    # complete retained binding sets and lawful, still-selected origins.
+    memberships = []
+    for item in (base, desired):
+        bindings = derive_receiver_bindings(workspace.workspace_id, item.source_authored_graph_id,
+            item.projection_id, item.graph_descriptor)
+        _require(stores.graphs.receiver_bindings(workspace.workspace_id,
+            item.source_authored_graph_id, item.projection_id) == bindings)
+        memberships.append(bindings)
+    if any(memberships):
+        for item in (base, desired):
+            _validate_receiver_reference(stores, workspace,
+                item.source_authored_graph_id, item.projection_id)
+
+
+def _validate_receiver_execution_approval(stores, request):
+    """Retain the exact original approval for owners without recovery checks."""
+    from control_plane_kit_core.approval_subjects import (
+        ActivityPlanApprovalSubject, GatewayKeyRotationApprovalSubject,
+    )
+    from control_plane_kit_operations.records import ApprovalDecisionKind
+
+    approval = stores.activity_history.get_approval_request(request.approval_request_id)
+    decision = stores.activity_history.approval_decision_for_request(approval.request_id)
+    _require(decision is not None and decision.decision is ApprovalDecisionKind.APPROVED
+             and decision.decision_id == request.approval_decision_id
+             and decision.request_id == request.approval_request_id
+             and decision.scope is approval.required_scope)
+    subject = approval.subject
+    if type(subject) is ActivityPlanApprovalSubject:
+        _require(subject.plan_id == request.identity.plan_id
+                 and approval.session_id == request.identity.session_id)
+    else:
+        _require(type(subject) is GatewayKeyRotationApprovalSubject)
+        from control_plane_kit_operations._gateway_child_association import _require_retained_gateway_child
+        _require_retained_gateway_child(stores, request, approval, decision)
 
 
 def _require(condition):

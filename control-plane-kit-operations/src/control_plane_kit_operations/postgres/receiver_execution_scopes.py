@@ -610,6 +610,20 @@ def read_receiver_scope_evidence(connection, workspace_id, requested_scopes, gua
         return ReceiverScopeEvidence("unavailable")
 
 
+def _require_nonaffecting_intent(connection, record):
+    from control_plane_kit_operations.receiver_execution_scopes import _effect_receiver_scope
+    from control_plane_kit_core.operations import ActivityEventKind
+    reader = _ExecutionScopeStorage(connection)
+    request = reader.request(record.workspace_id, record.request_id)
+    original, _ = reader.verify(request.identity)
+    rows = reader.transport.read("cpk_activity_runs", _columns(("request_id", "plan_id")),
+        "run_id=%s", (record.identity.run_id.value,), point=True)
+    _require(rows == ((request.identity.request_id, request.identity.plan_id),))
+    scope, _, _ = _effect_receiver_scope(request.identity, original, record.intent,
+        compensation=record.original_start_event.kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
+    _require(scope is None)
+
+
 def validate_current_rows(connection):
     """Walk every request with an independent whole-original per-request budget."""
     from control_plane_kit_operations.records import ExecutionRequestIdentity

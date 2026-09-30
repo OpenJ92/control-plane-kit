@@ -620,7 +620,7 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
     def test_cas_miss_is_categorical_and_rolls_back(self) -> None:
         self.require_service()
         for decision, method_name in (
-            (RecoveryDecisionKind.RENEW_EXPIRED_CLAIM, "rotate_request_claim"),
+            (RecoveryDecisionKind.RENEW_EXPIRED_CLAIM, "_rotate_request_claim"),
             (RecoveryDecisionKind.ABANDON_EXPIRED_CLAIM, "abandon_request_claim"),
         ):
             with self.subTest(decision=decision):
@@ -653,7 +653,7 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
                 injected = RuntimeError(f"{stage}-driver-canary")
                 original_event = PostgresExecutionStore.add_event
                 original_action = PostgresActivityHistoryStore.add_action
-                original_rotate = PostgresExecutionStore.rotate_request_claim
+                original_rotate = PostgresExecutionStore._rotate_request_claim
                 event_calls = 0
 
                 def rotate_claim(store, *args, **kwargs):
@@ -675,7 +675,7 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
                         raise injected
                     return original_action(store, action)
 
-                PostgresExecutionStore.rotate_request_claim = rotate_claim
+                PostgresExecutionStore._rotate_request_claim = rotate_claim
                 PostgresExecutionStore.add_event = add_event
                 PostgresActivityHistoryStore.add_action = add_action
                 try:
@@ -686,7 +686,7 @@ class PostgresExecutionLeaseRecoveryEligibilityErrorTests(
                             self.command(RecoveryDecisionKind.RENEW_EXPIRED_CLAIM)
                         )
                 finally:
-                    PostgresExecutionStore.rotate_request_claim = original_rotate
+                    PostgresExecutionStore._rotate_request_claim = original_rotate
                     PostgresExecutionStore.add_event = original_event
                     PostgresActivityHistoryStore.add_action = original_action
                 self.assertIs(captured.exception, injected)

@@ -366,12 +366,15 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             )
         self.database_url = database_url
         self.connection = psycopg.connect(database_url, autocommit=True)
+        self.addCleanup(self.connection.close)
         install_schema(self.connection)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
         self.seed_truth()
 
     def tearDown(self) -> None:
-        self.connection.close()
+        connection = getattr(self, "connection", None)
+        if connection is not None:
+            connection.close()
 
     def unit_of_work(self) -> PostgresUnitOfWork:
         return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
@@ -1387,7 +1390,7 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
     ) -> None:
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     "run-a",
                     "plan-a",
@@ -1506,7 +1509,7 @@ class CurrentGraphAdvancementTests(LifecycleLockFixture, unittest.TestCase):
             "claimed_at='2026-07-22T12:04:30Z', lease_expires_at='2026-07-22T12:14:30Z' WHERE request_id=%s", (request_id,))
         with self.unit_of_work() as unit_of_work:
             stores = unit_of_work.stores
-            stores.execution.add_run(
+            stores.execution._add_run(
                 ActivityRunRecord(
                     run_id,
                     plan_id,

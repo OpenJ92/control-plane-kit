@@ -128,7 +128,7 @@ class PostgresEffectAttemptSchemaTests(
                 )
                 self.add_record_events(stores, record)
                 self.add_record_intent(stores, record)
-                self.assertEqual(stores.effect_attempts.insert_absent(record), record)
+                self.assertEqual(stores.effect_attempts._insert_absent(record), record)
             unit_of_work.commit()
 
         target = "page-129-start"

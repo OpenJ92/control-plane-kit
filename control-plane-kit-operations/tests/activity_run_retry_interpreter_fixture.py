@@ -87,7 +87,7 @@ class PostgresActivityRunRetryFixture(PostgresExecutionLeaseRecoveryFixture):
         return RetryFailedActivityRun(
             request_id,
             RunId(prior_run_id),
-            expected_fence or ExecutionLeaseFence("worker-a", 7),
+            expected_fence or self.seeded_fence,
             RecoveryAuthority(actor_id, authority_reference, scopes),
             IdempotencyKey(key),
         )
@@ -123,7 +123,7 @@ class PostgresActivityRunRetryFixture(PostgresExecutionLeaseRecoveryFixture):
         from tests.receiver_scope_history_fixture import clone_recorded_request
         clone_recorded_request(self.connection, request_id="request-b", plan_id="plan-b", idempotency_key="execute-b")
         with self.unit_of_work() as unit_of_work:
-            unit_of_work.stores.execution.add_run(
+            unit_of_work.stores.execution._add_run(
                 ActivityRunRecord(
                     run_id,
                     "plan-b",
