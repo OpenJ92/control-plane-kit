@@ -3,10 +3,12 @@
 from dataclasses import replace
 import unittest
 
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.desired_realized_projections import (
     prepare_desired_realized_projection_publication, publish_desired_realized_projection_in_unit_of_work,
 )
 from control_plane_kit_operations.gateway_key_rotation_overlap import GatewayKeyRotationOverlapProjectionConflict
+from control_plane_kit_operations.records import RealizedGraphProjectionRecord
 from tests import test_gateway_key_rotation_overlap_projection as existing
 
 
@@ -34,7 +36,12 @@ class ReceiverGatewayPublicationFormatTests(unittest.TestCase):
             value = self.service()._publication_command(uow, command, prepared=prepared,
                 created_at="2026-08-02T02:00:00Z")
             original = uow.stores.realized_graphs.get("projection-a")
-            legacy = replace(original, projection_id="p" * 257, projection_key="legacy-reference")
+            legacy = RealizedGraphProjectionRecord.from_graph(projection_id="p" * 257,
+                workspace_id=original.workspace_id,
+                source_authored_graph_id=original.source_authored_graph_id,
+                projection_kind=original.projection_kind, projection_key="legacy-reference",
+                graph=DEFAULT_GRAPH_CODEC.decode(original.graph_descriptor),
+                created_by=original.created_by, created_at=original.created_at)
             uow.stores.realized_graphs.save(legacy)
             uow.stores.workspaces.set_current_graph("workspace-a", "graph-a", legacy.projection_id)
             workspace = uow.stores.workspaces.set_desired_graph("workspace-a", "graph-a", legacy.projection_id)

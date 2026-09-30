@@ -119,6 +119,8 @@ class ReceiverGraphAdmissionTests(ReceiverAdmissionFixture, unittest.TestCase):
         first = self.catalogue().execute(self.receiver_create())
         origin = self.introduction()
         omitted = self.catalogue().execute(self.receiver_revise(first, graph=DeploymentGraph("empty")))
+        # This helper requires the actual stored identity as well as empty B.
+        self.assertEqual(self.bindings_for_graph(omitted.graph_id), ())
         self.catalogue().execute(self.delete_command(omitted))
         self.assertEqual(self.introduction(), origin)
         self.assertIsNone(origin.retired_action_id)

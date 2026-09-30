@@ -487,7 +487,7 @@ class DesiredGraphCommandService:
                 }, command.receiver_lifecycle)
             except KeyError as error:
                 raise DesiredGraphWorkspaceNotFound("workspace was not found") from error
-            except ReceiverLifecycleStorageError:
+            except (ReceiverLifecycleStorageError, OperationsRecordError):
                 raise DesiredGraphCommandError("receiver graph admission is unavailable") from None
             except GraphAuthoringError as error:
                 if "stale desired graph" in str(error):
@@ -636,14 +636,6 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningGraphStateConflict(
                     "workspace graph pointers changed"
                 )
-            # This is service policy, not caller intent or execution authority.
-            try:
-                _validate_receiver_reference(unit_of_work.stores, workspace,
-                    command.expected_current_graph_id, expected_current_projection_id)
-                _validate_receiver_reference(unit_of_work.stores, workspace,
-                    command.expected_desired_graph_id, expected_desired_projection_id)
-            except (ValueError, KeyError):
-                raise ActivityPlanningError("receiver reference admission is unavailable") from None
             profile = PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1
             invalid_plan = False
             try:
@@ -663,6 +655,19 @@ class ActivityPlanningCommandService:
                 raise ActivityPlanningGraphInvalid(
                     "persisted graph pair cannot produce an activity plan"
                 )
+            # Preserve the graph owner's malformed-material classification.
+            # Receiver provenance is checked after pure derivation but before
+            # publishing any plan/action or granting execution authority.
+            invalid_receiver = False
+            try:
+                _validate_receiver_reference(unit_of_work.stores, workspace,
+                    command.expected_current_graph_id, expected_current_projection_id)
+                _validate_receiver_reference(unit_of_work.stores, workspace,
+                    command.expected_desired_graph_id, expected_desired_projection_id)
+            except (ValueError, KeyError):
+                invalid_receiver = True
+            if invalid_receiver:
+                raise ActivityPlanningError("receiver reference admission is unavailable")
             if runtime_management_planning_is_unsupported(
                 transition,
                 registered_products=unit_of_work.stores.registered_products.list_active(

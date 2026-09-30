@@ -3,12 +3,13 @@
 from dataclasses import replace
 import unittest
 
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_operations.deployment_program import PrepareDeploymentProgram
 from control_plane_kit_operations.deployment_program_interpreter import (
     DeploymentProgramStateConflict, _child_keys, _intent_digest,
 )
 from control_plane_kit_operations.planning import SetDesiredGraph
-from control_plane_kit_operations.records import RealizedGraphProjectionKind
+from control_plane_kit_operations.records import RealizedGraphProjectionKind, RealizedGraphProjectionRecord
 from control_plane_kit_operations.workflows import IdempotencyKey, StartOperationSession
 from tests.draft_catalogue_fixture import principal
 from tests.receiver_admission_fixture import ReceiverAdmissionFixture
@@ -20,9 +21,13 @@ class ReceiverAdmissionCompositionTests(ReceiverAdmissionFixture, unittest.TestC
         with self.unit_of_work() as uow:
             workspace = uow.stores.workspaces.get("workspace-a")
             original = uow.stores.realized_graphs.get(workspace.current_realized_projection_id)
-            legacy = replace(original, projection_id=legacy_id,
+            legacy = RealizedGraphProjectionRecord.from_graph(projection_id=legacy_id,
+                workspace_id=original.workspace_id,
+                source_authored_graph_id=original.source_authored_graph_id,
                 projection_kind=RealizedGraphProjectionKind.DELEGATION_VERIFIER,
-                projection_key="legacy-reference")
+                projection_key="legacy-reference",
+                graph=DEFAULT_GRAPH_CODEC.decode(original.graph_descriptor),
+                created_by=original.created_by, created_at=original.created_at)
             uow.stores.realized_graphs.save(legacy)
             uow.stores.workspaces.set_current_graph("workspace-a", original.source_authored_graph_id, legacy_id)
             uow.stores.workspaces.set_desired_graph("workspace-a", original.source_authored_graph_id, legacy_id)

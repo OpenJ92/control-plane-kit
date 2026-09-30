@@ -292,13 +292,15 @@ class DesiredTopologyDraftCommandService:
             head = None if creating else (command.draft_id, command.expected_head_revision)
             result = DesiredTopologyDraftResult(context.workspace_id, draft_id, revision, graph_id)
             try:
+                receiver_storage = bool(bindings or _receiver_sources(uow.stores, workspace, draft_head=head)[0])
                 _validate_receiver_admission(uow.stores, workspace, command.receiver_lifecycle,
                     bindings, guard, draft_head=head)
                 payload = _receiver_action_payload(result.descriptor(), command.receiver_lifecycle)
             except (ValueError, KeyError):
                 raise DesiredTopologyDraftError("receiver draft admission is unavailable") from None
             uow.stores.graphs._save(graph)
-            uow.stores.realized_graphs._save(projection)
+            if receiver_storage:
+                uow.stores.realized_graphs._save(projection)
             if creating:
                 store.create(DesiredTopologyDraftRecord(context.workspace_id, draft_id, command.title, 1, context.actor_id, now))
             saved_revision = DesiredTopologyDraftRevisionRecord(context.workspace_id, draft_id,
@@ -314,10 +316,13 @@ class DesiredTopologyDraftCommandService:
                     raise DesiredTopologyDraftConflict("workspace graph truth changed")
                 new_ids = _validate_receiver_admission(uow.stores, held, command.receiver_lifecycle,
                     bindings, guard, draft_head=head)
-                uow.stores.graphs._reserve_new_receiver_introductions(graph, projection,
-                    action_id=action_id, session_id=command.session_id, draft_id=draft_id,
-                    new_receiver_ids=new_ids, lifecycle_guard=guard)
-                uow.stores.graphs._persist_receiver_bindings(graph, projection, lifecycle_guard=guard)
+                if receiver_storage != bool(bindings or _receiver_sources(uow.stores, held, draft_head=head)[0]):
+                    raise ReceiverLifecycleStorageError("receiver draft material changed")
+                if receiver_storage:
+                    uow.stores.graphs._reserve_new_receiver_introductions(graph, projection,
+                        action_id=action_id, session_id=command.session_id, draft_id=draft_id,
+                        new_receiver_ids=new_ids, lifecycle_guard=guard)
+                    uow.stores.graphs._persist_receiver_bindings(graph, projection, lifecycle_guard=guard)
                 _receiver_sources(uow.stores, held, draft_head=head)
                 _check_receiver_expectation(uow.stores.workspaces.get_for_update(context.workspace_id),
                     command.receiver_lifecycle)

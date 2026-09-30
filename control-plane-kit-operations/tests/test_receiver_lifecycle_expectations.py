@@ -43,8 +43,11 @@ class ReceiverLifecycleExpectationTests(unittest.TestCase):
         value_type = self.value_type()
         for key in ("current_graph_id", "current_realized_projection_id",
                     "desired_graph_id", "desired_realized_projection_id"):
-            self.assertEqual(value_type(**(self.values() | {key: "x" * 256})).descriptor()[key], "x" * 256)
-            for malformed in ("", " ", "bad\nreference", "x" * 257, 42, True):
+            # Frozen Core authority-context graph/projection IDs use the
+            # 128-character identifier law, not generic 256-character references.
+            self.assertEqual(value_type(**(self.values() | {key: "x" * 128})).descriptor()[key], "x" * 128)
+            for malformed in ("", " ", "bad\nreference", "x" * 129, "x" * 256, "x" * 257,
+                              "graph:part", "graph/part", "secret=private", "https://private.invalid", 42, True):
                 with self.subTest(key=key, malformed=malformed), self.assertRaises(ValueError):
                     value_type(**(self.values() | {key: malformed}))
         for key in ("current_graph_id", "current_realized_projection_id"):

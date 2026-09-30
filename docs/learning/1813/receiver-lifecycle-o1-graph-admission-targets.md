@@ -259,7 +259,7 @@ admission credit.
 The [exact source review at `811d08e3`](https://github.com/OpenJ92/control-plane-kit/pull/1907#issuecomment-5903124811)
 requested two additional bounded corrections. Both parent/child composers now
 choose the exact old receipt before constructing the new expectation product;
-otherwise an old lawful reference outside the new 256-character language would
+otherwise an old lawful reference outside the new bounded identifier language would
 fail before replay. New tests cover old parent and gateway receipts with an
 actual 257-character projection reference and fresh-call refusal. The deliberate
 malformed-history predecessor fixture uses private storage to establish its
@@ -273,5 +273,58 @@ only original evidence and allocate no fresh intent. Failures roll back all
 durable changes, including late action/binding hooks and losing head changes.
 No compensation, migration, backfill or pruning is introduced. Finite C1
 budgets may refuse large histories; database internal scan work remains
-unbounded by those transport limits. The source checkpoint is unvalidated;
-North owns staging after ordinary green and independent final review.
+unbounded by those transport limits. North owns staging after ordinary green
+and independent final review.
+
+## First source gate and bounded corrections
+
+The [hosted Operations gate at `c8ecccf2`](https://github.com/OpenJ92/control-plane-kit/actions/runs/36662364330/job/109719684054)
+ran 2,036 tests in 825.242 seconds: five failures and 224 errors. Compile/import
+were not reached. [Independent classification](https://github.com/OpenJ92/control-plane-kit/pull/1907#issuecomment-5903518507)
+found six direct errors and 218 setup cascades. A deliberate corrupted digest
+left in the shared schema caused 108 current-row validation errors; connections
+opened before failed setup were not closed, producing 110 exhaustion errors.
+Those bodies have no behavioral credit. The same-head local gate was cancelled
+with North's approval, exited 137 without a terminal test summary, and its exact
+runner, PostgreSQL container and network were verified absent. The
+[terminal record](https://github.com/OpenJ92/control-plane-kit/pull/1907#issuecomment-5903589754)
+distinguishes the complete hosted failure from incomplete local execution.
+
+The fixture now restores the exact original digest in `finally`, and shared
+setup registers connection cleanup immediately. Schema validation and reset
+ordering remain unchanged. Desired admission translates retained record errors
+at its owning boundary; planning keeps its original pure malformed-material
+classification before receiver checks and before any writes. Receiver-free
+legacy draft create/revise derives identity without persisting runtime truth;
+actual old/proposed receiver membership, including receiver-to-empty, requires
+the actual projection and complete B transaction, with final revalidation.
+The omission regression explicitly checks its stored empty identity.
+
+Wire fixtures omit only an absent optional receiver member. Historical health
+negative setup uses explicitly private graph/projection writes; production
+admission and health assertions remain strict. The two long-reference replay
+fixtures construct real projection digests through `from_graph`. G1 strengthens
+missing/malformed-current preparation counts to session-only, retaining all
+public error/redaction/no-plan/no-approval assertions. The exact pure import
+allowlist includes the two reviewed dependencies.
+
+### Explicit reference target correction
+
+The C2 target introduced at `223a216c` incorrectly asserted that 256-character
+graph/projection identifiers were valid. Earlier target review missed this;
+changing that assertion is a correction of test provenance, not implementation
+satisfying the original positive test. Kepler traced the accepted C1 contract
+at `89dd522903baabad6b311ae02c1340a074d5d402`: Core's
+[NodeControlAuthorityContext](https://github.com/OpenJ92/control-plane-kit/blob/89dd522903baabad6b311ae02c1340a074d5d402/control-plane-kit-core/src/control_plane_kit_core/receiver_identity.py#L95)
+uses the identifier validator for both authored graph and realized projection.
+Its [existing tests](https://github.com/OpenJ92/control-plane-kit/blob/89dd522903baabad6b311ae02c1340a074d5d402/control-plane-kit-core/tests/test_receiver_identity.py#L85)
+reject 129 for both and accept 128 at lines 119–129. The frozen joint interface
+delegates to this existing law; generic 256-character references have a different
+alphabet and serve other fields.
+
+North explicitly approved restoring the delegated law: 128 positive;
+129/256/257, colon/slash, credential and endpoint negatives. Operations retains
+its existing strict-string/Core identifier validation; Core is unchanged.
+Historical 257-character original-receipt replay and fresh refusal remain
+separate compatibility targets. The corrected checkpoint has not run; C2 stays
+HOLD for green/merge until ordinary validation and independent evidence review.

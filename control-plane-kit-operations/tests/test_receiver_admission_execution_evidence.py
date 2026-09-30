@@ -66,9 +66,17 @@ class ReceiverAdmissionExecutionEvidenceTests(ReceiverExecutionScopeFixture, uni
     def test_unavailable_original_scope_evidence_refuses_without_partial_admission(self):
         command = self.receiver_command()
         self.admit()
-        self.connection.execute("UPDATE cpk_execution_requests SET receiver_scope_digest=%s "
-            "WHERE request_id='execution-a'", ("0" * 64,))
-        self.assert_refused("unavailable", command)
+        original = self.connection.execute("SELECT receiver_scope_digest FROM cpk_execution_requests "
+            "WHERE request_id='execution-a'").fetchone()[0]
+        try:
+            self.connection.execute("UPDATE cpk_execution_requests SET receiver_scope_digest=%s "
+                "WHERE request_id='execution-a'", ("0" * 64,))
+            self.assert_refused("unavailable", command)
+        finally:
+            # This negative uses the shared schema. Restore only its exact
+            # premise even on assertion failure; schema re-entry must stay strict.
+            self.connection.execute("UPDATE cpk_execution_requests SET receiver_scope_digest=%s "
+                "WHERE request_id='execution-a'", (original,))
 
     def test_capacity_refuses_instead_of_treating_bounded_prefix_as_complete(self):
         command = self.receiver_command()
