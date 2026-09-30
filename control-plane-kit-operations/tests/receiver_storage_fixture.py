@@ -90,8 +90,10 @@ class ReceiverStorageFixture(DraftCatalogueFixture):
             graph=graph, created_by="operator-a", created_at=NOW,
         )
         projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=record)
-        uow.stores.graphs.save(record)
-        uow.stores.realized_graphs.save(projection)
+        # B tests stage storage facts below C's semantic owner. These private
+        # writes are fixture premises, never evidence of successful admission.
+        uow.stores.graphs._save(record)
+        uow.stores.realized_graphs._save(projection)
         return record, projection
 
     def action(self, uow, workspace="workspace-a"):
@@ -109,7 +111,7 @@ class ReceiverStorageFixture(DraftCatalogueFixture):
         uow.stores.desired_topology_drafts.create(DesiredTopologyDraftRecord(
             graph.workspace_id, draft_id, "Receiver origin", 1, "operator-a", NOW,
         ))
-        uow.stores.desired_topology_drafts.append(DesiredTopologyDraftRevisionRecord(
+        uow.stores.desired_topology_drafts._append(DesiredTopologyDraftRevisionRecord(
             graph.workspace_id, draft_id, 1, graph.graph_id, "operator-a", NOW,
         ), expected_head_revision=None)
         return draft_id

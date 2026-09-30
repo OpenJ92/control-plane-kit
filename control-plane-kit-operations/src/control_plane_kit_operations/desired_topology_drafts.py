@@ -1,7 +1,7 @@
 """Authenticated saved-intent commands with atomic catalogue/desired evidence."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 from typing import Any, Callable, Protocol
@@ -14,7 +14,13 @@ from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
 from control_plane_kit_operations.graph_authoring import product_references_in_graph
 from control_plane_kit_operations.products import RegisteredProductStatus
-from control_plane_kit_operations.records import GraphVersionRecord, OperationActionRecord, OperationSessionStatus
+from control_plane_kit_operations.records import (GraphVersionRecord, OperationActionRecord,
+    OperationSessionStatus, RealizedGraphProjectionRecord)
+from control_plane_kit_operations.receiver_lifecycle import (
+    ReceiverLifecycleExpectation, ReceiverLifecycleStorageError, _expectation_member,
+    _receiver_action_payload, _receiver_replay_payload, _check_receiver_expectation,
+    _receiver_sources, _validate_receiver_admission, derive_receiver_bindings,
+)
 from control_plane_kit_operations.workflows import IdempotencyKey
 
 
@@ -101,6 +107,7 @@ class CreateDesiredTopologyDraft:
     title: str
     graph: DeploymentGraph
     idempotency_key: IdempotencyKey
+    receiver_lifecycle: ReceiverLifecycleExpectation | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -111,6 +118,7 @@ class ReviseDesiredTopologyDraft:
     expected_head_revision: int
     graph: DeploymentGraph
     idempotency_key: IdempotencyKey
+    receiver_lifecycle: ReceiverLifecycleExpectation | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -139,6 +147,7 @@ class SelectDesiredTopologyDraft:
     expected_desired_realized_projection_id: str | None
     expected_desired_graph_revision: int
     idempotency_key: IdempotencyKey
+    receiver_lifecycle: ReceiverLifecycleExpectation | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -224,6 +233,7 @@ class DesiredTopologyDraftCommandService:
                   "graph": descriptor, "title": command.title if creating else None,
                   "draft_id": None if creating else command.draft_id,
                   "expected_head_revision": None if creating else command.expected_head_revision}
+        intent.update(_expectation_member(command.receiver_lifecycle))
         fingerprint = hashlib.sha256(json.dumps(intent, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
         with self._uow() as uow:
             history = uow.stores.activity_history
@@ -239,7 +249,7 @@ class DesiredTopologyDraftCommandService:
                 result = _replay_result(uow, command, existing, descriptor)
                 uow.commit()
                 return result
-            uow.stores.graphs.lock_receiver_lifecycle(context.workspace_id)
+            guard = uow.stores.graphs.lock_receiver_lifecycle(context.workspace_id)
             try:
                 session = history.get_session_for_update(command.session_id)
             except KeyError:
@@ -247,7 +257,7 @@ class DesiredTopologyDraftCommandService:
             if session.workspace_id != context.workspace_id or session.status is not OperationSessionStatus.OPEN:
                 raise DesiredTopologyDraftError("an open workspace operation session is required")
             try:
-                uow.stores.workspaces.get_for_update(context.workspace_id)
+                workspace = uow.stores.workspaces.get_for_update(context.workspace_id)
             except KeyError:
                 raise DesiredTopologyDraftError("workspace was not found") from None
             store = uow.stores.desired_topology_drafts
@@ -276,16 +286,45 @@ class DesiredTopologyDraftCommandService:
             graph = GraphVersionRecord.from_graph(graph_id=graph_id, workspace_id=context.workspace_id,
                 version=uow.stores.graphs.next_version_for_workspace(context.workspace_id), graph=command.graph,
                 created_by=context.actor_id, created_at=now)
-            uow.stores.graphs.save(graph)
+            projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph)
+            bindings = derive_receiver_bindings(context.workspace_id, graph_id,
+                projection.projection_id, projection.graph_descriptor)
+            head = None if creating else (command.draft_id, command.expected_head_revision)
+            result = DesiredTopologyDraftResult(context.workspace_id, draft_id, revision, graph_id)
+            try:
+                _validate_receiver_admission(uow.stores, workspace, command.receiver_lifecycle,
+                    bindings, guard, draft_head=head)
+                payload = _receiver_action_payload(result.descriptor(), command.receiver_lifecycle)
+            except (ValueError, KeyError):
+                raise DesiredTopologyDraftError("receiver draft admission is unavailable") from None
+            uow.stores.graphs._save(graph)
+            uow.stores.realized_graphs._save(projection)
             if creating:
                 store.create(DesiredTopologyDraftRecord(context.workspace_id, draft_id, command.title, 1, context.actor_id, now))
-            store.append(DesiredTopologyDraftRevisionRecord(context.workspace_id, draft_id, revision, graph_id, context.actor_id, now),
-                         expected_head_revision=None if creating else command.expected_head_revision)
-            result = DesiredTopologyDraftResult(context.workspace_id, draft_id, revision, graph_id)
+            saved_revision = DesiredTopologyDraftRevisionRecord(context.workspace_id, draft_id,
+                revision, graph_id, context.actor_id, now)
+            store._insert_revision(saved_revision)
             history.add_action(OperationActionRecord(action_id=action_id, session_id=command.session_id,
                 ordinal=history.next_action_ordinal(command.session_id), action_type=kind, actor_id=context.actor_id,
-                payload=result.descriptor(), created_at=now, idempotency_key=command.idempotency_key.value,
+                payload=payload, created_at=now, idempotency_key=command.idempotency_key.value,
                 intent_fingerprint=fingerprint))
+            try:
+                held = uow.stores.workspaces.get_for_update(context.workspace_id)
+                if held != workspace:
+                    raise DesiredTopologyDraftConflict("workspace graph truth changed")
+                new_ids = _validate_receiver_admission(uow.stores, held, command.receiver_lifecycle,
+                    bindings, guard, draft_head=head)
+                uow.stores.graphs._reserve_new_receiver_introductions(graph, projection,
+                    action_id=action_id, session_id=command.session_id, draft_id=draft_id,
+                    new_receiver_ids=new_ids, lifecycle_guard=guard)
+                uow.stores.graphs._persist_receiver_bindings(graph, projection, lifecycle_guard=guard)
+                _receiver_sources(uow.stores, held, draft_head=head)
+                _check_receiver_expectation(uow.stores.workspaces.get_for_update(context.workspace_id),
+                    command.receiver_lifecycle)
+                store._advance_head(saved_revision,
+                    expected_head_revision=None if creating else command.expected_head_revision)
+            except (ReceiverLifecycleStorageError, KeyError):
+                raise DesiredTopologyDraftError("receiver draft admission is unavailable") from None
             uow.commit()
             return result
 
@@ -293,9 +332,8 @@ class DesiredTopologyDraftCommandService:
 def _replay_result(uow, command, action, graph_descriptor) -> DesiredTopologyDraftResult:
     """Resolve closed action coordinates through retained immutable evidence only."""
     try:
-        payload = action.payload
-        if set(payload) != {"workspace_id", "draft_id", "revision", "graph_id"}:
-            raise ValueError
+        payload = _receiver_replay_payload(action.payload, command.receiver_lifecycle,
+            {"workspace_id", "draft_id", "revision", "graph_id"})
         result = DesiredTopologyDraftResult(**dict(payload))
         creating = isinstance(command, CreateDesiredTopologyDraft)
         expected_revision = 1 if creating else command.expected_head_revision + 1
@@ -352,6 +390,7 @@ def _reference_command_intent(command):
         if type(generation) is not int or not 0 <= generation < 9_223_372_036_854_775_807:
             raise DesiredTopologyDraftError("expected desired generation cannot be incremented")
         intent.update(revision=command.revision, expected_desired_graph_revision=generation)
+        intent.update(_expectation_member(command.receiver_lifecycle))
     else:
         _revision_number(command.expected_head_revision)
         intent["expected_head_revision"] = command.expected_head_revision
@@ -377,7 +416,7 @@ def _execute_reference_command(service, command):
             result = _reference_replay(uow, command, existing)
             uow.commit()
             return result
-        uow.stores.graphs.lock_receiver_lifecycle(context.workspace_id)
+        guard = uow.stores.graphs.lock_receiver_lifecycle(context.workspace_id)
         try:
             session = history.get_session_for_update(command.session_id)
         except KeyError:
@@ -413,6 +452,17 @@ def _execute_reference_command(service, command):
                         raise ValueError
                 identity = uow.stores.realized_graphs.identity_for_authored(context.workspace_id, graph.graph_id)
                 _validate_identity_projection(identity, graph)
+                bindings = derive_receiver_bindings(context.workspace_id, graph.graph_id,
+                    identity.projection_id, identity.graph_descriptor)
+                for binding in bindings:
+                    origin = uow.stores.graphs.receiver_introduction(context.workspace_id, binding.receiver_id)
+                    if origin is None or (origin.first_accepted_action_id is None
+                                          and command.revision != draft.head_revision):
+                        raise ValueError
+                head = (command.draft_id, draft.head_revision)
+                if _validate_receiver_admission(uow.stores, workspace, command.receiver_lifecycle,
+                        bindings, guard, draft_head=head):
+                    raise ValueError
             except (KeyError, ValueError, TypeError, AttributeError):
                 raise DesiredTopologyDraftError("saved graph must be valid with workspace-active products") from None
         else:
@@ -424,20 +474,39 @@ def _execute_reference_command(service, command):
         _text(action_id, "action_id")
         now = service._clock()
         if selecting:
-            projection = uow.stores.realized_graphs.save(identity)
-            updated = uow.stores.workspaces.set_desired_graph(context.workspace_id, graph.graph_id,
-                                                             projection.projection_id)
+            projection = identity
             result = DesiredTopologyDraftSelectionResult(context.workspace_id, command.draft_id,
-                command.revision, graph.graph_id, projection.projection_id, updated.desired_graph_revision)
+                command.revision, graph.graph_id, projection.projection_id, workspace.desired_graph_revision + 1)
+            try:
+                payload = _receiver_action_payload(result.descriptor(), command.receiver_lifecycle)
+            except ValueError:
+                raise DesiredTopologyDraftError("receiver draft action is unavailable") from None
+            uow.stores.realized_graphs._save(projection)
         else:
             retired = uow.stores.desired_topology_drafts.tombstone(context.workspace_id, command.draft_id,
                 expected_head_revision=command.expected_head_revision, deleted_by=context.actor_id, deleted_at=now)
             result = DesiredTopologyDraftDeletionResult(context.workspace_id, command.draft_id,
                 retired.head_revision, retired.deleted_by, retired.deleted_at)
+            payload = result.descriptor()
         history.add_action(OperationActionRecord(action_id=action_id, session_id=command.session_id,
             ordinal=history.next_action_ordinal(command.session_id), action_type=kind, actor_id=context.actor_id,
-            payload=result.descriptor(), created_at=now, idempotency_key=command.idempotency_key.value,
+            payload=payload, created_at=now, idempotency_key=command.idempotency_key.value,
             intent_fingerprint=fingerprint))
+        if selecting:
+            try:
+                held = uow.stores.workspaces.get_for_update(context.workspace_id)
+                if held != workspace:
+                    raise DesiredTopologyDraftConflict("workspace graph truth changed")
+                if _validate_receiver_admission(uow.stores, held, command.receiver_lifecycle,
+                        bindings, guard, draft_head=head):
+                    raise ReceiverLifecycleStorageError("receiver selection cannot introduce identity")
+                uow.stores.graphs._persist_receiver_bindings(graph, projection, lifecycle_guard=guard)
+                _receiver_sources(uow.stores, held, draft_head=head)
+                if uow.stores.workspaces.get_for_update(context.workspace_id) != held:
+                    raise DesiredTopologyDraftConflict("workspace graph truth changed")
+                uow.stores.workspaces._set_desired_graph(context.workspace_id, graph.graph_id, projection.projection_id)
+            except (ValueError, KeyError):
+                raise DesiredTopologyDraftError("receiver selection admission is unavailable") from None
         uow.commit()
         return result
 
@@ -460,9 +529,9 @@ def _reference_replay(uow, command, action):
             raise ValueError
         payload = dict(action.payload)
         if type(command) is SelectDesiredTopologyDraft:
-            if set(payload) != {"workspace_id", "draft_id", "revision", "graph_id",
-                                "desired_realized_projection_id", "desired_graph_revision"}:
-                raise ValueError
+            payload = _receiver_replay_payload(payload, command.receiver_lifecycle,
+                {"workspace_id", "draft_id", "revision", "graph_id",
+                 "desired_realized_projection_id", "desired_graph_revision"})
             result = DesiredTopologyDraftSelectionResult(**payload)
             if (result.revision != command.revision
                     or result.desired_graph_revision != command.expected_desired_graph_revision + 1):

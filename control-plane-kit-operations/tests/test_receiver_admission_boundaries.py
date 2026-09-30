@@ -152,6 +152,17 @@ class ReceiverAdmissionBoundaryTests(LifecycleLockFixture, ReceiverAdmissionFixt
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.workspaces.get("empty-workspace"), record)
 
+    def test_public_append_cannot_replace_receiver_head_with_legacy_graph(self):
+        draft = self.catalogue().execute(self.receiver_create())
+        before = self.admission_truth()
+        with self.assertRaises(ValueError):
+            with self.unit_of_work() as uow:
+                uow.stores.desired_topology_drafts.append(DesiredTopologyDraftRevisionRecord(
+                    "workspace-a", draft.draft_id, 2, "workspace-a-current", "operator-a", NOW),
+                    expected_head_revision=1)
+                uow.commit()
+        self.assertEqual(self.admission_truth(), before)
+
     def test_populated_receiver_bootstrap_refuses_before_workspace_insert(self):
         admitted = self.desired_service().execute(self.desired_command())
         record = WorkspaceRecord("bootstrap-workspace", "Bootstrap",

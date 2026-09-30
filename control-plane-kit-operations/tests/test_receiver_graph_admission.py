@@ -152,6 +152,41 @@ class ReceiverGraphAdmissionTests(ReceiverAdmissionFixture, unittest.TestCase):
         self.desired_service().execute(command)
         self.assertEqual(self.introduction(), origin)
 
+    def test_selection_rechecks_pins_after_existing_binding_insert(self):
+        draft = self.catalogue().execute(self.receiver_create())
+        command = self.receiver_select(draft)
+        before = self.admission_truth()
+        self.connection.execute("CREATE FUNCTION change_selection_pins() RETURNS trigger LANGUAGE plpgsql AS $$ "
+            "BEGIN UPDATE cpk_workspaces SET desired_graph_revision=desired_graph_revision+1 "
+            "WHERE workspace_id=NEW.workspace_id; RETURN NEW; END $$")
+        # Existing bindings use INSERT ON CONFLICT: BEFORE INSERT still fires.
+        self.connection.execute("CREATE TRIGGER change_selection_pins BEFORE INSERT ON cpk_graph_receiver_bindings "
+            "FOR EACH ROW EXECUTE FUNCTION change_selection_pins()")
+        try:
+            with self.assertRaises(DesiredTopologyDraftError):
+                self.catalogue().execute(command)
+            self.assertEqual(self.admission_truth(), before)
+        finally:
+            self.connection.execute("DROP TRIGGER change_selection_pins ON cpk_graph_receiver_bindings")
+            self.connection.execute("DROP FUNCTION change_selection_pins()")
+
+    def test_historical_legacy_head_without_identity_projection_can_revise_and_select(self):
+        for operation in ("revise", "select"):
+            with self.subTest(operation=operation):
+                draft = self.catalogue().execute(self.create_command(key="old-" + operation))
+                # Exact pre-C2 catalogue premise: graph/revision/action, no
+                # persisted identity and no receiver material or B records.
+                self.connection.execute("DELETE FROM cpk_realized_graph_projections "
+                    "WHERE source_authored_graph_id=%s", (draft.graph_id,))
+                command = (self.revise_command(draft, key="legacy-revise", expected=draft.revision)
+                           if operation == "revise" else self.select_command(draft, key="legacy-select"))
+                result = self.catalogue().execute(command)
+                self.assertEqual(result.draft_id, draft.draft_id)
+                if operation == "revise":
+                    self.assertEqual(result.revision, draft.revision + 1)
+                else:
+                    self.assertEqual(self.workspace().desired_graph_id, draft.graph_id)
+
     def test_every_pin_changes_draft_fingerprint_and_original_replay_survives_head_and_close(self):
         command = self.receiver_create()
         first = self.catalogue().execute(command)

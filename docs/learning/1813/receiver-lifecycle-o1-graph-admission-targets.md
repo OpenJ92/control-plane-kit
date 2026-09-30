@@ -1,12 +1,14 @@
 # C2 graph admission: source delta and target laws
 
-Planning/targets only under [#1903](https://github.com/OpenJ92/control-plane-kit/issues/1903).
+C2 implementation under [#1903](https://github.com/OpenJ92/control-plane-kit/issues/1903).
 Base: accepted C1 merge `89dd522903baabad6b311ae02c1340a074d5d402`.
 Branch: `codex/1903-receiver-admission-targets`, targeting
-`codex/1882-receiver-lifecycle-integration`. Application source is not released.
+`codex/1882-receiver-lifecycle-integration`. North released application source
+after reviewed target correction `e0675e3b` and the classified ordinary red run.
 The first ordinary target-only run at `768dd6b9` completed with 66 failures and
 three test errors; its classification and target corrections are recorded below.
-No C2 source or green admission evidence is claimed.
+Application source is implemented and under review; no owning green evidence
+is claimed until the ordinary Operations suite completes, including compile/import.
 
 ## Reused evidence and changed source
 
@@ -180,8 +182,11 @@ the subtest and gives each route its own idempotency key and truth snapshot, so
 one red route cannot substitute a cross-route receipt conflict for null rejection.
 The second null route and both gateway bodies have no executable credit yet.
 
-These target-only repairs await independent delta/evidence review and its
-validation disposition; no automatic rerun or source implementation follows.
+Meridian's [evidence/delta PASS](https://github.com/OpenJ92/control-plane-kit/pull/1907#issuecomment-5902653809)
+accepted the repaired checkpoint without an additional pre-source full run.
+North's [source release](https://github.com/OpenJ92/control-plane-kit/issues/1903#issuecomment-5902676881)
+then released implementation. The repaired/unreached bodies must execute in
+the next ordinary source gate.
 The hosted Operations run reached execution but hit its existing 30-minute
 limit without a test summary; it adds no terminal causal-red or green credit.
 Hosted Core/current-backend green are separate evidence. Full local output is
@@ -196,8 +201,8 @@ test, and may not claim C3 acceptance or execution. Kepler's bounded
 requires coherent actual acceptance material wherever read, and missing/wrong
 origin or acceptance negatives. B's generic action witness alone is insufficient.
 
-Reviewed targets precede the ordinary causal-red gate; no application source
-changes are allowed before North's separate source release. Owning command is
+Reviewed targets preceded the ordinary causal-red gate and separate source
+release. Owning command is
 `./control-plane-kit-operations/test.sh`, exact clean architecture-testing
 `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`. No host Python, alternate runner,
 selector feature or harness alteration. Collection/apparatus failure earns no
@@ -209,3 +214,53 @@ receipts and atomic graph/action/B/pointer truth. Finite C1 caps may refuse vali
 large histories; no pruning, migration or recovery follows. B/C remain open for
 joint acceptance. C3 owns all execution/reactivation closures, advancement
 witnesses and C-N11 schedules; D and live/adoption remain held.
+
+## Implemented source and review checkpoint
+
+The five existing command owners now compare the original expectation under L
+and workspace/session locks, derive allowed current/selected/head provenance,
+and consume the single C1 classifier. Only `nonconflicting` permits the C2
+operation. `requires-fresh-gate-closure` remains a refusal until C3.
+Private store primitives complete graph, actual projection, revision, real
+action, sorted new introductions, complete bindings and final pointer/head
+mutation within the caller's transaction. Public one-record writers refuse
+receiver-affecting use. Exact retained projection reads do not mint permission.
+
+One approved source-ceiling extension is
+`postgres/execution.py:PostgresExecutionStore._receiver_acceptance_evidence`.
+The graph owner calls it through the existing execution store. It uses one C1
+bounded transport reader for the entire origin set, caches exact request/receipt
+identities, and reuses original-source verification, `historical_advancement`
+and `_require_complete_success`. The contiguous complete journal must contain
+the exact sole advancement event/action; success is checked on the prefix
+strictly before that event. The full C1 conflict classifier still inspects all
+history independently. There are no new locks, execution writes, tables,
+services, public receipt API or effect permissions.
+
+Acceptance at original target A is checked against A's original request, plan,
+projection digest and complete receiver membership. Current membership at B
+is checked separately against the immutable origin, same scope and nonretired
+status. A later valid continuation need not make A equal B. The reader returns
+associated immutable records, never a capability or reusable admission result.
+Importing the historical reader into graph persistence would create a return
+edge through C1's graph decoders; the execution-owned read preserves ownership.
+
+Review corrections preserve accepted-scope identity (X cannot become Y at the
+same scope), final selection checks after binding writes, and old legacy draft
+heads whose identity projection was historically derived without storage.
+Receiver heads still require actual projection and complete B evidence.
+Desired replay verifies its original immutable identity projection and product
+references. Retained receipt lookup IDs and draft revision locators are checked
+before SQL. Focused regression targets cover these concrete review findings.
+The B storage fixture now uses explicit private primitives to retain its
+pre-admission storage premise; its assertions are unchanged and it earns no C2
+admission credit.
+
+Security/data/history: no new credentials, network exposure or provider effects.
+Original action formats remain closed and bounded before writes. Replays read
+only original evidence and allocate no fresh intent. Failures roll back all
+durable changes, including late action/binding hooks and losing head changes.
+No compensation, migration, backfill or pruning is introduced. Finite C1
+budgets may refuse large histories; database internal scan work remains
+unbounded by those transport limits. The source checkpoint is unvalidated;
+North owns staging after ordinary green and independent final review.

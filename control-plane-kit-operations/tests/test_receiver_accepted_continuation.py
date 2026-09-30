@@ -71,6 +71,18 @@ class ReceiverAcceptedContinuationTests(ReceiverAdmissionFixture, unittest.TestC
                 uow.commit()
         self.assertEqual(self.admission_truth(), before)
 
+    def test_malformed_acceptance_request_locator_refuses_without_database_type_error(self):
+        _, action, _ = record_accepted_current(self)
+        for locator in (42, True, [], "x" * 2049):
+            with self.subTest(locator_type=type(locator).__name__):
+                self.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id=%s",
+                    (Jsonb(dict(action.payload) | {"execution_request_id": locator}), action.action_id))
+                before = self.admission_truth()
+                with self.assertRaises(DesiredGraphCommandError) as captured:
+                    self.desired_service().execute(self.desired_command(key="malformed-receipt"))
+                self.assertLess(len(str(captured.exception)), 256)
+                self.assertEqual(self.admission_truth(), before)
+
     def test_relabelled_accepted_scope_and_moved_existing_identity_refuse(self):
         record_accepted_current(self)
         before = self.admission_truth()

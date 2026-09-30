@@ -1,4 +1,7 @@
-"""Graph-owned receiver facts and material derivation; not admission authority."""
+"""Receiver facts and private graph-owner checks within a held transaction.
+
+Expectations describe caller-observed truth. They confer no admission authority.
+"""
 
 from dataclasses import dataclass
 import json
@@ -8,6 +11,7 @@ from control_plane_kit_core.receiver_configuration import (
     ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
 )
 from control_plane_kit_core.receiver_identity import NodeControlReceiverTargetCodec
+from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_core.wrapper_configuration import (
     MAX_WRAPPER_CONFIGURATION_BYTES, WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT,
@@ -20,6 +24,189 @@ class ReceiverLifecycleStorageError(ValueError):
 
 class ReceiverLifecycleStorageConflict(ReceiverLifecycleStorageError):
     """A reserved identity or immutable witness cannot be replaced."""
+
+
+@dataclass(frozen=True, slots=True)
+class ReceiverLifecycleExpectation:
+    """Original caller expectations, never a credential or admission token."""
+
+    current_graph_id: str
+    current_realized_projection_id: str
+    desired_graph_id: str | None
+    desired_realized_projection_id: str | None
+    desired_graph_revision: int
+
+    def __post_init__(self):
+        for name in ("current_graph_id", "current_realized_projection_id",
+                     "desired_graph_id", "desired_realized_projection_id"):
+            value = getattr(self, name)
+            if value is None and name.startswith("desired_"):
+                continue
+            if type(value) is not str:
+                raise ValueError("receiver expectation requires public graph references")
+            NodeControlGraphReference(NodeControlGraphReferenceRole.GRAPH_REVISION, value)
+        if ((self.desired_graph_id is None) != (self.desired_realized_projection_id is None)
+                or type(self.desired_graph_revision) is not int
+                or not 0 <= self.desired_graph_revision <= 9_223_372_036_854_775_807
+                or (self.desired_graph_id is None) != (self.desired_graph_revision == 0)):
+            raise ValueError("receiver expectation requires paired desired lineage and generation")
+
+    def descriptor(self):
+        return {name: getattr(self, name) for name in (
+            "current_graph_id", "current_realized_projection_id", "desired_graph_id",
+            "desired_realized_projection_id", "desired_graph_revision",
+        )}
+
+
+def _expectation_member(value):
+    if value is None:
+        return {}
+    if type(value) is not ReceiverLifecycleExpectation:
+        raise ReceiverLifecycleStorageError("receiver expectation is malformed")
+    return {"receiver_lifecycle": value.descriptor()}
+
+
+def _receiver_action_payload(payload, expectation):
+    result = dict(payload) | _expectation_member(expectation)
+    _require(len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")) <= 65536)
+    return result
+
+
+def _receiver_replay_payload(payload, expectation, keys):
+    member = _expectation_member(expectation)
+    _require(set(payload) == set(keys) | set(member))
+    if member:
+        _require(payload["receiver_lifecycle"] == member["receiver_lifecycle"])
+        _require(type(payload["receiver_lifecycle"]) is dict)
+        _require(ReceiverLifecycleExpectation(**payload["receiver_lifecycle"]) == expectation)
+    _receiver_action_payload({key: payload[key] for key in keys}, expectation)
+    return {key: payload[key] for key in keys}
+
+
+def _receiver_workspace_pins(workspace):
+    return {name: getattr(workspace, name) for name in (
+        "current_graph_id", "current_realized_projection_id", "desired_graph_id",
+        "desired_realized_projection_id", "desired_graph_revision",
+    )}
+
+
+def _check_receiver_expectation(workspace, expectation):
+    if expectation is not None:
+        _expectation_member(expectation)
+        _require(expectation.descriptor() == _receiver_workspace_pins(workspace))
+
+
+def _receiver_scope(binding):
+    return (binding.workspace_id, binding.runtime_id, binding.node_id,
+            binding.provider_socket_name, binding.receiver_id)
+
+
+def _retained_receiver_material(stores, workspace_id, graph_id, projection_id):
+    if graph_id is None and projection_id is None:
+        return ()
+    _require(graph_id is not None and projection_id is not None)
+    graph = stores.graphs.get(graph_id)
+    projection = stores.realized_graphs.get(projection_id)
+    _require(graph.workspace_id == projection.workspace_id == workspace_id
+             and projection.source_authored_graph_id == graph_id)
+    bindings = derive_receiver_bindings(workspace_id, graph_id, projection_id, projection.graph_descriptor)
+    _require(stores.graphs.receiver_bindings(workspace_id, graph_id, projection_id) == bindings)
+    return bindings
+
+
+def _receiver_origin(stores, binding):
+    origin = stores.graphs.receiver_introduction(binding.workspace_id, binding.receiver_id)
+    if origin is None:
+        return None
+    _require(_receiver_scope(origin) == _receiver_scope(binding) and origin.retired_action_id is None)
+    original = stores.graphs.receiver_bindings(origin.workspace_id,
+        origin.introducing_graph_id, origin.introducing_realized_projection_id)
+    _require(any(_receiver_scope(item) == _receiver_scope(binding) for item in original))
+    try:
+        stores.graphs._require_receiver_origin_action(origin)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise ReceiverLifecycleStorageError("receiver origin evidence is unavailable") from None
+    return origin
+
+
+def _receiver_sources(stores, workspace, *, draft_head=None):
+    """Rederive complete retained membership; no returned permission survives a write."""
+    current = _retained_receiver_material(stores, workspace.workspace_id,
+        workspace.current_graph_id, workspace.current_realized_projection_id)
+    desired = _retained_receiver_material(stores, workspace.workspace_id,
+        workspace.desired_graph_id, workspace.desired_realized_projection_id)
+    head = ()
+    if draft_head is not None:
+        draft_id, revision = draft_head
+        draft = stores.desired_topology_drafts.get(workspace.workspace_id, draft_id)
+        _require(draft.deleted_at is None and draft.head_revision == revision)
+        record = stores.desired_topology_drafts.revision(workspace.workspace_id, draft_id, revision)
+        projection = stores.realized_graphs.identity_for_authored(workspace.workspace_id, record.graph_id)
+        # Historical legacy drafts did not persist an identity projection.
+        # Derivation is read-only; receiver heads still require actual material
+        # and the complete durable binding set.
+        head = derive_receiver_bindings(workspace.workspace_id, record.graph_id,
+            projection.projection_id, projection.graph_descriptor)
+        try:
+            stores.realized_graphs.get(projection.projection_id)
+        except KeyError:
+            _require(not head)
+        else:
+            head = _retained_receiver_material(stores, workspace.workspace_id,
+                record.graph_id, projection.projection_id)
+    accepted = {}
+    for binding in current:
+        origin = _receiver_origin(stores, binding)
+        _require(origin is not None and origin.first_accepted_action_id is not None)
+        accepted[binding.receiver_id] = origin
+    if accepted:
+        stores.execution._receiver_acceptance_evidence(tuple(accepted.values()))
+    pending = {}
+    for binding in desired + head:
+        origin = _receiver_origin(stores, binding)
+        _require(origin is not None)
+        if origin.first_accepted_action_id is not None:
+            _require(accepted.get(binding.receiver_id) == origin)
+        else:
+            prior = pending.setdefault(binding.receiver_id, origin)
+            _require(prior == origin)
+    return current + desired + head, accepted | pending
+
+
+def _validate_receiver_admission(stores, workspace, expectation, proposed, guard, *, draft_head=None):
+    """Fresh owner check, repeated after action writes against the same held sources."""
+    from control_plane_kit_operations.receiver_execution_scopes import (
+        ExecutionReceiverScope, classify_receiver_scope_evidence,
+    )
+
+    _check_receiver_expectation(workspace, expectation)
+    retained, sources = _receiver_sources(stores, workspace, draft_head=draft_head)
+    if retained or proposed:
+        _require(expectation is not None)
+    accepted_scopes = {_receiver_scope(origin)[:-1]: origin.receiver_id
+                       for origin in sources.values() if origin.first_accepted_action_id is not None}
+    introduced = []
+    for binding in proposed:
+        occupied = accepted_scopes.get(_receiver_scope(binding)[:-1])
+        _require(occupied is None or occupied == binding.receiver_id)
+        origin = _receiver_origin(stores, binding)
+        if origin is None:
+            introduced.append(binding.receiver_id)
+        else:
+            _require(sources.get(binding.receiver_id) == origin)
+    scopes = tuple(sorted({ExecutionReceiverScope(item.runtime_id, item.node_id)
+                           for item in retained + proposed}, key=lambda item: (item.runtime_id, item.node_id)))
+    if scopes:
+        evidence = stores.execution.receiver_scope_evidence(workspace.workspace_id, scopes, guard)
+        _require(classify_receiver_scope_evidence(evidence).disposition == "nonconflicting")
+    return tuple(sorted(introduced))
+
+
+def _validate_receiver_reference(stores, workspace, graph_id, projection_id, *, draft_head=None):
+    _, sources = _receiver_sources(stores, workspace, draft_head=draft_head)
+    for binding in _retained_receiver_material(stores, workspace.workspace_id, graph_id, projection_id):
+        origin = _receiver_origin(stores, binding)
+        _require(origin is not None and sources.get(binding.receiver_id) == origin)
 
 
 def _require(condition):

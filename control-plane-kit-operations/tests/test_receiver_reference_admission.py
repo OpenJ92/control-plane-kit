@@ -1,9 +1,11 @@
 """#1903 saved-source publication and direct planning validate receiver references."""
 
 import unittest
+from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.topology import DeploymentGraph
-from control_plane_kit_operations.planning import ActivityPlanningError
+from control_plane_kit_operations.planning import ActivityPlanningError, DesiredGraphCommandError
+from control_plane_kit_operations.records import RealizedGraphProjectionRecord
 from control_plane_kit_operations.saved_deployment_preparation import (
     SavedDeploymentPreparationService, SavedPreparationError,
 )
@@ -13,6 +15,24 @@ from tests.receiver_recorded_acceptance_fixture import record_accepted_current
 
 
 class ReceiverReferenceAdmissionTests(ReceiverAdmissionFixture, unittest.TestCase):
+    def test_empty_derived_selected_material_cannot_hide_retained_receiver_membership(self):
+        draft = self.selected_receiver_continuation()
+        command = self.desired_command(graph=DeploymentGraph("new-empty"), key="empty-with-membership")
+        with self.unit_of_work() as uow:
+            retained = uow.stores.realized_graphs.get(self.workspace().desired_realized_projection_id)
+        changed = RealizedGraphProjectionRecord.from_graph(
+            projection_id=retained.projection_id, workspace_id=retained.workspace_id,
+            source_authored_graph_id=retained.source_authored_graph_id,
+            projection_kind=retained.projection_kind, projection_key=retained.projection_key,
+            graph=DeploymentGraph("empty-corrupted-source"), created_by=retained.created_by,
+            created_at=retained.created_at)
+        self.connection.execute("UPDATE cpk_realized_graph_projections SET graph_descriptor=%s,projection_digest=%s "
+            "WHERE projection_id=%s", (Jsonb(changed.graph_descriptor), changed.projection_digest, changed.projection_id))
+        before = self.reference_truth()
+        with self.assertRaises(DesiredGraphCommandError):
+            self.desired_service().execute(command)
+        self.assertEqual(self.reference_truth(), before)
+
     def reference_truth(self):
         return self.admission_truth() | {name: self.rows(name) for name in (
             "cpk_operation_sessions", "cpk_saved_preparation_sources", "cpk_activity_plans")}

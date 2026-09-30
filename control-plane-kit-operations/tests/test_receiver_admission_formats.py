@@ -18,6 +18,37 @@ from tests.receiver_admission_fixture import ReceiverAdmissionFixture
 
 
 class ReceiverAdmissionFormatTests(ReceiverAdmissionFixture, unittest.TestCase):
+    def test_draft_origin_revision_locator_is_typed_before_query(self):
+        command = self.receiver_create()
+        draft = self.catalogue().execute(command)
+        action = self.command_action(command)
+        for revision in (True, "not-an-integer", [], 2 ** 63):
+            with self.subTest(revision_type=type(revision).__name__):
+                self.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id=%s",
+                    (Jsonb(dict(action.payload) | {"revision": revision}), action.action_id))
+                before = self.admission_truth()
+                with self.assertRaises(DesiredTopologyDraftError):
+                    self.catalogue().execute(self.receiver_revise(draft))
+                self.assertEqual(self.admission_truth(), before)
+
+    def test_desired_replay_refuses_damaged_original_projection_or_products(self):
+        command = self.desired_command()
+        result = self.desired_service().execute(command)
+        original = dict(result.action.payload)
+        for change in ({"desired_realized_projection_id": "missing-projection"},
+                       {"desired_realized_projection_id": command.receiver_lifecycle.current_realized_projection_id},
+                       {"product_references": ["unrelated-product"]}):
+            with self.subTest(change=change):
+                self.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id=%s",
+                    (Jsonb(original | change), result.action.action_id))
+                before = self.admission_truth()
+                with self.assertRaises(DesiredGraphCommandError):
+                    self.desired_service(ids=self.forbid_allocation).execute(command)
+                self.assertEqual(self.admission_truth(), before)
+        self.connection.execute("UPDATE cpk_operation_actions SET payload=%s WHERE action_id=%s",
+            (Jsonb(original), result.action.action_id))
+        self.assertTrue(self.desired_service(ids=self.forbid_allocation).execute(command).replayed)
+
     def wire(self, route, payload):
         adapter = CpkServerPlanningService(None, desired_graphs=self.desired_service(),
             desired_topology_drafts=self.catalogue())

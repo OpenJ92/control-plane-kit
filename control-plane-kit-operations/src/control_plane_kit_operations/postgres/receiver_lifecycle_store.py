@@ -120,10 +120,16 @@ class _ReceiverStorage:
         ).fetchone()
         _require(row == (True,))
 
-    def reserve(self, owner, graph, projection, *, action_id, session_id, draft_id, lifecycle_guard):
+    def reserve(self, owner, graph, projection, *, action_id, session_id, draft_id, lifecycle_guard,
+                new_receiver_ids=None):
         self.guard(owner, lifecycle_guard, graph.workspace_id)
         bindings = self.material(graph.workspace_id, graph.graph_id, projection.projection_id,
                                  graph=graph, projection=projection)
+        if new_receiver_ids is not None:
+            _require(type(new_receiver_ids) is tuple
+                     and new_receiver_ids == tuple(sorted(set(new_receiver_ids)))
+                     and set(new_receiver_ids) <= {item.receiver_id for item in bindings})
+            bindings = tuple(item for item in bindings if item.receiver_id in new_receiver_ids)
         self.witness(graph.workspace_id, action_id, session_id)
         if draft_id is not None:
             _text(draft_id)
