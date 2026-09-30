@@ -1,7 +1,8 @@
 # O1.C3 fresh execution and acceptance targets
 
-Status: planning/target-only work released by North; no application source,
-causal-red execution, joint acceptance or live/adoption release. Selected base
+Status: reviewed target checkpoint and sole hosted causal-red completed; North
+released the bounded Resume-fixture correction below. Application source,
+joint acceptance and live/adoption remain held. Selected base
 is C2 merge `1d09c78d6598b4102c5c39012687f6ae9ec4d163`, containing B `a1ce6fc9`
 and C1 `89dd5229`. Governing issue is #1904; branch
 `codex/1904-receiver-execution-targets` targets
@@ -317,18 +318,60 @@ Reuse existing owner laws rather than duplicating them:
   rejection. C3 adds real acceptance/retirement production and receiver binding
   and configuration checks at native first start.
 
-Completed-target independent review must assess remaining receiver-law coverage
-before checkpoint/run release; file presence and static inspection earn no green
-evidence. Predecessor fixtures using public writers may need explicit retained
+Completed-target independent review passed before checkpoint/run release; file
+presence and static inspection earned no green evidence. The run exposed the
+two setup errors recorded below. Predecessor fixtures using public writers may need explicit retained
 premise translation only after source closure, with original assertions intact.
 
-Targets must be independently reviewed before North releases the ordinary
-causal-red gate. Owning command remains `./control-plane-kit-operations/test.sh`
+North released the ordinary hosted causal-red gate after independent target
+and committed-byte review. Owning command remains `./control-plane-kit-operations/test.sh`
 with clean architecture sibling `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`.
-No host Python, targeted selector, alternate runner, harness change or test
-execution has occurred for C3. A later source release requires genuine missing
-behavior evidence, not collection/fixture failures. Preserve all predecessor
+No host Python, targeted selector, alternate runner, harness change or duplicate
+local run occurred. A later source release requires genuine missing-behavior
+evidence, not collection/fixture failures. Preserve all predecessor
 assertions; no skip/xfail or broad fixture repair hidden in targets.
+
+### First owning red and bounded fixture correction
+
+Reviewed target head `799a14370e074e2fc7aa650c8c949514cbc7ad91` was published in
+[draft PR #1908](https://github.com/OpenJ92/control-plane-kit/pull/1908).
+The sole [hosted Operations gate](https://github.com/OpenJ92/control-plane-kit/actions/runs/36673553306/job/109753537427)
+completed 2,083 tests in 1,348.586 seconds with 39 failures and 14 errors, exit 1,
+without timeout. Actual CI checkout `46f6606e6ec1adadc61a7b8163051ecc35cb17b2`
+has the reviewed tree `0a295606d8b9e62284269a7779299157198029c6`; the terminal
+log confirms the required architecture pin. Integrity/installation/collection
+completed; subsequent compileall and clean-import phases were not reached.
+Full job-log SHA256 is
+`6896f7f754fe43a4ecdbd86a011ccaf992e2672646aa9a4a280e838eefad7b93`.
+[Exact attribution](https://github.com/OpenJ92/control-plane-kit/pull/1908#issuecomment-5905062450)
+and [Meridian's independent review](https://github.com/OpenJ92/control-plane-kit/pull/1908#issuecomment-5905061777)
+record the evidence and its limits.
+
+The 39 failure entries comprise 28 missing-L observations, six public-writer
+closure gaps, one stale-original retry gap and four receiver admission/material
+refusal gaps. The 14 error entries comprise ten early C2 public-pointer guard
+refusals, the C-N11 consumer refusal, one clearance-first schedule failing to
+wait on L before existing cancelled-run eligibility refusal, and two genuine
+Resume setup errors. No unrelated predecessor failed beyond the four documented
+lock supersessions and C-N11 consumer transition. No schema cascade or global
+apparatus failure occurred. Counts include repeated subtest entries.
+
+The two Resume methods used `IdempotencyKey("start")` for setup Start, already
+owned by inherited `StartOperationSession`. Production correctly rejected the
+different intent before Pause/Resume. Both implementer and static review missed
+the collision; it earns no Resume-law credit. North released only distinct
+setup Start keys (`resume-lock-setup-start` and `resume-recheck-setup-start`) in
+those two methods and this learning record. All intended Resume commands,
+original/replay identities, fences and assertions remain intact. The correction
+is statically reviewable but unexecuted; no automatic full rerun was released.
+
+Missing-L failures do not prove pin mutation/reread or locator assertions that
+were never reached. Early public-pointer refusal does not prove downstream
+acceptance, no-op retention, retirement, winner/rollback or actual ingress
+dispatch. The complete opposing schedules remain unproved. The original red
+is substantive missing-behavior evidence only at its reached boundaries.
+Application source remains held pending exact correction review and North's
+separate release; presumed upstream completion and O2's full-chain gap remain.
 
 Security/data/history: existing auth, approval, fences and bounded errors stay
 authoritative. Durable intent, STARTED, acceptance and retirement have explicit

@@ -61,7 +61,7 @@ class ReceiverFreshLifecyclePermissionTests(ReceiverExecutionScopeFixture, Fresh
         claimed = self.claim()
         fence = ExecutionLeaseFence("worker-a", claimed.request.claim.generation)
         self.lifecycle("start-event", "start-action").execute(
-            StartActivityRun("run-a", self.authority, fence, IdempotencyKey("start")))
+            StartActivityRun("run-a", self.authority, fence, IdempotencyKey("resume-lock-setup-start")))
         self.lifecycle("pause-event", "pause-action").execute(
             PauseActivityRun("run-a", self.authority, fence, IdempotencyKey("pause")))
         command = ResumeActivityRun("run-a", self.authority, fence, IdempotencyKey("resume-lock"))
@@ -100,7 +100,7 @@ class ReceiverFreshLifecyclePermissionTests(ReceiverExecutionScopeFixture, Fresh
         claimed = self.claim()
         fence = claimed.request.claim.fence
         self.lifecycle("start-event", "start-action").execute(StartActivityRun(
-            "run-a", self.authority, fence, IdempotencyKey("start")))
+            "run-a", self.authority, fence, IdempotencyKey("resume-recheck-setup-start")))
         self.lifecycle("pause-event", "pause-action").execute(PauseActivityRun(
             "run-a", self.authority, fence, IdempotencyKey("pause")))
         command = ResumeActivityRun("run-a", self.authority, fence, IdempotencyKey("resume-recheck"))
