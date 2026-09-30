@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 
 from control_plane_kit_core.identity import AuthenticatedPrincipal, PrincipalIdentity, PrincipalKind, WorkspaceGrant
 from control_plane_kit_core.policies import PolicyScope
+from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.cpk_server import CpkServerApplicationError, CpkServerReadService
 from control_plane_kit_operations.read_services import ReadModelError
 from control_plane_kit_operations.records import WorkspaceRecord
@@ -21,6 +22,8 @@ from tests.receiver_storage_fixture import RECEIVER
 class ReceiverAuthoringContextTests(ReceiverAuthoringContextFixture, ReceiverAdmissionFixture, unittest.TestCase):
     def test_exact_selected_artifact_and_origin_agree_across_direct_http_and_mcp_reads(self):
         graph, artifact, declaration = self.receiver_graph(pretty=True)
+        graph = replace(graph, nodes={**graph.nodes, "api": replace(graph.node("api"),
+            metadata={"api_token": "test-token-value", "public_note": "visible"})})
         command = self.desired_command(graph=graph)
         introduced = self.desired_service().execute(command)
         pins = self.pins()
@@ -60,9 +63,18 @@ class ReceiverAuthoringContextTests(ReceiverAuthoringContextFixture, ReceiverAdm
         encoded = body_bytes(descriptor)
         for unrelated in (b"application.txt", b"not-a-receiver-configuration", b"public_environment", b"metadata"):
             self.assertNotIn(unrelated, encoded)
-        # The established redacted projection must not turn into the new exact read.
+        # Preserve the existing redaction law: sensitive fields are filtered,
+        # while secret-free PUBLIC artifact bytes were already readable here.
+        # D's combined scopes do not retroactively change the legacy graph read.
         redacted = self.read(route="read.desired-graph")
-        self.assertNotIn(json.dumps(artifact.content), json.dumps(redacted))
+        legacy_node = redacted["graph_descriptor"]["nodes"]["api"]
+        self.assertEqual(legacy_node["metadata"], {"api_token": "<redacted>", "public_note": "visible"})
+        self.assertEqual(legacy_node["environment_bindings"], [{"kind": "public-static",
+            "name": "CPK_WRAPPER_CONFIGURATION_FILE", "value": "<redacted>"}])
+        self.assertEqual(legacy_node["endpoints"]["http"]["address"], "<redacted>")
+        self.assertEqual(legacy_node["configuration_artifacts"],
+                         [item.descriptor() for item in graph.node("api").configuration_artifacts])
+        self.assertNotIn("test-token-value", json.dumps(redacted))
 
     def test_same_draft_revision_preserves_original_origin_and_distinct_selected_bytes(self):
         original_graph, original_artifact, _ = self.receiver_graph()
@@ -88,7 +100,14 @@ class ReceiverAuthoringContextTests(ReceiverAuthoringContextFixture, ReceiverAdm
         self.assertEqual((desired["lifecycle"], pending["lifecycle"]), ("pending", "pending"))
         self.assertEqual(self.admission_truth(), before)
         self.assert_context_refused(409, pending_draft={"draft_id": first.draft_id, "expected_head_revision": 1})
+        with self.assertRaises(self.api.DesiredTopologyDraftConflict):
+            self.catalogue().execute(self.delete_command(revised))
+        self.assertEqual(self.admission_truth(), before)
+        reservations = before["cpk_graph_receiver_introductions"]
+        self.desired_service().execute(self.desired_command(
+            graph=DeploymentGraph("unselected-draft"), key="unselect-before-tombstone", pins=self.pins()))
         self.catalogue().execute(self.delete_command(revised))
+        self.assertEqual(self.admission_truth()["cpk_graph_receiver_introductions"], reservations)
         self.assert_context_refused(404, pending_draft={"draft_id": first.draft_id, "expected_head_revision": 2})
 
     def test_legacy_receiver_free_live_head_has_explicit_absent_projection_without_minting(self):
@@ -170,7 +189,11 @@ class ReceiverAuthoringContextTests(ReceiverAuthoringContextFixture, ReceiverAdm
             with self.subTest(values=values):
                 self.assert_context_refused(400, **values)
         self.assert_context_refused(404, pending_draft={"draft_id": "missing", "expected_head_revision": 1})
-        foreign = self.create(workspace="workspace-b", key="foreign-head")
+        foreign = self.create(workspace="workspace-b", key="foreign-head", graph=DeploymentGraph("foreign-empty"))
+        foreign_context = self.context_read(workspace="workspace-b",
+            pending_draft={"draft_id": foreign.draft_id, "expected_head_revision": 1})
+        self.assertEqual(foreign_context["pending_draft"], {"draft_id": foreign.draft_id, "head_revision": 1,
+            "graph_id": foreign.graph_id, "realized_projection_id": None, "receivers": []})
         self.assert_context_refused(404,
             pending_draft={"draft_id": foreign.draft_id, "expected_head_revision": 1})
         self.assert_context_refused(404, workspace="missing")

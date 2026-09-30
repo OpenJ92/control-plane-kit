@@ -1,11 +1,13 @@
 # O1.D receiver authoring context targets
 
-Status: **local implementation awaiting independent static review; unvalidated**.
-The reviewed targets were published in draft PR #1914 and their one intended-red
-owning gate is complete. North's
+Status: **first source gate non-green; local test/learning correction awaiting review**.
+The reviewed targets and source were published in draft PR #1914. Their
+intended-red gate and first source gate are complete; no owning green acceptance
+exists yet. North's
 [source release](https://github.com/OpenJ92/control-plane-kit/issues/1899#issuecomment-5918850735)
-permits local implementation only; publication and executable validation remain
-separate releases. No dependency adoption or provider action accompanies this
+released implementation was followed by separately released source publication
+and one normal owning run. The current correction is local only; its publication
+and validation remain separate releases. No dependency adoption or provider action accompanies this
 checkpoint. Selected base is
 `0aadecdef61e106bc628157974989fe3aba405d3`, tree
 `fa9b51628f407b3d81bcc463c100e7e399b7a1b6`; branch
@@ -79,6 +81,53 @@ snapshot assertion checks that list outside the service boundary, so an expected
 and semantic assertions remain. This additive correction changes no production
 source or contract and has not been executed. North released the local correction
 for Meridian's focused delta review; publication and owning execution remain held.
+
+### First source gate and bounded correction
+
+The [complete terminal classification](https://github.com/OpenJ92/control-plane-kit/pull/1914#issuecomment-5920151130)
+records run `36774576718` at actual merge `ade29dac5ff306fb5e1a304c1568681e522ed496`,
+tree `1f6d6daf4d8575baa3a01875a6ee3e4b353074b6`, parents accepted `0aadecde` and
+reviewed `5ae8c8aa`, with architecture-testing `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`.
+Core ran 908 tests / 24.869s with three catalogue-companion failures. Operations
+ran 2,120 / 2,882.579s with two failures and two fixture errors. Neither suite
+reached its later compile/import stages. The normal Backend gate passed only at
+locked `f45384e7`, without #1899 adoption evidence.
+
+Twenty of 23 new Operations methods passed, including all eight bounds and all
+eight snapshot/acceptance methods plus the strengthened auth instrumentation.
+The three partially reached methods are not whole-method passes. The foreign
+and tombstone tail assertions remained unexecuted. Static target/source review
+missed the following inventory and fixture-premise mistakes; static PASS was
+not evidence those branches could execute.
+
+Meridian independently classified the failures and North released this bounded
+tests/learning-only correction:
+
+- Add the new route to both frozen Core inventories, preserve every old member
+  and roundtrip, update the 77-operation total and explicitly assert the new
+  read's READ/read-only/not-recorded/bounded-error policy.
+- Count six repeated read-selector groups, retaining total, uniqueness,
+  occurrence, exact inventory and category assertions.
+- Replace the false assumption that the legacy graph read hides public artifact
+  bytes with explicit sensitive metadata/environment/address filtering and
+  public-note/artifact preservation. Those public artifact bytes were already
+  disclosed by the old graph read. D's combined scopes protect the new coherent
+  context service; they are not a retroactive confidentiality barrier across
+  legacy surfaces. Production redaction is unchanged.
+- Create a lawful receiver-free foreign draft and prove a positive scoped read
+  before the original foreign/missing/stale 404/409 assertions. The old default
+  product was registered only in workspace A, so workspace B correctly refused
+  its attempted authoring.
+- Prove deletion still refuses while draft history is desired; use the existing
+  desired command with current five pins to remove that reference, then perform
+  lawful tombstoning. The immutable receiver reservation remains identical and
+  the original tombstone-read 404 is retained. No direct pointer/history rewrite
+  manufactures eligibility.
+
+There is no production change, weakened negative, skip or replacement runtime.
+The correction needs focused static delta review and a separately released
+owning gate. Previously unreached branches and both compile/import stages still
+need executable evidence. Kepler's unchanged-production architecture PASS carries.
 
 ## Target shape and law mapping
 

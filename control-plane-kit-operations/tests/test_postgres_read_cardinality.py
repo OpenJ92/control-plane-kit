@@ -212,7 +212,7 @@ class PostgresReadCardinalityPolicyTests(unittest.TestCase):
             self.assertNotRegex(identity.selector, r":\d+$")
             grouped[(identity.module, identity.selector)].append(identity.occurrence)
         repeated = {key: values for key, values in grouped.items() if len(values) > 1}
-        self.assertEqual(len(repeated), 5)
+        self.assertEqual(len(repeated), 6)
         self.assertEqual(set(tuple(values) for values in repeated.values()), {(1, 2)})
         self.assertEqual(
             tuple(
