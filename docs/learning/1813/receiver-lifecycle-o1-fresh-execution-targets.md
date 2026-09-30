@@ -927,9 +927,9 @@ execution and current advancement with those owners.
 | --- | --- |
 | Desired graph, draft or publication → graph/projection/action/bindings | Original five pins and provenance are checked; complete owner writes are atomic and unsupported direct receiver writes refuse. |
 | Original approved plan → queued request/action/coverage | Coverage remains tied to original material. Real execution admission and receiver selection serialize in both winner orders; the loser leaves no durable writes. |
-| Retained execution truth → scope classification | C-N9/C-N10 stay conflicting. C-N11 permits reuse only with complete no-dispatch cancellation evidence and all future activation paths closed. Bounded or unavailable evidence never becomes clearance. |
+| Retained execution truth → scope classification | C-N9/C-N10 stay conflicting. C-N11 permits reuse only with complete no-dispatch cancellation evidence and all future activation paths closed. Exhausted-budget, incomplete or unavailable evidence never becomes clearance. |
 | Original receipt → replay or lawful retry | Replay preserves original meaning without fresh dispatch. Lawful original retry retains its occupied scope and does not clear a competitor. |
-| Fresh native start → committed event/intent/attempt → adapter I/O | Exact STARTED truth commits before unlocked I/O; ExistingAttempt/replay never redispatches. Late failure prevents the external call. |
+| Fresh native start → committed event/intent/attempt → adapter I/O | Exact STARTED truth commits before unlocked I/O; ExistingAttempt/replay never redispatches. Late precommit or commit failure prevents the external call. |
 | Complete associated execution → current pointer/action/event/witnesses | First acceptance and accepted removal retirement commit together or roll back together. Desired omission alone cannot retire a receiver. |
 
 Joint review found no production defect. Its narrow correction added the
