@@ -36,3 +36,10 @@ reader for the UoW's explicit snapshot entry. The original-action validator is
 shared with the existing mutation path; only its pure correspondence checks
 are factored. The read uses no raw unbounded getter or lifecycle lock and cannot
 write acceptance, reserve identities or acquire external evidence.
+
+## O2 / #1883 current boundary
+
+A narrow private _require_receiver_lifecycle method revalidates an already-held graph guard through the existing receiver storage owner. It checks the same store and transaction without acquiring lifecycle L again, allowing nested health reload to reject stale/foreign prefixes before later row locks. It introduces no public authority value or receiver policy.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

@@ -133,6 +133,7 @@ COORDINATOR_DEPENDENCIES = {
     "control_plane_kit_core.planning.saga",
     "control_plane_kit_core.policies",
     "control_plane_kit_core.probe_intents",
+    "control_plane_kit_core.receiver_health_read_results",
     "control_plane_kit_core.runtime_effect_observation",
     "control_plane_kit_core.runtime_effects",
     "control_plane_kit_core.secrets",
@@ -198,7 +199,6 @@ EXACT_COORDINATOR_IMPORTS = _exact_imports(
     ("asyncio", None, None),
     ("control_plane_kit_core.identity", "TrustedCommandContext", None),
     ("control_plane_kit_core.node_health_read_results", "NodeHealthReadOutcome", None),
-    ("control_plane_kit_core.node_health_read_results", "NodeHealthReadResult", None),
     ("control_plane_kit_core.operations", "EffectAttemptFence", None),
     ("control_plane_kit_core.operations", "EffectAttemptIdentity", None),
     ("control_plane_kit_core.operations", "EffectAttemptStatus", None),
@@ -229,6 +229,7 @@ EXACT_COORDINATOR_IMPORTS = _exact_imports(
     ("control_plane_kit_core.planning.saga", "derive_schedule", None),
     ("control_plane_kit_core.planning.saga", "project_activity_journal", None),
     ("control_plane_kit_core.policies", "PolicyScope", None),
+    ("control_plane_kit_core.receiver_health_read_results", "ReceiverHealthReadResult", None),
     (
         "control_plane_kit_core.runtime_effect_observation",
         "runtime_effect_intent_fingerprint",

@@ -14,7 +14,7 @@ from control_plane_kit_operations.effect_attempt_start import (
 )
 from control_plane_kit_operations.effect_attempts import EffectAttemptRecord
 from control_plane_kit_operations.health_effect_preparations import (
-    HealthEffectPreparationCodec, HealthEffectPreparationRecord,
+    HealthEffectPreparationCodec, HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord,
 )
 from control_plane_kit_operations.records import OperationsRecordError
 from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation
@@ -38,7 +38,7 @@ class HealthEffectAttemptStartResult:
     """An original unsigned preparation with a new start or retained observation."""
 
     start: NewlyStarted | ExistingAttempt = field(repr=False)
-    preparation: HealthEffectPreparationRecord = field(repr=False)
+    preparation: HealthEffectPreparationRecord | ReceiverHealthEffectPreparationRecord = field(repr=False)
 
     def __post_init__(self) -> None:
         valid = False
@@ -46,7 +46,7 @@ class HealthEffectAttemptStartResult:
             if (type(self) is HealthEffectAttemptStartResult
                     and type(self.start) in (NewlyStarted, ExistingAttempt)
                     and type(self.start.attempt) is EffectAttemptRecord
-                    and type(self.preparation) is HealthEffectPreparationRecord):
+                    and type(self.preparation) in (HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord)):
                 attempt = replace(self.start.attempt)
                 start = type(self.start)(attempt)
                 codec = HealthEffectPreparationCodec()

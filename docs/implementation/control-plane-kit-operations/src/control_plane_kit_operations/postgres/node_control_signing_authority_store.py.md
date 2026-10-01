@@ -15,3 +15,10 @@ existing owner/driver exception identity is preserved. The store makes no
 commit, write or schema change. Distinct variable and health services own their
 respective current-context and explicit-purpose decisions; sharing SQL does not
 widen the old variable API or import its policy into health reload.
+
+## O2 / #1883 current boundary
+
+The health-only locked chain query accepts ReceiverHealthEffectPreparationRecord. The existing six-row key-use/reference/provider query and exception/locking behavior remain; ordinary node-control signing is unchanged. Historical V1 preparation reconstruction does not call this live query.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

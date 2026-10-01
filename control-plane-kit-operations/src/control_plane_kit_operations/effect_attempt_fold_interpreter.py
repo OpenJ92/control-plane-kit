@@ -67,7 +67,7 @@ from control_plane_kit_operations.runtime_management_targets import (
     is_native_connection_operation, is_signed_management_health_operation,
 )
 from control_plane_kit_operations.health_signing_authority import (
-    HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
+    HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority, _lock_health_prefix,
 )
 from control_plane_kit_operations.runtime_management_admission import runtime_management_execution_is_unsupported
 from control_plane_kit_operations.records import (
@@ -230,7 +230,20 @@ def _execute_fold(
 
     with self._unit_of_work_factory() as unit_of_work:
         stores = unit_of_work.stores
+        health_prefix = None
+        health_locator = None
+        if health is not None:
+            # Locate replay without current permission. Only a fresh transition
+            # acquires L, before ANY request/run/attempt/runtime row lock.
+            locator = stores.execution.get_request(command.request_id)
+            health_locator = _attempt_for_update(stores, identity, for_update=False)
+            if _fold(command, health_locator) != health_locator.state:
+                if locator.identity.workspace_id != health.context.workspace_id:
+                    raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
+                health_prefix = _lock_health_prefix(unit_of_work, locator, identity)
         request = _request_for_update(stores, command.request_id)
+        if health is not None and request != locator:
+            raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
         if native is not None and native.context.workspace_id != request.identity.workspace_id:
             raise EffectAttemptFoldDenied(_AUTHORITY_ERROR)
         if health is not None and health.context.workspace_id != request.identity.workspace_id:
@@ -240,12 +253,14 @@ def _execute_fold(
             command.request_id,
             identity.run_id.value,
         )
-        run_prefix, located_native_intent, located_health_intent = None, None, None
+        run_prefix, located_native_intent, located_health_intent = health_prefix, None, None
         if native is not None or health is not None:
             # Request serialization permits a nonlocking branch locator. Keep
             # malformed truth/current authority refusals before fresh latest-run
             # acquisition; then lock the selected prefix before the attempt.
             located_attempt = _attempt_for_update(stores, identity, for_update=False)
+            if health_locator is not None and located_attempt != health_locator:
+                raise EffectAttemptFoldConflict(_SERIALIZATION_ERROR)
             _require_current_authority(command, request)
             latest_required = False
             if native is not None:
@@ -265,8 +280,11 @@ def _execute_fold(
                     _require_managed_plan(stores, located_health_intent, request)
             if latest_required:
                 try:
-                    run_prefix = _lock_effect_run_prefix(unit_of_work, request,
-                        identity.run_id.value, latest_required=True)
+                    if health_prefix is None:
+                        run_prefix = _lock_effect_run_prefix(unit_of_work, request,
+                            identity.run_id.value, latest_required=True)
+                    else:
+                        health_prefix.require(unit_of_work, command.request_id, identity)
                 except EffectRunPrefixConflict:
                     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR) from None
             attempt = _attempt_for_update(stores, identity)

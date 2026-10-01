@@ -12,8 +12,9 @@ from control_plane_kit_core.planning import ObserveNodeHealth, compile_graph_act
 from control_plane_kit_operations.effect_attempt_fold import FoldEffectAttempt, GuardedHealthEffectFold, ExistingFold
 from control_plane_kit_operations.effect_attempt_fold_interpreter import EffectAttemptFoldService
 from control_plane_kit_operations.effect_outcome_evidence import ExecutionEffectOutcome, effect_outcome_transition
-from control_plane_kit_operations.effect_run_prefix import _lock_effect_run_prefix
-from control_plane_kit_operations.health_signing_authority import HealthSigningAuthorityReloadService, HealthSigningAuthorityUnavailable
+from control_plane_kit_operations.health_signing_authority import (
+    HealthSigningAuthorityReloadService, HealthSigningAuthorityUnavailable, _lock_health_prefix,
+)
 from control_plane_kit_operations.postgres import PostgresExecutionStore, PostgresUnitOfWork
 from control_plane_kit_operations.postgres.runtime_authority_store import RuntimeAuthorityStore
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
@@ -122,16 +123,17 @@ class PostgresLifecycleHealthFoldLockTests(
         service = HealthSigningAuthorityReloadService(self.unit_of_work,
             health_receiver_decoders=self.health_receiver_decoders())
         with PostgresUnitOfWork(lambda: _ObservedConnection(self.lock_connection(), statements)) as uow:
-            request = uow.stores.execution.get_request_for_update(command.request_id)
-            prefix = _lock_effect_run_prefix(uow, request, command.identity.run_id.value,
-                latest_required=True)
+            # Enter the actual complete health prefix: lifecycle must precede
+            # request/run locks even for this caller-owned transaction.
+            request = uow.stores.execution.get_request(command.request_id)
+            prefix = _lock_health_prefix(uow, request, command.identity)
             accepted, _ = service.in_unit_of_work(uow, command, run_prefix=prefix)
             self.assertEqual(accepted.preparation, self.preparation)
             changed = uow.stores.execution.compare_and_set_run_status(
                 command.identity.run_id.value, expected=ActivityRunStatus.RUNNING,
                 replacement=ActivityRunStatus.FAILED)
             self.assertIs(changed.status, ActivityRunStatus.FAILED)
-            self.assertIs(prefix.requested_run.status, ActivityRunStatus.RUNNING)
+            self.assertIs(prefix.runs.requested_run.status, ActivityRunStatus.RUNNING)
             statements.clear()
             with self.forbid_fresh_health(), \
                     mock.patch.object(PostgresExecutionStore, "get_latest_run_for_request",

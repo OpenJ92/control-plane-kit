@@ -38,7 +38,7 @@ from control_plane_kit_operations.effect_outcome_evidence import (
 )
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.health_effect_attempt_start import _valid_context
-from control_plane_kit_operations.health_effect_preparations import HealthEffectPreparationRecord
+from control_plane_kit_operations.health_effect_preparations import HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
 from control_plane_kit_operations.records import (
     BoundedEvidence,
@@ -131,7 +131,7 @@ class GuardedHealthEffectFold:
     fold: FoldEffectAttempt
     context: TrustedCommandContext = field(repr=False)
     intent_record: EffectAttemptIntentRecord = field(repr=False)
-    preparation: HealthEffectPreparationRecord = field(repr=False)
+    preparation: HealthEffectPreparationRecord | ReceiverHealthEffectPreparationRecord = field(repr=False)
     runtime_authority: RegisteredRuntimeAuthority = field(repr=False)
 
     def __post_init__(self):
@@ -150,7 +150,7 @@ def _valid_health_fold(command):
             and type(command.fold.outcome) is ExecutionEffectOutcome
             and _valid_context(command.context)
             and intent is not None and runtime is not None
-            and type(preparation) is HealthEffectPreparationRecord
+            and type(preparation) in (HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord)
             and is_signed_management_health_operation(intent.intent.operation)
             and command.fold.transition.identity == intent.identity == preparation.identity
             and command.fold.request_id == intent.request_id

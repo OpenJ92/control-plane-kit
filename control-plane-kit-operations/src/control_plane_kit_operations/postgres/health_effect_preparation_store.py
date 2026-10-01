@@ -5,6 +5,8 @@ from psycopg import IntegrityError
 from psycopg.errors import UniqueViolation
 
 from control_plane_kit_core.node_control import NodeControlContractError
+from control_plane_kit_core.receiver_identity import NodeControlAuthorityContext
+from control_plane_kit_core.wrapper_configuration import WrapperConfigurationError
 from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
 )
@@ -13,7 +15,7 @@ from control_plane_kit_core.planning import ActivityId, PlanGraphSide
 from control_plane_kit_core.secrets import health_signing_intent_for
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, GraphDescriptorError, validate_graph
 from control_plane_kit_operations.health_effect_preparations import (
-    HealthEffectPreparationCodec, HealthEffectPreparationRecord, HealthEffectPreparationError,
+    HealthEffectPreparationCodec, HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord, HealthEffectPreparationError,
     HealthEffectPreparationConflict, HealthEffectPreparationCorrupt, health_effect_attempt_wire_id,
 )
 from control_plane_kit_operations.delegation_signing_keys import delegation_signing_key_registration_id_for
@@ -28,7 +30,10 @@ from control_plane_kit_operations.postgres.delegation_signing_key_store import D
 from control_plane_kit_operations.postgres.effect_attempt_intent_store import EffectAttemptIntentStore
 from control_plane_kit_operations.postgres.effect_attempt_store import EffectAttemptStore
 from control_plane_kit_operations.postgres.execution import PostgresExecutionStore
-from control_plane_kit_operations.postgres.graph_store import PostgresRealizedGraphProjectionStore
+from control_plane_kit_operations.postgres.graph_store import PostgresRealizedGraphProjectionStore, PostgresGraphTopologyStore
+from control_plane_kit_operations._health_receiver_trust import original_receiver_health_configurations
+from control_plane_kit_operations.health_receiver_trust import HealthReceiverTrustError
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleStorageError, _receiver_scope
 from control_plane_kit_operations.postgres.secret_provider_store import (
     SecretProviderStore, SecretReferenceStore, SecretUseAuthorizationStore,
 )
@@ -54,7 +59,7 @@ class HealthEffectPreparationStore:
     def __init__(self, connection: object) -> None:
         self._connection = connection
 
-    def get(self, identity: EffectAttemptIdentity) -> HealthEffectPreparationRecord:
+    def get(self, identity: EffectAttemptIdentity) -> HealthEffectPreparationRecord | ReceiverHealthEffectPreparationRecord:
         health_effect_attempt_wire_id(identity)  # exact nominal validation before SQL
         row = self._connection.execute(_SELECT +
             " WHERE run_id=%s AND activity_id=%s AND attempt=%s",
@@ -63,7 +68,7 @@ class HealthEffectPreparationStore:
             raise KeyError("health effect preparation was not found")
         return _reconstruct(self._connection, row)
 
-    def insert_absent(self, record: HealthEffectPreparationRecord) -> HealthEffectPreparationRecord | None:
+    def insert_absent(self, record: HealthEffectPreparationRecord | ReceiverHealthEffectPreparationRecord):
         preimage = HealthEffectPreparationCodec().encode_canonical_bytes(record)
         _require_owners(self._connection, record, HealthEffectPreparationError,
             lock_attempt=True)
@@ -153,6 +158,9 @@ class _OwnerCursorBoundary:
     def fetchone(self):
         return self.boundary._call(self.cursor.fetchone)
 
+    def fetchall(self):
+        return self.boundary._call(self.cursor.fetchall)
+
 
 def _load_owner(connection, owner, method, *args):
     boundary = _OwnerReadBoundary(connection)
@@ -178,7 +186,8 @@ def _require_owners(connection, record, error_type, *, lock_attempt=False):
     except _OwnerAdapterFailure as error:
         adapter_failure = error.failure
     except (_OwnerMismatch, GraphDescriptorError, ManagementHealthTargetProjectionError,
-            NodeControlContractError, SecretProviderRegistrationError):
+            NodeControlContractError, SecretProviderRegistrationError, WrapperConfigurationError,
+            HealthReceiverTrustError, ReceiverLifecycleStorageError):
         pass
     if adapter_failure is not None:
         raise adapter_failure
@@ -229,7 +238,10 @@ def _check_owners(connection, record, *, lock_attempt=False):
     target = record.request.target
     declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface,
         WorkloadNodeControlSurfaceDeclarationProfile.V2).identity()
-    if ((target.graph_revision.value, target.node_id.value, target.provider_socket_name.value,
+    if type(record) is ReceiverHealthEffectPreparationRecord:
+        projection = base if operation.target.graph_side is PlanGraphSide.BASE_GRAPH else desired
+        _require_original_receivers(connection, record, selected, authored, projection)
+    elif ((target.graph_revision.value, target.node_id.value, target.provider_socket_name.value,
             record.request.runtime_id.value, record.request.kind, record.request.declaration_identity)
             != (authored, selected.target_node_id, selected.target_provider_socket_name,
                 operation.target.runtime_id, selected.target_health_kind, declaration)
@@ -275,6 +287,37 @@ def _check_owners(connection, record, *, lock_attempt=False):
             or keys[0].private_key_reference == keys[1].private_key_reference
             or uses[0].actor_subject != uses[1].actor_subject):
         raise _OwnerMismatch
+
+
+def _require_original_receivers(connection, record, selected, authored, projection):
+    """Prove original V2 identity without asking whether it remains live today."""
+    graph = DEFAULT_GRAPH_CODEC.decode(projection.graph_descriptor)
+    workload, gateway = original_receiver_health_configurations(graph, selected, record.workspace_id)
+    if (record.request.target != workload.target
+            or record.request.authority_context != NodeControlAuthorityContext(authored, projection.projection_id)
+            or record.request.kind is not selected.target_health_kind
+            or record.request.declaration_identity != workload.declaration.identity()
+            or record.transit_grant.gateway_target != gateway.target):
+        raise _OwnerMismatch
+    # The graph owner rederives the COMPLETE binding set, including its digest
+    # and declaration, from exact original bytes. Never call current sources or
+    # the live-origin predicate: retirement must not invalidate old evidence.
+    bindings = _load_owner(connection, PostgresGraphTopologyStore, "receiver_bindings",
+        record.workspace_id, authored, projection.projection_id)
+    for target in (workload.target, gateway.target):
+        scope = (target.workspace_id.value, target.runtime_id.value, target.node_id.value,
+            target.provider_socket_name.value, target.receiver_id)
+        if not any(_receiver_scope(binding) == scope for binding in bindings):
+            raise _OwnerMismatch
+        origin = _load_owner(connection, PostgresGraphTopologyStore, "receiver_introduction",
+            record.workspace_id, target.receiver_id)
+        if origin is None or _receiver_scope(origin) != scope:
+            raise _OwnerMismatch
+        original = _load_owner(connection, PostgresGraphTopologyStore, "receiver_bindings",
+            record.workspace_id, origin.introducing_graph_id, origin.introducing_realized_projection_id)
+        if not any(_receiver_scope(binding) == scope for binding in original):
+            raise _OwnerMismatch
+        _load_owner(connection, PostgresGraphTopologyStore, "_require_receiver_origin_action", origin)
 
 
 def _validate_current_rows(connection: object) -> None:

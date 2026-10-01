@@ -2,22 +2,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timezone
 import re
 from typing import Any
 
 from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
-from control_plane_kit_core.node_control import (
-    NodeControlGraphReference, NodeControlGraphReferenceRole, NodeControlTarget,
-    workload_node_control_audience,
-)
+from control_plane_kit_core.receiver_identity import NodeControlAuthorityContext, receiver_node_control_audience
 from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
 )
-from control_plane_kit_core.node_health_reads import verify_workload_node_health_read_grant
-from control_plane_kit_core.node_health_transit import verify_gateway_node_health_read_transit_grant
+from control_plane_kit_core.receiver_health_reads import verify_workload_receiver_health_read_grant
+from control_plane_kit_core.receiver_health_transit import verify_gateway_receiver_health_read_transit_grant
 from control_plane_kit_core.operations import EffectAttemptFence, EffectAttemptIdentity, EffectAttemptStatus, RunId
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind, ActivityRunStatus, ExecutionRequestStatus
 from control_plane_kit_core.planning import ActivityId, PlanGraphSide
@@ -29,7 +26,7 @@ from control_plane_kit_core.secrets import (
 )
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_operations._health_effect_attempt_start import _valid_key, _valid_value
-from control_plane_kit_operations._health_receiver_trust import require_health_receiver_coverage
+from control_plane_kit_operations._health_receiver_trust import require_health_receiver_coverage, original_receiver_health_configurations
 from control_plane_kit_operations._temporal import validate_canonical_utc_timestamp
 from control_plane_kit_operations.delegation_signing_keys import delegation_signing_key_registration_id_for
 from control_plane_kit_operations.effect_attempt_start import _bounded_command_text
@@ -42,7 +39,7 @@ from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.health_effect_attempt_start import _valid_context
 from control_plane_kit_operations.health_receiver_trust import HealthReceiverDecoders, HealthReceiverTrustError
 from control_plane_kit_operations.health_effect_preparations import (
-    HealthEffectPreparationCodec, HealthEffectPreparationRecord, _same_nominal_tree,
+    HealthEffectPreparationCodec, ReceiverHealthEffectPreparationRecord, _same_nominal_tree,
     health_effect_attempt_wire_id,
 )
 from control_plane_kit_operations.lifecycle import ExecutionWorkerAuthority
@@ -53,6 +50,7 @@ from control_plane_kit_operations.records import (
     GraphVersionRecord, RealizedGraphProjectionRecord,
 )
 from control_plane_kit_operations.runtime_management_targets import is_signed_management_health_operation, project_management_health_target
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleStorageError, _validate_receiver_execution
 from control_plane_kit_operations.secret_providers import (
     AuthorizedSecretUse, AuthorizeSecretUse, RegisteredSecretProvider,
     RegisteredSecretProviderStatus, RegisteredSecretReference, RegisteredSecretReferenceStatus,
@@ -121,7 +119,7 @@ class WorkloadNodeHealthReadSigningAuthority:
 class HealthSigningAuthorityPair:
     """Congruent protected references; construction alone proves no current authority."""
 
-    preparation: HealthEffectPreparationRecord
+    preparation: ReceiverHealthEffectPreparationRecord
     transit: GatewayNodeHealthReadTransitSigningAuthority
     workload: WorkloadNodeHealthReadSigningAuthority
 
@@ -185,7 +183,7 @@ def _valid_family(public: object, resolution: object, intent: SecretUseIntent) -
 
 
 def _valid_preparation(value: object) -> bool:
-    if type(value) is not HealthEffectPreparationRecord:
+    if type(value) is not ReceiverHealthEffectPreparationRecord:
         return False
     try:
         HealthEffectPreparationCodec().encode_canonical_bytes(value)
@@ -261,6 +259,63 @@ def _record(value: Any, expected: type):
     return value
 
 
+@dataclass(frozen=True, repr=False)
+class _PreparedHealthPrefix:
+    """Held locks in one transaction; never a reusable permission value."""
+
+    runs: PreparedEffectRunPrefix
+    lifecycle: object
+    attempt: EffectAttemptRecord
+    session: object
+    workspace: object
+    _owner: object = field(compare=False)
+
+    def require(self, unit_of_work, request_id, identity):
+        stores = unit_of_work.stores
+        # Reject foreign/incomplete evidence before acquiring any later row.
+        _require(self._owner is unit_of_work
+            and type(self.runs) is PreparedEffectRunPrefix
+            and request_id == self.runs.request.identity.request_id
+            and identity == self.attempt.state.identity)
+        workspace_id = self.runs.request.identity.workspace_id
+        _require(stores.graphs.owns_receiver_lifecycle(self.lifecycle, workspace_id))
+        failed = False
+        try:
+            stores.graphs._require_receiver_lifecycle(self.lifecycle, workspace_id)
+            request = stores.execution.get_request_for_update(request_id)
+            _require(request == self.runs.request)
+            self.runs.require(unit_of_work, request, identity.run_id.value, latest_required=True)
+            _require(stores.effect_attempts.get_for_update(identity) == self.attempt)
+            _require(stores.activity_history.get_session_for_update(request.identity.session_id) == self.session)
+            _require(stores.workspaces.get_for_update(workspace_id) == self.workspace)
+            _validate_receiver_execution(stores, request, self.lifecycle)
+        except (ReceiverLifecycleStorageError, EffectRunPrefixConflict):
+            failed = True
+        if failed:
+            raise HealthSigningAuthorityUnavailable(_UNAVAILABLE)
+        return request
+
+
+def _lock_health_prefix(unit_of_work, locator, identity):
+    """Lifecycle -> request -> ordered runs -> attempt -> session -> workspace."""
+    stores = unit_of_work.stores
+    lifecycle = stores.graphs.lock_receiver_lifecycle(locator.identity.workspace_id)
+    request = _record(stores.execution.get_request_for_update(locator.identity.request_id), ExecutionRequestRecord)
+    _require(request == locator)
+    failed = False
+    try:
+        runs = _lock_effect_run_prefix(unit_of_work, request, identity.run_id.value, latest_required=True)
+        attempt = _record(stores.effect_attempts.get_for_update(identity), EffectAttemptRecord)
+        session = stores.activity_history.get_session_for_update(request.identity.session_id)
+        workspace = stores.workspaces.get_for_update(request.identity.workspace_id)
+        _validate_receiver_execution(stores, request, lifecycle)
+    except (ReceiverLifecycleStorageError, EffectRunPrefixConflict):
+        failed = True
+    if failed:
+        raise HealthSigningAuthorityUnavailable(_UNAVAILABLE)
+    return _PreparedHealthPrefix(runs, lifecycle, attempt, session, workspace, unit_of_work)
+
+
 class HealthSigningAuthorityReloadService:
     """Check a saved first health attempt at one locked database observation."""
 
@@ -277,7 +332,10 @@ class HealthSigningAuthorityReloadService:
         _require(all(scope in command.context.granted_scopes for scope in _SCOPES)
             and PolicyScope.EXECUTION_OPERATE in command.authority.scopes)
         with self._unit_of_work_factory() as unit_of_work:
-            result, _ = self.in_unit_of_work(unit_of_work, command)
+            locator = _record(unit_of_work.stores.execution.get_request(command.request_id), ExecutionRequestRecord)
+            _require(locator.identity.workspace_id == command.context.workspace_id)
+            prefix = _lock_health_prefix(unit_of_work, locator, command.identity)
+            result, _ = self.in_unit_of_work(unit_of_work, command, run_prefix=prefix)
             unit_of_work.commit()
         return result
 
@@ -288,20 +346,10 @@ class HealthSigningAuthorityReloadService:
         _require(all(scope in command.context.granted_scopes for scope in _SCOPES)
             and PolicyScope.EXECUTION_OPERATE in command.authority.scopes)
         stores = unit_of_work.stores
-        # The outer fold supplies every held run before attempt/runtime locks.
-        # Standalone reload prepares the same prefix here.
-        request = _record(stores.execution.get_request_for_update(command.request_id), ExecutionRequestRecord)
-        try:
-            if run_prefix is None:
-                run_prefix = _lock_effect_run_prefix(unit_of_work, request,
-                    command.identity.run_id.value, latest_required=True)
-            if type(run_prefix) is not PreparedEffectRunPrefix:
-                raise EffectRunPrefixConflict("effect run prefix is invalid")
-            run_prefix.require(unit_of_work, request, command.identity.run_id.value, latest_required=True)
-        except EffectRunPrefixConflict:
-            raise HealthSigningAuthorityUnavailable(_UNAVAILABLE) from None
-        run = _record(run_prefix.requested_run, ActivityRunRecord)
-        latest = _record(run_prefix.latest_run, ActivityRunRecord)
+        _require(type(run_prefix) is _PreparedHealthPrefix)
+        request = run_prefix.require(unit_of_work, command.request_id, command.identity)
+        run = _record(run_prefix.runs.requested_run, ActivityRunRecord)
+        latest = _record(run_prefix.runs.latest_run, ActivityRunRecord)
         attempt = _record(stores.effect_attempts.get_for_update(command.identity), EffectAttemptRecord)
         _require(request.identity.request_id == command.request_id
             and request.identity.workspace_id == command.context.workspace_id
@@ -358,16 +406,16 @@ class HealthSigningAuthorityReloadService:
             for (name, _, intent_kind), key in zip(_FAMILIES, keys))
         observation = stores.execution.observe_request_lease_for_update(command.request_id)
         now = _observed_epoch(observation, request)
-        transit = verify_gateway_node_health_read_transit_grant(preparation.transit_grant, preparation.request,
+        transit = verify_gateway_receiver_health_read_transit_grant(preparation.transit_grant, preparation.request,
             expected_issuer=keys[0].issuer, expected_key_id=keys[0].key_id,
-            expected_attempt_id=health_effect_attempt_wire_id(command.identity), expected_gateway_node_id=gateway,
-            expected_target=target, expected_runtime_id=runtime, expected_declaration=declaration,
+            expected_attempt_id=health_effect_attempt_wire_id(command.identity), expected_gateway_target=gateway,
+            expected_target=target, expected_declaration=declaration,
             expected_kind=selected.target_health_kind, now=now)
         _require(transit.is_accepted)
-        workload = verify_workload_node_health_read_grant(preparation.workload_grant, preparation.request,
+        workload = verify_workload_receiver_health_read_grant(preparation.workload_grant, preparation.request,
             expected_issuer=keys[1].issuer, expected_key_id=keys[1].key_id,
-            expected_target=target, expected_runtime_id=runtime, expected_declaration=declaration,
-            expected_kind=selected.target_health_kind, expected_audience=workload_node_control_audience(target), now=now)
+            expected_target=target, expected_declaration=declaration,
+            expected_kind=selected.target_health_kind, expected_audience=receiver_node_control_audience(target), now=now)
         _require(workload.is_accepted)
         result = HealthSigningAuthorityPair(preparation,
             GatewayNodeHealthReadTransitSigningAuthority(keys[0].public_key, resolutions[0]),
@@ -415,18 +463,24 @@ def _target(stores, plan, intent, preparation):
     _require(selected is not None)
     operation = selected.operation
     authored = plan.base_graph_id if operation.target.graph_side is PlanGraphSide.BASE_GRAPH else plan.desired_graph_id
-    def reference(role, value):
-        return NodeControlGraphReference(role, value)
-    target = NodeControlTarget(reference(NodeControlGraphReferenceRole.WORKSPACE, preparation.workspace_id),
-        reference(NodeControlGraphReferenceRole.GRAPH_REVISION, authored),
-        reference(NodeControlGraphReferenceRole.NODE, selected.target_node_id),
-        reference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, selected.target_provider_socket_name))
-    runtime = reference(NodeControlGraphReferenceRole.RUNTIME, operation.target.runtime_id)
-    gateway = reference(NodeControlGraphReferenceRole.NODE, selected.gateway_node_id)
+    base = operation.target.graph_side is PlanGraphSide.BASE_GRAPH
+    projection = plan.base_realized_projection_id if base else plan.desired_realized_projection_id
+    configurations = None
+    try:
+        workload, gateway_configuration = original_receiver_health_configurations(
+            graphs[0 if base else 1].graph, selected, preparation.workspace_id)
+        configurations = workload, gateway_configuration
+    except (ValueError, TypeError, KeyError, AttributeError):
+        pass
+    _require(configurations is not None)
+    workload, gateway_configuration = configurations
+    target, gateway = workload.target, gateway_configuration.target
+    runtime = target.runtime_id
     declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface, WorkloadNodeControlSurfaceDeclarationProfile.V2)
-    _require(preparation.request.target == target and preparation.request.runtime_id == runtime
+    _require(preparation.request.target == target
+        and preparation.request.authority_context == NodeControlAuthorityContext(authored, projection)
         and preparation.request.kind is selected.target_health_kind and preparation.request.declaration_identity == declaration.identity()
-        and preparation.transit_grant.gateway_node_id == gateway)
+        and preparation.transit_grant.gateway_target == gateway)
     return selected, target, runtime, declaration, gateway, tuple(graphs)
 
 

@@ -39,7 +39,7 @@ from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, 
 from control_plane_kit_operations.runtime_authorities import LocalDockerSocketAuthority
 from control_plane_kit_operations.workflows import InvalidOperationCommand
 from tests.execution_lease_recovery_fixture import Sequence
-from tests.health_effect_start_fixture import trusted_health_context
+from tests.health_effect_start_fixture import HealthEffectStartValues, trusted_health_context
 from tests.postgres_health_effect_start_fixture import PostgresHealthEffectStartFixture
 from tests.lifecycle_lock_fixture import LifecycleLockFixture, RUN_LOCK, ATTEMPT_LOCK
 
@@ -73,7 +73,8 @@ class PostgresNativeConnectionFoldTests(LifecycleLockFixture, PostgresHealthEffe
         return plan, selected, current, desired, None
 
     def health_start_value(self, **options):
-        command = super().health_start_value(**options)
+        # Native connection has no signed-health target or product enrichment.
+        command = HealthEffectStartValues.health_start_value(self, **options)
         graph = DEFAULT_GRAPH_CODEC.decode(self.projections["health-desired"].graph_descriptor)
         intent = replace(command.intent, authority_ref=graph.runtimes["docker"].authority_ref)
         return replace(command, intent=intent,

@@ -26,3 +26,10 @@ material, not a user-facing descriptor or logging API. Tests protect exact byte
 round trips, maximal lawful identifiers, independent substitutions and malformed
 nominal/canonical inputs. #1852 owns actor admission and first-start composition;
 this value grants no permission by itself.
+
+## O2 / #1883 current boundary
+
+The codec now has two closed, explicitly selected envelopes: health-effect-preparation.v1 retains the original record/bytes; health-effect-preparation.v2 owns ReceiverHealthEffectPreparationRecord with Core receiver request/grants. Both keep twelve protected fields, the unchanged 16,384-byte cap and attempt wire-ID domain. V2 binds authority_context rather than placing graph revision in the stable receiver target, and includes the separate gateway receiver target. Mixed nested profiles, unknown outer profiles and nominal forgeries refuse; there is no fallback or conversion. Historical reconstruction is distinct from current signing authority.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

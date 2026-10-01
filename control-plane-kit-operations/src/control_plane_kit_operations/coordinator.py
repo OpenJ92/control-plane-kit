@@ -108,7 +108,8 @@ from control_plane_kit_operations.effect_outcome_evidence import (
     effect_outcome_failure,
     effect_outcome_transition,
 )
-from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome, NodeHealthReadResult
+from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
+from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
 from control_plane_kit_operations.health_effect_attempt_start import StartHealthEffectAttempt
 from control_plane_kit_operations.health_signing_authority import (
     HealthSigningAuthorityPair, HealthSigningAuthorityReloadService, ReloadHealthSigningAuthority,
@@ -238,7 +239,7 @@ class ManagedHealthEffectPort(Protocol):
 
     def select(self, *, plan, current, desired, registered_products, runtime_authorities): ...
 
-    async def observe_signed(self, realization, request, authority: HealthSigningAuthorityPair) -> NodeHealthReadResult: ...
+    async def observe_signed(self, realization, request, authority: HealthSigningAuthorityPair) -> ReceiverHealthReadResult: ...
 
     async def observe_connection(self, realization, request, authority: RegisteredRuntimeAuthority) -> NativeConnectionObservation | NativeConnectionRefused: ...
 
@@ -1078,7 +1079,7 @@ class ExecutionCoordinator:
         cancelled = None
         try:
             observed = await self._managed_health.observe_signed(realization, request, authority)
-            if type(observed) is NodeHealthReadResult:
+            if type(observed) is ReceiverHealthReadResult:
                 observed.__post_init__()
                 if observed.request != authority.preparation.request:
                     raise ValueError("signed health correlation mismatch")

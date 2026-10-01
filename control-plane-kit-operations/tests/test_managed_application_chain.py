@@ -23,7 +23,8 @@ from control_plane_kit_core.identity import (
 from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
 )
-from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome, NodeHealthReadResult
+from control_plane_kit_core.node_health_read_results import NodeHealthReadOutcome
+from control_plane_kit_core.receiver_health_read_results import ReceiverHealthReadResult
 from control_plane_kit_core.operations import ControlPlaneServiceRole, EffectAttemptIdentity, RunId
 from control_plane_kit_core.planning import (
     ManagementBootstrapStage, ObserveManagementBootstrap, ObserveNodeHealth,
@@ -185,7 +186,7 @@ class RecordingManagedHealth:
             if value.identity() == preparation.request.declaration_identity)
         path = (type(request.operation) is ObserveManagementBootstrap
             and request.operation.stage is ManagementBootstrapStage.AUTHENTICATED_MANAGEMENT_PATH)
-        result = NodeHealthReadResult(preparation.request, declaration,
+        result = ReceiverHealthReadResult(preparation.request, declaration,
             NodeHealthReadOutcome.UNKNOWN if path else NodeHealthReadOutcome.HEALTHY)
         self.signed_reads.append((request, preparation, result))
         return result
@@ -233,7 +234,7 @@ class ManagedApplicationFixture(unittest.IsolatedAsyncioTestCase):
             if families:
                 declaration = WorkloadNodeControlSurfaceDeclaration(node.block_spec.control_surfaces[0],
                     WorkloadNodeControlSurfaceDeclarationProfile.V2)
-                chosen = tuple(artifact(family, declaration, node=name, revision=self.authored_revision)
+                chosen = tuple(artifact(family, declaration, node=name, receiver=True)
                     for family in families)
             product = ContainerServerProduct(ProductIdentity("test", "chain-" + name, 1),
                 OciImageReference("ghcr.io", "test/chain-" + name, "sha256:" + "a" * 64),

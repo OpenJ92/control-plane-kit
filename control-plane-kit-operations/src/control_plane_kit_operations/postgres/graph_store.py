@@ -380,6 +380,10 @@ class PostgresGraphTopologyStore:
             and guard.workspace_id == workspace_id
         )
 
+    def _require_receiver_lifecycle(self, guard: object, workspace_id: str) -> None:
+        """Revalidate a held guard without acquiring lifecycle after row locks."""
+        self._receivers.guard(self, guard, workspace_id)
+
     def receiver_introduction(self, workspace_id: str, receiver_id: str):
         return self._receivers.introduction(workspace_id, receiver_id)
 

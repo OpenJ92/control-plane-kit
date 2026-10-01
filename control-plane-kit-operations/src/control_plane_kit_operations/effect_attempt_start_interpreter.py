@@ -236,9 +236,6 @@ class EffectAttemptStartService:
             if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
             admission = None
-            if health is not None:
-                admission = admit_health_start(stores, health, request, plan, event_kind,
-                    self._health_receiver_decoders)
             try:
                 _require_fresh_effect_receiver_permission(stores, request, guard, command.intent,
                     compensation=event_kind is ActivityEventKind.STEP_COMPENSATION_STARTED)
@@ -248,6 +245,9 @@ class EffectAttemptStartService:
                 permission_failed = False
             if permission_failed:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)
+            if health is not None:
+                admission = admit_health_start(stores, health, request, plan, event_kind,
+                    self._health_receiver_decoders)
             observation = _observation(stores, request.identity.request_id)
             if observation.request != request:
                 raise EffectAttemptStartConflict(_INVALID_TRUTH_ERROR)

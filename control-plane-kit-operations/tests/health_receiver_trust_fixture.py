@@ -10,6 +10,7 @@ from control_plane_kit_core.environment import PublicStaticEnvironmentBinding
 from control_plane_kit_core.wrapper_configuration import WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT, WorkloadNodeControlConfigurationCodec
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
 from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole, NodeControlTarget, workload_node_control_audience
+from control_plane_kit_core.receiver_identity import NodeControlReceiverTarget
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationCodec, WorkloadNodeControlSurfaceDeclarationProfile
 from control_plane_kit_core.planning import (
     ActivityPlan, ManagementBootstrapStage, ObserveManagementBootstrap,
@@ -50,7 +51,7 @@ def public_key(family, *, key_id=None, pem=None):
                                PEMS[family] if pem is None else pem)
 
 
-def artifact(family, surface_declaration, *, revision="health-desired", shared=True, **changes):
+def artifact(family, surface_declaration, *, revision="health-desired", shared=True, receiver=False, **changes):
     value = dict(profile=PROFILE, family=family, workspace="workspace-a", node=NODES[family],
         runtime="docker", issuer="cpk-server", purpose=PURPOSES[family].value,
         revision=revision, socket="http", declaration=surface_declaration.descriptor(),
@@ -71,6 +72,12 @@ def artifact(family, surface_declaration, *, revision="health-desired", shared=T
         value = dict(profile="workload-node-control-configuration.v1" if value["profile"] == PROFILE else value["profile"],
             target=target.descriptor(), runtime_id=value["runtime"], declaration=value["declaration"],
             verifiers=[surface, health])
+        if receiver:
+            value["profile"] = ("workload-node-control-configuration.v2"
+                if value["profile"] == "workload-node-control-configuration.v1" else value["profile"])
+            value["target"] = NodeControlReceiverTarget(target.workspace_id,
+                reference("runtime", value.pop("runtime_id")), target.node_id, target.provider_socket_name,
+                changes.get("receiver_id", ("b" if target.node_id.value == "gateway" else "a") * 32)).descriptor()
     return ConfigurationArtifact("test-" + family, "/etc/test/" + family + ".json",
         ConfigurationMediaType.JSON, json.dumps(value, sort_keys=True), ConfigurationFileMode.READ_ONLY)
 
@@ -109,10 +116,10 @@ def workload_trust(contract, chosen):
 
 
 def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_changes=None, stage=None,
-            shared=True, transform=None):
+            shared=True, transform=None, receiver=False):
     if stage is not None:
         return _bootstrap_context(test, stage=stage, side=side,
-            changes=changes, slot_changes=slot_changes, shared=shared)
+            changes=changes, slot_changes=slot_changes, shared=shared, receiver=receiver)
     graph = bootstrap_management_graph(test)
     declaration = WorkloadNodeControlSurfaceDeclaration(graph.node("api").block_spec.control_surfaces[0],
         WorkloadNodeControlSurfaceDeclarationProfile.V2)
@@ -121,27 +128,36 @@ def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_change
     revision = "health-base" if side is PlanGraphSide.BASE_GRAPH else "health-desired"
     for family, node_id in NODES.items():
         node = graph.node(node_id)
-        chosen = artifact(family, declaration, shared=shared, **({"revision": revision} | (changes or {}).get(family, {})))
+        chosen = artifact(family, declaration, shared=shared, receiver=receiver,
+            **({"revision": revision} | (changes or {}).get(family, {})))
         selected[family] = replace(chosen, **(slot_changes or {}).get(family, {}))
         # Deliberately wrong default makes accidental descriptor fallback visible.
-        default = artifact(family, declaration, shared=shared, keys=[dict(key_id="default-only", pem=PUBLIC_KEY_C)])
-        environment = wrapper_environment((default,)) if shared and family == "workload" else node.public_environment
+        default = artifact(family, declaration, shared=shared, receiver=receiver,
+            keys=[dict(key_id="default-only", pem=PUBLIC_KEY_C)])
+        extras = ()
+        if receiver and family == "transit":
+            own_declaration = WorkloadNodeControlSurfaceDeclaration(node.block_spec.control_surfaces[0],
+                WorkloadNodeControlSurfaceDeclarationProfile.V2)
+            extras = (artifact("workload", own_declaration, receiver=True, node=node_id),)
+        defaults = (default, *extras)
+        environment = (wrapper_environment(defaults) if shared and (family == "workload" or extras)
+            else node.public_environment)
         contract = ProductRuntimeContract(sockets=node.sockets,
             provider_ports=(ProviderRuntimePort("http", 8000),),
             capabilities=node.block_spec.capabilities, control_surfaces=node.block_spec.control_surfaces,
-            gateway_transit=node.block_spec.gateway_transit, configuration_artifacts=(default,), public_environment=environment)
+            gateway_transit=node.block_spec.gateway_transit, configuration_artifacts=defaults, public_environment=environment)
         document = ProductDescriptorCodec().encode_document(ContainerServerProduct(
             ProductIdentity("test", "health-" + family, 1),
             OciImageReference("ghcr.io", "test/health-" + family, "sha256:" + "b" * 64), contract))
         documents[family] = document
         ref = ProductReference.from_document(document)
-        nodes[node_id] = replace(node, configuration_artifacts=(selected[family],), public_environment=environment, metadata={
+        nodes[node_id] = replace(node, configuration_artifacts=(selected[family], *extras), public_environment=environment, metadata={
             **node.metadata, "product_identity": ref.identity.key,
             "product_descriptor_digest": ref.descriptor_sha256.value})
     if transform is not None:
         nodes, documents, selected = transform(nodes, documents, selected)
     desired = validate_graph(replace(graph, nodes=nodes))
-    current = validate_graph(DeploymentGraph(graph.name))
+    current = validate_graph(DeploymentGraph("empty" if receiver else graph.name))
     current.require_valid()
     desired.require_valid()
     plan = compile_graph_activity_plan(current, desired)
@@ -157,7 +173,7 @@ def context(test, *, side=PlanGraphSide.DESIRED_GRAPH, changes=None, slot_change
     return (plan, activity, current, desired, projected), documents, selected
 
 
-def _bootstrap_context(test, *, stage, side, changes, slot_changes, shared):
+def _bootstrap_context(test, *, stage, side, changes, slot_changes, shared, receiver=False):
     """Both signed receiver families inhabit one gateway product, not two nodes.
 
     This is a focused admission/reload world. Its caller may seed predecessor
@@ -176,9 +192,10 @@ def _bootstrap_context(test, *, stage, side, changes, slot_changes, shared):
     selected, defaults = {}, []
     for family in PURPOSES:
         values = {"node": "gateway", "revision": "health-desired"}
-        chosen = artifact(family, declaration, shared=shared, **(values | (changes or {}).get(family, {})))
+        chosen = artifact(family, declaration, shared=shared, receiver=receiver,
+            **(values | (changes or {}).get(family, {})))
         selected[family] = replace(chosen, **(slot_changes or {}).get(family, {}))
-        defaults.append(artifact(family, declaration, shared=shared, **values,
+        defaults.append(artifact(family, declaration, shared=shared, receiver=receiver, **values,
             keys=[dict(key_id="default-only", pem=PUBLIC_KEY_C)]))
     contract = ProductRuntimeContract(sockets=gateway.sockets,
         provider_ports=(ProviderRuntimePort("http", 8000),),
@@ -196,7 +213,7 @@ def _bootstrap_context(test, *, stage, side, changes, slot_changes, shared):
         **gateway.metadata, "product_identity": product_reference.identity.key,
         "product_descriptor_digest": product_reference.descriptor_sha256.value})
     desired = validate_graph(replace(graph, nodes={**graph.nodes, "gateway": gateway}))
-    current = validate_graph(DeploymentGraph(graph.name))
+    current = validate_graph(DeploymentGraph("empty" if receiver else graph.name))
     current.require_valid()
     desired.require_valid()
     plan = compile_graph_activity_plan(current, desired)
