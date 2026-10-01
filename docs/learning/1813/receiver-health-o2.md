@@ -156,8 +156,45 @@ remain unchanged. Each exact fold call delta is traced in its test companion.
 No authentication law is relaxed; no runtime, credential, provider or durable
 data effect is introduced by the correction.
 
-Meridian must review this delta before North's next checkpoint/run decision.
-Restored setup may expose other older-law failures; their behavior and full-green
-runtime cost remain unproven. Required green includes all targets, older laws and
-Operations compilation/import. No local duplicate, harness change, automatic
-rerun, merge, live mutation or downstream dependency adoption is released.
+Meridian passed the correction and North released checkpoint `611a3eab` and its
+ordinary hosted gate. [Run 36805557519](https://github.com/OpenJ92/control-plane-kit/actions/runs/36805557519)
+used actual merge `1b452f2f62dce60b25940b89e2e560c6d8aecd04`, tree
+`d6bd97d3e2e441585457ba73633c2a5a0f63272a`, with accepted O1 and `611a3eab` as
+parents; architecture-testing remained `7ebc362d`. Operations ran 2,163 tests in
+3,478.310 seconds, ending with 12 errors and zero assertion failures. All 43
+targets passed again; 62 of the formerly blocked 73 older methods passed,
+including all three old lifecycle-health-fold laws. Atomic-fold exact imports/
+calls and coordinator inventory passed. Missing-use-scope errors were resolved.
+
+One remaining error occurs before coordinator import-policy evaluation: the
+receiver-result row was inserted outside canonical module order. Eleven native
+fold tests still fail in setup because shared signed-health enrichment
+dereferences their intentionally absent signed-health target. Their generic
+first-start and native fold are not reached. No production defect is established
+by these traces. Core and the unchanged locked Backend passed; Operations
+compilation/import were not reached and cleanup remains unverified.
+
+[Terminal inventory](https://github.com/OpenJ92/control-plane-kit/pull/1915#issuecomment-5924099600)
+and [independent classification](https://github.com/OpenJ92/control-plane-kit/pull/1915#issuecomment-5924119200)
+record exact evidence and the review's missed canonical-order requirement.
+North [released two test-file corrections only](https://github.com/OpenJ92/control-plane-kit/pull/1915#issuecomment-5924123826):
+move the existing receiver import row into canonical order, and explicitly use
+the original `HealthEffectStartValues` builder in the native subclass while
+retaining real setup, runtime binding/fingerprint and all behavioral assertions.
+Their companions explain the source paths. Production, shared fixtures and
+helpers, negative laws and all 43 targets remain unchanged by this second delta.
+
+The failed job took 58m36s, leaving 84 seconds under its unchanged 60-minute cap.
+Existing log timestamps place the eleven native methods at about 15.571 seconds
+in the earlier target-only run (all passed with the older setup), versus 20.942
+seconds for their setup failures at `611a3eab`. These include setup and log-flush
+timing; they do not isolate current body cost or bound future runtime. Three
+unchanged comparison modules total 35.837, 29.576 and 33.762 seconds across the
+target-only, first-source and correction runs. That observed variation prevents
+a confident headroom claim from an 84-second margin. No timed test was launched
+to estimate cost, and the harness and cap are unchanged.
+
+Meridian must review the exact second delta; North owns execution feasibility
+and release. All eleven native bodies and Operations compilation/import still
+require proof. No local duplicate, automatic rerun, timeout/harness adjustment,
+merge, live mutation or downstream dependency adoption is released.
