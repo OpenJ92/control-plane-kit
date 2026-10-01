@@ -541,26 +541,28 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         codec = ActivityPlanDescriptorCodec()
         self.assertEqual(codec.decode(codec.encode(plan)), plan)
 
-    def test_receiver_v2_profile_changes_graph_relation_and_rejects_cross_profile_requests(self):
-        v2 = self.receiver_v2_graph()
-        v1 = graph()
-        self.assertNotEqual(GraphDescriptorCodec().encode(v1), GraphDescriptorCodec().encode(v2))
-        plans = [self.compile(empty(), desired) for desired in (v1, v2)]
-        health = [self.find(plan, self.api("ObserveNodeHealth"), node="workload") for plan in plans]
-        self.assertNotEqual(health[0].operation.target.graph_digest, health[1].operation.target.graph_digest)
-        self.assertNotEqual(health[0].operation.target.relation_digest, health[1].operation.target.relation_digest)
-        self.assertNotEqual(health[0].activity_id, health[1].activity_id)
-        for index, desired in enumerate((v1, v2)):
-            self.assertEqual(self.compile(empty(), desired), plans[index])
-            codec = GraphDescriptorCodec()
-            restored = codec.decode(codec.encode(desired))
-            self.assertEqual(self.compile(empty(), restored), plans[index])
-            for activity in plans[index].activities:
-                if isinstance(activity.operation, (self.api("ObserveNodeHealth"), self.api("ObserveManagementBootstrap"))):
-                    with self.subTest(profile=index, activity=activity.activity_id.value), self.assertRaises(ValueError):
-                        self.api("resolve_management_observation")(activity.operation,
-                            validate_graph(empty()), validate_graph((v2, v1)[index]),
-                            expected_operation=activity.operation)
+    def test_receiver_v2_commits_exact_graph_relation_and_refuses_obsolete_descriptors(self):
+        desired = self.receiver_v2_graph()
+        codec = GraphDescriptorCodec()
+        document = codec.encode(desired)
+        plan = self.compile(empty(), desired)
+        health = self.find(plan, self.api("ObserveNodeHealth"), node="workload")
+        expected_graph = hashlib.sha256(
+            b"control-plane-kit.management-graph.v1\0" + rfc8785.dumps(document)).hexdigest()
+        relation = {"runtime_id": "runtime", "management": desired.runtimes["runtime"].management.descriptor(),
+                    "ingress": desired.public_ingresses[0].descriptor(),
+                    "gateway_transit": {"provider_socket_name": "transit",
+                                        "protocol": "gateway-receiver-health-read-transit.v2"},
+                    "gateway_readiness": {"provider_socket_name": "control", "health_kind": "readiness"}}
+        expected_relation = hashlib.sha256(
+            b"control-plane-kit.management-relation.v1\0" + rfc8785.dumps(relation)).hexdigest()
+        self.assertEqual(health.operation.target.graph_digest, expected_graph)
+        self.assertEqual(health.operation.target.relation_digest, expected_relation)
+        self.assertEqual(self.compile(empty(), desired), plan)
+        self.assertEqual(self.compile(empty(), codec.decode(document)), plan)
+        document["nodes"]["gateway"]["block_spec"]["gateway_transit"]["protocol"] = "gateway-node-health-read-transit.v1"
+        with self.assertRaises(ValueError):
+            codec.decode(document)
 
     def test_ingress_ready_has_distinct_wire_identity_and_bounded_codec_refusals(self):
         stage_type = self.api("ManagementBootstrapStage")
