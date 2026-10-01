@@ -1,7 +1,7 @@
 # O2 / #1883 retained receiver health
 
-Status: source candidate; independent implementation review and hosted green
-validation pending. Governing [issue #1883](https://github.com/OpenJ92/control-plane-kit/issues/1883)
+Status: source gate failed; bounded fixture/contract correction awaiting review
+and hosted validation. Governing [issue #1883](https://github.com/OpenJ92/control-plane-kit/issues/1883)
 and [PR #1915](https://github.com/OpenJ92/control-plane-kit/pull/1915).
 
 ## Accepted boundary and evidence
@@ -111,7 +111,7 @@ before external delivery. Changed locators or stale guards refuse; no automatic
 retry or compensation is introduced. Retired history remains reconstructible
 without granting dispatch. No cleanup or retention policy changes.
 
-## Next boundary
+## Source review and first implementation gate
 
 Meridian's source review of candidate `495651bd` found one omitted governing
 translation in `test_postgres_lifecycle_health_fold_locks.py`: its positive
@@ -119,12 +119,45 @@ nested reload still supplied a bare run prefix. The correction obtains the
 actual complete health prefix before later locks and preserves the full law
 above. Production bare-prefix refusal remains intact. No other concrete
 production blocker was found in that affected-boundary review; this is source
-review, not green execution evidence. The corrected candidate requires delta
-review before North's checkpoint/hosted release.
+review, not green execution evidence. Meridian passed that delta and Kepler
+passed the source architecture at `6c51f008`; North released one hosted gate.
 
-Meridian reviews the source candidate and these fixture-law mappings before
-push or hosted execution. Required green must reach all 43 new target tails and
-the translated governing laws, then complete package compilation/import and the
-issue-owned composed gate. No local duplicate validation is permitted. Apparatus
-failure or a concrete owner/security contradiction returns to North; it does
-not authorize harness repair, broader policy, live mutation or dependency adoption.
+[Run 36800988280](https://github.com/OpenJ92/control-plane-kit/actions/runs/36800988280)
+checked out merge `81dba69037cd9999f90a75c65eb585ab861cc0d9`, tree
+`f97ccb2a1da64a84c2b99a8fca4a29c953c44018`, identical to source
+`6c51f0088324c0f67588766222698e93b7ada8d5`, with accepted O1 and that source as
+parents. Architecture-testing remained `7ebc362da40e9d7b2bdf78357e6ed8abd9a275ef`.
+Core passed 21 integrity checks, 908 tests and compilation/import. Operations
+ran 2,163 tests in 2,526.675 seconds: three failures and 73 errors, ordinary exit
+1 rather than timeout. All 43 unchanged receiver-health targets explicitly
+passed, including their lifecycle, revocation, original-history and retirement
+tails. All 73 older errors occurred during shared fixture admission setup:
+59 missing ingress-use scopes and 14 missing runtime-use scopes. Their later
+method bodies receive no execution credit. Operations compilation/import were
+not reached; suppressed cleanup remains unverified.
+
+The three assertion failures were stale exact fold import/call expectations,
+the coordinator's old result import, and its expected inventory dependency set.
+The unchanged locked Backend run `36800988404` passed all nine stages but still
+selected CPK `f45384e7`; it is not O2 adoption or Operations cleanup evidence.
+
+[Terminal inventory](https://github.com/OpenJ92/control-plane-kit/pull/1915#issuecomment-5923367803)
+and [independent classification](https://github.com/OpenJ92/control-plane-kit/pull/1915#issuecomment-5923402204)
+retain exact source associations, error groups, target outcomes and log hashes.
+
+## Bounded correction and next boundary
+
+North [released correction edits only](https://github.com/OpenJ92/control-plane-kit/pull/1915#issuecomment-5923402549):
+the positive fixture's admission actor explicitly receives `PLAN_EXECUTE` and
+both authority-use scopes; the two contract files track only the reviewed
+production import/call/dependency changes. The shared helper default, production
+authorization, independent missing-use/register-only laws and all 43 targets
+remain unchanged. Each exact fold call delta is traced in its test companion.
+No authentication law is relaxed; no runtime, credential, provider or durable
+data effect is introduced by the correction.
+
+Meridian must review this delta before North's next checkpoint/run decision.
+Restored setup may expose other older-law failures; their behavior and full-green
+runtime cost remain unproven. Required green includes all targets, older laws and
+Operations compilation/import. No local duplicate, harness change, automatic
+rerun, merge, live mutation or downstream dependency adoption is released.

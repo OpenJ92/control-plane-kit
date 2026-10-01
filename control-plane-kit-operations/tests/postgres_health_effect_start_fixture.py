@@ -68,7 +68,10 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
         # these tests do not claim provider delivery or accepted deployment.
         from tests.receiver_scope_history_fixture import admit_fixture_plan
         self._seed_original_health(**self._health_context_options)
-        admit_fixture_plan(self, requested_at="2026-08-15T03:59:00Z")
+        admit_fixture_plan(self, requested_at="2026-08-15T03:59:00Z", actor_scopes=(
+            PolicyScope.PLAN_EXECUTE, PolicyScope.RUNTIME_AUTHORITY_USE,
+            PolicyScope.INGRESS_AUTHORITY_USE,
+        ))
 
     def _seed_original_health(self, **context_options):
         with self.unit_of_work() as uow:
