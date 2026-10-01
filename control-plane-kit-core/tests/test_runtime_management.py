@@ -52,7 +52,7 @@ class RuntimeManagementTests(unittest.TestCase):
         options = {}
         if gateway:
             options["gateway_transit"] = self.api("GatewayTransitDeclaration")(
-                "control", self.api("GatewayTransitProtocol").NODE_HEALTH_READ_V1,
+                "control", self.api("GatewayTransitProtocol").RECEIVER_HEALTH_READ_V2,
             )
         return ProductRuntimeContract(
             sockets=BlockSockets(providers=tuple(providers)), provider_ports=tuple(ports),
@@ -113,7 +113,7 @@ class RuntimeManagementTests(unittest.TestCase):
         codec = ProductRuntimeContractCodec()
         encoded = codec.encode(contract)
         self.assertEqual(encoded["gateway_transit"], {
-            "provider_socket_name": "control", "protocol": "gateway-node-health-read-transit.v1",
+            "provider_socket_name": "control", "protocol": "gateway-receiver-health-read-transit.v2",
         })
         self.assertEqual(codec.decode(encoded), contract)
         block = self.block("gateway", contract)
@@ -268,7 +268,7 @@ class RuntimeManagementTests(unittest.TestCase):
         self.assertFalse(validate_graph(candidate).valid)
 
     def test_transit_role_requires_http_even_without_sdk_control_surface(self):
-        declaration = self.api("GatewayTransitDeclaration")("data", self.api("GatewayTransitProtocol").NODE_HEALTH_READ_V1)
+        declaration = self.api("GatewayTransitDeclaration")("data", self.api("GatewayTransitProtocol").RECEIVER_HEALTH_READ_V2)
         with self.assertRaises(ValueError):
             ProductRuntimeContract(sockets=BlockSockets(providers=(ProviderSocket("data", Protocol.POSTGRES),)),
                 provider_ports=(ProviderRuntimePort("data", 5432),), gateway_transit=declaration)
@@ -348,7 +348,7 @@ class RuntimeManagementTests(unittest.TestCase):
 
     def test_transit_socket_retains_ingress_secret_reference_rejection(self):
         declaration = self.api("GatewayTransitDeclaration")
-        protocol = self.api("GatewayTransitProtocol").NODE_HEALTH_READ_V1
+        protocol = self.api("GatewayTransitProtocol").RECEIVER_HEALTH_READ_V2
         for socket in ("private-key", "eyjexample"):
             with self.subTest(socket=socket), self.assertRaises(ValueError) as caught:
                 declaration(socket, protocol)
@@ -368,7 +368,7 @@ class RuntimeManagementTests(unittest.TestCase):
         with self.assertRaises(ValueError) as caught:
             self.api("GatewayTransitDeclarationCodec")().decode({
                 "provider_socket_name": "private-key",
-                "protocol": "gateway-node-health-read-transit.v1",
+                "protocol": "gateway-receiver-health-read-transit.v2",
             })
         self.assertNotIn("private-key", str(caught.exception) + repr(caught.exception))
         self.assertIsNone(caught.exception.__context__)

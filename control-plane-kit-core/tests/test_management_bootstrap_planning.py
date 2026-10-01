@@ -61,7 +61,7 @@ def block(name, surfaces=(), *, gateway=False, checks=(), requirements=()):
     spec = BlockSpec(
         name, capabilities=capabilities, control_surfaces=surfaces,
         verification=VerificationContract(checks),
-        gateway_transit=GatewayTransitDeclaration("transit", GatewayTransitProtocol.NODE_HEALTH_READ_V1) if gateway else None,
+        gateway_transit=GatewayTransitDeclaration("transit", GatewayTransitProtocol.RECEIVER_HEALTH_READ_V2) if gateway else None,
     )
     return ApplicationBlock(
         spec, PureImplementation("test-service", {name_: f"http://{name}.{name_}" for name_ in sorted(names)}),

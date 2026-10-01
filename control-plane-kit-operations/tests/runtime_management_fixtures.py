@@ -27,7 +27,7 @@ def registered_management_product(*, transit=False):
         capabilities=() if transit else sdk.block_spec.capabilities,
         control_surfaces=() if transit else sdk.block_spec.control_surfaces,
         gateway_transit=core.GatewayTransitDeclaration(
-            "http", core.GatewayTransitProtocol.NODE_HEALTH_READ_V1,
+            "http", core.GatewayTransitProtocol.RECEIVER_HEALTH_READ_V2,
         ) if transit else None,
     )
     product = ContainerServerProduct(
@@ -65,7 +65,7 @@ def management_graph(test_case, *, selected=True, metadata=None):
     workload = replace(sdk.node("api"), block_spec=BlockSpec("api"))
     gateway = Node(
         "gateway", BlockFamily.APPLICATION,
-        BlockSpec("gateway", gateway_transit=declaration("http", protocol.NODE_HEALTH_READ_V1)),
+        BlockSpec("gateway", gateway_transit=declaration("http", protocol.RECEIVER_HEALTH_READ_V2)),
         "container-server", "docker", BlockSockets(providers=(ProviderSocket("http", Protocol.HTTP),)),
         endpoints={"http": Endpoint(LiteralAddress("http://gateway:8000"), Protocol.HTTP)},
     )
