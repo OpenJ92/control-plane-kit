@@ -1,7 +1,7 @@
 # O2 / #1883 retained receiver health
 
-Status: source gate failed; bounded fixture/contract correction awaiting review
-and hosted validation. Governing [issue #1883](https://github.com/OpenJ92/control-plane-kit/issues/1883)
+Status: corrected targets and older laws passed before CI timeout; bounded
+Operations budget change awaiting review and full hosted validation. Governing [issue #1883](https://github.com/OpenJ92/control-plane-kit/issues/1883)
 and [PR #1915](https://github.com/OpenJ92/control-plane-kit/pull/1915).
 
 ## Accepted boundary and evidence
@@ -194,7 +194,38 @@ target-only, first-source and correction runs. That observed variation prevents
 a confident headroom claim from an 84-second margin. No timed test was launched
 to estimate cost, and the harness and cap are unchanged.
 
-Meridian must review the exact second delta; North owns execution feasibility
-and release. All eleven native bodies and Operations compilation/import still
-require proof. No local duplicate, automatic rerun, timeout/harness adjustment,
-merge, live mutation or downstream dependency adoption is released.
+Meridian passed the second delta and North released the normal run at checkpoint
+`09c9a00d557c93b8d9dccaf6dbf39c6b02753e8e`. Its actual merge checkout was
+`c778ab41a17d4e6cbc5770ece298b6d529ee8ef9`, tree
+`8ea00fc5a8d5b30777ef6a713080cb3dda5e183d`, parents accepted O1 and `09c9a00d`;
+architecture-testing stayed `7ebc362d`.
+
+## Measured CI budget exhaustion
+
+[Run 36811084471](https://github.com/OpenJ92/control-plane-kit/actions/runs/36811084471)
+hit the explicit one-hour job limit while still progressing. The Operations job
+ended cancelled after 60m17s. The raw log records 2,061 completed passes and no
+completed nonpass, including all 43 targets, all 73 formerly blocked methods,
+all eleven native bodies and the corrected exact policies. Real signed-stage
+foreign-intent refusal and old same-transaction prefix reentry now passed.
+Compared with the previous complete 2,163-method collection, 102 methods have no
+completion in this run. Last pass was at 04:34:06.8547132 UTC, about 1.230 seconds
+before cancellation, with preceding completions one to two seconds apart.
+There is no observed stall; no specific in-flight method identity was flushed.
+Operations compilation/import were not reached and cleanup remains unverified.
+Core and locked Backend passed, with no downstream adoption evidence.
+
+[Exact timeout inventory](https://github.com/OpenJ92/control-plane-kit/pull/1915#issuecomment-5924851217)
+records all remaining modules, source coordinates and raw hashes. The 102-method
+tail took about 66.358 seconds in the previous complete log, which is historical
+scale rather than a future upper bound. Normal compilation/import installation
+stages still add unmeasured time. This is partial execution, not a green gate.
+
+North [released only the Operations CI budget change from 60 to 75 minutes](https://github.com/OpenJ92/control-plane-kit/pull/1915#issuecomment-5924861373),
+superseding the implementer's proposed 70 minutes. The extra 15 minutes are
+discretionary completion margin, not a runtime prediction or guarantee. Core's
+20 minutes, runner, architecture pin, suite script, test selection/assertions,
+production and all 43 targets remain unchanged. The workflow companion records
+the same scope and security limits. Meridian must review this exact delta before
+North separately releases a full normal run. No local duplicate, automatic retry,
+further budget increase, merge, live mutation or adoption is authorized.
