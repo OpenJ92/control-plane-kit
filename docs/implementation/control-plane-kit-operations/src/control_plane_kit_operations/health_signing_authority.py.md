@@ -99,3 +99,10 @@ owner evidence. Native implementation validation remains pending at source
 checkpoint; no live/signing acceptance is inferred.
 
 Operations1872 updates only the shared receiver owner's representation: all own-health projects the selected common Core configuration, while injected health_receiver_decoders supplies gateway transit only. Workload bindings are explicitly invalid. Exact registered/default versus actual selected slot joins and current authority coverage precede returned resolution references as before. This supersedes the earlier statement that trusted product decoders interpret both families; transaction, original pins, current actor/key/time, replay and owner-error laws are unchanged. No SDK process import or new public service parameter is added.
+
+## O2 / #1883 current boundary
+
+Fresh signing pairs and the retained chain query require the exact V2 preparation. This supersedes the earlier graph-bound target/current-lineage description: original authority_context and current O1 workspace selection/membership are independent required witnesses. Standalone reload first reads a nonlocking request locator, then acquires lifecycle L, request, ordered run prefix, attempt, session and workspace before current O1 permission, plan/approval, keys and the single lease observation. Nested fold must provide the private prefix from this same live UoW; bare run prefixes are refused before later locks. Reentry verifies guard transaction ownership and unchanged request/run/session/workspace, with no late L acquisition. Core V2 predicates receive the independently reconstructed workload and gateway targets. Exact history replay does not use this live authority path.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

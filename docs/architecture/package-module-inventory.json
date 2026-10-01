@@ -526,6 +526,7 @@
         "tests/test_execution_admission.py",
         "tests/test_execution_concurrency.py",
         "tests/test_execution_coordinator.py",
+        "tests/test_receiver_health_coordinator.py",
         "tests/test_execution_scenario_expectations.py",
         "tests/test_execution_schema_migration.py",
         "tests/test_execution_store.py",
@@ -9608,6 +9609,7 @@
       "internal_dependencies": [
         "control_plane_kit_core.identity",
         "control_plane_kit_core.node_health_read_results",
+        "control_plane_kit_core.receiver_health_read_results",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.execution",
         "control_plane_kit_core.operations.lifecycle",
@@ -10906,6 +10908,7 @@
     {
       "canonical_public_exports": [
         "HealthEffectPreparationRecord",
+        "ReceiverHealthEffectPreparationRecord",
         "HealthEffectPreparationCodec",
         "HealthEffectPreparationError",
         "HealthEffectPreparationConflict",
@@ -10917,7 +10920,10 @@
         "control_plane_kit_core.node_control",
         "control_plane_kit_core.node_health_reads",
         "control_plane_kit_core.node_health_transit",
-        "control_plane_kit_core.operations"
+        "control_plane_kit_core.operations",
+        "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.receiver_health_reads",
+        "control_plane_kit_core.receiver_health_transit"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations.postgres.health_effect_preparation_store",
@@ -10935,7 +10941,8 @@
       ],
       "owner": "operation",
       "protecting_tests": [
-        "tests/test_health_effect_preparations.py"
+        "tests/test_health_effect_preparations.py",
+        "tests/test_receiver_health_preparations.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -10950,6 +10957,11 @@
       ],
       "destination": "control_plane_kit_operations.postgres.health_effect_preparation_store",
       "internal_dependencies": [
+        "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.wrapper_configuration",
+        "control_plane_kit_operations._health_receiver_trust",
+        "control_plane_kit_operations.health_receiver_trust",
+        "control_plane_kit_operations.receiver_lifecycle",
         "control_plane_kit_core.node_control",
         "control_plane_kit_core.node_control_surface_reads",
         "control_plane_kit_core.operations",
@@ -10981,7 +10993,9 @@
       ],
       "owner": "operation",
       "protecting_tests": [
-        "tests/test_postgres_health_effect_preparations.py"
+        "tests/test_postgres_health_effect_preparations.py",
+        "tests/test_receiver_health_original_evidence.py",
+        "tests/test_receiver_health_retirement_history.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -11041,10 +11055,10 @@
         "control_plane_kit_core.delegation_keys",
         "control_plane_kit_core.node_control",
         "control_plane_kit_core.node_control_surface_reads",
-        "control_plane_kit_core.node_health_reads",
-        "control_plane_kit_core.node_health_transit",
+        "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.receiver_health_reads",
+        "control_plane_kit_core.receiver_health_transit",
         "control_plane_kit_core.operations.lifecycle",
-        "control_plane_kit_core.planning",
         "control_plane_kit_core.policies",
         "control_plane_kit_core.secrets",
         "control_plane_kit_core.topology",
@@ -11098,10 +11112,10 @@
         "control_plane_kit_core.approval_subjects",
         "control_plane_kit_core.delegation_keys",
         "control_plane_kit_core.identity",
-        "control_plane_kit_core.node_control",
         "control_plane_kit_core.node_control_surface_reads",
-        "control_plane_kit_core.node_health_reads",
-        "control_plane_kit_core.node_health_transit",
+        "control_plane_kit_core.receiver_identity",
+        "control_plane_kit_core.receiver_health_reads",
+        "control_plane_kit_core.receiver_health_transit",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.operations.lifecycle",
         "control_plane_kit_core.planning",
@@ -11123,6 +11137,7 @@
         "control_plane_kit_operations.lifecycle",
         "control_plane_kit_operations.node_control_signing_authority",
         "control_plane_kit_operations.records",
+        "control_plane_kit_operations.receiver_lifecycle",
         "control_plane_kit_operations.runtime_management_targets",
         "control_plane_kit_operations.secret_providers"
       ],
@@ -11141,7 +11156,10 @@
         "tests/test_health_signing_authority.py",
         "tests/test_postgres_health_signing_authority.py",
         "tests/test_postgres_health_signing_transactions.py",
-        "tests/test_postgres_health_receiver_trust.py"
+        "tests/test_postgres_health_receiver_trust.py",
+        "tests/test_receiver_health_execution.py",
+        "tests/test_receiver_health_lifecycle_locks.py",
+        "tests/test_receiver_health_legacy_signing.py"
       ],
       "role": "durable-control-plane-operation",
       "semantic_roles": [
@@ -11200,14 +11218,16 @@
         "control_plane_kit_core.node_control_surface_reads",
         "control_plane_kit_core.planning",
         "control_plane_kit_core.products",
-        "control_plane_kit_core.wrapper_configuration",
+        "control_plane_kit_core.receiver_configuration",
+        "control_plane_kit_core.receiver_identity",
         "control_plane_kit_operations.graph_authoring",
         "control_plane_kit_operations.health_receiver_trust",
         "control_plane_kit_operations.products"
       ],
       "known_package_consumers": [
         "control_plane_kit_operations._health_effect_attempt_start",
-        "control_plane_kit_operations.health_signing_authority"
+        "control_plane_kit_operations.health_signing_authority",
+        "control_plane_kit_operations.postgres.health_effect_preparation_store"
       ],
       "migration_prerequisites": [],
       "module": "control_plane_kit_operations._health_receiver_trust",

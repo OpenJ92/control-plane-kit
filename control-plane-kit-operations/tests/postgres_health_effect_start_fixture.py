@@ -9,6 +9,10 @@ from psycopg.types.json import Jsonb
 from control_plane_kit_core.delegation_keys import DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey
 from control_plane_kit_core.planning import derive_schedule, project_activity_journal
 from control_plane_kit_core.policies import ApprovalPolicy, PolicyScope
+from control_plane_kit_core.products import ProductReference
+from control_plane_kit_core.runtime_effect_observation import runtime_effect_intent_fingerprint
+from control_plane_kit_core.runtime_effects import RuntimeProductMaterial
+from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC
 from control_plane_kit_core.secrets import (
     SecretReference, SecretUseIntent, SecretProviderEndpointReference, SecretProviderId,
 )
@@ -20,12 +24,16 @@ from control_plane_kit_operations.delegation_signing_keys import (
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
 from control_plane_kit_operations.health_effect_preparations import health_effect_attempt_wire_id
 from control_plane_kit_operations import health_receiver_trust
-from control_plane_kit_operations.plan_derivation import PlanDerivationProfile, encode_stored_activity_plan
+from control_plane_kit_operations.plan_derivation import PlanDerivationProfile
 from control_plane_kit_operations.postgres import PostgresExecutionStore
 from control_plane_kit_operations.postgres.delegation_signing_key_store import DelegationSigningKeyStore
 from control_plane_kit_operations.postgres.secret_provider_store import SecretProviderStore, SecretReferenceStore, SecretUseAuthorizationStore
 from control_plane_kit_operations.postgres.temporal import encode_postgres_timestamp
-from control_plane_kit_operations.records import ActivityEventKind, ActivityEventRecord, GraphVersionRecord, RealizedGraphProjectionRecord
+from control_plane_kit_operations.records import ActivityEventKind, ActivityEventRecord
+from control_plane_kit_operations.planning import DesiredGraphCommandService, SetDesiredGraph
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleExpectation, _receiver_workspace_pins
+from control_plane_kit_operations.workspaces import WorkspaceCommandService, CreateWorkspace
+from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.secret_providers import (
     SecretProviderKind, SecretProviderRegistrationService,
     RegisterSecretProviderCommand, RegisterSecretReferenceCommand,
@@ -45,7 +53,7 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
         self.seed_ready_health()
 
     def health_context(self, **options):
-        world, documents, selected = receiver_context(self, **options)
+        world, documents, selected = receiver_context(self, receiver=True, **options)
         self.receiver_documents, self.receiver_artifacts = documents, selected
         self.receiver_products = register_products(self, documents)
         return world
@@ -55,47 +63,60 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
             self.receiver_documents, ByteDecoder(health_receiver_trust)))
 
     def seed_execution_request(self):
-        # Recorded health-owner premise, including malformed-byte negatives.
-        # Originals and coverage are constructed once, before any request/run.
-        from tests.receiver_scope_history_fixture import insert_recorded_request
+        # Real workspace/desired owners introduce receivers before admission.
+        # The parent keeps its explicitly recorded lease/run/time overlays;
+        # these tests do not claim provider delivery or accepted deployment.
+        from tests.receiver_scope_history_fixture import admit_fixture_plan
         self._seed_original_health(**self._health_context_options)
-        insert_recorded_request(self.connection, requested_at="2026-08-15T03:59:00Z")
+        admit_fixture_plan(self, requested_at="2026-08-15T03:59:00Z")
 
     def _seed_original_health(self, **context_options):
-        self.health_plan, self.health_activity, current, desired, _ = self.health_context(**context_options)
+        with self.unit_of_work() as uow:
+            original_plan = uow.stores.activity_history.get_plan("plan-a")
+            session = uow.stores.activity_history.get_session("session-a")
+            approval = uow.stores.activity_history.get_approval_request("approval-request-a")
+            decision = uow.stores.activity_history.approval_decision_for_request(approval.request_id)
+        # Replace only this isolated fixture's old runtime-only bootstrap. The
+        # actual workspace owner supplies empty current, never forged acceptance.
+        self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        WorkspaceCommandService(self.unit_of_work, clock=lambda: "2026-08-15T03:54:00Z",
+            id_factory=Sequence("health-base")).create(CreateWorkspace(
+                "workspace-a", "Health workspace", "operator-a", IdempotencyKey("health-workspace")))
+        with self.unit_of_work() as uow:
+            uow.stores.activity_history.add_session(session)
+            uow.commit()
+        self.health_plan, self.health_activity, current, desired, selected = self.health_context(**context_options)
+        self.health_graph, self.health_target = desired.graph, selected
         self.assertTrue(self.health_plan.ready_for_execution)
-        self.projections = {}
+        # Fresh execution is a supported DESIRED initial deployment. BASE
+        # equal-content laws remain in the unchanged V1 historical store suite.
+        self.assertFalse(current.graph.nodes)
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+        DesiredGraphCommandService(self.unit_of_work, clock=lambda: "2026-08-15T03:55:00Z",
+            id_factory=Sequence("health-introduction-action")).execute(SetDesiredGraph(
+                "session-a", "workspace-a", "operator-a", desired.graph, None, IdempotencyKey("health-desired"),
+                proposed_graph_id="health-desired",
+                receiver_lifecycle=ReceiverLifecycleExpectation(**_receiver_workspace_pins(workspace))))
+        with self.unit_of_work() as uow:
+            workspace = uow.stores.workspaces.get("workspace-a")
+            self.projections = {name: uow.stores.realized_graphs.get(projection) for name, projection in (
+                ("health-base", workspace.current_realized_projection_id),
+                ("health-desired", workspace.desired_realized_projection_id))}
         requirement = ApprovalPolicy().requirement_for(self.health_plan)
         with self.unit_of_work() as uow:
-            for index, (name, graph) in enumerate((("health-base", current.graph), ("health-desired", desired.graph)), 3):
-                authored = GraphVersionRecord.from_graph(graph_id=name, workspace_id="workspace-a", version=index,
-                    graph=graph, created_by="operator-a", created_at="2026-08-15T03:55:00Z")
-                # Retained health-history premise, including deliberately
-                # invalid selected slots. Public C2 authoring must refuse it;
-                # health admission below still owns the negative assertion.
-                uow.stores.graphs._save(authored)
-                projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=authored)
-                uow.stores.realized_graphs._save(projection)
-                self.projections[name] = projection
-            # Seed construction is not the mutation/admission under test. Keep all
-            # compiled dependencies, and update the complete approval risk tuple.
-            uow.stores.connection.execute("""
-                UPDATE cpk_activity_plans SET base_graph_id='health-base', desired_graph_id='health-desired',
-                  base_realized_projection_id=%s, desired_realized_projection_id=%s, payload=%s
-                WHERE plan_id='plan-a'
-            """, (self.projections["health-base"].projection_id, self.projections["health-desired"].projection_id,
-                Jsonb(encode_stored_activity_plan(self.health_plan, profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1))))
-            uow.stores.connection.execute("""UPDATE cpk_approval_requests
-                SET required_scope=%s, max_risk=%s, destructive=%s WHERE request_id='approval-request-a'""",
-                (requirement.required_scope.value, requirement.max_risk.value, requirement.destructive))
-            uow.stores.connection.execute("UPDATE cpk_approval_decisions SET scope=%s WHERE decision_id='approval-decision-a'",
-                (requirement.required_scope.value,))
-            uow.stores.connection.execute("""UPDATE cpk_workspaces
-                SET current_graph_id='health-base', current_realized_projection_id=%s,
-                    desired_graph_id='health-desired', desired_realized_projection_id=%s
-                WHERE workspace_id='workspace-a'""",
-                (self.projections["health-base"].projection_id,
-                 self.projections["health-desired"].projection_id))
+            # Explicit original plan/approval premise; retain the real compiler
+            # and full risk tuple. Receiver introductions/pins belong to owners.
+            uow.stores.activity_history.add_plan(replace(original_plan,
+                base_graph_id="health-base", desired_graph_id="health-desired", plan=self.health_plan,
+                base_realized_projection_id=self.projections["health-base"].projection_id,
+                desired_realized_projection_id=self.projections["health-desired"].projection_id,
+                desired_graph_revision=workspace.desired_graph_revision,
+                derivation_profile=PlanDerivationProfile.MANAGEMENT_GRAPH_PAIR_V1))
+            uow.stores.activity_history.add_approval_request(replace(approval,
+                required_scope=requirement.required_scope, max_risk=requirement.max_risk,
+                destructive=requirement.destructive))
+            uow.stores.activity_history.add_approval_decision(replace(decision, scope=requirement.required_scope))
             uow.commit()
 
     def seed_ready_health(self):
@@ -124,6 +145,24 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
         self.start_value = self.health_start_value(activity=self.health_activity)
         self.seed_health_registrations()
         self.assertEqual(self.health_counts(), (0, 0, 0, 0))
+
+    def health_start_value(self, *, activity=None):
+        # This focused start fixture supplies original selected product material;
+        # coordinator translation is exercised separately by the managed chain.
+        value = super().health_start_value(activity=activity)
+        node = self.health_graph.node(self.health_target.target_node_id)
+        document = self.receiver_documents["workload"]
+        product = replace(document.product, runtime_contract=replace(document.product.runtime_contract,
+            configuration_artifacts=node.configuration_artifacts, secret_deliveries=node.secret_deliveries))
+        material = RuntimeProductMaterial(node.node_id, node.runtime_id,
+            ProductReference.from_document(document), product,
+            public_environment=node.public_environment, socket_environment=node.socket_environment,
+            runtime_authority_deliveries=node.runtime_authority_deliveries)
+        runtime = self.health_graph.runtimes[node.runtime_id]
+        intent = replace(value.intent, runtime_kind=runtime.kind, authority_ref=runtime.authority_ref,
+            authority_deliveries=(), products=(material,))
+        return replace(value, intent=intent, transition=replace(value.transition,
+            request_fingerprint=runtime_effect_intent_fingerprint(intent)))
 
     def reset_health(self, **context_options):
         self._health_context_options = context_options
@@ -187,7 +226,27 @@ class PostgresHealthEffectStartFixture(HealthEffectStartValues, PostgresEffectAt
     def health_snapshot(self):
         return (self.attempt_snapshot(), *(
             tuple(self.connection.execute("SELECT * FROM " + relation + " ORDER BY 1, 2, 3").fetchall())
-            for relation in ("cpk_secret_use_authorizations", "cpk_health_effect_preparations")))
+            for relation in ("cpk_secret_use_authorizations", "cpk_health_effect_preparations")), *(
+            tuple(self.connection.execute("SELECT to_jsonb(t) FROM " + relation
+                + " t ORDER BY to_jsonb(t)::text").fetchall()) for relation in (
+                "cpk_workspaces", "cpk_graph_versions", "cpk_realized_graph_projections",
+                "cpk_graph_receiver_bindings", "cpk_graph_receiver_introductions", "cpk_operation_actions")))
+
+    @contextmanager
+    def corrupt_health_projection(self, graph):
+        """Negative original-storage premise after real receiver introduction.
+
+        Keep original digest/binding/action witnesses. A refusal may occur at
+        their integrity boundary; this never earns selected-codec reachability.
+        """
+        projection = self.projections["health-desired"]
+        self.connection.execute("UPDATE cpk_realized_graph_projections SET graph_descriptor=%s "
+            "WHERE projection_id=%s", (Jsonb(DEFAULT_GRAPH_CODEC.encode(graph)), projection.projection_id))
+        try:
+            yield
+        finally:
+            self.connection.execute("UPDATE cpk_realized_graph_projections SET graph_descriptor=%s "
+                "WHERE projection_id=%s", (Jsonb(projection.graph_descriptor), projection.projection_id))
 
     def expected_use_command(self, family, *, requested_at, actor="health-operator"):
         key = self.keys[family]

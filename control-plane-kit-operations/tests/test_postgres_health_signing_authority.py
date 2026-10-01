@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 from control_plane_kit_core.secrets import SecretUseIntent
+from control_plane_kit_core.receiver_identity import receiver_node_control_audience
 from control_plane_kit_operations.delegation_signing_keys import (
     DelegationSigningKeyNotFound, delegation_signing_key_registration_id_for,
 )
@@ -13,11 +14,20 @@ from control_plane_kit_operations.postgres.activity_history import PostgresActiv
 from control_plane_kit_operations.postgres.delegation_signing_key_store import DelegationSigningKeyStore
 from control_plane_kit_operations.postgres.health_effect_preparation_store import HealthEffectPreparationStore
 from control_plane_kit_operations.secret_providers import secret_use_correlation_for
-from tests.health_effect_preparation_fixture import forged_copy, pair_for_request
+from tests.health_effect_preparation_fixture import forged_copy
 from tests.health_effect_start_fixture import trusted_health_context
 from tests.health_signing_authority_fixture import PostgresHealthSigningAuthorityFixture, timestamp
 from tests.postgres_effect_attempt_store_fixture import PostgresEffectAttemptStoreFixture
 from tests.test_node_control_signing_authority import PUBLIC_KEY_C
+
+
+def pair_for_request(record, request):
+    shared = dict(target=request.target, authority_context=request.authority_context, kind=request.kind,
+        declaration_identity=request.declaration_identity, request_id=request.request_id,
+        request_digest=request.canonical_digest())
+    return replace(record, request=request, transit_grant=replace(record.transit_grant, **shared),
+        workload_grant=replace(record.workload_grant,
+            audience=receiver_node_control_audience(request.target), **shared))
 
 
 class PostgresHealthSigningAuthorityTests(PostgresHealthSigningAuthorityFixture, unittest.TestCase):
@@ -165,7 +175,8 @@ class PostgresHealthSigningAuthorityTests(PostgresHealthSigningAuthorityFixture,
         candidates = (
             pair_for_request(self.preparation, foreign_request),
             replace(self.preparation, transit_grant=replace(self.preparation.transit_grant,
-                gateway_node_id=replace(self.preparation.transit_grant.gateway_node_id, value="foreign-gateway"))),
+                gateway_target=replace(self.preparation.transit_grant.gateway_target,
+                    node_id=replace(self.preparation.transit_grant.gateway_target.node_id, value="foreign-gateway")))),
         )
         for candidate in candidates:
             # Typed internally valid retained value, substituted after the store
@@ -199,7 +210,7 @@ class PostgresHealthSigningAuthorityTests(PostgresHealthSigningAuthorityFixture,
         self.assertEqual(len(observations), 1)
 
     def test_both_core_verifiers_receive_independent_context_and_can_refuse(self):
-        names = ("verify_gateway_node_health_read_transit_grant", "verify_workload_node_health_read_grant")
+        names = ("verify_gateway_receiver_health_read_transit_grant", "verify_workload_receiver_health_read_grant")
         # Instrument comparison boundaries on valid equal-interval retained data.
         # Force refusal by changing only the independently supplied verifier time,
         # not by constructing an impossible differently timed saved pair.
@@ -210,7 +221,9 @@ class PostgresHealthSigningAuthorityTests(PostgresHealthSigningAuthorityFixture,
                 calls.append(context)
                 self.assertEqual(context["now"], self.current_time)
                 self.assertEqual(context["expected_target"], self.preparation.request.target)
-                self.assertEqual(context["expected_runtime_id"], self.preparation.request.runtime_id)
+                self.assertEqual(context["expected_target"].runtime_id, self.preparation.request.target.runtime_id)
+                if "expected_gateway_target" in context:
+                    self.assertEqual(context["expected_gateway_target"], self.preparation.transit_grant.gateway_target)
                 self.assertEqual(context["expected_declaration"].identity(), self.preparation.request.declaration_identity)
                 return original(grant, request, **(context | {"now": grant.expires_at}))
             with self.observed_time(timestamp(self.current_time)):

@@ -8,7 +8,9 @@ from dataclasses import replace
 import unittest
 from unittest import mock
 
-from control_plane_kit_core.node_control import NodeHealthReadKind, workload_node_control_audience
+from control_plane_kit_core.node_control import NodeHealthReadKind
+from control_plane_kit_core.receiver_identity import receiver_node_control_audience
+from control_plane_kit_core.receiver_configuration import ReceiverNodeControlConfigurationCodec
 from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
 )
@@ -16,7 +18,7 @@ from control_plane_kit_core.planning import ManagementBootstrapStage, ObserveMan
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
 from control_plane_kit_core.wrapper_configuration import WorkloadNodeControlConfigurationCodec, WrapperConfigurationError
 from control_plane_kit_operations.effect_attempt_start import (
-    EffectAttemptStartDenied, EffectAttemptStartError, ExistingAttempt, NewlyStarted,
+    EffectAttemptStartDenied, EffectAttemptStartConflict, EffectAttemptStartError, ExistingAttempt, NewlyStarted,
 )
 from control_plane_kit_operations.delegation_signing_keys import DelegationSigningKeyNotFound
 from control_plane_kit_operations.effect_attempt_start_interpreter import EffectAttemptStartService
@@ -37,7 +39,7 @@ from control_plane_kit_operations.workflows import InvalidOperationCommand
 from control_plane_kit_operations import health_receiver_trust
 from tests.execution_lease_recovery_fixture import Sequence
 from tests.health_effect_start_fixture import trusted_health_context
-from tests.health_receiver_trust_fixture import ByteDecoder, bindings
+from tests.health_receiver_trust_fixture import ByteDecoder, bindings, context
 from tests.health_signing_authority_fixture import timestamp
 from tests.postgres_health_effect_start_fixture import PostgresHealthEffectStartFixture
 
@@ -110,20 +112,20 @@ class PostgresSignedBootstrapHealthTests(PostgresHealthEffectStartFixture, unitt
                     WorkloadNodeControlSurfaceDeclarationProfile.V2)
                 target = preparation.request.target
                 self.assertEqual((target.node_id.value, target.provider_socket_name.value,
-                    target.graph_revision.value), ("gateway", "http", "health-desired"))
+                    preparation.request.authority_context.authored_graph_id), ("gateway", "http", "health-desired"))
                 self.assertIs(preparation.request.kind, NodeHealthReadKind.READINESS)
                 self.assertEqual(preparation.request.declaration_identity, declaration.identity())
-                self.assertEqual(preparation.transit_grant.gateway_node_id.value, "gateway")
+                self.assertEqual(preparation.transit_grant.gateway_target, target)
                 self.assertEqual(preparation.transit_grant.target, target)
                 self.assertEqual(preparation.workload_grant.target, target)
-                self.assertEqual(preparation.workload_grant.audience, workload_node_control_audience(target))
+                self.assertEqual(preparation.workload_grant.audience, receiver_node_control_audience(target))
                 self.assertEqual(preparation.original_event_id, event.event_id)
                 self.assertEqual(preparation.transit_grant.attempt_id,
                     health_effect_attempt_wire_id(self.start_value.transition.identity))
                 self.assertEqual(len(decoder.calls), 1)
                 self.assertEqual({call.artifact.artifact_id for call in decoder.calls},
                     {"test-transit"})
-                configured = WorkloadNodeControlConfigurationCodec().decode_bytes(
+                configured = ReceiverNodeControlConfigurationCodec().decode_bytes(
                     self.receiver_artifacts["workload"].content.encode())
                 self.assertEqual(configured.target, target)
                 self.assertEqual(configured.declaration, declaration)
@@ -174,7 +176,7 @@ class PostgresSignedBootstrapHealthTests(PostgresHealthEffectStartFixture, unitt
                 before = self.health_snapshot()
                 ids = Sequence("replay-must-not-allocate")
                 with self.forbid_fresh_health(), mock.patch.object(WorkloadNodeControlConfigurationCodec, "decode_bytes",
-                        side_effect=AssertionError("historical replay decoded common configuration")), mock.patch.object(ByteDecoder, "decode",
+                        side_effect=AssertionError("V2 replay used the legacy common decoder")), mock.patch.object(ByteDecoder, "decode",
                         side_effect=AssertionError("historical replay decoded receiver bytes")):
                     replay = self.start_bootstrap(registry, ids=ids)
                     self.assertEqual(replay.start, ExistingAttempt(result.start.attempt))
@@ -220,19 +222,40 @@ class PostgresSignedBootstrapHealthTests(PostgresHealthEffectStartFixture, unitt
             )
             for changes, slots in cases:
                 with self.subTest(stage=stage, changes=changes, slots=slots):
-                    self.reset_health(stage=stage, changes=changes, slot_changes=slots)
+                    self.reset_health(stage=stage)
                     registry, _ = self.registry()
+                    with self.observed_time("2030-01-01T00:00:00Z"):
+                        self.start_bootstrap(registry)
+                    if slots:
+                        # Artifact-ID substitutions remain valid receiver
+                        # configurations, so retain the live slot-join law.
+                        self.reset_health(stage=stage, slot_changes=slots)
+                        registry, _ = self.registry()
+                        ids = Sequence("refusal-must-not-allocate")
+                        service = EffectAttemptStartService(self.unit_of_work, id_factory=ids,
+                            health_receiver_decoders=registry)
+                        with self.observed_time("2030-01-01T00:00:00Z"):
+                            before = self.health_snapshot()
+                            with self.assertRaises(EffectAttemptStartDenied):
+                                service.execute_health(self.bootstrap_command())
+                            self.assertEqual(ids.calls, [])
+                            self.assertEqual(self.health_counts(), (0, 0, 0, 0))
+                            self.assertEqual(self.health_snapshot(), before)
+                        continue
+                    self.reset_health(stage=stage)
+                    registry, _ = self.registry()
+                    world, _, _ = context(self, receiver=True, stage=stage, changes=changes, slot_changes=slots)
                     ids = Sequence("refusal-must-not-allocate")
                     service = EffectAttemptStartService(self.unit_of_work, id_factory=ids,
                         health_receiver_decoders=registry)
                     command = self.bootstrap_command()
-                    with self.observed_time("2030-01-01T00:00:00Z"):
+                    with self.observed_time("2030-01-01T00:00:00Z"), self.corrupt_health_projection(world[3].graph):
                         before = self.health_snapshot()
-                        with self.assertRaises(EffectAttemptStartDenied):
+                        with self.assertRaises(EffectAttemptStartConflict):
                             service.execute_health(command)
-                    self.assertEqual(ids.calls, [])
-                    self.assertEqual(self.health_counts(), (0, 0, 0, 0))
-                    self.assertEqual(self.health_snapshot(), before)
+                        self.assertEqual(ids.calls, [])
+                        self.assertEqual(self.health_counts(), (0, 0, 0, 0))
+                        self.assertEqual(self.health_snapshot(), before)
 
     def test_reload_requires_transit_and_common_configuration_and_current_actor_workspace_fence(self):
         for stage in STAGES:
@@ -246,7 +269,7 @@ class PostgresSignedBootstrapHealthTests(PostgresHealthEffectStartFixture, unitt
                     self.assert_reloads(preparation, registry)
                     with self.assertRaises(HealthSigningAuthorityUnavailable):
                         self.reload_service(HealthReceiverDecoders(())).execute(self.reload_command(preparation))
-                    with mock.patch.object(WorkloadNodeControlConfigurationCodec, "decode_bytes",
+                    with mock.patch.object(ReceiverNodeControlConfigurationCodec, "decode_bytes",
                             side_effect=WrapperConfigurationError("wrapper configuration is invalid")):
                         with self.assertRaises(HealthSigningAuthorityUnavailable):
                             self.reload_service(registry).execute(self.reload_command(preparation))

@@ -87,3 +87,10 @@ command at `/workspaces/{workspace_id}/runs/{run_id}/reobserve-connector`, with
 the `reobserve_connector_connection` MCP parity identity, required idempotency
 and current approval. These are pure protocol values. Servers181 still owns
 transport registration and the bounded request schema implementation.
+
+## O2 / #1883 current boundary
+
+The signed managed-health port now returns exact Core ReceiverHealthReadResult. The coordinator revalidates that nominal value and compares its complete request, including authority context, before projecting the existing bounded outcome. Legacy NodeHealthReadResult and malformed/foreign V2 results cannot fold success. Dispatch and fold retain their existing runtime authority checks; the coordinator neither verifies credentials nor introduces provider behavior.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

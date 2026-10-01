@@ -42,3 +42,10 @@ Missing/corrupt retained evidence refuses. PostgreSQL targets protect approval,
 pins, active selection, correlation absence, interval bounds, acknowledgements,
 rollback, real commit-then-error and serialized concurrent starts. Source-boundary
 tests exclude provider/signing/dispatch/clock/commit calls in both health modules.
+
+## O2 / #1883 current boundary
+
+Fresh admission builds Core receiver V2 request and grants and retains a ReceiverHealthEffectPreparationRecord. The workload target and independently selected gateway own-control target come from exact common V2 bytes; authority_context carries the selected authored graph and projection. The start interpreter completes O1 receiver permission checks before health key/use work. Existing first-start atomicity, exact grant interval, acknowledgement checks and correlation domain remain. Historical replay accepts either exact nominal preparation profile and never renews permission.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

@@ -7,7 +7,9 @@ from control_plane_kit_core.delegation_keys import DelegationKeyPurpose
 from control_plane_kit_core.products import ProductDescriptorCodec, ProductIdentity, ProductReference
 from control_plane_kit_core.wrapper_configuration import (
     WORKLOAD_NODE_CONTROL_CONFIGURATION_ENVIRONMENT as ENVIRONMENT,
-    WorkloadNodeControlConfigurationCodec, select_workload_node_control_configuration_artifact as select_artifact,
+)
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact as select_artifact,
 )
 from control_plane_kit_operations import health_receiver_trust as trust
 from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartDenied
@@ -26,13 +28,13 @@ class PostgresSharedHealthReceiverTests(PostgresHealthEffectStartFixture, unitte
         super().setUp()
         # Real graph, registration and accepted Core bytes precede source red.
         selected = self.receiver_artifacts["workload"]
-        configured = WorkloadNodeControlConfigurationCodec().decode_bytes(selected.content.encode())
+        configured = ReceiverNodeControlConfigurationCodec().decode_bytes(selected.content.encode())
         self.assertEqual(configured.target.node_id.value, "api")
         self.assertNotEqual(selected.content_digest,
             self.receiver_documents["workload"].product.runtime_contract.configuration_artifacts[0].content_digest)
 
     def health_context(self, **options):
-        world, documents, selected = context(self, shared=True, transform=self.transform,
+        world, documents, selected = context(self, shared=True, receiver=True, transform=self.transform,
             changes=self.changes, **options)
         self.world = world
         self.receiver_documents, self.receiver_artifacts = documents, selected

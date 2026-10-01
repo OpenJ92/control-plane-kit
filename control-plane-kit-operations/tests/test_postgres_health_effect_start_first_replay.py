@@ -15,6 +15,7 @@ from tests.execution_lease_recovery_fixture import Sequence
 from tests.health_effect_start_fixture import trusted_health_context
 from tests.postgres_effect_attempt_store_fixture import PostgresEffectAttemptStoreFixture
 from tests.postgres_health_effect_start_fixture import PostgresHealthEffectStartFixture
+from tests.postgres_health_effect_preparation_fixture import PostgresHealthEffectPreparationFixture
 
 
 class PostgresHealthEffectStartFirstReplayTests(PostgresHealthEffectStartFixture, unittest.TestCase):
@@ -55,10 +56,12 @@ class PostgresHealthEffectStartFirstReplayTests(PostgresHealthEffectStartFixture
         event = result.start.attempt.original_start_event
         self.assertEqual((event.event_id, event.ordinal, event.occurred_at),
             ("health-original", self.original_event_ordinal, "2030-01-01T00:00:00Z"))
-        self.assertEqual(preparation.request.target.graph_revision.value, "health-desired")
+        self.assertEqual(preparation.request.authority_context.authored_graph_id, "health-desired")
+        self.assertEqual(preparation.request.authority_context.realized_projection_id,
+            self.projections["health-desired"].projection_id)
         self.assertEqual(preparation.base_realized_projection_id, self.projections["health-base"].projection_id)
         self.assertEqual(preparation.desired_realized_projection_id, self.projections["health-desired"].projection_id)
-        self.assertEqual(preparation.request.runtime_id.value, self.health_activity.operation.target.runtime_id)
+        self.assertEqual(preparation.request.target.runtime_id.value, self.health_activity.operation.target.runtime_id)
         self.assertEqual(preparation.transit_grant.attempt_id, health_effect_attempt_wire_id(self.start_value.transition.identity))
         with self.unit_of_work() as uow:
             self.assertEqual(uow.stores.effect_attempts.get(preparation.identity), result.start.attempt)
@@ -187,15 +190,16 @@ class PostgresHealthEffectStartFirstReplayTests(PostgresHealthEffectStartFixture
                         self.assertEqual(uow.stores.secret_use_authorizations.get("workspace-a", retained.authorization_id), retained)
                     self.assertEqual(self.health_counts(), (0, 0, 1, 0))
 
+class PostgresHealthHistoricalSideTests(PostgresHealthEffectPreparationFixture, unittest.TestCase):
     def test_equal_content_keeps_the_approved_base_side_authored_revision(self):
         from control_plane_kit_core.planning import PlanGraphSide
-        self.health_start_api()
-        # This explicitly approved typed plan selects BASE. Equal content may
-        # not silently turn that approved side into DESIRED or current lineage.
-        self.reset_health(side=PlanGraphSide.BASE_GRAPH)
-        self.assertEqual(self.projections["health-base"].graph_descriptor,
-            self.projections["health-desired"].graph_descriptor)
-        result, _ = self.execute_health()
-        self.assertEqual(result.preparation.request.target.graph_revision.value, "health-base")
-        self.assertNotEqual(result.preparation.base_realized_projection_id,
-            result.preparation.desired_realized_projection_id)
+        # Historical source-side law; no fresh BASE admission is claimed.
+        self.reset_health_truth(side=PlanGraphSide.BASE_GRAPH)
+        result = self.persist_health()
+        with self.unit_of_work() as uow:
+            base = uow.stores.realized_graphs.get(result.base_realized_projection_id)
+            desired = uow.stores.realized_graphs.get(result.desired_realized_projection_id)
+            self.assertEqual(base.graph_descriptor, desired.graph_descriptor)
+            self.assertEqual(uow.stores.health_effect_preparations.get(result.identity), result)
+        self.assertEqual(result.request.target.graph_revision.value, "health-base")
+        self.assertNotEqual(result.base_realized_projection_id, result.desired_realized_projection_id)

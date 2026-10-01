@@ -82,3 +82,16 @@ An internal adapter-failure carrier preserves provenance past named retained
 contract categories too. An adapter-raised SecretProviderRegistrationError must
 escape as the same object even though that class can also describe retained data.
 The carrier is handled outside the retained-data translation and never exposed.
+
+## O2 / #1883 current boundary
+
+The unchanged insert-once table now stores both closed preparation profiles. V1
+retains its original target meaning and never invokes a common configuration
+codec. V2 additionally reconstructs workload and gateway targets from original
+common Core V2 bytes, verifies exact authority_context, and joins complete
+stored/rederived binding sets plus introducing graph/action provenance. These
+checks do not consult current workspace selection, retirement policy, active
+keys, a transit registry or time. Historical evidence is never repaired or
+promoted to live permission. The owner-read boundary now preserves fetchall
+adapter failures as well as execute/fetchone failures. Implementation validation
+is pending on PR #1915; the reviewed target-only red is not green evidence.

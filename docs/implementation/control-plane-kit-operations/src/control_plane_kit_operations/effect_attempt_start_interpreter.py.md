@@ -50,3 +50,10 @@ and precedes generic receiver semantic checks, preserving its selected-slot
 refusal contract. Its correlation locks do not introduce a late earlier lock.
 All receiver permission checks still precede lease observation, IDs and writes,
 and the final retained-record/receiver rereads remain mandatory.
+
+## O2 / #1883 current boundary
+
+Fresh health work now runs the existing O1 receiver execution/material checks before health key selection and secret-use correlation. The lifecycle-first transaction order is retained. Dedicated and generic exact replay remain observational and bypass fresh receiver permission; pure V2 original-byte reconstruction is allowed, while V1 history retains its no-common-decoder law.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

@@ -57,6 +57,34 @@ The Postgres store bundle owns operational records for:
 
 Stores expose persistence operations but never commit independently.
 
+## Receiver Health And History
+
+Fresh signed health preparations address stable workload and gateway receiver
+identities. The request's separate `authority_context` retains the exact approved
+authored graph and realized projection. Operations composes Core's receiver V2
+values and verifiers; external adapters still own signing and delivery.
+
+`ReceiverHealthEffectPreparationRecord` uses the closed
+`health-effect-preparation.v2` envelope. The original
+`HealthEffectPreparationRecord` and V1 bytes remain readable as history. Neither
+record grants current permission: fresh start, signing reload and fresh fold
+check current receiver membership, original plan/approval, actor, fence, keys
+and the retained validity interval. Live signing pairs accept only V2.
+
+Standalone reload and nested fold acquire the receiver lifecycle lock before
+request, ordered runs, attempt, session and workspace rows. A nested reload uses
+only the same transaction's held prefix. It refuses changed or foreign evidence
+without retry. Historical replay checks original evidence without consulting
+current selection, retirement, signing keys or time. V2 history structurally
+decodes original common configuration; V1 history does not.
+
+The owner examples are `tests/receiver_health_execution_fixture.py` and the
+managed application chain. Their fresh positives use DESIRED initial deployment;
+the sampled A/B/C worlds retain pending introductions across desired revisions.
+Accepted-current update coverage belongs to #1912. O2 implementation validation
+is pending on [PR #1915](https://github.com/OpenJ92/control-plane-kit/pull/1915);
+these examples do not establish provider or published-image acceptance.
+
 ## Current Schema Installation
 
 Operations owns one exact current Postgres schema. `install_schema()` creates

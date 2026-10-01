@@ -26,3 +26,10 @@ capability. Replay remains observation only. The target contract tests protect
 exact exports/signatures, frozen values, nominal forgeries, independent scopes,
 actor/workspace constraints and original-event joins. No route, credential
 decoder, provider call or schema is introduced here.
+
+## O2 / #1883 current boundary
+
+The start-or-replay result explicitly accepts the exact historical HealthEffectPreparationRecord and the new ReceiverHealthEffectPreparationRecord. Fresh construction emits only V2; this union does not coerce V1 or permit a V1 live signing pair.
+
+Implementation validation is pending on PR #1915. The reviewed target-only red
+checkpoint establishes only its recorded missing boundaries, not these green laws.

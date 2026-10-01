@@ -1,17 +1,18 @@
 """Shared pinned selection and coverage; store reads are outside pure catches."""
 from dataclasses import replace
 
-from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole, NodeControlTarget, workload_node_control_audience
+from control_plane_kit_core.node_control import NodeControlGraphReference, NodeControlGraphReferenceRole
 from control_plane_kit_core.node_control_surface_reads import WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile
 from control_plane_kit_core.planning import PlanGraphSide
 from control_plane_kit_core.products import ProductReference
-from control_plane_kit_core.wrapper_configuration import (
-    WorkloadNodeControlConfigurationCodec, select_workload_node_control_configuration_artifact,
+from control_plane_kit_core.receiver_configuration import (
+    ReceiverNodeControlConfigurationCodec, select_receiver_node_control_configuration_artifact,
 )
+from control_plane_kit_core.receiver_identity import NodeControlAuthorityContext
 from control_plane_kit_operations.graph_authoring import product_reference_in_node
 from control_plane_kit_operations.health_receiver_trust import (
     GatewayHealthReceiverTrust, HealthReceiverDecoders, HealthReceiverSelection, HealthReceiverTrustError,
-    WorkloadHealthReceiverTrust, _INPUT_ERRORS, _PURPOSES, _require, _same,
+    _INPUT_ERRORS, _PURPOSES, _require, _same,
 )
 from control_plane_kit_operations.products import RegisteredProduct
 
@@ -34,15 +35,34 @@ def _context(plan, graphs, selected, workspace):
     projection = plan.base_realized_projection_id if base else plan.desired_realized_projection_id
     def ref(role, value):
         return NodeControlGraphReference(role, value)
-    target = NodeControlTarget(ref(NodeControlGraphReferenceRole.WORKSPACE, workspace),
-        ref(NodeControlGraphReferenceRole.GRAPH_REVISION, authored),
-        ref(NodeControlGraphReferenceRole.NODE, selected.target_node_id),
-        ref(NodeControlGraphReferenceRole.PROVIDER_SOCKET, selected.target_provider_socket_name))
     runtime = ref(NodeControlGraphReferenceRole.RUNTIME, operation.target.runtime_id)
-    gateway = ref(NodeControlGraphReferenceRole.NODE, selected.gateway_node_id)
     declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface,
         WorkloadNodeControlSurfaceDeclarationProfile.V2)
-    return graph, authored, projection, side, target, runtime, gateway, declaration
+    return graph, authored, projection, side, runtime, declaration
+
+
+def original_receiver_health_configurations(graph, selected, workspace):
+    """Pure original-byte composition; no current membership, keys or registry."""
+    configurations = []
+    for node_id in (selected.target_node_id, selected.gateway_node_id):
+        node = graph.node(node_id)
+        artifact = select_receiver_node_control_configuration_artifact(
+            artifacts=node.configuration_artifacts,
+            environment=node.public_environment + node.socket_environment,
+            control_surfaces=node.block_spec.control_surfaces)
+        configured = ReceiverNodeControlConfigurationCodec().decode_bytes(artifact.content.encode("utf-8"))
+        target = configured.target
+        _require((target.workspace_id.value, target.runtime_id.value, target.node_id.value) ==
+            (workspace, selected.operation.target.runtime_id, node_id))
+        _require(node.runtime_id == target.runtime_id.value
+            and target.provider_socket_name == configured.declaration.surface.provider_socket_name
+            and any(socket.name == target.provider_socket_name.value for socket in node.sockets.providers))
+        configurations.append(configured)
+    workload, gateway = configurations
+    _require(workload.target.provider_socket_name.value == selected.target_provider_socket_name
+        and workload.declaration == WorkloadNodeControlSurfaceDeclaration(selected.target_surface,
+            WorkloadNodeControlSurfaceDeclarationProfile.V2))
+    return workload, gateway
 
 
 def _node_reference(graph, node_id, runtime_id, socket):
@@ -66,10 +86,10 @@ def _selection(registry, product, node, reference, purpose, workspace, authored,
     if purpose is _PURPOSES[1]:
         # Each input must select the same declared slot. Independently valid
         # configurations cannot redirect descriptor A to selected artifact B.
-        declared = select_workload_node_control_configuration_artifact(
+        declared = select_receiver_node_control_configuration_artifact(
             artifacts=contract.configuration_artifacts, environment=contract.public_environment,
             control_surfaces=contract.control_surfaces)
-        actual = select_workload_node_control_configuration_artifact(
+        actual = select_receiver_node_control_configuration_artifact(
             artifacts=node.configuration_artifacts,
             environment=node.public_environment + node.socket_environment,
             control_surfaces=node.block_spec.control_surfaces)
@@ -85,36 +105,39 @@ def _selection(registry, product, node, reference, purpose, workspace, authored,
         node.node_id, node.runtime_id, socket, reference, product.descriptor_document, actual)
 
 
-def _workload_trust(selection):
-    configured = WorkloadNodeControlConfigurationCodec().decode_bytes(selection.artifact.content.encode("utf-8"))
-    families = tuple(value for value in configured.verifiers if value.purpose is _PURPOSES[1])
+def _workload_coverage(configured, signer):
+    families = tuple(value for value in configured.verifiers if value.purpose is signer.purpose)
     _require(len(families) == 1)
     family, = families
-    return WorkloadHealthReceiverTrust(target=configured.target, runtime_id=configured.runtime_id,
-        declaration=configured.declaration, purpose=family.purpose, issuer=family.issuer,
-        audience=workload_node_control_audience(configured.target), public_keys=family.public_keys)
+    _require(family.purpose is _PURPOSES[1] and family.issuer == signer.issuer
+        and any(_same(key, signer.public_key) for key in family.public_keys))
 
 
-def _coverage(decoded, purpose, signer, target, runtime, gateway, declaration):
-    expected = GatewayHealthReceiverTrust if purpose is _PURPOSES[0] else WorkloadHealthReceiverTrust
-    _require(type(decoded) is expected)
+def _transit_coverage(decoded, signer, gateway):
+    _require(type(decoded) is GatewayHealthReceiverTrust)
     _require(_same(decoded, replace(decoded)))
-    _require(decoded.purpose is signer.purpose is purpose and decoded.issuer == signer.issuer
-             and decoded.runtime_id == runtime)
-    if purpose is _PURPOSES[0]:
-        _require(decoded.workspace_id == target.workspace_id and decoded.gateway_node_id == gateway
-                 and decoded.audience == f"gateway:{target.workspace_id.value}:{gateway.value}")
-    else:
-        _require(decoded.target == target and decoded.declaration == declaration
-                 and decoded.audience == workload_node_control_audience(target))
+    _require(decoded.purpose is signer.purpose is _PURPOSES[0] and decoded.issuer == signer.issuer
+        and decoded.runtime_id == gateway.runtime_id and decoded.workspace_id == gateway.workspace_id
+        and decoded.gateway_node_id == gateway.node_id
+        and decoded.audience == f"gateway:{gateway.workspace_id.value}:{gateway.node_id.value}")
     _require(any(_same(key, signer.public_key) for key in decoded.public_keys))
 
 
 def require_health_receiver_coverage(stores, registry, *, plan, graphs, selected, workspace, keys, refuse):
     """Check both receivers without creating authority, history or external effects."""
     _checked(lambda: _require(type(registry) is HealthReceiverDecoders), refuse)
-    graph, authored, projection, side, target, runtime, gateway, declaration = _checked(
+    graph, authored, projection, side, runtime, declaration = _checked(
         lambda: _context(plan, graphs, selected, workspace), refuse)
+    workload, gateway = _checked(lambda: original_receiver_health_configurations(graph, selected, workspace), refuse)
+    # Both own-control identities have independent declared/selected slots.
+    # Gateway transit retains its separate product-specific slot below.
+    for configured in (workload, gateway):
+        target = configured.target
+        node, reference = _checked(lambda: _node_reference(graph, target.node_id.value,
+            runtime.value, target.provider_socket_name.value), refuse)
+        product = stores.registered_products.get(workspace, reference)
+        _checked(lambda: _selection(registry, product, node, reference, _PURPOSES[1],
+            workspace, authored, projection, side, target.provider_socket_name.value), refuse)
     for purpose, node_id, socket, key in (
             (_PURPOSES[0], selected.gateway_node_id, selected.gateway_transit_provider_socket_name, keys[0]),
             (_PURPOSES[1], selected.target_node_id, selected.target_provider_socket_name, keys[1])):
@@ -124,8 +147,9 @@ def require_health_receiver_coverage(stores, registry, *, plan, graphs, selected
         binding, selection = _checked(lambda: _selection(registry, product, node, reference,
             purpose, workspace, authored, projection, side, socket), refuse)
         if purpose is _PURPOSES[1]:
-            decoded = _checked(lambda: _workload_trust(selection), refuse)
+            _checked(lambda: _workload_coverage(workload, key), refuse)
         else:
             # Unexpected transit adapter bugs are not display-safe contract refusals.
             decoded = _checked(lambda: binding.decoder.decode(selection), refuse, (HealthReceiverTrustError,))
-        _checked(lambda: _coverage(decoded, purpose, key, target, runtime, gateway, declaration), refuse)
+            _checked(lambda: _transit_coverage(decoded, key, gateway.target), refuse)
+    return workload.target, gateway.target, NodeControlAuthorityContext(authored, projection)

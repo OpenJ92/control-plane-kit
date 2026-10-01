@@ -9,23 +9,20 @@ from control_plane_kit_core.approval_subjects import ActivityPlanApprovalSubject
 from control_plane_kit_core.delegation_keys import (
     DelegationKeyAlgorithm, DelegationKeyPurpose, DelegationPublicKey,
 )
-from control_plane_kit_core.node_control import (
-    NodeControlCanonicalization, NodeControlGraphReference,
-    NodeControlGraphReferenceRole, NodeControlTarget, workload_node_control_audience,
-)
+from control_plane_kit_core.node_control import NodeControlCanonicalization
+from control_plane_kit_core.receiver_identity import NodeControlAuthorityContext, NodeControlReceiverTarget, receiver_node_control_audience
 from control_plane_kit_core.node_control_surface_reads import (
     WorkloadNodeControlSurfaceDeclaration, WorkloadNodeControlSurfaceDeclarationProfile,
 )
-from control_plane_kit_core.node_health_reads import (
-    DelegatedWorkloadNodeHealthReadGrant, DelegatedWorkloadNodeHealthReadGrantProfile,
-    MAX_WORKLOAD_NODE_HEALTH_READ_GRANT_LIFETIME_SECONDS, NodeHealthReadRequest,
+from control_plane_kit_core.receiver_health_reads import (
+    DelegatedWorkloadReceiverHealthReadGrant, DelegatedWorkloadReceiverHealthReadGrantProfile,
+    MAX_WORKLOAD_NODE_HEALTH_READ_GRANT_LIFETIME_SECONDS, ReceiverHealthReadRequest,
 )
-from control_plane_kit_core.node_health_transit import (
-    DelegatedGatewayNodeHealthReadTransitGrant, DelegatedGatewayNodeHealthReadTransitGrantProfile,
+from control_plane_kit_core.receiver_health_transit import (
+    DelegatedGatewayReceiverHealthReadTransitGrant, DelegatedGatewayReceiverHealthReadTransitGrantProfile,
     MAX_GATEWAY_NODE_HEALTH_READ_TRANSIT_GRANT_LIFETIME_SECONDS,
 )
 from control_plane_kit_core.operations.lifecycle import ActivityEventKind
-from control_plane_kit_core.planning import PlanGraphSide
 from control_plane_kit_core.policies import ApprovalPolicy
 from control_plane_kit_core.secrets import SecretReference, health_signing_intent_for
 from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, validate_graph
@@ -41,7 +38,7 @@ from control_plane_kit_operations.health_effect_attempt_start import (
     HealthEffectAttemptStartResult, StartHealthEffectAttempt,
 )
 from control_plane_kit_operations.health_effect_preparations import (
-    HealthEffectPreparationCodec, HealthEffectPreparationRecord,
+    HealthEffectPreparationCodec, HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord,
     _same_nominal_tree, health_effect_attempt_wire_id,
 )
 from control_plane_kit_operations.records import (
@@ -69,7 +66,9 @@ _PURPOSES = (DelegationKeyPurpose.GATEWAY_NODE_HEALTH_READ_TRANSIT,
 @dataclass(frozen=True, repr=False)
 class _HealthAdmission:
     projection: ManagementHealthTargetProjection
-    authored_graph_id: str
+    target: NodeControlReceiverTarget
+    gateway_target: NodeControlReceiverTarget
+    authority_context: NodeControlAuthorityContext
     base_projection_id: str
     desired_projection_id: str
     keys: tuple[RegisteredDelegationSigningKey, RegisteredDelegationSigningKey]
@@ -80,9 +79,9 @@ class _HealthAdmission:
 @dataclass(frozen=True, repr=False)
 class _HealthWrite:
     admission: _HealthAdmission
-    request: NodeHealthReadRequest
-    transit: DelegatedGatewayNodeHealthReadTransitGrant
-    workload: DelegatedWorkloadNodeHealthReadGrant
+    request: ReceiverHealthReadRequest
+    transit: DelegatedGatewayReceiverHealthReadTransitGrant
+    workload: DelegatedWorkloadReceiverHealthReadGrant
     uses: tuple[AuthorizeSecretUse, AuthorizeSecretUse]
 
 
@@ -91,7 +90,7 @@ def health_replay(stores: Any, attempt: Any, command: StartHealthEffectAttempt |
     # lifecycle and time. Owner exceptions keep their original identity.
     preparation = stores.health_effect_preparations.get(attempt.state.identity)
     valid = False
-    if type(preparation) is HealthEffectPreparationRecord:
+    if type(preparation) in (HealthEffectPreparationRecord, ReceiverHealthEffectPreparationRecord):
         try:
             HealthEffectPreparationCodec().encode_canonical_bytes(preparation)
             valid = (preparation.identity == attempt.state.identity
@@ -180,7 +179,7 @@ def admit_health_start(stores: Any, command: StartHealthEffectAttempt,
             or keys[0].private_key_reference == keys[1].private_key_reference):
         raise EffectAttemptStartDenied(_DENIED)
 
-    require_health_receiver_coverage(stores, receiver_decoders, plan=plan, graphs=graphs,
+    target, gateway_target, context = require_health_receiver_coverage(stores, receiver_decoders, plan=plan, graphs=graphs,
         selected=selected, workspace=workspace, keys=keys,
         refuse=lambda: EffectAttemptStartDenied(_DENIED))
 
@@ -203,8 +202,7 @@ def admit_health_start(stores: Any, command: StartHealthEffectAttempt,
     for correlation in correlations:
         if stores.secret_use_authorizations.for_correlation(workspace, correlation) is not None:
             raise EffectAttemptStartConflict(_INVALID)
-    return _HealthAdmission(selected,
-        plan.base_graph_id if selected.operation.target.graph_side is PlanGraphSide.BASE_GRAPH else plan.desired_graph_id,
+    return _HealthAdmission(selected, target, gateway_target, context,
         plan.base_realized_projection_id, plan.desired_realized_projection_id,
         tuple(keys), use_fields, correlations)
 
@@ -236,32 +234,26 @@ def build_health_start(admission: _HealthAdmission, command: StartHealthEffectAt
     candidate = None
     try:
         selected = admission.projection
-        operation = selected.operation
-        target = NodeControlTarget(
-            NodeControlGraphReference(NodeControlGraphReferenceRole.WORKSPACE, command.context.workspace_id),
-            NodeControlGraphReference(NodeControlGraphReferenceRole.GRAPH_REVISION, admission.authored_graph_id),
-            NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, selected.target_node_id),
-            NodeControlGraphReference(NodeControlGraphReferenceRole.PROVIDER_SOCKET, selected.target_provider_socket_name))
+        target = admission.target
         declaration = WorkloadNodeControlSurfaceDeclaration(selected.target_surface,
             WorkloadNodeControlSurfaceDeclarationProfile.V2).identity()
-        request = NodeHealthReadRequest(target,
-            NodeControlGraphReference(NodeControlGraphReferenceRole.RUNTIME, operation.target.runtime_id),
+        request = ReceiverHealthReadRequest(target, admission.authority_context,
             selected.target_health_kind, declaration, logical_id)
         common = dict(canonicalization=NodeControlCanonicalization.JCS_RFC8785_V1,
-            target=target, runtime_id=request.runtime_id, kind=request.kind,
+            target=target, authority_context=request.authority_context, kind=request.kind,
             declaration_identity=declaration, request_id=logical_id, request_digest=request.canonical_digest(),
             issued_at=interval[0], not_before=interval[0], expires_at=interval[1])
         transit_key, workload_key = admission.keys
-        transit = DelegatedGatewayNodeHealthReadTransitGrant(
-            profile=DelegatedGatewayNodeHealthReadTransitGrantProfile.V1, purpose=_PURPOSES[0],
+        transit = DelegatedGatewayReceiverHealthReadTransitGrant(
+            profile=DelegatedGatewayReceiverHealthReadTransitGrantProfile.V2, purpose=_PURPOSES[0],
             issuer=transit_key.issuer, key_id=transit_key.key_id,
             attempt_id=health_effect_attempt_wire_id(start.attempt.state.identity),
-            gateway_node_id=NodeControlGraphReference(NodeControlGraphReferenceRole.NODE, selected.gateway_node_id),
+            gateway_target=admission.gateway_target,
             jti=transit_jti, **common)
-        workload = DelegatedWorkloadNodeHealthReadGrant(
-            profile=DelegatedWorkloadNodeHealthReadGrantProfile.V1, purpose=_PURPOSES[1],
+        workload = DelegatedWorkloadReceiverHealthReadGrant(
+            profile=DelegatedWorkloadReceiverHealthReadGrantProfile.V2, purpose=_PURPOSES[1],
             issuer=workload_key.issuer, key_id=workload_key.key_id,
-            audience=workload_node_control_audience(target), jti=workload_jti, **common)
+            audience=receiver_node_control_audience(target), jti=workload_jti, **common)
         uses = tuple(AuthorizeSecretUse(**values, correlation_id=correlation,
             requested_at=start.attempt.original_start_event.occurred_at,
             actor_scopes=command.context.granted_scopes)
@@ -292,7 +284,7 @@ def retain_health_start(unit_of_work: Any, write: _HealthWrite, start: Any):
         if not _valid_value(readback, AuthorizedSecretUse) or readback != use:
             raise EffectAttemptStartConflict(_ACK)
         uses.append(use)
-    preparation = HealthEffectPreparationRecord(
+    preparation = ReceiverHealthEffectPreparationRecord(
         identity=start.attempt.state.identity, request_fingerprint=start.attempt.state.request_fingerprint,
         original_event_id=start.attempt.original_start_event.event_id,
         base_realized_projection_id=write.admission.base_projection_id,
@@ -302,7 +294,7 @@ def retain_health_start(unit_of_work: Any, write: _HealthWrite, start: Any):
         transit_authorization_id=uses[0].authorization_id, workload_authorization_id=uses[1].authorization_id,
         request=write.request, transit_grant=write.transit, workload_grant=write.workload)
     acknowledgement = unit_of_work.stores.health_effect_preparations.insert_absent(preparation)
-    if type(acknowledgement) is not HealthEffectPreparationRecord or acknowledgement != preparation:
+    if type(acknowledgement) is not ReceiverHealthEffectPreparationRecord or acknowledgement != preparation:
         raise EffectAttemptStartConflict(_ACK)
     return HealthEffectAttemptStartResult(start, preparation)
 
