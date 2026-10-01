@@ -509,6 +509,59 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         self.assertEqual(resolved.workload_node.node_id, "workload")
         self.assertEqual(resolved.workload_surface.provider_socket_name.value, "control")
 
+    def receiver_v2_graph(self):
+        try:
+            declaration = self.api("GatewayTransitDeclarationCodec")().decode({
+                "provider_socket_name": "transit",
+                "protocol": "gateway-receiver-health-read-transit.v2",
+            })
+        except ValueError:
+            self.fail("the gateway declaration decoder must admit receiver health V2")
+        original = graph()
+        gateway = original.node("gateway")
+        return replace(original, nodes={**original.nodes, "gateway": replace(gateway,
+            block_spec=replace(gateway.block_spec, gateway_transit=declaration))})
+
+    def test_receiver_v2_preserves_real_health_ingress_and_own_bootstrap_selection(self):
+        desired = self.receiver_v2_graph()
+        self.assertTrue(validate_graph(desired).valid)
+        plan = self.compile(empty(), desired)
+        self.fresh_order(plan)
+        operations = (self.api("ObserveNodeHealth"), self.api("ObserveManagementBootstrap"))
+        for activity in plan.activities:
+            if isinstance(activity.operation, operations):
+                operation = activity.operation
+                resolved = self.api("resolve_management_observation")(
+                    operation, validate_graph(empty()), validate_graph(desired), expected_operation=operation)
+                self.assertEqual(resolved.gateway_node.block_spec.gateway_transit,
+                                 desired.node("gateway").block_spec.gateway_transit)
+                self.assertEqual(resolved.ingress, desired.public_ingresses[0])
+                self.assertEqual(compensation_for_operation(operation), NoCompensationRequired())
+        self.assertEqual(self.compile(empty(), desired), plan)
+        codec = ActivityPlanDescriptorCodec()
+        self.assertEqual(codec.decode(codec.encode(plan)), plan)
+
+    def test_receiver_v2_profile_changes_graph_relation_and_rejects_cross_profile_requests(self):
+        v2 = self.receiver_v2_graph()
+        v1 = graph()
+        self.assertNotEqual(GraphDescriptorCodec().encode(v1), GraphDescriptorCodec().encode(v2))
+        plans = [self.compile(empty(), desired) for desired in (v1, v2)]
+        health = [self.find(plan, self.api("ObserveNodeHealth"), node="workload") for plan in plans]
+        self.assertNotEqual(health[0].operation.target.graph_digest, health[1].operation.target.graph_digest)
+        self.assertNotEqual(health[0].operation.target.relation_digest, health[1].operation.target.relation_digest)
+        self.assertNotEqual(health[0].activity_id, health[1].activity_id)
+        for index, desired in enumerate((v1, v2)):
+            self.assertEqual(self.compile(empty(), desired), plans[index])
+            codec = GraphDescriptorCodec()
+            restored = codec.decode(codec.encode(desired))
+            self.assertEqual(self.compile(empty(), restored), plans[index])
+            for activity in plans[index].activities:
+                if isinstance(activity.operation, (self.api("ObserveNodeHealth"), self.api("ObserveManagementBootstrap"))):
+                    with self.subTest(profile=index, activity=activity.activity_id.value), self.assertRaises(ValueError):
+                        self.api("resolve_management_observation")(activity.operation,
+                            validate_graph(empty()), validate_graph((v2, v1)[index]),
+                            expected_operation=activity.operation)
+
     def test_ingress_ready_has_distinct_wire_identity_and_bounded_codec_refusals(self):
         stage_type = self.api("ManagementBootstrapStage")
         stage = getattr(stage_type, "GATEWAY_INGRESS_READY", None)
