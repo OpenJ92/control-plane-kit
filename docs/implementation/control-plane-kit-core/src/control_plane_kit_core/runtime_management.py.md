@@ -3,9 +3,14 @@ Maintain this companion with source and imported contract changes.
 
 RuntimeManagement is a frozen pair of references to an existing gateway node and
 named management ingress. GatewayTransitDeclaration is a separate frozen socket
-and closed health-only profile advertisement. Its V1 meaning is exactly the
-existing NodeHealthReadRequestProfile.V1,
-DelegatedGatewayNodeHealthReadTransitGrantProfile.V1 and NodeHealthReadResultProfile.V1.
+and closed health-only profile advertisement. Its sole member is
+`RECEIVER_HEALTH_READ_V2 = "gateway-receiver-health-read-transit.v2"`. It denotes
+the existing ReceiverHealthReadRequestProfile.V2,
+DelegatedGatewayReceiverHealthReadTransitGrantProfile.V2 and
+ReceiverHealthReadResultProfile.V2 contracts, paired with the separate workload
+receiver health grant V2. The obsolete V1 advertisement is rejected; there is
+no alias, coercion or fallback. The existing V2 message labels do not imply
+multiple supported advertisement generations.
 It does not advertise variable reads, mutation, static surfaces or arbitrary
 proxying. Both values use bounded canonical identifiers and strict nested codecs;
 errors report categories without including supplied material.

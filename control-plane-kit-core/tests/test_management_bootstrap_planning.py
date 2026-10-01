@@ -61,7 +61,7 @@ def block(name, surfaces=(), *, gateway=False, checks=(), requirements=()):
     spec = BlockSpec(
         name, capabilities=capabilities, control_surfaces=surfaces,
         verification=VerificationContract(checks),
-        gateway_transit=GatewayTransitDeclaration("transit", GatewayTransitProtocol.NODE_HEALTH_READ_V1) if gateway else None,
+        gateway_transit=GatewayTransitDeclaration("transit", GatewayTransitProtocol.RECEIVER_HEALTH_READ_V2) if gateway else None,
     )
     return ApplicationBlock(
         spec, PureImplementation("test-service", {name_: f"http://{name}.{name_}" for name_ in sorted(names)}),
@@ -508,6 +508,61 @@ class ManagementBootstrapPlanningTests(unittest.TestCase):
         resolved = resolver(base, validate_graph(desired), validate_graph(desired), expected_operation=base)
         self.assertEqual(resolved.workload_node.node_id, "workload")
         self.assertEqual(resolved.workload_surface.provider_socket_name.value, "control")
+
+    def receiver_v2_graph(self):
+        try:
+            declaration = self.api("GatewayTransitDeclarationCodec")().decode({
+                "provider_socket_name": "transit",
+                "protocol": "gateway-receiver-health-read-transit.v2",
+            })
+        except ValueError:
+            self.fail("the gateway declaration decoder must admit receiver health V2")
+        original = graph()
+        gateway = original.node("gateway")
+        return replace(original, nodes={**original.nodes, "gateway": replace(gateway,
+            block_spec=replace(gateway.block_spec, gateway_transit=declaration))})
+
+    def test_receiver_v2_preserves_real_health_ingress_and_own_bootstrap_selection(self):
+        desired = self.receiver_v2_graph()
+        self.assertTrue(validate_graph(desired).valid)
+        plan = self.compile(empty(), desired)
+        self.fresh_order(plan)
+        operations = (self.api("ObserveNodeHealth"), self.api("ObserveManagementBootstrap"))
+        for activity in plan.activities:
+            if isinstance(activity.operation, operations):
+                operation = activity.operation
+                resolved = self.api("resolve_management_observation")(
+                    operation, validate_graph(empty()), validate_graph(desired), expected_operation=operation)
+                self.assertEqual(resolved.gateway_node.block_spec.gateway_transit,
+                                 desired.node("gateway").block_spec.gateway_transit)
+                self.assertEqual(resolved.ingress, desired.public_ingresses[0])
+                self.assertEqual(compensation_for_operation(operation), NoCompensationRequired())
+        self.assertEqual(self.compile(empty(), desired), plan)
+        codec = ActivityPlanDescriptorCodec()
+        self.assertEqual(codec.decode(codec.encode(plan)), plan)
+
+    def test_receiver_v2_commits_exact_graph_relation_and_refuses_obsolete_descriptors(self):
+        desired = self.receiver_v2_graph()
+        codec = GraphDescriptorCodec()
+        document = codec.encode(desired)
+        plan = self.compile(empty(), desired)
+        health = self.find(plan, self.api("ObserveNodeHealth"), node="workload")
+        expected_graph = hashlib.sha256(
+            b"control-plane-kit.management-graph.v1\0" + rfc8785.dumps(document)).hexdigest()
+        relation = {"runtime_id": "runtime", "management": desired.runtimes["runtime"].management.descriptor(),
+                    "ingress": desired.public_ingresses[0].descriptor(),
+                    "gateway_transit": {"provider_socket_name": "transit",
+                                        "protocol": "gateway-receiver-health-read-transit.v2"},
+                    "gateway_readiness": {"provider_socket_name": "control", "health_kind": "readiness"}}
+        expected_relation = hashlib.sha256(
+            b"control-plane-kit.management-relation.v1\0" + rfc8785.dumps(relation)).hexdigest()
+        self.assertEqual(health.operation.target.graph_digest, expected_graph)
+        self.assertEqual(health.operation.target.relation_digest, expected_relation)
+        self.assertEqual(self.compile(empty(), desired), plan)
+        self.assertEqual(self.compile(empty(), codec.decode(document)), plan)
+        document["nodes"]["gateway"]["block_spec"]["gateway_transit"]["protocol"] = "gateway-node-health-read-transit.v1"
+        with self.assertRaises(ValueError):
+            codec.decode(document)
 
     def test_ingress_ready_has_distinct_wire_identity_and_bounded_codec_refusals(self):
         stage_type = self.api("ManagementBootstrapStage")

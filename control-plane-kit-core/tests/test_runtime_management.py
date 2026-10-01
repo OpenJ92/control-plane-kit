@@ -52,7 +52,7 @@ class RuntimeManagementTests(unittest.TestCase):
         options = {}
         if gateway:
             options["gateway_transit"] = self.api("GatewayTransitDeclaration")(
-                "control", self.api("GatewayTransitProtocol").NODE_HEALTH_READ_V1,
+                "control", self.api("GatewayTransitProtocol").RECEIVER_HEALTH_READ_V2,
             )
         return ProductRuntimeContract(
             sockets=BlockSockets(providers=tuple(providers)), provider_ports=tuple(ports),
@@ -113,7 +113,7 @@ class RuntimeManagementTests(unittest.TestCase):
         codec = ProductRuntimeContractCodec()
         encoded = codec.encode(contract)
         self.assertEqual(encoded["gateway_transit"], {
-            "provider_socket_name": "control", "protocol": "gateway-node-health-read-transit.v1",
+            "provider_socket_name": "control", "protocol": "gateway-receiver-health-read-transit.v2",
         })
         self.assertEqual(codec.decode(encoded), contract)
         block = self.block("gateway", contract)
@@ -121,6 +121,68 @@ class RuntimeManagementTests(unittest.TestCase):
         graph = compile_topology(DeploymentTopology("role", DockerRuntime(children=(block,))))
         self.assertEqual(graph.node("gateway").block_spec.gateway_transit, contract.gateway_transit)
         self.assertEqual(contract.secret_deliveries, ())
+
+    def receiver_v2_declaration(self):
+        # Reach the existing decoder before looking up the new enum member.
+        try:
+            return self.api("GatewayTransitDeclarationCodec")().decode({
+                "provider_socket_name": "control",
+                "protocol": "gateway-receiver-health-read-transit.v2",
+            })
+        except ValueError:
+            self.fail("the gateway declaration decoder must admit receiver health V2")
+
+    def test_receiver_v2_roundtrips_through_product_block_and_graph(self):
+        declaration = self.receiver_v2_declaration()
+        self.assertIs(declaration.protocol, self.api("GatewayTransitProtocol").RECEIVER_HEALTH_READ_V2)
+        codec = self.api("GatewayTransitDeclarationCodec")()
+        self.assertEqual(codec.encode(declaration), {
+            "provider_socket_name": "control", "protocol": "gateway-receiver-health-read-transit.v2",
+        })
+        updated = replace(self.contract(gateway=True), gateway_transit=declaration)
+        product_codec = ProductRuntimeContractCodec()
+        self.assertEqual(product_codec.decode(product_codec.encode(updated)), updated)
+        block = self.block("gateway", updated)
+        self.assertEqual(block.spec.gateway_transit, declaration)
+        graph = compile_topology(DeploymentTopology("role", DockerRuntime(children=(block,))))
+        graph_codec = GraphDescriptorCodec()
+        document = graph_codec.encode(graph)
+        restored = graph_codec.decode(document)
+        self.assertEqual(restored.node("gateway").block_spec.gateway_transit, declaration)
+        self.assertEqual(graph_codec.encode(restored), document)
+        self.assertEqual(updated.secret_deliveries, ())
+        self.assertEqual(set(declaration.descriptor()), {"provider_socket_name", "protocol"})
+
+    def test_receiver_v2_keeps_closed_profiles_http_socket_and_redacted_refusals(self):
+        declaration = self.receiver_v2_declaration()
+        codec = self.api("GatewayTransitDeclarationCodec")()
+        for profile in (None, 1, [], "gateway-node-health-read-transit.v2", "apply-command", "PRIVATE-PROFILE-" * 1000):
+            with self.subTest(profile=type(profile).__name__), self.assertRaises(ValueError) as caught:
+                codec.decode({"provider_socket_name": "control", "protocol": profile})
+            self.assertLess(len(str(caught.exception)), 200)
+            self.assertNotIn("PRIVATE-PROFILE", str(caught.exception) + repr(caught.exception))
+            self.assertIsNone(caught.exception.__cause__)
+            self.assertIsNone(caught.exception.__context__)
+        for profile in ("gateway-receiver-health-read-transit.v2",):
+            for extra in ("request_profile", "private_key"):
+                with self.subTest(profile=profile, extra=extra), self.assertRaises(ValueError):
+                    codec.decode({"provider_socket_name": "control", "protocol": profile, extra: "do-not-store"})
+            with self.subTest(profile=profile), self.assertRaises(ValueError) as caught:
+                codec.decode({"provider_socket_name": "private-key", "protocol": profile})
+            self.assertNotIn("private-key", str(caught.exception) + repr(caught.exception))
+            self.assertIsNone(caught.exception.__context__)
+        for providers in ((), (ProviderSocket("other", Protocol.HTTP),), (ProviderSocket("control", Protocol.POSTGRES),)):
+            with self.subTest(providers=providers), self.assertRaises(ValueError):
+                ProductRuntimeContract(sockets=BlockSockets(providers=providers), gateway_transit=declaration)
+
+    def test_obsolete_gateway_health_advertisement_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self.api("GatewayTransitDeclarationCodec")().decode({
+                "provider_socket_name": "control", "protocol": "gateway-node-health-read-transit.v1",
+            })
+        self.assertLess(len(str(caught.exception)), 200)
+        self.assertIsNone(caught.exception.__cause__)
+        self.assertIsNone(caught.exception.__context__)
 
     def test_absent_management_preserves_legacy_sdk_graph_and_descriptor(self):
         graph = self.graph(management=False, transit=False)
@@ -206,7 +268,7 @@ class RuntimeManagementTests(unittest.TestCase):
         self.assertFalse(validate_graph(candidate).valid)
 
     def test_transit_role_requires_http_even_without_sdk_control_surface(self):
-        declaration = self.api("GatewayTransitDeclaration")("data", self.api("GatewayTransitProtocol").NODE_HEALTH_READ_V1)
+        declaration = self.api("GatewayTransitDeclaration")("data", self.api("GatewayTransitProtocol").RECEIVER_HEALTH_READ_V2)
         with self.assertRaises(ValueError):
             ProductRuntimeContract(sockets=BlockSockets(providers=(ProviderSocket("data", Protocol.POSTGRES),)),
                 provider_ports=(ProviderRuntimePort("data", 5432),), gateway_transit=declaration)
@@ -286,7 +348,7 @@ class RuntimeManagementTests(unittest.TestCase):
 
     def test_transit_socket_retains_ingress_secret_reference_rejection(self):
         declaration = self.api("GatewayTransitDeclaration")
-        protocol = self.api("GatewayTransitProtocol").NODE_HEALTH_READ_V1
+        protocol = self.api("GatewayTransitProtocol").RECEIVER_HEALTH_READ_V2
         for socket in ("private-key", "eyjexample"):
             with self.subTest(socket=socket), self.assertRaises(ValueError) as caught:
                 declaration(socket, protocol)
@@ -306,7 +368,7 @@ class RuntimeManagementTests(unittest.TestCase):
         with self.assertRaises(ValueError) as caught:
             self.api("GatewayTransitDeclarationCodec")().decode({
                 "provider_socket_name": "private-key",
-                "protocol": "gateway-node-health-read-transit.v1",
+                "protocol": "gateway-receiver-health-read-transit.v2",
             })
         self.assertNotIn("private-key", str(caught.exception) + repr(caught.exception))
         self.assertIsNone(caught.exception.__context__)

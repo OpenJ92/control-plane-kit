@@ -1,8 +1,9 @@
 """Pure references and health-only gateway transit advertisements.
 
-The V1 transit protocol denotes the existing NodeHealthReadRequestProfile.V1,
-DelegatedGatewayNodeHealthReadTransitGrantProfile.V1 and NodeHealthReadResultProfile.V1
-contracts. Advertising it neither supplies authority nor implements transport.
+The sole transit protocol denotes ReceiverHealthReadRequestProfile.V2,
+DelegatedGatewayReceiverHealthReadTransitGrantProfile.V2 and
+ReceiverHealthReadResultProfile.V2, paired with the workload receiver health
+grant V2. Advertising it neither supplies authority nor implements transport.
 """
 
 from collections.abc import Mapping
@@ -56,7 +57,7 @@ class RuntimeManagement:
 
 
 class GatewayTransitProtocol(StrEnum):
-    NODE_HEALTH_READ_V1 = "gateway-node-health-read-transit.v1"
+    RECEIVER_HEALTH_READ_V2 = "gateway-receiver-health-read-transit.v2"
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,6 @@ class GatewayTransitDeclarationCodec:
         if not isinstance(value, Mapping) or set(value) != {"provider_socket_name", "protocol"}:
             raise RuntimeManagementError("gateway transit declaration fields are invalid")
         raw_protocol = value["protocol"]
-        if not isinstance(raw_protocol, str) or raw_protocol != GatewayTransitProtocol.NODE_HEALTH_READ_V1.value:
+        if not isinstance(raw_protocol, str) or raw_protocol != GatewayTransitProtocol.RECEIVER_HEALTH_READ_V2.value:
             raise RuntimeManagementError("gateway transit protocol is unsupported")
-        return GatewayTransitDeclaration(value["provider_socket_name"], GatewayTransitProtocol.NODE_HEALTH_READ_V1)
+        return GatewayTransitDeclaration(value["provider_socket_name"], GatewayTransitProtocol.RECEIVER_HEALTH_READ_V2)
