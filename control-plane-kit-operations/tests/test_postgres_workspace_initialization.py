@@ -9,9 +9,12 @@ import rfc8785
 from control_plane_kit_core.topology import DeploymentGraph
 from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
 from control_plane_kit_operations.records import GraphVersionRecord, WorkspaceRecord
+from control_plane_kit_operations.records import RealizedGraphProjectionRecord
+from control_plane_kit_operations.receiver_lifecycle import ReceiverLifecycleStorageError
 from control_plane_kit_operations.workflows import IdempotencyKey
 from control_plane_kit_operations.workspaces import (
     CreateWorkspace, WorkspaceCommandError, WorkspaceCommandService,
+    _PreparedWorkspaceCreation,
 )
 from tests.lifecycle_lock_fixture import LifecycleLockFixture, LIFECYCLE_LOCK
 from tests.test_postgres_configuration_evidence import _ObservedConnection
@@ -137,6 +140,79 @@ class PostgresWorkspaceInitializationTests(LifecycleLockFixture, unittest.TestCa
             self.assertEqual(self.connection.execute(
                 f"SELECT count(*) FROM {relation} WHERE workspace_id='workspace-a'"
             ).fetchone()[0], 1)
+
+    def test_fresh_creation_dispatches_no_writes_before_lifecycle_lock(self):
+        writes = []
+
+        class ObservedWrites:
+            def __init__(self, connection):
+                self.connection = connection
+
+            def __getattr__(self, name):
+                return getattr(self.connection, name)
+
+            def execute(self, query, parameters=None):
+                statement = " ".join(str(query).split())
+                if statement.split()[0].upper() in ("INSERT", "UPDATE", "DELETE"):
+                    writes.append(statement)
+                return self.connection.execute(query, parameters)
+
+        def create(factory):
+            # Keep the blocker fixture's actual connection/PID registration;
+            # observe dispatch without replacing SQL or store results.
+            connect = factory()._connection_factory
+            return self.service(unit_of_work=lambda: PostgresUnitOfWork(
+                lambda: ObservedWrites(connect()))).create(self.command())
+
+        with self.blocked_command(LIFECYCLE_LOCK,
+                ("receiver-lifecycle:workspace-a",), create) as future:
+            self.assertEqual(writes, [], "creation dispatched mutation before acquiring L")
+        future.result(timeout=1)
+        for relation in ("cpk_workspaces", "cpk_graph_versions",
+                "cpk_realized_graph_projections", "cpk_workspace_initializations"):
+            self.assertTrue(any(f"INSERT INTO {relation} " in query for query in writes),
+                f"real creation did not reach {relation} after L was released")
+
+    def test_private_initialization_writers_refuse_missing_foreign_and_stale_guards(self):
+        graph = GraphVersionRecord.from_graph(
+            graph_id="graph-initial", workspace_id="workspace-a", version=1,
+            graph=DeploymentGraph("empty"), created_by="operator-a",
+            created_at="2026-07-22T10:00:00Z",
+            metadata={"bootstrap": "empty-current-graph",
+                "idempotency_key": "create-workspace-a"})
+        projection = RealizedGraphProjectionRecord.identity_for_authored(authored_record=graph)
+        for mode in ("missing", "wrong-workspace", "foreign-connection", "expired-transaction"):
+            with self.subTest(mode=mode), self.unit_of_work() as owner, self.unit_of_work() as foreign:
+                guard = owner.stores.graphs.lock_receiver_lifecycle(
+                    "workspace-b" if mode == "wrong-workspace" else "workspace-a")
+                prepared = _PreparedWorkspaceCreation(owner.stores, guard, self.command(), graph)
+                receipt = prepared.receipt(projection)
+                target = foreign.stores if mode == "foreign-connection" else owner.stores
+                if mode == "expired-transaction":
+                    # Deliberately retain the old guard on the same connection
+                    # after its physical transaction ends; never grant it anew.
+                    owner.stores.connection.commit()
+                if mode == "missing":
+                    prepared = None
+                error_type = (WorkspaceCommandError if mode in ("missing", "foreign-connection")
+                    else ReceiverLifecycleStorageError)
+                writers = (
+                    lambda: target.workspaces._create_for_initialization(
+                        WorkspaceRecord("workspace-a", "Workspace A"), prepared),
+                    lambda: target.graphs._save_workspace_initialization(graph, prepared),
+                    lambda: target.workspaces._set_initial_current_graph(prepared),
+                    lambda: target.workspaces._insert_workspace_initialization(receipt, prepared),
+                )
+                for writer in writers:
+                    with self.assertRaises(error_type) as caught:
+                        writer()
+                    self.assertIs(type(caught.exception), error_type)
+                # Observe inside the same transaction, not through MVCC-hidden
+                # rows on another connection; every guarded writer has refused.
+                for relation in ("cpk_workspaces", "cpk_graph_versions",
+                        "cpk_realized_graph_projections", "cpk_workspace_initializations"):
+                    self.assertEqual(target.connection.execute(
+                        f"SELECT count(*) FROM {relation}").fetchone()[0], 0)
 
     def test_late_commit_failure_rolls_back_entire_creation(self):
         class CommitFailure:
