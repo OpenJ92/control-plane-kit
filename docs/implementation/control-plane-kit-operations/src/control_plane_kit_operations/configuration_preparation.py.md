@@ -7,4 +7,4 @@ The first-start owner rederives selected material under the existing lifecycle l
 
 Transport reservations include statements, scalar markers, returned values and relational identities. Failed reads retain their reservation. Caches stay within one UoW; command accounting can span the coordinator and nested start while fresh mutable authority is reread.
 
-This is the B1 source draft. Complete accounting/fold integration, the full owning Docker gate and independent review remain pending. B2 current-use evidence and provider behavior are outside this module's authority.
+B1 source integration is implemented. The full owning Docker gate and independent whole-B1 review remain pending. B2 current-use evidence and provider behavior are outside this module's authority.

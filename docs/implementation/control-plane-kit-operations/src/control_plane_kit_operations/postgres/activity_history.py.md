@@ -34,3 +34,8 @@ matching duplicate cannot be filtered out in favor of a valid row. No full
 session list or arbitrary long-history cutoff is used. LIMIT bounds returned
 row/decoding count only: payload bytes and PostgreSQL scan/JSON predicate work
 are not capped by this query. No schema/index change or independent commit.
+
+B1 configuration commands use bounded complete-row reads for pinned plans,
+sessions and approvals, with the existing decoders and lock semantics. Each
+read joins the logical command's budget. Legacy callers keep their original
+path; history is not replaced by a compact or fabricated execution context.

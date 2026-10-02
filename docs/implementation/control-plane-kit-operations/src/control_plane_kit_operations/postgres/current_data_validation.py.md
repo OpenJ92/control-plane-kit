@@ -19,3 +19,9 @@ No current authority is inferred from historical evidence, and unrelated attempt
 need no preparation. Installation never repairs an incompatible retained store,
 creates missing projections, rewrites evidence or performs a provider effect.
 The caller retains the transaction; schema drift and data drift both refuse.
+
+B1 current verification checks original configuration intents and their complete
+refs/claims, including exact source commitments and self-rooted birth evidence.
+Missing whole protection sets cannot disappear from verification merely because
+there are no ref rows to enumerate. Reads use bounded pages and never repair,
+backfill or release retained protection.

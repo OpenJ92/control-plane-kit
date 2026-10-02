@@ -25,3 +25,9 @@ before calculating the new literal's prospective hash.
 This is a fresh-store contract, not a migration program. Exact-current existing
 stores receive bounded semantic row verification only. Incompatible schema/data
 refuses without repair, reset or backfill; callers retain transaction ownership.
+
+B1 / #1923's exact catalog adds two relations, 23 columns, nine constraints and
+six indexes for immutable configuration protection. The current totals are
+46 relations, 580 columns, 458 constraints and 153 indexes, including 115 foreign
+keys. The SQL, contract hashes, table atlas and schema tests move together;
+these counts do not authorize migration or reset of a retained namespace.

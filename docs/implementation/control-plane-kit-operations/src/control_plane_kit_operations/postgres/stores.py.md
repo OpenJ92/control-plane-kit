@@ -7,3 +7,8 @@ that same connection, alongside original intents, attempts, graph projections,
 keys and secret-use owners. It introduces no independent connection or commit.
 Unit-of-work callers retain transaction and rollback ownership. Merely creating
 the bundle performs no admission, signing, provider I/O or schema mutation.
+
+The B1 configuration preparation/provenance store shares this bundle's exact
+connection. It grants no independent transaction or provider capability; its
+private prepared value is valid only for this bundle, original intent/identity
+and held lifecycle guard.
