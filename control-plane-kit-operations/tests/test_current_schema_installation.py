@@ -17,14 +17,14 @@ import control_plane_kit_operations.postgres as postgres
 
 
 _EXPECTED_RELATIONS = (
-    "cpk_configuration_acceptances",
-    "cpk_configuration_accepted_slots",
     "cpk_activity_events",
     "cpk_activity_plans",
     "cpk_activity_runs",
     "cpk_approval_decisions",
     "cpk_approval_requests",
     "cpk_cloudflare_ingress_resources",
+    "cpk_configuration_acceptances",
+    "cpk_configuration_accepted_slots",
     "cpk_configuration_claims",
     "cpk_delegation_signing_keys",
     "cpk_desired_topology_draft_revisions",
@@ -127,7 +127,7 @@ _FORBIDDEN_SCHEMA_NAMES = frozenset(
     }
 )
 _CURRENT_CONTRACT_SHA256 = (
-    "340c04865903624797a513b89ceaf5c7fff7e74dff16b4393f2136a24be62eb2"
+    "79111df594db6043e5bb5ef042b3934f3852675e00d1f907c38ef360ee0049f8"
 )
 _CURRENT_SCHEMA_SQL_SHA256 = (
     "0024dd48bcb61b45d9f85f2c99a15fa59603e6a969e55b43ef8301cf70698877"
