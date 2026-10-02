@@ -9,6 +9,12 @@ command and original empty graph. Private store helpers persist that graph, its
 existing owner-generated identity projection, pointer and immutable initialization
 receipt together. No provider call or independent commit is involved.
 
+The command enters the workspace store's evidence scope before its first read.
+That scope roots or joins the existing configuration ledger and translates its
+closed capacity/unavailable failures into a bounded workspace error. The service
+does not import PostgreSQL accounting types. Original proof and today's response
+consume the same command ledger; leaving the scope does not commit the UoW.
+
 Replay preserves the current public response: today's workspace and current
 graph. It separately verifies the retained original initialization and preserves
 the original creator/key even if the replay command differs. Existing name

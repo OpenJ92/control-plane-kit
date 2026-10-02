@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from contextlib import contextmanager
 from typing import Any
 
 from psycopg.errors import UniqueViolation
@@ -40,6 +41,20 @@ class PostgresWorkspaceStore:
     def __init__(self, connection: PostgresConnection) -> None:
         self._connection = connection
 
+    @contextmanager
+    def _initialization_evidence(self, workspace_id):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from control_plane_kit_operations.workspaces import WorkspaceCommandError
+        from .configuration_evidence import _Capacity, _Unavailable
+        try:
+            with _configuration_accounting(("workspace-create", workspace_id), join=True):
+                yield
+        except (_Capacity, _Unavailable):
+            pass
+        else:
+            return
+        raise WorkspaceCommandError("workspace initialization evidence is unavailable") from None
+
     def _create_for_initialization(self, record, prepared):
         from control_plane_kit_operations.workspaces import _require_prepared_creation
         _require_prepared_creation(prepared, self._connection, record.workspace_id)
@@ -62,9 +77,10 @@ class PostgresWorkspaceStore:
             raise ValueError("workspace initialization requires an unset pointer")
         # Use the existing identity projection owner once, in this same UoW.
         projection_id = self._projection_for_source(workspace_id, prepared.graph.graph_id, None)
-        self._connection.execute("UPDATE cpk_workspaces SET current_graph_id=%s, "
-            "current_realized_projection_id=%s WHERE workspace_id=%s",
-            (prepared.graph.graph_id, projection_id, workspace_id))
+        from .configuration_evidence import _EvidenceRead
+        _EvidenceRead(self._connection).query("UPDATE cpk_workspaces SET current_graph_id=%s, "
+            "current_realized_projection_id=%s WHERE workspace_id=%s RETURNING 1",
+            (prepared.graph.graph_id, projection_id, workspace_id), records=1, octets=1, cells=1)
         return self.get(workspace_id)
 
     def _insert_workspace_initialization(self, receipt, prepared):
@@ -81,11 +97,12 @@ class PostgresWorkspaceStore:
                 or (workspace.current_graph_id, workspace.current_realized_projection_id)
                 != (receipt.initial_graph_id, receipt.initial_projection_id)):
             raise ValueError("workspace initialization is incongruent")
-        self._connection.execute("INSERT INTO cpk_workspace_initializations "
+        from .configuration_evidence import _EvidenceRead
+        _EvidenceRead(self._connection).query("INSERT INTO cpk_workspace_initializations "
             "(workspace_id,profile,initial_graph_id,initial_projection_id,graph_descriptor_sha256,"
             "projection_digest,configuration_slot_count,created_by,creation_idempotency_key) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (workspace_id) DO NOTHING",
-            astuple(receipt))
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (workspace_id) DO NOTHING RETURNING 1",
+            astuple(receipt), records=1, octets=1, cells=1)
         if self._require_workspace_initialization(receipt.workspace_id) != receipt:
             raise ValueError("workspace initialization differs from its original")
 
@@ -108,15 +125,14 @@ class PostgresWorkspaceStore:
                 graph = PostgresGraphTopologyStore(self._connection).get(graph_id)
                 _require(graph.workspace_id == record.workspace_id)
                 self._require_legacy_pointer_material(record.workspace_id, graph_id, projection_id)
-        self._connection.execute(
-            """
+        query = """
             INSERT INTO cpk_workspaces
               (workspace_id, name, lifecycle, current_graph_id, desired_graph_id,
                metadata, current_realized_projection_id,
                desired_realized_projection_id, desired_graph_revision)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
+            """
+        values = (
                 record.workspace_id,
                 record.name,
                 record.lifecycle.value,
@@ -126,8 +142,12 @@ class PostgresWorkspaceStore:
                 record.current_realized_projection_id,
                 record.desired_realized_projection_id,
                 record.desired_graph_revision,
-            ),
-        )
+            )
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is None:
+            self._connection.execute(query, values)
+        else:
+            read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)
         return record
 
     def get(self, workspace_id: str) -> WorkspaceRecord:
@@ -550,14 +570,12 @@ class PostgresGraphTopologyStore:
 
     def _save(self, record: GraphVersionRecord) -> GraphVersionRecord:
         encoded_created_at = encode_postgres_timestamp(record.created_at)
-        try:
-            self._connection.execute(
-                """
+        query = """
                 INSERT INTO cpk_graph_versions
                   (graph_id, workspace_id, version, graph_descriptor, created_by, created_at, metadata)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
+                """
+        values = (
                     record.graph_id,
                     record.workspace_id,
                     record.version,
@@ -565,8 +583,13 @@ class PostgresGraphTopologyStore:
                     record.created_by,
                     encoded_created_at,
                     Jsonb(record.metadata),
-                ),
-            )
+                )
+        from .configuration_evidence import _active_read
+        try:
+            if (read := _active_read(self._connection)) is None:
+                self._connection.execute(query, values)
+            else:
+                read.query(query + " RETURNING 1", values, records=1, octets=1, cells=1)
         except UniqueViolation as error:
             if error.diag.constraint_name != "cpk_graph_versions_pkey":
                 raise
@@ -657,57 +680,55 @@ class PostgresRealizedGraphProjectionStore:
         return self._save(record)
 
     def _save(self, record: RealizedGraphProjectionRecord) -> RealizedGraphProjectionRecord:
+        from .configuration_evidence import _active_read, _Unavailable
         encoded_created_at = encode_postgres_timestamp(record.created_at)
-        source = self._connection.execute(
-            """
-            SELECT workspace_id
-            FROM cpk_graph_versions
-            WHERE graph_id = %s
-            """,
-            (record.source_authored_graph_id,),
-        ).fetchone()
+        read = _active_read(self._connection)
+        if read is None:
+            source = self._connection.execute(
+                "SELECT workspace_id FROM cpk_graph_versions WHERE graph_id=%s",
+                (record.source_authored_graph_id,)).fetchone()
+        else:
+            sources = read.bounded_rows("cpk_graph_versions", (("workspace_id", "text", 2048),),
+                "graph_id=%s", (record.source_authored_graph_id,))
+            source = sources[0] if sources else None
         if source is None or source[0] != record.workspace_id:
             raise RealizedGraphProjectionConflict(
-                "realized projection source is not an authored graph in its workspace"
-            )
-        inserted = self._connection.execute(
-            """
+                "realized projection source is not an authored graph in its workspace")
+        query = """
             INSERT INTO cpk_realized_graph_projections
               (projection_id, workspace_id, source_authored_graph_id,
                projection_kind, projection_key, projection_digest,
                graph_descriptor, created_by, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT DO NOTHING
-            RETURNING projection_id, workspace_id, source_authored_graph_id,
-                      projection_kind, projection_key, projection_digest,
-                      graph_descriptor, created_by, created_at
-            """,
-            (
-                record.projection_id,
-                record.workspace_id,
-                record.source_authored_graph_id,
-                record.projection_kind.value,
-                record.projection_key,
-                record.projection_digest,
-                Jsonb(record.graph_descriptor),
-                record.created_by,
-                encoded_created_at,
-            ),
-        ).fetchone()
-        if inserted is not None:
-            return _realized_graph_projection_record(inserted)
-        existing = self._by_identity(
-            workspace_id=record.workspace_id,
+            """
+        values = (record.projection_id, record.workspace_id, record.source_authored_graph_id,
+            record.projection_kind.value, record.projection_key, record.projection_digest,
+            Jsonb(record.graph_descriptor), record.created_by, encoded_created_at)
+        if read is None:
+            inserted = self._connection.execute(query + """
+                RETURNING projection_id, workspace_id, source_authored_graph_id,
+                          projection_kind, projection_key, projection_digest,
+                          graph_descriptor, created_by, created_at
+                """, values).fetchone()
+            if inserted is not None:
+                return _realized_graph_projection_record(inserted)
+        else:
+            # Reserve the mutation return before executing. The complete row is
+            # subsequently read through this owner's bounded getter in the same UoW.
+            inserted = read.query(query + " RETURNING CASE WHEN octet_length(projection_id)<=2048 "
+                "THEN projection_id ELSE NULL END", values, records=1, octets=2048, cells=1)
+            if inserted:
+                if inserted[0][0] is None:
+                    raise _Unavailable
+                return self.get(inserted[0][0])
+        existing = self._by_identity(workspace_id=record.workspace_id,
             source_authored_graph_id=record.source_authored_graph_id,
-            projection_kind=record.projection_kind,
-            projection_key=record.projection_key,
-        )
+            projection_kind=record.projection_kind, projection_key=record.projection_key)
         if existing is None or existing.projection_digest != record.projection_digest:
             raise RealizedGraphProjectionConflict(
-                "realized projection identity is already bound to different material"
-            )
+                "realized projection identity is already bound to different material")
         return existing
-
     def get(self, projection_id: str) -> RealizedGraphProjectionRecord:
         from .configuration_evidence import _active_read
         if (read := _active_read(self._connection)) is not None:
@@ -738,38 +759,15 @@ class PostgresRealizedGraphProjectionStore:
         workspace_id: str,
         authored_graph_id: str,
     ) -> RealizedGraphProjectionRecord:
-        row = self._connection.execute(
-            """
-            SELECT projection_id, workspace_id, source_authored_graph_id,
-                   projection_kind, projection_key, projection_digest,
-                   graph_descriptor, created_by, created_at
-            FROM cpk_realized_graph_projections
-            WHERE workspace_id = %s
-              AND source_authored_graph_id = %s
-              AND projection_kind = 'identity'
-              AND projection_key = 'identity'
-            """,
-            (workspace_id, authored_graph_id),
-        ).fetchone()
-        if row is None:
-            source = self._connection.execute(
-                """
-                SELECT graph_id, workspace_id, version, graph_descriptor,
-                       created_by, created_at, metadata
-                FROM cpk_graph_versions
-                WHERE graph_id = %s AND workspace_id = %s
-                """,
-                (authored_graph_id, workspace_id),
-            ).fetchone()
-            if source is None:
-                raise KeyError(
-                    f"missing authored graph {authored_graph_id!r}"
-                )
-            return RealizedGraphProjectionRecord.identity_for_authored(
-                authored_record=_graph_record(source)
-            )
-        return _realized_graph_projection_record(row)
-
+        existing = self._by_identity(workspace_id=workspace_id,
+            source_authored_graph_id=authored_graph_id,
+            projection_kind=RealizedGraphProjectionKind.IDENTITY, projection_key="identity")
+        if existing is not None:
+            return existing
+        source = PostgresGraphTopologyStore(self._connection).get(authored_graph_id)
+        if source.workspace_id != workspace_id:
+            raise KeyError("authored graph is unavailable")
+        return RealizedGraphProjectionRecord.identity_for_authored(authored_record=source)
     def _by_identity(
         self,
         *,
@@ -778,6 +776,16 @@ class PostgresRealizedGraphProjectionStore:
         projection_kind: RealizedGraphProjectionKind,
         projection_key: str,
     ) -> RealizedGraphProjectionRecord | None:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            names = ("projection_id", "workspace_id", "source_authored_graph_id", "projection_kind",
+                "projection_key", "projection_digest", "graph_descriptor", "created_by", "created_at")
+            columns = tuple((name, "json" if name == "graph_descriptor" else "time" if name == "created_at"
+                else "text", 1048576 if name == "graph_descriptor" else 2048) for name in names)
+            rows = read.bounded_rows("cpk_realized_graph_projections", columns,
+                "workspace_id=%s AND source_authored_graph_id=%s AND projection_kind=%s AND projection_key=%s",
+                (workspace_id, source_authored_graph_id, projection_kind.value, projection_key))
+            return _realized_graph_projection_record(rows[0]) if rows else None
         row = self._connection.execute(
             """
             SELECT projection_id, workspace_id, source_authored_graph_id,
@@ -807,9 +815,9 @@ def _read_workspace_initialization(connection, workspace_id):
     from control_plane_kit_core.topology import DEFAULT_GRAPH_CODEC, DeploymentGraph
     from control_plane_kit_operations.workspaces import _WorkspaceInitialization
     from control_plane_kit_operations.workflows import IdempotencyKey
-    from .configuration_evidence import _EvidenceRead, _Unavailable
+    from .configuration_evidence import _active_read, _EvidenceRead, _Unavailable
 
-    read = _EvidenceRead(connection, standalone=True)
+    read = _active_read(connection) or _EvidenceRead(connection, standalone=True)
     names = ("workspace_id", "profile", "initial_graph_id", "initial_projection_id",
         "graph_descriptor_sha256", "projection_digest", "configuration_slot_count",
         "created_by", "creation_idempotency_key")

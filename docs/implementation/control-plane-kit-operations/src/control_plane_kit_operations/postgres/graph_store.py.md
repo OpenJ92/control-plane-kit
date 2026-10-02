@@ -60,3 +60,13 @@ replay verification does not require today's current pointer to remain initial.
 No helper commits, adopts metadata as origin, backfills a missing receipt or
 grants accepted configuration membership. Source validation is pending; the
 first three creation laws have reviewed causal-red evidence on #1924.
+
+The E7 command evidence scope roots/joins the existing ledger before the initial
+workspace lookup. It covers guarded creation writes as scalar returns, lifecycle
+checks, original receipt and response reads. Identity projection discovery and
+conflict lookup use bounded owner reads. Under that ledger, projection INSERT
+reserves only its bounded ID return, then retrieves the complete immutable row
+through the existing bounded getter; zero-row conflicts retain statement cost.
+Standalone roots are used only outside an active command, such as current-data
+verification. The review-found metadata transport and missing-ledger defects
+have focused causal-red evidence; corrected source has not yet run green.

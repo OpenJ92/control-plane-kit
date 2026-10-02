@@ -11943,6 +11943,8 @@
       "migration_prerequisites": [],
       "canonical_public_exports": [],
       "internal_dependencies": [
+        "control_plane_kit_operations._configuration_preparation",
+        "control_plane_kit_operations.postgres.configuration_evidence",
         "control_plane_kit_core.operations",
         "control_plane_kit_core.topology",
         "control_plane_kit_core.types",

@@ -138,58 +138,62 @@ class WorkspaceCommandService:
         if not isinstance(command, CreateWorkspace):
             raise WorkspaceCommandError("create requires CreateWorkspace")
         with self._unit_of_work_factory() as unit_of_work:
+            with unit_of_work.stores.workspaces._initialization_evidence(command.workspace_id):
+                return self._create(command, unit_of_work)
+
+    def _create(self, command: CreateWorkspace, unit_of_work: Any) -> CreateWorkspaceResult:
+        try:
+            existing = unit_of_work.stores.workspaces.get(command.workspace_id)
+        except KeyError:
+            existing = None
+        guard = None
+        if existing is None:
+            guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(command.workspace_id)
+            # A concurrent creator may have committed while L was held.
             try:
                 existing = unit_of_work.stores.workspaces.get(command.workspace_id)
             except KeyError:
                 existing = None
-            guard = None
-            if existing is None:
-                guard = unit_of_work.stores.graphs.lock_receiver_lifecycle(command.workspace_id)
-                # A concurrent creator may have committed while L was held.
-                try:
-                    existing = unit_of_work.stores.workspaces.get(command.workspace_id)
-                except KeyError:
-                    existing = None
-            if existing is not None:
-                if existing.name != command.name:
-                    raise WorkspaceCommandError(
-                        "workspace id already exists with different name"
-                    )
-                if existing.current_graph_id is None:
-                    raise WorkspaceCommandError(
-                        "workspace exists without initial current graph"
-                    )
-                unit_of_work.stores.workspaces._require_workspace_initialization(command.workspace_id)
-                graph = unit_of_work.stores.graphs.get(existing.current_graph_id)
-                unit_of_work.commit()
-                return CreateWorkspaceResult(existing, graph, replayed=True)
-
-            current_graph = GraphVersionRecord.from_graph(
-                graph_id=self._id_factory(),
-                workspace_id=command.workspace_id,
-                version=1,
-                graph=DeploymentGraph("empty"),
-                created_by=command.actor_id,
-                created_at=self._clock(),
-                metadata={
-                    "bootstrap": "empty-current-graph",
-                    "idempotency_key": command.idempotency_key.value,
-                },
-            )
-            workspace = WorkspaceRecord(
-                workspace_id=command.workspace_id,
-                name=command.name,
-                metadata=command.metadata,
-            )
-            prepared = _PreparedWorkspaceCreation(unit_of_work.stores, guard, command, current_graph)
-            unit_of_work.stores.workspaces._create_for_initialization(workspace, prepared)
-            unit_of_work.stores.graphs._save_workspace_initialization(current_graph, prepared)
-            workspace = unit_of_work.stores.workspaces._set_initial_current_graph(prepared)
-            projection = unit_of_work.stores.realized_graphs.get(workspace.current_realized_projection_id)
-            unit_of_work.stores.workspaces._insert_workspace_initialization(
-                prepared.receipt(projection), prepared)
+        if existing is not None:
+            if existing.name != command.name:
+                raise WorkspaceCommandError(
+                    "workspace id already exists with different name"
+                )
+            if existing.current_graph_id is None:
+                raise WorkspaceCommandError(
+                    "workspace exists without initial current graph"
+                )
+            unit_of_work.stores.workspaces._require_workspace_initialization(command.workspace_id)
+            graph = unit_of_work.stores.graphs.get(existing.current_graph_id)
             unit_of_work.commit()
-            return CreateWorkspaceResult(workspace, current_graph)
+            return CreateWorkspaceResult(existing, graph, replayed=True)
+
+        current_graph = GraphVersionRecord.from_graph(
+            graph_id=self._id_factory(),
+            workspace_id=command.workspace_id,
+            version=1,
+            graph=DeploymentGraph("empty"),
+            created_by=command.actor_id,
+            created_at=self._clock(),
+            metadata={
+                "bootstrap": "empty-current-graph",
+                "idempotency_key": command.idempotency_key.value,
+            },
+        )
+        workspace = WorkspaceRecord(
+            workspace_id=command.workspace_id,
+            name=command.name,
+            metadata=command.metadata,
+        )
+        prepared = _PreparedWorkspaceCreation(unit_of_work.stores, guard, command, current_graph)
+        unit_of_work.stores.workspaces._create_for_initialization(workspace, prepared)
+        unit_of_work.stores.graphs._save_workspace_initialization(current_graph, prepared)
+        workspace = unit_of_work.stores.workspaces._set_initial_current_graph(prepared)
+        projection = unit_of_work.stores.realized_graphs.get(workspace.current_realized_projection_id)
+        unit_of_work.stores.workspaces._insert_workspace_initialization(
+            prepared.receipt(projection), prepared)
+        unit_of_work.commit()
+        return CreateWorkspaceResult(workspace, current_graph)
 
 
 def _required_text(value: object, field: str) -> None:
