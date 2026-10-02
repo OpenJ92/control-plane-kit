@@ -77,3 +77,61 @@ class ConfigurationCleanupTranslationTests(unittest.TestCase):
                           lambda: _runtime_effect_intent_for_context(context, activity)):
             with self.assertRaisesRegex(InvalidOperationCommand, "configuration cleanup.*unsupported"):
                 translate()
+
+
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_request_for_intent, runtime_effect_result_fingerprint,
+)
+import control_plane_kit_core.runtime_effects as runtime_effects
+import control_plane_kit_operations.postgres.effect_outcome_store as outcome_store
+from control_plane_kit_operations.effect_outcome_evidence import (
+    ExecutionEffectOutcome, EffectAttemptOutcomeRecord, effect_outcome_failure,
+)
+from tests.effect_outcome_evidence_fixture import EffectOutcomeEvidenceFixture
+
+
+class ConfigurationCleanupOutcomeCapacityTests(EffectOutcomeEvidenceFixture, unittest.TestCase):
+    def test_fitting_complete_outcomes_pass_actual_history_encoder_and_input_admission(self):
+        m = configuration_language()
+        self.assertTrue(hasattr(runtime_effects, "configuration_cleanup_result"))
+        activity = configuration_cleanup_activity()
+        ref = configuration_ref()
+        refs = tuple(replace(ref, allocation_id=f"{i:02d}" + "a" * 126,
+            runtime_id="r" * 128, node_id="n" * 128, artifact_id="a" * 63,
+            target_path="/" + "/".join(["a" * 127] * 4)) for i in range(3))
+        operation = type(activity.operation)(instances=refs)
+        intent = replace(EffectAttemptIntentFixture.intent(self, products=(), process_delivery=False,
+            activity_id="activity-a"),
+            kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1, operation=operation)
+        # Four UTF-8 bytes per character exercises maximal non-control event text
+        # accepted by the actual durable owner; Core reserves even larger escaping.
+        effect_id = "\U0001f642" * 512
+        request = runtime_effect_request_for_intent(intent, effect_id=effect_id)
+        request_fingerprint = runtime_effect_intent_fingerprint(intent)
+        rows_by_case = (
+            ("execution-succeeded", (("removed", None),) * 3),
+            ("execution-failed", (("refused", "provenance-unproven"),) * 3),
+            ("execution-uncertain", (("refused", "provenance-unproven"),
+                ("unknown", "provider-uncertain"), ("retained-in-use", "in-use"))),
+        )
+        for story_name, statuses in rows_by_case:
+            with self.subTest(story=story_name):
+                rows = m.ConfigurationCleanupOutcomeSet(tuple(
+                    m.ConfigurationCleanupOutcome(ref, m.ConfigurationCleanupStatus(status),
+                        None if reason is None else m.ConfigurationCleanupReason(reason))
+                    for ref, (status, reason) in zip(refs, statuses, strict=True)))
+                result = runtime_effects.configuration_cleanup_result(request, rows)
+                story = next(story for story in self.stories()
+                    if story.name == story_name and not story.compensation)
+                story = replace(story, value=result)
+                outcome = ExecutionEffectOutcome(story.attempt.state.identity, request_fingerprint, result)
+                self.assertEqual(outcome.identity.activity_id, intent.activity_id.value)
+                self.assertEqual(outcome.identity.run_id, intent.source.run_id)
+                attempt = self.direct_attempt_for(story, request_fingerprint=request_fingerprint,
+                    original_event_id=effect_id, failure=effect_outcome_failure(outcome))
+                record = EffectAttemptOutcomeRecord("workspace-a", outcome, attempt, ())
+                admitted = outcome_store._require_record(record)
+                document = outcome_store._encode_preimage(admitted)
+                self.assertEqual(document, rfc8785.dumps(result.descriptor()))
+                self.assertLessEqual(len(document), 8192)
+                self.assertEqual(admitted.outcome.outcome_fingerprint, runtime_effect_result_fingerprint(result))

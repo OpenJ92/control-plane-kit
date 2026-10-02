@@ -9,6 +9,9 @@ import control_plane_kit_core.planning as planning
 import control_plane_kit_core.runtime_effects as effects
 from control_plane_kit_core.probe_intents import RuntimeEndpointObservation, LiteralEndpointMaterial, EndpointContext
 from control_plane_kit_core.types import Protocol
+from control_plane_kit_core.runtime_effect_observation import (
+    runtime_effect_intent_for_request, runtime_effect_result_fingerprint,
+)
 from tests.test_configuration_instances import instance, language, ref_descriptor
 from tests.test_runtime_effect_intent import _request
 
@@ -176,23 +179,42 @@ class ConfigurationCleanupOutcomeTests(unittest.TestCase):
             with self.assertRaises((ValueError, TypeError)):
                 m.ConfigurationCleanupOutcomeSetCodec().decode_canonical_bytes(document)
 
-    def test_maximum_candidates_fit_existing_generic_envelope_without_larger_bounds(self):
+    def test_maximal_fitting_candidates_fingerprint_with_every_aggregate_and_escaped_id(self):
         make, read = helpers()
         m = language()
         path = "/" + "/".join(["a" * 127] * 4)
         refs = tuple(instance(allocation_id=f"{i:02d}" + "a" * 126, workspace_id="w" * 128,
             runtime_id="r" * 128, node_id="n" * 128, artifact_id="a" * 63,
-            target_path=path) for i in range(32))
+            target_path=path) for i in range(3))
         # One scope; the original request supplies membership, not current products.
         base = _request(complete=False)
-        request = replace(base, kind=effects.RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
-            source=replace(base.source, workspace_id="w" * 128), operation=cleanup(*refs))
-        rows = m.ConfigurationCleanupOutcomeSet(tuple(outcome(ref, "removed") for ref in reversed(refs)))
-        result = make(request, rows)
-        self.assertEqual(read(request, result), rows)
-        document = m.ConfigurationCleanupOutcomeSetCodec().encode_canonical_bytes(rows)
-        self.assertLessEqual(len(document), 65536)
-        self.assertEqual(len(result.descriptor()["evidence"]["configuration_cleanup"]["outcomes"]), 32)
+        effect_id = "\x01" * 512
+        request = replace(base, effect_id=effect_id, kind=effects.RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
+            source=replace(base.source, workspace_id="w" * 128, intent_event_id=effect_id), operation=cleanup(*refs))
+        for status, reason in (("removed", None), ("already-absent", None), ("retained-in-use", "in-use"),
+                               ("refused", "provenance-unproven"), ("unknown", "provider-uncertain")):
+            with self.subTest(status=status):
+                rows = m.ConfigurationCleanupOutcomeSet(tuple(outcome(ref, status, reason) for ref in reversed(refs)))
+                result = make(request, rows)
+                self.assertEqual(read(request, result), rows)
+                self.assertLessEqual(len(rfc8785.dumps(result.descriptor())), 8192)
+                self.assertEqual(len(runtime_effect_result_fingerprint(result)), 64)
+        mixed = m.ConfigurationCleanupOutcomeSet((outcome(refs[0], "refused", "provenance-unproven"),
+            outcome(refs[1], "unknown", "provider-uncertain"), outcome(refs[2], "retained-in-use", "in-use")))
+        self.assertEqual(len(runtime_effect_result_fingerprint(make(request, mixed))), 64)
+        fourth = replace(refs[0], allocation_id="z" * 128)
+        short_id_request = replace(request, effect_id="event",
+            source=replace(request.source, intent_event_id="event"))
+        for value in (request, short_id_request, runtime_effect_intent_for_request(request)):
+            with self.subTest(value=type(value).__name__), self.assertRaises(effects.RuntimeEffectContractError):
+                replace(value, operation=cleanup(*refs, fourth))
+        # Representable operation syntax does not authorize an overbudget effect.
+        self.assertEqual(len(cleanup(*refs, fourth).instances), 4)
+        compact_refs = tuple(instance(allocation_id=f"a-{i}") for i in range(4))
+        compact = cleanup_request(*compact_refs)
+        self.assertEqual(runtime_effect_intent_for_request(compact).operation.instances, compact_refs)
+        compact_rows = m.ConfigurationCleanupOutcomeSet(tuple(outcome(ref, "removed") for ref in compact_refs))
+        self.assertEqual(len(runtime_effect_result_fingerprint(make(compact, compact_rows))), 64)
         with self.assertRaises(effects.RuntimeEffectContractError):
             effects.RuntimeEffectResult.succeeded("event", evidence={"items": list(range(33))})
         with self.assertRaises(effects.RuntimeEffectContractError):
