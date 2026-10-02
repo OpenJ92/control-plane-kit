@@ -16,7 +16,7 @@ from control_plane_kit_core.configuration_instances import (
 from control_plane_kit_core.operations import RecoveryDecisionKind
 from control_plane_kit_core.operations.lifecycle import ActivityRunStatus
 from control_plane_kit_core.planning import (
-    ActivityId, ActivityPlan, NodeTarget, PlannedActivity, RiskLevel, StartNode,
+    ActivityId, ActivityPlan, NodeTarget, PlannedActivity, ReconcileNode, RiskLevel, StartNode,
 )
 from control_plane_kit_core.policies import PolicyScope
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
@@ -38,10 +38,18 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
         self.assertEqual(history, "active-empty")
         self.assertEqual(approval_subject, "activity-plan")
         self.seeded_fence = ExecutionLeaseFence("worker-a", 7)
-        self.configuration_activity = PlannedActivity(ActivityId("start-api"), StartNode(NodeTarget("api")))
+        existing = getattr(self, "configuration_existing_node", False)
+        operation = ReconcileNode(NodeTarget("api")) if existing else StartNode(NodeTarget("api"))
+        self.configuration_activity = PlannedActivity(ActivityId("start-api"), operation)
+        activities = (self.configuration_activity,) + tuple(
+            PlannedActivity(ActivityId(f"history-use-{index:03d}"), operation)
+            for index in range(1, getattr(self, "configuration_history_count", 1)))
         product = _configuration_product()
         base = execution_graph("empty-runtime", runtime_id="docker")
-        desired = _configuration_graph(product, selection="approved-desired")
+        desired = _configuration_graph(product,
+            selection=getattr(self, "configuration_selected_value", "approved-desired"))
+        if existing:
+            base = desired
         self.connection.execute(
             "INSERT INTO cpk_workspaces (workspace_id, name, lifecycle) "
             "VALUES ('workspace-a', 'Configuration preparation', 'created')"
@@ -63,7 +71,7 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
             stores.activity_history.add_plan(ActivityPlanRecord(
                 "plan-a", "session-a", "graph-current", "graph-desired",
                 ActivityPlanStatus.PLANNED, "2026-08-15T03:56:00Z",
-                ActivityPlan((self.configuration_activity,)),
+                ActivityPlan(activities),
                 base_realized_projection_id=lineage["graph-current"],
                 desired_realized_projection_id=lineage["graph-desired"], desired_graph_revision=1))
             stores.activity_history.add_approval_request(ApprovalRequestRecord(
@@ -98,13 +106,18 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
                 desired_graph=stores.realized_graphs.get(plan.desired_realized_projection_id),
                 registered_products=(self.configuration_product,), fence=self.seeded_fence)
         original = _runtime_effect_intent_for_context(context, self.configuration_activity)
+        return replace(original, kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
+            configuration_instances=self.configuration_selection(original))
+
+    def configuration_selection(self, original, *, attempt=1):
         # This is a proposal, not authority: the start owner must independently
         # rederive it from the pinned material and original attempt under L.
         refs = []
         for material in original.products:
             for artifact in material.product.runtime_contract.configuration_artifacts:
-                birth = dict(workspace_id="workspace-a", run_id="run-a", activity_id="start-api",
-                    attempt=1, runtime_id="docker", node_id="api", artifact_id=artifact.artifact_id,
+                birth = dict(workspace_id=original.source.workspace_id, run_id=original.source.run_id.value,
+                    activity_id=original.activity_id.value,
+                    attempt=attempt, runtime_id="docker", node_id="api", artifact_id=artifact.artifact_id,
                     target_path=artifact.target_path, media_type=artifact.media_type.value,
                     file_mode=artifact.file_mode.value, content_digest=artifact.content_digest)
                 allocation_id = "cfg-" + sha256(
@@ -114,8 +127,7 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
                     **{key: value for key, value in birth.items()
                        if key not in ("run_id", "activity_id", "attempt", "media_type", "file_mode")},
                     media_type=artifact.media_type, file_mode=artifact.file_mode))
-        return replace(original, kind=RuntimeEffectKind.CONFIGURATION_ACTIVITY_V1,
-            configuration_instances=ConfigurationInstanceSelection(tuple(refs)))
+        return ConfigurationInstanceSelection(tuple(refs))
 
     def configuration_command(self, intent=None):
         intent = self.intent() if intent is None else intent
@@ -136,3 +148,17 @@ class ConfigurationPreparationFixture(PostgresEffectAttemptIntentStoreFixture):
             "SELECT run_id, activity_id, attempt, artifact_id, workspace_id, allocation_id "
             "FROM cpk_configuration_claims ORDER BY artifact_id").fetchall()
         return refs, claims
+
+    def complete_start_snapshot(self):
+        """Include protective rows without making absent B1 schema a setup error."""
+        protection = []
+        for relation in ("cpk_effect_configuration_refs", "cpk_configuration_claims"):
+            if self.connection.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is None:
+                protection.append((relation, None))
+                continue
+            rows = self.connection.execute(
+                f"SELECT * FROM {relation} WHERE workspace_id='workspace-a' "
+                "ORDER BY run_id, activity_id, attempt, artifact_id LIMIT 257").fetchall()
+            self.assertLessEqual(len(rows), 256, "fixture snapshot exceeded its explicit bound")
+            protection.append((relation, tuple(rows)))
+        return self.attempt_snapshot(), tuple(protection)
