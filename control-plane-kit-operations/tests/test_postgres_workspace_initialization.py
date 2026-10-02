@@ -26,6 +26,7 @@ class PostgresWorkspaceInitializationTests(LifecycleLockFixture, unittest.TestCa
         self.addCleanup(self.connection.close)
         install_schema(self.connection)
         self.connection.execute("TRUNCATE TABLE cpk_workspaces CASCADE")
+        self.addCleanup(self.connection.execute, "TRUNCATE TABLE cpk_workspaces CASCADE")
 
     def unit_of_work(self):
         return PostgresUnitOfWork(lambda: psycopg.connect(self.database_url))
