@@ -1555,3 +1555,50 @@ CREATE TABLE cpk_execution_receiver_scopes (
 CREATE UNIQUE INDEX cpk_execution_receiver_scopes_runtime_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, request_id) WHERE (scope_kind = 'runtime'::text);
 CREATE UNIQUE INDEX cpk_execution_receiver_scopes_node_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, node_id, request_id) WHERE (scope_kind = 'node'::text);
 CREATE INDEX cpk_execution_receiver_scopes_runtime_nodes_lookup ON cpk_execution_receiver_scopes USING btree (workspace_id, runtime_id, request_id, node_id) WHERE (scope_kind = 'node'::text);
+
+CREATE TABLE cpk_effect_configuration_refs (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    artifact_id text NOT NULL,
+    workspace_id text NOT NULL,
+    allocation_id text NOT NULL,
+    runtime_id text NOT NULL,
+    node_id text NOT NULL,
+    ref_preimage bytea NOT NULL,
+    ref_digest text NOT NULL,
+    request_fingerprint text NOT NULL,
+    original_event_id text NOT NULL,
+    birth_run_id text NOT NULL,
+    birth_activity_id text NOT NULL,
+    birth_attempt integer NOT NULL,
+    birth_artifact_id text NOT NULL,
+    is_birth boolean NOT NULL,
+    CONSTRAINT cpk_configuration_refs_pkey PRIMARY KEY (run_id, activity_id, attempt, artifact_id),
+    CONSTRAINT cpk_configuration_refs_intent_fk FOREIGN KEY (run_id, activity_id, attempt, request_fingerprint, original_event_id)
+        REFERENCES cpk_effect_attempt_intents(run_id, activity_id, attempt, request_fingerprint, original_event_id),
+    CONSTRAINT cpk_configuration_refs_birth_fk FOREIGN KEY (birth_run_id, birth_activity_id, birth_attempt, birth_artifact_id)
+        REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT cpk_configuration_refs_birth_check CHECK (is_birth = ((run_id = birth_run_id) AND (activity_id = birth_activity_id) AND (attempt = birth_attempt) AND (artifact_id = birth_artifact_id))),
+    CONSTRAINT cpk_configuration_refs_preimage_check CHECK ((octet_length(ref_preimage) >= 1) AND (octet_length(ref_preimage) <= 65536)),
+    CONSTRAINT cpk_configuration_refs_digest_check CHECK (ref_digest ~ '^[0-9a-f]{64}$')
+);
+CREATE UNIQUE INDEX cpk_configuration_refs_birth ON cpk_effect_configuration_refs(workspace_id, allocation_id) WHERE is_birth;
+CREATE INDEX cpk_configuration_refs_allocation ON cpk_effect_configuration_refs(workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id);
+CREATE INDEX cpk_configuration_refs_slot ON cpk_effect_configuration_refs(workspace_id, runtime_id, node_id, artifact_id, run_id, activity_id, attempt);
+
+CREATE TABLE cpk_configuration_claims (
+    run_id text NOT NULL,
+    activity_id text NOT NULL,
+    attempt integer NOT NULL,
+    artifact_id text NOT NULL,
+    workspace_id text NOT NULL,
+    allocation_id text NOT NULL,
+    CONSTRAINT cpk_configuration_claims_pkey PRIMARY KEY (run_id, activity_id, attempt, artifact_id),
+    CONSTRAINT cpk_configuration_claims_ref_fk FOREIGN KEY (run_id, activity_id, attempt, artifact_id)
+        REFERENCES cpk_effect_configuration_refs(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED
+);
+ALTER TABLE cpk_effect_configuration_refs ADD CONSTRAINT cpk_configuration_refs_claim_fk
+    FOREIGN KEY (run_id, activity_id, attempt, artifact_id)
+    REFERENCES cpk_configuration_claims(run_id, activity_id, attempt, artifact_id) DEFERRABLE INITIALLY DEFERRED;
+CREATE INDEX cpk_configuration_claims_protecting ON cpk_configuration_claims(workspace_id, allocation_id, run_id, activity_id, attempt, artifact_id);

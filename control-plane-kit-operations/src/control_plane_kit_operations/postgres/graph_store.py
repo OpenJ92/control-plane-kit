@@ -298,6 +298,19 @@ class PostgresWorkspaceStore:
             self._require_legacy_pointer_material(workspace_id, graph_id, projection_id)
 
     def _get(self, workspace_id: str, *, for_update: bool) -> WorkspaceRecord:
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            if for_update:
+                read.query("SELECT 1 FROM cpk_workspaces WHERE workspace_id=%s FOR UPDATE",
+                    (workspace_id,), records=1, octets=1, cells=1)
+            names = ("workspace_id", "name", "lifecycle", "current_graph_id", "desired_graph_id",
+                "metadata", "current_realized_projection_id", "desired_realized_projection_id", "desired_graph_revision")
+            columns = tuple((name, "json" if name == "metadata" else "int" if name == "desired_graph_revision"
+                else "text", 65536 if name == "metadata" else 2048) for name in names)
+            rows = read.bounded_rows("cpk_workspaces", columns, "workspace_id=%s", (workspace_id,))
+            if not rows:
+                raise KeyError("missing workspace")
+            return _workspace_record(rows[0])
         lock = " FOR UPDATE" if for_update else ""
         row = self._connection.execute(
             f"""
@@ -366,6 +379,12 @@ class PostgresGraphTopologyStore:
 
     def lock_receiver_lifecycle(self, workspace_id: str) -> WorkspaceLifecycleGuard:
         """Enter before existing rows; exact-key transaction reentry is legal."""
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"receiver-lifecycle:{workspace_id}",), records=1, octets=1, cells=1)
+            transaction_id = read.query("SELECT txid_current()", (), records=1, octets=20, cells=1)[0][0]
+            return WorkspaceLifecycleGuard(workspace_id, self, transaction_id)
         self._connection.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (f"receiver-lifecycle:{workspace_id}",),

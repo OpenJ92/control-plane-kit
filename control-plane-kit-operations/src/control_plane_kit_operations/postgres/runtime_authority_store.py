@@ -143,6 +143,20 @@ class RuntimeAuthorityStore:
             raise RuntimeAuthorityNotFound("registered runtime authority was not found")
         return _row_to_authority(row)
 
+    def _configuration_authority(self, workspace_id, reference, read):
+        columns = (("registration_id", "text", 2048), ("workspace_id", "text", 2048),
+            ("authority_ref", "text", 2048), ("runtime_kind", "text", 64),
+            ("authority", "json", 65536), ("admitted_by", "text", 2048),
+            ("admitted_at", "time", 64), ("status", "text", 64), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_runtime_authorities", columns,
+            "workspace_id=%s AND authority_ref=%s AND status='active'", (workspace_id, reference.reference_id))
+        if not rows:
+            raise RuntimeAuthorityNotFound("registered runtime authority is unavailable")
+        value = _row_to_authority(rows[0])
+        if value.workspace_id != workspace_id or value.authority_ref != reference:
+            raise RuntimeAuthorityNotFound("registered runtime authority is unavailable")
+        return value
+
     def get_active_for_update(
         self,
         workspace_id: str,
@@ -438,6 +452,19 @@ class RuntimeAuthorityDeliveryStore:
                 "registered runtime authority delivery was not found"
             )
         return _row_to_delivery(row)
+
+    def _configuration_delivery(self, workspace_id, reference, read):
+        columns = (("delivery_id", "text", 2048), ("workspace_id", "text", 2048),
+            ("delivery", "json", 65536), ("admitted_by", "text", 2048),
+            ("admitted_at", "time", 64), ("status", "text", 64), ("metadata", "json", 16384))
+        rows = read.bounded_rows("cpk_runtime_authority_deliveries", columns,
+            "workspace_id=%s AND authority_ref=%s AND status='active'", (workspace_id, reference.reference_id))
+        if not rows:
+            raise RuntimeAuthorityNotFound("registered runtime authority delivery is unavailable")
+        value = _row_to_delivery(rows[0])
+        if value.workspace_id != workspace_id or value.authority_ref != reference:
+            raise RuntimeAuthorityNotFound("registered runtime authority delivery is unavailable")
+        return value
 
     def list_active(
         self,

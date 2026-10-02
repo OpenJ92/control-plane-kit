@@ -87,8 +87,16 @@ class EffectAttemptStore:
         _require_nonaffecting_intent(self._connection, intent)
         return self._insert_absent(record)
 
-    def _insert_absent(self, record: EffectAttemptRecord) -> EffectAttemptRecord | None:
+    def _insert_absent(self, record: EffectAttemptRecord, *, configuration_preparation=None) -> EffectAttemptRecord | None:
         _require_record(record)
+        from .effect_attempt_intent_store import EffectAttemptIntentStore
+        from control_plane_kit_operations._configuration_preparation import _require_prepared_intent
+        try:
+            original = EffectAttemptIntentStore(self._connection).get(record.state.identity)
+        except KeyError:
+            original = None
+        if original is not None:
+            _require_prepared_intent(configuration_preparation, self._connection, record.state.identity, original.intent)
         row = self._connection.execute(
             f"""
             INSERT INTO cpk_effect_attempts ({_COLUMNS})
@@ -135,6 +143,19 @@ class EffectAttemptStore:
         lock: bool,
     ) -> EffectAttemptRecord:
         _require_identity(identity)
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            parameters = (identity.run_id.value, identity.activity_id, identity.attempt)
+            where = "run_id=%s AND activity_id=%s AND attempt=%s"
+            if lock:
+                read.query("SELECT 1 FROM cpk_effect_attempts WHERE " + where + " FOR UPDATE",
+                    parameters, records=1, octets=1, cells=1)
+            numbers = {"attempt", "fence_generation", "prior_attempt", "original_event_ordinal", "latest_event_ordinal"}
+            columns = tuple((name, "int" if name in numbers else "text", 2048) for name in _COLUMN_NAMES)
+            rows = read.bounded_rows("cpk_effect_attempts", columns, where, parameters)
+            if not rows:
+                raise KeyError("effect attempt was not found")
+            return _decode_row(self._connection, rows[0])
         suffix = " FOR UPDATE" if lock else ""
         row = self._connection.execute(
             f"""
