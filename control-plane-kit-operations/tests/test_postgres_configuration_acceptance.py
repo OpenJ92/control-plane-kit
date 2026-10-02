@@ -15,7 +15,7 @@ from control_plane_kit_core.types import RuntimeKind
 from control_plane_kit_operations.advancement import AdvanceCurrentGraph, CurrentGraphAdvancementCommandService
 from control_plane_kit_operations.execution_leases import ExecutionLeaseFence
 from control_plane_kit_operations.lifecycle import ClaimAndOpenActivityRun, ExecutionLeaseDuration, StartActivityRun
-from control_plane_kit_operations.postgres import PostgresUnitOfWork, install_schema
+from control_plane_kit_operations.postgres import PostgresUnitOfWork, SchemaInstallationError, install_schema
 from control_plane_kit_operations.records import (
     ActivityPlanRecord, ActivityPlanStatus, GraphVersionRecord,
     OperationSessionRecord, OperationSessionStatus, OperationsRecordError,
@@ -100,6 +100,60 @@ class PostgresConfigurationAcceptanceTests(unittest.TestCase):
         counts = tuple(self.connection.execute(f"SELECT count(*) FROM {relation}").fetchone()[0]
             for relation in ("cpk_activity_events", "cpk_operation_actions"))
         return workspace, counts
+
+    def retained_snapshot(self):
+        # Observe the actual retained fixture, including deliberate corruption,
+        # on this connection. This is a no-repair witness, not a receipt decoder.
+        return tuple((table, self.connection.execute(f"SELECT * FROM {table} ORDER BY {key}").fetchall())
+            for table, key in (
+                ("cpk_workspaces", "workspace_id"),
+                ("cpk_graph_versions", "graph_id"),
+                ("cpk_realized_graph_projections", "projection_id"),
+                ("cpk_workspace_initializations", "workspace_id"),
+                ("cpk_operation_actions", "action_id"),
+                ("cpk_activity_events", "event_id"),
+                ("cpk_configuration_acceptances", "workspace_id,pinned_revision"),
+                ("cpk_configuration_accepted_slots", "workspace_id,pinned_revision,runtime_id,node_id,artifact_id")))
+
+    def test_current_schema_reentry_verifies_retained_original_acceptance(self):
+        self.advance()
+        before = self.retained_snapshot()
+        install_schema(self.connection)
+        self.assertEqual(self.retained_snapshot(), before)
+
+    def test_current_schema_refuses_corrupt_original_acceptance_without_repair(self):
+        accepted = self.advance()
+        original = self.retained_snapshot()
+        cases = (
+            ("missing-header", "DELETE FROM cpk_configuration_acceptances WHERE action_id=%s",
+                (accepted.action.action_id,)),
+            ("extra-event-field", "UPDATE cpk_activity_events SET payload=payload || "
+                "jsonb_build_object('unexpected',%s::text) WHERE event_id=%s",
+                ("untrusted-acceptance-marker", accepted.event.event_id)),
+            ("wrong-original-scope", "UPDATE cpk_operation_actions SET payload=jsonb_set(payload,"
+                "'{workspace_id}',to_jsonb(%s::text)) WHERE action_id=%s",
+                ("untrusted-acceptance-marker", accepted.action.action_id)),
+        )
+
+        class RestoreFixture(Exception):
+            pass
+
+        for name, query, parameters in cases:
+            with self.subTest(case=name):
+                try:
+                    with self.connection.transaction():
+                        self.connection.execute(query, parameters)
+                        corrupted = self.retained_snapshot()
+                        self.assertNotEqual(corrupted, original)
+                        with self.assertRaises(SchemaInstallationError) as caught:
+                            install_schema(self.connection)
+                        self.assertEqual(str(caught.exception), "operations schema reset is required")
+                        self.assertNotIn("untrusted-acceptance-marker", str(caught.exception))
+                        self.assertEqual(self.retained_snapshot(), corrupted)
+                        raise RestoreFixture
+                except RestoreFixture:
+                    pass
+                self.assertEqual(self.retained_snapshot(), original)
 
     def test_zero_slot_advancement_retains_typed_original_pair(self):
         result = self.advance()
