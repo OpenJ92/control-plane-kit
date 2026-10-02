@@ -1,5 +1,6 @@
 """#1923 supplement: original replay and complete pinned material ownership."""
 from dataclasses import replace
+import json
 import unittest
 
 import psycopg
@@ -13,26 +14,52 @@ from tests.test_postgres_configuration_evidence import _ObservedConnection, _Obs
 from tests.test_runtime_effect_translation import _registered_product
 
 
+def _catalog_read(query, observations):
+    text = str(query).lower().strip()
+    if text.startswith(("select", "with")) and any(table in text for table in (
+            "cpk_registered_products", "cpk_image_pull_authorities", "cpk_runtime_authorities",
+            "cpk_runtime_authority_deliveries", "cpk_ingress_authorities",
+            "cpk_cloudflare_ingress_resources", "cpk_generated_ingress_secret_references")):
+        observations.setdefault("catalog_reads", []).append(text)
+
+
+def _contains_identity(value, identities):
+    if isinstance(value, dict):
+        return any(_contains_identity(item, identities) for item in value.values())
+    if isinstance(value, (tuple, list)):
+        return any(_contains_identity(item, identities) for item in value)
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        if value in identities:
+            return True
+        if value.startswith(("{", "[")):
+            return _contains_identity(json.loads(value), identities)
+    return False
+
+
 class _CatalogObservedRows(_ObservedRows):
+    def execute(self, query, *args, **kwargs):
+        _catalog_read(query, self.observations)
+        return super().execute(query, *args, **kwargs)
+
     def _record(self, row):
         result = super()._record(row)
         if row is not None and "cpk_registered_products" in self.query.lower():
-            if "unrelated-b1-product-" in repr(row):
+            if _contains_identity(row, self.observations.get("unrelated_identities", ())):
                 self.observations["unrelated_rows"] = self.observations.get("unrelated_rows", 0) + 1
         return result
 
 
 class _CatalogObservedConnection(_ObservedConnection):
     def execute(self, query, *args, **kwargs):
-        text = str(query).lower()
-        if any(table in text for table in ("cpk_registered_products", "cpk_image_pull_authorities",
-                "cpk_runtime_authorities", "cpk_runtime_authority_deliveries",
-                "cpk_ingress_authorities", "cpk_cloudflare_ingress_resources",
-                "cpk_generated_ingress_secret_references")):
-            self.observations.setdefault("catalog_reads", []).append(text)
+        _catalog_read(query, self.observations)
         self.observations["bytes"] += 256
         self.observations["statements"] = self.observations.get("statements", 0) + 1
         return _CatalogObservedRows(self.connection.execute(query, *args, **kwargs), self.observations, query)
+
+    def cursor(self, *args, **kwargs):
+        return _CatalogObservedRows(self.connection.cursor(*args, **kwargs), self.observations)
 
 
 class PostgresConfigurationMaterialBoundaryTests(ConfigurationPreparationFixture, unittest.TestCase):
@@ -88,15 +115,19 @@ class PostgresConfigurationMaterialBoundaryTests(ConfigurationPreparationFixture
         self.assertEqual(self.complete_start_snapshot(), before)
 
     def test_fresh_proposal_does_not_transport_unrelated_active_products(self):
+        unrelated = set()
         for index in range(8):
-            product = _registered_product(name=f"unrelated-b1-product-{index}")
+            name = f"unrelated-b1-product-{index}"
+            product = _registered_product(name=name)
             with self.unit_of_work() as uow:
-                uow.stores.registered_products.register(workspace_id="workspace-a",
+                registered = uow.stores.registered_products.register(workspace_id="workspace-a",
                     descriptor_document=product.descriptor_document, source=product.source,
                     imported_by=product.imported_by, imported_at=product.imported_at)
                 uow.commit()
+            unrelated.update((name, registered.registration_id, registered.reference.descriptor_sha256.value))
         before = self.complete_start_snapshot()
-        observed = {"rows": 0, "bytes": 0, "largest_cell": 0, "unrelated_rows": 0}
+        observed = {"rows": 0, "bytes": 0, "largest_cell": 0, "unrelated_rows": 0,
+            "unrelated_identities": unrelated}
         original_uow = self.unit_of_work
         self.unit_of_work = lambda: PostgresUnitOfWork(lambda: _CatalogObservedConnection(
             psycopg.connect(self.database_url), observed))
@@ -123,11 +154,13 @@ class PostgresConfigurationMaterialBoundaryTests(ConfigurationPreparationFixture
 
     def test_fresh_owner_rechecks_catalog_after_optimistic_proposal(self):
         harness = self.coordinator_harness()
+        after_revocation = []
 
         def revoke_after_proposal():
             with self.unit_of_work() as uow:
                 uow.stores.registered_products.revoke("workspace-a", self.configuration_product.reference)
                 uow.commit()
+            after_revocation.append(self.complete_start_snapshot())
 
         harness.start.before_execute = revoke_after_proposal
         with self.assertRaises(ExecutionCoordinatorConflict):
@@ -135,6 +168,8 @@ class PostgresConfigurationMaterialBoundaryTests(ConfigurationPreparationFixture
         self.assertEqual(len(harness.start.commands), 1)
         self.assertEqual(harness.start_ids.calls, [])
         self.assertEqual(harness.adapter.runtime_calls, [])
+        self.assertEqual(len(after_revocation), 1)
+        self.assertEqual(self.complete_start_snapshot(), after_revocation[0])
         with self.unit_of_work() as uow:
             with self.assertRaises(KeyError):
                 uow.stores.effect_attempts.get(self.identity(activity_id="start-api"))
