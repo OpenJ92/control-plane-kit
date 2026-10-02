@@ -34,7 +34,11 @@ def _contains_identity(value, identities):
         if value in identities:
             return True
         if value.startswith(("{", "[")):
-            return _contains_identity(json.loads(value), identities)
+            try:
+                decoded = json.loads(value)
+            except ValueError:
+                return False
+            return _contains_identity(decoded, identities)
     return False
 
 
@@ -168,6 +172,7 @@ class PostgresConfigurationMaterialBoundaryTests(ConfigurationPreparationFixture
         self.assertEqual(len(harness.start.commands), 1)
         self.assertEqual(harness.start_ids.calls, [])
         self.assertEqual(harness.adapter.runtime_calls, [])
+        self.assertEqual(harness.lifecycle.commands, [])
         self.assertEqual(len(after_revocation), 1)
         self.assertEqual(self.complete_start_snapshot(), after_revocation[0])
         with self.unit_of_work() as uow:
