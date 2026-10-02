@@ -27,5 +27,7 @@ owning targets establish reviewed causal red at e4b9b1f7. The focused owning
 gate at bf8d8b64 passes all nine initialization targets and nine schema targets,
 plus compile and clean import. It covers concurrency, commit rollback, original
 replay, corruption/missing-origin refusal, bounded transport and shared command
-accounting. Later-current replay after real advancement, remaining guard/order
-proofs and broader E7/B2 validation are pending.
+accounting. A second focused gate at 5c1ef3d4 passes two guard/write-order tests,
+compile and clean import: all private creation writers reject missing, foreign,
+wrong-workspace and expired guards; the real lifecycle wait precedes DML dispatch.
+Later-current replay after real advancement and broader E7/B2 validation are pending.
