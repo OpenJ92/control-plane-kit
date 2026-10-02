@@ -925,6 +925,7 @@ class ExecutionCoordinator:
         self._health_signing_authority = health_signing_authority
 
     def execute(self, command: ExecuteActivityRun) -> ExecutionCoordinatorResult:
+        _require_operate_scope(command.authority)
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
         with _configuration_accounting(command.run_id, active=False):
             self._configure_run(command.run_id)
@@ -950,6 +951,8 @@ class ExecutionCoordinator:
         return result
 
     async def execute_managed(self, command: ExecuteManagedActivityRun) -> ExecutionCoordinatorResult:
+        if type(command) is not ExecuteManagedActivityRun:
+            raise InvalidOperationCommand("managed execution command is invalid")
         from control_plane_kit_operations._configuration_preparation import _configuration_accounting
         with _configuration_accounting(command.execution.run_id, active=False):
             self._configure_run(command.execution.run_id)
@@ -1169,6 +1172,14 @@ class ExecutionCoordinator:
         return intent, authority
 
     async def reobserve(self, command: ReobserveConnectorConnection) -> ExecutionCoordinatorResult:
+        if type(command) is not ReobserveConnectorConnection:
+            raise InvalidOperationCommand("connector reobservation command is invalid")
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        with _configuration_accounting(command.execution.run_id, active=False):
+            self._configure_run(command.execution.run_id)
+            return await self._reobserve(command)
+
+    async def _reobserve(self, command: ReobserveConnectorConnection) -> ExecutionCoordinatorResult:
         if type(command) is not ReobserveConnectorConnection:
             raise InvalidOperationCommand("connector reobservation command is invalid")
         provenance = self._managed_provenance(command)
@@ -2110,6 +2121,8 @@ class ExecutionCoordinator:
     def _configuration_context(self, stores, command, request, run):
         from control_plane_kit_core.runtime_effects import RuntimeEffectKind
         (plan, base, desired), events, read = stores.configuration_preparation._snapshot(request, run)
+        if run.plan_id != plan.plan_id or request.identity.plan_id != plan.plan_id:
+            raise ExecutionCoordinatorConflict("configuration run must use the pinned activity plan")
         projection = project_activity_journal(plan.plan, activity_journal_events(events))
         schedule = derive_schedule(plan.plan, projection.state)
         common = dict(request=request, run=run, plan_record=plan, base_graph=base,

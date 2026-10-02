@@ -93,6 +93,16 @@ class EffectAttemptReconciliationService:
         command: ReconcileEffectAttempt,
     ) -> EffectAttemptFoldResult:
         if not _valid_reconcile_command(command):
+            raise InvalidOperationCommand("effect attempt reconciliation command is invalid")
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        with _configuration_accounting(command.identity.run_id.value, join=True, active=False):
+            return self._execute(command)
+
+    def _execute(
+        self,
+        command: ReconcileEffectAttempt,
+    ) -> EffectAttemptFoldResult:
+        if not _valid_reconcile_command(command):
             raise InvalidOperationCommand(
                 "effect attempt reconciliation command is invalid"
             )
@@ -103,6 +113,9 @@ class EffectAttemptReconciliationService:
 
         with self._unit_of_work_factory() as unit_of_work:
             stores = unit_of_work.stores
+            from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+            if not _ACCOUNTING.get().active:
+                stores.configuration_preparation._configure_run(command.identity.run_id.value)
             request = _request_for_update(stores, command.request_id)
             run = _run_for_request_for_update(
                 stores,

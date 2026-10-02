@@ -180,6 +180,12 @@ class RuntimeAuthorityStore:
                 invalid = True
         if invalid:
             raise RuntimeAuthorityRegistrationError(_LOOKUP_ERROR) from None
+        from .configuration_evidence import _active_read
+        if (read := _active_read(self._connection)) is not None:
+            read.query("SELECT 1 FROM cpk_runtime_authorities WHERE workspace_id=%s AND authority_ref=%s "
+                "AND status='active' FOR UPDATE", (workspace_id, admitted_reference.reference_id),
+                records=1, octets=1, cells=1)
+            return self._configuration_authority(workspace_id, admitted_reference, read)
         rows = self._connection.execute(
             """
             SELECT

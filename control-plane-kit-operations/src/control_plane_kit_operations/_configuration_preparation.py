@@ -25,14 +25,18 @@ class _ConfigurationAccounting:
 _ACCOUNTING = ContextVar("cpk_configuration_accounting", default=None)
 
 
-@contextmanager
-def _configuration_accounting(owner=None, *, join=False, active=True):
-    """One command's accounting; never a cross-UoW mutable-authority cache."""
+def _execution_context():
     try:
         task = asyncio.current_task()
     except RuntimeError:
         task = None
-    execution_context = (get_ident(), task)
+    return (get_ident(), task)
+
+
+@contextmanager
+def _configuration_accounting(owner=None, *, join=False, active=True):
+    """One command's accounting; never a cross-UoW mutable-authority cache."""
+    execution_context = _execution_context()
     current = _ACCOUNTING.get()
     if (join and current is not None and current.owner == owner
             and current.execution_context == execution_context):

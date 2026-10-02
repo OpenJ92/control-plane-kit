@@ -19,16 +19,22 @@ class _Unavailable(ValueError):
 
 
 def _active_read(connection):
-    from control_plane_kit_operations._configuration_preparation import _ACCOUNTING
+    from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _execution_context
     current = _ACCOUNTING.get()
-    return _EvidenceRead(connection) if current is not None and current.active else None
+    if current is not None and current.active:
+        if current.execution_context != _execution_context():
+            raise _Unavailable
+        return _EvidenceRead(connection)
+    return None
 
 
 class _EvidenceRead:
     def __init__(self, connection, *, standalone=False):
         self.connection = connection
-        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _ConfigurationAccounting
+        from control_plane_kit_operations._configuration_preparation import _ACCOUNTING, _ConfigurationAccounting, _execution_context
         self.accounting = _ACCOUNTING.get()
+        if self.accounting is not None and self.accounting.execution_context != _execution_context():
+            self.accounting = None
         if self.accounting is None:
             if not standalone:
                 raise _Unavailable
@@ -87,7 +93,7 @@ class _EvidenceRead:
             self.used.statements - reserve.statements + actual.statements)
         return rows
 
-    def bounded_rows(self, table, columns, where, params, *, maximum=1, order="", point=True):
+    def bounded_rows(self, table, columns, where, params, *, maximum=1, order="", point=True, identities=1):
         """Owner-declared fixed columns, measured then guarded before transport.
 
         SQL identifiers/expressions belong to package code, never callers.
@@ -99,13 +105,13 @@ class _EvidenceRead:
         if order:
             suffix += " ORDER BY " + order
         nominal = maximum if point else maximum + 1
-        limit = min(nominal, 4096 - self.used.records,
-            max(0, (16 * 1024 * 1024 - self.used.accounted_bytes - 256) // (128 + 28 * len(columns))))
+        limit = min(nominal, (4096 - self.used.records) // identities,
+            max(0, (16 * 1024 * 1024 - self.used.accounted_bytes - 256) // (128 * identities + 28 * len(columns))))
         if limit <= 0:
             raise _Capacity
         suffix += " LIMIT %s"
         lengths = self.query("SELECT " + ",".join("octet_length(" + value + ")" for value in expressions)
-            + suffix, (*params, limit), records=limit, octets=limit * len(columns) * 12, cells=len(columns))
+            + suffix, (*params, limit), records=limit, octets=limit * len(columns) * 12, cells=len(columns), identities=identities)
         if limit < nominal and len(lengths) == limit:
             raise _Capacity
         if not point and len(lengths) > maximum:
@@ -125,7 +131,7 @@ class _EvidenceRead:
         fetch_limit = maximum if point else len(lengths) + 1
         rows = self.query("SELECT " + ",".join(f"CASE WHEN {valid} THEN {expression} END"
             for expression in expressions) + f",({valid})" + suffix, (*params, fetch_limit),
-            records=fetch_limit, octets=fetch_limit * (sum(bounds) + 1), cells=len(columns) + 1)
+            records=fetch_limit, octets=fetch_limit * (sum(bounds) + 1), cells=len(columns) + 1, identities=identities)
         if len(rows) != len(lengths) or any(row[-1] is not True for row in rows):
             raise _Unavailable
         decoded = []

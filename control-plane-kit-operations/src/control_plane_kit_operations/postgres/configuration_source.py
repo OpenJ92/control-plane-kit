@@ -6,7 +6,9 @@ import json
 from psycopg import DataError
 
 from control_plane_kit_core.configuration_instances import ConfigurationInstanceSelectionCodec
-from control_plane_kit_core.operations import ActivityEventKind, RunId
+from control_plane_kit_core.operations import (
+    ActivityEventKind, RunId, EffectAttemptIdentity, EffectAttemptFence, EffectAttemptState, EffectAttemptStatus,
+)
 from control_plane_kit_core.planning import activity_operation_from_descriptor
 from control_plane_kit_core.runtime_effect_observation import RuntimeEffectIntentSource
 from control_plane_kit_core.runtime_effects import RuntimeEffectKind
@@ -14,6 +16,7 @@ from control_plane_kit_operations.configuration_preparation import (
     ConfigurationSourceEvidence, ConfigurationSourceProjection, _identity, _ref,
 )
 from control_plane_kit_operations.records import ActivityEventRecord, BoundedEvidence
+from control_plane_kit_operations.effect_attempts import _event_commits_to
 from .configuration_evidence import _Capacity, _EvidenceRead, _Unavailable
 
 
@@ -31,6 +34,7 @@ WITH original AS MATERIALIZED (
  FROM original
 ), compact AS MATERIALIZED (
  SELECT c.*, e.event_type, e.occurred_at::text AS event_time, e.payload::text AS event_payload,
+   a.fence_worker_id, a.fence_generation, a.prior_run_id, a.prior_activity_id, a.prior_attempt,
    c.doc->'source' AS source, c.doc->'operation' AS operation,
    c.doc->'configuration_instances' AS selection,
    (a.run_id IS NOT NULL AND a.request_fingerprint=c.request_fingerprint
@@ -54,10 +58,15 @@ WITH original AS MATERIALIZED (
    AND octet_length(source::text)<=8192 AND octet_length(operation::text)<=4096
    AND octet_length(selection::text)<=65536 AND octet_length(event_payload)<=16384
    AND octet_length(event_time)<=64 AND octet_length(event_type)<=64
+   AND octet_length(fence_worker_id) BETWEEN 1 AND 2048
+   AND (prior_run_id IS NULL OR octet_length(prior_run_id) BETWEEN 1 AND 2048)
+   AND (prior_activity_id IS NULL OR octet_length(prior_activity_id) BETWEEN 1 AND 2048)
    AND octet_length(source::text)+octet_length(operation::text)+octet_length(selection::text)
      +octet_length(event_payload)+octet_length(workspace_id)+octet_length(request_id)
      +octet_length(original_event_id)+octet_length(request_fingerprint)
-     +octet_length(event_time)+octet_length(event_type) <= 80000) AS valid
+     +octet_length(event_time)+octet_length(event_type)+octet_length(fence_worker_id)
+     +octet_length(fence_generation::text)+COALESCE(octet_length(prior_run_id),0)
+     +COALESCE(octet_length(prior_activity_id),0)+COALESCE(octet_length(prior_attempt::text),0) <= 80000) AS valid
  FROM compact
 )
 SELECT valid AND linked,
@@ -71,7 +80,12 @@ SELECT valid AND linked,
  CASE WHEN valid AND linked THEN selection::text END,
  CASE WHEN valid AND linked THEN event_type END,
  CASE WHEN valid AND linked THEN event_time END,
- CASE WHEN valid AND linked THEN event_payload END
+ CASE WHEN valid AND linked THEN event_payload END,
+ CASE WHEN valid AND linked THEN fence_worker_id END,
+ CASE WHEN valid AND linked THEN fence_generation END,
+ CASE WHEN valid AND linked THEN prior_run_id END,
+ CASE WHEN valid AND linked THEN prior_activity_id END,
+ CASE WHEN valid AND linked THEN prior_attempt END
 FROM bounded
 """
 
@@ -88,7 +102,7 @@ def read_source(connection, identity, exact_ref, *, read=None):
             read.query("SAVEPOINT cpk_configuration_source_read", (), records=0, octets=0, cells=0)
             try:
                 rows = read.query(_SOURCE, (identity.run_id.value, identity.activity_id, identity.attempt),
-                    records=1, octets=80032, cells=12, identities=3)
+                    records=1, octets=80032, cells=17, identities=3)
             except DataError:
                 read.query("ROLLBACK TO SAVEPOINT cpk_configuration_source_read", (), records=0, octets=0, cells=0)
                 raise _Unavailable from None
@@ -117,6 +131,12 @@ def read_source(connection, identity, exact_ref, *, read=None):
             event = ActivityEventRecord(row[4], identity.run_id.value, row[5], ActivityEventKind(row[9]),
                 occurred, activity_id=payload["activity_id"], evidence=BoundedEvidence.from_mapping(payload["evidence"]))
             if event.kind is not ActivityEventKind.STEP_STARTED:
+                raise _Unavailable
+            prior = (None if row[14:] == (None, None, None) else
+                EffectAttemptIdentity(RunId(row[14]), row[15], row[16]))
+            started = EffectAttemptState(identity, row[3], EffectAttemptFence(row[12], row[13]),
+                EffectAttemptStatus.STARTED, prior_attempt=prior)
+            if not _event_commits_to(event, started, ActivityEventKind.STEP_STARTED):
                 raise _Unavailable
             # Validate every ref before selecting the requested point. Foreign
             # siblings, duplicate slots and unknown selection fields cannot hide.

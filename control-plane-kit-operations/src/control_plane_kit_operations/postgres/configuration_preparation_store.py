@@ -105,6 +105,11 @@ class ConfigurationPreparationStore:
         runtime_refs = sorted(set(runtime.authority_ref for graph in graphs for runtime in graph.runtimes.values()
             if runtime.authority_ref is not None), key=lambda ref: ref.reference_id)
         runtimes = tuple(stores.runtime_authorities._configuration_authority(workspace, ref, read) for ref in runtime_refs)
+        by_reference = {authority.authority_ref: authority for authority in runtimes}
+        if any(runtime.authority_ref is not None
+                and by_reference[runtime.authority_ref].runtime_kind is not runtime.kind
+                for graph in graphs for runtime in graph.runtimes.values()):
+            raise _Unavailable
         material = _RuntimeEffectMaterial(request, run, plan, base, desired, products, runtime_authorities=runtimes)
         if activity is None:
             return material
