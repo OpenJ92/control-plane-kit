@@ -220,9 +220,11 @@ def _execute_fold(self, command, guarded, health=None, signing_authority=None):
         return _execute_fold_once(self, command, guarded, health, signing_authority)
     from control_plane_kit_operations._configuration_preparation import _configuration_accounting
     try:
-        with _configuration_accounting(command.transition.identity.run_id.value, join=True, active=False):
+        with _configuration_accounting(command.transition.identity.run_id.value, join=True, active=False) as accounting:
             return _execute_fold_once(self, command, guarded, health, signing_authority)
     except (KeyError, ValueError, TypeError, AttributeError):
+        if not accounting.active:
+            raise
         pass
     raise EffectAttemptFoldConflict(_INVALID_TRUTH_ERROR)
 

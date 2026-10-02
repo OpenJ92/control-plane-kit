@@ -189,7 +189,8 @@ class PostgresExecutionStore:
             derive_receiver_bindings,
         )
 
-        reader = _ExecutionScopeStorage(self._connection)
+        from .configuration_evidence import _active_read
+        reader = _ExecutionScopeStorage(self._connection, _active_read(self._connection))
         receipts, requests, result = {}, {}, []
         try:
             for origin in origins:

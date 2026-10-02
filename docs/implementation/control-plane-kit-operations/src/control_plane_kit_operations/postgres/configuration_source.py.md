@@ -15,3 +15,10 @@ existing `_event_commits_to` validator. Missing or wrong event commitments make
 both source and allocation evidence unavailable; event identity alone is not
 sufficient. The reader validates the complete closed selection before selecting
 one exact ref, and never transports product/configuration bodies.
+
+Before IDs or writes, the same owner measures proposed source, operation and
+selection with PostgreSQL `octet_length(jsonb::text)`. It checks the reader's
+shared component caps and the 80,000-byte aggregate using known coordinates plus
+the full unknown 16,384-byte event, 2,048-byte event ID and 64-byte time/kind caps.
+Canonical JSON size alone is insufficient. Postinsert original commitment and
+protection verification still run; preflight does not replace them.

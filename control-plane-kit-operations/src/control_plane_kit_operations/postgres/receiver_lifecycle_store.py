@@ -299,8 +299,15 @@ class _ReceiverStorage:
     def introduction(self, workspace, receiver):
         _text(workspace)
         _text(receiver)
-        row = self.connection.execute(_select(_INTRO, _INTRO_COLUMNS) +
-            "WHERE workspace_id=%s AND receiver_id=%s", (workspace, receiver)).fetchone()
+        from .configuration_evidence import _active_read
+        read = _active_read(self.connection)
+        if read is None:
+            row = self.connection.execute(_select(_INTRO, _INTRO_COLUMNS) +
+                "WHERE workspace_id=%s AND receiver_id=%s", (workspace, receiver)).fetchone()
+        else:
+            rows = read.bounded_rows(_INTRO, tuple((name, "text", 2048) for name in _INTRO_COLUMNS),
+                "workspace_id=%s AND receiver_id=%s", (workspace, receiver))
+            row = (*rows[0], True) if rows else None
         return None if row is None else _decode(row, ReceiverIntroduction)
 
     def material(self, workspace, graph_id, projection_id, *, graph=None, projection=None):

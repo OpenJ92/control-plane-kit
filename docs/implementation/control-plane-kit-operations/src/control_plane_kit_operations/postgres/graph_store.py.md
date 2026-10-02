@@ -43,3 +43,10 @@ A narrow private _require_receiver_lifecycle method revalidates an already-held 
 
 Implementation validation is pending on PR #1915. The reviewed target-only red
 checkpoint establishes only its recorded missing boundaries, not these green laws.
+
+B1 configuration commands account exact graph/projection and receiver-origin
+reads through their shared bounded transport. Original action/session joins
+charge both identities; optional original draft-revision witnesses also consume
+the command budget. The existing pure action-attribution validator still owns
+correctness, and budget exhaustion refuses rather than loading an uncharged
+fallback. No lifecycle permission or mutable authority is cached across UoWs.

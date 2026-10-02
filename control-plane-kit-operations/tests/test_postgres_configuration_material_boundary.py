@@ -4,6 +4,7 @@ import json
 import unittest
 
 import psycopg
+import rfc8785
 
 from control_plane_kit_operations.effect_attempt_start import EffectAttemptStartConflict
 from control_plane_kit_operations.coordinator import ExecutionCoordinatorConflict
@@ -75,6 +76,29 @@ class _CatalogObservedConnection(_ObservedConnection):
 class PostgresConfigurationMaterialBoundaryTests(ConfigurationPreparationFixture, unittest.TestCase):
     coordinator_command = coordinator_fixture.PostgresEffectAttemptCoordinatorFixture.coordinator_command
     coordinator_harness = coordinator_fixture.PostgresEffectAttemptCoordinatorFixture.coordinator_harness
+
+    def test_proposed_source_domain_uses_postgres_text_size_before_preparation(self):
+        from control_plane_kit_operations._configuration_preparation import _configuration_accounting
+        from control_plane_kit_operations.effect_attempt_intent_evidence import _encode_runtime_effect_intent
+        from control_plane_kit_operations.postgres.configuration_evidence import _Capacity, _EvidenceRead
+        from control_plane_kit_operations.postgres.configuration_source import _preflight_source
+        original = self.intent()
+        source = replace(original.source, plan_id="😀" * 512, base_graph_id="😀" * 512,
+            desired_graph_id="😀" * 512, request_id="a")
+        remaining = 8192 - len(rfc8785.dumps(source.descriptor()))
+        source = replace(source, request_id="a" + "😀" * (remaining // 4) + "a" * (remaining % 4))
+        proposal = replace(original, source=source)
+        canonical = _encode_runtime_effect_intent(proposal)
+        self.assertEqual(len(rfc8785.dumps(source.descriptor())), 8192)
+        measured = self.connection.execute("SELECT octet_length((convert_from(%s,'UTF8')::jsonb->'source')::text)",
+            (canonical,)).fetchone()[0]
+        self.assertGreater(measured, 8192)
+        before = self.complete_start_snapshot()
+        with self.unit_of_work() as uow, _configuration_accounting("run-a"):
+            with self.assertRaises(_Capacity):
+                _preflight_source(_EvidenceRead(uow.stores.connection), canonical,
+                    self.transition(identity=self.identity(activity_id="start-api"), intent=proposal), source, self.fence())
+        self.assertEqual(self.complete_start_snapshot(), before)
 
     def test_original_coordinator_replay_after_catalog_revocation_performs_no_fresh_selection(self):
         command = self.configuration_command()

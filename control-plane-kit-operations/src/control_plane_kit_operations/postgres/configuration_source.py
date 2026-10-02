@@ -22,7 +22,43 @@ from .configuration_evidence import _Capacity, _EvidenceRead, _Unavailable
 
 # Hash the retained canonical bytes before decoding JSON. Products are never
 # transported by this read; insertion/current verification retain full decoding.
-_SOURCE = """
+_SOURCE_BYTES = 8192
+_OPERATION_BYTES = 4096
+_SELECTION_BYTES = 65536
+_EVENT_BYTES = 16384
+_COMPACT_BYTES = 80000
+
+
+def _preflight_source(read, canonical_intent, transition, source, fence):
+    """Check the retained source domain before allocating an event or writing.
+
+    Measure PostgreSQL's actual JSON text, not its smaller canonical preimage.
+    Unknown event identity, time, kind and payload retain their full reader caps.
+    """
+    rows = read.query("WITH proposed AS (SELECT convert_from(%s,'UTF8')::jsonb AS doc) "
+        "SELECT octet_length((doc->'source')::text), octet_length((doc->'operation')::text), "
+        "octet_length((doc->'configuration_instances')::text) FROM proposed",
+        (canonical_intent,), records=1, octets=36, cells=3)
+    if len(rows) != 1 or any(type(value) is not int or value <= 0 for value in rows[0]):
+        raise _Unavailable
+    sizes = rows[0]
+    if any(size > maximum for size, maximum in zip(sizes,
+            (_SOURCE_BYTES, _OPERATION_BYTES, _SELECTION_BYTES))):
+        raise _Capacity
+    prior = transition.prior_attempt
+    bounded = ((source.workspace_id, 128), (source.request_id, 2048), (fence.worker_id, 2048))
+    if any(not 1 <= len(value.encode("utf-8")) <= maximum for value, maximum in bounded):
+        raise _Capacity
+    known = (source.workspace_id, source.request_id, transition.request_fingerprint,
+        fence.worker_id, str(fence.generation)) + (() if prior is None else
+        (prior.run_id.value, prior.activity_id, str(prior.attempt)))
+    # Event ID <= 2048, rendered timestamp/kind <= 64 each. The complete
+    # future event is reserved even though today's STARTED payload is smaller.
+    if sum(sizes) + sum(len(value.encode("utf-8")) for value in known) + _EVENT_BYTES + 2048 + 64 + 64 > _COMPACT_BYTES:
+        raise _Capacity
+
+
+_SOURCE = f"""
 WITH original AS MATERIALIZED (
  SELECT * FROM cpk_effect_attempt_intents
  WHERE run_id=%s AND activity_id=%s AND attempt=%s
@@ -50,13 +86,13 @@ WITH original AS MATERIALIZED (
    AND doc->>'activity_id'=activity_id AND original_event_run_id=run_id
    AND jsonb_typeof(doc)='object'
    AND doc - ARRAY['kind','runtime_kind','authority_ref','authority_deliveries','source',
-     'activity_id','operation','products','configuration_instances']::text[] = '{}'::jsonb
+     'activity_id','operation','products','configuration_instances']::text[] = '{{}}'::jsonb
    AND octet_length(workspace_id) BETWEEN 1 AND 128
    AND octet_length(request_id) BETWEEN 1 AND 2048
    AND octet_length(original_event_id) BETWEEN 1 AND 2048
    AND octet_length(request_fingerprint)=64
-   AND octet_length(source::text)<=8192 AND octet_length(operation::text)<=4096
-   AND octet_length(selection::text)<=65536 AND octet_length(event_payload)<=16384
+   AND octet_length(source::text)<={_SOURCE_BYTES} AND octet_length(operation::text)<={_OPERATION_BYTES}
+   AND octet_length(selection::text)<={_SELECTION_BYTES} AND octet_length(event_payload)<={_EVENT_BYTES}
    AND octet_length(event_time)<=64 AND octet_length(event_type)<=64
    AND octet_length(fence_worker_id) BETWEEN 1 AND 2048
    AND (prior_run_id IS NULL OR octet_length(prior_run_id) BETWEEN 1 AND 2048)
@@ -66,7 +102,7 @@ WITH original AS MATERIALIZED (
      +octet_length(original_event_id)+octet_length(request_fingerprint)
      +octet_length(event_time)+octet_length(event_type)+octet_length(fence_worker_id)
      +octet_length(fence_generation::text)+COALESCE(octet_length(prior_run_id),0)
-     +COALESCE(octet_length(prior_activity_id),0)+COALESCE(octet_length(prior_attempt::text),0) <= 80000) AS valid
+     +COALESCE(octet_length(prior_activity_id),0)+COALESCE(octet_length(prior_attempt::text),0) <= {_COMPACT_BYTES}) AS valid
  FROM compact
 )
 SELECT valid AND linked,

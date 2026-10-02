@@ -167,7 +167,8 @@ class ConfigurationPreparationStore:
             _runtime_effect_intent_for_material(material, activity))
         if expected != command.intent or runtime_effect_intent_fingerprint(expected) != command.transition.request_fingerprint:
             raise _Unavailable
-        _encode_runtime_effect_intent(expected)
+        from .configuration_source import _preflight_source
+        _preflight_source(read, _encode_runtime_effect_intent(expected), command.transition, expected.source, command.fence)
         refs = expected.configuration_instances.instances
         # Fixed future envelope includes complete source context, both original
         # and direct 16KiB events, the full 8192-byte outcome, and its source links.

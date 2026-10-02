@@ -41,3 +41,9 @@ No execution/run/outcome traversal recomputes acceptance. This helper does not
 authorize a read: the dedicated application service does so before snapshot
 entry. A legacy receiver-free draft without a persisted identity projection
 returns an explicit absent projection and creates no record.
+
+During a B1 configuration command, exact receiver introductions, graph material,
+and binding reads join the active configuration ledger. Their existing typed
+constructors and complete-membership checks remain unchanged. Legacy authoring
+reads keep their existing ledger; this bridge neither creates origins nor
+substitutes accepted-current evidence.
